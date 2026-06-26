@@ -1,0 +1,56 @@
+# AltTab Architecture
+
+## Process boundary
+
+Alt+Tab is a resident native Qt 6 process. It communicates with the compositor
+via thin CLI invocations that send IPC messages to the resident daemon.
+
+```
+Hyprland keybind → astrea-alt-tab --next → local IPC (astrea-alt-tab-v1)
+                                                ↓
+                                         AltTabApplication
+                                                |
+                                ┌───────────────┼───────────────┐
+                                ▼               ▼               ▼
+                         AltTabController  WindowSource   AppIdentityResolver
+                                |           (Interface)    (async icon/name)
+                                ▼               ▼
+                         AltTabWindowModel   HyprlandWindowSource
+                         (QAbstractListModel) (HyprlandSocket IPC)
+                                |
+                                ▼
+                          QML (presentation only)
+                                |
+                                ▼
+                     LayerShellQt overlay (astrea-alt-tab)
+```
+
+## Directory structure
+
+```
+AltTab/
+  CMakeLists.txt         - Build system
+  app/                   - Process bootstrap, CLI routing, dependency wiring
+  core/                  - Controller, model, state machine, window info
+  services/              - Identity resolution, config watching
+  platform/
+    hyprland/            - Hyprland socket transport and window source
+    ipc/                 - Resident IPC server (astrea-alt-tab-v1)
+    icons/               - XDG icon theme resolution and image provider
+    wayland/             - LayerShell surface configuration
+    runtime/             - XDG and environment-based paths
+  qml/                   - Presentation-only QML
+  tests/                 - Native unit/integration tests
+  packaging/             - systemd unit and Hyprland config snippet
+  docs/                  - Architecture and integration documentation
+```
+
+## Ownership rules
+
+- `AltTabApplication`: Owns the app lifecycle, commands, IPC, QML engine, and wiring
+- `AltTabController`: Owns the state machine (Hidden/Opening/Open/Committing/Closing),
+  selection, model coordination, commit/cancel behavior
+- `AltTabWindowModel`: Owns QAbstractListModel boundary, stable keyed updates
+- `WindowSource`: Abstract compositor interface, isolate Hyprland details
+- `AppIdentityResolver`: Maps window metadata to display name, icon name/path
+- QML: Renders state and forwards user intent only

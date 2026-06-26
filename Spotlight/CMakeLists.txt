@@ -17,6 +17,9 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/RustBackend.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/SpotlightWarnings.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/SpotlightSanitizers.cmake)
 
+# Link shared libraries sibling folder
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../shared ${CMAKE_CURRENT_BINARY_DIR}/shared)
+
 astrea_add_rust_backend(astrea_spotlight_rust_backend
     MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/backend/Cargo.toml"
     TARGET_DIR "${CMAKE_BINARY_DIR}/cargo-target"
@@ -34,8 +37,6 @@ qt_add_executable(astrea-spotlight
     services/SpotlightConfigWatcher.cpp
     services/AstreaI18n.cpp
     platform/ipc/SpotlightIpcServer.cpp
-    platform/icons/AstreaIconTheme.cpp
-    platform/icons/AstreaIconProvider.cpp
     platform/wayland/LayerShellSurface.cpp
     platform/runtime/SpotlightRuntimePaths.cpp
     platform/rust/RustSpotlightBackend.cpp
@@ -49,6 +50,7 @@ target_include_directories(astrea-spotlight PRIVATE
 target_link_libraries(astrea-spotlight PRIVATE
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Network
     astrea_spotlight_backend
+    astrea-shared
     dl pthread
 )
 
@@ -90,8 +92,6 @@ if(BUILD_TESTING AND ASTREA_SPOTLIGHT_BUILD_TESTS)
         services/SpotlightConfigWatcher.cpp
         services/AstreaI18n.cpp
         platform/ipc/SpotlightIpcServer.cpp
-        platform/icons/AstreaIconTheme.cpp
-        platform/icons/AstreaIconProvider.cpp
         platform/wayland/LayerShellSurface.cpp
         platform/runtime/SpotlightRuntimePaths.cpp
         platform/rust/RustSpotlightBackend.cpp
@@ -103,6 +103,7 @@ if(BUILD_TESTING AND ASTREA_SPOTLIGHT_BUILD_TESTS)
     target_link_libraries(spotlight-tests PRIVATE
         Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Network Qt6::Test
         astrea_spotlight_backend
+        astrea-shared
         dl pthread
     )
     if(LayerShellQt_FOUND)

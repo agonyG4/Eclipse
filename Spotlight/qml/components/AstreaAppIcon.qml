@@ -81,7 +81,7 @@ Item {
         if (name.indexOf("/") >= 0) {
             if (name.startsWith("file://"))
                 return name
-            return "file://" + name
+            return Qt.resolvedUrl(name)
         }
 
         return "image://astrea-icon/" + encodeURIComponent(name)

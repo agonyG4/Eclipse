@@ -22,6 +22,7 @@ signals:
 
 private:
     void cleanupProc();
+    void runSupervised(const QString &desktopId, const QStringList &args);
 
     QString m_launchPath;
     QProcess *m_proc = nullptr;

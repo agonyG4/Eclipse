@@ -6,6 +6,9 @@ pub mod ffi;
 pub mod search;
 pub mod state;
 
+#[cfg(test)]
+mod tests;
+
 pub use desktop::entries as desktop_entries;
 pub use ffi::exports::*;
 pub use search::ranking;

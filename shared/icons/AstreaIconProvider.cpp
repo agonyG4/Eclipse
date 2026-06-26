@@ -1,5 +1,5 @@
-#include "platform/icons/AstreaIconProvider.hpp"
-#include "platform/icons/AstreaIconTheme.hpp"
+#include "icons/AstreaIconProvider.hpp"
+#include "icons/AstreaIconTheme.hpp"
 
 #include <QIcon>
 #include <QUrl>
@@ -12,10 +12,10 @@
 #include <QSet>
 #include <QReadLocker>
 #include <QWriteLocker>
-#include <QStandardPaths>
 
 AstreaIconProvider::AstreaIconProvider()
-    : QQuickImageProvider(QQuickImageProvider::Pixmap), m_cache(256) {
+    : QQuickImageProvider(QQuickImageProvider::Pixmap), m_cache(kCacheMaxCost)
+{
     refreshThemeState();
 
     QObject::connect(&m_themeWatcher, &QFileSystemWatcher::directoryChanged,
@@ -25,9 +25,15 @@ AstreaIconProvider::AstreaIconProvider()
 }
 
 void AstreaIconProvider::clearCache() {
-    QWriteLocker lock(&m_cacheLock);
-    m_cache.clear();
-    ++m_themeRevision;
+    {
+        QWriteLocker lock(&m_cacheLock);
+        m_cache.clear();
+    }
+    {
+        QWriteLocker lock(&m_negativeCacheLock);
+        m_negativeCache.clear();
+    }
+    m_themeRevision.fetch_add(1, std::memory_order_relaxed);
     emit cacheInvalidated();
 }
 
@@ -78,26 +84,26 @@ QStringList AstreaIconProvider::themeSearchDirs() const {
 
 void AstreaIconProvider::discoverThemeInheritance(
     const QString &themeName, QStringList &result,
-    const QStringList &searchDirs, QSet<QString> &visited) const {
+    const QStringList &searchDirs, QSet<QString> &visited) const
+{
     if (themeName.isEmpty() || visited.contains(themeName)) return;
     visited.insert(themeName);
     result << themeName;
 
     for (const auto &dir : searchDirs) {
-        QString indexPath = dir + QStringLiteral("/") + themeName + QStringLiteral("/index.theme");
+        const QString indexPath = dir + QStringLiteral("/") + themeName + QStringLiteral("/index.theme");
         if (!QFileInfo::exists(indexPath)) continue;
 
         QSettings index(indexPath, QSettings::IniFormat);
         index.beginGroup(QStringLiteral("Icon Theme"));
-        QStringList inherits = index.value(QStringLiteral("Inherits")).toStringList();
+        const QStringList inherits = index.value(QStringLiteral("Inherits")).toStringList();
         index.endGroup();
 
         for (const auto &inh : inherits) {
-            QString trimmed = inh.trimmed();
+            const QString trimmed = inh.trimmed();
             if (!trimmed.isEmpty())
                 discoverThemeInheritance(trimmed, result, searchDirs, visited);
         }
-        break;
     }
 }
 
@@ -128,7 +134,6 @@ QStringList AstreaIconProvider::iconPrefixes() {
 
 QString AstreaIconProvider::lookupXdgTheme(const QString &iconName, int size) const {
     QStringList searchDirsOrdered = themeSearchDirs();
-    // Add flatpak icon export dirs
     for (const auto &d : {QDir::homePath() + QStringLiteral("/.local/share/flatpak/exports/share/icons"),
                           QStringLiteral("/var/lib/flatpak/exports/share/icons")}) {
         const QString clean = QDir::cleanPath(d);
@@ -136,19 +141,13 @@ QString AstreaIconProvider::lookupXdgTheme(const QString &iconName, int size) co
             searchDirsOrdered.append(clean);
     }
 
-    // Build theme list: active theme + inheritance chain, then hicolor
     QStringList themes;
     QSet<QString> visited;
 
-    // Use AstreaIconTheme::resolve() — this is the authoritative theme source.
-    // Do NOT rely on QIcon::themeName() because the platform theme plugin may
-    // override it after AstreaIconTheme::apply() runs (Qt 6 platform themes
-    // can reset the icon theme during their own initialization).
     QString activeTheme = AstreaIconTheme::resolve();
     if (!activeTheme.isEmpty() && activeTheme != QStringLiteral("hicolor"))
         discoverThemeInheritance(activeTheme, themes, searchDirsOrdered, visited);
 
-    // hicolor is always included as the last resort in the chain
     visited.clear();
     discoverThemeInheritance(QStringLiteral("hicolor"), themes, searchDirsOrdered, visited);
 
@@ -166,7 +165,6 @@ QString AstreaIconProvider::lookupXdgTheme(const QString &iconName, int size) co
         }
     }
 
-    // Search only the themes in the chain (no unrelated themes)
     for (const auto &theme : themes) {
         if (theme.isEmpty()) continue;
         for (const auto &d : searchDirsOrdered) {
@@ -176,7 +174,6 @@ QString AstreaIconProvider::lookupXdgTheme(const QString &iconName, int size) co
             for (const auto &sub : subdirs) {
                 for (const auto &prefix : prefixes) {
                     for (const auto &ext : extensions) {
-                        // Traditional layout: theme/<size>/<context>/base.ext
                         QString path = themeDir.absoluteFilePath(sub + QStringLiteral("/") + prefix + baseName + ext);
                         if (QFileInfo::exists(path))
                             return path;
@@ -188,7 +185,6 @@ QString AstreaIconProvider::lookupXdgTheme(const QString &iconName, int size) co
                                 return path;
                         }
                     }
-                    // Inverted layout (WhiteSur style): theme/<context>/<size>/base.ext
                     if (!prefix.isEmpty()) {
                         for (const auto &ext : extensions) {
                             QString invPath = themeDir.absoluteFilePath(prefix + sub + QStringLiteral("/") + baseName + ext);
@@ -201,19 +197,19 @@ QString AstreaIconProvider::lookupXdgTheme(const QString &iconName, int size) co
         }
     }
 
-    // /usr/share/pixmaps fallback
     for (const auto &ext : extensions) {
         QString path = QStringLiteral("/usr/share/pixmaps/") + baseName + ext;
         if (QFileInfo::exists(path)) return path;
     }
-    QString pixmapPath = QStringLiteral("/usr/share/pixmaps/") + iconName;
+    const QString pixmapPath = QStringLiteral("/usr/share/pixmaps/") + iconName;
     if (QFileInfo::exists(pixmapPath)) return pixmapPath;
 
     return {};
 }
 
 QPixmap AstreaIconProvider::resolveIcon(const QString &iconName, int size) {
-    QString key = QStringLiteral("%1-%2-%3").arg(iconName).arg(size).arg(m_themeRevision);
+    const int rev = m_themeRevision.load(std::memory_order_acquire);
+    const QString key = QStringLiteral("%1-%2-%3").arg(iconName).arg(size).arg(rev);
 
     {
         QReadLocker lock(&m_cacheLock);
@@ -221,47 +217,61 @@ QPixmap AstreaIconProvider::resolveIcon(const QString &iconName, int size) {
             return *cached;
     }
 
-    QPixmap result;
-
-    // 1. Direct file path or URL
-    if (QFileInfo::exists(iconName)) {
-        if (result.load(iconName))
-            goto insert_cache;
+    {
+        QReadLocker lock(&m_negativeCacheLock);
+        if (m_negativeCache.contains(key))
+            return {};
     }
 
-    // 2. Manual XDG resolution using the authoritative resolved theme.
-    //    This runs before QIcon::fromTheme() because Qt 6 platform themes
-    //    may override QIcon::themeName() after AstreaIconTheme::apply()
-    //    runs, causing fromTheme() to look in the wrong theme.
-    {
+    QPixmap result;
+
+    if (QFileInfo::exists(iconName)) {
+        result.load(iconName);
+    }
+
+    if (result.isNull()) {
         QString found = lookupXdgTheme(iconName, size);
         if (!found.isEmpty()) {
             QPixmap loaded(found);
-            if (!loaded.isNull()) {
+            if (!loaded.isNull())
                 result = loaded.scaled(size, size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-                goto insert_cache;
-            }
         }
     }
 
-    // 3. QIcon::fromTheme fallback (uses Qt's internal icon engine)
-    {
+    if (result.isNull()) {
         QIcon themeIcon = QIcon::fromTheme(iconName);
         if (!themeIcon.isNull()) {
             QPixmap pm = themeIcon.pixmap(size, size);
-            if (!pm.isNull()) {
+            if (!pm.isNull())
                 result = pm.scaled(size, size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-                goto insert_cache;
-            }
         }
     }
 
-insert_cache:
-    {
+    if (result.isNull()) {
+        QWriteLocker lock(&m_negativeCacheLock);
+        if (!m_negativeCache.contains(key)) {
+            if (m_negativeCache.size() >= kMaxNegativeEntries) {
+                int oldestSeq = std::numeric_limits<int>::max();
+                QString oldestKey;
+                for (auto it = m_negativeCache.constBegin(); it != m_negativeCache.constEnd(); ++it) {
+                    if (it.value() < oldestSeq) {
+                        oldestSeq = it.value();
+                        oldestKey = it.key();
+                    }
+                }
+                if (!oldestKey.isEmpty())
+                    m_negativeCache.remove(oldestKey);
+            }
+            m_negativeCache.insert(key, m_nextNegSeq++);
+        }
+    } else {
         QWriteLocker lock(&m_cacheLock);
-        if (!m_cache.contains(key))
-            m_cache.insert(key, new QPixmap(result));
+        if (!m_cache.contains(key)) {
+            int cost = result.width() * result.height() * 4;
+            m_cache.insert(key, new QPixmap(result), cost);
+        }
     }
+
     return result;
 }
 
@@ -272,8 +282,8 @@ QPixmap AstreaIconProvider::requestPixmap(const QString &id, QSize *size, const 
     int queryIdx = id.indexOf(QLatin1Char('?'));
     if (queryIdx >= 0) {
         iconName = QUrl::fromPercentEncoding(id.left(queryIdx).toUtf8());
-        QString queryStr = id.mid(queryIdx + 1);
-        QStringList parts = queryStr.split(QLatin1Char('&'));
+        const QString queryStr = id.mid(queryIdx + 1);
+        const QStringList parts = queryStr.split(QLatin1Char('&'));
         for (const auto &part : parts) {
             if (part.startsWith(QStringLiteral("size="))) {
                 bool ok;
@@ -290,9 +300,8 @@ QPixmap AstreaIconProvider::requestPixmap(const QString &id, QSize *size, const 
         return {};
     }
 
-    // Handle file:// URLs
     if (iconName.startsWith(QStringLiteral("file://"))) {
-        QString localFile = QUrl(iconName).toLocalFile();
+        const QString localFile = QUrl(iconName).toLocalFile();
         QPixmap pm(localFile);
         if (!pm.isNull()) {
             if (size) *size = pm.size();
@@ -300,7 +309,6 @@ QPixmap AstreaIconProvider::requestPixmap(const QString &id, QSize *size, const 
         }
     }
 
-    // Handle absolute paths
     if (iconName.startsWith(QLatin1Char('/'))) {
         QPixmap pm(iconName);
         if (!pm.isNull()) {
@@ -309,7 +317,6 @@ QPixmap AstreaIconProvider::requestPixmap(const QString &id, QSize *size, const 
         }
     }
 
-    // Non-file URL -> let provider handle it
     if (iconName.contains(QStringLiteral("://"))) {
         if (size) *size = QSize(target, target);
         return {};

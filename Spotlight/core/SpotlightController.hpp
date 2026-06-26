@@ -116,7 +116,7 @@ private:
     int m_weatherTemp = 0;
     QString m_weatherCity;
     QString m_weatherCondition;
-    QString m_weatherStatusText{QStringLiteral("Atualizando")};
+    QString m_weatherStatusText{QStringLiteral("Loading")};
     QUrl m_weatherIconSource;
     QDateTime m_lastWeatherFetch;
 

@@ -7,12 +7,6 @@
 #include <LayerShellQt/Window>
 #endif
 
-QString LayerShellSurface::prepareEarly() {
-#if defined(ASTREA_HAVE_LAYER_SHELL_QT) && ASTREA_HAVE_LAYER_SHELL_QT
-    // LayerShellQt auto-initializes on first Window::get() call in Qt 6.5+
-#endif
-    return {};
-}
 
 bool LayerShellSurface::configure(QQuickWindow *window, QString *errorOut) {
     if (!window) {

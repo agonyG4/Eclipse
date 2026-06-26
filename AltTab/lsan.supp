@@ -1,0 +1,8 @@
+# NVIDIA proprietary driver leak - not Eclipse code
+# Confirmed stack trace from driver internal allocations:
+#   #0 calloc (/usr/lib/libasan.so.8)
+#   #1 libnvidia-glcore.so
+# This suppression covers all allocations from the NVIDIA GL driver,
+# which is loaded by Qt's OpenGL integration at startup. No Eclipse
+# code path calls into this driver directly.
+leak:libnvidia-glcore.so

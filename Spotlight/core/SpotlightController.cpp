@@ -5,6 +5,7 @@
 #include <QJsonObject>
 #include <QDir>
 #include <QDebug>
+#include <QUrl>
 
 SpotlightController::SpotlightController(const SpotlightRuntimePaths &paths, QObject *parent)
     : QObject(parent), m_paths(paths), m_launcher(paths.astreaLaunch()) {
@@ -183,7 +184,7 @@ void SpotlightController::activateCurrent() {
 
 void SpotlightController::launch(int row) {
     if (row < 0 || row >= m_results.resultCount()) return;
-    const auto &item = m_results.resultAt(row);
+    const SearchResultItem item = m_results.resultAt(row);
 
     // Record usage immediately on activation (before launch)
     QString err;
@@ -227,7 +228,7 @@ void SpotlightController::refreshWeather() {
     m_weatherLoading = true;
     ++m_weatherRequestGen;
     int gen = m_weatherRequestGen;
-    m_weatherStatusText = m_weatherReady ? QStringLiteral("Atualizando") : QStringLiteral("Carregando");
+    m_weatherStatusText = m_weatherReady ? QStringLiteral("Updating") : QStringLiteral("Loading");
     emit weatherChanged();
 
     // Create a fresh QProcess per request to avoid stale callbacks
@@ -245,13 +246,13 @@ void SpotlightController::refreshWeather() {
             QString stderr = QString::fromUtf8(proc->readAllStandardError()).trimmed();
             if (!stderr.isEmpty())
                 qWarning("Weather CLI stderr: %s", qPrintable(stderr));
-            applyWeatherError(QStringLiteral("Sem dados"));
+            applyWeatherError(QStringLiteral("No weather data"));
             return;
         }
         QByteArray out = proc->readAllStandardOutput();
         QJsonDocument doc = QJsonDocument::fromJson(out);
         if (!doc.isObject()) {
-            applyWeatherError(QStringLiteral("JSON inválido"));
+            applyWeatherError(QStringLiteral("Invalid weather data"));
             return;
         }
         // Only cache if we're still interested (not closed/disabled)
@@ -267,13 +268,34 @@ void SpotlightController::refreshWeather() {
         m_weatherProc.clear();
 
         m_weatherLoading = false;
-        applyWeatherError(QStringLiteral("Falha ao conectar"));
+        applyWeatherError(QStringLiteral("Connection failed"));
     });
 
     m_weatherProc = proc;
     m_weatherProc->setProgram(m_paths.weatherCli());
     m_weatherProc->setArguments({QStringLiteral("summary")});
     m_weatherProc->start();
+}
+
+static QString normalizeWeatherCondition(const QString &condition) {
+    const QString c = condition.toLower();
+    if (c.contains(QStringLiteral("thunderstorm")) || c.contains(QStringLiteral("trovoada")))
+        return QStringLiteral("thunderstorm");
+    if (c.contains(QStringLiteral("freezing")) || c.contains(QStringLiteral("chuva gelada")) || c.contains(QStringLiteral("garoa gelada")))
+        return QStringLiteral("freezing_rain");
+    if (c.contains(QStringLiteral("heavy")) || c.contains(QStringLiteral("chuva forte")) || c.contains(QStringLiteral("garoa forte")) || c.contains(QStringLiteral("pancadas fortes")))
+        return QStringLiteral("heavy_rain");
+    if (c.contains(QStringLiteral("drizzle")) || c.contains(QStringLiteral("light")) || c.contains(QStringLiteral("garoa")) || c.contains(QStringLiteral("chuva leve")) || c.contains(QStringLiteral("pancadas")))
+        return QStringLiteral("light_rain");
+    if (c.contains(QStringLiteral("rain")))
+        return QStringLiteral("rain");
+    if (c.contains(QStringLiteral("mist")) || c.contains(QStringLiteral("fog")) || c.contains(QStringLiteral("névoa")) || c.contains(QStringLiteral("nevoa")))
+        return QStringLiteral("mist");
+    if (c.contains(QStringLiteral("overcast")) || c.contains(QStringLiteral("cloudy")) || c.contains(QStringLiteral("nublado")))
+        return QStringLiteral("cloudy");
+    if (c.contains(QStringLiteral("partly")) || c.contains(QStringLiteral("mostly")) || c.contains(QStringLiteral("parcialmente")) || c.contains(QStringLiteral("principalmente")))
+        return QStringLiteral("partially_cloudy");
+    return QStringLiteral("clear");
 }
 
 void SpotlightController::applyWeather(const QJsonObject &data) {
@@ -284,26 +306,8 @@ void SpotlightController::applyWeather(const QJsonObject &data) {
     m_weatherCondition = data.value(QStringLiteral("condition")).toString();
     m_weatherStatusText.clear();
 
-    QString condition = m_weatherCondition.toLower();
-    QString assetRoot = QStringLiteral("file://") + m_paths.weatherAssetDir() + QStringLiteral("/");
-    if (condition.contains(QStringLiteral("trovoada")))
-        m_weatherIconSource = QUrl(assetRoot + QStringLiteral("thunderstorm.png"));
-    else if (condition.contains(QStringLiteral("chuva gelada")) || condition.contains(QStringLiteral("garoa gelada")))
-        m_weatherIconSource = QUrl(assetRoot + QStringLiteral("freezing_rain.png"));
-    else if (condition.contains(QStringLiteral("chuva forte")) || condition.contains(QStringLiteral("garoa forte")) || condition.contains(QStringLiteral("pancadas fortes")))
-        m_weatherIconSource = QUrl(assetRoot + QStringLiteral("heavy_rain.png"));
-    else if (condition.contains(QStringLiteral("garoa")) || condition.contains(QStringLiteral("chuva leve")) || condition.contains(QStringLiteral("pancadas")))
-        m_weatherIconSource = QUrl(assetRoot + QStringLiteral("light_rain.png"));
-    else if (condition.contains(QStringLiteral("chuva")))
-        m_weatherIconSource = QUrl(assetRoot + QStringLiteral("rain.png"));
-    else if (condition.contains(QStringLiteral("névoa")) || condition.contains(QStringLiteral("nevoa")))
-        m_weatherIconSource = QUrl(assetRoot + QStringLiteral("mist.png"));
-    else if (condition.contains(QStringLiteral("nublado")))
-        m_weatherIconSource = QUrl(assetRoot + QStringLiteral("cloudy.png"));
-    else if (condition.contains(QStringLiteral("parcialmente")) || condition.contains(QStringLiteral("principalmente")))
-        m_weatherIconSource = QUrl(assetRoot + QStringLiteral("partially_cloudy.png"));
-    else
-        m_weatherIconSource = QUrl(assetRoot + QStringLiteral("clear.png"));
+    const QString assetRoot = QUrl::fromLocalFile(m_paths.weatherAssetDir() + QStringLiteral("/")).toString();
+    m_weatherIconSource = QUrl(assetRoot + normalizeWeatherCondition(m_weatherCondition) + QStringLiteral(".png"));
 
     m_lastWeatherFetch = QDateTime::currentDateTimeUtc();
     emit weatherChanged();
@@ -312,7 +316,7 @@ void SpotlightController::applyWeather(const QJsonObject &data) {
 void SpotlightController::applyWeatherError(const QString &error) {
     m_weatherLoading = false;
     m_weatherReady = false;
-    m_weatherStatusText = error.isEmpty() ? QStringLiteral("Sem dados") : error;
+    m_weatherStatusText = error.isEmpty() ? QStringLiteral("No weather data") : error;
     emit weatherChanged();
 }
 
@@ -363,7 +367,7 @@ void SpotlightController::setWeatherEnabled(bool enabled) {
         m_weatherLoading = false;
         m_weatherReady = false;
         m_weatherRequestGen++;
-        applyWeatherError(QStringLiteral("Desativado"));
+        applyWeatherError(QStringLiteral("Disabled"));
     } else if (isOpen() && !m_gameModeActive) {
         m_weatherRefreshTimer.start();
         if (!m_weatherReady || !m_lastWeatherFetch.isValid() ||

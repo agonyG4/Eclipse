@@ -94,93 +94,11 @@ bool ApplicationLauncher::isRunning() const {
     return m_proc && m_proc->state() != QProcess::NotRunning;
 }
 
-void ApplicationLauncher::launchDesktop(const QString &desktopId,
-                                          const QString &desktopFileName,
-                                          const QString &exec,
-                                          const QString &appName,
-                                          const QString &iconName,
-                                          const QString &desktopFilePath) {
-    if (isRunning()) {
-        emit launchFailed(desktopId, QStringLiteral("A launch is already in progress"));
-        return;
-    }
-
-    // Clean up any previous process to avoid stale signal delivery
-    cleanupProc();
-
-    QString id;
-    QStringList processArgs;
-
-    if (!desktopId.isEmpty()) {
-        id = desktopId;
-        processArgs = {QStringLiteral("--desktop"), desktopId};
-    } else if (!desktopFileName.isEmpty()) {
-        id = desktopFileName;
-        processArgs = {QStringLiteral("--desktop"), desktopFileName};
-    } else if (!exec.isEmpty()) {
-        m_currentDesktopId = exec;
-        m_timeout = new QTimer(this);
-        m_timeout->setSingleShot(true);
-        m_timeout->setInterval(10000);
-        m_proc = new QProcess(this);
-
-        connect(m_proc, &QProcess::errorOccurred, this, [this](QProcess::ProcessError err) {
-            m_timeout->stop();
-            QString msg;
-            switch (err) {
-            case QProcess::FailedToStart: msg = QStringLiteral("Failed to start astrea-launch"); break;
-            case QProcess::Crashed: msg = QStringLiteral("astrea-launch crashed"); break;
-            case QProcess::Timedout: msg = QStringLiteral("astrea-launch timed out"); break;
-            default: msg = QStringLiteral("Launch process error"); break;
-            }
-            emit launchFailed(m_currentDesktopId, msg);
-            cleanupProc();
-        });
-
-        connect(m_proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-                this, [this](int exitCode, QProcess::ExitStatus status) {
-            m_timeout->stop();
-            if (status == QProcess::NormalExit && exitCode == 0) {
-                emit launchSucceeded(m_currentDesktopId);
-            } else {
-                QString err = QString::fromUtf8(m_proc->readAllStandardError());
-                emit launchFailed(m_currentDesktopId, err.isEmpty()
-                    ? QStringLiteral("exit code %1").arg(exitCode) : err);
-            }
-            cleanupProc();
-        });
-
-        connect(m_timeout, &QTimer::timeout, this, [this] {
-            if (m_proc) m_proc->kill();
-            emit launchTimedOut(m_currentDesktopId);
-            cleanupProc();
-        });
-
-        m_proc->setProgram(m_launchPath);
-        const QStringList argv = expandDesktopExec(exec, appName, iconName, desktopFilePath);
-        if (argv.isEmpty()) {
-            emit launchFailed(m_currentDesktopId, QStringLiteral("Empty desktop Exec command"));
-            cleanupProc();
-            return;
-        }
-        QJsonArray argvJson;
-        for (const QString &arg : argv)
-            argvJson.append(arg);
-        QJsonDocument doc(argvJson);
-        m_proc->setArguments({QStringLiteral("--argv-json"), QString::fromUtf8(doc.toJson(QJsonDocument::Compact))});
-        m_proc->start();
-        m_timeout->start();
-        return;
-    } else {
-        emit launchFailed(desktopId, QStringLiteral("No desktop ID available"));
-        return;
-    }
-
-    m_currentDesktopId = id;
+void ApplicationLauncher::runSupervised(const QString &desktopId, const QStringList &args) {
+    m_currentDesktopId = desktopId;
     m_timeout = new QTimer(this);
     m_timeout->setSingleShot(true);
     m_timeout->setInterval(10000);
-
     m_proc = new QProcess(this);
 
     connect(m_proc, &QProcess::errorOccurred, this, [this](QProcess::ProcessError err) {
@@ -216,9 +134,42 @@ void ApplicationLauncher::launchDesktop(const QString &desktopId,
     });
 
     m_proc->setProgram(m_launchPath);
-    m_proc->setArguments(processArgs);
+    m_proc->setArguments(args);
     m_proc->start();
     m_timeout->start();
+}
+
+void ApplicationLauncher::launchDesktop(const QString &desktopId,
+                                          const QString &desktopFileName,
+                                          const QString &exec,
+                                          const QString &appName,
+                                          const QString &iconName,
+                                          const QString &desktopFilePath) {
+    if (isRunning()) {
+        emit launchFailed(desktopId, QStringLiteral("A launch is already in progress"));
+        return;
+    }
+
+    cleanupProc();
+
+    if (!desktopId.isEmpty()) {
+        runSupervised(desktopId, {QStringLiteral("--desktop"), desktopId});
+    } else if (!desktopFileName.isEmpty()) {
+        runSupervised(desktopFileName, {QStringLiteral("--desktop"), desktopFileName});
+    } else if (!exec.isEmpty()) {
+        const QStringList argv = expandDesktopExec(exec, appName, iconName, desktopFilePath);
+        if (argv.isEmpty()) {
+            emit launchFailed(exec, QStringLiteral("Empty desktop Exec command"));
+            return;
+        }
+        QJsonArray argvJson;
+        for (const QString &arg : argv)
+            argvJson.append(arg);
+        QJsonDocument doc(argvJson);
+        runSupervised(exec, {QStringLiteral("--argv-json"), QString::fromUtf8(doc.toJson(QJsonDocument::Compact))});
+    } else {
+        emit launchFailed(desktopId, QStringLiteral("No desktop ID available"));
+    }
 }
 
 void ApplicationLauncher::cleanupProc() {

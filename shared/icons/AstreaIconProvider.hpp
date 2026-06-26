@@ -7,6 +7,10 @@
 #include <QFileSystemWatcher>
 #include <QReadWriteLock>
 #include <QObject>
+#include <QSet>
+#include <QHash>
+#include <QList>
+#include <atomic>
 
 class AstreaIconProvider : public QQuickImageProvider {
     Q_OBJECT
@@ -15,7 +19,7 @@ public:
     AstreaIconProvider();
     QPixmap requestPixmap(const QString &id, QSize *size, const QSize &requestedSize) override;
     void clearCache();
-    int themeRevision() const { return m_themeRevision; }
+    int themeRevision() const { return m_themeRevision.load(std::memory_order_acquire); }
 
 signals:
     void cacheInvalidated();
@@ -25,8 +29,7 @@ private:
     QString lookupXdgTheme(const QString &iconName, int size) const;
     QStringList themeSearchDirs() const;
     void discoverThemeInheritance(const QString &themeName, QStringList &result,
-                                  const QStringList &searchDirs,
-                                  QSet<QString> &visited) const;
+                                  const QStringList &searchDirs, QSet<QString> &visited) const;
     void refreshThemeState();
     QStringList watchedConfigFiles() const;
     QStringList watchedConfigDirectories() const;
@@ -36,6 +39,12 @@ private:
 
     QCache<QString, QPixmap> m_cache;
     QReadWriteLock m_cacheLock;
-    int m_themeRevision = 0;
+    QHash<QString, int> m_negativeCache;
+    mutable QReadWriteLock m_negativeCacheLock;
+    std::atomic<int> m_themeRevision{0};
+    int m_nextNegSeq = 0;
     QFileSystemWatcher m_themeWatcher;
+
+    static constexpr int kCacheMaxCost = 8 * 1024 * 1024;   // 8 MB
+    static constexpr int kMaxNegativeEntries = 1024;
 };

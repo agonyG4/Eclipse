@@ -79,9 +79,8 @@ void SpotlightResultsModel::clear() {
     endResetModel();
 }
 
-const SearchResultItem &SpotlightResultsModel::resultAt(int row) const {
-    static SearchResultItem s_empty;
+SearchResultItem SpotlightResultsModel::resultAt(int row) const {
     if (row < 0 || row >= m_results.size())
-        return s_empty;
+        return {};
     return m_results.at(row);
 }

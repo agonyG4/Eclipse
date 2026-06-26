@@ -1,39 +1,8 @@
-/build/
-/build-*/
-/backend/target/
-target/
-CMakeCache.txt
-CMakeFiles/
-cmake_install.cmake
-compile_commands.json
-*.a
-*.so
-*.o
-*.obj
-*.ninja
-.ninja_*
-Testing/
-
-# Generated
-*.autogen/
-*.moc
-*.rcc
-.qmlcache/
-.qmltypes/
-meta_types/
-.qmlls.ini
-.qmlc/
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Temporary
-/tmp/
+build/
+build-*/
+**/CMakeFiles/
+**/Testing/
+**/.qmlcache/
+**/compile_commands.json
+**/CMakeCache.txt
+cargo-target/

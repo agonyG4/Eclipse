@@ -449,10 +449,14 @@ fn test_locale_priority_exact_then_language_then_unlocalized() {
     assert_eq!(fallback.entries()[0].name, "Settings");
 
     if let Some(v) = orig_home {
-        unsafe { std::env::set_var("XDG_DATA_HOME", v); }
+        unsafe {
+            std::env::set_var("XDG_DATA_HOME", v);
+        }
     }
     if let Some(v) = orig_dirs {
-        unsafe { std::env::set_var("XDG_DATA_DIRS", v); }
+        unsafe {
+            std::env::set_var("XDG_DATA_DIRS", v);
+        }
     }
     let _ = std::fs::remove_dir_all(&dir);
 }

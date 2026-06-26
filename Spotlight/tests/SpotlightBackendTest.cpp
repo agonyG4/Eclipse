@@ -12,13 +12,13 @@
 #include "../platform/runtime/SpotlightRuntimePaths.hpp"
 #include "../platform/rust/RustSpotlightBackend.hpp"
 #include "../services/AstreaI18n.hpp"
-#include "../platform/icons/AstreaIconProvider.hpp"
+#include "icons/AstreaIconProvider.hpp"
 #include "../platform/ipc/SpotlightIpcServer.hpp"
 #include "../services/GameModeMonitor.hpp"
 #include "../services/SpotlightConfigWatcher.hpp"
 #include "../services/ApplicationLauncher.hpp"
 #include "../core/SpotlightController.hpp"
-#include "../platform/icons/AstreaIconTheme.hpp"
+#include "icons/AstreaIconTheme.hpp"
 
 class TestSpotlightBackend : public QObject {
     Q_OBJECT

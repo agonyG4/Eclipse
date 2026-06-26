@@ -48,7 +48,7 @@ public:
 
     void setResults(const QJsonArray &results);
     void clear();
-    const SearchResultItem &resultAt(int row) const;
+    SearchResultItem resultAt(int row) const;
     int resultCount() const { return m_results.size(); }
 
 private:

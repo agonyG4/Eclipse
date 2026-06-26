@@ -1,0 +1,7 @@
+build/
+build-*/
+*.o
+*.moc
+moc_*
+.qmlc/
+.qmlls.cache

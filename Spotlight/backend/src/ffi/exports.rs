@@ -15,7 +15,9 @@ pub unsafe extern "C" fn astrea_spotlight_backend_create(
         match AstreaSpotlightBackend::new(root, loc) {
             Ok(backend) => Box::into_raw(Box::new(backend)),
             Err(e) => {
-                unsafe { set_error(error_out, &e); }
+                unsafe {
+                    set_error(error_out, &e);
+                }
                 std::ptr::null_mut()
             }
         }
@@ -24,7 +26,9 @@ pub unsafe extern "C" fn astrea_spotlight_backend_create(
     match result {
         Ok(ptr) => ptr,
         Err(_) => {
-            unsafe { set_error(error_out, "panic in create"); }
+            unsafe {
+                set_error(error_out, "panic in create");
+            }
             std::ptr::null_mut()
         }
     }
@@ -46,13 +50,17 @@ pub unsafe extern "C" fn astrea_spotlight_backend_reload(
 ) -> i32 {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if backend.is_null() {
-            unsafe { set_error(error_out, "null backend"); }
+            unsafe {
+                set_error(error_out, "null backend");
+            }
             return -1;
         }
         match unsafe { (*backend).reload() } {
             Ok(()) => 0,
             Err(e) => {
-                unsafe { set_error(error_out, &e); }
+                unsafe {
+                    set_error(error_out, &e);
+                }
                 -1
             }
         }
@@ -61,7 +69,9 @@ pub unsafe extern "C" fn astrea_spotlight_backend_reload(
     match result {
         Ok(v) => v,
         Err(_) => {
-            unsafe { set_error(error_out, "panic in reload"); }
+            unsafe {
+                set_error(error_out, "panic in reload");
+            }
             -1
         }
     }
@@ -76,14 +86,18 @@ pub unsafe extern "C" fn astrea_spotlight_backend_search_json(
 ) -> *mut c_char {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if backend.is_null() {
-            unsafe { set_error(error_out, "null backend"); }
+            unsafe {
+                set_error(error_out, "null backend");
+            }
             return std::ptr::null_mut();
         }
         let q = unsafe { c_str_to_str(query) };
         match unsafe { (*backend).search_json(q, limit) } {
             Ok(json) => CString::new(json).unwrap_or_default().into_raw(),
             Err(e) => {
-                unsafe { set_error(error_out, &e); }
+                unsafe {
+                    set_error(error_out, &e);
+                }
                 std::ptr::null_mut()
             }
         }
@@ -92,7 +106,9 @@ pub unsafe extern "C" fn astrea_spotlight_backend_search_json(
     match result {
         Ok(ptr) => ptr,
         Err(_) => {
-            unsafe { set_error(error_out, "panic in search_json"); }
+            unsafe {
+                set_error(error_out, "panic in search_json");
+            }
             std::ptr::null_mut()
         }
     }
@@ -106,14 +122,18 @@ pub unsafe extern "C" fn astrea_spotlight_backend_record_launch(
 ) -> i32 {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if backend.is_null() {
-            unsafe { set_error(error_out, "null backend"); }
+            unsafe {
+                set_error(error_out, "null backend");
+            }
             return -1;
         }
         let id = unsafe { c_str_to_str(desktop_id) };
         match unsafe { (*backend).record_launch(id) } {
             Ok(()) => 0,
             Err(e) => {
-                unsafe { set_error(error_out, &e); }
+                unsafe {
+                    set_error(error_out, &e);
+                }
                 -1
             }
         }
@@ -122,7 +142,9 @@ pub unsafe extern "C" fn astrea_spotlight_backend_record_launch(
     match result {
         Ok(v) => v,
         Err(_) => {
-            unsafe { set_error(error_out, "panic in record_launch"); }
+            unsafe {
+                set_error(error_out, "panic in record_launch");
+            }
             -1
         }
     }
@@ -136,14 +158,18 @@ pub unsafe extern "C" fn astrea_spotlight_backend_record_activation(
 ) -> i32 {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if backend.is_null() {
-            unsafe { set_error(error_out, "null backend"); }
+            unsafe {
+                set_error(error_out, "null backend");
+            }
             return -1;
         }
         let id = unsafe { c_str_to_str(desktop_id) };
         match unsafe { (*backend).record_activation(id) } {
             Ok(()) => 0,
             Err(e) => {
-                unsafe { set_error(error_out, &e); }
+                unsafe {
+                    set_error(error_out, &e);
+                }
                 -1
             }
         }
@@ -152,7 +178,9 @@ pub unsafe extern "C" fn astrea_spotlight_backend_record_activation(
     match result {
         Ok(v) => v,
         Err(_) => {
-            unsafe { set_error(error_out, "panic in record_activation"); }
+            unsafe {
+                set_error(error_out, "panic in record_activation");
+            }
             -1
         }
     }
@@ -166,7 +194,9 @@ pub unsafe extern "C" fn astrea_spotlight_backend_ensure_config(
         match config::store::write_default_config() {
             Ok(()) => 0,
             Err(e) => {
-                unsafe { set_error(error_out, &e); }
+                unsafe {
+                    set_error(error_out, &e);
+                }
                 -1
             }
         }
@@ -174,7 +204,9 @@ pub unsafe extern "C" fn astrea_spotlight_backend_ensure_config(
     match result {
         Ok(v) => v,
         Err(_) => {
-            unsafe { set_error(error_out, "panic in ensure_config"); }
+            unsafe {
+                set_error(error_out, "panic in ensure_config");
+            }
             -1
         }
     }
@@ -192,7 +224,9 @@ pub unsafe extern "C" fn astrea_spotlight_backend_watched_dirs(
 ) -> *mut c_char {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if backend.is_null() {
-            unsafe { set_error(error_out, "null backend"); }
+            unsafe {
+                set_error(error_out, "null backend");
+            }
             return std::ptr::null_mut();
         }
         let dirs = unsafe { (*backend).index.watcher_dirs() };
@@ -202,7 +236,9 @@ pub unsafe extern "C" fn astrea_spotlight_backend_watched_dirs(
     match result {
         Ok(ptr) => ptr,
         Err(_) => {
-            unsafe { set_error(error_out, "panic in watched_dirs"); }
+            unsafe {
+                set_error(error_out, "panic in watched_dirs");
+            }
             std::ptr::null_mut()
         }
     }

@@ -2,7 +2,7 @@
 
 #include "app/CommandLine.hpp"
 #include "core/SpotlightController.hpp"
-#include "platform/icons/AstreaIconProvider.hpp"
+#include "icons/AstreaIconProvider.hpp"
 #include "platform/ipc/SpotlightIpcServer.hpp"
 #include "platform/runtime/SpotlightRuntimePaths.hpp"
 #include "services/AstreaI18n.hpp"

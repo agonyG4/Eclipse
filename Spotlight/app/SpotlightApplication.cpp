@@ -2,8 +2,8 @@
 
 #include "app/CommandLine.hpp"
 #include "core/SpotlightController.hpp"
-#include "platform/icons/AstreaIconProvider.hpp"
-#include "platform/icons/AstreaIconTheme.hpp"
+#include "icons/AstreaIconProvider.hpp"
+#include "icons/AstreaIconTheme.hpp"
 #include "platform/ipc/SpotlightIpcServer.hpp"
 #include "platform/runtime/SpotlightRuntimePaths.hpp"
 #include "platform/wayland/LayerShellSurface.hpp"

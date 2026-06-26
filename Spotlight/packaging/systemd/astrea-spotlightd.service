@@ -1,0 +1,19 @@
+[Unit]
+Description=Astrea Native Spotlight daemon
+After=graphical-session.target
+PartOf=graphical-session.target
+StartLimitIntervalSec=30
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=%h/.local/share/Astrea/bin/astrea-spotlight --daemon
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=3
+KillMode=process
+Environment=QT_QPA_PLATFORM=wayland
+Environment=QS_ICON_THEME=MacTahoe
+
+[Install]
+WantedBy=graphical-session.target

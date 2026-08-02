@@ -9,6 +9,7 @@ struct SettingsNavigationEntry {
     enum class Kind {
         Page,
         Group,
+        Section,
         Spacer,
     };
 

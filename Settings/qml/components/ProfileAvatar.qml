@@ -16,6 +16,8 @@ Rectangle {
         id: avatarImage
         anchors.fill: parent
         source: root.source
+        sourceSize.width: 96
+        sourceSize.height: 96
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         cache: true

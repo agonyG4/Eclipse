@@ -15,7 +15,6 @@ class SettingsController final : public QObject {
     Q_PROPERTY(QString userName READ userName CONSTANT)
     Q_PROPERTY(QUrl avatarUrl READ avatarUrl CONSTANT)
     Q_PROPERTY(bool isSudo READ isSudo CONSTANT)
-    Q_PROPERTY(bool pagesAvailable READ pagesAvailable CONSTANT)
 
 public:
     explicit SettingsController(QObject *parent = nullptr);
@@ -27,7 +26,6 @@ public:
     QString userName() const;
     QUrl avatarUrl() const;
     bool isSudo() const;
-    bool pagesAvailable() const;
 
     Q_INVOKABLE bool selectSection(const QString &id);
     Q_INVOKABLE QUrl iconUrl(const QString &iconKey, const QString &iconTheme) const;

@@ -9,7 +9,6 @@ struct SettingsNavigationEntry {
     enum class Kind {
         Page,
         Group,
-        Section,
         Spacer,
     };
 
@@ -21,11 +20,8 @@ struct SettingsNavigationEntry {
     QString iconSource;
     QString iconKey;
     int pageIndex = -1;
-    QString sectionKey;
-    QString parentSection;
     Kind kind = Kind::Page;
     bool enabled = true;
-    bool expanded = false;
 };
 
 class SettingsNavigationModel final : public QAbstractListModel {
@@ -48,9 +44,6 @@ public:
         IconSourceRole,
         IconKeyRole,
         PageIndexRole,
-        SectionKeyRole,
-        ParentSectionRole,
-        ExpandedRole,
     };
     Q_ENUM(Role)
 
@@ -65,7 +58,6 @@ public:
 
     QString selectedId() const;
     bool setSelectedId(const QString &id);
-    bool setExpanded(const QString &id, bool expanded);
 
     Q_INVOKABLE QVariantMap get(int row) const;
 

@@ -239,8 +239,13 @@ if(BUILD_TESTING AND ASTREA_SETTINGS_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     settings_enable_warnings(settings-qml-smoke-test)
     settings_enable_sanitizers(settings-qml-smoke-test)
     add_test(NAME settings-qml-smoke-test COMMAND settings-qml-smoke-test)
+    set(settings_qml_smoke_environment "QT_QPA_PLATFORM=offscreen")
+    if(ASTREA_ENABLE_ASAN)
+        # Qt's offscreen graphics teardown leaks allocations in system font and GL libraries.
+        list(APPEND settings_qml_smoke_environment "ASAN_OPTIONS=detect_leaks=0")
+    endif()
     set_tests_properties(settings-qml-smoke-test PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+        ENVIRONMENT "${settings_qml_smoke_environment}"
     )
 
     add_test(NAME compositor-page-source-test

@@ -25,6 +25,8 @@ qt_add_executable(astrea-settings
     app/SettingsApplication.hpp
     core/SettingsController.cpp
     core/SettingsController.hpp
+    core/SettingsGroupMembership.cpp
+    core/SettingsGroupMembership.hpp
     core/SettingsNavigationModel.cpp
     core/SettingsNavigationModel.hpp
     core/SettingsTranslationController.cpp
@@ -145,6 +147,8 @@ if(BUILD_TESTING AND ASTREA_SETTINGS_BUILD_TESTS AND ASTREA_BUILD_TESTS)
         tests/SettingsControllerTest.cpp
         core/SettingsController.cpp
         core/SettingsController.hpp
+        core/SettingsGroupMembership.cpp
+        core/SettingsGroupMembership.hpp
         core/SettingsNavigationModel.cpp
         core/SettingsNavigationModel.hpp
         core/ThemeController.cpp
@@ -160,4 +164,88 @@ if(BUILD_TESTING AND ASTREA_SETTINGS_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     settings_enable_warnings(settings-controller-test)
     settings_enable_sanitizers(settings-controller-test)
     add_test(NAME settings-controller-test COMMAND settings-controller-test)
+
+    add_executable(settings-group-membership-test
+        tests/SettingsGroupMembershipTest.cpp
+        core/SettingsGroupMembership.cpp
+        core/SettingsGroupMembership.hpp
+    )
+    target_include_directories(settings-group-membership-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_link_libraries(settings-group-membership-test PRIVATE
+        Qt6::Core
+        Qt6::Test
+    )
+    settings_enable_warnings(settings-group-membership-test)
+    settings_enable_sanitizers(settings-group-membership-test)
+    add_test(NAME settings-group-membership-test COMMAND settings-group-membership-test)
+
+    add_executable(theme-controller-test
+        tests/ThemeControllerTest.cpp
+        core/ThemeController.cpp
+        core/ThemeController.hpp
+    )
+    target_include_directories(theme-controller-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_link_libraries(theme-controller-test PRIVATE
+        Qt6::Core
+        Qt6::Test
+    )
+    settings_enable_warnings(theme-controller-test)
+    settings_enable_sanitizers(theme-controller-test)
+    add_test(NAME theme-controller-test COMMAND theme-controller-test)
+
+    qt_add_executable(settings-qml-smoke-test
+        tests/SettingsQmlSmokeTest.cpp
+        core/SettingsController.cpp
+        core/SettingsController.hpp
+        core/SettingsGroupMembership.cpp
+        core/SettingsGroupMembership.hpp
+        core/SettingsNavigationModel.cpp
+        core/SettingsNavigationModel.hpp
+        core/SettingsTranslationController.cpp
+        core/SettingsTranslationController.hpp
+        core/ThemeController.cpp
+        core/ThemeController.hpp
+    )
+    target_include_directories(settings-qml-smoke-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../shared"
+    )
+    target_link_libraries(settings-qml-smoke-test PRIVATE
+        astrea-shared
+        astrea-sharedplugin
+        Qt6::Core
+        Qt6::Core5Compat
+        Qt6::Gui
+        Qt6::Qml
+        Qt6::Quick
+        Qt6::QuickControls2
+        Qt6::Test
+    )
+    qt_add_qml_module(settings-qml-smoke-test
+        URI Astrea.Settings
+        VERSION 1.0
+        OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Astrea/SettingsSmoke"
+        QML_FILES ${SETTINGS_QML_FILES}
+    )
+    qt_add_resources(settings-qml-smoke-test settings-test-assets
+        PREFIX "/Astrea/Settings"
+        FILES ${SETTINGS_ASSET_FILES}
+    )
+    qt_import_qml_plugins(settings-qml-smoke-test)
+    settings_enable_warnings(settings-qml-smoke-test)
+    settings_enable_sanitizers(settings-qml-smoke-test)
+    add_test(NAME settings-qml-smoke-test COMMAND settings-qml-smoke-test)
+    set_tests_properties(settings-qml-smoke-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    )
+
+    add_test(NAME compositor-page-source-test
+        COMMAND ${CMAKE_COMMAND}
+            -DCOMPOSITOR_QML_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/qml/pages/system/Compositor.qml
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/CompositorPageSourceTest.cmake
+    )
 endif()

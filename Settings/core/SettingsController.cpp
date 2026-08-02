@@ -1,12 +1,54 @@
 #include "core/SettingsController.hpp"
+#include "core/SettingsGroupMembership.hpp"
 
 #include <QFileInfo>
+
+#include <grp.h>
+#include <pwd.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+#include <vector>
+
+namespace {
+bool resolveAdministrativeGroupMembership()
+{
+    const passwd *currentUser = getpwuid(getuid());
+    if (!currentUser || !currentUser->pw_name)
+        return false;
+
+    int groupCount = 16;
+    std::vector<gid_t> groupIds;
+    for (;;) {
+        groupIds.resize(static_cast<size_t>(groupCount));
+        int requiredCount = groupCount;
+        const int result = getgrouplist(currentUser->pw_name, currentUser->pw_gid,
+                                        groupIds.data(), &requiredCount);
+        if (result == 0) {
+            groupIds.resize(static_cast<size_t>(requiredCount));
+            break;
+        }
+        if (requiredCount <= groupCount)
+            return false;
+        groupCount = requiredCount;
+    }
+
+    QStringList groupNames;
+    for (const gid_t groupId : groupIds) {
+        const group *groupEntry = getgrgid(groupId);
+        if (groupEntry && groupEntry->gr_name)
+            groupNames.append(QString::fromLocal8Bit(groupEntry->gr_name));
+    }
+    return hasAdministrativeGroup(groupNames);
+}
+}
 
 SettingsController::SettingsController(QObject *parent)
     : QObject(parent)
     , m_navigationModel(this)
     , m_userName(resolveUserName())
     , m_avatarUrl(resolveAvatarUrl(m_userName))
+    , m_isSudo(resolveAdministrativeGroupMembership())
 {
     connect(&m_navigationModel, &SettingsNavigationModel::selectedIdChanged,
             this, &SettingsController::selectionChanged);

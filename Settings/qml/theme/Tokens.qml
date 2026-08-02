@@ -7,6 +7,7 @@ QtObject {
 
     readonly property int fontSizeHero: 20
     readonly property int fontSizeHeader: 24
+    readonly property int fontSizeIconLarge: 22
     readonly property int fontSizeAvatar: 20
     readonly property int fontSizeSubtitle: 16
     readonly property int fontSizeTitle: 15
@@ -14,17 +15,22 @@ QtObject {
     readonly property int fontSizeNormal: 12
     readonly property int fontSizeSmall: 11
     readonly property int fontSizeTiny: 10
+    readonly property int fontSizeMicro: 9
 
+    readonly property int fontWeightLight: Font.Light
     readonly property int fontWeightNormal: Font.Normal
     readonly property int fontWeightMedium: Font.Medium
-    readonly property int fontWeightDemiBold: Font.DemiBold
+    readonly property int fontWeightDemiBold: Font.Medium
     readonly property int fontWeightBold: Font.Bold
+
+    readonly property real trackingHeader: 0
 
     readonly property real radiusSmall: 8
     readonly property real radiusMedium: 10
     readonly property real radiusLarge: 12
-    readonly property real radiusWindow: 14
-    readonly property real radiusPanel: 20
+    readonly property real cornerRadiusSmall: radiusSmall
+    readonly property real cornerRadius: radiusMedium
+    readonly property real cornerRadiusLarge: radiusLarge
     readonly property real cardRadius: radiusLarge
     readonly property real controlRadius: radiusMedium
 
@@ -42,8 +48,9 @@ QtObject {
     readonly property int animationFast: 150
     readonly property int animationNormal: 200
     readonly property int animationSlow: 250
+    readonly property int animationPopover: 300
 
-    readonly property real opacityDisabled: 0.38
-    readonly property real opacitySecondary: 0.62
-    readonly property real opacityMuted: 0.48
+    readonly property real opacityDisabled: 0.3
+    readonly property real opacitySecondary: 0.5
+    readonly property real opacityMuted: 0.6
 }

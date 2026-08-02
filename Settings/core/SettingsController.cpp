@@ -44,6 +44,11 @@ QUrl SettingsController::avatarUrl() const
     return m_avatarUrl;
 }
 
+bool SettingsController::isSudo() const
+{
+    return m_isSudo;
+}
+
 bool SettingsController::pagesAvailable() const
 {
     return false;
@@ -52,6 +57,17 @@ bool SettingsController::pagesAvailable() const
 bool SettingsController::selectSection(const QString &id)
 {
     return m_navigationModel.setSelectedId(id);
+}
+
+QUrl SettingsController::iconUrl(const QString &iconKey, const QString &iconTheme) const
+{
+    if (iconKey.isEmpty())
+        return {};
+
+    const QString base = QStringLiteral("qrc:/Astrea/Settings/assets/icons/settings/");
+    if (!iconTheme.isEmpty())
+        return QUrl(base + QStringLiteral("themes/") + iconTheme + QStringLiteral("/") + iconKey + QStringLiteral(".svg"));
+    return QUrl(base + iconKey + QStringLiteral(".svg"));
 }
 
 void SettingsController::setFilterText(const QString &filterText)

@@ -22,7 +22,7 @@ void SettingsControllerTest::startsWithSystemSelected()
 
     QCOMPARE(controller.selectedSectionId(), QStringLiteral("system"));
     QCOMPARE(controller.selectedSectionTitle(), QStringLiteral("System"));
-    QCOMPARE(controller.navigationModel()->rowCount(), 9);
+    QCOMPARE(controller.navigationModel()->rowCount(), 11);
     QVERIFY(!controller.pagesAvailable());
 }
 
@@ -64,9 +64,9 @@ void SettingsControllerTest::clearingFilterRestoresCatalogue()
     SettingsController controller;
 
     controller.setFilterText(QStringLiteral("network"));
-    QVERIFY(controller.navigationModel()->rowCount() < 9);
+    QVERIFY(controller.navigationModel()->rowCount() < 11);
     controller.clearFilter();
-    QCOMPARE(controller.navigationModel()->rowCount(), 9);
+    QCOMPARE(controller.navigationModel()->rowCount(), 11);
     QCOMPARE(controller.filterText(), QString());
 }
 

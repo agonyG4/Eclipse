@@ -1,38 +1,105 @@
 import QtQuick
+import QtQuick.Layouts
+import QtQuick.Effects
 import QtQuick.Controls
-import QtQuick.Window
 
 ApplicationWindow {
     id: window
 
-    title: qsTr("Astrea Settings")
+    title: I18n.tr("settings.title", "Astrea Settings")
     visible: true
-    width: 1050
-    height: 650
+    readonly property int defaultWidth: 1050
+    readonly property int defaultHeight: 650
+    width: defaultWidth
+    height: defaultHeight
     minimumWidth: 800
     minimumHeight: 500
-    color: "#10243F"
-    flags: Qt.Window | Qt.FramelessWindowHint
+    maximumWidth: 1400
+    maximumHeight: 650
     font.family: Theme.fontFamily
     font.pixelSize: Theme.fontSizeNormal
+    font.weight: Theme.fontWeightNormal
+    color: "transparent"
+    flags: Qt.Window | Qt.FramelessWindowHint
+    background: Rectangle { color: "transparent" }
 
-    background: Rectangle {
-        color: "#10243F"
+    readonly property color accent: Theme.accent
+    readonly property color textPrimary: Theme.textPrimary
+    readonly property color textSecondary: Theme.textSecondary
+
+    Rectangle {
+        anchors.fill: parent
+        anchors.margins: -1
+        radius: 0
+        color: "transparent"
+        layer.enabled: true
+        layer.effect: MultiEffect {
+            shadowEnabled: true
+            shadowColor: Theme.themeMode === 1 ? Qt.rgba(0, 0, 0, 0.24) : Qt.rgba(0, 0, 0, 0.6)
+            shadowBlur: 1.0
+            shadowVerticalOffset: 8
+        }
     }
 
-    AppShell {
+    Rectangle {
         anchors.fill: parent
-        controller: SettingsController
-        sidebarCollapsed: false
-        windowMaximized: window.visibility === Window.Maximized
-        onMoveWindowRequested: window.startSystemMove()
-        onMinimizeRequested: window.showMinimized()
-        onMaximizeRestoreRequested: {
-            if (window.visibility === Window.Maximized)
-                window.showNormal()
-            else
-                window.showMaximized()
+        radius: 0
+        color: Theme.windowBackground
+        border.width: 1
+        border.color: Theme.windowBorder
+        clip: false
+
+        Rectangle {
+            anchors.fill: parent
+            radius: parent.radius
+            color: Theme.windowWash
         }
-        onCloseRequested: window.close()
+
+        Rectangle {
+            anchors.fill: parent
+            radius: parent.radius
+            color: "transparent"
+            border.width: 1
+            border.color: Theme.themeMode === 1
+                ? Qt.rgba(1, 1, 1, Theme.shellStyle === 0 ? 0.22 : Theme.shellStyle === 2 ? 0.30 : 0.14)
+                : Qt.rgba(1, 1, 1, Theme.shellStyle === 0 ? 0.04 : 0.02)
+        }
+
+        MouseArea {
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 14
+            cursorShape: Qt.SizeAllCursor
+            onPressed: window.startSystemMove()
+        }
+
+        RowLayout {
+            anchors.fill: parent
+            spacing: 0
+
+            Sidebar {
+                Layout.preferredWidth: 256
+                Layout.fillHeight: true
+                model: SettingsController.navigationModel
+                selectedId: SettingsController.selectedSectionId
+                translationMessages: I18n.messages
+                userName: SettingsController.userName
+                avatarPath: SettingsController.avatarUrl
+                isSudo: SettingsController.isSudo
+                onSelectId: id => SettingsController.selectSection(id)
+            }
+
+            Item {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+
+                Loader {
+                    id: pageLoader
+                    anchors.fill: parent
+                    active: false
+                }
+            }
+        }
     }
 }

@@ -5,6 +5,7 @@ Item {
 
     property bool checked: false
     property bool itemEnabled: true
+    property string accessibleName: qsTr("Toggle")
     signal toggled(bool checked)
 
     implicitWidth: 42
@@ -57,5 +58,6 @@ Item {
     Keys.onSpacePressed: root.toggle()
     Keys.onEnterPressed: root.toggle()
     Accessible.role: Accessible.CheckBox
+    Accessible.name: root.accessibleName
     Accessible.checked: root.checked
 }

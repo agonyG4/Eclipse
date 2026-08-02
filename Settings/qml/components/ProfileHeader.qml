@@ -8,12 +8,29 @@ Item {
     property url avatarUrl
     property bool collapsed: false
 
-    implicitHeight: 62
+    implicitHeight: 68
+
+    Rectangle {
+        anchors.fill: parent
+        anchors.leftMargin: 4
+        anchors.rightMargin: 4
+        anchors.topMargin: 2
+        anchors.bottomMargin: 2
+        radius: Theme.radiusLarge
+        color: "#626872"
+        gradient: Gradient {
+            orientation: Gradient.Vertical
+            GradientStop { position: 0.0; color: Theme.accountBackground }
+            GradientStop { position: 1.0; color: Theme.accountGradientEnd }
+        }
+        border.width: 1
+        border.color: Theme.accountBorder
+    }
 
     RowLayout {
         anchors.fill: parent
-        anchors.leftMargin: root.collapsed ? 14 : 16
-        anchors.rightMargin: root.collapsed ? 14 : 16
+        anchors.leftMargin: 14
+        anchors.rightMargin: 14
         spacing: 12
 
         ProfileAvatar {
@@ -36,7 +53,7 @@ Item {
                 text: root.userName
                 color: Theme.textPrimary
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSizeLarge
+                font.pixelSize: Theme.fontSizeTitle
                 font.weight: Theme.fontWeightMedium
                 elide: Text.ElideRight
             }

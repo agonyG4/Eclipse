@@ -24,6 +24,7 @@ QtObject {
     readonly property real radiusMedium: Tokens.radiusMedium
     readonly property real radiusLarge: Tokens.radiusLarge
     readonly property real radiusWindow: Tokens.radiusWindow
+    readonly property real radiusPanel: Tokens.radiusPanel
     readonly property real cardRadius: Tokens.cardRadius
     readonly property real controlRadius: Tokens.controlRadius
     readonly property real spacingTiny: Tokens.spacingTiny
@@ -49,11 +50,26 @@ QtObject {
     readonly property color textSecondary: Palette.textSecondary
     readonly property color textTertiary: Palette.textTertiary
     readonly property color windowBackground: Palette.windowBackground
+    readonly property color windowGradientStart: Palette.windowGradientStart
+    readonly property color windowGradientEnd: Palette.windowGradientEnd
+    readonly property color windowGlow: Palette.windowGlow
     readonly property color windowWash: Palette.windowWash
     readonly property color windowBorder: Palette.windowBorder
+    readonly property color windowHighlight: Palette.windowHighlight
+    readonly property color titleBarBackground: Palette.titleBarBackground
+    readonly property color titleBarGradientEnd: Palette.titleBarGradientEnd
     readonly property color sidebarBackground: Palette.sidebarBackground
+    readonly property color sidebarGradientStart: Palette.sidebarGradientStart
+    readonly property color sidebarGradientEnd: Palette.sidebarGradientEnd
     readonly property color sidebarWash: Palette.sidebarWash
     readonly property color sidebarBorder: Palette.sidebarBorder
+    readonly property color accountBackground: Palette.accountBackground
+    readonly property color accountGradientEnd: Palette.accountGradientEnd
+    readonly property color accountBorder: Palette.accountBorder
+    readonly property color panelBackground: Palette.panelBackground
+    readonly property color panelGradientStart: Palette.panelGradientStart
+    readonly property color panelGradientEnd: Palette.panelGradientEnd
+    readonly property color panelBorder: Palette.panelBorder
     readonly property color surface: Palette.surface
     readonly property color surfaceHover: Palette.surfaceHover
     readonly property color surfacePressed: Palette.surfacePressed

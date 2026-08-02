@@ -22,14 +22,45 @@ Rectangle {
     signal closeRequested()
 
     radius: windowMaximized ? 0 : Theme.radiusWindow
-    color: Theme.windowBackground
+    color: "#10243F"
     border.width: 1
     border.color: Theme.windowBorder
     clip: true
 
     Rectangle {
         anchors.fill: parent
+        color: "transparent"
+        opacity: 0.92
+        gradient: Gradient {
+            orientation: Gradient.Vertical
+            GradientStop { position: 0.0; color: Theme.windowGradientStart }
+            GradientStop { position: 0.46; color: Theme.windowBackground }
+            GradientStop { position: 1.0; color: Theme.windowGradientEnd }
+        }
+    }
+
+    Rectangle {
+        anchors.fill: parent
         color: Theme.windowWash
+    }
+
+    Rectangle {
+        anchors.top: parent.top
+        anchors.right: parent.right
+        width: parent.width * 0.58
+        height: parent.height * 0.54
+        radius: width * 0.5
+        color: Theme.windowGlow
+        opacity: Theme.dark ? 0.12 : 0.22
+    }
+
+    Rectangle {
+        anchors.fill: parent
+        anchors.margins: 1
+        radius: Math.max(0, root.radius - 1)
+        color: "transparent"
+        border.width: 1
+        border.color: Theme.windowHighlight
     }
 
     ColumnLayout {
@@ -38,7 +69,7 @@ Rectangle {
 
         WindowTitleBar {
             Layout.fillWidth: true
-            Layout.preferredHeight: 44
+            Layout.preferredHeight: 46
             collapsed: root.sidebarCollapsed
             maximized: root.windowMaximized
             onCollapseRequested: root.sidebarCollapsed = !root.sidebarCollapsed
@@ -58,7 +89,6 @@ Rectangle {
                 Layout.fillHeight: true
                 controller: root.controller
                 collapsed: root.sidebarCollapsed
-
             }
 
             EmptyContent {

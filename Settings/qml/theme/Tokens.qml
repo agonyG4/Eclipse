@@ -24,6 +24,7 @@ QtObject {
     readonly property real radiusMedium: 10
     readonly property real radiusLarge: 12
     readonly property real radiusWindow: 14
+    readonly property real radiusPanel: 20
     readonly property real cardRadius: radiusLarge
     readonly property real controlRadius: radiusMedium
 

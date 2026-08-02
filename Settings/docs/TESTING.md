@@ -1,62 +1,54 @@
 # Settings Verification
 
-## Unit tests
+## Fresh Debug Build
 
-Configure and build the focused target:
-
-```bash
-cmake -S . -B build-settings-foundation -G Ninja \
-  -DASTREA_BUILD_TESTS=ON \
-  -DASTREA_SETTINGS_BUILD_TESTS=ON
-cmake --build build-settings-foundation --target settings-controller-test
-ctest --test-dir build-settings-foundation --output-on-failure \
-  -R '^settings-controller-test$'
-```
-
-The test covers initial `system` selection, known and unknown IDs,
-case-insensitive filtering, reversible filtering, and exactly one selected
-model row.
-
-## QML lint
-
-Use the generated import directory so both `Astrea.Settings` and
-`Astrea.Shared` resolve:
+Use a fresh build directory and build the complete project:
 
 ```bash
-find Settings/qml -name '*.qml' -print0 \
-  | xargs -0 -n1 qmllint -I build-settings-foundation
+cmake -S . -B /tmp/astrea-settings-cleanup-debug \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DBUILD_TESTING=ON
+cmake --build /tmp/astrea-settings-cleanup-debug --parallel
+ctest --test-dir /tmp/astrea-settings-cleanup-debug --output-on-failure
+ctest --test-dir /tmp/astrea-settings-cleanup-debug -N
 ```
 
-Every QML file under `Settings/qml` must be registered exactly once in
-`Settings/CMakeLists.txt`.
+The Settings tests are:
 
-## Sanitizers
+- `settings-controller-test`;
+- `settings-group-membership-test`;
+- `theme-controller-test`;
+- `settings-qml-smoke-test`;
+- `compositor-page-source-test`.
 
-```bash
-cmake -S . -B build-settings-sanitized -G Ninja \
-  -DASTREA_BUILD_TESTS=ON \
-  -DASTREA_SETTINGS_BUILD_TESTS=ON \
-  -DASTREA_ENABLE_ASAN=ON \
-  -DASTREA_ENABLE_UBSAN=ON
-cmake --build build-settings-sanitized --target settings-controller-test
-ctest --test-dir build-settings-sanitized --output-on-failure \
-  -R '^settings-controller-test$'
-```
+The QML smoke test uses the offscreen platform, creates the native controllers,
+loads the `Astrea.Settings` module, checks one root object, selects Compositor,
+checks page creation and recreation, and fails on QML warnings.
 
-## Policy scan
+## QML Registration and Lint
 
-The source and QML implementation must not contain Quickshell, QML
-`Process`, `hyprctl`, `hyprland`, `systemctl`, shell invocation, `JsonAdapter`,
-or `FileView`.
+The authoritative QML list is `SETTINGS_QML_FILES` in
+`Settings/CMakeLists.txt`. It contains 35 files. Every listed file must exist,
+be registered once, and pass `qmllint` with the generated build import path.
 
-## Manual Typhon smoke test
+The lint command must pass the complete CMake list, including `qml/Main.qml`
+and `qml/pages/system/Compositor.qml`, rather than a hand-maintained subset.
 
-1. Launch `astrea-settings` in the normal Typhon session.
-2. Confirm it maps as a normal toplevel rather than a layer surface.
-3. Drag the title bar and confirm system move behavior.
-4. Minimize, maximize, restore, and close the window.
-5. Collapse and expand the sidebar; confirm the selected ID is preserved.
-6. Select every navigation item; confirm only placeholder title changes.
-7. Type `BLUE`; confirm only Bluetooth remains.
-8. Clear search; confirm all nine model rows return.
-9. Resize to `800x500`; confirm no control is clipped or inaccessible.
+## Policy Scan
+
+Production Settings source must have zero matches for Quickshell,
+`Quickshell.Io`, LayerShellQt, `hyprctl`, `QProcess`, QML `Process`,
+`system(`, `popen(`, Typhon-private protocol names, persistence, or IPC in
+`Compositor.qml`. Generated build directories and historical documentation are
+excluded from this scan.
+
+## Manual Hyprland Smoke Test
+
+Launch the freshly built native `astrea-settings` executable under the current
+Hyprland session. Do not launch Typhon.
+
+Verify that the approved shell is unchanged, Compositor remains immediately
+after Services, Performance/Appearance/More Settings remain normal selectable
+rows, no row expands or collapses, and the Compositor page loads. Toggle every
+switch, select each selector option, leave and return to confirm defaults are
+recreated, and close/reopen to confirm no preview value persists or applies.

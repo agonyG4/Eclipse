@@ -14,7 +14,7 @@ private slots:
     void filtersCaseInsensitively();
     void clearingFilterRestoresCatalogue();
     void exposesSelectedRole();
-    void groupRowsAreSelectableAndNotSections();
+    void groupRowsAreSelectable();
     void exposesExactCatalogueOrdering();
     void selectsCompositor();
     void rejectsSpacerSelection();
@@ -29,7 +29,6 @@ void SettingsControllerTest::startsWithSystemSelected()
     QCOMPARE(controller.selectedSectionId(), QStringLiteral("system"));
     QCOMPARE(controller.selectedSectionTitle(), QStringLiteral("System"));
     QCOMPARE(controller.navigationModel()->rowCount(), 12);
-    QVERIFY(!controller.pagesAvailable());
 }
 
 void SettingsControllerTest::selectsKnownSection()
@@ -95,7 +94,7 @@ void SettingsControllerTest::exposesSelectedRole()
     QCOMPARE(selectedRows, 1);
 }
 
-void SettingsControllerTest::groupRowsAreSelectableAndNotSections()
+void SettingsControllerTest::groupRowsAreSelectable()
 {
     SettingsController controller;
     SettingsNavigationModel *model = controller.navigationModel();
@@ -103,7 +102,17 @@ void SettingsControllerTest::groupRowsAreSelectableAndNotSections()
     for (const QString &id : {QStringLiteral("performance"), QStringLiteral("appearance"), QStringLiteral("more-settings")}) {
         QVERIFY(controller.selectSection(id));
         QCOMPARE(controller.selectedSectionId(), id);
-        QVERIFY(!model->setExpanded(id, true));
+
+        bool found = false;
+        for (int row = 0; row < model->rowCount(); ++row) {
+            const QModelIndex index = model->index(row, 0);
+            if (model->data(index, SettingsNavigationModel::IdRole).toString() == id) {
+                QCOMPARE(model->data(index, SettingsNavigationModel::KindRole).toString(), QStringLiteral("group"));
+                found = true;
+                break;
+            }
+        }
+        QVERIFY(found);
     }
 }
 

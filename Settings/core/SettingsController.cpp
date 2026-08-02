@@ -91,11 +91,6 @@ bool SettingsController::isSudo() const
     return m_isSudo;
 }
 
-bool SettingsController::pagesAvailable() const
-{
-    return false;
-}
-
 bool SettingsController::selectSection(const QString &id)
 {
     return m_navigationModel.setSelectedId(id);

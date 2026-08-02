@@ -113,6 +113,8 @@ Form.ScrollPage {
                 sublabel: I18n.tr("apps.settings.pages.system.compositor.sublabel.variable_refresh_rate", "Control when compatible displays may use adaptive refresh")
 
                 Form.SelectButton {
+                    width: 180
+                    label: root.vrrOptions[root.vrrModeIndex]
                     options: root.vrrOptions
                     selectedIndex: root.vrrModeIndex
                     onSelected: index => root.vrrModeIndex = index
@@ -124,6 +126,8 @@ Form.ScrollPage {
                 sublabel: I18n.tr("apps.settings.pages.system.compositor.sublabel.tearing_policy", "Allow immediate presentation for latency-sensitive fullscreen applications")
 
                 Form.SelectButton {
+                    width: 180
+                    label: root.tearingPolicyOptions[root.tearingPolicyIndex]
                     options: root.tearingPolicyOptions
                     selectedIndex: root.tearingPolicyIndex
                     onSelected: index => root.tearingPolicyIndex = index
@@ -146,6 +150,8 @@ Form.ScrollPage {
                 isLast: true
 
                 Form.SelectButton {
+                    width: 180
+                    label: root.tripleBufferingOptions[root.tripleBufferingModeIndex]
                     options: root.tripleBufferingOptions
                     selectedIndex: root.tripleBufferingModeIndex
                     onSelected: index => root.tripleBufferingModeIndex = index
@@ -175,6 +181,8 @@ Form.ScrollPage {
                 isLast: true
 
                 Form.SelectButton {
+                    width: 180
+                    label: root.hardwareCursorOptions[root.hardwareCursorModeIndex]
                     options: root.hardwareCursorOptions
                     selectedIndex: root.hardwareCursorModeIndex
                     onSelected: index => root.hardwareCursorModeIndex = index

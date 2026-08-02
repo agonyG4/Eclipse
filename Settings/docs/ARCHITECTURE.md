@@ -1,69 +1,71 @@
-# Astrea Settings Foundation Architecture
+# Astrea Settings Architecture
 
-`astrea-settings` is a native Qt 6 application and a normal Wayland toplevel.
-C++ owns startup and navigation state, while QML owns presentation. The
-application has no concrete settings page or system backend.
+`astrea-settings` is a native Qt 6 application and a normal frameless Wayland
+toplevel. C++ owns lifecycle and application-facing state. QML owns the
+source-preserved Astrea Settings presentation and interaction.
 
-## Runtime structure
+## Runtime Structure
 
 ```text
 QGuiApplication
   -> SettingsApplication
       -> SettingsController
           -> SettingsNavigationModel
+      -> SettingsTranslationController
+      -> ThemeController
       -> AstreaIconTheme / AstreaIconProvider
       -> QQmlApplicationEngine
           -> Main.qml
-              -> AppShell
-                  -> WindowTitleBar
-                  -> SettingsSidebar
-                  -> EmptyContent
+              -> Sidebar
+              -> Loader
+                  -> pages/system/Compositor.qml
 ```
 
-## Controller contract
+`Main.qml` maps the selected navigation ID `compositor` to the registered
+Compositor page source. The Loader is inactive for routes that do not yet have
+a page. Leaving Compositor destroys the page; selecting it again creates fresh
+page-local preview values.
 
-`SettingsController` is registered as the `SettingsController` QML context
-property. Its public properties are:
+## Native Ownership
 
-| Property | Type | Semantics |
-| --- | --- | --- |
-| `navigationModel` | `SettingsNavigationModel *` | Constant model used by the sidebar. |
-| `selectedSectionId` | `QString` | Stable selected navigation ID; initially `system`. |
-| `selectedSectionTitle` | `QString` | Title for the selected stable ID. |
-| `filterText` | `QString` | Trimmed search text currently applied to the model. |
-| `userName` | `QString` | `USER`, then `LOGNAME`, then `User`. |
-| `avatarUrl` | `QUrl` | Local AccountsService icon only when it is a readable file. |
-| `pagesAvailable` | `bool` | Always `false` until a separately designed page boundary exists. |
+`app/` owns application metadata, icon initialization, QML engine startup,
+context-property registration, fatal QML warning reporting, and the startup
+check that exactly one root object was created.
 
-Its invokables are:
+`SettingsController` owns navigation selection and filtering, display-only
+account metadata, AccountsService avatar resolution, icon URL resolution, and
+native membership detection for the `wheel` and `sudo` groups. Lookup failure
+is treated as no administrative membership.
 
-| Invokable | Result | Semantics |
-| --- | --- | --- |
-| `selectSection(id)` | `bool` | Selects a known enabled item; rejects unknown and spacer IDs without changing state. |
-| `setFilterText(text)` | `void` | Applies case-insensitive filtering against ID, title, and subtitle. |
-| `clearFilter()` | `void` | Restores the complete catalogue and clears `filterText`. |
+`SettingsNavigationModel` owns the catalogue, stable IDs, row roles, filtering,
+and selected-row state. Its current catalogue order is:
 
-The model exposes `entryId`, `title`, `subtitle`, `iconName`, `kind`,
-`entryEnabled`, and `selected` roles. Its catalogue contains the stable IDs
-`system`, `software-update`, `internet`, `bluetooth`, `audio`, `performance`,
-`appearance`, and `more-settings`, plus one non-selectable spacer between
-`audio` and `performance`.
+```text
+System, Software Update, Internet, Bluetooth, Audio, Components, Services,
+Compositor, spacer, Performance, Appearance, More Settings
+```
 
-## Ownership boundaries
+`SettingsTranslationController` loads the bundled English messages and exposes
+translation lookup to QML. `ThemeController` owns the existing shell/theme
+configuration boundary used by the approved presentation.
 
-- `app/` owns metadata, icon initialization, QML engine startup, context-property registration, and fatal root validation.
-- `core/` owns only navigation, filtering, and display-only account metadata.
-- `qml/theme/` contains static tokens and in-memory dark/light palette values; it does not persist or detect theme state.
-- `qml/components/` owns window composition and navigation presentation.
-- `qml/ui/` contains page-agnostic controls for future designs.
+## QML Ownership
 
-Navigation IDs are not page URLs. No navigation role contains a URL or page
-loading policy, and the placeholder content has no `Loader`.
+`qml/components/` owns the window shell, profile, sidebar, navigation item, and
+page-agnostic form controls. The registered module contains 35 QML files,
+including the five singleton sources `Tokens`, `Apps`, `Shell`, `State`, and
+`Theme`.
 
-## Explicit exclusions
+`qml/pages/system/Compositor.qml` is the first real page route. It uses only
+the existing Settings controls and Theme tokens. Every compositor preview value
+is local to that page. The page has no backend object and does not access
+configuration files, QSettings, JSON state, environment configuration, IPC,
+sockets, processes, shell commands, compositor protocols, or ThemeController.
 
-This target contains no settings pages, persistence, service or system
-backends, configuration mutation, shell commands, `Process`, Quickshell,
-LayerShellQt, Hyprland protocol, or Typhon-private protocol. Future pages must
-receive typed backend objects through independently reviewed boundaries rather
-than extending this foundation with command execution.
+## Explicit Exclusions
+
+This target has no Quickshell import, LayerShellQt dependency, Hyprland
+integration, Typhon-private protocol, compositor backend, or command
+execution. No current navigation row is collapsible. Performance, Appearance,
+and More Settings are normal selectable `group` rows using the same NavItem
+composition as the other rows.

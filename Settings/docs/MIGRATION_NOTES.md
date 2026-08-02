@@ -1,31 +1,54 @@
 # Settings Migration Notes
 
-The legacy Settings shell was treated as visual design input, not as a
-production architecture. The native target splits lifecycle, model state,
-window composition, and reusable controls into Eclipse's existing boundaries.
+The legacy Settings shell was treated as visual design input while the native
+target adopted Eclipse's existing C++/Qt/QML boundaries. The approved window,
+sidebar, theme, transparency, typography, spacing, animation, profile, and
+navigation visuals remain source-preserved.
 
 ## Preserved
 
 - Inter and JetBrains Mono font names;
-- the legacy typography scale, 8/10/12 radius family, spacing scale, and 100-250 ms animation durations;
-- dark/light application palette intent;
-- expanded 256 px and collapsed 78 px sidebar states;
-- profile header, search field, navigation delegates, title bar, and reusable form controls;
-- normal desktop window behavior with frameless native chrome.
+- the legacy typography scale, radius family, spacing scale, and animation
+  durations;
+- dark/light palette intent and glass shell treatment;
+- the 256 px sidebar, profile header, navigation row geometry, and selected
+  accent treatment;
+- native frameless desktop window behavior and `startSystemMove()`;
+- the legacy form-card, setting-row, toggle, selector, and section-header
+  visual components.
 
-## Replaced or deferred
+The current navigation catalogue has no collapsible sections. Performance,
+Appearance, and More Settings remain ordinary selectable `group` rows.
 
-- QML page URLs and `Loader` routing are replaced by stable C++ navigation IDs;
-- the manual global-coordinate drag loop is replaced by `startSystemMove()`;
-- component-local icon discovery is replaced by `Astrea.Shared` and `astrea-shared`;
-- avatar display is read-only and falls back to initials;
-- group membership, sudo badges, and all process execution are omitted;
-- process/file-backed theme state is replaced by a static in-memory palette;
-- concrete pages and all system/service integrations are deferred to separately designed work.
+## Native Boundaries
 
-## Source policy
+- lifecycle and QML startup are owned by `SettingsApplication`;
+- navigation and filtering are owned by `SettingsNavigationModel`;
+- account metadata, avatar/icon resolution, and administrative-group detection
+  are owned by `SettingsController`;
+- theme configuration is owned by `ThemeController`;
+- bundled English translation lookup is owned by
+  `SettingsTranslationController`;
+- presentation and interaction remain in QML.
 
-No legacy Quickshell import, QML process object, shell command, Hyprland
-command, JSON adapter, file mutation, LayerShellQt integration, or Typhon
-private protocol was migrated. The exact source-to-target decisions remain in
-the package manifest used to prepare this target.
+The first real route is `qml/pages/system/Compositor.qml`, selected by the
+`compositor` navigation ID and loaded through the existing Loader boundary.
+
+## Compositor Preview Policy
+
+The Compositor page is deliberately visual-only. Toggle and selector values
+are page-local QML state. Leaving the page destroys those values and recreates
+the requested defaults on return. Closing and reopening the application also
+resets them. No Compositor value is persisted, applied, read from a backend, or
+sent through IPC.
+
+Future compositor integration is explicitly deferred. There is currently no
+Hyprland integration, compositor protocol, private Typhon protocol, service
+backend, shell command, process execution, or IPC boundary for this page.
+
+## Source Policy
+
+The native Settings target contains no Quickshell import, QML process object,
+LayerShellQt integration, Hyprland command, shell invocation, or Typhon-private
+protocol. Deleted legacy component paths are not registered by the current
+QML module.

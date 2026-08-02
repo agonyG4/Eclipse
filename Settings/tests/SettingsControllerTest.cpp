@@ -15,6 +15,11 @@ private slots:
     void clearingFilterRestoresCatalogue();
     void exposesSelectedRole();
     void groupRowsAreSelectableAndNotSections();
+    void exposesExactCatalogueOrdering();
+    void selectsCompositor();
+    void rejectsSpacerSelection();
+    void filtersCompositor();
+    void keepsOneSelectedRowForEverySelection();
 };
 
 void SettingsControllerTest::startsWithSystemSelected()
@@ -23,7 +28,7 @@ void SettingsControllerTest::startsWithSystemSelected()
 
     QCOMPARE(controller.selectedSectionId(), QStringLiteral("system"));
     QCOMPARE(controller.selectedSectionTitle(), QStringLiteral("System"));
-    QCOMPARE(controller.navigationModel()->rowCount(), 11);
+    QCOMPARE(controller.navigationModel()->rowCount(), 12);
     QVERIFY(!controller.pagesAvailable());
 }
 
@@ -65,9 +70,9 @@ void SettingsControllerTest::clearingFilterRestoresCatalogue()
     SettingsController controller;
 
     controller.setFilterText(QStringLiteral("network"));
-    QVERIFY(controller.navigationModel()->rowCount() < 11);
+    QVERIFY(controller.navigationModel()->rowCount() < 12);
     controller.clearFilter();
-    QCOMPARE(controller.navigationModel()->rowCount(), 11);
+    QCOMPARE(controller.navigationModel()->rowCount(), 12);
     QCOMPARE(controller.filterText(), QString());
 }
 
@@ -96,13 +101,96 @@ void SettingsControllerTest::groupRowsAreSelectableAndNotSections()
     SettingsNavigationModel *model = controller.navigationModel();
 
     for (const QString &id : {QStringLiteral("performance"), QStringLiteral("appearance"), QStringLiteral("more-settings")}) {
-        const int row = model->get(0).value(QStringLiteral("entryId")).toString() == id
-            ? 0
-            : -1;
-        Q_UNUSED(row);
         QVERIFY(controller.selectSection(id));
         QCOMPARE(controller.selectedSectionId(), id);
         QVERIFY(!model->setExpanded(id, true));
+    }
+}
+
+void SettingsControllerTest::exposesExactCatalogueOrdering()
+{
+    SettingsController controller;
+    SettingsNavigationModel *model = controller.navigationModel();
+    const QStringList expectedIds{
+        QStringLiteral("system"),
+        QStringLiteral("software-update"),
+        QStringLiteral("internet"),
+        QStringLiteral("bluetooth"),
+        QStringLiteral("audio"),
+        QStringLiteral("components"),
+        QStringLiteral("services"),
+        QStringLiteral("compositor"),
+        QString(),
+        QStringLiteral("performance"),
+        QStringLiteral("appearance"),
+        QStringLiteral("more-settings"),
+    };
+
+    QCOMPARE(model->rowCount(), expectedIds.size());
+    for (int row = 0; row < expectedIds.size(); ++row)
+        QCOMPARE(model->get(row).value(QStringLiteral("entryId")).toString(), expectedIds.at(row));
+}
+
+void SettingsControllerTest::selectsCompositor()
+{
+    SettingsController controller;
+    SettingsNavigationModel *model = controller.navigationModel();
+
+    QVERIFY(controller.selectSection(QStringLiteral("compositor")));
+    QCOMPARE(controller.selectedSectionId(), QStringLiteral("compositor"));
+    QCOMPARE(controller.selectedSectionTitle(), QStringLiteral("Compositor"));
+
+    const QVariantMap entry = model->get(7);
+    QCOMPARE(entry.value(QStringLiteral("labelKey")).toString(), QStringLiteral("settings.nav.compositor"));
+    QCOMPARE(entry.value(QStringLiteral("subtitle")).toString(), QStringLiteral("Astrea compositor preferences"));
+    QCOMPARE(entry.value(QStringLiteral("pageIndex")).toInt(), 18);
+    QCOMPARE(entry.value(QStringLiteral("kind")).toString(), QStringLiteral("page"));
+}
+
+void SettingsControllerTest::rejectsSpacerSelection()
+{
+    SettingsController controller;
+
+    QVERIFY(!controller.selectSection(QString()));
+    QCOMPARE(controller.selectedSectionId(), QStringLiteral("system"));
+}
+
+void SettingsControllerTest::filtersCompositor()
+{
+    SettingsController controller;
+    SettingsNavigationModel *model = controller.navigationModel();
+
+    controller.setFilterText(QStringLiteral("COMPOSITOR"));
+    QCOMPARE(model->rowCount(), 1);
+    QCOMPARE(model->get(0).value(QStringLiteral("entryId")).toString(), QStringLiteral("compositor"));
+}
+
+void SettingsControllerTest::keepsOneSelectedRowForEverySelection()
+{
+    SettingsController controller;
+    SettingsNavigationModel *model = controller.navigationModel();
+    const QStringList selectableIds{
+        QStringLiteral("system"),
+        QStringLiteral("software-update"),
+        QStringLiteral("internet"),
+        QStringLiteral("bluetooth"),
+        QStringLiteral("audio"),
+        QStringLiteral("components"),
+        QStringLiteral("services"),
+        QStringLiteral("compositor"),
+        QStringLiteral("performance"),
+        QStringLiteral("appearance"),
+        QStringLiteral("more-settings"),
+    };
+
+    for (const QString &id : selectableIds) {
+        QVERIFY(controller.selectSection(id));
+        int selectedRows = 0;
+        for (int row = 0; row < model->rowCount(); ++row) {
+            if (model->data(model->index(row, 0), SettingsNavigationModel::SelectedRole).toBool())
+                ++selectedRows;
+        }
+        QCOMPARE(selectedRows, 1);
     }
 }
 

@@ -49,6 +49,68 @@ target_link_libraries(astrea-settings PRIVATE
     Qt6::QuickControls2
 )
 
+set(SETTINGS_QML_FILES
+    qml/Main.qml
+    qml/components/AppIcon.qml
+    qml/components/AvatarImage.qml
+    qml/components/Theme.qml
+    qml/components/controls/Button.qml
+    qml/components/controls/ButtonCapsule.qml
+    qml/components/controls/DualButton.qml
+    qml/components/controls/FloatingButton.qml
+    qml/components/feedback/DnsPresetChip.qml
+    qml/components/feedback/DnsStatusCard.qml
+    qml/components/feedback/ProgressCard.qml
+    qml/components/feedback/SpeedCard.qml
+    qml/components/feedback/StatusDot.qml
+    qml/components/form/FormCard.qml
+    qml/components/form/IconListRow.qml
+    qml/components/form/ScrollPage.qml
+    qml/components/form/SearchField.qml
+    qml/components/form/SectionHeader.qml
+    qml/components/form/SelectButton.qml
+    qml/components/form/SettingRow.qml
+    qml/components/form/ToggleSwitch.qml
+    qml/components/menu/ContextMenu.qml
+    qml/components/menu/ContextMenuAction.qml
+    qml/components/menu/ContextMenuDivider.qml
+    qml/components/navigation/NavItem.qml
+    qml/components/navigation/Sidebar.qml
+    qml/components/navigation/SidebarFrame.qml
+    qml/pages/system/Compositor.qml
+    qml/components/typography/DisplayLabel.qml
+    qml/components/typography/Divider.qml
+    qml/components/typography/TextLabel.qml
+    qml/theme/Apps.qml
+    qml/theme/Shell.qml
+    qml/theme/State.qml
+    qml/theme/Tokens.qml
+)
+
+set(SETTINGS_ASSET_FILES
+    assets/i18n/en_US.json
+    assets/icons/settings/audio.svg
+    assets/icons/settings/apps.svg
+    assets/icons/settings/bluetooth.svg
+    assets/icons/settings/display.svg
+    assets/icons/settings/network.svg
+    assets/icons/settings/performance.svg
+    assets/icons/settings/software-center.svg
+    assets/icons/settings/sound.svg
+    assets/icons/settings/theme.svg
+    assets/icons/settings/wallpaper.svg
+    assets/icons/settings/themes/bluetooth.svg
+    assets/icons/settings/themes/dark/audio.svg
+    assets/icons/settings/themes/dark/apps.svg
+    assets/icons/settings/themes/dark/bluetooth.svg
+    assets/icons/settings/themes/dark/display.svg
+    assets/icons/settings/themes/dark/network.svg
+    assets/icons/settings/themes/dark/performance.svg
+    assets/icons/settings/themes/dark/software-center.svg
+    assets/icons/settings/themes/dark/theme.svg
+    assets/icons/settings/themes/dark/wallpaper.svg
+)
+
 set_source_files_properties(
     qml/theme/Tokens.qml
     qml/theme/Apps.qml
@@ -61,66 +123,11 @@ set_source_files_properties(
 qt_add_qml_module(astrea-settings
     URI Astrea.Settings
     VERSION 1.0
-    QML_FILES
-        qml/Main.qml
-        qml/components/AppIcon.qml
-        qml/components/AvatarImage.qml
-        qml/components/Theme.qml
-        qml/components/controls/Button.qml
-        qml/components/controls/ButtonCapsule.qml
-        qml/components/controls/DualButton.qml
-        qml/components/controls/FloatingButton.qml
-        qml/components/feedback/DnsPresetChip.qml
-        qml/components/feedback/DnsStatusCard.qml
-        qml/components/feedback/ProgressCard.qml
-        qml/components/feedback/SpeedCard.qml
-        qml/components/feedback/StatusDot.qml
-        qml/components/form/FormCard.qml
-        qml/components/form/IconListRow.qml
-        qml/components/form/ScrollPage.qml
-        qml/components/form/SearchField.qml
-        qml/components/form/SectionHeader.qml
-        qml/components/form/SelectButton.qml
-        qml/components/form/SettingRow.qml
-        qml/components/form/ToggleSwitch.qml
-        qml/components/menu/ContextMenu.qml
-        qml/components/menu/ContextMenuAction.qml
-        qml/components/menu/ContextMenuDivider.qml
-        qml/components/navigation/NavItem.qml
-        qml/components/navigation/Sidebar.qml
-        qml/components/navigation/SidebarFrame.qml
-        qml/components/typography/DisplayLabel.qml
-        qml/components/typography/Divider.qml
-        qml/components/typography/TextLabel.qml
-        qml/theme/Apps.qml
-        qml/theme/Shell.qml
-        qml/theme/State.qml
-        qml/theme/Tokens.qml
+    QML_FILES ${SETTINGS_QML_FILES}
 )
 qt_add_resources(astrea-settings settings-assets
     PREFIX "/Astrea/Settings"
-    FILES
-        assets/i18n/en_US.json
-        assets/icons/settings/audio.svg
-        assets/icons/settings/apps.svg
-        assets/icons/settings/bluetooth.svg
-        assets/icons/settings/display.svg
-        assets/icons/settings/network.svg
-        assets/icons/settings/performance.svg
-        assets/icons/settings/software-center.svg
-        assets/icons/settings/sound.svg
-        assets/icons/settings/theme.svg
-        assets/icons/settings/wallpaper.svg
-        assets/icons/settings/themes/bluetooth.svg
-        assets/icons/settings/themes/dark/audio.svg
-        assets/icons/settings/themes/dark/apps.svg
-        assets/icons/settings/themes/dark/bluetooth.svg
-        assets/icons/settings/themes/dark/display.svg
-        assets/icons/settings/themes/dark/network.svg
-        assets/icons/settings/themes/dark/performance.svg
-        assets/icons/settings/themes/dark/software-center.svg
-        assets/icons/settings/themes/dark/theme.svg
-        assets/icons/settings/themes/dark/wallpaper.svg
+    FILES ${SETTINGS_ASSET_FILES}
 )
 qt_import_qml_plugins(astrea-settings)
 

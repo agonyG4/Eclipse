@@ -14,6 +14,7 @@ class SettingsController final : public QObject {
     Q_PROPERTY(QString filterText READ filterText NOTIFY filterTextChanged)
     Q_PROPERTY(QString userName READ userName CONSTANT)
     Q_PROPERTY(QUrl avatarUrl READ avatarUrl CONSTANT)
+    Q_PROPERTY(bool isSudo READ isSudo CONSTANT)
     Q_PROPERTY(bool pagesAvailable READ pagesAvailable CONSTANT)
 
 public:
@@ -25,9 +26,11 @@ public:
     QString filterText() const;
     QString userName() const;
     QUrl avatarUrl() const;
+    bool isSudo() const;
     bool pagesAvailable() const;
 
     Q_INVOKABLE bool selectSection(const QString &id);
+    Q_INVOKABLE QUrl iconUrl(const QString &iconKey, const QString &iconTheme) const;
     Q_INVOKABLE void setFilterText(const QString &filterText);
     Q_INVOKABLE void clearFilter();
 
@@ -42,4 +45,5 @@ private:
     SettingsNavigationModel m_navigationModel;
     QString m_userName;
     QUrl m_avatarUrl;
+    bool m_isSudo = false;
 };

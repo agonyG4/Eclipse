@@ -1,11 +1,14 @@
 #include "app/SettingsApplication.hpp"
 
 #include "core/SettingsController.hpp"
+#include "core/SettingsTranslationController.hpp"
+#include "core/ThemeController.hpp"
 #include "icons/AstreaIconProvider.hpp"
 #include "icons/AstreaIconTheme.hpp"
 
 #include <QGuiApplication>
 #include <QIcon>
+#include <QDebug>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlError>
@@ -31,6 +34,8 @@ int SettingsApplication::run()
     QIcon::setFallbackThemeName(QStringLiteral("hicolor"));
 
     m_controller = std::make_unique<SettingsController>();
+    m_translationController = std::make_unique<SettingsTranslationController>();
+    m_themeController = std::make_unique<ThemeController>();
     if (!initializeQml())
         return 1;
 
@@ -42,12 +47,13 @@ bool SettingsApplication::initializeQml()
     m_engine = std::make_unique<QQmlApplicationEngine>();
     QObject::connect(m_engine.get(), &QQmlApplicationEngine::warnings, this,
                      [](const QList<QQmlError> &warnings) {
-        for (const QQmlError &warning : warnings)
+        for (const QQmlError &warning : warnings) {
             qWarning("Settings QML: %s", qPrintable(warning.toString()));
+        }
     });
     QObject::connect(m_engine.get(), &QQmlApplicationEngine::objectCreationFailed, this,
                      [](const QUrl &url) {
-        qCritical("Settings QML object creation failed: %s", qPrintable(url.toString()));
+         qCritical("Settings QML object creation failed: %s", qPrintable(url.toString()));
     });
 
     m_iconProvider = new AstreaIconProvider;
@@ -57,8 +63,12 @@ bool SettingsApplication::initializeQml()
                                                 m_iconProvider);
     m_engine->rootContext()->setContextProperty(QStringLiteral("SettingsController"),
                                                 m_controller.get());
+    m_engine->rootContext()->setContextProperty(QStringLiteral("I18n"),
+                                                m_translationController.get());
+    m_engine->rootContext()->setContextProperty(QStringLiteral("ThemeController"),
+                                                m_themeController.get());
 
-    m_engine->loadFromModule(QStringLiteral("Astrea.Settings"), QStringLiteral("Main"));
+    m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
     if (m_engine->rootObjects().size() != 1) {
         qCritical("Settings expected exactly one QML root object, received %lld",
                   static_cast<long long>(m_engine->rootObjects().size()));

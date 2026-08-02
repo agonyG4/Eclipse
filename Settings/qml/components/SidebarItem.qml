@@ -15,20 +15,39 @@ Item {
 
     signal clicked()
 
-    implicitHeight: 42
+    implicitHeight: 40
     activeFocusOnTab: itemEnabled
     opacity: itemEnabled ? 1 : Theme.opacityDisabled
 
     Rectangle {
         anchors.fill: parent
+        anchors.leftMargin: 8
+        anchors.rightMargin: 8
         radius: Theme.radiusMedium
         color: root.selected
             ? Theme.surfaceSelected
             : pressArea.pressed ? Theme.surfacePressed
             : hoverHandler.hovered ? Theme.surfaceHover
             : "transparent"
-        border.width: root.activeFocus ? 1 : 0
-        border.color: Theme.focusRing
+        border.width: root.selected || root.activeFocus ? 1 : 0
+        border.color: root.selected ? Theme.accent : Theme.focusRing
+
+        Rectangle {
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            width: 3
+            height: root.selected ? 22 : 0
+            radius: 1.5
+            color: Theme.accent
+            visible: root.selected
+
+            Behavior on height {
+                NumberAnimation {
+                    duration: Theme.animationNormal
+                    easing.type: Easing.OutCubic
+                }
+            }
+        }
 
         Behavior on color {
             ColorAnimation { duration: Theme.animationFast }
@@ -37,20 +56,20 @@ Item {
 
     RowLayout {
         anchors.fill: parent
-        anchors.leftMargin: root.compact ? 15 : 12
+        anchors.leftMargin: root.compact ? 15 : 16
         anchors.rightMargin: 12
-        spacing: 11
+        spacing: 12
 
         AstreaAppIcon {
-            Layout.preferredWidth: 24
-            Layout.preferredHeight: 24
+            Layout.preferredWidth: root.compact ? 24 : 28
+            Layout.preferredHeight: root.compact ? 24 : 28
             Layout.alignment: Qt.AlignVCenter
             iconName: root.iconName
             appName: root.title
-            iconSize: 24
-            sourcePixelSize: 48
-            iconRadius: 5
-            fallbackRadius: 5
+            iconSize: root.compact ? 20 : 24
+            sourcePixelSize: root.compact ? 48 : 56
+            iconRadius: 7
+            fallbackRadius: 7
             fallbackFontSize: 10
             fallbackColor: Theme.surfaceHover
             fallbackTextColor: root.selected ? Theme.accent : Theme.textSecondary

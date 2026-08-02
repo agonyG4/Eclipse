@@ -11,18 +11,19 @@ ApplicationWindow {
     height: 650
     minimumWidth: 800
     minimumHeight: 500
-    color: "transparent"
+    color: "#10243F"
     flags: Qt.Window | Qt.FramelessWindowHint
     font.family: Theme.fontFamily
     font.pixelSize: Theme.fontSizeNormal
 
     background: Rectangle {
-        color: "transparent"
+        color: "#10243F"
     }
 
     AppShell {
         anchors.fill: parent
         controller: SettingsController
+        sidebarCollapsed: false
         windowMaximized: window.visibility === Window.Maximized
         onMoveWindowRequested: window.startSystemMove()
         onMinimizeRequested: window.showMinimized()

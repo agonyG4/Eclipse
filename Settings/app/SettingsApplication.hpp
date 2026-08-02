@@ -7,6 +7,8 @@ class AstreaIconProvider;
 class QGuiApplication;
 class QQmlApplicationEngine;
 class SettingsController;
+class SettingsTranslationController;
+class ThemeController;
 
 class SettingsApplication final : public QObject {
     Q_OBJECT
@@ -21,6 +23,8 @@ private:
 
     QGuiApplication &m_app;
     std::unique_ptr<SettingsController> m_controller;
+    std::unique_ptr<SettingsTranslationController> m_translationController;
+    std::unique_ptr<ThemeController> m_themeController;
     std::unique_ptr<QQmlApplicationEngine> m_engine;
     AstreaIconProvider *m_iconProvider = nullptr;
 };

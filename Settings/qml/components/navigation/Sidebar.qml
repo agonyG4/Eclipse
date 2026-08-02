@@ -29,7 +29,7 @@ Item {
             return true
         for (let i = 0; i < root.model.count; i++) {
             const item = root.model.get(i)
-            if (item.kind === "group" && item.sectionKey === sectionKey)
+            if (item.kind === "section" && item.sectionKey === sectionKey)
                 return !!item.expanded
         }
         return true
@@ -37,7 +37,7 @@ Item {
 
     function toggleSection(index) {
         const item = root.model.get(index)
-        if (!item || item.kind !== "group")
+        if (!item || item.kind !== "section")
             return
         root.model.setExpanded(item.entryId, !item.expanded)
         root.expansionVersion += 1
@@ -165,7 +165,7 @@ Item {
 
                 Components.NavItem {
                     anchors.fill: parent
-                    visible:    navDelegate.itemKind !== "group" && navDelegate.itemKind !== "spacer"
+                    visible:    navDelegate.itemKind !== "section" && navDelegate.itemKind !== "spacer"
                     label:      root.translatedLabel(model)
                     sym:        model.sym !== undefined ? model.sym : ""
                     iconSource: model.iconSource !== undefined ? model.iconSource : ""
@@ -177,7 +177,7 @@ Item {
                 }
 
                 Rectangle {
-                    visible: navDelegate.itemKind === "group"
+                    visible: navDelegate.itemKind === "section"
                     anchors {
                         fill: parent
                         leftMargin: 8

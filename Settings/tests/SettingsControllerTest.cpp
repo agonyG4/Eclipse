@@ -14,6 +14,7 @@ private slots:
     void filtersCaseInsensitively();
     void clearingFilterRestoresCatalogue();
     void exposesSelectedRole();
+    void groupRowsAreSelectableAndNotSections();
 };
 
 void SettingsControllerTest::startsWithSystemSelected()
@@ -87,6 +88,22 @@ void SettingsControllerTest::exposesSelectedRole()
         }
     }
     QCOMPARE(selectedRows, 1);
+}
+
+void SettingsControllerTest::groupRowsAreSelectableAndNotSections()
+{
+    SettingsController controller;
+    SettingsNavigationModel *model = controller.navigationModel();
+
+    for (const QString &id : {QStringLiteral("performance"), QStringLiteral("appearance"), QStringLiteral("more-settings")}) {
+        const int row = model->get(0).value(QStringLiteral("entryId")).toString() == id
+            ? 0
+            : -1;
+        Q_UNUSED(row);
+        QVERIFY(controller.selectSection(id));
+        QCOMPARE(controller.selectedSectionId(), id);
+        QVERIFY(!model->setExpanded(id, true));
+    }
 }
 
 QTEST_MAIN(SettingsControllerTest)

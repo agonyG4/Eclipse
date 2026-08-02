@@ -8,6 +8,8 @@ QString kindName(SettingsNavigationEntry::Kind kind)
         return QStringLiteral("page");
     case SettingsNavigationEntry::Kind::Group:
         return QStringLiteral("group");
+    case SettingsNavigationEntry::Kind::Section:
+        return QStringLiteral("section");
     case SettingsNavigationEntry::Kind::Spacer:
         return QStringLiteral("spacer");
     }
@@ -181,7 +183,7 @@ bool SettingsNavigationModel::setSelectedId(const QString &id)
 bool SettingsNavigationModel::setExpanded(const QString &id, bool expanded)
 {
     const int sourceIndex = sourceIndexForId(id);
-    if (sourceIndex < 0 || m_entries[sourceIndex].kind != SettingsNavigationEntry::Kind::Group)
+    if (sourceIndex < 0 || m_entries[sourceIndex].kind != SettingsNavigationEntry::Kind::Section)
         return false;
     if (m_entries[sourceIndex].expanded == expanded)
         return true;

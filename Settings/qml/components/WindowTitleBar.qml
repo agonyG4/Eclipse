@@ -15,7 +15,14 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        color: Theme.dark ? "#0CFFFFFF" : "#16FFFFFF"
+        color: "#183555"
+        gradient: Gradient {
+            orientation: Gradient.Vertical
+            GradientStop { position: 0.0; color: Theme.titleBarBackground }
+            GradientStop { position: 1.0; color: Theme.titleBarGradientEnd }
+        }
+        border.color: Theme.windowHighlight
+        border.width: 1
     }
 
     MouseArea {

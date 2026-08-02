@@ -13,7 +13,7 @@ SidebarFrame {
 
         ProfileHeader {
             Layout.fillWidth: true
-            Layout.preferredHeight: 68
+            Layout.preferredHeight: 76
             userName: root.controller.userName
             avatarUrl: root.controller.avatarUrl
             collapsed: root.collapsed
@@ -24,15 +24,15 @@ SidebarFrame {
             Layout.leftMargin: 16
             Layout.rightMargin: 16
             Layout.preferredHeight: 1
-            color: Theme.separator
+            color: Theme.sidebarBorder
         }
 
         SearchField {
             Layout.fillWidth: true
             Layout.leftMargin: 12
             Layout.rightMargin: 12
-            Layout.topMargin: 12
-            Layout.bottomMargin: 8
+            Layout.topMargin: 14
+            Layout.bottomMargin: 10
             visible: !root.collapsed
             placeholderText: qsTr("Search settings")
             text: root.controller.filterText
@@ -46,9 +46,9 @@ SidebarFrame {
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.topMargin: root.collapsed ? 10 : 2
-            Layout.bottomMargin: 12
+            Layout.bottomMargin: 14
             clip: true
-            spacing: 2
+            spacing: 4
             model: root.controller.navigationModel
             boundsBehavior: Flickable.StopAtBounds
 
@@ -64,7 +64,18 @@ SidebarFrame {
                 required property bool selected
 
                 width: navigationList.width
-                height: kind === "spacer" ? 12 : 42
+                height: kind === "spacer" ? 28 : 40
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: 20
+                    anchors.rightMargin: 20
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 1
+                    color: Theme.separator
+                    visible: delegateRoot.kind === "spacer"
+                }
 
                 SidebarItem {
                     anchors.fill: parent

@@ -26,6 +26,9 @@ ApplicationWindow {
     readonly property color accent: Theme.accent
     readonly property color textPrimary: Theme.textPrimary
     readonly property color textSecondary: Theme.textSecondary
+    readonly property url selectedPageSource: SettingsController.selectedSectionId === "compositor"
+        ? Qt.resolvedUrl("pages/system/Compositor.qml")
+        : ""
 
     Rectangle {
         anchors.fill: parent
@@ -96,8 +99,10 @@ ApplicationWindow {
 
                 Loader {
                     id: pageLoader
+                    objectName: "settingsPageLoader"
                     anchors.fill: parent
-                    active: false
+                    active: window.selectedPageSource !== ""
+                    source: window.selectedPageSource
                 }
             }
         }

@@ -62,8 +62,12 @@ QStringList AstreaIconProvider::watchedConfigDirectories() const {
 }
 
 void AstreaIconProvider::refreshThemeState() {
-    m_themeWatcher.removePaths(m_themeWatcher.files());
-    m_themeWatcher.removePaths(m_themeWatcher.directories());
+    const QStringList files = m_themeWatcher.files();
+    if (!files.isEmpty())
+        m_themeWatcher.removePaths(files);
+    const QStringList directories = m_themeWatcher.directories();
+    if (!directories.isEmpty())
+        m_themeWatcher.removePaths(directories);
 
     const QStringList watchDirs = themeSearchDirs();
     m_themeWatcher.addPaths(watchDirs);

@@ -55,6 +55,13 @@ bool AstreaIconTheme::themeExists(const QString &themeName) {
     return false;
 }
 
+static bool themeExistsInHighestPriorityDataHome(const QString &themeName) {
+    const QString dataHome = qEnvironmentVariable(
+        "XDG_DATA_HOME", QDir::homePath() + QStringLiteral("/.local/share"));
+    return QFileInfo::exists(QDir(dataHome).filePath(
+        QStringLiteral("icons/") + themeName + QStringLiteral("/index.theme")));
+}
+
 AstreaIconTheme::ResolveResult AstreaIconTheme::resolveWithSource() {
     ResolveResult result;
 
@@ -97,7 +104,7 @@ AstreaIconTheme::ResolveResult AstreaIconTheme::resolveWithSource() {
         }
     }
 
-    if (themeExists(QStringLiteral("WhiteSur-dark"))) {
+    if (themeExistsInHighestPriorityDataHome(QStringLiteral("WhiteSur-dark"))) {
         result.theme = QStringLiteral("WhiteSur-dark");
         result.source = QStringLiteral("compatibility");
         return result;

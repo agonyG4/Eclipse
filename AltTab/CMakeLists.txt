@@ -17,7 +17,9 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/AltTabWarnings.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/AltTabSanitizers.cmake)
 
 # Link shared libraries sibling folder
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../shared ${CMAKE_CURRENT_BINARY_DIR}/shared)
+if(NOT TARGET astrea-shared)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../shared ${CMAKE_CURRENT_BINARY_DIR}/shared)
+endif()
 
 # 1. Types Library (WindowInfo, CompositorBackend interface, CompositorTypes)
 #    This is the base layer — no dependencies on other local libs.
@@ -36,7 +38,6 @@ add_library(astrea-alttab-identity STATIC
     services/appidentity/ProcessInspector.cpp
     services/appidentity/SteamMetadataIndex.cpp
     services/appidentity/WineExecutableResolver.cpp
-    services/appidentity/DesktopEntryIndex.cpp
 )
 target_include_directories(astrea-alttab-identity PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(astrea-alttab-identity PUBLIC Qt6::Core Qt6::Gui astrea-shared astrea-alttab-types)
@@ -89,6 +90,7 @@ qt_add_executable(astrea-alt-tab
 target_include_directories(astrea-alt-tab PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(astrea-alt-tab PRIVATE
     astrea-alttab-core
+    astrea-sharedplugin
     dl pthread
 )
 
@@ -101,6 +103,7 @@ qt_add_qml_module(astrea-alt-tab
         qml/components/AltTabWindowDelegate.qml
         qml/components/AstreaAppIcon.qml
 )
+qt_import_qml_plugins(astrea-alt-tab)
 
 astrea_enable_warnings(astrea-alt-tab)
 astrea_enable_sanitizers(astrea-alt-tab)

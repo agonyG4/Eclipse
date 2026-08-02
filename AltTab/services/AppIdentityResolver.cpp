@@ -217,6 +217,8 @@ AppIdentity AppIdentityResolver::resolveDeep(const WindowIdentityInput &input) {
         // Try matching with desktop files
         auto desktopSnap = m_desktopIndex->getEntries();
         for (const auto &entry : desktopSnap->entries) {
+            if (entry.hidden || entry.noDisplay)
+                continue;
             if (entry.id.contains(exeStem, Qt::CaseInsensitive) || entry.name.contains(exeStem, Qt::CaseInsensitive)) {
                 result.iconName = entry.icon;
                 result.displayName = entry.name;
@@ -357,6 +359,8 @@ AppIdentity AppIdentityResolver::resolveDesktopEntry(const WindowIdentityInput &
 
     auto desktopSnap = m_desktopIndex->getEntries();
     for (const auto &entry : desktopSnap->entries) {
+        if (entry.hidden || entry.noDisplay)
+            continue;
         int score = 0;
         const QString entryId = entry.id.toLower();
         const QString entryName = entry.name.toLower();

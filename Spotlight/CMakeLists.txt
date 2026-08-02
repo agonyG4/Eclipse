@@ -18,7 +18,9 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/SpotlightWarnings.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/SpotlightSanitizers.cmake)
 
 # Link shared libraries sibling folder
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../shared ${CMAKE_CURRENT_BINARY_DIR}/shared)
+if(NOT TARGET astrea-shared)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../shared ${CMAKE_CURRENT_BINARY_DIR}/shared)
+endif()
 
 astrea_add_rust_backend(astrea_spotlight_rust_backend
     MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/backend/Cargo.toml"
@@ -32,7 +34,6 @@ qt_add_executable(astrea-spotlight
     app/SpotlightApplication.cpp
     core/SpotlightController.cpp
     core/SpotlightResultsModel.cpp
-    services/ApplicationLauncher.cpp
     services/GameModeMonitor.cpp
     services/SpotlightConfigWatcher.cpp
     services/AstreaI18n.cpp
@@ -51,6 +52,7 @@ target_link_libraries(astrea-spotlight PRIVATE
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Network
     astrea_spotlight_backend
     astrea-shared
+    astrea-sharedplugin
     dl pthread
 )
 
@@ -71,6 +73,7 @@ qt_add_qml_module(astrea-spotlight
         qml/components/SpotlightWeatherChip.qml
         qml/components/AstreaAppIcon.qml
 )
+qt_import_qml_plugins(astrea-spotlight)
 
 astrea_enable_warnings(astrea-spotlight)
 astrea_enable_sanitizers(astrea-spotlight)
@@ -87,7 +90,6 @@ if(BUILD_TESTING AND ASTREA_SPOTLIGHT_BUILD_TESTS)
         tests/SpotlightBackendTest.cpp
         core/SpotlightController.cpp
         core/SpotlightResultsModel.cpp
-        services/ApplicationLauncher.cpp
         services/GameModeMonitor.cpp
         services/SpotlightConfigWatcher.cpp
         services/AstreaI18n.cpp
@@ -109,5 +111,12 @@ if(BUILD_TESTING AND ASTREA_SPOTLIGHT_BUILD_TESTS)
     if(LayerShellQt_FOUND)
         target_link_libraries(spotlight-tests PRIVATE LayerShellQt::Interface)
     endif()
+    astrea_enable_sanitizers(spotlight-tests)
     add_test(NAME spotlight-tests COMMAND spotlight-tests)
+    if(ASTREA_ENABLE_ASAN)
+        set_tests_properties(spotlight-tests PROPERTIES
+            ENVIRONMENT
+                "LSAN_OPTIONS=suppressions=${CMAKE_SOURCE_DIR}/AltTab/lsan.supp:print_suppressions=0;ASAN_OPTIONS=detect_leaks=1:halt_on_error=1;UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1"
+        )
+    endif()
 endif()

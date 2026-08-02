@@ -6,3 +6,6 @@
 # which is loaded by Qt's OpenGL integration at startup. No Eclipse
 # code path calls into this driver directly.
 leak:libnvidia-glcore.so
+
+# Fontconfig may retain process-global caches after Qt icon/font setup.
+leak:libfontconfig.so.1

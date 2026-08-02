@@ -115,12 +115,10 @@ void AltTabWindowModel::setWindows(const QVector<WindowInfo> &newWindows) {
     }
 
     if (identical) {
-        bool emitted = false;
         for (int i = 0; i < m_windows.size(); ++i) {
             QVector<int> roles = collectChangedRoles(m_windows[i], newWindows[i]);
             if (!roles.isEmpty()) {
                 emit dataChanged(index(i), index(i), roles);
-                emitted = true;
             }
         }
         return;

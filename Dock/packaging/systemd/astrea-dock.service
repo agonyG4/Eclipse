@@ -1,0 +1,18 @@
+[Unit]
+Description=AstreaOS Dock
+After=graphical-session.target
+PartOf=graphical-session.target
+StartLimitIntervalSec=30
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=%h/.local/share/Astrea/bin/astrea-dock --daemon
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=3
+KillMode=process
+Environment=QT_QPA_PLATFORM=wayland
+
+[Install]
+WantedBy=graphical-session.target

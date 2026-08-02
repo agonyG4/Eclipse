@@ -383,14 +383,15 @@ void TestSpotlightBackend::testApplicationLauncher() {
     launcher.launchDesktop(QString(), QString(), QString());
     QCOMPARE(failSpy.count(), 1);
 
-    launcher.launchDesktop(QStringLiteral("firefox"), QString(), QString());
+    launcher.launchDesktop(QStringLiteral("firefox"), QStringLiteral("firefox.desktop"), QString());
     QTRY_VERIFY(successSpy.count() >= 1);
 
     QString outputFile = launchPath + QStringLiteral(".output");
     QFile output(outputFile);
     QVERIFY(output.open(QIODevice::ReadOnly));
     QString written = QString::fromUtf8(output.readAll()).trimmed();
-    QCOMPARE(written, QStringLiteral("--desktop firefox"));
+    QCOMPARE(written, QStringLiteral("--desktop firefox.desktop"));
+    QCOMPARE(successSpy.last().at(0).toString(), QStringLiteral("firefox.desktop"));
 
     successSpy.clear();
     failSpy.clear();

@@ -3,11 +3,9 @@ import QtQuick.Layouts
 import "../../components" as Components
 import "../../components/form" as Form
 
-Form.ScrollPage {
+Item {
     id: root
     objectName: "compositorPage"
-
-    maxWidth: 900
 
     property bool animationsEnabled: true
     property bool blurEnabled: true
@@ -40,9 +38,10 @@ Form.ScrollPage {
         I18n.tr("apps.settings.pages.system.compositor.option.software", "Software")
     ]
 
-    ColumnLayout {
-        Layout.fillWidth: true
-        spacing: 0
+    Form.ScrollPage {
+        anchors.fill: parent
+        contentMargins: 32
+        maxWidth: 900
 
         Form.SectionHeader {
             text: I18n.tr("apps.settings.pages.system.compositor.text.compositor", "COMPOSITOR")
@@ -172,6 +171,8 @@ Form.ScrollPage {
         }
 
         Form.FormCard {
+            Layout.bottomMargin: 28
+
             Form.SettingRow {
                 label: I18n.tr("apps.settings.pages.system.compositor.label.xwayland", "XWayland")
                 sublabel: I18n.tr("apps.settings.pages.system.compositor.sublabel.xwayland", "Allow legacy X11 applications to run through XWayland")

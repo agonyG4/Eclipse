@@ -11,14 +11,12 @@ set(CMAKE_AUTOUIC ON)
 option(ASTREA_SPOTLIGHT_BUILD_TESTS "Build unit tests" ON)
 
 find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Qml Quick Network)
-find_package(LayerShellQt QUIET)
-
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/RustBackend.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/SpotlightWarnings.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/SpotlightSanitizers.cmake)
 
 # Link shared libraries sibling folder
-if(NOT TARGET astrea-shared)
+if(NOT TARGET astrea-shared-core)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../shared ${CMAKE_CURRENT_BINARY_DIR}/shared)
 endif()
 
@@ -51,17 +49,12 @@ target_include_directories(astrea-spotlight PRIVATE
 target_link_libraries(astrea-spotlight PRIVATE
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Network
     astrea_spotlight_backend
-    astrea-shared
-    astrea-sharedplugin
+    astrea-shared-core
+    astrea-shared-coreplugin
+    astrea-shared-layer-shell
     dl pthread
 )
 
-if(LayerShellQt_FOUND)
-    target_link_libraries(astrea-spotlight PRIVATE LayerShellQt::Interface)
-    target_compile_definitions(astrea-spotlight PRIVATE ASTREA_HAVE_LAYER_SHELL_QT=1)
-else()
-    target_compile_definitions(astrea-spotlight PRIVATE ASTREA_HAVE_LAYER_SHELL_QT=0)
-endif()
 
 qt_add_qml_module(astrea-spotlight
     URI Astrea.Spotlight
@@ -105,12 +98,10 @@ if(BUILD_TESTING AND ASTREA_SPOTLIGHT_BUILD_TESTS)
     target_link_libraries(spotlight-tests PRIVATE
         Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Network Qt6::Test
         astrea_spotlight_backend
-        astrea-shared
+        astrea-shared-core
+        astrea-shared-layer-shell
         dl pthread
     )
-    if(LayerShellQt_FOUND)
-        target_link_libraries(spotlight-tests PRIVATE LayerShellQt::Interface)
-    endif()
     astrea_enable_sanitizers(spotlight-tests)
     add_test(NAME spotlight-tests COMMAND spotlight-tests)
     if(ASTREA_ENABLE_ASAN)

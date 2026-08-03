@@ -11,8 +11,6 @@ set(CMAKE_AUTOUIC ON)
 option(ASTREA_DOCK_BUILD_TESTS "Build Dock unit tests" ON)
 
 find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Qml Quick Network Core5Compat)
-find_package(LayerShellQt QUIET)
-
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/DockWarnings.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/DockSanitizers.cmake)
 
@@ -30,17 +28,12 @@ qt_add_executable(astrea-dock
 )
 target_include_directories(astrea-dock PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(astrea-dock PRIVATE
-    astrea-shared
-    astrea-sharedplugin
+    astrea-shared-core
+    astrea-shared-coreplugin
+    astrea-shared-layer-shell
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Network Qt6::Core5Compat
     dl pthread
 )
-if(LayerShellQt_FOUND)
-    target_link_libraries(astrea-dock PRIVATE LayerShellQt::Interface)
-    target_compile_definitions(astrea-dock PRIVATE ASTREA_HAVE_LAYER_SHELL_QT=1)
-else()
-    target_compile_definitions(astrea-dock PRIVATE ASTREA_HAVE_LAYER_SHELL_QT=0)
-endif()
 
 qt_add_qml_module(astrea-dock
     URI Astrea.Dock
@@ -65,7 +58,7 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
         core/DockAppModel.cpp
     )
     target_include_directories(dock-app-model-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
-    target_link_libraries(dock-app-model-test PRIVATE astrea-shared Qt6::Core Qt6::Gui Qt6::Test)
+    target_link_libraries(dock-app-model-test PRIVATE astrea-shared-core Qt6::Core Qt6::Gui Qt6::Test)
     dock_enable_sanitizers(dock-app-model-test)
     add_test(NAME dock-app-model-test COMMAND dock-app-model-test)
 
@@ -74,7 +67,7 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
         services/DockConfigWatcher.cpp
     )
     target_include_directories(dock-config-watcher-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
-    target_link_libraries(dock-config-watcher-test PRIVATE astrea-shared Qt6::Core Qt6::Gui Qt6::Test)
+    target_link_libraries(dock-config-watcher-test PRIVATE astrea-shared-core Qt6::Core Qt6::Gui Qt6::Test)
     dock_enable_sanitizers(dock-config-watcher-test)
     add_test(NAME dock-config-watcher-test COMMAND dock-config-watcher-test)
 
@@ -94,7 +87,7 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
         services/DockConfigWatcher.cpp
     )
     target_include_directories(dock-controller-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
-    target_link_libraries(dock-controller-test PRIVATE astrea-shared Qt6::Core Qt6::Gui Qt6::Test)
+    target_link_libraries(dock-controller-test PRIVATE astrea-shared-core Qt6::Core Qt6::Gui Qt6::Test)
     dock_enable_sanitizers(dock-controller-test)
     add_test(NAME dock-controller-test COMMAND dock-controller-test)
 

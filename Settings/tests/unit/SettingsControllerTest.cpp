@@ -1,6 +1,5 @@
 #include "core/SettingsController.hpp"
-#include "core/AdminGroupDetector.hpp"
-#include "core/SettingsNavigationModel.hpp"
+#include "core/navigation/SettingsNavigationModel.hpp"
 
 #include <QSignalSpy>
 #include <QtTest>
@@ -18,10 +17,12 @@ private slots:
     void groupRowsAreSelectable();
     void exposesExactCatalogueOrdering();
     void selectsCompositor();
+    void exposesSelectedPageSource();
     void rejectsSpacerSelection();
+    void rejectsInvalidSelectionWithoutChangingRoute();
     void filtersCompositor();
     void keepsOneSelectedRowForEverySelection();
-    void usesInjectedDetectorForIsSudo();
+    void usesInjectedProfileForIsSudo();
 };
 
 void SettingsControllerTest::startsWithSystemSelected()
@@ -154,8 +155,17 @@ void SettingsControllerTest::selectsCompositor()
     const QVariantMap entry = model->get(7);
     QCOMPARE(entry.value(QStringLiteral("labelKey")).toString(), QStringLiteral("settings.nav.compositor"));
     QCOMPARE(entry.value(QStringLiteral("subtitle")).toString(), QStringLiteral("Astrea compositor preferences"));
-    QCOMPARE(entry.value(QStringLiteral("pageIndex")).toInt(), 18);
     QCOMPARE(entry.value(QStringLiteral("kind")).toString(), QStringLiteral("page"));
+}
+
+void SettingsControllerTest::exposesSelectedPageSource()
+{
+    SettingsController controller;
+
+    QVERIFY(controller.selectedPageSource().isEmpty());
+    QVERIFY(controller.selectSection(QStringLiteral("compositor")));
+    QCOMPARE(controller.selectedPageSource(),
+             QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Compositor.qml")));
 }
 
 void SettingsControllerTest::rejectsSpacerSelection()
@@ -164,6 +174,18 @@ void SettingsControllerTest::rejectsSpacerSelection()
 
     QVERIFY(!controller.selectSection(QString()));
     QCOMPARE(controller.selectedSectionId(), QStringLiteral("system"));
+}
+
+void SettingsControllerTest::rejectsInvalidSelectionWithoutChangingRoute()
+{
+    SettingsController controller;
+    QVERIFY(controller.selectSection(QStringLiteral("compositor")));
+    const QUrl route = controller.selectedPageSource();
+
+    QSignalSpy selectionSpy(&controller, &SettingsController::selectionChanged);
+    QVERIFY(!controller.selectSection(QStringLiteral("missing")));
+    QCOMPARE(controller.selectedPageSource(), route);
+    QCOMPARE(selectionSpy.count(), 0);
 }
 
 void SettingsControllerTest::filtersCompositor()
@@ -205,19 +227,12 @@ void SettingsControllerTest::keepsOneSelectedRowForEverySelection()
     }
 }
 
-void SettingsControllerTest::usesInjectedDetectorForIsSudo()
+void SettingsControllerTest::usesInjectedProfileForIsSudo()
 {
-    AdminGroupDetector::NativeApi api;
-    api.currentUser = [] {
-        return std::optional<AdminGroupUser>{AdminGroupUser{QByteArrayLiteral("test-user"), 1000}};
-    };
-    api.getGroupList = [](const QByteArray &, gid_t, gid_t *groups, int *) {
-        groups[0] = 1001;
-        return 1;
-    };
-    api.groupName = [](gid_t) { return std::optional<QString>{QStringLiteral("sudo")}; };
-
-    SettingsController controller{AdminGroupDetector(api)};
+    SettingsUserProfile profile;
+    profile.userName = QStringLiteral("test-user");
+    profile.administrator = true;
+    SettingsController controller{profile};
 
     QVERIFY(controller.isSudo());
     QVERIFY(controller.property("isSudo").toBool());

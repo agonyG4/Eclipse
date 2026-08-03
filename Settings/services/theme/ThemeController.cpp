@@ -1,4 +1,4 @@
-#include "core/ThemeController.hpp"
+#include "services/theme/ThemeController.hpp"
 
 #include <QDir>
 #include <QFile>

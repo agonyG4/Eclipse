@@ -1,28 +1,11 @@
 #pragma once
 
+#include "core/navigation/SettingsNavigationCatalog.hpp"
+
 #include <QAbstractListModel>
-#include <QString>
+#include <QUrl>
 #include <QVariantMap>
 #include <QVector>
-
-struct SettingsNavigationEntry {
-    enum class Kind {
-        Page,
-        Group,
-        Spacer,
-    };
-
-    QString id;
-    QString label;
-    QString labelKey;
-    QString subtitle;
-    QString sym;
-    QString iconSource;
-    QString iconKey;
-    int pageIndex = -1;
-    Kind kind = Kind::Page;
-    bool enabled = true;
-};
 
 class SettingsNavigationModel final : public QAbstractListModel {
     Q_OBJECT
@@ -43,10 +26,12 @@ public:
         SymRole,
         IconSourceRole,
         IconKeyRole,
-        PageIndexRole,
+        PageSourceRole,
     };
     Q_ENUM(Role)
 
+    explicit SettingsNavigationModel(const SettingsNavigationCatalog &catalog,
+                                     QObject *parent = nullptr);
     explicit SettingsNavigationModel(QObject *parent = nullptr);
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
@@ -62,6 +47,7 @@ public:
     Q_INVOKABLE QVariantMap get(int row) const;
 
     QString titleForId(const QString &id) const;
+    QUrl pageSourceForId(const QString &id) const;
     bool containsSelectableId(const QString &id) const;
 
 signals:

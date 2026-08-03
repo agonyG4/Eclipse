@@ -1,4 +1,4 @@
-#include "core/AdminGroupDetector.hpp"
+#include "platform/linux/AdminGroupDetector.hpp"
 
 #include <QtTest>
 

@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: tools/create-source-archive [--allow-dirty] [-o PATH|--output PATH]
+
+Create a ZIP source archive from committed Git content on main.
+By default the archive is written to /tmp/Eclipse-<short-head>.zip.
+--allow-dirty is an explicit handoff override; it still archives HEAD only.
+EOF
+}
+
+allow_dirty=0
+output_path=""
+while (($# > 0)); do
+    case "$1" in
+    --allow-dirty)
+        allow_dirty=1
+        shift
+        ;;
+    -o|--output)
+        if (($# < 2)); then
+            usage >&2
+            exit 2
+        fi
+        output_path=$2
+        shift 2
+        ;;
+    -h|--help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+done
+
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+repo_root=$(git -C "$script_dir" rev-parse --show-toplevel)
+branch=$(git -C "$repo_root" branch --show-current)
+if [[ "$branch" != "main" ]]; then
+    printf 'Refusing archive: current branch is %s, expected main.\n' "${branch:-detached HEAD}" >&2
+    exit 1
+fi
+
+status=$(git -C "$repo_root" status --porcelain --untracked-files=all)
+if [[ -n "$status" && "$allow_dirty" -ne 1 ]]; then
+    printf 'Refusing archive: worktree is not clean. Use --allow-dirty only for an explicit handoff override.\n' >&2
+    printf '%s\n' "$status" >&2
+    exit 1
+fi
+
+short_head=$(git -C "$repo_root" rev-parse --short HEAD)
+if [[ -z "$output_path" ]]; then
+    output_path="${TMPDIR:-/tmp}/Eclipse-${short_head}.zip"
+elif [[ "$output_path" != /* ]]; then
+    output_path="$PWD/$output_path"
+fi
+
+output_dir=$(dirname -- "$output_path")
+mkdir -p -- "$output_dir"
+temporary_archive=$(mktemp "${output_path}.tmp.XXXXXX")
+cleanup() {
+    rm -f -- "$temporary_archive"
+}
+trap cleanup EXIT
+
+git -C "$repo_root" archive \
+    --format=zip \
+    --prefix=Eclipse/ \
+    --output="$temporary_archive" \
+    HEAD
+mv -- "$temporary_archive" "$output_path"
+trap - EXIT
+
+printf 'Archive: %s\n' "$output_path"
+printf 'SHA-256: %s\n' "$(sha256sum "$output_path" | cut -d ' ' -f 1)"

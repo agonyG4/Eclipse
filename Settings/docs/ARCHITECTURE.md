@@ -1,80 +1,94 @@
 # Astrea Settings Architecture
 
 `astrea-settings` is a native Qt 6 application and a normal frameless Wayland
-toplevel. C++ owns lifecycle and application-facing state. QML owns the
-source-preserved Astrea Settings presentation and interaction.
+toplevel. C++ owns lifecycle and system-facing state. QML owns the approved
+Astrea Settings presentation and interaction.
 
-## Runtime Structure
+## Composition Root
+
+`SettingsApplication` is the only composition root:
 
 ```text
-QGuiApplication
-  -> SettingsApplication
-      -> SettingsController
-          -> SettingsNavigationModel
-      -> SettingsTranslationController
-      -> ThemeController
-      -> AstreaIconTheme / AstreaIconProvider
-      -> QQmlApplicationEngine
-          -> Main.qml
-              -> Sidebar
-              -> Loader
-                  -> pages/system/Compositor.qml
+AdminGroupDetector
+  -> SettingsUserProfileProvider
+      -> SettingsUserProfile
+SettingsNavigationCatalog
+  -> SettingsNavigationModel
+SettingsIconResolver
+  -> SettingsController
+ThemeController
+SettingsTranslationController
+QQmlApplicationEngine
 ```
 
-`Main.qml` maps the selected navigation ID `compositor` to the registered
-Compositor page source. The Loader is inactive for routes that do not yet have
-a page. Leaving Compositor destroys the page; selecting it again creates fresh
-page-local preview values.
+The application registers the stable context properties `SettingsController`,
+`ThemeController`, and `I18n`, plus the existing icon provider. It also owns
+metadata, QML startup, fatal warning reporting, and exactly-one-root validation.
+
+## Target Boundaries
+
+`astrea-settings-core` is a reusable static native library. It links only
+`Qt6::Core` and contains the controller, navigation, services, and Linux
+account implementation. It does not link Qt QML, Qt Quick, Quick Controls,
+LayerShellQt, or a compositor library.
+
+`astrea-settings-ui` is the only `Astrea.Settings 1.0` QML module. The
+application and QML integration tests consume that same target and generated
+plugin. The application additionally links the existing shared core and QML
+plugin for compositor-independent shared utilities.
+
+Unit tests link `astrea-settings-core`. Integration tests link both reusable
+production targets. No test target lists a production `.cpp` file owned by the
+core library.
+
+## Dependency Direction
+
+```text
+app -> core -> services -> platform/linux
+app -> qml context properties
+qml -> presentation and interaction
+tests -> production targets and explicit fakes
+shared -> compositor-independent shared utilities
+```
+
+QML has no filesystem, process, IPC, DBus, or compositor API. Platform access
+is implemented in focused C++ services and platform classes.
+
+## Navigation and Routing
+
+`SettingsNavigationCatalog` owns the ordered descriptors, stable IDs, visible
+metadata, row kind, enabled state, and optional `pageSource`. The model copies
+that catalogue and owns filtering and selection state. `SettingsController`
+exposes `selectedPageSource`, derived from the selected descriptor.
+
+`Main.qml` passes the native URL directly to a `Loader`. The catalogue is the
+single source of truth for row order and page routing. There is no numeric page
+index and no QML route-ID condition. The current route is:
+
+```text
+qrc:/qt/qml/Astrea/Settings/qml/pages/system/Compositor.qml
+```
+
+Rows without implemented pages have an empty URL. Leaving Compositor destroys
+the page and recreates its local preview state when selected again.
 
 ## Native Ownership
 
-`app/` owns application metadata, icon initialization, QML engine startup,
-context-property registration, fatal QML warning reporting, and the startup
-check that exactly one root object was created.
+`SettingsController` is the stable QML facade. It delegates navigation to
+`SettingsNavigationModel`, profile values to an immutable `SettingsUserProfile`,
+and resource URL construction to `SettingsIconResolver`.
 
-`SettingsController` owns navigation selection and filtering, display-only
-account metadata, AccountsService avatar resolution, icon URL resolution, and
-native libc/NSS membership detection for the `wheel` and `sudo` groups. Lookup
-failure is treated as no administrative membership. The detector enumerates
-the current user's primary and supplementary groups without subprocesses.
+`SettingsUserProfileProvider` resolves the current username, the readable
+AccountsService avatar path, and administrative membership. `AdminGroupDetector`
+owns libc/NSS enumeration; `AdministrativeGroupPolicy` recognizes exactly
+`wheel` and `sudo`.
 
-## Shared Dependencies
+`ThemeController` and `SettingsTranslationController` retain their existing
+public QML names and semantics, but live under their service ownership paths.
 
-Settings is a normal Qt Wayland application. It links only
-`astrea-shared-core` and `astrea-shared-coreplugin`, which contain
-compositor-independent icons, desktop catalogue, launcher, and QML utilities.
-Layer Shell code is owned by `astrea-shared-layer-shell` and is linked by Dock,
-Spotlight, and AltTab only. Settings does not link or load LayerShellQt.
+## Exclusions
 
-`SettingsNavigationModel` owns the catalogue, stable IDs, row roles, filtering,
-and selected-row state. Its current catalogue order is:
-
-```text
-System, Software Update, Internet, Bluetooth, Audio, Components, Services,
-Compositor, spacer, Performance, Appearance, More Settings
-```
-
-`SettingsTranslationController` loads the bundled English messages and exposes
-translation lookup to QML. `ThemeController` owns the existing shell/theme
-configuration boundary used by the approved presentation.
-
-## QML Ownership
-
-`qml/components/` owns the window shell, profile, sidebar, navigation item, and
-page-agnostic form controls. The registered module contains 35 QML files,
-including the five singleton sources `Tokens`, `Apps`, `Shell`, `State`, and
-`Theme`.
-
-`qml/pages/system/Compositor.qml` is the first real page route. It uses only
-the existing Settings controls and Theme tokens. Every compositor preview value
-is local to that page. The page has no backend object and does not access
-configuration files, QSettings, JSON state, environment configuration, IPC,
-sockets, processes, shell commands, compositor protocols, or ThemeController.
-
-## Explicit Exclusions
-
-This target has no Quickshell import, LayerShellQt dependency, Hyprland
-integration, Typhon-private protocol, compositor backend, or command
-execution. No current navigation row is collapsible. Performance, Appearance,
-and More Settings are normal selectable `group` rows using the same NavItem
-composition as the other rows.
+Settings has no Quickshell import, LayerShellQt dependency, Hyprland command,
+Typhon-private protocol, compositor backend, IPC boundary, persistence for the
+Compositor preview, or shell command execution. Performance, Appearance, and
+More Settings remain ordinary selectable rows.

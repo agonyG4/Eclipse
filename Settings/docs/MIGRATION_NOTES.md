@@ -1,57 +1,54 @@
 # Settings Migration Notes
 
-The legacy Settings shell was treated as visual design input while the native
-target adopted Eclipse's existing C++/Qt/QML boundaries. The approved window,
-sidebar, theme, transparency, typography, spacing, animation, profile, and
-navigation visuals remain source-preserved.
+The legacy Settings source remains the visual reference. This refactor changes
+native ownership and build ownership without redesigning the approved shell.
 
 ## Preserved
 
 - Inter and JetBrains Mono font names;
-- the legacy typography scale, radius family, spacing scale, and animation
-  durations;
+- legacy typography, radius, spacing, and animation scales;
 - dark/light palette intent and glass shell treatment;
 - the 256 px sidebar, profile header, navigation row geometry, and selected
   accent treatment;
-- native frameless desktop window behavior and `startSystemMove()`;
-- the legacy form-card, setting-row, toggle, selector, and section-header
-  visual components.
+- native frameless desktop behavior and `startSystemMove()`;
+- form cards, setting rows, toggles, selectors, section headers, and the
+  Compositor preview layout;
+- the exact navigation order and Compositor placement after Services.
 
-The current navigation catalogue has no collapsible sections. Performance,
-Appearance, and More Settings remain ordinary selectable `group` rows.
+The feedback components were repaired from their canonical Astrea sources. They
+are registered compatibility components and are not used by the current visible
+shell.
 
 ## Native Boundaries
 
-- lifecycle and QML startup are owned by `SettingsApplication`;
-- navigation and filtering are owned by `SettingsNavigationModel`;
-- account metadata, avatar/icon resolution, and administrative-group detection
-  are owned by `SettingsController` and use native libc/NSS APIs without
-  subprocesses;
-- theme configuration is owned by `ThemeController`;
-- bundled English translation lookup is owned by
-  `SettingsTranslationController`;
-- presentation and interaction remain in QML.
+- application lifecycle and QML startup: `app/SettingsApplication.*`;
+- navigation descriptors: `core/navigation/SettingsNavigationCatalog.*`;
+- model filtering and selection: `core/navigation/SettingsNavigationModel.*`;
+- stable QML facade: `core/SettingsController.*`;
+- profile value and provider: `services/profile/`;
+- icon URL resolution: `services/assets/`;
+- theme and translations: `services/theme/` and `services/i18n/`;
+- libc/NSS and Linux account policy: `platform/linux/`;
+- presentation and interaction: `qml/`.
 
-The first real route is `qml/pages/system/Compositor.qml`, selected by the
-`compositor` navigation ID and loaded through the existing Loader boundary.
+No service or platform construction occurs in QML.
+
+## Routing Policy
+
+The navigation catalogue contains stable IDs and optional native `QUrl` page
+descriptors. Compositor is currently the only non-empty route. Future pages must
+add a descriptor and QML source through the catalogue; numeric page indexes and
+QML route-ID conditions are prohibited.
 
 ## Compositor Preview Policy
 
-The Compositor page is deliberately visual-only. Toggle and selector values
-are page-local QML state. Leaving the page destroys those values and recreates
-the requested defaults on return. Closing and reopening the application also
-resets them. No Compositor value is persisted, applied, read from a backend, or
-sent through IPC.
+Compositor controls are local-only QML properties. They are not persisted,
+applied, read from a backend, or sent through IPC. Leaving the page destroys the
+values and recreates the approved defaults on return.
 
-Future compositor integration is explicitly deferred. There is currently no
-Hyprland integration, compositor protocol, private Typhon protocol, service
-backend, shell command, process execution, or IPC boundary for this page.
+## Source Handoff Policy
 
-## Source Policy
-
-The native Settings target contains no Quickshell import, QML process object,
-LayerShellQt integration, Hyprland command, shell invocation, or Typhon-private
-protocol. Deleted legacy component paths are not registered by the current
-QML module. It links only the compositor-independent `astrea-shared-core`
-target and its QML plugin. Layer Shell functionality belongs to the separate
-`astrea-shared-layer-shell` target used by Dock, Spotlight, and AltTab.
+Use only `tools/create-source-archive`. It requires `main` and a clean worktree
+by default, archives `HEAD` with `git archive`, writes outside the checkout by
+default, and excludes filesystem build artifacts because it does not archive the
+checkout directory.

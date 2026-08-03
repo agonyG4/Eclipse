@@ -11,13 +11,11 @@ set(CMAKE_AUTOUIC ON)
 option(ASTREA_ALT_TAB_BUILD_TESTS "Build unit tests" ON)
 
 find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Qml Quick Network)
-find_package(LayerShellQt QUIET)
-
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/AltTabWarnings.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/AltTabSanitizers.cmake)
 
 # Link shared libraries sibling folder
-if(NOT TARGET astrea-shared)
+if(NOT TARGET astrea-shared-core)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../shared ${CMAKE_CURRENT_BINARY_DIR}/shared)
 endif()
 
@@ -40,7 +38,7 @@ add_library(astrea-alttab-identity STATIC
     services/appidentity/WineExecutableResolver.cpp
 )
 target_include_directories(astrea-alttab-identity PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
-target_link_libraries(astrea-alttab-identity PUBLIC Qt6::Core Qt6::Gui astrea-shared astrea-alttab-types)
+target_link_libraries(astrea-alttab-identity PUBLIC Qt6::Core Qt6::Gui astrea-shared-core astrea-alttab-types)
 astrea_enable_warnings(astrea-alttab-identity)
 astrea_enable_sanitizers(astrea-alttab-identity)
 
@@ -71,13 +69,8 @@ target_link_libraries(astrea-alttab-core PUBLIC
     astrea-alttab-types
     astrea-alttab-identity
     astrea-alttab-hyprland
+    astrea-shared-layer-shell
 )
-if(LayerShellQt_FOUND)
-    target_link_libraries(astrea-alttab-core PUBLIC LayerShellQt::Interface)
-    target_compile_definitions(astrea-alttab-core PUBLIC ASTREA_HAVE_LAYER_SHELL_QT=1)
-else()
-    target_compile_definitions(astrea-alttab-core PUBLIC ASTREA_HAVE_LAYER_SHELL_QT=0)
-endif()
 astrea_enable_warnings(astrea-alttab-core)
 astrea_enable_sanitizers(astrea-alttab-core)
 
@@ -90,7 +83,7 @@ qt_add_executable(astrea-alt-tab
 target_include_directories(astrea-alt-tab PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(astrea-alt-tab PRIVATE
     astrea-alttab-core
-    astrea-sharedplugin
+    astrea-shared-coreplugin
     dl pthread
 )
 

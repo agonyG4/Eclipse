@@ -15,7 +15,7 @@ find_package(Qt6 6.6 REQUIRED COMPONENTS Core Core5Compat Gui Qml Quick QuickCon
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/SettingsWarnings.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/SettingsSanitizers.cmake)
 
-if(NOT TARGET astrea-shared)
+if(NOT TARGET astrea-shared-core)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../shared ${CMAKE_CURRENT_BINARY_DIR}/shared)
 endif()
 
@@ -41,8 +41,8 @@ target_include_directories(astrea-settings PRIVATE
 )
 
 target_link_libraries(astrea-settings PRIVATE
-    astrea-shared
-    astrea-sharedplugin
+    astrea-shared-core
+    astrea-shared-coreplugin
     Qt6::Core
     Qt6::Core5Compat
     Qt6::Gui
@@ -199,6 +199,8 @@ if(BUILD_TESTING AND ASTREA_SETTINGS_BUILD_TESTS AND ASTREA_BUILD_TESTS)
 
     qt_add_executable(settings-qml-smoke-test
         tests/SettingsQmlSmokeTest.cpp
+        core/AdminGroupDetector.cpp
+        core/AdminGroupDetector.hpp
         core/SettingsController.cpp
         core/SettingsController.hpp
         core/SettingsGroupMembership.cpp
@@ -215,8 +217,8 @@ if(BUILD_TESTING AND ASTREA_SETTINGS_BUILD_TESTS AND ASTREA_BUILD_TESTS)
         "${CMAKE_CURRENT_SOURCE_DIR}/../shared"
     )
     target_link_libraries(settings-qml-smoke-test PRIVATE
-        astrea-shared
-        astrea-sharedplugin
+        astrea-shared-core
+        astrea-shared-coreplugin
         Qt6::Core
         Qt6::Core5Compat
         Qt6::Gui

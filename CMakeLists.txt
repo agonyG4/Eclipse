@@ -15,7 +15,6 @@ if(ASTREA_ENABLE_SANITIZERS)
 endif()
 
 find_package(Qt6 6.6 REQUIRED COMPONENTS Core Qml)
-find_package(LayerShellQt QUIET)
 if(COMMAND qt_policy)
     qt_policy(SET QTP0001 NEW)
     qt_policy(SET QTP0004 NEW)
@@ -23,7 +22,7 @@ endif()
 
 include(CTest)
 
-if(NOT TARGET astrea-shared)
+if(NOT TARGET astrea-shared-core)
     add_subdirectory(shared)
 endif()
 add_subdirectory(Spotlight)

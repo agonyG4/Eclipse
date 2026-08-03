@@ -1,6 +1,6 @@
-#include "core/AdminGroupDetector.hpp"
+#include "platform/linux/AdminGroupDetector.hpp"
 
-#include "core/SettingsGroupMembership.hpp"
+#include "platform/linux/AdministrativeGroupPolicy.hpp"
 
 #include <grp.h>
 #include <pwd.h>
@@ -99,7 +99,7 @@ bool AdminGroupDetector::isCurrentUserAdministrator() const
         groupNames.append(*name);
     }
 
-    return hasAdministrativeGroup(groupNames);
+    return AdministrativeGroupPolicy::hasAdministrativeGroup(groupNames);
 }
 
 bool isCurrentUserAdministrator()

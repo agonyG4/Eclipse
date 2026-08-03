@@ -1,10 +1,15 @@
 #include "app/SettingsApplication.hpp"
 
 #include "core/SettingsController.hpp"
-#include "core/SettingsTranslationController.hpp"
-#include "core/ThemeController.hpp"
+#include "core/navigation/SettingsNavigationCatalog.hpp"
+#include "core/navigation/SettingsNavigationModel.hpp"
 #include "icons/AstreaIconProvider.hpp"
 #include "icons/AstreaIconTheme.hpp"
+#include "platform/linux/AdminGroupDetector.hpp"
+#include "services/assets/SettingsIconResolver.hpp"
+#include "services/i18n/SettingsTranslationController.hpp"
+#include "services/profile/SettingsUserProfileProvider.hpp"
+#include "services/theme/ThemeController.hpp"
 
 #include <QGuiApplication>
 #include <QIcon>
@@ -33,7 +38,15 @@ int SettingsApplication::run()
     AstreaIconTheme::apply();
     QIcon::setFallbackThemeName(QStringLiteral("hicolor"));
 
-    m_controller = std::make_unique<SettingsController>();
+    AdminGroupDetector adminGroupDetector;
+    SettingsUserProfileProvider profileProvider(adminGroupDetector);
+    const SettingsUserProfile userProfile = profileProvider.currentProfile();
+
+    SettingsNavigationCatalog navigationCatalog;
+    auto navigationModel = std::make_unique<SettingsNavigationModel>(navigationCatalog);
+    SettingsIconResolver iconResolver;
+    m_controller = std::make_unique<SettingsController>(std::move(navigationModel), userProfile,
+                                                         iconResolver, this);
     m_translationController = std::make_unique<SettingsTranslationController>();
     m_themeController = std::make_unique<ThemeController>();
     if (!initializeQml())

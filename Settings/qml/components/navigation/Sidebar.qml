@@ -14,6 +14,8 @@ Item {
     property string userName: ""
     property string avatarPath: ""
     property bool isSudo: false
+    property string iconTheme: ""
+    property var iconUrlResolver: null
 
     function translatedLabel(item) {
         const key = item.labelKey !== undefined ? item.labelKey : ""
@@ -141,8 +143,10 @@ Item {
                     visible:    navDelegate.itemKind !== "spacer"
                     label:      root.translatedLabel(model)
                     sym:        model.sym !== undefined ? model.sym : ""
-                    iconSource: model.iconSource !== undefined ? model.iconSource : ""
-                    iconKey:    model.iconKey !== undefined ? model.iconKey : ""
+                    iconSource: model.iconKey !== undefined && root.iconUrlResolver
+                        ? root.iconUrlResolver(model.iconKey, root.iconTheme)
+                        : (model.iconSource !== undefined ? model.iconSource : "")
+                    iconKey: ""
                     selected:   root.selectedId === model.entryId
                     onClicked:  root.selectId(model.entryId)
                 }

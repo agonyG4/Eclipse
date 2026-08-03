@@ -1,102 +1,92 @@
 #include "core/SettingsController.hpp"
 
-#include <QFileInfo>
+#include <utility>
 
 SettingsController::SettingsController(QObject *parent)
-    : SettingsController(AdminGroupDetector(), parent)
+    : SettingsController(std::make_unique<SettingsNavigationModel>(), {}, {}, parent)
 {
 }
 
-SettingsController::SettingsController(AdminGroupDetector detector, QObject *parent)
-    : QObject(parent)
-    , m_navigationModel(this)
-    , m_userName(resolveUserName())
-    , m_avatarUrl(resolveAvatarUrl(m_userName))
-    , m_isSudo(detector.isCurrentUserAdministrator())
+SettingsController::SettingsController(SettingsUserProfile userProfile, QObject *parent)
+    : SettingsController(std::make_unique<SettingsNavigationModel>(), std::move(userProfile), {}, parent)
 {
-    connect(&m_navigationModel, &SettingsNavigationModel::selectedIdChanged,
+}
+
+SettingsController::SettingsController(std::unique_ptr<SettingsNavigationModel> navigationModel,
+                                       SettingsUserProfile userProfile,
+                                       SettingsIconResolver iconResolver,
+                                       QObject *parent)
+    : QObject(parent)
+    , m_navigationModel(std::move(navigationModel))
+    , m_userProfile(std::move(userProfile))
+    , m_iconResolver(std::move(iconResolver))
+{
+    if (!m_navigationModel)
+        m_navigationModel = std::make_unique<SettingsNavigationModel>();
+    m_navigationModel->setParent(this);
+
+    connect(m_navigationModel.get(), &SettingsNavigationModel::selectedIdChanged,
             this, &SettingsController::selectionChanged);
-    connect(&m_navigationModel, &SettingsNavigationModel::filterTextChanged,
+    connect(m_navigationModel.get(), &SettingsNavigationModel::filterTextChanged,
             this, &SettingsController::filterTextChanged);
 }
 
 SettingsNavigationModel *SettingsController::navigationModel()
 {
-    return &m_navigationModel;
+    return m_navigationModel.get();
 }
 
 QString SettingsController::selectedSectionId() const
 {
-    return m_navigationModel.selectedId();
+    return m_navigationModel->selectedId();
 }
 
 QString SettingsController::selectedSectionTitle() const
 {
-    return m_navigationModel.titleForId(m_navigationModel.selectedId());
+    return m_navigationModel->titleForId(m_navigationModel->selectedId());
+}
+
+QUrl SettingsController::selectedPageSource() const
+{
+    return m_navigationModel->pageSourceForId(m_navigationModel->selectedId());
 }
 
 QString SettingsController::filterText() const
 {
-    return m_navigationModel.filterText();
+    return m_navigationModel->filterText();
 }
 
 QString SettingsController::userName() const
 {
-    return m_userName;
+    return m_userProfile.userName;
 }
 
 QUrl SettingsController::avatarUrl() const
 {
-    return m_avatarUrl;
+    return m_userProfile.avatarUrl;
 }
 
 bool SettingsController::isSudo() const
 {
-    return m_isSudo;
+    return m_userProfile.administrator;
 }
 
 bool SettingsController::selectSection(const QString &id)
 {
-    return m_navigationModel.setSelectedId(id);
+    return m_navigationModel->setSelectedId(id);
 }
 
 QUrl SettingsController::iconUrl(const QString &iconKey, const QString &iconTheme) const
 {
-    if (iconKey.isEmpty())
-        return {};
-
-    const QString base = QStringLiteral("qrc:/Astrea/Settings/assets/icons/settings/");
-    if (!iconTheme.isEmpty())
-        return QUrl(base + QStringLiteral("themes/") + iconTheme + QStringLiteral("/") + iconKey + QStringLiteral(".svg"));
-    return QUrl(base + iconKey + QStringLiteral(".svg"));
+    return m_iconResolver.resolve(iconKey, iconTheme);
 }
 
 void SettingsController::setFilterText(const QString &filterText)
 {
-    m_navigationModel.setFilterText(filterText);
+    m_navigationModel->setFilterText(filterText);
 }
 
 void SettingsController::clearFilter()
 {
-    m_navigationModel.setFilterText(QString());
-}
-
-QString SettingsController::resolveUserName()
-{
-    QString userName = qEnvironmentVariable("USER").trimmed();
-    if (userName.isEmpty())
-        userName = qEnvironmentVariable("LOGNAME").trimmed();
-    if (userName.isEmpty())
-        userName = QStringLiteral("User");
-    return userName;
-}
-
-QUrl SettingsController::resolveAvatarUrl(const QString &userName)
-{
-    if (userName.isEmpty())
-        return {};
-
-    const QString path = QStringLiteral("/var/lib/AccountsService/icons/%1").arg(userName);
-    const QFileInfo avatar(path);
-    return avatar.isReadable() && avatar.isFile() ? QUrl::fromLocalFile(path) : QUrl();
+    m_navigationModel->setFilterText(QString());
 }

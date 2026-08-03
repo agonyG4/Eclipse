@@ -1,6 +1,6 @@
 #include "core/SettingsController.hpp"
-#include "core/SettingsTranslationController.hpp"
-#include "core/ThemeController.hpp"
+#include "services/i18n/SettingsTranslationController.hpp"
+#include "services/theme/ThemeController.hpp"
 
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>

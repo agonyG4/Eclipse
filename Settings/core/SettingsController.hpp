@@ -1,17 +1,21 @@
 #pragma once
 
-#include "core/AdminGroupDetector.hpp"
-#include "core/SettingsNavigationModel.hpp"
+#include "core/navigation/SettingsNavigationModel.hpp"
+#include "services/assets/SettingsIconResolver.hpp"
+#include "services/profile/SettingsUserProfile.hpp"
 
 #include <QObject>
 #include <QString>
 #include <QUrl>
+
+#include <memory>
 
 class SettingsController final : public QObject {
     Q_OBJECT
     Q_PROPERTY(SettingsNavigationModel *navigationModel READ navigationModel CONSTANT)
     Q_PROPERTY(QString selectedSectionId READ selectedSectionId NOTIFY selectionChanged)
     Q_PROPERTY(QString selectedSectionTitle READ selectedSectionTitle NOTIFY selectionChanged)
+    Q_PROPERTY(QUrl selectedPageSource READ selectedPageSource NOTIFY selectionChanged)
     Q_PROPERTY(QString filterText READ filterText NOTIFY filterTextChanged)
     Q_PROPERTY(QString userName READ userName CONSTANT)
     Q_PROPERTY(QUrl avatarUrl READ avatarUrl CONSTANT)
@@ -19,11 +23,16 @@ class SettingsController final : public QObject {
 
 public:
     explicit SettingsController(QObject *parent = nullptr);
-    explicit SettingsController(AdminGroupDetector detector, QObject *parent = nullptr);
+    explicit SettingsController(SettingsUserProfile userProfile, QObject *parent = nullptr);
+    SettingsController(std::unique_ptr<SettingsNavigationModel> navigationModel,
+                       SettingsUserProfile userProfile,
+                       SettingsIconResolver iconResolver,
+                       QObject *parent = nullptr);
 
     SettingsNavigationModel *navigationModel();
     QString selectedSectionId() const;
     QString selectedSectionTitle() const;
+    QUrl selectedPageSource() const;
     QString filterText() const;
     QString userName() const;
     QUrl avatarUrl() const;
@@ -39,11 +48,7 @@ signals:
     void filterTextChanged();
 
 private:
-    static QString resolveUserName();
-    static QUrl resolveAvatarUrl(const QString &userName);
-
-    SettingsNavigationModel m_navigationModel;
-    QString m_userName;
-    QUrl m_avatarUrl;
-    bool m_isSudo = false;
+    std::unique_ptr<SettingsNavigationModel> m_navigationModel;
+    const SettingsUserProfile m_userProfile;
+    const SettingsIconResolver m_iconResolver;
 };

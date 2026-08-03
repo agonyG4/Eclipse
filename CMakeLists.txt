@@ -29,3 +29,9 @@ add_subdirectory(Spotlight)
 add_subdirectory(AltTab)
 add_subdirectory(Dock)
 add_subdirectory(Settings)
+
+if(BUILD_TESTING)
+    add_test(NAME create-source-archive-test
+        COMMAND bash ${CMAKE_SOURCE_DIR}/tools/create-source-archive-test.sh
+                ${CMAKE_SOURCE_DIR}/tools/create-source-archive)
+endif()

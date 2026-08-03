@@ -11,8 +11,8 @@ Item {
     required property string label
     property string sym: ""
     property string iconSource: ""
-    // iconKey: filename without extension (e.g. "display"). When set,
-    // the component tries the themed path first and falls back to iconSource.
+    // iconKey is retained for compatibility with existing callers; composed
+    // navigation supplies the resolved source instead.
     property string iconKey: ""
     property int leftInset: 0
     property bool compact: false
@@ -96,10 +96,7 @@ Item {
                 id: navIcon
                 anchors.fill: parent
 
-                // ── Themed icon resolution with fallback ───────────────────
-                readonly property string resolvedSource: root.iconKey !== ""
-                    ? SettingsController.iconUrl(root.iconKey, Components.Theme.iconTheme).toString()
-                    : root.iconSource
+                readonly property string resolvedSource: root.iconSource
 
                 source: resolvedSource
                 visible: resolvedSource !== ""

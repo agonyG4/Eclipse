@@ -26,9 +26,7 @@ ApplicationWindow {
     readonly property color accent: Theme.accent
     readonly property color textPrimary: Theme.textPrimary
     readonly property color textSecondary: Theme.textSecondary
-    readonly property url selectedPageSource: SettingsController.selectedSectionId === "compositor"
-        ? Qt.resolvedUrl("pages/system/Compositor.qml")
-        : ""
+    readonly property url selectedPageSource: SettingsController.selectedPageSource
 
     Rectangle {
         anchors.fill: parent
@@ -90,6 +88,8 @@ ApplicationWindow {
                 userName: SettingsController.userName
                 avatarPath: SettingsController.avatarUrl
                 isSudo: SettingsController.isSudo
+                iconTheme: Theme.iconTheme
+                iconUrlResolver: (iconKey, iconTheme) => SettingsController.iconUrl(iconKey, iconTheme)
                 onSelectId: id => SettingsController.selectSection(id)
             }
 
@@ -101,7 +101,7 @@ ApplicationWindow {
                     id: pageLoader
                     objectName: "settingsPageLoader"
                     anchors.fill: parent
-                    active: window.selectedPageSource !== ""
+                    active: window.selectedPageSource.toString() !== ""
                     source: window.selectedPageSource
                 }
             }

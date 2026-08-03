@@ -1,4 +1,4 @@
-#include "core/SettingsNavigationModel.hpp"
+#include "core/navigation/SettingsNavigationModel.hpp"
 
 namespace {
 QString kindName(SettingsNavigationEntry::Kind kind)
@@ -15,47 +15,18 @@ QString kindName(SettingsNavigationEntry::Kind kind)
 }
 }
 
-SettingsNavigationModel::SettingsNavigationModel(QObject *parent)
+SettingsNavigationModel::SettingsNavigationModel(const SettingsNavigationCatalog &catalog,
+                                                 QObject *parent)
     : QAbstractListModel(parent)
-    , m_entries{
-          {QStringLiteral("system"), QStringLiteral("System"), QStringLiteral("settings.nav.system"),
-           QStringLiteral("System information"), QStringLiteral("\uf303"), {}, {}, 0,
-           SettingsNavigationEntry::Kind::Page},
-          {QStringLiteral("software-update"), QStringLiteral("Software Update"), QStringLiteral("settings.nav.software_update"),
-           QStringLiteral("System updates"), {}, {}, QStringLiteral("software-center"), 1,
-           SettingsNavigationEntry::Kind::Page},
-          {QStringLiteral("internet"), QStringLiteral("Internet"), QStringLiteral("settings.nav.internet"),
-           QStringLiteral("Network connections"), {}, {}, QStringLiteral("network"), 8,
-           SettingsNavigationEntry::Kind::Page},
-          {QStringLiteral("bluetooth"), QStringLiteral("Bluetooth"), QStringLiteral("settings.nav.bluetooth"),
-           QStringLiteral("Bluetooth devices"), {}, {}, QStringLiteral("bluetooth"), 9,
-           SettingsNavigationEntry::Kind::Page},
-          {QStringLiteral("audio"), QStringLiteral("Audio"), QStringLiteral("settings.nav.audio"),
-           QStringLiteral("Sound and volume"), {}, {}, QStringLiteral("audio"), 12,
-           SettingsNavigationEntry::Kind::Page},
-          {QStringLiteral("components"), QStringLiteral("Components"), {},
-           QStringLiteral("Astrea shell components"), QStringLiteral("\uf0e8"), {}, {}, 15,
-           SettingsNavigationEntry::Kind::Page},
-          {QStringLiteral("services"), QStringLiteral("Services"), {},
-           QStringLiteral("Astrea background services"), QStringLiteral("\uf085"), {}, {}, 16,
-           SettingsNavigationEntry::Kind::Page},
-          {QStringLiteral("compositor"), QStringLiteral("Compositor"), QStringLiteral("settings.nav.compositor"),
-           QStringLiteral("Astrea compositor preferences"), QStringLiteral("\uf2d0"), {}, {}, 18,
-           SettingsNavigationEntry::Kind::Page},
-          {QString(), QString(), {}, {}, {}, {}, {}, -999, SettingsNavigationEntry::Kind::Spacer, false},
-          {QStringLiteral("performance"), QStringLiteral("Performance"), {},
-           QStringLiteral("Performance settings"), {}, {}, QStringLiteral("performance"), -100,
-           SettingsNavigationEntry::Kind::Group},
-          {QStringLiteral("appearance"), QStringLiteral("Appearance"), {},
-           QStringLiteral("Appearance settings"), {}, {}, QStringLiteral("theme"), -101,
-           SettingsNavigationEntry::Kind::Group},
-          {QStringLiteral("more-settings"), QStringLiteral("More Settings"), {},
-           QStringLiteral("Additional settings"), QStringLiteral("\uf013"), {}, {}, -102,
-           SettingsNavigationEntry::Kind::Group},
-      }
+    , m_entries(catalog.entries())
 {
     rebuildVisibleRows();
     m_selectedId = QStringLiteral("system");
+}
+
+SettingsNavigationModel::SettingsNavigationModel(QObject *parent)
+    : SettingsNavigationModel(SettingsNavigationCatalog(), parent)
+{
 }
 
 int SettingsNavigationModel::rowCount(const QModelIndex &parent) const
@@ -92,8 +63,8 @@ QVariant SettingsNavigationModel::data(const QModelIndex &index, int role) const
         return entry.sym;
     case IconSourceRole:
         return entry.iconSource;
-    case PageIndexRole:
-        return entry.pageIndex;
+    case PageSourceRole:
+        return entry.pageSource;
     default:
         return {};
     }
@@ -114,7 +85,7 @@ QHash<int, QByteArray> SettingsNavigationModel::roleNames() const
         {SymRole, QByteArrayLiteral("sym")},
         {IconSourceRole, QByteArrayLiteral("iconSource")},
         {IconKeyRole, QByteArrayLiteral("iconKey")},
-        {PageIndexRole, QByteArrayLiteral("pageIndex")},
+        {PageSourceRole, QByteArrayLiteral("pageSource")},
     };
 }
 
@@ -186,7 +157,7 @@ QVariantMap SettingsNavigationModel::get(int row) const
         {QStringLiteral("sym"), entry.sym},
         {QStringLiteral("iconSource"), entry.iconSource},
         {QStringLiteral("iconKey"), entry.iconKey},
-        {QStringLiteral("pageIndex"), entry.pageIndex},
+        {QStringLiteral("pageSource"), entry.pageSource},
     };
 }
 
@@ -194,6 +165,12 @@ QString SettingsNavigationModel::titleForId(const QString &id) const
 {
     const int sourceIndex = sourceIndexForId(id);
     return sourceIndex >= 0 ? m_entries.at(sourceIndex).label : QString();
+}
+
+QUrl SettingsNavigationModel::pageSourceForId(const QString &id) const
+{
+    const int sourceIndex = sourceIndexForId(id);
+    return sourceIndex >= 0 ? m_entries.at(sourceIndex).pageSource : QUrl();
 }
 
 bool SettingsNavigationModel::containsSelectableId(const QString &id) const

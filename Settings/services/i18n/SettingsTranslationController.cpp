@@ -1,4 +1,4 @@
-#include "core/SettingsTranslationController.hpp"
+#include "services/i18n/SettingsTranslationController.hpp"
 
 #include <QFile>
 #include <QJsonDocument>

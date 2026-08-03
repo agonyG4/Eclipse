@@ -25,7 +25,8 @@ Appearance, and More Settings remain ordinary selectable `group` rows.
 - lifecycle and QML startup are owned by `SettingsApplication`;
 - navigation and filtering are owned by `SettingsNavigationModel`;
 - account metadata, avatar/icon resolution, and administrative-group detection
-  are owned by `SettingsController`;
+  are owned by `SettingsController` and use native libc/NSS APIs without
+  subprocesses;
 - theme configuration is owned by `ThemeController`;
 - bundled English translation lookup is owned by
   `SettingsTranslationController`;
@@ -51,4 +52,6 @@ backend, shell command, process execution, or IPC boundary for this page.
 The native Settings target contains no Quickshell import, QML process object,
 LayerShellQt integration, Hyprland command, shell invocation, or Typhon-private
 protocol. Deleted legacy component paths are not registered by the current
-QML module.
+QML module. It links only the compositor-independent `astrea-shared-core`
+target and its QML plugin. Layer Shell functionality belongs to the separate
+`astrea-shared-layer-shell` target used by Dock, Spotlight, and AltTab.

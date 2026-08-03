@@ -23,6 +23,8 @@ qt_add_executable(astrea-settings
     app/main.cpp
     app/SettingsApplication.cpp
     app/SettingsApplication.hpp
+    core/AdminGroupDetector.cpp
+    core/AdminGroupDetector.hpp
     core/SettingsController.cpp
     core/SettingsController.hpp
     core/SettingsGroupMembership.cpp
@@ -145,6 +147,8 @@ if(BUILD_TESTING AND ASTREA_SETTINGS_BUILD_TESTS AND ASTREA_BUILD_TESTS)
 
     add_executable(settings-controller-test
         tests/SettingsControllerTest.cpp
+        core/AdminGroupDetector.cpp
+        core/AdminGroupDetector.hpp
         core/SettingsController.cpp
         core/SettingsController.hpp
         core/SettingsGroupMembership.cpp
@@ -164,6 +168,24 @@ if(BUILD_TESTING AND ASTREA_SETTINGS_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     settings_enable_warnings(settings-controller-test)
     settings_enable_sanitizers(settings-controller-test)
     add_test(NAME settings-controller-test COMMAND settings-controller-test)
+
+    add_executable(admin-group-detector-test
+        tests/AdminGroupDetectorTest.cpp
+        core/AdminGroupDetector.cpp
+        core/AdminGroupDetector.hpp
+        core/SettingsGroupMembership.cpp
+        core/SettingsGroupMembership.hpp
+    )
+    target_include_directories(admin-group-detector-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_link_libraries(admin-group-detector-test PRIVATE
+        Qt6::Core
+        Qt6::Test
+    )
+    settings_enable_warnings(admin-group-detector-test)
+    settings_enable_sanitizers(admin-group-detector-test)
+    add_test(NAME admin-group-detector-test COMMAND admin-group-detector-test)
 
     add_executable(settings-group-membership-test
         tests/SettingsGroupMembershipTest.cpp

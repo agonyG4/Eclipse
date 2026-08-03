@@ -91,7 +91,7 @@ endforeach()
 file(READ "${SETTINGS_SOURCE_DIR}/qml/components/form/SettingRow.qml" setting_row_source)
 foreach(setting_row_invariant IN ITEMS
     "spacing: Components.Theme.spacingMicro"
-    "implicitHeight: Math.max(sr.sublabel !== \"\" ? 72 : 60, rowLayout.implicitHeight + Components.Theme.spacingMedium * 2)"
+    "implicitHeight: Math.max(sr.sublabel !== \"\" ? 64 : 52, rowLayout.implicitHeight + Components.Theme.spacingMedium * 2)"
 )
     string(FIND "${setting_row_source}" "${setting_row_invariant}" setting_row_invariant_position)
     if(setting_row_invariant_position EQUAL -1)

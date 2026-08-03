@@ -46,9 +46,12 @@ Form.ScrollPage {
 
         Form.SectionHeader {
             text: I18n.tr("apps.settings.pages.system.compositor.text.compositor", "COMPOSITOR")
+            Layout.bottomMargin: 12
         }
 
         Form.FormCard {
+            Layout.bottomMargin: 24
+
             Form.SettingRow {
                 label: I18n.tr("apps.settings.pages.system.compositor.label.astrea_compositor", "Astrea compositor")
                 sublabel: I18n.tr("apps.settings.pages.system.compositor.sublabel.configuration_preview", "Configuration preview. These controls are not connected to the compositor yet.")
@@ -65,11 +68,13 @@ Form.ScrollPage {
         }
 
         Form.SectionHeader {
-            Layout.topMargin: Components.Theme.spacingXLarge
             text: I18n.tr("apps.settings.pages.system.compositor.text.visual_effects", "VISUAL EFFECTS")
+            Layout.bottomMargin: 12
         }
 
         Form.FormCard {
+            Layout.bottomMargin: 24
+
             Form.SettingRow {
                 label: I18n.tr("apps.settings.pages.system.compositor.label.animations", "Animations")
                 sublabel: I18n.tr("apps.settings.pages.system.compositor.sublabel.animations", "Animate window movement, workspace transitions, and compositor effects")
@@ -103,11 +108,13 @@ Form.ScrollPage {
         }
 
         Form.SectionHeader {
-            Layout.topMargin: Components.Theme.spacingXLarge
             text: I18n.tr("apps.settings.pages.system.compositor.text.presentation", "PRESENTATION")
+            Layout.bottomMargin: 12
         }
 
         Form.FormCard {
+            Layout.bottomMargin: 24
+
             Form.SettingRow {
                 label: I18n.tr("apps.settings.pages.system.compositor.label.variable_refresh_rate", "Variable refresh rate")
                 sublabel: I18n.tr("apps.settings.pages.system.compositor.sublabel.variable_refresh_rate", "Control when compatible displays may use adaptive refresh")
@@ -160,8 +167,8 @@ Form.ScrollPage {
         }
 
         Form.SectionHeader {
-            Layout.topMargin: Components.Theme.spacingXLarge
             text: I18n.tr("apps.settings.pages.system.compositor.text.compatibility", "COMPATIBILITY")
+            Layout.bottomMargin: 12
         }
 
         Form.FormCard {

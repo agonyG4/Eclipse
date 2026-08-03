@@ -1,4 +1,5 @@
 #include "core/SettingsController.hpp"
+#include "core/AdminGroupDetector.hpp"
 #include "core/SettingsNavigationModel.hpp"
 
 #include <QSignalSpy>
@@ -20,6 +21,7 @@ private slots:
     void rejectsSpacerSelection();
     void filtersCompositor();
     void keepsOneSelectedRowForEverySelection();
+    void usesInjectedDetectorForIsSudo();
 };
 
 void SettingsControllerTest::startsWithSystemSelected()
@@ -201,6 +203,24 @@ void SettingsControllerTest::keepsOneSelectedRowForEverySelection()
         }
         QCOMPARE(selectedRows, 1);
     }
+}
+
+void SettingsControllerTest::usesInjectedDetectorForIsSudo()
+{
+    AdminGroupDetector::NativeApi api;
+    api.currentUser = [] {
+        return std::optional<AdminGroupUser>{AdminGroupUser{QByteArrayLiteral("test-user"), 1000}};
+    };
+    api.getGroupList = [](const QByteArray &, gid_t, gid_t *groups, int *) {
+        groups[0] = 1001;
+        return 1;
+    };
+    api.groupName = [](gid_t) { return std::optional<QString>{QStringLiteral("sudo")}; };
+
+    SettingsController controller{AdminGroupDetector(api)};
+
+    QVERIFY(controller.isSudo());
+    QVERIFY(controller.property("isSudo").toBool());
 }
 
 QTEST_MAIN(SettingsControllerTest)

@@ -30,7 +30,7 @@ The native application includes:
 - model-owned navigation with filtering and stable selection;
 - twelve navigation rows including the non-selectable spacer;
 - native theme configuration, translations, icon resolution, and
-  wheel/sudo administrative-group detection;
+  wheel/sudo administrative-group detection through native libc/NSS APIs;
 - one real page route, `Compositor`, immediately after `Services`;
 - reusable form controls and a complete registered QML module.
 
@@ -43,6 +43,11 @@ The application intentionally has no compositor integration, IPC, private
 protocol, service backend, shell command, Quickshell, LayerShellQt, Hyprland,
 or Typhon runtime dependency. Existing ThemeController configuration is
 separate from the Compositor preview state.
+
+Settings links `astrea-shared-core` and its QML plugin for compositor-independent
+icons, catalogue, and launcher utilities. Layer Shell code is isolated in
+`astrea-shared-layer-shell`, which is linked only by Dock, Spotlight, and
+AltTab. Administrative-group detection does not spawn subprocesses.
 
 See `docs/ARCHITECTURE.md` for ownership and routing, `docs/MIGRATION_NOTES.md`
 for source-preserving migration decisions, and `docs/TESTING.md` for

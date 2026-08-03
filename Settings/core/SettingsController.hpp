@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/AdminGroupDetector.hpp"
 #include "core/SettingsNavigationModel.hpp"
 
 #include <QObject>
@@ -18,6 +19,7 @@ class SettingsController final : public QObject {
 
 public:
     explicit SettingsController(QObject *parent = nullptr);
+    explicit SettingsController(AdminGroupDetector detector, QObject *parent = nullptr);
 
     SettingsNavigationModel *navigationModel();
     QString selectedSectionId() const;

@@ -34,8 +34,17 @@ check that exactly one root object was created.
 
 `SettingsController` owns navigation selection and filtering, display-only
 account metadata, AccountsService avatar resolution, icon URL resolution, and
-native membership detection for the `wheel` and `sudo` groups. Lookup failure
-is treated as no administrative membership.
+native libc/NSS membership detection for the `wheel` and `sudo` groups. Lookup
+failure is treated as no administrative membership. The detector enumerates
+the current user's primary and supplementary groups without subprocesses.
+
+## Shared Dependencies
+
+Settings is a normal Qt Wayland application. It links only
+`astrea-shared-core` and `astrea-shared-coreplugin`, which contain
+compositor-independent icons, desktop catalogue, launcher, and QML utilities.
+Layer Shell code is owned by `astrea-shared-layer-shell` and is linked by Dock,
+Spotlight, and AltTab only. Settings does not link or load LayerShellQt.
 
 `SettingsNavigationModel` owns the catalogue, stable IDs, row roles, filtering,
 and selected-row state. Its current catalogue order is:

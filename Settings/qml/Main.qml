@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Effects
 import QtQuick.Controls
+import QtQuick.Window
 
 ApplicationWindow {
     id: window
@@ -9,13 +10,12 @@ ApplicationWindow {
     title: I18n.tr("settings.title", "Astrea Settings")
     visible: true
     readonly property int defaultWidth: 1050
-    readonly property int defaultHeight: 650
     width: defaultWidth
-    height: defaultHeight
+    height: Math.min(760, Screen.desktopAvailableHeight - 32)
     minimumWidth: 800
-    minimumHeight: 500
+    minimumHeight: 650
     maximumWidth: 1400
-    maximumHeight: 650
+    maximumHeight: Screen.desktopAvailableHeight - 16
     font.family: Theme.fontFamily
     font.pixelSize: Theme.fontSizeNormal
     font.weight: Theme.fontWeightNormal

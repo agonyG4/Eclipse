@@ -77,6 +77,28 @@ foreach(forbidden_route IN ITEMS
     endif()
 endforeach()
 
+foreach(window_invariant IN ITEMS
+    "height: Math.min(760, Screen.desktopAvailableHeight - 32)"
+    "minimumHeight: 650"
+    "maximumHeight: Screen.desktopAvailableHeight - 16"
+)
+    string(FIND "${main_source}" "${window_invariant}" window_invariant_position)
+    if(window_invariant_position EQUAL -1)
+        message(FATAL_ERROR "Main.qml is missing window sizing invariant: ${window_invariant}")
+    endif()
+endforeach()
+
+file(READ "${SETTINGS_SOURCE_DIR}/qml/components/form/SettingRow.qml" setting_row_source)
+foreach(setting_row_invariant IN ITEMS
+    "spacing: Components.Theme.spacingMicro"
+    "implicitHeight: Math.max(sr.sublabel !== \"\" ? 72 : 60, rowLayout.implicitHeight + Components.Theme.spacingMedium * 2)"
+)
+    string(FIND "${setting_row_source}" "${setting_row_invariant}" setting_row_invariant_position)
+    if(setting_row_invariant_position EQUAL -1)
+        message(FATAL_ERROR "SettingRow.qml is missing shared geometry invariant: ${setting_row_invariant}")
+    endif()
+endforeach()
+
 set(production_source_files
     core/SettingsController.cpp
     core/SettingsController.hpp

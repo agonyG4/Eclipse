@@ -18,7 +18,7 @@ Item {
 
     default property alias control: slot.data
     implicitWidth: parent ? parent.width : 200
-    implicitHeight: Math.max(sr.sublabel !== "" ? 64 : 52, rowLayout.implicitHeight + Components.Theme.spacingMedium * 2)
+    implicitHeight: Math.max(sr.sublabel !== "" ? 72 : 60, rowLayout.implicitHeight + Components.Theme.spacingMedium * 2)
 
     // Interactive subtle hover background
     Rectangle {

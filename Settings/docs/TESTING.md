@@ -1,64 +1,60 @@
 # Settings Verification
 
-## Fresh Debug Build
+All verification uses fresh build directories. Do not use a checked-in or
+archived build directory as evidence.
 
-Use a fresh build directory and build the complete project:
+## Debug and Release
 
 ```bash
-cmake -S . -B /tmp/astrea-settings-cleanup-debug \
-  -DCMAKE_BUILD_TYPE=Debug \
-  -DBUILD_TESTING=ON
-cmake --build /tmp/astrea-settings-cleanup-debug --parallel
-ctest --test-dir /tmp/astrea-settings-cleanup-debug --output-on-failure
-ctest --test-dir /tmp/astrea-settings-cleanup-debug -N
+cmake -S . -B /tmp/eclipse-settings-structure-debug -G Ninja \
+  -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+cmake --build /tmp/eclipse-settings-structure-debug --parallel
+ctest --test-dir /tmp/eclipse-settings-structure-debug --output-on-failure
+ctest --test-dir /tmp/eclipse-settings-structure-debug -N
+
+cmake -S . -B /tmp/eclipse-settings-structure-release -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+cmake --build /tmp/eclipse-settings-structure-release --parallel
+ctest --test-dir /tmp/eclipse-settings-structure-release --output-on-failure
 ```
 
-The Settings tests are:
+The Settings tests cover controller behavior, navigation descriptors and
+selection, profile composition, Linux group enumeration and policy, theme
+compatibility, the full application QML route, representative registered QML
+components, Compositor source policy, and structural ownership invariants.
 
-- `settings-controller-test`;
-- `admin-group-detector-test`;
-- `settings-group-membership-test`;
-- `theme-controller-test`;
-- `settings-qml-smoke-test`;
-- `compositor-page-source-test`.
-
-The QML smoke test uses the offscreen platform, creates the native controllers,
-loads the `Astrea.Settings` module, checks one root object, selects Compositor,
-checks page creation and recreation, and fails on QML warnings.
-
-The administrative-group detector tests inject the libc/NSS boundary and cover
-immediate non-zero success, buffer resizing, wheel and sudo policy, unrelated
-and empty groups, lookup failure, bounded repeated resize failures, and the
-`SettingsController::isSudo` property.
+The repository-level `create-source-archive-test` runs Bash syntax checks and
+qualifies a Git-based archive in an isolated temporary repository.
 
 ## QML Registration and Lint
 
-The authoritative QML list is `SETTINGS_QML_FILES` in
-`Settings/CMakeLists.txt`. It contains 35 files. Every listed file must exist,
-be registered once, and pass `qmllint` with the generated build import path.
+The authoritative QML list is in `qml/CMakeLists.txt`. It contains 35 files and
+is registered once by `astrea-settings-ui`. The application and integration
+tests consume the same module and generated plugin.
 
-The lint command must pass the complete CMake list, including `qml/Main.qml`
-and `qml/pages/system/Compositor.qml`, rather than a hand-maintained subset.
+Build the module lint target in a fresh build:
 
-## Policy Scan
+```bash
+cmake --build /tmp/eclipse-settings-structure-debug --target astrea-settings-ui_qmllint
+```
+
+The final report must record the registered count, linted count, and warning and
+error counts. Registered and linted counts must match.
+
+## Source and Dependency Policy
 
 Production Settings source must have zero matches for Quickshell,
 `Quickshell.Io`, LayerShellQt, `hyprctl`, `QProcess`, QML `Process`,
-`system(`, `popen(`, Typhon-private protocol names, persistence, or IPC in
-`Compositor.qml`. Generated build directories and historical documentation are
-excluded from this scan.
+`system(`, `popen(`, `pageIndex`, Typhon-private protocol names, and process or
+IPC access in `Compositor.qml`.
 
-The freshly built Settings executable must also have no LayerShellQt entry in
-`readelf -d` or `ldd`. Dock, Spotlight, and AltTab are the Layer Shell
-consumers and must retain their LayerShellQt linkage.
+`astrea-settings-core` must expose only Qt Core in its link interface. The
+freshly built Settings executable must have no LayerShellQt or unexpected
+compositor dependency in `readelf -d` or `ldd`.
 
-## Manual Hyprland Smoke Test
+## Manual Visual Qualification
 
-Launch the freshly built native `astrea-settings` executable under the current
-Hyprland session. Do not launch Typhon.
-
-Verify that the approved shell is unchanged, Compositor remains immediately
-after Services, Performance/Appearance/More Settings remain normal selectable
-rows, no row expands or collapses, and the Compositor page loads. Toggle every
-switch, select each selector option, leave and return to confirm defaults are
-recreated, and close/reopen to confirm no preview value persists or applies.
+The agent does not inspect or control the desktop session, use desktop input or
+screenshot automation, or claim visual parity. The user performs the manual
+Hyprland qualification with the exact freshly built executable path supplied in
+the final report. No Typhon session is launched by this workflow.

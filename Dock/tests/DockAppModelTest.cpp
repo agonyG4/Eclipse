@@ -2,6 +2,7 @@
 #include <QTest>
 
 #include "core/DockAppModel.hpp"
+#include "platform/typhon/DockApplicationStateProjector.hpp"
 
 class DockAppModelTest final : public QObject {
     Q_OBJECT
@@ -15,6 +16,8 @@ private slots:
     void launchingAndErrorArePerItem();
     void pinInsertionAndRemovalUsesStructuralSignals();
     void stableKeyRetainsItemStateAfterReorder();
+    void runtimeStatePreservesLaunchState();
+    void runtimeStateDisappearsWhenWindowCloses();
 };
 
 static std::shared_ptr<DesktopEntrySnapshot> makeSnapshot(const QStringList &names)
@@ -144,6 +147,49 @@ void DockAppModelTest::stableKeyRetainsItemStateAfterReorder()
     const QModelIndex oneIndex = model.index(1, 0);
     QCOMPARE(oneIndex.data(DockAppModel::DesktopFileNameRole).toString(), QStringLiteral("one.desktop"));
     QVERIFY(oneIndex.data(DockAppModel::LaunchingRole).toBool());
+}
+
+void DockAppModelTest::runtimeStatePreservesLaunchState()
+{
+    DockAppModel model;
+    model.setCatalogSnapshot(makeSnapshot({QStringLiteral("one.desktop")}));
+    model.setPins({QStringLiteral("one.desktop")});
+    QVERIFY(model.setLaunching(QStringLiteral("one.desktop"), true));
+    QVERIFY(model.setLaunchError(QStringLiteral("one.desktop"), QStringLiteral("pending")));
+
+    Astrea::Typhon::DockApplicationRuntimeState state;
+    state.desktopFileName = QStringLiteral("one.desktop");
+    state.running = true;
+    state.active = true;
+    state.windowCount = 2;
+    model.applyRuntimeStates({{state.desktopFileName, state}});
+
+    const QModelIndex index = model.index(0, 0);
+    QVERIFY(index.data(DockAppModel::RunningRole).toBool());
+    QVERIFY(index.data(DockAppModel::ActiveRole).toBool());
+    QCOMPARE(index.data(DockAppModel::WindowCountRole).toInt(), 2);
+    QVERIFY(index.data(DockAppModel::LaunchingRole).toBool());
+    QCOMPARE(index.data(DockAppModel::LaunchErrorRole).toString(), QStringLiteral("pending"));
+}
+
+void DockAppModelTest::runtimeStateDisappearsWhenWindowCloses()
+{
+    DockAppModel model;
+    model.setPins({QStringLiteral("one.desktop"), QStringLiteral("two.desktop")});
+    Astrea::Typhon::DockApplicationRuntimeState state;
+    state.desktopFileName = QStringLiteral("one.desktop");
+    state.running = true;
+    state.active = true;
+    state.windowCount = 1;
+    model.applyRuntimeStates({{state.desktopFileName, state}});
+    model.applyRuntimeStates({});
+
+    for (int row = 0; row < model.rowCount(); ++row) {
+        const QModelIndex index = model.index(row, 0);
+        QVERIFY(!index.data(DockAppModel::RunningRole).toBool());
+        QVERIFY(!index.data(DockAppModel::ActiveRole).toBool());
+        QCOMPARE(index.data(DockAppModel::WindowCountRole).toInt(), 0);
+    }
 }
 
 QTEST_MAIN(DockAppModelTest)

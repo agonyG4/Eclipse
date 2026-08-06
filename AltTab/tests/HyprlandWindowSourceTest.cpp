@@ -183,7 +183,7 @@ void TestWindowInfoParsing::testStableKey() {
     WindowInfo w;
     w.windowId = WindowId{QStringLiteral("0x1234")};
     w.pid = 5678;
-    QCOMPARE(w.stableKey(), QStringLiteral("0x1234:5678"));
+    QCOMPARE(w.stableKey(), QStringLiteral("0x1234"));
 }
 
 void TestWindowInfoParsing::testWorkspaceIdInt() {

@@ -58,6 +58,8 @@ add_library(astrea-alttab-core STATIC
     core/AltTabController.cpp
     core/AltTabWindowModel.cpp
     platform/compositor/CompositorBackendFactory.cpp
+    platform/typhon/TyphonWindowSource.cpp
+    platform/typhon/TyphonWindowSource.hpp
     platform/wayland/LayerShellSurface.cpp
     platform/runtime/AltTabRuntimePaths.cpp
     services/AltTabConfigWatcher.cpp
@@ -69,6 +71,7 @@ target_link_libraries(astrea-alttab-core PUBLIC
     astrea-alttab-types
     astrea-alttab-identity
     astrea-alttab-hyprland
+    astrea-shared-typhon
     astrea-shared-layer-shell
 )
 astrea_enable_warnings(astrea-alttab-core)
@@ -117,6 +120,7 @@ if(BUILD_TESTING AND ASTREA_ALT_TAB_BUILD_TESTS)
         alttab-source-test
         alttab-socket-test
         alttab-model-test
+        alttab-factory-test
     )
 
     function(add_alttab_test TEST_NAME TEST_FILE)
@@ -137,8 +141,10 @@ if(BUILD_TESTING AND ASTREA_ALT_TAB_BUILD_TESTS)
     add_alttab_test(alttab-ipc-test tests/AltTabIpcTest.cpp)
     add_alttab_test(alttab-identity-test tests/AppIdentityResolverTest.cpp)
     add_alttab_test(alttab-source-test tests/HyprlandWindowSourceTest.cpp)
+    add_alttab_test(alttab-typhon-source-test tests/TyphonWindowSourceTest.cpp)
     add_alttab_test(alttab-socket-test tests/HyprlandSocketTest.cpp)
     add_alttab_test(alttab-model-test tests/AltTabWindowModelTest.cpp)
+    add_alttab_test(alttab-factory-test tests/CompositorBackendFactoryTest.cpp)
 
     # Sanitizer test environment with LSAN suppression for NVIDIA driver
     set(_lsan_supp "${CMAKE_CURRENT_SOURCE_DIR}/lsan.supp")

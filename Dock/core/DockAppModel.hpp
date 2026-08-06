@@ -2,6 +2,7 @@
 
 #include "core/DockAppInfo.hpp"
 #include "apps/DesktopEntryCatalog.hpp"
+#include "platform/typhon/DockApplicationStateProjector.hpp"
 
 #include <QAbstractListModel>
 #include <QVector>
@@ -43,6 +44,8 @@ public:
 
     bool setLaunching(const QString &desktopFileName, bool launching);
     bool setLaunchError(const QString &desktopFileName, const QString &error);
+    void applyRuntimeStates(
+        const QHash<QString, Astrea::Typhon::DockApplicationRuntimeState> &states);
 
 private:
     DockAppInfo makeItem(const QString &desktopFileName, const DockAppInfo *previous = nullptr) const;

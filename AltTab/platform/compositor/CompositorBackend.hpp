@@ -37,7 +37,9 @@ struct WindowSnapshot {
     WorkspaceId activeWorkspaceId;
     OutputId activeOutputId;
     QString focusedMonitorName;
-    int revision = 0;
+    quint64 revision = 0;
+    quint32 total = 0;
+    bool truncated = false;
     quint64 backendGeneration = 0;
 };
 
@@ -53,6 +55,9 @@ struct ActivationResult {
     bool success = false;
     QString error;
 };
+
+Q_DECLARE_METATYPE(WindowSnapshot)
+Q_DECLARE_METATYPE(ActivationResult)
 
 enum class BackendError {
     ConnectionFailed,

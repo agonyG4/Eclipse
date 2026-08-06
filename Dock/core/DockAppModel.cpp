@@ -146,6 +146,25 @@ bool DockAppModel::setLaunchError(const QString &desktopFileName, const QString 
     return true;
 }
 
+void DockAppModel::applyRuntimeStates(
+    const QHash<QString, Astrea::Typhon::DockApplicationRuntimeState> &states)
+{
+    for (int row = 0; row < m_items.size(); ++row) {
+        DockAppInfo next = m_items.at(row);
+        const auto it = states.constFind(next.desktopFileName);
+        if (it == states.constEnd()) {
+            next.running = false;
+            next.active = false;
+            next.windowCount = 0;
+        } else {
+            next.running = it->running;
+            next.active = it->active;
+            next.windowCount = it->windowCount;
+        }
+        updateItem(row, next);
+    }
+}
+
 DockAppInfo DockAppModel::makeItem(const QString &desktopFileName, const DockAppInfo *previous) const
 {
     DockAppInfo item;

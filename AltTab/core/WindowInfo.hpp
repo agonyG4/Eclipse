@@ -28,13 +28,14 @@ struct WindowInfo {
     QString iconPath;
     bool iconPending = false;
     bool showFallbackText = true;
+    quint64 backendGeneration = 0;
 
     // Backward compatible getters / helpers
     QString address() const { return windowId.value; }
     int workspaceIdInt() const { return workspaceId.value.toInt(); }
 
     QString stableKey() const {
-        return windowId.value + QLatin1Char(':') + QString::number(pid);
+        return windowId.value;
     }
 
     QString metaKey() const {

@@ -62,6 +62,9 @@ private slots:
     void disconnectClearsSnapshotAndIncrementsGeneration();
     void managerFailureDegradesAndClearsSnapshot();
     void stopStopsAdapterAndReconnectTimer();
+    void stress100InitialConnectEnumerateStopCycles();
+    void stress100DisconnectReconnectCycles();
+    void stress100ManagerFailureReconnectCycles();
 };
 
 void TyphonProtocolClientTest::registryAndInitialDoneReachReady()
@@ -154,6 +157,60 @@ void TyphonProtocolClientTest::stopStopsAdapterAndReconnectTimer()
     QCOMPARE(adapter->stops, 1);
     QCOMPARE(connection.state(), TyphonConnectionState::Stopped);
     QVERIFY(!connection.reconnectPending());
+}
+
+void TyphonProtocolClientTest::stress100InitialConnectEnumerateStopCycles()
+{
+    auto *adapter = new FakeTyphonAdapter;
+    TyphonToplevelConnection connection(adapter);
+    for (quint64 cycle = 1; cycle <= 100; ++cycle) {
+        connection.start();
+        adapter->advertiseManager();
+        complete(*adapter, cycle, QString::number(cycle), 1);
+        adapter->done(1, 1);
+        QCOMPARE(connection.state(), TyphonConnectionState::Ready);
+        QVERIFY(connection.hasSnapshot());
+        connection.stop();
+        QCOMPARE(connection.state(), TyphonConnectionState::Stopped);
+        QVERIFY(!connection.reconnectPending());
+    }
+    QCOMPARE(adapter->starts, 100);
+}
+
+void TyphonProtocolClientTest::stress100DisconnectReconnectCycles()
+{
+    auto *adapter = new FakeTyphonAdapter;
+    TyphonToplevelConnection connection(adapter);
+    for (int cycle = 0; cycle < 100; ++cycle) {
+        connection.start();
+        adapter->advertiseManager();
+        complete(*adapter, static_cast<quint64>(cycle + 1), QString::number(cycle + 1), 1);
+        adapter->done(1, 1);
+        adapter->disconnectDisplay();
+        QCOMPARE(connection.state(), TyphonConnectionState::Disconnected);
+        QVERIFY(!connection.hasSnapshot());
+        connection.stop();
+    }
+    QVERIFY(adapter->starts >= 100);
+    QVERIFY(adapter->stops >= 100);
+}
+
+void TyphonProtocolClientTest::stress100ManagerFailureReconnectCycles()
+{
+    auto *adapter = new FakeTyphonAdapter;
+    TyphonToplevelConnection connection(adapter);
+    for (int cycle = 0; cycle < 100; ++cycle) {
+        connection.start();
+        adapter->advertiseManager();
+        complete(*adapter, static_cast<quint64>(cycle + 1), QString::number(cycle + 1), 1);
+        adapter->done(1, 1);
+        adapter->fail(QStringLiteral("stress"));
+        QCOMPARE(connection.state(), TyphonConnectionState::Degraded);
+        QVERIFY(!connection.hasSnapshot());
+        connection.stop();
+    }
+    QVERIFY(adapter->starts >= 100);
+    QVERIFY(adapter->stops >= 100);
 }
 
 QTEST_MAIN(TyphonProtocolClientTest)

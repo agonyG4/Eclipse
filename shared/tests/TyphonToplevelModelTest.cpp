@@ -57,6 +57,9 @@ private slots:
     void incompleteHandleAtManagerDoneIsRejected();
     void staleGenerationIsIgnored();
     void managerFailureClearsPendingState();
+    void stress100Atomic257WindowRevisionCycles();
+    void stress100MapUpdateCloseRemapCycles();
+    void stress100StaleGenerationCallbackCycles();
 };
 
 void TyphonToplevelModelTest::zeroWindowInitialRevisionCommits()
@@ -260,6 +263,53 @@ void TyphonToplevelModelTest::managerFailureClearsPendingState()
     QVERIFY(model.isDegraded());
     QVERIFY(!model.hasCommittedSnapshot());
     QVERIFY(!model.hasPendingTransaction());
+}
+
+void TyphonToplevelModelTest::stress100Atomic257WindowRevisionCycles()
+{
+    TyphonToplevelModel model;
+    for (quint64 cycle = 1; cycle <= 100; ++cycle) {
+        model.startGeneration(cycle);
+        for (quint64 token = 1; token <= 257; ++token)
+            addComplete(model, cycle, token, QString::number(token), 1, token);
+        commit(model, cycle, 1, 257);
+        QCOMPARE(model.snapshot().windows.size(), 257);
+        QVERIFY(!model.hasPendingTransaction());
+    }
+}
+
+void TyphonToplevelModelTest::stress100MapUpdateCloseRemapCycles()
+{
+    TyphonToplevelModel model;
+    for (quint64 cycle = 1; cycle <= 100; ++cycle) {
+        model.startGeneration(cycle);
+        const QString id = QString::number(cycle);
+        addComplete(model, cycle, 1, id, 1);
+        commit(model, cycle, 1, 1);
+        QVERIFY(model.titleChanged(cycle, 1, QStringLiteral("updated"))
+                == TyphonToplevelModel::EventResult::Accepted);
+        QVERIFY(model.handleDone(cycle, 1, 2) == TyphonToplevelModel::EventResult::Accepted);
+        commit(model, cycle, 2, 1);
+        QVERIFY(model.handleClosed(cycle, 1) == TyphonToplevelModel::EventResult::Accepted);
+        commit(model, cycle, 3, 0);
+        addComplete(model, cycle, 2, id, 4);
+        commit(model, cycle, 4, 1);
+        QCOMPARE(model.snapshot().windows.first().id, id);
+        QVERIFY(!model.hasPendingTransaction());
+    }
+}
+
+void TyphonToplevelModelTest::stress100StaleGenerationCallbackCycles()
+{
+    TyphonToplevelModel model;
+    for (quint64 cycle = 1; cycle <= 100; ++cycle) {
+        model.startGeneration(cycle + 1);
+        for (int callback = 0; callback < 10; ++callback) {
+            QCOMPARE(model.handleCreated(cycle, static_cast<quint64>(callback + 1)),
+                     TyphonToplevelModel::EventResult::IgnoredStaleGeneration);
+        }
+        QVERIFY(!model.isDegraded());
+    }
 }
 
 QTEST_MAIN(TyphonToplevelModelTest)

@@ -4,6 +4,9 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTimer>
+#include <optional>
+
+#include <utility>
 
 #include "core/AltTabController.hpp"
 #include "core/WindowInfo.hpp"
@@ -21,6 +24,93 @@ static WindowInfo makeWindow(const QString &id, int focusHistory, int wsId = 1) 
     w.focusHistoryId = focusHistory;
     return w;
 }
+
+class AsynchronousStartupBackend final : public CompositorBackend {
+    Q_OBJECT
+
+public:
+    explicit AsynchronousStartupBackend(const QVector<WindowInfo> &windows,
+                                        QObject *parent = nullptr)
+        : CompositorBackend(parent), m_windows(windows)
+    {
+    }
+
+    void start() override
+    {
+        ++startCount;
+        setState(BackendState::ConnectingEvents);
+        setState(BackendState::LoadingInitialSnapshot);
+        setState(BackendState::Ready);
+    }
+
+    void stop() override
+    {
+        ++stopCount;
+        setState(BackendState::Stopped);
+    }
+
+    BackendDescriptor descriptor() const override
+    {
+        return {QStringLiteral("async-test"), 1};
+    }
+
+    BackendState state() const override { return m_state; }
+
+    QVector<BackendCapability> capabilities() const override
+    {
+        return {BackendCapability::WindowList, BackendCapability::EventStream};
+    }
+
+    std::optional<WindowSnapshot> cachedSnapshot() const override
+    {
+        return std::nullopt;
+    }
+
+    void requestSnapshot(RequestToken token) override
+    {
+        requestedSnapshotTokens.append(token);
+        m_pendingTokens.append(token);
+    }
+
+    void activateWindow(ActivationRequest request) override
+    {
+        emit activationFinished(request.token, ActivationResult{true, {}});
+    }
+
+    void emitReadyAgain()
+    {
+        emit stateChanged(BackendState::Ready);
+    }
+
+    void deliverSnapshot()
+    {
+        WindowSnapshot snapshot;
+        snapshot.windows = m_windows;
+        snapshot.revision = 1;
+        emit snapshotChanged(snapshot);
+        const QVector<RequestToken> tokens = m_pendingTokens;
+        m_pendingTokens.clear();
+        for (const RequestToken token : tokens)
+            emit snapshotReady(token, snapshot);
+    }
+
+    int startCount = 0;
+    int stopCount = 0;
+    QVector<RequestToken> requestedSnapshotTokens;
+
+private:
+    void setState(BackendState state)
+    {
+        if (m_state == state)
+            return;
+        m_state = state;
+        emit stateChanged(m_state);
+    }
+
+    QVector<WindowInfo> m_windows;
+    QVector<RequestToken> m_pendingTokens;
+    BackendState m_state = BackendState::Stopped;
+};
 
 class TestAltTabController : public QObject {
     Q_OBJECT
@@ -55,6 +145,11 @@ private slots:
     void testRealStaleSnapshot();
     void testDuplicateActivationCount();
     void testModelTester();
+    void testAsynchronousReadyRequestsSnapshot();
+    void testTyphonWorkspaceEligibilityRules();
+    void testMinimizedWindowRemainsVisible();
+    void stress100ColdAsynchronousOpens();
+    void stress100EmptyWorkspaceSnapshots();
 
 private:
     AppIdentityResolver *m_resolver = nullptr;
@@ -509,6 +604,108 @@ void TestAltTabController::testModelTester()
     QVERIFY(controller.windowModel()->roleNames().contains(AltTabWindowModel::OutputRole));
 
     delete fake;
+}
+
+void TestAltTabController::testAsynchronousReadyRequestsSnapshot()
+{
+    for (const bool useStep : {false, true}) {
+        AsynchronousStartupBackend backend({makeWindow(QStringLiteral("0x1"), 0)});
+        AltTabController controller(&backend, m_resolver);
+
+        if (useStep)
+            controller.step(1);
+        else
+            controller.show();
+
+        QCOMPARE(controller.state(), AltTabController::State::Opening);
+        QCOMPARE(backend.startCount, 1);
+        QCOMPARE(backend.requestedSnapshotTokens, QVector<RequestToken>{1});
+        QSignalSpy windowCountSpy(&controller, &AltTabController::windowCountChanged);
+
+        backend.emitReadyAgain();
+        QCOMPARE(backend.requestedSnapshotTokens, QVector<RequestToken>{1});
+
+        backend.deliverSnapshot();
+        QCOMPARE(controller.state(), AltTabController::State::Open);
+        QCOMPARE(controller.windowModel()->count(), 1);
+        QCOMPARE(windowCountSpy.count(), 1);
+        QCOMPARE(backend.startCount, 1);
+    }
+}
+
+void TestAltTabController::testTyphonWorkspaceEligibilityRules()
+{
+    WindowInfo unknown = makeWindow(QStringLiteral("0x-unknown"), 0);
+    unknown.workspaceId = {};
+    WindowInfo zero = makeWindow(QStringLiteral("0x-zero"), 1, 0);
+    WindowInfo negative = makeWindow(QStringLiteral("0x-negative"), 2, -1);
+    WindowInfo malformed = makeWindow(QStringLiteral("0x-malformed"), 3);
+    malformed.workspaceId = WorkspaceId{QStringLiteral("not-a-workspace")};
+
+    FakeWindowSource backend({unknown, zero, negative, malformed});
+    AltTabController controller(&backend, m_resolver);
+
+    controller.show();
+
+    QCOMPARE(controller.state(), AltTabController::State::Open);
+    QCOMPARE(controller.windowModel()->count(), 1);
+    QCOMPARE(controller.windowModel()->at(0).windowId.value, QStringLiteral("0x-unknown"));
+    QCOMPARE(controller.windowModel()->at(0).workspaceId.value, QString());
+}
+
+void TestAltTabController::testMinimizedWindowRemainsVisible()
+{
+    WindowInfo minimized = makeWindow(QStringLiteral("0x-minimized"), 1);
+    minimized.isMinimized = true;
+    minimized.isHidden = false;
+
+    FakeWindowSource backend({minimized});
+    AltTabController controller(&backend, m_resolver);
+
+    controller.show();
+
+    QCOMPARE(controller.state(), AltTabController::State::Open);
+    QCOMPARE(controller.windowModel()->count(), 1);
+    const WindowInfo visible = controller.windowModel()->at(0);
+    QVERIFY(visible.isMinimized);
+    QVERIFY(!visible.isHidden);
+    QCOMPARE(controller.windowModel()->data(controller.windowModel()->index(0),
+                                            AltTabWindowModel::MinimizedRole).toBool(), true);
+    QCOMPARE(controller.windowModel()->data(controller.windowModel()->index(0),
+                                            AltTabWindowModel::HiddenRole).toBool(), false);
+}
+
+void TestAltTabController::stress100ColdAsynchronousOpens()
+{
+    for (int cycle = 0; cycle < 100; ++cycle) {
+        AsynchronousStartupBackend backend({makeWindow(QStringLiteral("0x%1").arg(cycle + 1), 0)});
+        AltTabController controller(&backend, m_resolver);
+
+        controller.step(1);
+        QCOMPARE(controller.state(), AltTabController::State::Opening);
+        QCOMPARE(backend.requestedSnapshotTokens.size(), 1);
+        backend.deliverSnapshot();
+        QCOMPARE(controller.state(), AltTabController::State::Open);
+        QCOMPARE(controller.windowModel()->count(), 1);
+        controller.cancel();
+        QCOMPARE(controller.state(), AltTabController::State::Hidden);
+    }
+}
+
+void TestAltTabController::stress100EmptyWorkspaceSnapshots()
+{
+    for (int cycle = 0; cycle < 100; ++cycle) {
+        WindowInfo unknown = makeWindow(QStringLiteral("0x%1").arg(cycle + 1), 0);
+        unknown.workspaceId = {};
+        FakeWindowSource backend({unknown});
+        AltTabController controller(&backend, m_resolver);
+
+        controller.show();
+        QCOMPARE(controller.state(), AltTabController::State::Open);
+        QCOMPARE(controller.windowModel()->count(), 1);
+        QCOMPARE(controller.windowModel()->at(0).workspaceId.value, QString());
+        controller.cancel();
+    }
 }
 
 QTEST_MAIN(TestAltTabController)

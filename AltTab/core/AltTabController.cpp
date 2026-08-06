@@ -35,6 +35,11 @@ AltTabController::AltTabController(CompositorBackend *backend, AppIdentityResolv
 
 void AltTabController::onBackendStateChanged(BackendState state)
 {
+    if (state == BackendState::Ready && m_state == State::Opening) {
+        requestOpeningSnapshot();
+        return;
+    }
+
     if ((state == BackendState::Disconnected || state == BackendState::Unsupported
          || state == BackendState::Stopped) && m_state != State::Hidden) {
         cancel();
@@ -64,15 +69,11 @@ void AltTabController::step(int direction) {
         m_snapshotTimeout.start(3000, this);
         if (m_backend) {
             if (m_backend->state() == BackendState::Ready) {
-                auto cached = m_backend->cachedSnapshot();
-                if (cached) {
-                    onSnapshotReady(m_openingGeneration, *cached);
-                }
-                m_backend->requestSnapshot(m_openingGeneration);
+                requestOpeningSnapshot();
             } else {
                 m_backend->start();
-                // Wait asynchronously for Ready (via event socket connected and initial snapshot)
-                // or timeout
+                if (m_backend->state() == BackendState::Ready)
+                    requestOpeningSnapshot();
             }
         }
         break;
@@ -152,13 +153,11 @@ void AltTabController::show() {
     m_snapshotTimeout.start(3000, this);
     if (m_backend) {
         if (m_backend->state() == BackendState::Ready) {
-            auto cached = m_backend->cachedSnapshot();
-            if (cached) {
-                onSnapshotReady(m_openingGeneration, *cached);
-            }
-            m_backend->requestSnapshot(m_openingGeneration);
+            requestOpeningSnapshot();
         } else {
             m_backend->start();
+            if (m_backend->state() == BackendState::Ready)
+                requestOpeningSnapshot();
         }
     }
 }
@@ -195,6 +194,17 @@ void AltTabController::setState(State s) {
     }
 }
 
+void AltTabController::requestOpeningSnapshot()
+{
+    if (!m_backend || m_state != State::Opening
+        || m_lastOpeningSnapshotRequestGeneration == m_openingGeneration) {
+        return;
+    }
+
+    m_lastOpeningSnapshotRequestGeneration = m_openingGeneration;
+    m_backend->requestSnapshot(m_openingGeneration);
+}
+
 void AltTabController::onSnapshotReady(RequestToken token, const WindowSnapshot &snapshot) {
     if (m_state != State::Opening && m_state != State::Open)
         return;
@@ -208,9 +218,13 @@ void AltTabController::onSnapshotReady(RequestToken token, const WindowSnapshot 
             continue;
         if (w.skipSwitcher || w.isSpecial || w.isHidden)
             continue;
-        const int wsInt = w.workspaceIdInt();
-        if (wsInt <= 0)
-            continue;
+        const QString workspaceValue = w.workspaceId.value.trimmed();
+        if (!workspaceValue.isEmpty()) {
+            bool validWorkspace = false;
+            const int workspaceId = workspaceValue.toInt(&validWorkspace);
+            if (!validWorkspace || workspaceId <= 0)
+                continue;
+        }
         filtered.append(w);
     }
 
@@ -337,7 +351,7 @@ void AltTabController::resolveIconsForWindows(const QVector<WindowInfo> &windows
         input.initialClass = w.initialClass;
         input.title = w.title;
         input.initialTitle = w.initialTitle;
-        input.workspaceId = w.workspaceIdInt();
+        input.workspaceId = w.workspaceId.value.trimmed().isEmpty() ? -1 : w.workspaceIdInt();
         input.openGeneration = w.backendGeneration != 0 ? w.backendGeneration : m_openingGeneration;
         input.metadataFingerprint = w.backendGeneration != 0
             ? (w.appId + QLatin1Char('|') + w.title) : w.metaKey();

@@ -17,7 +17,7 @@ public:
     void initialize(const QString &customHome = QString(), const QString &customProc = QStringLiteral("/proc"));
 
     AppIdentity resolveSync(const WindowIdentityInput &input);
-    void resolveAsync(const WindowIdentityInput &input, int generation);
+    void resolveAsync(const WindowIdentityInput &input, quint64 generation);
 
     // Exposed for deep resolution runner
     AppIdentity resolveDeep(const WindowIdentityInput &input);
@@ -30,7 +30,7 @@ signals:
     void identityResolved(const QString &address, const AppIdentity &identity);
 
 private slots:
-    void onDeepResolved(const WindowIdentityInput &input, const AppIdentity &identity, int generation);
+    void onDeepResolved(const WindowIdentityInput &input, const AppIdentity &identity, quint64 generation);
 
 private:
     AppIdentity resolveFast(const WindowIdentityInput &input);

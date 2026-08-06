@@ -10,7 +10,7 @@
 
 class ResolveTask : public QRunnable {
 public:
-    ResolveTask(AppIdentityResolver *resolver, const WindowIdentityInput &input, int generation)
+    ResolveTask(AppIdentityResolver *resolver, const WindowIdentityInput &input, quint64 generation)
         : m_resolver(resolver), m_input(input), m_generation(generation) {}
 
     void run() override {
@@ -19,13 +19,13 @@ public:
                                   Qt::QueuedConnection,
                                   Q_ARG(WindowIdentityInput, m_input),
                                   Q_ARG(AppIdentity, identity),
-                                  Q_ARG(int, m_generation));
+                                   Q_ARG(quint64, m_generation));
     }
 
 private:
     AppIdentityResolver *m_resolver;
     WindowIdentityInput m_input;
-    int m_generation;
+    quint64 m_generation;
 };
 
 AppIdentityResolver::AppIdentityResolver(QObject *parent)
@@ -76,7 +76,7 @@ AppIdentity AppIdentityResolver::resolveSync(const WindowIdentityInput &input) {
     return identity;
 }
 
-void AppIdentityResolver::resolveAsync(const WindowIdentityInput &input, int generation) {
+void AppIdentityResolver::resolveAsync(const WindowIdentityInput &input, quint64 generation) {
     AppIdentity identity = resolveSync(input);
     if (identity.iconPending) {
         // Run deep resolution in worker pool
@@ -253,8 +253,8 @@ AppIdentity AppIdentityResolver::resolveDeep(const WindowIdentityInput &input) {
     }
 }
 
-void AppIdentityResolver::onDeepResolved(const WindowIdentityInput &input, const AppIdentity &identity, int generation) {
-    if (static_cast<quint64>(generation) != input.openGeneration)
+void AppIdentityResolver::onDeepResolved(const WindowIdentityInput &input, const AppIdentity &identity, quint64 generation) {
+    if (generation != input.openGeneration)
         return;
     if (identity.windowId != input.address || identity.pid != input.pid)
         return;

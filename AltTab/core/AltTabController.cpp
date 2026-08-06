@@ -345,7 +345,7 @@ void AltTabController::resolveIconsForWindows(const QVector<WindowInfo> &windows
         input.desktopIndexRevision = m_identityResolver->desktopIndexRevision();
         input.steamIndexRevision = m_identityResolver->steamIndexRevision();
 
-        m_identityResolver->resolveAsync(input, static_cast<int>(input.openGeneration));
+        m_identityResolver->resolveAsync(input, input.openGeneration);
     }
 }
 

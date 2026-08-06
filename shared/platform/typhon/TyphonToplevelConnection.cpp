@@ -4,26 +4,10 @@
 
 using namespace Astrea::Typhon;
 
-namespace {
-
-class UnavailableTyphonProtocolAdapter final : public TyphonProtocolAdapter {
-public:
-    explicit UnavailableTyphonProtocolAdapter(QObject *parent = nullptr)
-        : TyphonProtocolAdapter(parent)
-    {
-    }
-
-    void start() override { emit registryDiscovered(false); }
-    void stop() override {}
-    bool isAvailable() const override { return false; }
-};
-
-} // namespace
-
 TyphonToplevelConnection::TyphonToplevelConnection(TyphonProtocolAdapter *adapter, QObject *parent)
     : QObject(parent), m_model(this)
 {
-    m_adapter = adapter ? adapter : new UnavailableTyphonProtocolAdapter(this);
+    m_adapter = adapter ? adapter : createDefaultTyphonProtocolAdapter(this);
     if (!m_adapter->parent())
         m_adapter->setParent(this);
     m_reconnectTimer.setSingleShot(true);

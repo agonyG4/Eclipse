@@ -116,14 +116,46 @@ endif()
 
 target_link_libraries(astrea-shared-typhon PUBLIC Qt6::Core)
 if(ASTREA_TYPHON_WAYLAND_AVAILABLE)
+    set(ASTREA_TYPHON_PROTOCOL_XML
+        "${CMAKE_CURRENT_SOURCE_DIR}/platform/typhon/protocols/astrea-toplevel-management-v1.xml")
+    set(ASTREA_TYPHON_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/typhon")
+    set(ASTREA_TYPHON_GENERATED_HEADER
+        "${ASTREA_TYPHON_GENERATED_DIR}/astrea-toplevel-management-v1-client-protocol.h")
+    set(ASTREA_TYPHON_GENERATED_SOURCE
+        "${ASTREA_TYPHON_GENERATED_DIR}/astrea-toplevel-management-v1-client-protocol.c")
+    set(ASTREA_TYPHON_SERVER_GENERATED_HEADER
+        "${ASTREA_TYPHON_GENERATED_DIR}/astrea-toplevel-management-v1-server-protocol.h")
+    set(ASTREA_TYPHON_SERVER_GENERATED_SOURCE
+        "${ASTREA_TYPHON_GENERATED_DIR}/astrea-toplevel-management-v1-server-protocol.c")
+    add_custom_command(
+        OUTPUT "${ASTREA_TYPHON_GENERATED_HEADER}" "${ASTREA_TYPHON_GENERATED_SOURCE}"
+               "${ASTREA_TYPHON_SERVER_GENERATED_HEADER}" "${ASTREA_TYPHON_SERVER_GENERATED_SOURCE}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${ASTREA_TYPHON_GENERATED_DIR}"
+        COMMAND "${ASTREA_WAYLAND_SCANNER}" client-header
+                "${ASTREA_TYPHON_PROTOCOL_XML}" "${ASTREA_TYPHON_GENERATED_HEADER}"
+        COMMAND "${ASTREA_WAYLAND_SCANNER}" private-code
+                "${ASTREA_TYPHON_PROTOCOL_XML}" "${ASTREA_TYPHON_GENERATED_SOURCE}"
+        COMMAND "${ASTREA_WAYLAND_SCANNER}" server-header
+                "${ASTREA_TYPHON_PROTOCOL_XML}" "${ASTREA_TYPHON_SERVER_GENERATED_HEADER}"
+        COMMAND "${ASTREA_WAYLAND_SCANNER}" private-code
+                "${ASTREA_TYPHON_PROTOCOL_XML}" "${ASTREA_TYPHON_SERVER_GENERATED_SOURCE}"
+        DEPENDS "${ASTREA_TYPHON_PROTOCOL_XML}"
+        VERBATIM
+    )
+    set_source_files_properties("${ASTREA_TYPHON_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
+    set_source_files_properties("${ASTREA_TYPHON_SERVER_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
+    target_sources(astrea-shared-typhon PRIVATE
+        "${ASTREA_TYPHON_GENERATED_HEADER}"
+        "${ASTREA_TYPHON_GENERATED_SOURCE}"
+    )
+    target_include_directories(astrea-shared-typhon PRIVATE "${ASTREA_TYPHON_GENERATED_DIR}")
     target_link_libraries(astrea-shared-typhon PRIVATE PkgConfig::ASTREA_WAYLAND_CLIENT)
     target_compile_definitions(astrea-shared-typhon PUBLIC ASTREA_HAVE_TYPHON_WAYLAND=1)
+    target_compile_definitions(astrea-shared-typhon PUBLIC ASTREA_HAVE_TYPHON_PROTOCOL=1)
 else()
     target_compile_definitions(astrea-shared-typhon PUBLIC ASTREA_HAVE_TYPHON_WAYLAND=0)
+    target_compile_definitions(astrea-shared-typhon PUBLIC ASTREA_HAVE_TYPHON_PROTOCOL=0)
 endif()
-# The generated protocol adapter remains disabled until the finalized Typhon XML
-# is copied from its clean M5 commit.
-target_compile_definitions(astrea-shared-typhon PUBLIC ASTREA_HAVE_TYPHON_PROTOCOL=0)
 
 astrea_shared_enable_sanitizers(astrea-shared-typhon)
 
@@ -154,8 +186,39 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     add_typhon_shared_test(dock-application-state-projector-test tests/DockApplicationStateProjectorTest.cpp)
     add_typhon_shared_test(typhon-protocol-client-test tests/TyphonProtocolClientTest.cpp)
 
+    if(ASTREA_TYPHON_WAYLAND_AVAILABLE AND ASTREA_WAYLAND_SERVER_FOUND)
+        add_executable(typhon-protocol-integration-test
+            tests/TyphonProtocolIntegrationTest.cpp
+            "${ASTREA_TYPHON_SERVER_GENERATED_SOURCE}"
+        )
+        target_include_directories(typhon-protocol-integration-test PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+            "${ASTREA_TYPHON_GENERATED_DIR}"
+        )
+        target_link_libraries(typhon-protocol-integration-test PRIVATE
+            astrea-shared-typhon
+            Qt6::Test
+            PkgConfig::ASTREA_WAYLAND_SERVER
+        )
+        astrea_shared_enable_sanitizers(typhon-protocol-integration-test)
+        add_test(NAME typhon-protocol-integration-test COMMAND typhon-protocol-integration-test)
+    else()
+        add_test(NAME typhon-protocol-integration-test
+            COMMAND ${CMAKE_COMMAND} -E echo
+                    "SKIPPED: Wayland client/server development files are unavailable")
+        set_tests_properties(typhon-protocol-integration-test PROPERTIES
+            SKIP_REGULAR_EXPRESSION "SKIPPED")
+    endif()
+
     if(ASTREA_ENABLE_ASAN)
-        set_tests_properties(desktop-entry-catalog-test PROPERTIES
+        set_tests_properties(
+            desktop-entry-catalog-test
+            typhon-toplevel-model-test
+            typhon-app-matcher-test
+            dock-application-state-projector-test
+            typhon-protocol-client-test
+            typhon-protocol-integration-test
+            PROPERTIES
             ENVIRONMENT
                 "LSAN_OPTIONS=suppressions=${CMAKE_SOURCE_DIR}/AltTab/lsan.supp:print_suppressions=0;ASAN_OPTIONS=detect_leaks=1:halt_on_error=1;UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1"
         )

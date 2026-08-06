@@ -2,9 +2,9 @@
 
 Eclipse M6 defines a shared, read-only client boundary for Astrea Toplevel
 Management v1. The client consumes the private `astrea_toplevel_manager_v1`
-and `astrea_toplevel_v1` version-1 contract once the finalized Typhon XML is
-available. The current foundation deliberately does not copy or generate from
-an uncommitted Typhon worktree.
+and `astrea_toplevel_v1` version-1 contract. Eclipse copies the XML byte-for-byte
+from Typhon commit `5fce17d25540ac6fe188da70f7f6644d4f48e5e0`; its SHA-256 is
+`cbf8aea241c739c863a249c884d6ab3758b56799f9d00163bcf26f4abce2a9f9`.
 
 ## Ownership
 
@@ -14,9 +14,10 @@ snapshots. They never own generated Wayland objects and never route events
 through `astreactl`.
 
 All protocol work belongs on the Qt main thread. The adapter boundary is typed
-and contains no generated protocol pointer in its public API. The finalized
-adapter will own the dedicated Wayland display, registry, manager, handles and
-Qt notifier integration.
+and contains no generated protocol pointer in its public API. The generated
+adapter owns the dedicated Wayland display, registry, manager, handles and Qt
+notifier integration. Generated client C bindings are produced in the build
+tree by `wayland-scanner` and are private to `astrea-shared-typhon`.
 
 ## Revision Boundary
 
@@ -55,6 +56,8 @@ separate protocol contract is finalized.
 `ASTREA_ENABLE_TYPHON_BACKEND` defaults to `ON` when `wayland-client` and
 `wayland-scanner` development files are available, and otherwise defaults to
 `OFF`. The protocol-independent model and tests remain buildable either way.
-Generated bindings are build-tree artifacts and are not committed.
+Generated bindings are build-tree artifacts and are not committed. The fake
+Wayland integration fixture is additionally built when `wayland-server` is
+available and is explicitly skipped otherwise.
 
 No real Typhon session qualification has been performed by this milestone.

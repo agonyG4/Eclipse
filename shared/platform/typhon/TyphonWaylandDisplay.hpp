@@ -2,21 +2,39 @@
 
 #include <QObject>
 #include <QString>
+#include <memory>
 
-class TyphonWaylandDisplay : public QObject {
+struct wl_display;
+class TyphonProtocolAdapter;
+
+class TyphonWaylandDisplay final : public QObject {
     Q_OBJECT
 
 public:
-    explicit TyphonWaylandDisplay(QObject *parent = nullptr) : QObject(parent) {}
-    ~TyphonWaylandDisplay() override = default;
+    explicit TyphonWaylandDisplay(QObject *parent = nullptr);
+    ~TyphonWaylandDisplay() override;
 
-    virtual bool connectToDisplay(const QString &displayName = {}) = 0;
-    virtual void disconnectFromDisplay() = 0;
-    virtual int fileDescriptor() const = 0;
-    virtual bool dispatchPending() = 0;
-    virtual bool flush() = 0;
+    bool connectToDisplay(const QString &displayName = {});
+    void disconnectFromDisplay();
+    int fileDescriptor() const;
+    bool dispatchPending();
+    bool flush();
+    bool isConnected() const;
+    wl_display *nativeDisplay() const;
 
+signals:
+    void connected();
     void readable();
     void disconnected();
     void protocolError(QString diagnostic);
+
+private:
+    struct Private;
+    void armRead();
+    void onReadable();
+    void onWritable();
+    void fail(const QString &diagnostic);
+
+    std::unique_ptr<Private> m_private;
+    friend class TyphonProtocolAdapter;
 };

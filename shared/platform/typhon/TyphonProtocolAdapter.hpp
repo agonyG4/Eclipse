@@ -32,3 +32,5 @@ signals:
     void displayDisconnected();
     void protocolError(QString diagnostic);
 };
+
+TyphonProtocolAdapter *createDefaultTyphonProtocolAdapter(QObject *parent = nullptr);

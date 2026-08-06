@@ -17,6 +17,7 @@ endif()
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
     pkg_check_modules(ASTREA_WAYLAND_CLIENT QUIET IMPORTED_TARGET wayland-client)
+    pkg_check_modules(ASTREA_WAYLAND_SERVER QUIET IMPORTED_TARGET wayland-server)
 endif()
 find_program(ASTREA_WAYLAND_SCANNER wayland-scanner)
 

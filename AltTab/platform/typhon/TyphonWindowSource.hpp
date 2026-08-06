@@ -24,7 +24,6 @@ public:
     void requestSnapshot(RequestToken token) override;
     void activateWindow(ActivationRequest request) override;
 
-    static bool protocolAvailableOnCurrentDisplay();
     WindowSnapshot mapSnapshotForTest(const Astrea::Typhon::Snapshot &snapshot) const;
 
 private:

@@ -76,15 +76,6 @@ void TyphonWindowSource::activateWindow(ActivationRequest request)
                             ActivationResult{false, QStringLiteral("Typhon window activation is unsupported")});
 }
 
-bool TyphonWindowSource::protocolAvailableOnCurrentDisplay()
-{
-#if ASTREA_HAVE_TYPHON_PROTOCOL
-    return true;
-#else
-    return false;
-#endif
-}
-
 void TyphonWindowSource::onConnectionStateChanged(TyphonConnectionState state)
 {
     if (!m_started)

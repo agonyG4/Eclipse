@@ -4,9 +4,25 @@
 #include <QSet>
 
 #include <algorithm>
-#include <limits>
 
 using namespace Astrea::Typhon;
+
+namespace {
+
+bool validIdentifier(const QString &id)
+{
+    if (id.isEmpty())
+        return false;
+    for (const QChar character : id) {
+        if (character < QLatin1Char('0') || character > QLatin1Char('9'))
+            return false;
+    }
+    bool ok = false;
+    const quint64 numericId = id.toULongLong(&ok, 10);
+    return ok && numericId != 0;
+}
+
+} // namespace
 
 TyphonToplevelModel::TyphonToplevelModel(QObject *parent)
     : QObject(parent)
@@ -100,8 +116,8 @@ TyphonToplevelModel::EventResult TyphonToplevelModel::identifierChanged(
     PendingHandleState *pending = pendingForUpdate(token);
     if (!pending || pending->closed || pending->doneRevision.has_value())
         return reject(QStringLiteral("identifier event after handle terminal state"));
-    if (id.isEmpty())
-        return reject(QStringLiteral("empty toplevel identifier"));
+    if (!validIdentifier(id))
+        return reject(QStringLiteral("invalid toplevel identifier"));
     if (pending->id.has_value() && pending->id.value() != id)
         return reject(QStringLiteral("toplevel identifier changed after assignment"));
     pending->id = id;
@@ -226,15 +242,6 @@ TyphonToplevelModel::EventResult TyphonToplevelModel::handleClosed(quint64 gener
     return EventResult::Accepted;
 }
 
-bool TyphonToplevelModel::revisionIsOlder(Revision revision) const
-{
-    if (!m_hasSnapshot)
-        return false;
-    if (revision == m_lastRevision)
-        return false;
-    return revision < m_lastRevision;
-}
-
 void TyphonToplevelModel::sortWindows(QVector<Toplevel> &windows) const
 {
     std::sort(windows.begin(), windows.end(), [](const Toplevel &left, const Toplevel &right) {
@@ -266,8 +273,6 @@ TyphonToplevelModel::EventResult TyphonToplevelModel::managerDone(
         return generationResult;
     if (m_degraded)
         return reject(QStringLiteral("manager done after manager failure"));
-    if (revisionIsOlder(revision))
-        return reject(QStringLiteral("manager revision moved backwards"));
     if (m_hasSnapshot && revision == m_lastRevision)
         return reject(QStringLiteral("duplicate manager revision"));
 
@@ -297,7 +302,8 @@ TyphonToplevelModel::EventResult TyphonToplevelModel::managerDone(
         identifiers.insert(it.value().id);
         windows.append(it.value());
     }
-    if (!truncated && total != static_cast<quint32>(windows.size()))
+    const quint32 visibleHandles = static_cast<quint32>(windows.size());
+    if ((!truncated && total != visibleHandles) || (truncated && visibleHandles > total))
         return reject(QStringLiteral("manager total does not match live handles"));
 
     sortWindows(windows);

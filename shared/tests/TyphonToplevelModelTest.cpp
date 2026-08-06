@@ -1,6 +1,8 @@
 #include <QSignalSpy>
 #include <QTest>
 
+#include <limits>
+
 #include "platform/typhon/TyphonToplevelModel.hpp"
 
 using namespace Astrea::Typhon;
@@ -47,10 +49,16 @@ private slots:
     void fieldsMayArriveAcrossDispatchTurns();
     void managerDoneIsTheOnlyPublicationBoundary();
     void updatesCommitAtomically();
+    void duplicateHandleDoneWithinPendingRevisionIsRejected();
+    void metadataAfterHandleDoneBeforeManagerDoneIsRejected();
+    void revisionWrapFollowsEventOrder();
     void closeRemovesAtCommitAndRemapGetsNewToken();
     void focusAndNumericIdOrderingAreDeterministic();
     void totalAndTruncationArePreserved();
     void duplicateIdentifierIsRejected();
+    void zeroIdentifierIsRejected();
+    void truncatedSnapshotCannotExposeMoreThanTotal();
+    void unknownStateBitsArePreserved();
     void identifierMutationIsRejected();
     void eventsAfterClosedAreRejected();
     void mismatchedHandleRevisionIsRejected();
@@ -138,6 +146,56 @@ void TyphonToplevelModelTest::updatesCommitAtomically()
     QCOMPARE(model.lastCommittedRevision(), quint64(2));
 }
 
+void TyphonToplevelModelTest::duplicateHandleDoneWithinPendingRevisionIsRejected()
+{
+    TyphonToplevelModel model;
+    model.startGeneration(1);
+    addComplete(model, 1, 1, QStringLiteral("10"), 1);
+    commit(model, 1, 1, 1);
+
+    QVERIFY(model.titleChanged(1, 1, QStringLiteral("updated"))
+            == TyphonToplevelModel::EventResult::Accepted);
+    QVERIFY(model.handleDone(1, 1, 2) == TyphonToplevelModel::EventResult::Accepted);
+    QVERIFY(model.handleDone(1, 1, 2) == TyphonToplevelModel::EventResult::Rejected);
+    QVERIFY(model.isDegraded());
+}
+
+void TyphonToplevelModelTest::metadataAfterHandleDoneBeforeManagerDoneIsRejected()
+{
+    TyphonToplevelModel model;
+    model.startGeneration(1);
+    addComplete(model, 1, 1, QStringLiteral("10"), 1);
+    commit(model, 1, 1, 1);
+
+    QVERIFY(model.titleChanged(1, 1, QStringLiteral("updated"))
+            == TyphonToplevelModel::EventResult::Accepted);
+    QVERIFY(model.handleDone(1, 1, 2) == TyphonToplevelModel::EventResult::Accepted);
+    QVERIFY(model.titleChanged(1, 1, QStringLiteral("too late"))
+            == TyphonToplevelModel::EventResult::Rejected);
+    QVERIFY(model.isDegraded());
+}
+
+void TyphonToplevelModelTest::revisionWrapFollowsEventOrder()
+{
+    TyphonToplevelModel model;
+    model.startGeneration(1);
+    const Revision beforeWrap = std::numeric_limits<Revision>::max() - 1;
+    addComplete(model, 1, 1, QStringLiteral("10"), beforeWrap);
+    commit(model, 1, beforeWrap, 1);
+
+    const QVector<Revision> revisions = {
+        std::numeric_limits<Revision>::max(), 0, 1
+    };
+    for (const Revision revision : revisions) {
+        QVERIFY(model.titleChanged(1, 1, QStringLiteral("revision %1").arg(revision))
+                == TyphonToplevelModel::EventResult::Accepted);
+        QVERIFY(model.handleDone(1, 1, revision) == TyphonToplevelModel::EventResult::Accepted);
+        commit(model, 1, revision, 1);
+        QCOMPARE(model.lastCommittedRevision(), revision);
+    }
+    QVERIFY(!model.isDegraded());
+}
+
 void TyphonToplevelModelTest::closeRemovesAtCommitAndRemapGetsNewToken()
 {
     TyphonToplevelModel model;
@@ -193,6 +251,51 @@ void TyphonToplevelModelTest::duplicateIdentifierIsRejected()
     QVERIFY(model.identifierChanged(1, 2, QStringLiteral("1"))
             == TyphonToplevelModel::EventResult::Rejected);
     QVERIFY(model.isDegraded());
+}
+
+void TyphonToplevelModelTest::zeroIdentifierIsRejected()
+{
+    TyphonToplevelModel model;
+    model.startGeneration(1);
+    QVERIFY(model.handleCreated(1, 1) == TyphonToplevelModel::EventResult::Accepted);
+    QVERIFY(model.identifierChanged(1, 1, QStringLiteral("0"))
+            == TyphonToplevelModel::EventResult::Rejected);
+    QVERIFY(model.isDegraded());
+}
+
+void TyphonToplevelModelTest::truncatedSnapshotCannotExposeMoreThanTotal()
+{
+    TyphonToplevelModel model;
+    model.startGeneration(1);
+    addComplete(model, 1, 1, QStringLiteral("1"), 1);
+
+    QVERIFY(model.managerDone(1, 1, 0, true) == TyphonToplevelModel::EventResult::Rejected);
+    QVERIFY(model.isDegraded());
+}
+
+void TyphonToplevelModelTest::unknownStateBitsArePreserved()
+{
+    TyphonToplevelModel model;
+    model.startGeneration(1);
+    constexpr quint32 unknownBit = 1u << 31;
+    QVERIFY(model.handleCreated(1, 1) == TyphonToplevelModel::EventResult::Accepted);
+    QVERIFY(model.identifierChanged(1, 1, QStringLiteral("0007"))
+            == TyphonToplevelModel::EventResult::Accepted);
+    QVERIFY(model.appIdChanged(1, 1, QStringLiteral("org.example.App"))
+            == TyphonToplevelModel::EventResult::Accepted);
+    QVERIFY(model.titleChanged(1, 1, QStringLiteral("Example"))
+            == TyphonToplevelModel::EventResult::Accepted);
+    QVERIFY(model.pidChanged(1, 1, 7) == TyphonToplevelModel::EventResult::Accepted);
+    QVERIFY(model.kindChanged(1, 1, ToplevelKind::XdgToplevel)
+            == TyphonToplevelModel::EventResult::Accepted);
+    QVERIFY(model.stateChanged(1, 1, ToplevelStates(ToplevelStateFlag::Active), unknownBit)
+            == TyphonToplevelModel::EventResult::Accepted);
+    QVERIFY(model.focusSerialChanged(1, 1, 1) == TyphonToplevelModel::EventResult::Accepted);
+    QVERIFY(model.handleDone(1, 1, 1) == TyphonToplevelModel::EventResult::Accepted);
+    commit(model, 1, 1, 1);
+
+    QCOMPARE(model.snapshot().windows.first().id, QStringLiteral("0007"));
+    QCOMPARE(model.snapshot().windows.first().rawStateBits, unknownBit | 1u);
 }
 
 void TyphonToplevelModelTest::identifierMutationIsRejected()

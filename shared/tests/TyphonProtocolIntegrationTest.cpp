@@ -133,6 +133,14 @@ public:
         flushClients();
     }
 
+    void sendUnknownKind(ServerWindow *window)
+    {
+        if (!window || !window->resource)
+            return;
+        astrea_toplevel_v1_send_kind(window->resource, 99);
+        flushClients();
+    }
+
     void sendManagerFailure(quint32 reason)
     {
         if (!m_manager)
@@ -145,6 +153,11 @@ public:
     {
         if (m_display)
             wl_display_destroy_clients(m_display);
+    }
+
+    int liveWindowCount() const
+    {
+        return m_windows.size();
     }
 
 private:
@@ -243,9 +256,12 @@ class TyphonProtocolIntegrationTest final : public QObject {
 private slots:
     void registryDiscoveryAndInitialSnapshot();
     void splitRevisionRemainsAtomic();
+    void incrementalRevisionsOnOneLiveHandle();
+    void hundredIncrementalMetadataStateRevisionsOnOneLiveProtocolHandle();
     void twoHundredFiftySevenWindowRevisionCommitsOnce();
     void managerFailureDegradesWithoutCrashing();
     void missingGlobalIsUnsupported();
+    void unknownKindDegradesConnection();
 };
 
 void TyphonProtocolIntegrationTest::registryDiscoveryAndInitialSnapshot()
@@ -296,6 +312,103 @@ void TyphonProtocolIntegrationTest::splitRevisionRemainsAtomic()
     connection.stop();
 }
 
+void TyphonProtocolIntegrationTest::incrementalRevisionsOnOneLiveHandle()
+{
+    FakeTyphonCompositor compositor(true);
+    TyphonToplevelConnection connection;
+    QSignalSpy snapshots(&connection, &TyphonToplevelConnection::snapshotChanged);
+    connection.start();
+    QVERIFY(compositor.pumpUntil([&] {
+        return connection.state() == TyphonConnectionState::WaitingForInitialSnapshot;
+    }));
+
+    auto *window = compositor.beginWindow(QStringLiteral("7"));
+    QVERIFY(window);
+    compositor.sendMetadata(window, QStringLiteral("org.example.App"), QStringLiteral("Initial"),
+                            7, ASTREA_TOPLEVEL_V1_KIND_XDG_TOPLEVEL,
+                            ASTREA_TOPLEVEL_V1_STATE_ACTIVE, 1);
+    compositor.sendDone(window, 1);
+    compositor.sendManagerDone(1, 1);
+    QVERIFY(compositor.pumpUntil([&] { return snapshots.count() == 1; }));
+    QCOMPARE(connection.state(), TyphonConnectionState::Ready);
+
+    compositor.sendMetadata(window, QStringLiteral("org.example.App"), QStringLiteral("Second"),
+                            7, ASTREA_TOPLEVEL_V1_KIND_XDG_TOPLEVEL,
+                            ASTREA_TOPLEVEL_V1_STATE_MINIMIZED, 2);
+    compositor.sendDone(window, 2);
+    compositor.pumpUntil([&] { return false; }, 20);
+    QCOMPARE(snapshots.count(), 1);
+    QCOMPARE(compositor.liveWindowCount(), 1);
+
+    compositor.sendManagerDone(2, 1);
+    QVERIFY(compositor.pumpUntil([&] { return snapshots.count() == 2; }));
+    QCOMPARE(connection.snapshot().windows.first().title, QStringLiteral("Second"));
+    QVERIFY(hasState(connection.snapshot().windows.first().states, ToplevelStateFlag::Minimized));
+
+    compositor.sendMetadata(window, QStringLiteral("org.example.App"), QStringLiteral("Third"),
+                            7, ASTREA_TOPLEVEL_V1_KIND_XDG_TOPLEVEL,
+                            ASTREA_TOPLEVEL_V1_STATE_ACTIVE, 3);
+    compositor.sendDone(window, 3);
+    compositor.sendManagerDone(3, 1);
+    QVERIFY(compositor.pumpUntil([&] { return snapshots.count() == 3; }));
+    QCOMPARE(connection.snapshot().windows.first().title, QStringLiteral("Third"));
+    QCOMPARE(compositor.liveWindowCount(), 1);
+
+    compositor.sendClosed(window);
+    compositor.sendManagerDone(4, 0);
+    QVERIFY(compositor.pumpUntil([&] { return snapshots.count() == 4; }));
+    QCOMPARE(connection.snapshot().windows.size(), 0);
+    QCOMPARE(connection.state(), TyphonConnectionState::Ready);
+    QVERIFY(!connection.reconnectPending());
+    QCOMPARE(compositor.liveWindowCount(), 0);
+    connection.stop();
+}
+
+void TyphonProtocolIntegrationTest::hundredIncrementalMetadataStateRevisionsOnOneLiveProtocolHandle()
+{
+    FakeTyphonCompositor compositor(true);
+    TyphonToplevelConnection connection;
+    QSignalSpy snapshots(&connection, &TyphonToplevelConnection::snapshotChanged);
+    connection.start();
+    QVERIFY(compositor.pumpUntil([&] {
+        return connection.state() == TyphonConnectionState::WaitingForInitialSnapshot;
+    }));
+
+    auto *window = compositor.beginWindow(QStringLiteral("8"));
+    QVERIFY(window);
+    compositor.sendMetadata(window, QStringLiteral("org.example.App"), QStringLiteral("Revision 0"),
+                            8, ASTREA_TOPLEVEL_V1_KIND_XDG_TOPLEVEL, 0, 0);
+    compositor.sendDone(window, 0);
+    compositor.sendManagerDone(0, 1);
+    QVERIFY(compositor.pumpUntil([&] { return snapshots.count() == 1; }));
+
+    for (Revision revision = 1; revision <= 100; ++revision) {
+        compositor.sendMetadata(window, QStringLiteral("org.example.App"),
+                                QStringLiteral("Revision %1").arg(revision), 8,
+                                ASTREA_TOPLEVEL_V1_KIND_XDG_TOPLEVEL,
+                                (revision % 2) ? ASTREA_TOPLEVEL_V1_STATE_ACTIVE : 0,
+                                revision);
+        compositor.sendDone(window, revision);
+        compositor.sendManagerDone(revision, 1);
+        QVERIFY(compositor.pumpUntil([&] {
+            return snapshots.count() == static_cast<int>(revision + 1);
+        }));
+        QCOMPARE(connection.snapshot().revision, revision);
+    }
+
+    QCOMPARE(snapshots.count(), 101);
+    QCOMPARE(connection.state(), TyphonConnectionState::Ready);
+    QVERIFY(!connection.reconnectPending());
+    QCOMPARE(compositor.liveWindowCount(), 1);
+
+    compositor.sendClosed(window);
+    compositor.sendManagerDone(101, 0);
+    QVERIFY(compositor.pumpUntil([&] { return snapshots.count() == 102; }));
+    QCOMPARE(compositor.liveWindowCount(), 0);
+    QCOMPARE(connection.state(), TyphonConnectionState::Ready);
+    connection.stop();
+}
+
 void TyphonProtocolIntegrationTest::twoHundredFiftySevenWindowRevisionCommitsOnce()
 {
     FakeTyphonCompositor compositor(true);
@@ -341,6 +454,22 @@ void TyphonProtocolIntegrationTest::missingGlobalIsUnsupported()
     TyphonToplevelConnection connection;
     connection.start();
     QVERIFY(compositor.pumpUntil([&] { return connection.state() == TyphonConnectionState::Unsupported; }));
+    connection.stop();
+}
+
+void TyphonProtocolIntegrationTest::unknownKindDegradesConnection()
+{
+    FakeTyphonCompositor compositor(true);
+    TyphonToplevelConnection connection;
+    connection.start();
+    QVERIFY(compositor.pumpUntil([&] {
+        return connection.state() == TyphonConnectionState::WaitingForInitialSnapshot;
+    }));
+    auto *window = compositor.beginWindow(QStringLiteral("1"));
+    QVERIFY(window);
+    compositor.sendUnknownKind(window);
+    QVERIFY(compositor.pumpUntil([&] { return connection.state() == TyphonConnectionState::Degraded; }));
+    QVERIFY(connection.reconnectPending());
     connection.stop();
 }
 

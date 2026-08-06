@@ -57,6 +57,7 @@ private slots:
     void visibleCandidateWinsAndTiesUseFileName();
     void titleIsNeverUsed();
     void unresolvedResultIsExplicit();
+    void stress100CatalogRevisionRematchCycles();
 };
 
 void TyphonAppMatcherTest::exactDesktopFileName()
@@ -138,6 +139,22 @@ void TyphonAppMatcherTest::unresolvedResultIsExplicit()
     QVERIFY(result.desktopFileName.isEmpty());
     QVERIFY(result.displayName.isEmpty());
     QCOMPARE(result.confidence, MatchConfidence::Unresolved);
+}
+
+void TyphonAppMatcherTest::stress100CatalogRevisionRematchCycles()
+{
+    TyphonAppMatcher matcher;
+    for (quint64 revision = 1; revision <= 100; ++revision) {
+        auto snapshot = makeCatalog();
+        snapshot->revision = revision;
+        matcher.setSnapshot(snapshot);
+        const TyphonAppMatch result = matcher.match({QStringLiteral("org.example.App"), {}, 1,
+                                                       ToplevelKind::XdgToplevel});
+        QCOMPARE(result.desktopFileName, QStringLiteral("org.example.App.desktop"));
+        QCOMPARE(matcher.match({QStringLiteral("unknown"), {}, 1,
+                                ToplevelKind::XdgToplevel}).confidence,
+                 MatchConfidence::Unresolved);
+    }
 }
 
 QTEST_MAIN(TyphonAppMatcherTest)

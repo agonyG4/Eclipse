@@ -58,6 +58,7 @@ private slots:
     void unresolvedWindowsAreIgnored();
     void aWindowContributesToOnlyOneGroup();
     void countsAreClampedToInt();
+    void stress100ProjectionCycles();
 };
 
 void DockApplicationStateProjectorTest::zeroWindowsProducesClearedPinnedState()
@@ -139,6 +140,21 @@ void DockApplicationStateProjectorTest::countsAreClampedToInt()
     DockApplicationStateProjector projector;
     const auto states = projector.project(input, catalog(), {QStringLiteral("one.desktop")});
     QCOMPARE(states.value(QStringLiteral("one.desktop")).windowCount, 0);
+}
+
+void DockApplicationStateProjectorTest::stress100ProjectionCycles()
+{
+    DockApplicationStateProjector projector;
+    for (int cycle = 0; cycle < 100; ++cycle) {
+        const QString id = QString::number(cycle);
+        const auto states = projector.project(
+            snapshot({window(id, QStringLiteral("one"), cycle % 2 == 0, cycle % 3 == 0, 99)}),
+            catalog(), {QStringLiteral("one.desktop"), QStringLiteral("two.desktop")});
+        QCOMPARE(states.value(QStringLiteral("one.desktop")).windowCount, 1);
+        QCOMPARE(states.value(QStringLiteral("one.desktop")).windowIds,
+                 QVector<QString>{id});
+        QCOMPARE(states.value(QStringLiteral("two.desktop")).windowCount, 0);
+    }
 }
 
 QTEST_MAIN(DockApplicationStateProjectorTest)

@@ -13,6 +13,7 @@ private slots:
     void snapshotMappingPreservesTyphonIdentity();
     void activeAndMinimizedFlagsMap();
     void unsupportedActivationIsDeterministic();
+    void stress100SnapshotMappingCycles();
 };
 
 void TyphonWindowSourceTest::descriptorAndCapabilities()
@@ -70,6 +71,25 @@ void TyphonWindowSourceTest::unsupportedActivationIsDeterministic()
     const ActivationResult result = activationSpy.at(0).at(1).value<ActivationResult>();
     QVERIFY(!result.success);
     QCOMPARE(result.error, QStringLiteral("Typhon window activation is unsupported"));
+}
+
+void TyphonWindowSourceTest::stress100SnapshotMappingCycles()
+{
+    TyphonWindowSource source;
+    for (quint64 cycle = 1; cycle <= 100; ++cycle) {
+        Toplevel window;
+        window.id = QString::number(cycle);
+        window.appId = QStringLiteral("org.example.App");
+        window.title = QStringLiteral("Example");
+        window.pid = 10;
+        window.focusSerial = cycle;
+        const Snapshot snapshot{{window}, cycle, 1, false, cycle};
+        const WindowSnapshot mapped = source.mapSnapshotForTest(snapshot);
+        QCOMPARE(mapped.revision, cycle);
+        QCOMPARE(mapped.backendGeneration, cycle);
+        QCOMPARE(mapped.windows.size(), 1);
+        QCOMPARE(mapped.windows.first().windowId.value, window.id);
+    }
 }
 
 QTEST_MAIN(TyphonWindowSourceTest)

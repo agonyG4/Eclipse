@@ -30,6 +30,7 @@ target_include_directories(astrea-dock PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(astrea-dock PRIVATE
     astrea-shared-core
     astrea-shared-coreplugin
+    astrea-shared-typhon
     astrea-shared-layer-shell
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Network Qt6::Core5Compat
     dl pthread

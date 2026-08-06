@@ -338,8 +338,9 @@ void AltTabController::resolveIconsForWindows(const QVector<WindowInfo> &windows
         input.title = w.title;
         input.initialTitle = w.initialTitle;
         input.workspaceId = w.workspaceIdInt();
-        input.openGeneration = m_openingGeneration;
-        input.metadataFingerprint = w.metaKey();
+        input.openGeneration = w.backendGeneration != 0 ? w.backendGeneration : m_openingGeneration;
+        input.metadataFingerprint = w.backendGeneration != 0
+            ? (w.appId + QLatin1Char('|') + w.title) : w.metaKey();
         input.themeRevision = m_identityResolver->themeRevision();
         input.desktopIndexRevision = m_identityResolver->desktopIndexRevision();
         input.steamIndexRevision = m_identityResolver->steamIndexRevision();
@@ -352,17 +353,20 @@ void AltTabController::onIdentityResolved(const QString &address, const AppIdent
     if (m_state != State::Open && m_state != State::Opening)
         return;
 
-    if (identity.openGeneration != m_openingGeneration)
-        return;
-
     const int row = m_model.indexOf(address);
     if (row < 0)
         return;
 
     const WindowInfo current = m_model.at(row);
+    const quint64 expectedGeneration = current.backendGeneration != 0
+        ? current.backendGeneration : m_openingGeneration;
+    if (identity.openGeneration != expectedGeneration)
+        return;
     if (current.pid != identity.pid)
         return;
-    if (current.metaKey() != identity.metadataFingerprint)
+    const QString expectedFingerprint = current.backendGeneration != 0
+        ? (current.appId + QLatin1Char('|') + current.title) : current.metaKey();
+    if (expectedFingerprint != identity.metadataFingerprint)
         return;
     if (identity.themeRevision != m_identityResolver->themeRevision())
         return;

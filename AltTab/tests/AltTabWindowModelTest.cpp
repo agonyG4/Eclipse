@@ -171,7 +171,7 @@ void TestAltTabWindowModel::testStableKeys() {
     w.title = QStringLiteral("Test Window");
     w.initialTitle = QStringLiteral("test-window");
 
-    QCOMPARE(w.stableKey(), QStringLiteral("0x1234:1234"));
+    QCOMPARE(w.stableKey(), QStringLiteral("0x1234"));
     QVERIFY(!w.metaKey().isEmpty());
 }
 

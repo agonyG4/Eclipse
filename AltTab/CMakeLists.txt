@@ -57,6 +57,8 @@ astrea_enable_sanitizers(astrea-alttab-hyprland)
 add_library(astrea-alttab-core STATIC
     core/AltTabController.cpp
     core/AltTabWindowModel.cpp
+    platform/compositor/AutoCompositorBackend.cpp
+    platform/compositor/AutoCompositorBackend.hpp
     platform/compositor/CompositorBackendFactory.cpp
     platform/typhon/TyphonWindowSource.cpp
     platform/typhon/TyphonWindowSource.hpp
@@ -118,6 +120,7 @@ if(BUILD_TESTING AND ASTREA_ALT_TAB_BUILD_TESTS)
         alttab-ipc-test
         alttab-identity-test
         alttab-source-test
+        alttab-typhon-source-test
         alttab-socket-test
         alttab-model-test
         alttab-factory-test

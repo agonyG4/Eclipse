@@ -92,7 +92,6 @@ private:
         quint64 token = 0;
         astrea_toplevel_v1 *proxy = nullptr;
         bool closed = false;
-        bool done = false;
     };
 
     static void registryGlobal(void *data, wl_registry *registry, uint32_t name,
@@ -251,11 +250,6 @@ private:
         auto *handle = static_cast<HandleState *>(data);
         if (!handle->owner->liveHandleEvent(handle))
             return;
-        if (handle->done) {
-            handle->owner->failProtocol(QStringLiteral("duplicate Typhon handle done"));
-            return;
-        }
-        handle->done = true;
         emit handle->owner->handleCompleted(handle->token, joinUint32(revisionHigh, revisionLow));
     }
 

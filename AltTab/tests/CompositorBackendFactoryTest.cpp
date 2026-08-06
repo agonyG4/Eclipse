@@ -1,7 +1,115 @@
+#include <QPointer>
 #include <QProcessEnvironment>
+#include <QSignalSpy>
 #include <QTest>
 
+#include <functional>
+#include <memory>
+#include <optional>
+
+#include "platform/compositor/AutoCompositorBackend.hpp"
 #include "platform/compositor/CompositorBackendFactory.hpp"
+
+class SelectionFakeBackend final : public CompositorBackend {
+    Q_OBJECT
+public:
+    enum class Kind { Typhon, Hyprland };
+
+    explicit SelectionFakeBackend(Kind kind, QObject *parent = nullptr)
+        : CompositorBackend(parent), m_kind(kind)
+    {
+    }
+
+    void start() override
+    {
+        ++startCount;
+        active = true;
+        setState(BackendState::Starting);
+    }
+
+    void stop() override
+    {
+        ++stopCount;
+        ++totalStopCalls;
+        emit snapshotChanged(staleSnapshot);
+        active = false;
+        setState(BackendState::Stopped);
+    }
+
+    BackendDescriptor descriptor() const override
+    {
+        return {m_kind == Kind::Typhon ? QStringLiteral("typhon") : QStringLiteral("hyprland"), 1};
+    }
+
+    BackendState state() const override { return m_state; }
+
+    QVector<BackendCapability> capabilities() const override
+    {
+        if (m_kind == Kind::Typhon)
+            return {BackendCapability::WindowList, BackendCapability::EventStream};
+        return {BackendCapability::WindowList, BackendCapability::EventStream,
+                BackendCapability::WindowActivation};
+    }
+
+    std::optional<WindowSnapshot> cachedSnapshot() const override
+    {
+        return m_cachedSnapshot;
+    }
+
+    void requestSnapshot(RequestToken token) override
+    {
+        requestedSnapshotTokens.append(token);
+    }
+
+    void activateWindow(ActivationRequest request) override
+    {
+        activationRequests.append(request);
+    }
+
+    void completeActivation(ActivationToken token)
+    {
+        emit activationFinished(token, ActivationResult{true, {}});
+    }
+
+    void emitError(BackendError error)
+    {
+        emit backendError(error);
+    }
+
+    void setState(BackendState state)
+    {
+        if (m_state == state)
+            return;
+        m_state = state;
+        emit stateChanged(m_state);
+    }
+
+    void publishSnapshot(const WindowSnapshot &snapshot)
+    {
+        m_cachedSnapshot = snapshot;
+        emit snapshotChanged(snapshot);
+    }
+
+    void completeSnapshot(RequestToken token, const WindowSnapshot &snapshot)
+    {
+        m_cachedSnapshot = snapshot;
+        emit snapshotReady(token, snapshot);
+    }
+
+    Kind kind() const { return m_kind; }
+    bool active = false;
+    int startCount = 0;
+    int stopCount = 0;
+    static inline int totalStopCalls = 0;
+    QVector<RequestToken> requestedSnapshotTokens;
+    QVector<ActivationRequest> activationRequests;
+    WindowSnapshot staleSnapshot;
+
+private:
+    Kind m_kind;
+    BackendState m_state = BackendState::Stopped;
+    std::optional<WindowSnapshot> m_cachedSnapshot;
+};
 
 class CompositorBackendFactoryTest final : public QObject {
     Q_OBJECT
@@ -9,9 +117,48 @@ class CompositorBackendFactoryTest final : public QObject {
 private slots:
     void explicitTyphonCreatesReadOnlyBackend();
     void explicitHyprlandCreatesHyprlandBackend();
-    void autoFallsBackToHyprlandWhenTyphonIsNotCompiled();
+    void autoFactoryCreatesAsynchronousSelector();
+    void autoSelectsTyphonAfterRuntimeDiscovery();
+    void autoFallsBackWhenTyphonGlobalIsAbsent();
+    void autoFallsBackWhenTyphonDisconnectsBeforeDiscovery();
+    void autoFallsBackWhenTyphonIsNotCompiled();
     void autoReportsUnsupportedWhenNeitherIsAvailable();
+    void explicitBackendsNeverFallbackThroughAuto();
+    void selectedTyphonDoesNotSwitchAfterDisconnect();
+    void discardedCandidateSignalsAreIgnored();
+    void queuedSnapshotRequestFollowsSelectedBackend();
+    void activationBeforeSelectionFailsDeterministically();
+    void selectedBackendSignalsAndRequestsAreDelegated();
+    void hyprlandCapabilitiesAppearAfterSelection();
+    void stopStopsCandidateAndRestartStartsFreshGeneration();
 };
+
+namespace {
+
+AutoCompositorBackend::Dependencies dependencies(
+    bool typhonCompiled, bool hyprlandAvailable,
+    const std::shared_ptr<QVector<QPointer<SelectionFakeBackend>>> &candidates)
+{
+    AutoCompositorBackend::Dependencies result;
+    result.typhonCompiled = [typhonCompiled] { return typhonCompiled; };
+    result.hyprlandAvailable = [hyprlandAvailable] { return hyprlandAvailable; };
+    result.createCandidate = [candidates](AutoBackendCandidate candidate, QObject *parent) {
+        const auto kind = candidate == AutoBackendCandidate::Typhon
+            ? SelectionFakeBackend::Kind::Typhon : SelectionFakeBackend::Kind::Hyprland;
+        auto *backend = new SelectionFakeBackend(kind, parent);
+        candidates->append(backend);
+        return static_cast<CompositorBackend *>(backend);
+    };
+    return result;
+}
+
+SelectionFakeBackend *candidateAt(
+    const std::shared_ptr<QVector<QPointer<SelectionFakeBackend>>> &candidates, int index)
+{
+    return candidates->at(index).data();
+}
+
+} // namespace
 
 void CompositorBackendFactoryTest::explicitTyphonCreatesReadOnlyBackend()
 {
@@ -30,39 +177,192 @@ void CompositorBackendFactoryTest::explicitHyprlandCreatesHyprlandBackend()
     QCOMPARE(backend->descriptor().name, QStringLiteral("hyprland"));
 }
 
-void CompositorBackendFactoryTest::autoFallsBackToHyprlandWhenTyphonIsNotCompiled()
+void CompositorBackendFactoryTest::autoFactoryCreatesAsynchronousSelector()
 {
-    const QByteArray previous = qgetenv("HYPRLAND_INSTANCE_SIGNATURE");
-    qputenv("HYPRLAND_INSTANCE_SIGNATURE", QByteArrayLiteral("factory-test"));
     std::unique_ptr<CompositorBackend> backend(
         CompositorBackendFactory::createBackend(QStringLiteral("auto")));
-    if (previous.isNull())
-        qunsetenv("HYPRLAND_INSTANCE_SIGNATURE");
-    else
-        qputenv("HYPRLAND_INSTANCE_SIGNATURE", previous);
-
-#if ASTREA_HAVE_TYPHON_PROTOCOL
-    QSKIP("The finalized protocol adapter is compiled in this build");
-#else
     QVERIFY(backend);
-    QCOMPARE(backend->descriptor().name, QStringLiteral("hyprland"));
-#endif
+    QVERIFY(dynamic_cast<AutoCompositorBackend *>(backend.get()));
+    QCOMPARE(backend->descriptor().name, QStringLiteral("auto"));
+}
+
+void CompositorBackendFactoryTest::autoSelectsTyphonAfterRuntimeDiscovery()
+{
+    auto candidates = std::make_shared<QVector<QPointer<SelectionFakeBackend>>>();
+    AutoCompositorBackend backend(dependencies(true, true, candidates));
+    backend.start();
+    QCOMPARE(candidates->size(), 1);
+    QCOMPARE(candidateAt(candidates, 0)->kind(), SelectionFakeBackend::Kind::Typhon);
+    candidateAt(candidates, 0)->setState(BackendState::LoadingInitialSnapshot);
+    QCOMPARE(backend.descriptor().name, QStringLiteral("typhon"));
+    QCOMPARE(backend.state(), BackendState::LoadingInitialSnapshot);
+    QVERIFY(!backend.capabilities().contains(BackendCapability::WindowActivation));
+}
+
+void CompositorBackendFactoryTest::autoFallsBackWhenTyphonGlobalIsAbsent()
+{
+    auto candidates = std::make_shared<QVector<QPointer<SelectionFakeBackend>>>();
+    AutoCompositorBackend backend(dependencies(true, true, candidates));
+    backend.start();
+    QCOMPARE(candidates->size(), 1);
+    candidateAt(candidates, 0)->setState(BackendState::Unsupported);
+    QCOMPARE(candidates->size(), 2);
+    QVERIFY(!candidates->at(0));
+    QCOMPARE(candidateAt(candidates, 1)->kind(), SelectionFakeBackend::Kind::Hyprland);
+    candidateAt(candidates, 1)->setState(BackendState::Ready);
+    QCOMPARE(backend.descriptor().name, QStringLiteral("hyprland"));
+    QCOMPARE(backend.state(), BackendState::Ready);
+}
+
+void CompositorBackendFactoryTest::autoFallsBackWhenTyphonIsNotCompiled()
+{
+    auto candidates = std::make_shared<QVector<QPointer<SelectionFakeBackend>>>();
+    AutoCompositorBackend backend(dependencies(false, true, candidates));
+    backend.start();
+    QCOMPARE(candidates->size(), 1);
+    QCOMPARE(candidateAt(candidates, 0)->kind(), SelectionFakeBackend::Kind::Hyprland);
+}
+
+void CompositorBackendFactoryTest::autoFallsBackWhenTyphonDisconnectsBeforeDiscovery()
+{
+    auto candidates = std::make_shared<QVector<QPointer<SelectionFakeBackend>>>();
+    AutoCompositorBackend backend(dependencies(true, true, candidates));
+    backend.start();
+    candidateAt(candidates, 0)->setState(BackendState::Disconnected);
+    QCOMPARE(candidates->size(), 2);
+    QVERIFY(!candidates->at(0));
+    QCOMPARE(candidateAt(candidates, 1)->kind(), SelectionFakeBackend::Kind::Hyprland);
 }
 
 void CompositorBackendFactoryTest::autoReportsUnsupportedWhenNeitherIsAvailable()
 {
-    const QByteArray previous = qgetenv("HYPRLAND_INSTANCE_SIGNATURE");
-    qunsetenv("HYPRLAND_INSTANCE_SIGNATURE");
-    std::unique_ptr<CompositorBackend> backend(
-        CompositorBackendFactory::createBackend(QStringLiteral("auto")));
-    if (!previous.isNull())
-        qputenv("HYPRLAND_INSTANCE_SIGNATURE", previous);
+    auto candidates = std::make_shared<QVector<QPointer<SelectionFakeBackend>>>();
+    AutoCompositorBackend backend(dependencies(false, false, candidates));
+    QSignalSpy stateSpy(&backend, &CompositorBackend::stateChanged);
+    backend.start();
+    QVERIFY(candidates->isEmpty());
+    QCOMPARE(backend.state(), BackendState::Unsupported);
+    QVERIFY(!stateSpy.isEmpty());
+}
 
-#if ASTREA_HAVE_TYPHON_PROTOCOL
-    QVERIFY(backend);
-#else
-    QVERIFY(!backend);
-#endif
+void CompositorBackendFactoryTest::explicitBackendsNeverFallbackThroughAuto()
+{
+    std::unique_ptr<CompositorBackend> typhon(
+        CompositorBackendFactory::createBackend(QStringLiteral("typhon")));
+    std::unique_ptr<CompositorBackend> hyprland(
+        CompositorBackendFactory::createBackend(QStringLiteral("hyprland")));
+    QVERIFY(typhon);
+    QVERIFY(hyprland);
+    QVERIFY(!dynamic_cast<AutoCompositorBackend *>(typhon.get()));
+    QVERIFY(!dynamic_cast<AutoCompositorBackend *>(hyprland.get()));
+    QCOMPARE(typhon->descriptor().name, QStringLiteral("typhon"));
+    QCOMPARE(hyprland->descriptor().name, QStringLiteral("hyprland"));
+}
+
+void CompositorBackendFactoryTest::selectedTyphonDoesNotSwitchAfterDisconnect()
+{
+    auto candidates = std::make_shared<QVector<QPointer<SelectionFakeBackend>>>();
+    AutoCompositorBackend backend(dependencies(true, true, candidates));
+    backend.start();
+    candidateAt(candidates, 0)->setState(BackendState::Ready);
+    candidateAt(candidates, 0)->setState(BackendState::Disconnected);
+    QCOMPARE(candidates->size(), 1);
+    QCOMPARE(backend.descriptor().name, QStringLiteral("typhon"));
+    QCOMPARE(backend.state(), BackendState::Disconnected);
+}
+
+void CompositorBackendFactoryTest::discardedCandidateSignalsAreIgnored()
+{
+    auto candidates = std::make_shared<QVector<QPointer<SelectionFakeBackend>>>();
+    AutoCompositorBackend backend(dependencies(true, true, candidates));
+    QSignalSpy snapshots(&backend, &CompositorBackend::snapshotChanged);
+    backend.start();
+    candidateAt(candidates, 0)->staleSnapshot.revision = 99;
+    candidateAt(candidates, 0)->setState(BackendState::Unsupported);
+    QCOMPARE(snapshots.count(), 0);
+}
+
+void CompositorBackendFactoryTest::queuedSnapshotRequestFollowsSelectedBackend()
+{
+    auto candidates = std::make_shared<QVector<QPointer<SelectionFakeBackend>>>();
+    AutoCompositorBackend backend(dependencies(true, true, candidates));
+    backend.requestSnapshot(42);
+    backend.start();
+    candidateAt(candidates, 0)->setState(BackendState::LoadingInitialSnapshot);
+    QCOMPARE(candidateAt(candidates, 0)->requestedSnapshotTokens, QVector<RequestToken>{42});
+}
+
+void CompositorBackendFactoryTest::activationBeforeSelectionFailsDeterministically()
+{
+    auto candidates = std::make_shared<QVector<QPointer<SelectionFakeBackend>>>();
+    AutoCompositorBackend backend(dependencies(true, true, candidates));
+    QSignalSpy activationSpy(&backend, &CompositorBackend::activationFinished);
+    backend.start();
+    backend.activateWindow({WindowId{QStringLiteral("1")}, 7});
+    QCOMPARE(activationSpy.count(), 1);
+    const ActivationResult result = activationSpy.at(0).at(1).value<ActivationResult>();
+    QVERIFY(!result.success);
+    QCOMPARE(result.error, QStringLiteral("auto backend selection is pending"));
+}
+
+void CompositorBackendFactoryTest::selectedBackendSignalsAndRequestsAreDelegated()
+{
+    auto candidates = std::make_shared<QVector<QPointer<SelectionFakeBackend>>>();
+    AutoCompositorBackend backend(dependencies(false, true, candidates));
+    QSignalSpy readySpy(&backend, &CompositorBackend::snapshotReady);
+    QSignalSpy changedSpy(&backend, &CompositorBackend::snapshotChanged);
+    QSignalSpy activationSpy(&backend, &CompositorBackend::activationFinished);
+    QSignalSpy errorSpy(&backend, &CompositorBackend::backendError);
+    backend.start();
+    auto *hyprland = candidateAt(candidates, 0);
+    hyprland->setState(BackendState::Ready);
+
+    WindowSnapshot snapshot;
+    snapshot.revision = 5;
+    hyprland->publishSnapshot(snapshot);
+    QCOMPARE(changedSpy.count(), 1);
+    QVERIFY(backend.cachedSnapshot().has_value());
+    QCOMPARE(backend.cachedSnapshot()->revision, quint64(5));
+
+    backend.requestSnapshot(9);
+    QCOMPARE(hyprland->requestedSnapshotTokens, QVector<RequestToken>{9});
+    hyprland->completeSnapshot(9, snapshot);
+    QCOMPARE(readySpy.count(), 1);
+
+    backend.activateWindow({WindowId{QStringLiteral("1")}, 11});
+    QCOMPARE(hyprland->activationRequests.size(), 1);
+    hyprland->completeActivation(11);
+    QCOMPARE(activationSpy.count(), 1);
+    hyprland->emitError(BackendError::CompositorRejected);
+    QCOMPARE(errorSpy.count(), 1);
+}
+
+void CompositorBackendFactoryTest::hyprlandCapabilitiesAppearAfterSelection()
+{
+    auto candidates = std::make_shared<QVector<QPointer<SelectionFakeBackend>>>();
+    AutoCompositorBackend backend(dependencies(false, true, candidates));
+    backend.start();
+    QVERIFY(!backend.capabilities().contains(BackendCapability::WindowActivation));
+    candidateAt(candidates, 0)->setState(BackendState::Ready);
+    QVERIFY(backend.capabilities().contains(BackendCapability::WindowActivation));
+}
+
+void CompositorBackendFactoryTest::stopStopsCandidateAndRestartStartsFreshGeneration()
+{
+    auto candidates = std::make_shared<QVector<QPointer<SelectionFakeBackend>>>();
+    AutoCompositorBackend backend(dependencies(true, true, candidates));
+    SelectionFakeBackend::totalStopCalls = 0;
+    backend.start();
+    QPointer<SelectionFakeBackend> first = candidateAt(candidates, 0);
+    QCOMPARE(first->startCount, 1);
+    backend.stop();
+    QCOMPARE(SelectionFakeBackend::totalStopCalls, 1);
+    QVERIFY(first.isNull());
+    backend.start();
+    QCOMPARE(candidates->size(), 2);
+    QVERIFY(candidates->at(0).isNull());
+    QVERIFY(candidates->at(1));
+    QCOMPARE(candidateAt(candidates, 1)->startCount, 1);
 }
 
 QTEST_MAIN(CompositorBackendFactoryTest)

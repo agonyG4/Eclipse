@@ -74,7 +74,6 @@ private:
     const PendingHandleState *pendingFor(quint64 token) const;
     bool validateComplete(const PendingHandleState &pending) const;
     std::optional<Astrea::Typhon::Toplevel> toToplevel(const PendingHandleState &pending) const;
-    bool revisionIsOlder(Astrea::Typhon::Revision revision) const;
     void sortWindows(QVector<Astrea::Typhon::Toplevel> &windows) const;
 
     quint64 m_generation = 0;

@@ -38,9 +38,12 @@
 3. `AltTabIpcServer` receives command → emits `commandReceived`
 4. `AltTabApplication` → `m_controller->step(1)`
 5. Controller state machine:
-   - Hidden → Opening: store direction, request window snapshot
-   - Window source sends `hyprctl clients -j` via Hyprland command socket
-   - Parse JSON → filter hidden/invalid → sort by focusHistoryID
+   - Hidden → Opening: store direction and request the active opening generation
+   - If the backend is still starting, `Ready` requests the opening snapshot;
+     the matching `snapshotReady` opens the UI
+   - Window source sends `hyprctl clients -j` via Hyprland command socket, or
+     waits for Typhon's first committed snapshot
+   - Parse/map → filter hidden and explicitly invalid workspace metadata → sort by focusHistoryID
    - Model setWindows → find active window by focusHistoryID→0
    - Apply offset → Open state → emit focusRequested → QML surface visible
 6. Repeated Tab (still in Open): cycle selection immediately

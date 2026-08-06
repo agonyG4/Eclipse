@@ -69,6 +69,7 @@ private slots:
 
 private:
     void setState(State s);
+    void requestOpeningSnapshot();
     void resolveIconsForWindows(const QVector<WindowInfo> &windows);
     void finishOpening();
     void doCommit();
@@ -84,6 +85,7 @@ private:
     bool m_commitInFlight = false;
 
     quint64 m_openingGeneration = 0;
+    quint64 m_lastOpeningSnapshotRequestGeneration = 0;
     quint64 m_timerGeneration = 0;
     quint64 m_activationRequestGen = 0;
     ActivationResult m_lastActivationResult;

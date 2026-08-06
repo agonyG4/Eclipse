@@ -4,6 +4,8 @@
 #include "platform/typhon/TyphonToplevelConnection.hpp"
 
 #include <optional>
+#include <QSet>
+#include <QVector>
 
 class TyphonWindowSource final : public CompositorBackend {
     Q_OBJECT
@@ -27,9 +29,18 @@ public:
     WindowSnapshot mapSnapshotForTest(const Astrea::Typhon::Snapshot &snapshot) const;
 
 private:
+    static constexpr qsizetype kMaxPendingSnapshotRequests = 16;
+
+    struct PendingSnapshotRequest {
+        RequestToken token = 0;
+        quint64 connectionGeneration = 0;
+    };
+
     void onConnectionStateChanged(TyphonConnectionState state);
     void onConnectionSnapshot(const Astrea::Typhon::Snapshot &snapshot);
     void setBackendState(BackendState state);
+    void failPendingSnapshotRequests();
+    void failStalePendingSnapshotRequests(quint64 connectionGeneration);
     static BackendState mapState(TyphonConnectionState state);
 
     TyphonToplevelConnection *m_connection = nullptr;
@@ -37,4 +48,7 @@ private:
     BackendState m_state = BackendState::Stopped;
     bool m_started = false;
     bool m_hasSnapshot = false;
+    quint64 m_observedConnectionGeneration = 0;
+    QVector<PendingSnapshotRequest> m_pendingSnapshotRequests;
+    QSet<RequestToken> m_resolvedSnapshotTokens;
 };

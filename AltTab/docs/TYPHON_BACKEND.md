@@ -9,8 +9,15 @@ a deterministic failure without sending a compositor request.
 
 The decimal Typhon `WindowId` string is the `WindowInfo::windowId` value and is
 the stable identity key. PID is metadata only. App ID maps to `appId` and
-`className`; title maps to both title fields. Minimized windows map to both
-`isMinimized` and `isHidden`. Workspace and output fields remain empty.
+`className`; title maps to both title fields. Minimized windows map to
+`isMinimized` while remaining `isHidden == false`, because a minimized managed
+toplevel is still eligible for task switching. Workspace and output fields
+remain empty: Typhon v1 does not publish workspace metadata.
+
+An empty Typhon workspace is unknown metadata, not a hidden or invalid window.
+AltTab accepts it as eligible and passes workspace `-1` to identity resolution.
+Explicit numeric workspace values must be positive; non-positive or malformed
+explicit values remain excluded. No workspace value is synthesized for Typhon.
 
 Focus serial order is converted to dense `focusHistoryId` values: the most
 recent focused window is zero, later focused windows increase, and never-focused
@@ -22,6 +29,23 @@ Identity resolution is performed only after atomic snapshot publication. Typhon
 inputs use the window ID as address, PID as metadata, app ID as class, the
 title, the connection generation, and an app-ID-plus-title fingerprint. The
 existing asynchronous `AppIdentityResolver` remains the only deep resolver.
+
+## Snapshot delivery
+
+Opening AltTab is request-driven. When a backend reaches `Ready` while AltTab
+is opening, the controller issues one snapshot request for that opening
+generation; the matching `snapshotReady` response is the only opening boundary.
+An unsolicited `snapshotChanged` updates an already-open model but does not
+open the UI.
+
+Typhon snapshot requests made before the first committed revision wait in a
+bounded queue of 16 tokens. The first committed snapshot is cached, published
+through `snapshotChanged`, and then returned to every queued token. Each
+accepted token receives exactly one result. A rejected request at capacity
+receives one empty result and `BackendError::ConnectionFailed`; pending tokens
+are retained. Stop and terminal connection failures resolve all remaining
+tokens with empty results and the same error. Requests from an older Typhon
+connection generation are failed rather than receiving a newer snapshot.
 
 ## Selection
 

@@ -9,6 +9,53 @@
 
 #include "platform/compositor/AutoCompositorBackend.hpp"
 #include "platform/compositor/CompositorBackendFactory.hpp"
+#include "platform/typhon/TyphonWindowSource.hpp"
+
+using namespace Astrea::Typhon;
+
+class AutoFakeTyphonAdapter final : public TyphonProtocolAdapter {
+    Q_OBJECT
+
+public:
+    explicit AutoFakeTyphonAdapter(QObject *parent = nullptr)
+        : TyphonProtocolAdapter(parent)
+    {
+    }
+
+    void start() override { ++starts; }
+    void stop() override { ++stops; }
+    bool isAvailable() const override { return true; }
+
+    void advertiseManager() { emit registryDiscovered(true); }
+    void create(quint64 token) { emit handleCreated(token); }
+    void id(quint64 token, const QString &value) { emit identifierChanged(token, value); }
+    void app(quint64 token, const QString &value) { emit appIdChanged(token, value); }
+    void title(quint64 token, const QString &value) { emit titleChanged(token, value); }
+    void pid(quint64 token, quint32 value) { emit pidChanged(token, value); }
+    void kind(quint64 token, ToplevelKind value) { emit kindChanged(token, value); }
+    void state(quint64 token, ToplevelStates value) { emit stateChanged(token, value, 0); }
+    void focus(quint64 token, FocusSerial value) { emit focusSerialChanged(token, value); }
+    void handleDone(quint64 token, Revision value) { emit handleCompleted(token, value); }
+    void done(Revision revision, quint32 total) { emit managerCompleted(revision, total, false); }
+
+    int starts = 0;
+    int stops = 0;
+};
+
+static void completeAutoTyphonSnapshot(AutoFakeTyphonAdapter &adapter, quint64 token,
+                                       const QString &id, Revision revision)
+{
+    adapter.create(token);
+    adapter.id(token, id);
+    adapter.app(token, QStringLiteral("org.example.App"));
+    adapter.title(token, QStringLiteral("Example"));
+    adapter.pid(token, 100);
+    adapter.kind(token, ToplevelKind::XdgToplevel);
+    adapter.state(token, {});
+    adapter.focus(token, 1);
+    adapter.handleDone(token, revision);
+    adapter.done(revision, 1);
+}
 
 class SelectionFakeBackend final : public CompositorBackend {
     Q_OBJECT
@@ -131,6 +178,8 @@ private slots:
     void selectedBackendSignalsAndRequestsAreDelegated();
     void hyprlandCapabilitiesAppearAfterSelection();
     void stopStopsCandidateAndRestartStartsFreshGeneration();
+    void autoBackendRetainsPendingTyphonRequestUntilSnapshot();
+    void stress100AutoBackendPendingTyphonHandoffs();
 };
 
 namespace {
@@ -363,6 +412,76 @@ void CompositorBackendFactoryTest::stopStopsCandidateAndRestartStartsFreshGenera
     QVERIFY(candidates->at(0).isNull());
     QVERIFY(candidates->at(1));
     QCOMPARE(candidateAt(candidates, 1)->startCount, 1);
+}
+
+void CompositorBackendFactoryTest::autoBackendRetainsPendingTyphonRequestUntilSnapshot()
+{
+    auto adapter = std::make_shared<QPointer<AutoFakeTyphonAdapter>>();
+    auto source = std::make_shared<QPointer<TyphonWindowSource>>();
+    AutoCompositorBackend::Dependencies deps;
+    deps.typhonCompiled = [] { return true; };
+    deps.hyprlandAvailable = [] { return false; };
+    deps.createCandidate = [adapter, source](AutoBackendCandidate candidate, QObject *parent) {
+        if (candidate != AutoBackendCandidate::Typhon)
+            return static_cast<CompositorBackend *>(nullptr);
+        auto *fakeAdapter = new AutoFakeTyphonAdapter;
+        *adapter = fakeAdapter;
+        auto *connection = new TyphonToplevelConnection(fakeAdapter);
+        auto *backend = new TyphonWindowSource(connection, parent);
+        *source = backend;
+        return static_cast<CompositorBackend *>(backend);
+    };
+
+    AutoCompositorBackend backend(deps);
+    QSignalSpy readySpy(&backend, &CompositorBackend::snapshotReady);
+    QSignalSpy changedSpy(&backend, &CompositorBackend::snapshotChanged);
+
+    backend.requestSnapshot(42);
+    backend.start();
+    QVERIFY(adapter->data());
+    adapter->data()->advertiseManager();
+    QVERIFY(source->data());
+    QCOMPARE(backend.descriptor().name, QStringLiteral("typhon"));
+    QCOMPARE(backend.state(), BackendState::LoadingInitialSnapshot);
+    QCOMPARE(readySpy.count(), 0);
+
+    completeAutoTyphonSnapshot(*adapter->data(), 1, QStringLiteral("1"), 1);
+
+    QCOMPARE(changedSpy.count(), 1);
+    QCOMPARE(readySpy.count(), 1);
+    QCOMPARE(readySpy.at(0).at(0).value<RequestToken>(), RequestToken(42));
+    QCOMPARE(readySpy.at(0).at(1).value<WindowSnapshot>().windows.size(), 1);
+    QCOMPARE(backend.state(), BackendState::Ready);
+}
+
+void CompositorBackendFactoryTest::stress100AutoBackendPendingTyphonHandoffs()
+{
+    for (RequestToken cycle = 1; cycle <= 100; ++cycle) {
+        auto adapter = std::make_shared<QPointer<AutoFakeTyphonAdapter>>();
+        AutoCompositorBackend::Dependencies deps;
+        deps.typhonCompiled = [] { return true; };
+        deps.hyprlandAvailable = [] { return false; };
+        deps.createCandidate = [adapter](AutoBackendCandidate candidate, QObject *parent) {
+            if (candidate != AutoBackendCandidate::Typhon)
+                return static_cast<CompositorBackend *>(nullptr);
+            auto *fakeAdapter = new AutoFakeTyphonAdapter;
+            *adapter = fakeAdapter;
+            auto *connection = new TyphonToplevelConnection(fakeAdapter);
+            return static_cast<CompositorBackend *>(new TyphonWindowSource(connection, parent));
+        };
+
+        AutoCompositorBackend backend(deps);
+        QSignalSpy readySpy(&backend, &CompositorBackend::snapshotReady);
+        backend.requestSnapshot(cycle);
+        backend.start();
+        QVERIFY(adapter->data());
+        adapter->data()->advertiseManager();
+        QCOMPARE(readySpy.count(), 0);
+        completeAutoTyphonSnapshot(*adapter->data(), cycle, QString::number(cycle), cycle);
+        QCOMPARE(readySpy.count(), 1);
+        QCOMPARE(readySpy.at(0).at(0).value<RequestToken>(), cycle);
+        QCOMPARE(readySpy.at(0).at(1).value<WindowSnapshot>().windows.size(), 1);
+    }
 }
 
 QTEST_MAIN(CompositorBackendFactoryTest)

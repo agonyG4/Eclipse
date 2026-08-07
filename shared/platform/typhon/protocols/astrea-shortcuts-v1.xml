@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="astrea_shortcuts_v1">
+  <copyright>
+    Copyright 2026 AstreaOS contributors
+
+    Permission is hereby granted, free of charge, to any person obtaining a
+    copy of this software and associated documentation files (the "Software"),
+    to deal in the Software without restriction, including without limitation
+    the rights to use, copy, modify, merge, publish, distribute, sublicense,
+    and/or sell copies of the Software.
+  </copyright>
+
+  <interface name="astrea_shortcuts_manager_v1" version="1">
+    <description summary="Astrea compositor-owned shortcut registry">
+      Registers client-owned shortcut resources. Matching and ownership policy
+      are compositor-side; this protocol only receives compositor-dispatched
+      shortcut events. For the reserved astrea-shell namespace, each
+      namespace/name pair has one live owner. A newest valid registration
+      replaces the previous owner, which receives cancelled, and the replaced
+      owner is never restored. Other namespaces retain their existing shared
+      registration behavior.
+    </description>
+
+    <request name="destroy" type="destructor"/>
+
+    <request name="register_shortcut">
+      <arg name="id" type="new_id" interface="astrea_shortcut_v1"/>
+      <arg name="namespace" type="string"/>
+      <arg name="name" type="string"/>
+      <arg name="description" type="string"/>
+    </request>
+  </interface>
+
+  <interface name="astrea_shortcut_v1" version="1">
+    <description summary="registered Astrea shortcut">
+      A registered shortcut receives compositor-dispatched shortcut lifecycle
+      events for its namespace/name pair. pressed is an initial action,
+      repeated is a key-repeat action, released is an explicit release-trigger
+      action, and cancelled means ownership was replaced or registration was
+      rejected. Synthetic actions such as alt_tab_commit are separate logical
+      action presses; they are not releases of another shortcut.
+    </description>
+
+    <request name="destroy" type="destructor"/>
+
+    <event name="pressed">
+      <arg name="serial" type="uint"/>
+      <arg name="timestamp" type="uint"/>
+    </event>
+
+    <event name="repeated">
+      <arg name="serial" type="uint"/>
+      <arg name="timestamp" type="uint"/>
+    </event>
+
+    <event name="released">
+      <arg name="serial" type="uint"/>
+      <arg name="timestamp" type="uint"/>
+    </event>
+
+    <event name="cancelled">
+      <arg name="serial" type="uint"/>
+    </event>
+  </interface>
+</protocol>

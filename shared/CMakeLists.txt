@@ -96,6 +96,8 @@ add_library(astrea-shared-typhon STATIC
     platform/typhon/TyphonProtocolTypes.hpp
     platform/typhon/TyphonWaylandDisplay.cpp
     platform/typhon/TyphonWaylandDisplay.hpp
+    platform/typhon/TyphonShortcutClient.cpp
+    platform/typhon/TyphonShortcutClient.hpp
     platform/typhon/TyphonToplevelConnection.cpp
     platform/typhon/TyphonToplevelConnection.hpp
     platform/typhon/TyphonToplevelModel.cpp
@@ -127,9 +129,21 @@ if(ASTREA_TYPHON_WAYLAND_AVAILABLE)
         "${ASTREA_TYPHON_GENERATED_DIR}/astrea-toplevel-management-v1-server-protocol.h")
     set(ASTREA_TYPHON_SERVER_GENERATED_SOURCE
         "${ASTREA_TYPHON_GENERATED_DIR}/astrea-toplevel-management-v1-server-protocol.c")
+    set(ASTREA_SHORTCUT_PROTOCOL_XML
+        "${CMAKE_CURRENT_SOURCE_DIR}/platform/typhon/protocols/astrea-shortcuts-v1.xml")
+    set(ASTREA_SHORTCUT_GENERATED_HEADER
+        "${ASTREA_TYPHON_GENERATED_DIR}/astrea-shortcuts-v1-client-protocol.h")
+    set(ASTREA_SHORTCUT_GENERATED_SOURCE
+        "${ASTREA_TYPHON_GENERATED_DIR}/astrea-shortcuts-v1-client-protocol.c")
+    set(ASTREA_SHORTCUT_SERVER_GENERATED_HEADER
+        "${ASTREA_TYPHON_GENERATED_DIR}/astrea-shortcuts-v1-server-protocol.h")
+    set(ASTREA_SHORTCUT_SERVER_GENERATED_SOURCE
+        "${ASTREA_TYPHON_GENERATED_DIR}/astrea-shortcuts-v1-server-protocol.c")
     add_custom_command(
         OUTPUT "${ASTREA_TYPHON_GENERATED_HEADER}" "${ASTREA_TYPHON_GENERATED_SOURCE}"
                "${ASTREA_TYPHON_SERVER_GENERATED_HEADER}" "${ASTREA_TYPHON_SERVER_GENERATED_SOURCE}"
+               "${ASTREA_SHORTCUT_GENERATED_HEADER}" "${ASTREA_SHORTCUT_GENERATED_SOURCE}"
+               "${ASTREA_SHORTCUT_SERVER_GENERATED_HEADER}" "${ASTREA_SHORTCUT_SERVER_GENERATED_SOURCE}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${ASTREA_TYPHON_GENERATED_DIR}"
         COMMAND "${ASTREA_WAYLAND_SCANNER}" client-header
                 "${ASTREA_TYPHON_PROTOCOL_XML}" "${ASTREA_TYPHON_GENERATED_HEADER}"
@@ -139,14 +153,26 @@ if(ASTREA_TYPHON_WAYLAND_AVAILABLE)
                 "${ASTREA_TYPHON_PROTOCOL_XML}" "${ASTREA_TYPHON_SERVER_GENERATED_HEADER}"
         COMMAND "${ASTREA_WAYLAND_SCANNER}" private-code
                 "${ASTREA_TYPHON_PROTOCOL_XML}" "${ASTREA_TYPHON_SERVER_GENERATED_SOURCE}"
-        DEPENDS "${ASTREA_TYPHON_PROTOCOL_XML}"
+        COMMAND "${ASTREA_WAYLAND_SCANNER}" client-header
+                "${ASTREA_SHORTCUT_PROTOCOL_XML}" "${ASTREA_SHORTCUT_GENERATED_HEADER}"
+        COMMAND "${ASTREA_WAYLAND_SCANNER}" private-code
+                "${ASTREA_SHORTCUT_PROTOCOL_XML}" "${ASTREA_SHORTCUT_GENERATED_SOURCE}"
+        COMMAND "${ASTREA_WAYLAND_SCANNER}" server-header
+                "${ASTREA_SHORTCUT_PROTOCOL_XML}" "${ASTREA_SHORTCUT_SERVER_GENERATED_HEADER}"
+        COMMAND "${ASTREA_WAYLAND_SCANNER}" private-code
+                "${ASTREA_SHORTCUT_PROTOCOL_XML}" "${ASTREA_SHORTCUT_SERVER_GENERATED_SOURCE}"
+        DEPENDS "${ASTREA_TYPHON_PROTOCOL_XML}" "${ASTREA_SHORTCUT_PROTOCOL_XML}"
         VERBATIM
     )
     set_source_files_properties("${ASTREA_TYPHON_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
     set_source_files_properties("${ASTREA_TYPHON_SERVER_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
+    set_source_files_properties("${ASTREA_SHORTCUT_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
+    set_source_files_properties("${ASTREA_SHORTCUT_SERVER_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
     target_sources(astrea-shared-typhon PRIVATE
         "${ASTREA_TYPHON_GENERATED_HEADER}"
         "${ASTREA_TYPHON_GENERATED_SOURCE}"
+        "${ASTREA_SHORTCUT_GENERATED_HEADER}"
+        "${ASTREA_SHORTCUT_GENERATED_SOURCE}"
     )
     target_include_directories(astrea-shared-typhon PRIVATE "${ASTREA_TYPHON_GENERATED_DIR}")
     target_link_libraries(astrea-shared-typhon PRIVATE PkgConfig::ASTREA_WAYLAND_CLIENT)
@@ -162,6 +188,19 @@ astrea_shared_enable_sanitizers(astrea-shared-typhon)
 option(ASTREA_SHARED_BUILD_TESTS "Build shared foundation tests" ON)
 if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     find_package(Qt6 6.6 REQUIRED COMPONENTS Test)
+
+    add_executable(typhon-shortcut-protocol-contract-test
+        tests/TyphonShortcutProtocolContractTest.cpp
+    )
+    target_include_directories(typhon-shortcut-protocol-contract-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_compile_definitions(typhon-shortcut-protocol-contract-test PRIVATE
+        ASTREA_SHORTCUT_PROTOCOL_SOURCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/platform/typhon/protocols/astrea-shortcuts-v1.xml"
+    )
+    target_link_libraries(typhon-shortcut-protocol-contract-test PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME typhon-shortcut-protocol-contract-test COMMAND typhon-shortcut-protocol-contract-test)
+
     add_executable(desktop-entry-catalog-test
         tests/DesktopEntryCatalogTest.cpp
         apps/DesktopEntryCatalog.cpp
@@ -210,6 +249,31 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
             SKIP_REGULAR_EXPRESSION "SKIPPED")
     endif()
 
+    if(ASTREA_TYPHON_WAYLAND_AVAILABLE AND ASTREA_WAYLAND_SERVER_FOUND)
+        add_executable(typhon-shortcut-protocol-integration-test
+            tests/TyphonShortcutProtocolIntegrationTest.cpp
+            "${ASTREA_SHORTCUT_SERVER_GENERATED_SOURCE}"
+        )
+        target_include_directories(typhon-shortcut-protocol-integration-test PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+            "${ASTREA_TYPHON_GENERATED_DIR}"
+        )
+        target_link_libraries(typhon-shortcut-protocol-integration-test PRIVATE
+            astrea-shared-typhon
+            Qt6::Test
+            PkgConfig::ASTREA_WAYLAND_SERVER
+        )
+        astrea_shared_enable_sanitizers(typhon-shortcut-protocol-integration-test)
+        add_test(NAME typhon-shortcut-protocol-integration-test
+                 COMMAND typhon-shortcut-protocol-integration-test)
+    else()
+        add_test(NAME typhon-shortcut-protocol-integration-test
+            COMMAND ${CMAKE_COMMAND} -E echo
+                    "SKIPPED: Wayland client/server development files are unavailable")
+        set_tests_properties(typhon-shortcut-protocol-integration-test PROPERTIES
+            SKIP_REGULAR_EXPRESSION "SKIPPED")
+    endif()
+
     if(ASTREA_ENABLE_ASAN)
         set_tests_properties(
             desktop-entry-catalog-test
@@ -218,6 +282,7 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
             dock-application-state-projector-test
             typhon-protocol-client-test
             typhon-protocol-integration-test
+            typhon-shortcut-protocol-integration-test
             PROPERTIES
             ENVIRONMENT
                 "LSAN_OPTIONS=suppressions=${CMAKE_SOURCE_DIR}/AltTab/lsan.supp:print_suppressions=0;ASAN_OPTIONS=detect_leaks=1:halt_on_error=1;UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1"

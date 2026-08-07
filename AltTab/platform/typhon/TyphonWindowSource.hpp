@@ -4,7 +4,6 @@
 #include "platform/typhon/TyphonToplevelConnection.hpp"
 
 #include <optional>
-#include <QSet>
 #include <QVector>
 
 class TyphonWindowSource final : public CompositorBackend {
@@ -50,5 +49,4 @@ private:
     bool m_hasSnapshot = false;
     quint64 m_observedConnectionGeneration = 0;
     QVector<PendingSnapshotRequest> m_pendingSnapshotRequests;
-    QSet<RequestToken> m_resolvedSnapshotTokens;
 };

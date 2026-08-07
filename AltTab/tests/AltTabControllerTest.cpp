@@ -11,7 +11,10 @@
 #include "core/AltTabController.hpp"
 #include "core/WindowInfo.hpp"
 #include "platform/compositor/FakeBackend.hpp"
+#include "platform/typhon/TyphonWindowSource.hpp"
 #include "services/AppIdentityResolver.hpp"
+
+using namespace Astrea::Typhon;
 
 static WindowInfo makeWindow(const QString &id, int focusHistory, int wsId = 1) {
     WindowInfo w;
@@ -112,6 +115,64 @@ private:
     BackendState m_state = BackendState::Stopped;
 };
 
+class ReloadTyphonAdapter final : public TyphonProtocolAdapter {
+    Q_OBJECT
+
+public:
+    explicit ReloadTyphonAdapter(QObject *parent = nullptr)
+        : TyphonProtocolAdapter(parent)
+    {
+    }
+
+    void start() override { ++starts; }
+    void stop() override { ++stops; }
+    bool isAvailable() const override { return true; }
+
+    void advertiseManager() { emit registryDiscovered(true); }
+    void create(quint64 token) { emit handleCreated(token); }
+    void id(quint64 token, const QString &value) { emit identifierChanged(token, value); }
+    void app(quint64 token, const QString &value) { emit appIdChanged(token, value); }
+    void title(quint64 token, const QString &value) { emit titleChanged(token, value); }
+    void pid(quint64 token, quint32 value) { emit pidChanged(token, value); }
+    void kind(quint64 token, ToplevelKind value) { emit kindChanged(token, value); }
+    void state(quint64 token, ToplevelStates value) { emit stateChanged(token, value, 0); }
+    void focus(quint64 token, FocusSerial value) { emit focusSerialChanged(token, value); }
+    void handleDone(quint64 token, Revision value) { emit handleCompleted(token, value); }
+    void done(Revision revision, quint32 total) { emit managerCompleted(revision, total, false); }
+
+    int starts = 0;
+    int stops = 0;
+};
+
+static void completeReloadSnapshot(ReloadTyphonAdapter &adapter, quint64 token,
+                                   const QString &id, Revision revision,
+                                   const QString &title)
+{
+    adapter.create(token);
+    adapter.id(token, id);
+    adapter.app(token, QStringLiteral("org.example.App"));
+    adapter.title(token, title);
+    adapter.pid(token, 100);
+    adapter.kind(token, ToplevelKind::XdgToplevel);
+    adapter.state(token, {});
+    adapter.focus(token, 1);
+    adapter.handleDone(token, revision);
+    adapter.done(revision, 1);
+}
+
+static void updateReloadSnapshot(ReloadTyphonAdapter &adapter, quint64 token,
+                                 Revision revision, const QString &title)
+{
+    adapter.app(token, QStringLiteral("org.example.App"));
+    adapter.title(token, title);
+    adapter.pid(token, 100);
+    adapter.kind(token, ToplevelKind::XdgToplevel);
+    adapter.state(token, {});
+    adapter.focus(token, 1);
+    adapter.handleDone(token, revision);
+    adapter.done(revision, 1);
+}
+
 class TestAltTabController : public QObject {
     Q_OBJECT
 
@@ -148,8 +209,10 @@ private slots:
     void testAsynchronousReadyRequestsSnapshot();
     void testTyphonWorkspaceEligibilityRules();
     void testMinimizedWindowRemainsVisible();
+    void testTyphonReloadReusesOpeningToken();
     void stress100ColdAsynchronousOpens();
     void stress100EmptyWorkspaceSnapshots();
+    void stress100TyphonReloadWindowsCycles();
 
 private:
     AppIdentityResolver *m_resolver = nullptr;
@@ -675,6 +738,43 @@ void TestAltTabController::testMinimizedWindowRemainsVisible()
                                             AltTabWindowModel::HiddenRole).toBool(), false);
 }
 
+void TestAltTabController::testTyphonReloadReusesOpeningToken()
+{
+    auto *adapter = new ReloadTyphonAdapter;
+    auto *connection = new TyphonToplevelConnection(adapter);
+    auto *source = new TyphonWindowSource(connection);
+    AltTabController controller(source, m_resolver);
+    QSignalSpy readySpy(source, &CompositorBackend::snapshotReady);
+    QSignalSpy errorSpy(source, &CompositorBackend::backendError);
+
+    controller.step(1);
+    QCOMPARE(controller.state(), AltTabController::State::Opening);
+    adapter->advertiseManager();
+    completeReloadSnapshot(*adapter, 1, QStringLiteral("1"), 1, QStringLiteral("Initial"));
+
+    QCOMPARE(controller.state(), AltTabController::State::Open);
+    QCOMPARE(controller.windowModel()->count(), 1);
+    QCOMPARE(controller.windowModel()->at(0).title, QStringLiteral("Initial"));
+    QCOMPARE(readySpy.count(), 1);
+    QCOMPARE(readySpy.at(0).at(0).value<RequestToken>(), RequestToken(1));
+    const int startsBeforeReload = adapter->starts;
+    const int errorsBeforeReload = errorSpy.count();
+
+    updateReloadSnapshot(*adapter, 1, 2, QStringLiteral("Updated"));
+    controller.reloadWindows();
+
+    QCOMPARE(controller.state(), AltTabController::State::Open);
+    QCOMPARE(controller.windowModel()->count(), 1);
+    QCOMPARE(controller.windowModel()->at(0).title, QStringLiteral("Updated"));
+    QCOMPARE(readySpy.count(), 2);
+    QCOMPARE(readySpy.at(1).at(0).value<RequestToken>(), RequestToken(1));
+    QCOMPARE(readySpy.at(1).at(1).value<WindowSnapshot>().revision, Revision(2));
+    QCOMPARE(adapter->starts, startsBeforeReload);
+    QCOMPARE(errorSpy.count(), errorsBeforeReload);
+    QCOMPARE(source->state(), BackendState::Ready);
+    delete source;
+}
+
 void TestAltTabController::stress100ColdAsynchronousOpens()
 {
     for (int cycle = 0; cycle < 100; ++cycle) {
@@ -706,6 +806,38 @@ void TestAltTabController::stress100EmptyWorkspaceSnapshots()
         QCOMPARE(controller.windowModel()->at(0).workspaceId.value, QString());
         controller.cancel();
     }
+}
+
+void TestAltTabController::stress100TyphonReloadWindowsCycles()
+{
+    auto *adapter = new ReloadTyphonAdapter;
+    auto *connection = new TyphonToplevelConnection(adapter);
+    auto *source = new TyphonWindowSource(connection);
+    AltTabController controller(source, m_resolver);
+    QSignalSpy readySpy(source, &CompositorBackend::snapshotReady);
+    QSignalSpy errorSpy(source, &CompositorBackend::backendError);
+
+    controller.show();
+    adapter->advertiseManager();
+    completeReloadSnapshot(*adapter, 1, QStringLiteral("1"), 1, QStringLiteral("Initial"));
+    QCOMPARE(controller.state(), AltTabController::State::Open);
+
+    for (Revision revision = 2; revision <= 101; ++revision) {
+        updateReloadSnapshot(*adapter, 1, revision,
+                             QStringLiteral("Revision %1").arg(revision));
+        controller.reloadWindows();
+        QCOMPARE(controller.state(), AltTabController::State::Open);
+        QCOMPARE(controller.windowModel()->count(), 1);
+        QCOMPARE(controller.windowModel()->at(0).title,
+                 QStringLiteral("Revision %1").arg(revision));
+        QCOMPARE(readySpy.count(), static_cast<qsizetype>(revision));
+        QCOMPARE(readySpy.last().at(0).value<RequestToken>(), RequestToken(1));
+    }
+
+    QCOMPARE(errorSpy.count(), 0);
+    QCOMPARE(source->state(), BackendState::Ready);
+    QCOMPARE(adapter->starts, 1);
+    delete source;
 }
 
 QTEST_MAIN(TestAltTabController)

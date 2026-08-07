@@ -50,6 +50,19 @@ static void completeInitialSnapshot(FakeTyphonAdapter &adapter, quint64 token,
     adapter.done(revision, 1);
 }
 
+static void updateCommittedSnapshot(FakeTyphonAdapter &adapter, quint64 token,
+                                    Revision revision, const QString &title)
+{
+    adapter.app(token, QStringLiteral("org.example.App"));
+    adapter.title(token, title);
+    adapter.pid(token, 100);
+    adapter.kind(token, ToplevelKind::XdgToplevel);
+    adapter.state(token, {});
+    adapter.focus(token, revision);
+    adapter.handleDone(token, revision);
+    adapter.done(revision, 1);
+}
+
 class TyphonWindowSourceTest final : public QObject {
     Q_OBJECT
 
@@ -63,8 +76,12 @@ private slots:
     void duplicatePendingTokenGetsOneResponse();
     void pendingRequestFailsWhenStopped();
     void initialSnapshotPublishesChangedBeforeReady();
+    void completedTokenCanBeReused();
+    void generationFailureAllowsSameTokenReuse();
     void stress100SnapshotMappingCycles();
     void stress100RequestBeforeInitialSnapshotCycles();
+    void stress100SameTokenRequestCycles();
+    void stress100GenerationFailureSameTokenReuse();
     void stress100MinimizedWindowCycles();
 };
 
@@ -173,6 +190,11 @@ void TyphonWindowSourceTest::pendingRequestQueueOverflowIsBounded()
     QCOMPARE(readySpy.count(), 17);
     for (int i = 1; i <= 16; ++i)
         QCOMPARE(readySpy.at(i).at(0).value<RequestToken>(), RequestToken(i));
+
+    source.requestSnapshot(17);
+    QCOMPARE(readySpy.count(), 18);
+    QCOMPARE(readySpy.at(17).at(0).value<RequestToken>(), RequestToken(17));
+    QCOMPARE(readySpy.at(17).at(1).value<WindowSnapshot>().revision, Revision(1));
     source.stop();
 }
 
@@ -191,6 +213,11 @@ void TyphonWindowSourceTest::duplicatePendingTokenGetsOneResponse()
 
     QCOMPARE(readySpy.count(), 1);
     QCOMPARE(readySpy.at(0).at(0).value<RequestToken>(), RequestToken(42));
+
+    source.requestSnapshot(42);
+    QCOMPARE(readySpy.count(), 2);
+    QCOMPARE(readySpy.at(1).at(0).value<RequestToken>(), RequestToken(42));
+    QCOMPARE(readySpy.at(1).at(1).value<WindowSnapshot>().revision, Revision(1));
     source.stop();
 }
 
@@ -236,6 +263,69 @@ void TyphonWindowSourceTest::initialSnapshotPublishesChangedBeforeReady()
     source.stop();
 }
 
+void TyphonWindowSourceTest::completedTokenCanBeReused()
+{
+    auto *adapter = new FakeTyphonAdapter;
+    auto *connection = new TyphonToplevelConnection(adapter);
+    TyphonWindowSource source(connection);
+    QSignalSpy readySpy(&source, &CompositorBackend::snapshotReady);
+    QSignalSpy errorSpy(&source, &CompositorBackend::backendError);
+
+    source.start();
+    adapter->advertiseManager();
+    completeInitialSnapshot(*adapter, 1, QStringLiteral("1"), 1);
+
+    source.requestSnapshot(42);
+    QCOMPARE(readySpy.count(), 1);
+    QCOMPARE(readySpy.at(0).at(0).value<RequestToken>(), RequestToken(42));
+    QCOMPARE(readySpy.at(0).at(1).value<WindowSnapshot>().revision, Revision(1));
+
+    updateCommittedSnapshot(*adapter, 1, 2, QStringLiteral("Updated"));
+    source.requestSnapshot(42);
+
+    QCOMPARE(readySpy.count(), 2);
+    QCOMPARE(readySpy.at(1).at(0).value<RequestToken>(), RequestToken(42));
+    QCOMPARE(readySpy.at(1).at(1).value<WindowSnapshot>().revision, Revision(2));
+    QCOMPARE(readySpy.at(1).at(1).value<WindowSnapshot>().windows.first().title,
+             QStringLiteral("Updated"));
+    QCOMPARE(errorSpy.count(), 0);
+    QCOMPARE(source.state(), BackendState::Ready);
+    source.stop();
+}
+
+void TyphonWindowSourceTest::generationFailureAllowsSameTokenReuse()
+{
+    auto *adapter = new FakeTyphonAdapter;
+    auto *connection = new TyphonToplevelConnection(adapter);
+    TyphonWindowSource source(connection);
+    QSignalSpy readySpy(&source, &CompositorBackend::snapshotReady);
+    QSignalSpy errorSpy(&source, &CompositorBackend::backendError);
+
+    source.start();
+    adapter->advertiseManager();
+    source.requestSnapshot(42);
+    QCOMPARE(readySpy.count(), 0);
+
+    connection->stop();
+
+    QCOMPARE(readySpy.count(), 1);
+    QCOMPARE(readySpy.at(0).at(0).value<RequestToken>(), RequestToken(42));
+    QVERIFY(readySpy.at(0).at(1).value<WindowSnapshot>().windows.isEmpty());
+    QCOMPARE(errorSpy.count(), 1);
+
+    connection->start();
+    adapter->advertiseManager();
+    source.requestSnapshot(42);
+    QCOMPARE(readySpy.count(), 1);
+    completeInitialSnapshot(*adapter, 2, QStringLiteral("2"), 2);
+
+    QCOMPARE(readySpy.count(), 2);
+    QCOMPARE(readySpy.at(1).at(0).value<RequestToken>(), RequestToken(42));
+    QCOMPARE(readySpy.at(1).at(1).value<WindowSnapshot>().revision, Revision(2));
+    QCOMPARE(source.state(), BackendState::Ready);
+    source.stop();
+}
+
 void TyphonWindowSourceTest::stress100SnapshotMappingCycles()
 {
     TyphonWindowSource source;
@@ -270,6 +360,69 @@ void TyphonWindowSourceTest::stress100RequestBeforeInitialSnapshotCycles()
         completeInitialSnapshot(*adapter, cycle, QString::number(cycle), cycle);
         QCOMPARE(readySpy.count(), 1);
         QCOMPARE(readySpy.at(0).at(0).value<RequestToken>(), cycle);
+        source.stop();
+    }
+}
+
+void TyphonWindowSourceTest::stress100SameTokenRequestCycles()
+{
+    auto *adapter = new FakeTyphonAdapter;
+    auto *connection = new TyphonToplevelConnection(adapter);
+    TyphonWindowSource source(connection);
+    QSignalSpy readySpy(&source, &CompositorBackend::snapshotReady);
+    QSignalSpy errorSpy(&source, &CompositorBackend::backendError);
+
+    source.start();
+    adapter->advertiseManager();
+    completeInitialSnapshot(*adapter, 1, QStringLiteral("1"), 1);
+
+    for (Revision revision = 1; revision <= 100; ++revision) {
+        source.requestSnapshot(42);
+        QCOMPARE(readySpy.count(), static_cast<qsizetype>(revision));
+        QCOMPARE(readySpy.last().at(0).value<RequestToken>(), RequestToken(42));
+        QCOMPARE(readySpy.last().at(1).value<WindowSnapshot>().revision, revision);
+
+        if (revision < 100)
+            updateCommittedSnapshot(*adapter, 1, revision + 1,
+                                    QStringLiteral("Revision %1").arg(revision + 1));
+    }
+
+    QCOMPARE(errorSpy.count(), 0);
+    QCOMPARE(source.state(), BackendState::Ready);
+    source.stop();
+}
+
+void TyphonWindowSourceTest::stress100GenerationFailureSameTokenReuse()
+{
+    for (int cycle = 1; cycle <= 100; ++cycle) {
+        auto *adapter = new FakeTyphonAdapter;
+        auto *connection = new TyphonToplevelConnection(adapter);
+        TyphonWindowSource source(connection);
+        QSignalSpy readySpy(&source, &CompositorBackend::snapshotReady);
+        QSignalSpy errorSpy(&source, &CompositorBackend::backendError);
+
+        source.start();
+        adapter->advertiseManager();
+        source.requestSnapshot(42);
+        QCOMPARE(readySpy.count(), 0);
+
+        connection->stop();
+        QCOMPARE(readySpy.count(), 1);
+        QCOMPARE(errorSpy.count(), 1);
+        QVERIFY(readySpy.at(0).at(1).value<WindowSnapshot>().windows.isEmpty());
+
+        connection->start();
+        adapter->advertiseManager();
+        source.requestSnapshot(42);
+        QCOMPARE(readySpy.count(), 1);
+        completeInitialSnapshot(*adapter, 2, QString::number(cycle), cycle + 1);
+
+        QCOMPARE(readySpy.count(), 2);
+        QCOMPARE(readySpy.at(1).at(0).value<RequestToken>(), RequestToken(42));
+        QCOMPARE(readySpy.at(1).at(1).value<WindowSnapshot>().revision,
+                 Revision(cycle + 1));
+        QCOMPARE(errorSpy.count(), 1);
+        QCOMPARE(source.state(), BackendState::Ready);
         source.stop();
     }
 }

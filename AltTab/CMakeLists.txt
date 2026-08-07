@@ -56,6 +56,8 @@ astrea_enable_sanitizers(astrea-alttab-hyprland)
 # 4. Core Library
 add_library(astrea-alttab-core STATIC
     core/AltTabController.cpp
+    core/AltTabShortcutRouter.cpp
+    core/AltTabShortcutRouter.hpp
     core/AltTabWindowModel.cpp
     platform/compositor/AutoCompositorBackend.cpp
     platform/compositor/AutoCompositorBackend.hpp
@@ -124,6 +126,7 @@ if(BUILD_TESTING AND ASTREA_ALT_TAB_BUILD_TESTS)
         alttab-socket-test
         alttab-model-test
         alttab-factory-test
+        alttab-shortcut-routing-test
     )
 
     function(add_alttab_test TEST_NAME TEST_FILE)
@@ -148,6 +151,7 @@ if(BUILD_TESTING AND ASTREA_ALT_TAB_BUILD_TESTS)
     add_alttab_test(alttab-socket-test tests/HyprlandSocketTest.cpp)
     add_alttab_test(alttab-model-test tests/AltTabWindowModelTest.cpp)
     add_alttab_test(alttab-factory-test tests/CompositorBackendFactoryTest.cpp)
+    add_alttab_test(alttab-shortcut-routing-test tests/AltTabShortcutRoutingTest.cpp)
 
     # Sanitizer test environment with LSAN suppression for NVIDIA driver
     set(_lsan_supp "${CMAKE_CURRENT_SOURCE_DIR}/lsan.supp")

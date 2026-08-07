@@ -2,6 +2,7 @@
 
 #include "app/CommandLine.hpp"
 #include "core/AltTabController.hpp"
+#include "core/AltTabShortcutRouter.hpp"
 #include "platform/compositor/CompositorBackend.hpp"
 #include "platform/compositor/CompositorBackendFactory.hpp"
 #include "platform/ipc/AltTabIpcServer.hpp"
@@ -19,7 +20,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLatin1StringView>
-#include <QLocalServer>
 #include <QLocalSocket>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -135,18 +135,17 @@ bool AltTabApplication::initializeServices()
         m_paths->alttabConfigPath(), m_paths->componentsConfigPath());
     m_ipcServer = std::make_unique<AltTabIpcServer>();
 
-    if (!m_ipcServer->listen(QLatin1StringView(kIpcName), nullptr)) {
-        QLocalServer::removeServer(QLatin1StringView(kIpcName));
-        QString error;
-        if (!m_ipcServer->listen(QLatin1StringView(kIpcName), &error)) {
-            qCritical("AltTab IPC listen failed: %s", qPrintable(error));
-            return false;
-        }
+    QString error;
+    if (!m_ipcServer->listen(QLatin1StringView(kIpcName), &error)) {
+        qCritical("AltTab IPC listen failed: %s", qPrintable(error));
+        return false;
     }
 
     m_ipcServer->setReplyCallback([this](const AltTabIpcServer::IpcCommand &) -> QString {
         return buildStatusJson();
     });
+
+    m_shortcutClient = std::make_unique<TyphonShortcutClient>();
 
     return true;
 }
@@ -197,8 +196,15 @@ void AltTabApplication::connectSignals()
 {
     QObject::connect(m_configWatcher.get(), &AltTabConfigWatcher::componentToggled, this,
                      [this](bool enabled) {
-        if (!enabled && m_controller->isOpen())
+        if (enabled) {
+            if (m_shortcutClient)
+                m_shortcutClient->start();
+            return;
+        }
+        if (m_controller->isOpen())
             m_controller->cancel();
+        if (m_shortcutClient)
+            m_shortcutClient->stop();
     });
 
     QObject::connect(m_configWatcher.get(), &AltTabConfigWatcher::configChanged, this, [this] {
@@ -241,6 +247,34 @@ void AltTabApplication::connectSignals()
             break;
         }
     });
+
+    QObject::connect(m_shortcutClient.get(), &TyphonShortcutClient::diagnostic, this,
+                     [](const QString &message) {
+        qWarning("AltTab Typhon shortcut client: %s", qPrintable(message));
+    });
+    QObject::connect(m_shortcutClient.get(), &TyphonShortcutClient::shortcutEvent, this,
+                     [this](const QString &namespaceName, const QString &name,
+                            TyphonShortcutPhase phase, std::uint32_t, std::uint32_t) {
+        if (!m_configWatcher->componentEnabled())
+            return;
+
+        switch (mapTyphonShortcut(namespaceName, name, phase)) {
+        case AltTabShortcutAction::Next:
+            m_controller->step(1);
+            break;
+        case AltTabShortcutAction::Previous:
+            m_controller->step(-1);
+            break;
+        case AltTabShortcutAction::Commit:
+            m_controller->commit();
+            break;
+        case AltTabShortcutAction::Ignore:
+            break;
+        }
+    });
+
+    if (m_configWatcher->componentEnabled() && m_shortcutClient)
+        m_shortcutClient->start();
 }
 
 QString AltTabApplication::buildStatusJson() const
@@ -298,6 +332,29 @@ QString AltTabApplication::buildStatusJson() const
     root[QStringLiteral("backend")] = backend;
     root[QStringLiteral("overlay")] = overlay;
     root[QStringLiteral("identity")] = identity;
+
+    QJsonObject shortcuts;
+    if (m_shortcutClient) {
+        shortcuts[QStringLiteral("state")] = [this]() -> QString {
+            switch (m_shortcutClient->state()) {
+            case TyphonShortcutConnectionState::Stopped: return QStringLiteral("stopped");
+            case TyphonShortcutConnectionState::Connecting: return QStringLiteral("connecting");
+            case TyphonShortcutConnectionState::WaitingForManager: return QStringLiteral("waitingForManager");
+            case TyphonShortcutConnectionState::Registering: return QStringLiteral("registering");
+            case TyphonShortcutConnectionState::Ready: return QStringLiteral("ready");
+            case TyphonShortcutConnectionState::Degraded: return QStringLiteral("degraded");
+            case TyphonShortcutConnectionState::Disconnected: return QStringLiteral("disconnected");
+            case TyphonShortcutConnectionState::Unsupported: return QStringLiteral("unsupported");
+            }
+            return QStringLiteral("unknown");
+        }();
+        shortcuts[QStringLiteral("registeredCount")] = m_shortcutClient->registeredShortcutCount();
+        shortcuts[QStringLiteral("generation")] = static_cast<qint64>(m_shortcutClient->connectionGeneration());
+    } else {
+        shortcuts[QStringLiteral("state")] = QStringLiteral("stopped");
+        shortcuts[QStringLiteral("registeredCount")] = 0;
+    }
+    root[QStringLiteral("shortcuts")] = shortcuts;
     return QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact));
 }
 

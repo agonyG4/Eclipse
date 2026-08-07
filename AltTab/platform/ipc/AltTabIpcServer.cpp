@@ -21,14 +21,43 @@ AltTabIpcServer::AltTabIpcServer(QObject *parent)
     : QObject(parent) {}
 
 bool AltTabIpcServer::listen(const QString &name, QString *errorOut) {
+    if (m_server)
+        stopListening();
+
     m_serverName = name;
     m_server = new QLocalServer(this);
     connect(m_server, &QLocalServer::newConnection, this, &AltTabIpcServer::onNewConnection);
-    if (!m_server->listen(name)) {
-        if (errorOut) *errorOut = m_server->errorString();
+    if (m_server->listen(name))
+        return true;
+
+    const QString firstError = m_server->errorString();
+    QLocalSocket probe;
+    probe.connectToServer(name, QIODevice::ReadWrite);
+    if (probe.waitForConnected(100)) {
+        if (errorOut)
+            *errorOut = firstError;
+        m_server->close();
+        delete m_server;
+        m_server = nullptr;
         return false;
     }
-    return true;
+
+    m_server->close();
+    delete m_server;
+    m_server = nullptr;
+    QLocalServer::removeServer(name);
+
+    m_server = new QLocalServer(this);
+    connect(m_server, &QLocalServer::newConnection, this, &AltTabIpcServer::onNewConnection);
+    if (m_server->listen(name))
+        return true;
+
+    if (errorOut)
+        *errorOut = m_server->errorString().isEmpty() ? firstError : m_server->errorString();
+    m_server->close();
+    delete m_server;
+    m_server = nullptr;
+    return false;
 }
 
 void AltTabIpcServer::stopListening() {

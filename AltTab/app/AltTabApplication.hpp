@@ -7,6 +7,7 @@
 #include "platform/ipc/AltTabIpcServer.hpp"
 #include "platform/compositor/CompositorBackend.hpp"
 #include "platform/runtime/AltTabRuntimePaths.hpp"
+#include "platform/typhon/TyphonShortcutClient.hpp"
 
 #include <QObject>
 #include <QPointer>
@@ -41,6 +42,7 @@ private:
     std::unique_ptr<AltTabController> m_controller;
     std::unique_ptr<AltTabConfigWatcher> m_configWatcher;
     std::unique_ptr<AltTabIpcServer> m_ipcServer;
+    std::unique_ptr<TyphonShortcutClient> m_shortcutClient;
     std::unique_ptr<QQmlApplicationEngine> m_engine;
     AstreaIconProvider *m_iconProvider = nullptr;
     QPointer<QQuickWindow> m_overlayWindow;

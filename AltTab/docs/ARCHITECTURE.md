@@ -2,17 +2,19 @@
 
 ## Process boundary
 
-Alt+Tab is a resident native Qt 6 process. It communicates with the compositor
-via thin CLI invocations that send IPC messages to the resident daemon.
+Alt+Tab is a resident native Qt 6 process. Typhon owns physical shortcut
+matching and dispatches lifecycle events to the daemon. Thin CLI invocations
+remain an IPC compatibility path.
 
 ```
-Hyprland keybind → astrea-alt-tab --next → local IPC (astrea-alt-tab-v1)
+Typhon astrea-shell shortcut ────────────────→ AltTabApplication
+CLI compatibility caller → local IPC (astrea-alt-tab-v1) ───┘
                                                 ↓
                                          AltTabApplication
                                                 |
-                                ┌───────────────┼───────────────┐
-                                ▼               ▼               ▼
-                         AltTabController  WindowSource   AppIdentityResolver
+                                ┌───────────────┼────────────────┬──────────────┐
+                                ▼               ▼                ▼              ▼
+                         AltTabController  WindowSource   AppIdentityResolver  TyphonShortcutClient
                                 |           (Interface)    (async icon/name)
                                 ▼               ▼
                          AltTabWindowModel   HyprlandWindowSource

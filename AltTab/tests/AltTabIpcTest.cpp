@@ -16,6 +16,7 @@ private slots:
     void testStatusResponse();
     void testMalformedCommand();
     void testDuplicateDaemon();
+    void testStaleSocketIsRecovered();
     void testIdempotentCommit();
 };
 
@@ -114,7 +115,17 @@ void TestAltTabIpc::testDuplicateDaemon() {
     bool result = server2.listen(QStringLiteral("test-duplicate"));
     QVERIFY(!result);
 
-    QLocalServer::removeServer(QStringLiteral("test-duplicate"));
+    server1.stopListening();
+}
+
+void TestAltTabIpc::testStaleSocketIsRecovered() {
+    QLocalServer staleServer;
+    QVERIFY(staleServer.listen(QStringLiteral("test-stale-socket")));
+    staleServer.close();
+
+    AltTabIpcServer server;
+    QVERIFY(server.listen(QStringLiteral("test-stale-socket")));
+    server.stopListening();
 }
 
 void TestAltTabIpc::testIdempotentCommit() {

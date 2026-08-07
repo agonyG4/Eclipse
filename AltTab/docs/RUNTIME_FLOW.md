@@ -2,7 +2,7 @@
 
 ## Startup
 
-1. `systemctl --user start astrea-alt-tabd.service`
+1. The session enables `astrea-alt-tabd.service` through `graphical-session.target`.
 2. Executable runs `astrea-alt-tab --daemon`
 3. CLI parsing detects `--daemon` → `CommandLineRequest::Mode::Daemon`
 4. `AltTabApplication::run()`:
@@ -12,11 +12,14 @@
      - Creates `AltTabRuntimePaths` from environment
      - Creates `AppIdentityResolver`
    - `initializeServices()`:
-     - Creates `HyprlandWindowSource` (connects to compositor sockets)
-     - Creates `AltTabController` with source and resolver
+     - Creates the selected compositor backend and `AltTabController`
      - Creates `AltTabConfigWatcher`
      - Creates `AltTabIpcServer` and listens on `astrea-alt-tab-v1`
-     - Handles stale socket cleanup
+     - Preserves a live daemon when an IPC socket name is already owned; only a
+       stale local socket is removed and retried
+     - Creates `TyphonShortcutClient` and registers `astrea-shell/alt_tab_next`,
+       `astrea-shell/alt_tab_previous`, and `astrea-shell/alt_tab_commit`
+     - Keeps IPC and the daemon alive when the Typhon shortcuts manager is unavailable
      - Sets status reply callback
    - `connectSignals()`:
      - Config watcher → component toggle
@@ -31,13 +34,14 @@
 
 ## Key press flow
 
-### Forward (Alt+Tab)
+### Forward (native Alt+Tab)
 
-1. Hyprland `bind = ALT, Tab, exec, astrea-alt-tab --next`
-2. Thin CLI sends IPC "next\n" to daemon socket
-3. `AltTabIpcServer` receives command → emits `commandReceived`
-4. `AltTabApplication` → `m_controller->step(1)`
-5. Controller state machine:
+1. Typhon matches physical `ALT+Tab` and dispatches `pressed` for the
+   `astrea-shell/alt_tab_next` registration.
+2. `TyphonShortcutClient` maps the event to `m_controller->step(1)`.
+3. Repeated compositor events map to additional `step(1)` calls; Shift+Tab
+   uses `alt_tab_previous` and `step(-1)`.
+4. Controller state machine:
    - Hidden → Opening: store direction and request the active opening generation
    - If the backend is still starting, `Ready` requests the opening snapshot;
      the matching `snapshotReady` opens the UI
@@ -46,19 +50,17 @@
    - Parse/map → filter hidden and explicitly invalid workspace metadata → sort by focusHistoryID
    - Model setWindows → find active window by focusHistoryID→0
    - Apply offset → Open state → emit focusRequested → QML surface visible
-6. Repeated Tab (still in Open): cycle selection immediately
+5. The protocol's synthetic `alt_tab_commit` `pressed` event is dispatched when
+   the compositor commits the Alt sequence, and maps to `m_controller->commit()`.
 
-### Alt release (Commit)
+### IPC compatibility path
 
-1. QML `Keys.onReleased` detects `Qt.Key_Alt` or `Qt.Key_AltGr`
-2. Calls `AltTabController.commit()`
-3. State: Open → Committing → emit commitRequested(address, workspace)
-4. `AltTabApplication` → `m_windowSource->focusWindow(address, workspaceId)`
-5. HyprlandWindowSource:
-   - `dispatch focusworkspaceoncurrentmonitor <id>`
-   - `dispatch focuswindow address:<normalized address>`
-6. State → Hidden, model cleared, surface hidden
-7. Compositor `bindr` also fires as a safe fallback (idempotent)
+The CLI remains available for scripted and compatibility callers:
+
+1. `astrea-alt-tab --next` sends IPC `next\n` to the daemon socket.
+2. `AltTabIpcServer` emits `commandReceived` and the application invokes the
+   same controller operation.
+3. `status` reports backend, overlay, and Typhon shortcut registration state.
 
 ## IPC command handling
 

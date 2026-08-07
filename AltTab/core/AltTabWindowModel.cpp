@@ -33,6 +33,8 @@ QVariant AltTabWindowModel::data(const QModelIndex &index, int role) const {
             return QStringLiteral("image://astrea-icon/") + w.iconName;
         return {};
     }
+    case IconPendingRole: return w.iconPending;
+    case ShowFallbackTextRole: return w.showFallbackText;
     case SelectedRole: return index.row() == m_selectedIndex;
     case HiddenRole: return w.isHidden;
     case MinimizedRole: return w.isMinimized;
@@ -56,6 +58,8 @@ QHash<int, QByteArray> AltTabWindowModel::roleNames() const {
         {IconNameRole, "iconName"},
         {IconPathRole, "iconPath"},
         {IconUrlRole, "iconUrl"},
+        {IconPendingRole, "iconPending"},
+        {ShowFallbackTextRole, "showFallbackText"},
         {SelectedRole, "selected"},
         {HiddenRole, "hidden"},
         {MinimizedRole, "minimized"},
@@ -76,6 +80,8 @@ static QVector<int> collectChangedRoles(WindowInfo &dst, const WindowInfo &src) 
     if (dst.focusHistoryId != src.focusHistoryId) { dst.focusHistoryId = src.focusHistoryId; roles << AltTabWindowModel::FocusOrderRole; }
     if (dst.iconName != src.iconName) { dst.iconName = src.iconName; roles << AltTabWindowModel::IconNameRole << AltTabWindowModel::IconUrlRole; }
     if (dst.iconPath != src.iconPath) { dst.iconPath = src.iconPath; roles << AltTabWindowModel::IconPathRole << AltTabWindowModel::IconUrlRole; }
+    if (dst.iconPending != src.iconPending) { dst.iconPending = src.iconPending; roles << AltTabWindowModel::IconPendingRole; }
+    if (dst.showFallbackText != src.showFallbackText) { dst.showFallbackText = src.showFallbackText; roles << AltTabWindowModel::ShowFallbackTextRole; }
     if (dst.isHidden != src.isHidden) { dst.isHidden = src.isHidden; roles << AltTabWindowModel::HiddenRole; }
     if (dst.isMinimized != src.isMinimized) { dst.isMinimized = src.isMinimized; roles << AltTabWindowModel::MinimizedRole; }
     if (dst.isActive != src.isActive) { dst.isActive = src.isActive; roles << AltTabWindowModel::ActiveRole; }
@@ -89,6 +95,7 @@ static bool windowsEqual(const WindowInfo &a, const WindowInfo &b) {
         && a.outputId.value == b.outputId.value
         && a.focusHistoryId == b.focusHistoryId && a.iconName == b.iconName
         && a.iconPath == b.iconPath
+        && a.iconPending == b.iconPending && a.showFallbackText == b.showFallbackText
         && a.isHidden == b.isHidden && a.isMinimized == b.isMinimized && a.isActive == b.isActive;
 }
 
@@ -195,7 +202,9 @@ void AltTabWindowModel::updateWindow(const WindowInfo &window) {
     for (int i = 0; i < m_windows.size(); ++i) {
         if (m_windows[i].windowId == window.windowId) {
             m_windows[i] = window;
-            emit dataChanged(index(i), index(i), {IconNameRole, IconPathRole, IconUrlRole, DisplayNameRole});
+            emit dataChanged(index(i), index(i), {IconNameRole, IconPathRole, IconUrlRole,
+                                                  IconPendingRole, ShowFallbackTextRole,
+                                                  DisplayNameRole});
             return;
         }
     }

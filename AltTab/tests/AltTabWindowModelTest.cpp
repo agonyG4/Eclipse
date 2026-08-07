@@ -46,6 +46,8 @@ void TestAltTabWindowModel::testRoles() {
     QVERIFY(roles.contains(AltTabWindowModel::DisplayNameRole));
     QVERIFY(roles.contains(AltTabWindowModel::IconNameRole));
     QVERIFY(roles.contains(AltTabWindowModel::IconUrlRole));
+    QVERIFY(roles.values().contains(QByteArray("iconPending")));
+    QVERIFY(roles.values().contains(QByteArray("showFallbackText")));
     QVERIFY(roles.contains(AltTabWindowModel::SelectedRole));
     QVERIFY(roles.contains(AltTabWindowModel::WorkspaceIdRole));
     QVERIFY(roles.contains(AltTabWindowModel::OutputRole));
@@ -76,6 +78,14 @@ void TestAltTabWindowModel::testSetWindows() {
     model.setWindows(windows);
     QCOMPARE(model.count(), 3);
     QCOMPARE(countSpy.count(), 1);
+
+    const auto roles = model.roleNames();
+    const int iconPendingRole = roles.key(QByteArray("iconPending"), -1);
+    const int showFallbackTextRole = roles.key(QByteArray("showFallbackText"), -1);
+    QVERIFY(iconPendingRole >= 0);
+    QVERIFY(showFallbackTextRole >= 0);
+    QCOMPARE(model.data(model.index(0), iconPendingRole).toBool(), false);
+    QCOMPARE(model.data(model.index(0), showFallbackTextRole).toBool(), true);
 
     QCOMPARE(model.data(model.index(0), AltTabWindowModel::WindowIdRole).toString(),
              QStringLiteral("0x0001"));

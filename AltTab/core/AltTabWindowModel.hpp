@@ -21,6 +21,8 @@ public:
         IconNameRole,
         IconPathRole,
         IconUrlRole,
+        IconPendingRole,
+        ShowFallbackTextRole,
         SelectedRole,
         HiddenRole,
         MinimizedRole,

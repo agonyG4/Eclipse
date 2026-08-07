@@ -29,7 +29,6 @@ void TyphonWindowSource::start()
         return;
     m_started = true;
     m_observedConnectionGeneration = 0;
-    m_resolvedSnapshotTokens.clear();
     if (m_connection)
         m_connection->start();
 }
@@ -45,7 +44,6 @@ void TyphonWindowSource::stop()
     m_hasSnapshot = false;
     m_cachedSnapshot = {};
     m_observedConnectionGeneration = 0;
-    m_resolvedSnapshotTokens.clear();
     setBackendState(BackendState::Stopped);
 }
 
@@ -73,22 +71,19 @@ std::optional<WindowSnapshot> TyphonWindowSource::cachedSnapshot() const
 
 void TyphonWindowSource::requestSnapshot(RequestToken token)
 {
-    if (m_resolvedSnapshotTokens.contains(token)
-        || std::any_of(m_pendingSnapshotRequests.cbegin(), m_pendingSnapshotRequests.cend(),
-                       [token](const PendingSnapshotRequest &pending) {
-                           return pending.token == token;
-                       })) {
+    if (std::any_of(m_pendingSnapshotRequests.cbegin(), m_pendingSnapshotRequests.cend(),
+                    [token](const PendingSnapshotRequest &pending) {
+                        return pending.token == token;
+                    })) {
         return;
     }
 
     if (m_hasSnapshot) {
-        m_resolvedSnapshotTokens.insert(token);
         emit snapshotReady(token, m_cachedSnapshot);
         return;
     }
 
     if (m_pendingSnapshotRequests.size() >= kMaxPendingSnapshotRequests) {
-        m_resolvedSnapshotTokens.insert(token);
         emit snapshotReady(token, {});
         emit backendError(BackendError::ConnectionFailed);
         return;
@@ -111,7 +106,6 @@ void TyphonWindowSource::onConnectionStateChanged(TyphonConnectionState state)
     const quint64 connectionGeneration = m_connection ? m_connection->connectionGeneration() : 0;
     if (connectionGeneration != 0 && connectionGeneration != m_observedConnectionGeneration) {
         m_observedConnectionGeneration = connectionGeneration;
-        m_resolvedSnapshotTokens.clear();
         failStalePendingSnapshotRequests(connectionGeneration);
     }
 
@@ -138,7 +132,6 @@ void TyphonWindowSource::onConnectionSnapshot(const Snapshot &snapshot)
 
     if (snapshot.connectionGeneration != m_observedConnectionGeneration) {
         m_observedConnectionGeneration = snapshot.connectionGeneration;
-        m_resolvedSnapshotTokens.clear();
         failStalePendingSnapshotRequests(snapshot.connectionGeneration);
     }
 
@@ -148,9 +141,11 @@ void TyphonWindowSource::onConnectionSnapshot(const Snapshot &snapshot)
 
     const QVector<PendingSnapshotRequest> pending = std::exchange(m_pendingSnapshotRequests, {});
     for (const PendingSnapshotRequest &request : pending) {
-        if (request.connectionGeneration != snapshot.connectionGeneration)
+        if (request.connectionGeneration != snapshot.connectionGeneration) {
+            emit snapshotReady(request.token, {});
+            emit backendError(BackendError::ConnectionFailed);
             continue;
-        m_resolvedSnapshotTokens.insert(request.token);
+        }
         emit snapshotReady(request.token, m_cachedSnapshot);
     }
 }
@@ -159,7 +154,6 @@ void TyphonWindowSource::failPendingSnapshotRequests()
 {
     const QVector<PendingSnapshotRequest> pending = std::exchange(m_pendingSnapshotRequests, {});
     for (const PendingSnapshotRequest &request : pending) {
-        m_resolvedSnapshotTokens.insert(request.token);
         emit snapshotReady(request.token, {});
         emit backendError(BackendError::ConnectionFailed);
     }
@@ -174,7 +168,6 @@ void TyphonWindowSource::failStalePendingSnapshotRequests(quint64 connectionGene
             current.append(request);
             continue;
         }
-        m_resolvedSnapshotTokens.insert(request.token);
         emit snapshotReady(request.token, {});
         emit backendError(BackendError::ConnectionFailed);
     }

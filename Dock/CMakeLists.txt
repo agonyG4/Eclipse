@@ -88,9 +88,24 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
         services/DockConfigWatcher.cpp
     )
     target_include_directories(dock-controller-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
-    target_link_libraries(dock-controller-test PRIVATE astrea-shared-core Qt6::Core Qt6::Gui Qt6::Test)
+    target_link_libraries(dock-controller-test PRIVATE
+        astrea-shared-core astrea-shared-typhon Qt6::Core Qt6::Gui Qt6::Test)
     dock_enable_sanitizers(dock-controller-test)
     add_test(NAME dock-controller-test COMMAND dock-controller-test)
+
+    add_executable(dock-typhon-runtime-integration-test
+        tests/DockTyphonRuntimeIntegrationTest.cpp
+        core/DockController.cpp
+        core/DockAppModel.cpp
+        services/DockConfigWatcher.cpp
+    )
+    target_include_directories(dock-typhon-runtime-integration-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
+    target_link_libraries(dock-typhon-runtime-integration-test PRIVATE
+        astrea-shared-core astrea-shared-typhon Qt6::Core Qt6::Gui Qt6::Test)
+    dock_enable_sanitizers(dock-typhon-runtime-integration-test)
+    add_test(NAME dock-typhon-runtime-integration-test
+             COMMAND dock-typhon-runtime-integration-test)
 
     add_executable(dock-ipc-test
         tests/DockIpcTest.cpp
@@ -113,7 +128,8 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     if(ASTREA_ENABLE_ASAN)
         set_tests_properties(
             dock-app-model-test dock-config-watcher-test dock-runtime-paths-test
-            dock-controller-test dock-ipc-test dock-command-line-test
+            dock-controller-test dock-typhon-runtime-integration-test
+            dock-ipc-test dock-command-line-test
             PROPERTIES ENVIRONMENT
                 "LSAN_OPTIONS=suppressions=${CMAKE_SOURCE_DIR}/AltTab/lsan.supp:print_suppressions=0;ASAN_OPTIONS=detect_leaks=1:halt_on_error=1;UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1"
         )

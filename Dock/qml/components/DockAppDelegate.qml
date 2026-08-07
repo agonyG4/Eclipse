@@ -13,13 +13,19 @@ Item {
     required property string iconUrl
     required property bool resolved
     required property bool launching
+    required property bool runtimeKnown
+    required property bool running
+    required property bool active
+    required property int windowCount
 
     property int iconSize: 48
     property bool hovered: mouseArea.containsMouse
     signal activated(int row)
 
     width: iconSize + 8
-    height: iconSize + 8
+    height: iconSize + 14
+
+    SystemPalette { id: systemPalette }
 
     Shared.AstreaAppIcon {
         id: appIcon
@@ -52,7 +58,20 @@ Item {
 
         ToolTip.visible: containsMouse
         ToolTip.delay: 420
-        ToolTip.text: qsTr("%1").arg(root.displayName)
+        ToolTip.text: root.runtimeKnown && root.running
+            ? qsTr("%1 (%2 windows)").arg(root.displayName).arg(root.windowCount)
+            : qsTr("%1").arg(root.displayName)
+    }
+
+    Rectangle {
+        anchors.horizontalCenter: appIcon.horizontalCenter
+        anchors.top: appIcon.bottom
+        anchors.topMargin: 2
+        width: root.active ? 18 : 8
+        height: 3
+        radius: 1.5
+        color: systemPalette.highlight
+        visible: root.runtimeKnown && root.running
     }
 
     Rectangle {

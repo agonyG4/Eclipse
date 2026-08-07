@@ -23,6 +23,7 @@ public:
         LaunchingRole,
         LaunchErrorRole,
         PinnedRole,
+        RuntimeKnownRole,
         RunningRole,
         ActiveRole,
         WindowCountRole
@@ -45,7 +46,8 @@ public:
     bool setLaunching(const QString &desktopFileName, bool launching);
     bool setLaunchError(const QString &desktopFileName, const QString &error);
     void applyRuntimeStates(
-        const QHash<QString, Astrea::Typhon::DockApplicationRuntimeState> &states);
+        const QHash<QString, Astrea::Typhon::DockApplicationRuntimeState> &states,
+        bool authoritative = true);
 
 private:
     DockAppInfo makeItem(const QString &desktopFileName, const DockAppInfo *previous = nullptr) const;

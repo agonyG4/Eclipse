@@ -29,6 +29,7 @@ QVariant DockAppModel::data(const QModelIndex &index, int role) const
     case LaunchingRole: return item.launching;
     case LaunchErrorRole: return item.launchError;
     case PinnedRole: return item.pinned;
+    case RuntimeKnownRole: return item.runtimeKnown;
     case RunningRole: return item.running;
     case ActiveRole: return item.active;
     case WindowCountRole: return item.windowCount;
@@ -49,6 +50,7 @@ QHash<int, QByteArray> DockAppModel::roleNames() const
         {LaunchingRole, "launching"},
         {LaunchErrorRole, "launchError"},
         {PinnedRole, "pinned"},
+        {RuntimeKnownRole, "runtimeKnown"},
         {RunningRole, "running"},
         {ActiveRole, "active"},
         {WindowCountRole, "windowCount"},
@@ -147,12 +149,23 @@ bool DockAppModel::setLaunchError(const QString &desktopFileName, const QString 
 }
 
 void DockAppModel::applyRuntimeStates(
-    const QHash<QString, Astrea::Typhon::DockApplicationRuntimeState> &states)
+    const QHash<QString, Astrea::Typhon::DockApplicationRuntimeState> &states,
+    bool authoritative)
 {
     for (int row = 0; row < m_items.size(); ++row) {
         DockAppInfo next = m_items.at(row);
+        if (!authoritative) {
+            next.runtimeKnown = false;
+            next.running = false;
+            next.active = false;
+            next.windowCount = 0;
+            updateItem(row, next);
+            continue;
+        }
+
+        next.runtimeKnown = next.resolved;
         const auto it = states.constFind(next.desktopFileName);
-        if (it == states.constEnd()) {
+        if (!next.runtimeKnown || it == states.constEnd()) {
             next.running = false;
             next.active = false;
             next.windowCount = 0;
@@ -175,6 +188,10 @@ DockAppInfo DockAppModel::makeItem(const QString &desktopFileName, const DockApp
     if (previous) {
         item.launching = previous->launching;
         item.launchError = previous->launchError;
+        item.runtimeKnown = previous->runtimeKnown;
+        item.running = previous->running;
+        item.active = previous->active;
+        item.windowCount = previous->windowCount;
     }
 
     const auto it = m_catalog->byDesktopFileName.constFind(desktopFileName);
@@ -220,6 +237,7 @@ QList<int> DockAppModel::changedRoles(const DockAppInfo &before, const DockAppIn
     if (before.launching != after.launching) roles.append(LaunchingRole);
     if (before.launchError != after.launchError) roles.append(LaunchErrorRole);
     if (before.pinned != after.pinned) roles.append(PinnedRole);
+    if (before.runtimeKnown != after.runtimeKnown) roles.append(RuntimeKnownRole);
     if (before.running != after.running) roles.append(RunningRole);
     if (before.active != after.active) roles.append(ActiveRole);
     if (before.windowCount != after.windowCount) roles.append(WindowCountRole);

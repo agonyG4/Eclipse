@@ -4,6 +4,7 @@
 #include "core/DockController.hpp"
 #include "platform/ipc/DockIpcServer.hpp"
 #include "platform/runtime/DockRuntimePaths.hpp"
+#include "platform/typhon/TyphonToplevelConnection.hpp"
 #include "services/DockConfigWatcher.hpp"
 
 #include <QPointer>
@@ -39,6 +40,7 @@ private:
     std::unique_ptr<DesktopEntryCatalog> m_catalog;
     std::unique_ptr<ApplicationLauncher> m_launcher;
     std::unique_ptr<DockController> m_controller;
+    std::unique_ptr<TyphonToplevelConnection> m_typhonConnection;
     std::unique_ptr<DockConfigWatcher> m_configWatcher;
     std::unique_ptr<DockIpcServer> m_ipcServer;
     std::unique_ptr<QQmlApplicationEngine> m_engine;

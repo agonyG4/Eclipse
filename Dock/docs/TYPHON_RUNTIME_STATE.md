@@ -1,8 +1,9 @@
 # Typhon Dock Runtime State
 
-M6 provides a reusable projection from one immutable Typhon snapshot to Dock
-application runtime state. The live Dock process is not connected to a second
-Typhon source yet.
+M6.1 connects the live Dock process to one `TyphonToplevelConnection`. The
+connection is authoritative only after a committed snapshot is available;
+while it is starting, disconnected, degraded, unsupported, or stopped, Dock
+marks runtime state as unknown.
 
 ## Matching And Grouping
 
@@ -27,13 +28,17 @@ windows. Snapshot order is preserved in each runtime state's window ID list.
 
 ## Model Boundary
 
-`DockAppModel::applyRuntimeStates()` updates only `running`, `active`, and
-`windowCount` for existing items. Missing runtime entries reset those fields to
-zero and false when windows close. Pins, resolved metadata, launching state,
-launch errors, and click behavior are preserved.
+`DockAppModel::applyRuntimeStates()` sets `runtimeKnown` for resolved items
+when the snapshot is authoritative. Missing runtime entries reset `running`,
+`active`, and `windowCount` to false/zero when windows close. Unknown runtime
+state clears those values without claiming that the application is stopped.
+Pins, resolved metadata, launching state, and launch errors are preserved.
+
+When `runtimeKnown && running` is true, Dock suppresses a duplicate launch.
+Activation, restore, minimize, and close actions remain outside M6.1 and are
+reserved for M7.
 
 No window action, activation request, thumbnail, icon transport, workspace, or
-output behavior is part of M6. The shared connection is suitable for later Dock
-use, but M6 does not create a second live Dock connection.
+output behavior is part of M6.1.
 
 No real Typhon session qualification has been performed.

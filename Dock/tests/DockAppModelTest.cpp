@@ -18,6 +18,7 @@ private slots:
     void stableKeyRetainsItemStateAfterReorder();
     void runtimeStatePreservesLaunchState();
     void runtimeStateDisappearsWhenWindowCloses();
+    void unknownRuntimeStateDoesNotClaimStopped();
 };
 
 static std::shared_ptr<DesktopEntrySnapshot> makeSnapshot(const QStringList &names)
@@ -166,10 +167,30 @@ void DockAppModelTest::runtimeStatePreservesLaunchState()
 
     const QModelIndex index = model.index(0, 0);
     QVERIFY(index.data(DockAppModel::RunningRole).toBool());
+    QVERIFY(index.data(DockAppModel::RuntimeKnownRole).toBool());
     QVERIFY(index.data(DockAppModel::ActiveRole).toBool());
     QCOMPARE(index.data(DockAppModel::WindowCountRole).toInt(), 2);
     QVERIFY(index.data(DockAppModel::LaunchingRole).toBool());
     QCOMPARE(index.data(DockAppModel::LaunchErrorRole).toString(), QStringLiteral("pending"));
+}
+
+void DockAppModelTest::unknownRuntimeStateDoesNotClaimStopped()
+{
+    DockAppModel model;
+    model.setCatalogSnapshot(makeSnapshot({QStringLiteral("one.desktop")}));
+    model.setPins({QStringLiteral("one.desktop")});
+
+    Astrea::Typhon::DockApplicationRuntimeState state;
+    state.desktopFileName = QStringLiteral("one.desktop");
+    state.running = true;
+    state.windowCount = 1;
+    model.applyRuntimeStates({{state.desktopFileName, state}});
+    model.applyRuntimeStates({}, false);
+
+    const QModelIndex index = model.index(0, 0);
+    QVERIFY(!index.data(DockAppModel::RuntimeKnownRole).toBool());
+    QVERIFY(!index.data(DockAppModel::RunningRole).toBool());
+    QCOMPARE(index.data(DockAppModel::WindowCountRole).toInt(), 0);
 }
 
 void DockAppModelTest::runtimeStateDisappearsWhenWindowCloses()

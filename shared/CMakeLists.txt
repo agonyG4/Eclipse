@@ -93,6 +93,8 @@ astrea_shared_enable_sanitizers(astrea-shared-layer-shell)
 add_library(astrea-shared-typhon STATIC
     platform/typhon/TyphonProtocolAdapter.cpp
     platform/typhon/TyphonProtocolAdapter.hpp
+    platform/typhon/TyphonShellAuthenticator.cpp
+    platform/typhon/TyphonShellAuthenticator.hpp
     platform/typhon/TyphonProtocolTypes.hpp
     platform/typhon/TyphonWaylandDisplay.cpp
     platform/typhon/TyphonWaylandDisplay.hpp
@@ -139,11 +141,23 @@ if(ASTREA_TYPHON_WAYLAND_AVAILABLE)
         "${ASTREA_TYPHON_GENERATED_DIR}/astrea-shortcuts-v1-server-protocol.h")
     set(ASTREA_SHORTCUT_SERVER_GENERATED_SOURCE
         "${ASTREA_TYPHON_GENERATED_DIR}/astrea-shortcuts-v1-server-protocol.c")
+    set(ASTREA_SHELL_AUTH_PROTOCOL_XML
+        "${CMAKE_CURRENT_SOURCE_DIR}/platform/typhon/protocols/astrea-shell-auth-v1.xml")
+    set(ASTREA_SHELL_AUTH_GENERATED_HEADER
+        "${ASTREA_TYPHON_GENERATED_DIR}/astrea-shell-auth-v1-client-protocol.h")
+    set(ASTREA_SHELL_AUTH_GENERATED_SOURCE
+        "${ASTREA_TYPHON_GENERATED_DIR}/astrea-shell-auth-v1-client-protocol.c")
+    set(ASTREA_SHELL_AUTH_SERVER_GENERATED_HEADER
+        "${ASTREA_TYPHON_GENERATED_DIR}/astrea-shell-auth-v1-server-protocol.h")
+    set(ASTREA_SHELL_AUTH_SERVER_GENERATED_SOURCE
+        "${ASTREA_TYPHON_GENERATED_DIR}/astrea-shell-auth-v1-server-protocol.c")
     add_custom_command(
         OUTPUT "${ASTREA_TYPHON_GENERATED_HEADER}" "${ASTREA_TYPHON_GENERATED_SOURCE}"
                "${ASTREA_TYPHON_SERVER_GENERATED_HEADER}" "${ASTREA_TYPHON_SERVER_GENERATED_SOURCE}"
                "${ASTREA_SHORTCUT_GENERATED_HEADER}" "${ASTREA_SHORTCUT_GENERATED_SOURCE}"
                "${ASTREA_SHORTCUT_SERVER_GENERATED_HEADER}" "${ASTREA_SHORTCUT_SERVER_GENERATED_SOURCE}"
+               "${ASTREA_SHELL_AUTH_GENERATED_HEADER}" "${ASTREA_SHELL_AUTH_GENERATED_SOURCE}"
+               "${ASTREA_SHELL_AUTH_SERVER_GENERATED_HEADER}" "${ASTREA_SHELL_AUTH_SERVER_GENERATED_SOURCE}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${ASTREA_TYPHON_GENERATED_DIR}"
         COMMAND "${ASTREA_WAYLAND_SCANNER}" client-header
                 "${ASTREA_TYPHON_PROTOCOL_XML}" "${ASTREA_TYPHON_GENERATED_HEADER}"
@@ -161,18 +175,33 @@ if(ASTREA_TYPHON_WAYLAND_AVAILABLE)
                 "${ASTREA_SHORTCUT_PROTOCOL_XML}" "${ASTREA_SHORTCUT_SERVER_GENERATED_HEADER}"
         COMMAND "${ASTREA_WAYLAND_SCANNER}" private-code
                 "${ASTREA_SHORTCUT_PROTOCOL_XML}" "${ASTREA_SHORTCUT_SERVER_GENERATED_SOURCE}"
+        COMMAND "${ASTREA_WAYLAND_SCANNER}" client-header
+                "${ASTREA_SHELL_AUTH_PROTOCOL_XML}" "${ASTREA_SHELL_AUTH_GENERATED_HEADER}"
+        COMMAND "${ASTREA_WAYLAND_SCANNER}" private-code
+                "${ASTREA_SHELL_AUTH_PROTOCOL_XML}" "${ASTREA_SHELL_AUTH_GENERATED_SOURCE}"
+        COMMAND "${ASTREA_WAYLAND_SCANNER}" server-header
+                "${ASTREA_SHELL_AUTH_PROTOCOL_XML}" "${ASTREA_SHELL_AUTH_SERVER_GENERATED_HEADER}"
+        COMMAND "${ASTREA_WAYLAND_SCANNER}" private-code
+                "${ASTREA_SHELL_AUTH_PROTOCOL_XML}" "${ASTREA_SHELL_AUTH_SERVER_GENERATED_SOURCE}"
         DEPENDS "${ASTREA_TYPHON_PROTOCOL_XML}" "${ASTREA_SHORTCUT_PROTOCOL_XML}"
+                "${ASTREA_SHELL_AUTH_PROTOCOL_XML}"
         VERBATIM
     )
     set_source_files_properties("${ASTREA_TYPHON_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
     set_source_files_properties("${ASTREA_TYPHON_SERVER_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
     set_source_files_properties("${ASTREA_SHORTCUT_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
     set_source_files_properties("${ASTREA_SHORTCUT_SERVER_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
+    set_source_files_properties("${ASTREA_SHELL_AUTH_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
+    set_source_files_properties("${ASTREA_SHELL_AUTH_SERVER_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
     target_sources(astrea-shared-typhon PRIVATE
         "${ASTREA_TYPHON_GENERATED_HEADER}"
         "${ASTREA_TYPHON_GENERATED_SOURCE}"
         "${ASTREA_SHORTCUT_GENERATED_HEADER}"
         "${ASTREA_SHORTCUT_GENERATED_SOURCE}"
+        "${ASTREA_SHELL_AUTH_GENERATED_HEADER}"
+        "${ASTREA_SHELL_AUTH_GENERATED_SOURCE}"
+        "${ASTREA_SHELL_AUTH_SERVER_GENERATED_HEADER}"
+        "${ASTREA_SHELL_AUTH_SERVER_GENERATED_SOURCE}"
     )
     target_include_directories(astrea-shared-typhon PRIVATE "${ASTREA_TYPHON_GENERATED_DIR}")
     target_link_libraries(astrea-shared-typhon PRIVATE PkgConfig::ASTREA_WAYLAND_CLIENT)
@@ -229,6 +258,7 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
         add_executable(typhon-protocol-integration-test
             tests/TyphonProtocolIntegrationTest.cpp
             "${ASTREA_TYPHON_SERVER_GENERATED_SOURCE}"
+            "${ASTREA_SHELL_AUTH_SERVER_GENERATED_SOURCE}"
         )
         target_include_directories(typhon-protocol-integration-test PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -253,6 +283,7 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
         add_executable(typhon-shortcut-protocol-integration-test
             tests/TyphonShortcutProtocolIntegrationTest.cpp
             "${ASTREA_SHORTCUT_SERVER_GENERATED_SOURCE}"
+            "${ASTREA_SHELL_AUTH_SERVER_GENERATED_SOURCE}"
         )
         target_include_directories(typhon-shortcut-protocol-integration-test PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}"

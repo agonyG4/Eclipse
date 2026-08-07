@@ -1,4 +1,5 @@
 #include "platform/typhon/TyphonProtocolAdapter.hpp"
+#include "platform/typhon/TyphonShellAuthenticator.hpp"
 #include "platform/typhon/TyphonWaylandDisplay.hpp"
 
 #include <QHash>
@@ -47,6 +48,12 @@ public:
         }
 
         wl_display *display = m_display->nativeDisplay();
+        QString diagnostic;
+        if (!TyphonShellAuthenticator::authenticate(display, &diagnostic)) {
+            failProtocol(diagnostic);
+            m_display->disconnectFromDisplay();
+            return;
+        }
         m_registry = wl_display_get_registry(display);
         if (!m_registry || wl_registry_add_listener(m_registry, &kRegistryListener, this) != 0) {
             failProtocol(QStringLiteral("Typhon registry setup failed"));

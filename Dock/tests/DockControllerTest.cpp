@@ -39,6 +39,7 @@ private slots:
     void unresolvedPinResolvesAfterCatalogRebuild();
     void invalidIndexIsIgnored();
     void catalogRebuildKeepsModelRowsStable();
+    void runningRuntimeSuppressesDuplicateLaunch();
 };
 
 static DockConfig configWithPins(const QStringList &pins)
@@ -251,6 +252,39 @@ void DockControllerTest::catalogRebuildKeepsModelRowsStable()
     QVERIFY(firstIndex.isValid());
     QCOMPARE(controller.appModel()->data(controller.appModel()->index(0, 0), DockAppModel::DisplayNameRole).toString(),
              QStringLiteral("Changed"));
+}
+
+void DockControllerTest::runningRuntimeSuppressesDuplicateLaunch()
+{
+    FakeLauncher launcher;
+    DockController controller(&launcher);
+    controller.setCatalogSnapshot(makeCatalog());
+    controller.applyConfig(configWithPins({QStringLiteral("one.desktop")}));
+
+    Astrea::Typhon::Snapshot snapshot;
+    snapshot.connectionGeneration = 1;
+    snapshot.revision = 1;
+    snapshot.total = 1;
+    Astrea::Typhon::Toplevel window;
+    window.id = QStringLiteral("window-1");
+    window.appId = QStringLiteral("one");
+    window.states = Astrea::Typhon::ToplevelStates{Astrea::Typhon::ToplevelStateFlag::Active};
+    snapshot.windows.append(window);
+    controller.applyTyphonSnapshot(snapshot);
+
+    const QModelIndex index = controller.appModel()->index(0, 0);
+    QVERIFY(index.data(DockAppModel::RuntimeKnownRole).toBool());
+    QVERIFY(index.data(DockAppModel::RunningRole).toBool());
+    QVERIFY(index.data(DockAppModel::ActiveRole).toBool());
+    QCOMPARE(index.data(DockAppModel::WindowCountRole).toInt(), 1);
+
+    controller.launch(0);
+    QCOMPARE(launcher.requests.size(), 0);
+
+    controller.clearTyphonRuntime();
+    QVERIFY(!controller.appModel()->data(index, DockAppModel::RuntimeKnownRole).toBool());
+    controller.launch(0);
+    QCOMPARE(launcher.requests.size(), 1);
 }
 
 QTEST_MAIN(DockControllerTest)

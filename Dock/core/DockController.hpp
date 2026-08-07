@@ -9,6 +9,10 @@
 #include <QObject>
 #include <QSet>
 
+#include <optional>
+
+class TyphonToplevelConnection;
+
 class DockController final : public QObject {
     Q_OBJECT
     Q_PROPERTY(DockAppModel *appModel READ appModel CONSTANT)
@@ -17,6 +21,7 @@ class DockController final : public QObject {
     Q_PROPERTY(int pinCount READ pinCount NOTIFY modelChanged)
     Q_PROPERTY(int resolvedPinCount READ resolvedPinCount NOTIFY modelChanged)
     Q_PROPERTY(int launchingCount READ launchingCount NOTIFY modelChanged)
+    Q_PROPERTY(bool runtimeKnown READ runtimeKnown NOTIFY modelChanged)
     Q_PROPERTY(int iconSize READ iconSize NOTIFY configChanged)
     Q_PROPERTY(int bottomMargin READ bottomMargin NOTIFY configChanged)
     Q_PROPERTY(int panelPadding READ panelPadding NOTIFY configChanged)
@@ -34,6 +39,7 @@ public:
     int pinCount() const { return m_model.rowCount(); }
     int resolvedPinCount() const;
     int launchingCount() const;
+    bool runtimeKnown() const { return m_runtimeKnown; }
     int iconSize() const { return m_config.iconSize; }
     int bottomMargin() const { return m_config.bottomMargin; }
     int panelPadding() const { return m_config.panelPadding; }
@@ -43,6 +49,9 @@ public:
     void applyConfig(const DockConfig &config);
     void setComponentEnabled(bool enabled);
     void setCatalogSnapshot(std::shared_ptr<const DesktopEntrySnapshot> snapshot);
+    void attachTyphonConnection(TyphonToplevelConnection *connection);
+    void applyTyphonSnapshot(const Astrea::Typhon::Snapshot &snapshot);
+    void clearTyphonRuntime();
 
     Q_INVOKABLE void launch(int row);
     Q_INVOKABLE void show();
@@ -65,14 +74,20 @@ private:
     void finishLaunch(const QString &desktopId, bool success, const QString &error = {});
     void setLastError(const QString &error);
     void updateVisibility();
+    void projectRuntime();
 
     DockAppModel m_model;
     DockConfig m_config;
     ApplicationLauncher *m_launcher = nullptr;
     DesktopEntryCatalog *m_catalog = nullptr;
+    std::shared_ptr<const DesktopEntrySnapshot> m_catalogSnapshot;
     QHash<QString, QString> m_pendingLaunches;
     bool m_enabled = true;
     bool m_requestedVisible = true;
     bool m_visible = false;
+    bool m_runtimeKnown = false;
+    std::optional<Astrea::Typhon::Snapshot> m_runtimeSnapshot;
+    QVector<QMetaObject::Connection> m_typhonConnections;
+    Astrea::Typhon::DockApplicationStateProjector m_runtimeProjector;
     QString m_lastError;
 };

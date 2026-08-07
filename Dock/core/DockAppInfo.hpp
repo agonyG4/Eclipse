@@ -13,6 +13,7 @@ struct DockAppInfo {
     bool launching = false;
     QString launchError;
     bool pinned = true;
+    bool runtimeKnown = false;
     bool running = false;
     bool active = false;
     int windowCount = 0;
@@ -30,6 +31,7 @@ inline bool operator==(const DockAppInfo &left, const DockAppInfo &right)
         && left.launching == right.launching
         && left.launchError == right.launchError
         && left.pinned == right.pinned
+        && left.runtimeKnown == right.runtimeKnown
         && left.running == right.running
         && left.active == right.active
         && left.windowCount == right.windowCount;

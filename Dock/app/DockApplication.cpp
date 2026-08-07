@@ -3,6 +3,7 @@
 #include "icons/AstreaIconProvider.hpp"
 #include "icons/AstreaIconTheme.hpp"
 #include "platform/wayland/DockLayerShellSurface.hpp"
+#include "platform/typhon/TyphonToplevelConnection.hpp"
 
 #include <QGuiApplication>
 #include <QJsonDocument>
@@ -18,6 +19,22 @@
 
 namespace {
 constexpr QLatin1StringView kIpcName("astrea-dock-v1");
+
+QString typhonStateName(TyphonConnectionState state)
+{
+    switch (state) {
+    case TyphonConnectionState::Stopped: return QStringLiteral("stopped");
+    case TyphonConnectionState::Connecting: return QStringLiteral("connecting");
+    case TyphonConnectionState::WaitingForRegistry: return QStringLiteral("waitingForRegistry");
+    case TyphonConnectionState::WaitingForInitialSnapshot:
+        return QStringLiteral("waitingForInitialSnapshot");
+    case TyphonConnectionState::Ready: return QStringLiteral("ready");
+    case TyphonConnectionState::Degraded: return QStringLiteral("degraded");
+    case TyphonConnectionState::Disconnected: return QStringLiteral("disconnected");
+    case TyphonConnectionState::Unsupported: return QStringLiteral("unsupported");
+    }
+    return QStringLiteral("unknown");
+}
 }
 
 DockApplication::DockApplication(QGuiApplication &app)
@@ -42,6 +59,7 @@ int DockApplication::run()
     connectSignals();
     m_controller->applyConfig(m_configWatcher->config());
     m_controller->setComponentEnabled(m_configWatcher->componentEnabled());
+    m_typhonConnection->start();
     if (!initializeQml())
         return 1;
     return m_app.exec();
@@ -84,6 +102,7 @@ bool DockApplication::initializeRuntime()
     m_catalog->initialize();
     m_launcher = std::make_unique<ApplicationLauncher>(m_paths->astreaLaunch());
     m_controller = std::make_unique<DockController>(m_launcher.get(), m_catalog.get());
+    m_typhonConnection = std::make_unique<TyphonToplevelConnection>();
     return true;
 }
 
@@ -168,6 +187,11 @@ void DockApplication::connectSignals()
             break;
         }
     });
+    m_controller->attachTyphonConnection(m_typhonConnection.get());
+    connect(m_typhonConnection.get(), &TyphonToplevelConnection::diagnostic, this,
+            [](const QString &message) {
+        qWarning("Dock Typhon toplevel connection: %s", qPrintable(message));
+    });
 }
 
 void DockApplication::configureLayerShell()
@@ -240,6 +264,13 @@ QString DockApplication::buildStatusJson() const
         {QStringLiteral("path"), m_configWatcher->configPath()},
         {QStringLiteral("revision"), static_cast<qint64>(m_configWatcher->revision())}
     };
+    QJsonObject typhon{
+        {QStringLiteral("state"), typhonStateName(m_typhonConnection->state())},
+        {QStringLiteral("runtimeKnown"), m_controller->runtimeKnown()},
+        {QStringLiteral("generation"), static_cast<qint64>(m_typhonConnection->connectionGeneration())},
+        {QStringLiteral("snapshotRevision"), m_typhonConnection->hasSnapshot()
+            ? static_cast<qint64>(m_typhonConnection->snapshot().revision) : 0}
+    };
     QJsonObject root{
         {QStringLiteral("schemaVersion"), 1},
         {QStringLiteral("running"), true},
@@ -251,6 +282,7 @@ QString DockApplication::buildStatusJson() const
         {QStringLiteral("config"), config},
         {QStringLiteral("layerShell"), layerShell},
         {QStringLiteral("windowIntegration"), windowIntegration},
+        {QStringLiteral("typhon"), typhon},
         {QStringLiteral("lastError"), !m_controller->lastError().isEmpty()
             ? m_controller->lastError()
             : (!m_configWatcher->lastError().isEmpty()

@@ -6,6 +6,8 @@ startup
   -> config
   -> desktop-entry catalog
   -> model
+  -> one Typhon toplevel connection
+  -> authoritative runtime projection
   -> QML
   -> Layer Shell mapping
   -> click
@@ -27,5 +29,8 @@ desktop entry to the shared supervised launcher. The launcher invokes
 `astrea-launch`; Typhon's shell-control service owns supervised application
 startup.
 
-`running`, `active`, and `windowCount` remain false, false, and zero in Stage 1
-because Typhon has no public window-management protocol for Eclipse.
+The Dock owns one read-only Typhon toplevel connection. After the initial
+snapshot commits, it projects `running`, `active`, and `windowCount` through the
+desktop catalog matcher. If the connection is unavailable, each item exposes
+`runtimeKnown=false` and the runtime booleans stay neutral. A resolved running
+item is not launched again; M7 will add mutable window actions.

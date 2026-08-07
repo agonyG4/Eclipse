@@ -1,5 +1,7 @@
 #include "core/DockController.hpp"
 
+#include "platform/typhon/TyphonToplevelConnection.hpp"
+
 #include <QDebug>
 
 namespace {
@@ -17,7 +19,8 @@ bool sameConfig(const DockConfig &left, const DockConfig &right)
 
 DockController::DockController(ApplicationLauncher *launcher, DesktopEntryCatalog *catalog,
                                QObject *parent)
-    : QObject(parent), m_launcher(launcher), m_catalog(catalog)
+    : QObject(parent), m_launcher(launcher), m_catalog(catalog),
+      m_catalogSnapshot(std::make_shared<const DesktopEntrySnapshot>())
 {
     if (m_launcher) {
         connect(m_launcher, &ApplicationLauncher::launchSucceeded,
@@ -66,6 +69,7 @@ void DockController::applyConfig(const DockConfig &config)
     const bool changed = !sameConfig(m_config, config);
     m_config = config;
     m_model.setPins(m_config.pins);
+    projectRuntime();
     if (changed)
         emit configChanged();
     emit modelChanged();
@@ -83,9 +87,63 @@ void DockController::setComponentEnabled(bool enabled)
 
 void DockController::setCatalogSnapshot(std::shared_ptr<const DesktopEntrySnapshot> snapshot)
 {
-    m_model.setCatalogSnapshot(std::move(snapshot));
+    if (!snapshot)
+        snapshot = std::make_shared<const DesktopEntrySnapshot>();
+    m_catalogSnapshot = std::move(snapshot);
+    m_model.setCatalogSnapshot(m_catalogSnapshot);
+    projectRuntime();
     emit modelChanged();
     updateVisibility();
+}
+
+void DockController::attachTyphonConnection(TyphonToplevelConnection *connection)
+{
+    for (const QMetaObject::Connection &binding : std::as_const(m_typhonConnections))
+        disconnect(binding);
+    m_typhonConnections.clear();
+
+    if (!connection) {
+        clearTyphonRuntime();
+        return;
+    }
+
+    m_typhonConnections.append(connect(connection, &TyphonToplevelConnection::snapshotChanged,
+                                      this, [this](const Astrea::Typhon::Snapshot &snapshot) {
+        if (snapshot.connectionGeneration == 0 && snapshot.revision == 0
+            && snapshot.windows.isEmpty()) {
+            clearTyphonRuntime();
+        } else {
+            applyTyphonSnapshot(snapshot);
+        }
+    }));
+    m_typhonConnections.append(connect(connection, &TyphonToplevelConnection::stateChanged,
+                                      this, [this](TyphonConnectionState state) {
+        if (state != TyphonConnectionState::Ready)
+            clearTyphonRuntime();
+    }));
+
+    if (connection->state() == TyphonConnectionState::Ready && connection->hasSnapshot())
+        applyTyphonSnapshot(connection->snapshot());
+    else
+        clearTyphonRuntime();
+}
+
+void DockController::applyTyphonSnapshot(const Astrea::Typhon::Snapshot &snapshot)
+{
+    m_runtimeSnapshot = snapshot;
+    m_runtimeKnown = true;
+    projectRuntime();
+    emit modelChanged();
+}
+
+void DockController::clearTyphonRuntime()
+{
+    const bool changed = m_runtimeKnown || m_runtimeSnapshot.has_value();
+    m_runtimeKnown = false;
+    m_runtimeSnapshot.reset();
+    m_model.applyRuntimeStates({}, false);
+    if (changed)
+        emit modelChanged();
 }
 
 void DockController::launch(int row)
@@ -95,6 +153,11 @@ void DockController::launch(int row)
         return;
 
     const QString key = item->desktopFileName;
+    if (item->runtimeKnown && item->running) {
+        qInfo("Dock launch suppressed for running application '%s' until M7 window actions",
+              qPrintable(key));
+        return;
+    }
     if (m_pendingLaunches.contains(key))
         return;
 
@@ -203,4 +266,15 @@ void DockController::updateVisibility()
         return;
     m_visible = next;
     emit visibleChanged();
+}
+
+void DockController::projectRuntime()
+{
+    if (!m_runtimeKnown || !m_runtimeSnapshot.has_value()) {
+        m_model.applyRuntimeStates({}, false);
+        return;
+    }
+
+    m_model.applyRuntimeStates(
+        m_runtimeProjector.project(*m_runtimeSnapshot, m_catalogSnapshot, m_config.pins), true);
 }

@@ -1,4 +1,5 @@
 #include <QCoreApplication>
+#include <QFile>
 #include <QSignalSpy>
 #include <QSocketNotifier>
 #include <QTemporaryDir>
@@ -8,6 +9,7 @@
 #include <functional>
 
 #include <wayland-server-core.h>
+#include "astrea-shell-auth-v1-server-protocol.h"
 #include "astrea-toplevel-management-v1-server-protocol.h"
 
 #include "platform/typhon/TyphonToplevelConnection.hpp"
@@ -27,9 +29,16 @@ public:
         QVERIFY(m_runtime.isValid());
         m_previousRuntime = qgetenv("XDG_RUNTIME_DIR");
         m_previousDisplay = qgetenv("WAYLAND_DISPLAY");
+        m_previousCapability = qgetenv("ASTREA_SHELL_CAPABILITY_FILE");
         qputenv("XDG_RUNTIME_DIR", m_runtime.path().toUtf8());
         m_socketName = QStringLiteral("wayland-typhon-m6");
         qputenv("WAYLAND_DISPLAY", m_socketName.toUtf8());
+        m_capabilityPath = m_runtime.filePath(QStringLiteral("capability"));
+        QFile capability(m_capabilityPath);
+        QVERIFY(capability.open(QIODevice::WriteOnly));
+        QVERIFY(capability.write(QByteArray(64, 'a') + '\n') == 65);
+        capability.close();
+        qputenv("ASTREA_SHELL_CAPABILITY_FILE", m_capabilityPath.toUtf8());
 
         m_display = wl_display_create();
         QVERIFY(m_display);
@@ -39,6 +48,9 @@ public:
         m_serverNotifier = new QSocketNotifier(wl_event_loop_get_fd(m_loop), QSocketNotifier::Read, this);
         connect(m_serverNotifier, &QSocketNotifier::activated, this,
                 [this](QSocketDescriptor, QSocketNotifier::Type) { dispatchServerEvents(); });
+        m_authGlobal = wl_global_create(m_display, &astrea_shell_auth_manager_v1_interface, 1,
+                                        this, &bindAuthManager);
+        QVERIFY(m_authGlobal);
         if (advertiseManager)
             m_global = wl_global_create(m_display, &astrea_toplevel_manager_v1_interface, 1, this, &bindManager);
         QVERIFY(advertiseManager ? m_global != nullptr : true);
@@ -57,6 +69,7 @@ public:
         }
         restoreEnvironment("XDG_RUNTIME_DIR", m_previousRuntime);
         restoreEnvironment("WAYLAND_DISPLAY", m_previousDisplay);
+        restoreEnvironment("ASTREA_SHELL_CAPABILITY_FILE", m_previousCapability);
     }
 
     bool pumpUntil(const std::function<bool()> &condition, int maxTurns = 500)
@@ -161,6 +174,49 @@ public:
     }
 
 private:
+    static void bindAuthManager(wl_client *client, void *data, uint32_t version, uint32_t id)
+    {
+        auto *self = static_cast<FakeTyphonCompositor *>(data);
+        auto *manager = new ServerWindow;
+        manager->owner = self;
+        manager->resource = wl_resource_create(client, &astrea_shell_auth_manager_v1_interface,
+                                               std::min(version, 1u), id);
+        if (!manager->resource) {
+            delete manager;
+            return;
+        }
+        wl_resource_set_implementation(manager->resource, &kAuthManagerImplementation, manager,
+                                       &destroyAuthManager);
+        self->m_authManager = manager;
+    }
+
+    static void destroyAuthManager(wl_resource *resource)
+    {
+        auto *manager = static_cast<ServerWindow *>(wl_resource_get_user_data(resource));
+        if (manager && manager->owner && manager->owner->m_authManager == manager)
+            manager->owner->m_authManager = nullptr;
+        delete manager;
+    }
+
+    static void authenticateRequest(wl_client *, wl_resource *resource, const char *capability)
+    {
+        const QByteArray value = QByteArray(capability ? capability : "");
+        bool valid = value.size() == 64;
+        for (const char byte : value) {
+            valid = valid && ((byte >= '0' && byte <= '9')
+                              || (byte >= 'a' && byte <= 'f'));
+        }
+        if (valid)
+            astrea_shell_auth_manager_v1_send_authenticated(resource);
+        else
+            astrea_shell_auth_manager_v1_send_rejected(resource);
+    }
+
+    static void destroyAuthManagerRequest(wl_client *, wl_resource *resource)
+    {
+        wl_resource_destroy(resource);
+    }
+
     static void bindManager(wl_client *client, void *data, uint32_t version, uint32_t id)
     {
         auto *self = static_cast<FakeTyphonCompositor *>(data);
@@ -229,15 +285,20 @@ private:
 
     static const struct astrea_toplevel_manager_v1_interface kManagerImplementation;
     static const struct astrea_toplevel_v1_interface kWindowImplementation;
+    static const struct astrea_shell_auth_manager_v1_interface kAuthManagerImplementation;
 
     QTemporaryDir m_runtime;
     QByteArray m_previousRuntime;
     QByteArray m_previousDisplay;
+    QByteArray m_previousCapability;
     QString m_socketName;
+    QString m_capabilityPath;
     wl_display *m_display = nullptr;
     wl_event_loop *m_loop = nullptr;
     wl_global *m_global = nullptr;
+    wl_global *m_authGlobal = nullptr;
     ServerWindow *m_manager = nullptr;
+    ServerWindow *m_authManager = nullptr;
     QVector<ServerWindow *> m_windows;
     QSocketNotifier *m_serverNotifier = nullptr;
 };
@@ -249,6 +310,12 @@ const struct astrea_toplevel_manager_v1_interface FakeTyphonCompositor::kManager
 const struct astrea_toplevel_v1_interface FakeTyphonCompositor::kWindowImplementation = {
     &FakeTyphonCompositor::destroyWindowRequest
 };
+
+const struct astrea_shell_auth_manager_v1_interface
+    FakeTyphonCompositor::kAuthManagerImplementation = {
+        &FakeTyphonCompositor::authenticateRequest,
+        &FakeTyphonCompositor::destroyAuthManagerRequest,
+    };
 
 class TyphonProtocolIntegrationTest final : public QObject {
     Q_OBJECT

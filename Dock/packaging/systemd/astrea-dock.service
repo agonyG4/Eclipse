@@ -7,12 +7,13 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-ExecStart=%h/.local/share/Astrea/bin/astrea-dock --daemon
+ExecStart=%h/.local/bin/astrea-dock --daemon
 Restart=on-failure
 RestartSec=2
 TimeoutStopSec=3
 KillMode=process
 Environment=QT_QPA_PLATFORM=wayland
+Environment=ASTREA_SHELL_CAPABILITY_FILE=%t/astrea-shell/capability
 
 [Install]
 WantedBy=graphical-session.target

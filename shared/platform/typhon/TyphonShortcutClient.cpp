@@ -1,5 +1,6 @@
 #include "platform/typhon/TyphonShortcutClient.hpp"
 
+#include "platform/typhon/TyphonShellAuthenticator.hpp"
 #include "platform/typhon/TyphonWaylandDisplay.hpp"
 
 #include <QDebug>
@@ -410,6 +411,13 @@ void TyphonShortcutClient::beginConnection()
 #else
     if (!m_private->display->connectToDisplay()) {
         enterFailure(QStringLiteral("Typhon shortcuts could not connect to Wayland"), true);
+        return;
+    }
+
+    QString diagnostic;
+    if (!Astrea::Typhon::TyphonShellAuthenticator::authenticate(
+            m_private->display->nativeDisplay(), &diagnostic)) {
+        enterFailure(diagnostic, true);
         return;
     }
 

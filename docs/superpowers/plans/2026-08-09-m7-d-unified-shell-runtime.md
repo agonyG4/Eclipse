@@ -21,6 +21,21 @@
 - Do not use sleeps or artificial delayed production actions. Drive event completion deterministically.
 - All documentation is written in English.
 
+## Closure reconciliation — 2026-08-09
+
+This is the historical M7-D implementation plan. The implementation and
+deterministic closure are complete in the focused commits `43a2de3`, `9fd800e`,
+and `07ab01b`; the active checklist and measured evidence are maintained in
+`docs/superpowers/plans/2026-08-09-m7-d-final-deterministic-closure.md` and
+`docs/superpowers/qualifications/2026-08-09-m7-d-unified-shell-runtime.md`.
+
+The unchecked design-time red/green transcript steps below are intentionally
+not retroactively marked: their original failure transcripts were not retained
+for every historical task. They are superseded by the final focused tests,
+serial matrix, sanitizer, QML, source-layout, service-install, and protocol
+comparison evidence recorded in the closure ledger. No production requirement
+from this plan remains open; Native qualification remains `DEFERRED`.
+
 ---
 
 ### Task 1: Add the shared Typhon session lifecycle

@@ -1,4 +1,5 @@
 #include <QTest>
+#include <QSet>
 
 #include "core/DockController.hpp"
 #include "platform/typhon/TyphonToplevelConnection.hpp"
@@ -36,6 +37,8 @@ public:
     std::optional<ToplevelActionError> requestAction(
         quint64 handleToken, TyphonActionToken token, ToplevelAction action) override
     {
+        if (staleHandleTokens.contains(handleToken))
+            return ToplevelActionError::ToplevelNotLive;
         actionRequests.append({handleToken, token, action});
         return requestError;
     }
@@ -54,6 +57,11 @@ public:
     {
         emit managerCompleted(revision, total, false);
     }
+    void close(quint64 token)
+    {
+        staleHandleTokens.insert(token);
+        emit handleClosed(token);
+    }
     void disconnectDisplay() { emit displayDisconnected(); }
     void completeAction(ToplevelActionResult result)
     {
@@ -71,6 +79,7 @@ public:
         ToplevelAction action = ToplevelAction::Activate;
     };
     QVector<ActionRequest> actionRequests;
+    QSet<quint64> staleHandleTokens;
 };
 
 static std::shared_ptr<DesktopEntrySnapshot> makeCatalog()
@@ -94,6 +103,7 @@ private slots:
     void authoritativeSnapshotDrivesDockRuntimeRoles();
     void runningApplicationActivatesMostRecentExactWindow();
     void unavailableActivationNeverLaunchesSameClick();
+    void staleExactTargetNeverRetargetsOrLaunches();
 };
 
 void DockTyphonRuntimeIntegrationTest::authoritativeSnapshotDrivesDockRuntimeRoles()
@@ -208,6 +218,44 @@ void DockTyphonRuntimeIntegrationTest::unavailableActivationNeverLaunchesSameCli
     QCOMPARE(launcher.requests.size(), 0);
     adapter->completeAction(ToplevelActionResult::Unavailable);
     QCOMPARE(launcher.requests.size(), 0);
+}
+
+void DockTyphonRuntimeIntegrationTest::staleExactTargetNeverRetargetsOrLaunches()
+{
+    auto *adapter = new FakeTyphonAdapter;
+    TyphonToplevelConnection connection(adapter);
+    FakeLauncher launcher;
+    DockController controller(&launcher);
+    controller.setCatalogSnapshot(makeCatalog());
+    DockConfig config = DockConfig::defaults();
+    config.pins = {QStringLiteral("one.desktop")};
+    controller.applyConfig(config);
+    controller.attachTyphonConnection(&connection);
+
+    connection.start();
+    adapter->advertiseManager();
+    adapter->create(1);
+    adapter->id(1, QStringLiteral("1"));
+    adapter->app(1, QStringLiteral("one"));
+    adapter->title(1, QStringLiteral("One"));
+    adapter->pid(1, 101);
+    adapter->kind(1, ToplevelKind::XdgToplevel);
+    adapter->state(1, {});
+    adapter->focus(1, 1);
+    adapter->handleDone(1, 1);
+    adapter->managerDone(1, 1);
+
+    QVERIFY(controller.runtimeKnown());
+    QVERIFY(controller.appModel()->index(0, 0).data(DockAppModel::RunningRole).toBool());
+
+    // The Dock has observed the live target, then the exact protocol handle disappears
+    // before requestAction. No alternate target or launch fallback is allowed.
+    adapter->close(1);
+    controller.launch(0);
+
+    QCOMPARE(adapter->actionRequests.size(), 0);
+    QCOMPARE(launcher.requests.size(), 0);
+    QCOMPARE(controller.launchingCount(), 0);
 }
 
 QTEST_GUILESS_MAIN(DockTyphonRuntimeIntegrationTest)

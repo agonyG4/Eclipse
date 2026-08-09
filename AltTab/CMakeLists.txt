@@ -85,31 +85,20 @@ astrea_enable_sanitizers(astrea-alttab-core)
 qt_add_executable(astrea-alt-tab
     app/main.cpp
     app/CommandLine.cpp
-    app/AltTabApplication.cpp
+    ../Shell/platform/ipc/ShellIpcClient.cpp
 )
-target_include_directories(astrea-alt-tab PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_include_directories(astrea-alt-tab PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Shell"
+)
 target_link_libraries(astrea-alt-tab PRIVATE
-    astrea-alttab-core
-    astrea-shared-coreplugin
-    dl pthread
+    Qt6::Core Qt6::Network
 )
-
-qt_add_qml_module(astrea-alt-tab
-    URI Astrea.AltTab
-    VERSION 1.0
-    QML_FILES
-        qml/Main.qml
-        qml/components/AltTabPanel.qml
-        qml/components/AltTabWindowDelegate.qml
-        qml/components/AstreaAppIcon.qml
-)
-qt_import_qml_plugins(astrea-alt-tab)
 
 astrea_enable_warnings(astrea-alt-tab)
 astrea_enable_sanitizers(astrea-alt-tab)
 
 install(TARGETS astrea-alt-tab RUNTIME DESTINATION bin)
-install(FILES packaging/systemd/astrea-alt-tabd.service DESTINATION share/systemd/user)
 install(FILES packaging/hypr/astrea-alt-tab.conf DESTINATION share/hypr)
 
 include(CTest)

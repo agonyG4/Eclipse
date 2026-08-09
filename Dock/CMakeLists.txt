@@ -17,40 +17,20 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/DockSanitizers.cmake)
 qt_add_executable(astrea-dock
     app/main.cpp
     app/CommandLine.cpp
-    app/DockApplication.cpp
-    core/DockAppInfo.cpp
-    core/DockAppModel.cpp
-    core/DockController.cpp
-    platform/ipc/DockIpcServer.cpp
-    platform/runtime/DockRuntimePaths.cpp
-    platform/wayland/DockLayerShellSurface.cpp
-    services/DockConfigWatcher.cpp
+    ../Shell/platform/ipc/ShellIpcClient.cpp
 )
-target_include_directories(astrea-dock PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_include_directories(astrea-dock PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Shell"
+)
 target_link_libraries(astrea-dock PRIVATE
-    astrea-shared-core
-    astrea-shared-coreplugin
-    astrea-shared-typhon
-    astrea-shared-layer-shell
-    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Network Qt6::Core5Compat
-    dl pthread
+    Qt6::Core Qt6::Network
 )
-
-qt_add_qml_module(astrea-dock
-    URI Astrea.Dock
-    VERSION 1.0
-    QML_FILES
-        qml/Main.qml
-        qml/components/DockPanel.qml
-        qml/components/DockAppDelegate.qml
-)
-qt_import_qml_plugins(astrea-dock)
 
 dock_enable_warnings(astrea-dock)
 dock_enable_sanitizers(astrea-dock)
 
 install(TARGETS astrea-dock RUNTIME DESTINATION bin)
-install(FILES packaging/systemd/astrea-dock.service DESTINATION share/systemd/user)
 
 if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     find_package(Qt6 6.6 REQUIRED COMPONENTS Test)

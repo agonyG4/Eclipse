@@ -10,10 +10,10 @@ Window {
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint
 
-    width: screen ? screen.geometry.width : 1920
-    height: screen ? screen.geometry.height : 1080
-    x: screen ? screen.geometry.x : 0
-    y: screen ? screen.geometry.y : 0
+    width: Screen.width > 0 ? Screen.width : 1920
+    height: Screen.height > 0 ? Screen.height : 1080
+    x: Screen.virtualX
+    y: Screen.virtualY
     opacity: 1.0
 
     property bool hadActiveFocus: false

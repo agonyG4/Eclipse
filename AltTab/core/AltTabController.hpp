@@ -38,6 +38,8 @@ public:
     AltTabWindowModel *windowModel() { return &m_model; }
     int windowCount() const { return m_model.count(); }
     int selectedIndex() const { return m_selectedIndex; }
+    AppIdentityResolver *identityResolver() const { return m_identityResolver; }
+    CompositorBackend *backend() const { return m_backend; }
 
     Q_INVOKABLE void step(int direction);
     Q_INVOKABLE void preview(int index);

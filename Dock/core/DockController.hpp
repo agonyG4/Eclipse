@@ -40,6 +40,8 @@ public:
     int resolvedPinCount() const;
     int launchingCount() const;
     bool runtimeKnown() const { return m_runtimeKnown; }
+    DesktopEntryCatalog *catalog() const { return m_catalog; }
+    ApplicationLauncher *launcher() const { return m_launcher; }
     int iconSize() const { return m_config.iconSize; }
     int bottomMargin() const { return m_config.bottomMargin; }
     int panelPadding() const { return m_config.panelPadding; }

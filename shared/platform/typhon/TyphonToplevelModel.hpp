@@ -48,6 +48,7 @@ public:
     quint64 currentGeneration() const { return m_generation; }
     Astrea::Typhon::Revision lastCommittedRevision() const { return m_lastRevision; }
     QString lastError() const { return m_lastError; }
+    std::optional<quint64> handleTokenForWindowId(const QString &windowId) const;
 
 signals:
     void snapshotCommitted(Astrea::Typhon::Snapshot snapshot);

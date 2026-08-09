@@ -96,6 +96,8 @@ add_library(astrea-shared-typhon STATIC
     platform/typhon/TyphonShellAuthenticator.cpp
     platform/typhon/TyphonShellAuthenticator.hpp
     platform/typhon/TyphonProtocolTypes.hpp
+    platform/typhon/TyphonActionState.cpp
+    platform/typhon/TyphonActionState.hpp
     platform/typhon/TyphonWaylandDisplay.cpp
     platform/typhon/TyphonWaylandDisplay.hpp
     platform/typhon/TyphonShortcutClient.cpp
@@ -230,6 +232,18 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     target_link_libraries(typhon-shortcut-protocol-contract-test PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME typhon-shortcut-protocol-contract-test COMMAND typhon-shortcut-protocol-contract-test)
 
+    add_executable(typhon-toplevel-protocol-contract-test
+        tests/TyphonToplevelProtocolContractTest.cpp
+    )
+    target_include_directories(typhon-toplevel-protocol-contract-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_compile_definitions(typhon-toplevel-protocol-contract-test PRIVATE
+        ASTREA_TOPLEVEL_PROTOCOL_SOURCE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/platform/typhon/protocols/astrea-toplevel-management-v1.xml"
+    )
+    target_link_libraries(typhon-toplevel-protocol-contract-test PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME typhon-toplevel-protocol-contract-test COMMAND typhon-toplevel-protocol-contract-test)
+
     add_executable(desktop-entry-catalog-test
         tests/DesktopEntryCatalogTest.cpp
         apps/DesktopEntryCatalog.cpp
@@ -253,6 +267,7 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     add_typhon_shared_test(typhon-app-matcher-test tests/TyphonAppMatcherTest.cpp)
     add_typhon_shared_test(dock-application-state-projector-test tests/DockApplicationStateProjectorTest.cpp)
     add_typhon_shared_test(typhon-protocol-client-test tests/TyphonProtocolClientTest.cpp)
+    add_typhon_shared_test(typhon-action-state-test tests/TyphonActionStateTest.cpp)
 
     if(ASTREA_TYPHON_WAYLAND_AVAILABLE AND ASTREA_WAYLAND_SERVER_FOUND)
         add_executable(typhon-protocol-integration-test
@@ -308,10 +323,12 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     if(ASTREA_ENABLE_ASAN)
         set_tests_properties(
             desktop-entry-catalog-test
+            typhon-toplevel-protocol-contract-test
             typhon-toplevel-model-test
             typhon-app-matcher-test
             dock-application-state-projector-test
             typhon-protocol-client-test
+            typhon-action-state-test
             typhon-protocol-integration-test
             typhon-shortcut-protocol-integration-test
             PROPERTIES

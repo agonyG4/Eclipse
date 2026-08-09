@@ -14,6 +14,7 @@ struct DockApplicationRuntimeState {
     bool active = false;
     int windowCount = 0;
     QVector<QString> windowIds;
+    QVector<FocusSerial> focusSerials;
 };
 
 class DockApplicationStateProjector final {

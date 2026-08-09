@@ -33,7 +33,13 @@ QHash<QString, DockApplicationRuntimeState> DockApplicationStateProjector::proje
         state.active = state.active || hasState(window.states, ToplevelStateFlag::Active);
         if (state.windowCount < std::numeric_limits<int>::max())
             ++state.windowCount;
-        state.windowIds.append(window.id);
+        int insertAt = 0;
+        while (insertAt < state.focusSerials.size()
+               && state.focusSerials.at(insertAt) > window.focusSerial) {
+            ++insertAt;
+        }
+        state.windowIds.insert(insertAt, window.id);
+        state.focusSerials.insert(insertAt, window.focusSerial);
     }
     return result;
 }

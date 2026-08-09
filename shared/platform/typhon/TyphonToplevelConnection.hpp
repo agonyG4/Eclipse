@@ -1,6 +1,7 @@
 #pragma once
 
 #include "platform/typhon/TyphonProtocolAdapter.hpp"
+#include "platform/typhon/TyphonActionState.hpp"
 #include "platform/typhon/TyphonToplevelModel.hpp"
 
 #include <QObject>
@@ -34,11 +35,22 @@ public:
     const Astrea::Typhon::Snapshot &snapshot() const { return m_model.snapshot(); }
     quint64 connectionGeneration() const { return m_generation; }
     bool reconnectPending() const { return m_reconnectTimer.isActive(); }
+    Astrea::Typhon::TyphonActionCapabilityState actionCapability() const
+    { return m_actionCapability; }
+    quint32 managerVersion() const
+    { return m_adapter ? m_adapter->managerVersion() : 0; }
+    std::optional<Astrea::Typhon::ToplevelActionError> requestAction(
+        const QString &windowId, Astrea::Typhon::ToplevelAction action, quint64 consumerToken);
 
 signals:
     void stateChanged(TyphonConnectionState state);
     void snapshotChanged(Astrea::Typhon::Snapshot snapshot);
     void diagnostic(QString message);
+    void actionCapabilityChanged(Astrea::Typhon::TyphonActionCapabilityState state);
+    void actionFinished(quint64 consumerToken, Astrea::Typhon::ToplevelAction action,
+                        Astrea::Typhon::ToplevelActionResult result);
+    void actionFailed(quint64 consumerToken, Astrea::Typhon::ToplevelAction action,
+                      Astrea::Typhon::ToplevelActionError error);
 
 private:
     void beginConnection();
@@ -50,6 +62,8 @@ private:
     void enterDegraded(const QString &message, bool reconnect);
     void scheduleReconnect();
     int reconnectDelay() const;
+    void settlePendingActions(Astrea::Typhon::ToplevelActionError error);
+    void setActionCapability(Astrea::Typhon::TyphonActionCapabilityState state);
 
     TyphonProtocolAdapter *m_adapter = nullptr;
     TyphonToplevelModel m_model;
@@ -60,4 +74,7 @@ private:
     int m_backoffIndex = 0;
     bool m_started = false;
     bool m_publicSnapshotPublished = false;
+    Astrea::Typhon::TyphonActionCapabilityState m_actionCapability =
+        Astrea::Typhon::TyphonActionCapabilityState::Disconnected;
+    Astrea::Typhon::TyphonActionState m_actionState;
 };

@@ -332,6 +332,17 @@ TyphonToplevelModel::EventResult TyphonToplevelModel::managerFailed(quint64 gene
     return reject(QStringLiteral("manager reported terminal failure"));
 }
 
+std::optional<quint64> TyphonToplevelModel::handleTokenForWindowId(const QString &windowId) const
+{
+    if (windowId.isEmpty())
+        return std::nullopt;
+    for (auto it = m_committed.cbegin(); it != m_committed.cend(); ++it) {
+        if (it->id == windowId)
+            return it.key();
+    }
+    return std::nullopt;
+}
+
 void TyphonToplevelModel::clearSnapshot(quint64 generation)
 {
     if (checkGeneration(generation) != EventResult::Accepted)

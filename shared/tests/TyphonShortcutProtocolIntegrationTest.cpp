@@ -12,6 +12,7 @@
 #include "astrea-shell-auth-v1-server-protocol.h"
 
 #include "platform/typhon/TyphonShortcutClient.hpp"
+#include "platform/typhon/TyphonSharedConnection.hpp"
 
 class FakeShortcutCompositor final : public QObject {
 public:
@@ -103,6 +104,20 @@ public:
         return it == m_registrations.cend() ? nullptr : *it;
     }
 
+    int authenticationCount() const
+    {
+        return m_authenticatedClients.size();
+    }
+
+    int clientCount() const
+    {
+        int count = 0;
+        wl_client *client = nullptr;
+        wl_client_for_each(client, wl_display_get_client_list(m_display))
+            ++count;
+        return count;
+    }
+
     void sendPressed(const QString &name, quint32 serial, quint32 timestamp)
     {
         if (Registration *item = registration(name)) {
@@ -160,18 +175,24 @@ private:
         delete manager;
     }
 
-    static void authenticateRequest(wl_client *, wl_resource *resource, const char *capability)
+    static void authenticateRequest(wl_client *client, wl_resource *resource,
+                                    const char *capability)
     {
+        auto *manager = static_cast<Registration *>(wl_resource_get_user_data(resource));
+        auto *self = manager ? manager->owner : nullptr;
         const QByteArray value = QByteArray(capability ? capability : "");
         bool valid = value.size() == 64;
         for (const char byte : value) {
             valid = valid && ((byte >= '0' && byte <= '9')
                               || (byte >= 'a' && byte <= 'f'));
         }
-        if (valid)
+        if (valid) {
+            if (self)
+                self->m_authenticatedClients.append(client);
             astrea_shell_auth_manager_v1_send_authenticated(resource);
-        else
+        } else {
             astrea_shell_auth_manager_v1_send_rejected(resource);
+        }
     }
 
     static void destroyAuthManagerRequest(wl_client *, wl_resource *resource)
@@ -276,6 +297,7 @@ private:
     wl_global *m_authGlobal = nullptr;
     QSocketNotifier *m_serverNotifier = nullptr;
     QVector<Registration *> m_registrations;
+    QVector<wl_client *> m_authenticatedClients;
     Registration *m_authManager = nullptr;
 };
 
@@ -300,6 +322,7 @@ class TyphonShortcutProtocolIntegrationTest final : public QObject {
 private slots:
     void registersReservedShortcutsAndDeliversLifecycle();
     void cancellationDoesNotReregister();
+    void sharedSessionOwnsShortcutTransport();
 };
 
 void TyphonShortcutProtocolIntegrationTest::registersReservedShortcutsAndDeliversLifecycle()
@@ -342,6 +365,24 @@ void TyphonShortcutProtocolIntegrationTest::cancellationDoesNotReregister()
     QCOMPARE(client.registeredShortcutCount(), 2);
     QTest::qWait(20);
     QCOMPARE(compositor.registrationNames().size(), 2);
+}
+
+void TyphonShortcutProtocolIntegrationTest::sharedSessionOwnsShortcutTransport()
+{
+    FakeShortcutCompositor compositor;
+    TyphonSharedConnection session;
+    TyphonShortcutClient client(&session);
+
+    session.start();
+    client.start();
+    QVERIFY(compositor.pumpUntil([&client] { return client.isReady(); }));
+
+    QCOMPARE(compositor.authenticationCount(), 1);
+    QCOMPARE(compositor.clientCount(), 1);
+    QCOMPARE(client.connectionGeneration(), session.connectionGeneration());
+
+    client.stop();
+    session.stop();
 }
 
 QTEST_GUILESS_MAIN(TyphonShortcutProtocolIntegrationTest)

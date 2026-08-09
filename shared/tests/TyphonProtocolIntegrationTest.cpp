@@ -15,6 +15,7 @@
 #include "astrea-toplevel-management-v1-server-protocol.h"
 
 #include "platform/typhon/TyphonToplevelConnection.hpp"
+#include "platform/typhon/TyphonSharedConnection.hpp"
 
 using namespace Astrea::Typhon;
 
@@ -471,6 +472,7 @@ private slots:
     void crossClientAuthenticationCannotBorrowCapability();
     void reconnectRequiresFreshAuthenticationAndClientIdentity();
     void v2WithoutAuthenticationRemainsReadOnly();
+    void sharedSessionOwnsToplevelTransport();
 };
 
 void TyphonProtocolIntegrationTest::registryDiscoveryAndInitialSnapshot()
@@ -859,6 +861,26 @@ void TyphonProtocolIntegrationTest::v2WithoutAuthenticationRemainsReadOnly()
     QCOMPARE(error.value(), ToplevelActionError::NotAuthenticated);
     QCOMPARE(compositor.actionRequests().size(), 0);
     connection.stop();
+}
+
+void TyphonProtocolIntegrationTest::sharedSessionOwnsToplevelTransport()
+{
+    FakeTyphonCompositor compositor(true, 2);
+    TyphonSharedConnection session;
+    TyphonToplevelConnection connection(&session);
+
+    session.start();
+    connection.start();
+    QVERIFY(compositor.pumpUntil([&] {
+        return connection.state() == TyphonConnectionState::WaitingForInitialSnapshot;
+    }));
+
+    QCOMPARE(compositor.authenticationCount(), 1);
+    QCOMPARE(compositor.clientCount(), 1);
+    QCOMPARE(session.authenticationGeneration(), session.connectionGeneration());
+
+    connection.stop();
+    session.stop();
 }
 
 QTEST_MAIN(TyphonProtocolIntegrationTest)

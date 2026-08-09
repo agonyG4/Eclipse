@@ -1,10 +1,13 @@
 #include "platform/typhon/TyphonProtocolAdapter.hpp"
+#include "platform/typhon/TyphonSharedConnection.hpp"
 #include "platform/typhon/TyphonShellAuthenticator.hpp"
 #include "platform/typhon/TyphonWaylandDisplay.hpp"
 
 #include <QHash>
 #include <QVector>
 #include <QtAlgorithms>
+
+#include <memory>
 
 using namespace Astrea::Typhon;
 
@@ -20,13 +23,24 @@ quint64 joinUint32(quint32 high, quint32 low)
 
 class GeneratedTyphonProtocolAdapter final : public TyphonProtocolAdapter {
 public:
-    explicit GeneratedTyphonProtocolAdapter(QObject *parent = nullptr)
-        : TyphonProtocolAdapter(parent), m_display(new TyphonWaylandDisplay(this))
+    explicit GeneratedTyphonProtocolAdapter(TyphonSharedConnection *sharedConnection = nullptr,
+                                            QObject *parent = nullptr)
+        : TyphonProtocolAdapter(sharedConnection, parent)
+        , m_sharedConnection(sharedConnection)
     {
-        connect(m_display, &TyphonWaylandDisplay::protocolError, this,
-                [this](const QString &diagnostic) { emit protocolError(diagnostic); });
-        connect(m_display, &TyphonWaylandDisplay::disconnected, this,
-                [this] { onDisplayDisconnected(); });
+        if (m_sharedConnection) {
+            connect(m_sharedConnection, &TyphonSharedConnection::ready, this,
+                    [this](quint64) { onSharedReady(); });
+            connect(m_sharedConnection, &TyphonSharedConnection::disconnected, this,
+                    [this](quint64) { onSharedDisconnected(); });
+        } else {
+            m_ownedDisplay = std::make_unique<TyphonWaylandDisplay>(this);
+            m_display = m_ownedDisplay.get();
+            connect(m_display, &TyphonWaylandDisplay::protocolError, this,
+                    [this](const QString &diagnostic) { emit protocolError(diagnostic); });
+            connect(m_display, &TyphonWaylandDisplay::disconnected, this,
+                    [this] { onDisplayDisconnected(); });
+        }
     }
 
     void start() override
@@ -44,6 +58,13 @@ public:
         m_authenticated = false;
         setActionCapability(TyphonActionCapabilityState::AuthenticatingV2);
 
+        if (m_sharedConnection) {
+            m_display = m_sharedConnection->waylandDisplay();
+            if (m_sharedConnection->isReady())
+                onSharedReady();
+            return;
+        }
+
         if (!m_display->connectToDisplay()) {
             m_running = false;
             setActionCapability(TyphonActionCapabilityState::Disconnected);
@@ -58,23 +79,12 @@ public:
         } else {
             m_authenticated = true;
         }
-        m_registry = wl_display_get_registry(display);
-        if (!m_registry || wl_registry_add_listener(m_registry, &kRegistryListener, this) != 0) {
-            failProtocol(QStringLiteral("Typhon registry setup failed"));
-            return;
-        }
-
-        m_registrySync = wl_display_sync(display);
-        if (!m_registrySync || wl_callback_add_listener(m_registrySync, &kSyncListener, this) != 0) {
-            failProtocol(QStringLiteral("Typhon registry synchronization failed"));
-            return;
-        }
-        m_display->flush();
+        bindRegistry(display);
     }
 
     void stop() override
     {
-        if (!m_running && !m_display->isConnected())
+        if (!m_running && (!m_display || !m_display->isConnected()))
             return;
         m_running = false;
         m_terminal = true;
@@ -91,7 +101,8 @@ public:
             wl_registry_destroy(m_registry);
             m_registry = nullptr;
         }
-        m_display->disconnectFromDisplay();
+        if (!m_sharedConnection && m_display)
+            m_display->disconnectFromDisplay();
         m_registryReady = false;
         m_managerVersion = 0;
         m_authenticated = false;
@@ -396,6 +407,59 @@ private:
         return false;
     }
 
+    void bindRegistry(wl_display *display)
+    {
+        if (!display)
+            return;
+        m_registry = wl_display_get_registry(display);
+        if (!m_registry || wl_registry_add_listener(m_registry, &kRegistryListener, this) != 0) {
+            failProtocol(QStringLiteral("Typhon registry setup failed"));
+            return;
+        }
+
+        m_registrySync = wl_display_sync(display);
+        if (!m_registrySync || wl_callback_add_listener(m_registrySync, &kSyncListener, this) != 0) {
+            failProtocol(QStringLiteral("Typhon registry synchronization failed"));
+            return;
+        }
+        if (m_display)
+            m_display->flush();
+    }
+
+    void onSharedReady()
+    {
+        if (!m_running || !m_sharedConnection)
+            return;
+        m_display = m_sharedConnection->waylandDisplay();
+        m_terminal = false;
+        m_protocolErrorReported = false;
+        m_registryReady = false;
+        m_manager = nullptr;
+        m_registry = nullptr;
+        m_registrySync = nullptr;
+        m_managerVersion = 0;
+        m_authenticated = true;
+        setActionCapability(TyphonActionCapabilityState::AuthenticatingV2);
+        bindRegistry(m_sharedConnection->nativeDisplay());
+    }
+
+    void onSharedDisconnected()
+    {
+        if (!m_running || !m_sharedConnection)
+            return;
+        m_running = false;
+        m_terminal = true;
+        m_registry = nullptr;
+        m_manager = nullptr;
+        m_registrySync = nullptr;
+        m_managerVersion = 0;
+        m_authenticated = false;
+        setActionCapability(TyphonActionCapabilityState::Disconnected);
+        qDeleteAll(m_handles);
+        m_handles.clear();
+        emit displayDisconnected();
+    }
+
     void destroyHandle(HandleState *handle)
     {
         if (!handle)
@@ -458,7 +522,9 @@ private:
     static const astrea_toplevel_manager_v1_listener kManagerListener;
     static const astrea_toplevel_v1_listener kHandleListener;
 
+    std::unique_ptr<TyphonWaylandDisplay> m_ownedDisplay;
     TyphonWaylandDisplay *m_display = nullptr;
+    TyphonSharedConnection *m_sharedConnection = nullptr;
     wl_registry *m_registry = nullptr;
     wl_callback *m_registrySync = nullptr;
     astrea_toplevel_manager_v1 *m_manager = nullptr;
@@ -530,8 +596,19 @@ public:
 TyphonProtocolAdapter *createDefaultTyphonProtocolAdapter(QObject *parent)
 {
 #if ASTREA_HAVE_TYPHON_PROTOCOL
-    return new GeneratedTyphonProtocolAdapter(parent);
+    return new GeneratedTyphonProtocolAdapter(nullptr, parent);
 #else
+    return new UnavailableTyphonProtocolAdapter(parent);
+#endif
+}
+
+TyphonProtocolAdapter *createDefaultTyphonProtocolAdapter(
+    TyphonSharedConnection *sharedConnection, QObject *parent)
+{
+#if ASTREA_HAVE_TYPHON_PROTOCOL
+    return new GeneratedTyphonProtocolAdapter(sharedConnection, parent);
+#else
+    Q_UNUSED(sharedConnection);
     return new UnavailableTyphonProtocolAdapter(parent);
 #endif
 }

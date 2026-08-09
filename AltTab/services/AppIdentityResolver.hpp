@@ -15,6 +15,7 @@ public:
     ~AppIdentityResolver() override;
 
     void initialize(const QString &customHome = QString(), const QString &customProc = QStringLiteral("/proc"));
+    void initialize(DesktopEntryCatalog *catalog, const QString &customProc = QStringLiteral("/proc"));
 
     AppIdentity resolveSync(const WindowIdentityInput &input);
     void resolveAsync(const WindowIdentityInput &input, quint64 generation);
@@ -41,6 +42,7 @@ private:
 
     IdentityCache m_cache;
     DesktopEntryIndex *m_desktopIndex = nullptr;
+    bool m_ownsDesktopIndex = false;
     SteamMetadataIndex *m_steamIndex = nullptr;
     std::atomic<int> m_themeRevision{0};
     QString m_procRoot;

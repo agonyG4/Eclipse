@@ -1,4 +1,7 @@
 #include <QTest>
+#include <QDir>
+#include <QFile>
+#include <QTemporaryDir>
 #include <QSignalSpy>
 
 #include "services/AppIdentityResolver.hpp"
@@ -20,6 +23,7 @@ private slots:
     void testDeepPendingForExe();
     void testDeepPendingForProton();
     void testAsyncResolution();
+    void testSharedCatalogResolution();
 };
 
 void TestAppIdentityResolver::testSoberAlias() {
@@ -168,6 +172,33 @@ void TestAppIdentityResolver::testAsyncResolution() {
     const AppIdentity identity = spy.at(0).at(1).value<AppIdentity>();
     QCOMPARE(address, QStringLiteral("0x9999"));
     QCOMPARE(identity.iconName, QStringLiteral("kitty"));
+}
+
+void TestAppIdentityResolver::testSharedCatalogResolution()
+{
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+    const QString applications = home.path() + QStringLiteral("/.local/share/applications");
+    QVERIFY(QDir().mkpath(applications));
+    QFile file(applications + QStringLiteral("/shared.desktop"));
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+    file.write("[Desktop Entry]\nType=Application\nName=Shared App\nIcon=shared-icon\n"
+               "Exec=shared-app\nStartupWMClass=SharedApp\n");
+    file.close();
+
+    DesktopEntryCatalog catalog;
+    catalog.initialize(home.path());
+    AppIdentityResolver resolver;
+    resolver.initialize(&catalog);
+
+    WindowIdentityInput input;
+    input.className = QStringLiteral("SharedApp");
+    input.address = QStringLiteral("0xshared");
+    const AppIdentity identity = resolver.resolveSync(input);
+
+    QCOMPARE(identity.iconName, QStringLiteral("shared-icon"));
+    QCOMPARE(identity.displayName, QStringLiteral("Shared App"));
+    QCOMPARE(resolver.desktopIndexRevision(), catalog.revision());
 }
 
 QTEST_MAIN(TestAppIdentityResolver)

@@ -16,6 +16,17 @@ bool parseBoolean(const QString &value)
     return value.trimmed().compare(QStringLiteral("true"), Qt::CaseInsensitive) == 0;
 }
 
+QStringList parseList(const QString &value)
+{
+    QStringList result;
+    for (const QString &part : value.split(QLatin1Char(';'), Qt::SkipEmptyParts)) {
+        const QString trimmed = part.trimmed();
+        if (!trimmed.isEmpty())
+            result.append(trimmed);
+    }
+    return result;
+}
+
 QStringList uniquePaths(const QStringList &paths)
 {
     QStringList result;
@@ -170,6 +181,10 @@ void DesktopEntryCatalog::rebuildIndex()
                 const QString value = line.mid(separator + 1);
                 if (key == QStringLiteral("Name"))
                     record.name = value;
+                else if (key == QStringLiteral("GenericName"))
+                    record.genericName = value;
+                else if (key == QStringLiteral("Comment"))
+                    record.comment = value;
                 else if (key == QStringLiteral("Icon"))
                     record.icon = value;
                 else if (key == QStringLiteral("Exec"))
@@ -178,10 +193,28 @@ void DesktopEntryCatalog::rebuildIndex()
                     record.tryExec = value;
                 else if (key == QStringLiteral("StartupWMClass"))
                     record.startupWmClass = value;
+                else if (key == QStringLiteral("Keywords"))
+                    record.keywords = parseList(value);
+                else if (key == QStringLiteral("Categories"))
+                    record.categories = parseList(value);
+                else if (key == QStringLiteral("OnlyShowIn"))
+                    record.onlyShowIn = parseList(value);
+                else if (key == QStringLiteral("NotShowIn"))
+                    record.notShowIn = parseList(value);
+                else if (key == QStringLiteral("Terminal"))
+                    record.terminal = parseBoolean(value);
                 else if (key == QStringLiteral("NoDisplay"))
                     record.noDisplay = parseBoolean(value);
                 else if (key == QStringLiteral("Hidden"))
                     record.hidden = parseBoolean(value);
+                else if (key.startsWith(QStringLiteral("Name[")) && key.endsWith(QLatin1Char(']')))
+                    record.localizedNames.insert(key.mid(5, key.size() - 6), value);
+                else if (key.startsWith(QStringLiteral("GenericName["))
+                         && key.endsWith(QLatin1Char(']')))
+                    record.localizedGenericNames.insert(key.mid(12, key.size() - 13), value);
+                else if (key.startsWith(QStringLiteral("Comment["))
+                         && key.endsWith(QLatin1Char(']')))
+                    record.localizedComments.insert(key.mid(8, key.size() - 9), value);
             }
 
             const int index = static_cast<int>(next->entries.size());

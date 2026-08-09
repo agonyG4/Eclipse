@@ -112,6 +112,8 @@ public:
             return ToplevelActionError::UnsupportedProtocol;
         if (!m_authenticated || m_actionCapability != TyphonActionCapabilityState::ActionReadyV2)
             return ToplevelActionError::NotAuthenticated;
+        if (!token.isValid())
+            return ToplevelActionError::InvalidRequest;
 
         const auto it = m_handles.constFind(handleToken);
         if (it == m_handles.constEnd() || !it.value() || it.value()->closed

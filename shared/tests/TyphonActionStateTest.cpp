@@ -10,6 +10,7 @@ class TyphonActionStateTest final : public QObject {
 
 private slots:
     void reservesUniqueGenerationScopedTokens();
+    void rejectsInvalidTokensWithoutPendingState();
     void rejectsDuplicateAndSixtyFifthPendingAction();
     void completionReleasesCapacityAndAllowsReuse();
     void staleOrMismatchedCompletionCannotSettleAnotherAction();
@@ -30,6 +31,14 @@ void TyphonActionStateTest::reservesUniqueGenerationScopedTokens()
                  TyphonActionAdmission::Accepted);
     }
     QCOMPARE(state.pendingCount(), qsizetype(64));
+}
+
+void TyphonActionStateTest::rejectsInvalidTokensWithoutPendingState()
+{
+    TyphonActionState state;
+    QCOMPARE(state.reserve(7, {}, QStringLiteral("1"), ToplevelAction::Activate, 1),
+             TyphonActionAdmission::InvalidToken);
+    QCOMPARE(state.pendingCount(), qsizetype(0));
 }
 
 void TyphonActionStateTest::rejectsDuplicateAndSixtyFifthPendingAction()

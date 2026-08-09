@@ -110,6 +110,7 @@ qt_import_qml_plugins(astrea-shell)
 
 install(TARGETS astrea-shell RUNTIME DESTINATION bin)
 install(FILES packaging/systemd/astrea-shell.service DESTINATION share/systemd/user)
+install(PROGRAMS tools/astrea-migrate-shell-systemd DESTINATION bin)
 
 if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     find_package(Qt6 6.6 REQUIRED COMPONENTS Test)
@@ -181,6 +182,11 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
         set_tests_properties(shell-unified-runtime-integration-test PROPERTIES
             SKIP_REGULAR_EXPRESSION "SKIPPED")
     endif()
+
+    add_test(NAME shell-systemd-migration-test
+             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tools/test-systemd-migration.sh")
+    add_test(NAME shell-resource-measurement-test
+             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tools/test-resource-measurement.sh")
 
     add_test(NAME legacy-dock-daemon-guard COMMAND $<TARGET_FILE:astrea-dock> --daemon)
     add_test(NAME legacy-alttab-daemon-guard COMMAND $<TARGET_FILE:astrea-alt-tab> --daemon)

@@ -1,5 +1,7 @@
 #include "platform/typhon/TyphonToplevelConnection.hpp"
 
+#include "platform/typhon/TyphonSharedConnection.hpp"
+
 #include <QDebug>
 
 using namespace Astrea::Typhon;
@@ -30,6 +32,21 @@ TyphonToplevelConnection::TyphonToplevelConnection(TyphonProtocolAdapter *adapte
             });
 }
 
+TyphonToplevelConnection::TyphonToplevelConnection(TyphonSharedConnection *sharedConnection,
+                                                   QObject *parent)
+    : TyphonToplevelConnection(
+          createDefaultTyphonProtocolAdapter(sharedConnection), parent)
+{
+    m_sharedConnection = sharedConnection;
+    if (!m_sharedConnection)
+        return;
+
+    connect(m_sharedConnection, &TyphonSharedConnection::ready, this,
+            [this](quint64 generation) { beginSharedGeneration(generation); });
+    connect(m_sharedConnection, &TyphonSharedConnection::disconnected, this,
+            [this](quint64 generation) { handleSharedDisconnected(generation); });
+}
+
 TyphonToplevelConnection::~TyphonToplevelConnection()
 {
     stop();
@@ -41,6 +58,16 @@ void TyphonToplevelConnection::start()
         return;
     m_started = true;
     m_reconnectTimer.stop();
+
+    if (m_sharedConnection) {
+        setState(TyphonConnectionState::Connecting);
+        if (m_sharedConnection->isReady())
+            beginSharedGeneration(m_sharedConnection->connectionGeneration());
+        else if (m_sharedConnection->state() == TyphonSharedConnection::State::Stopped)
+            m_sharedConnection->start();
+        return;
+    }
+
     beginConnection();
 }
 
@@ -73,6 +100,38 @@ void TyphonToplevelConnection::beginConnection()
           static_cast<unsigned long long>(m_generation));
     if (m_adapter)
         m_adapter->start();
+}
+
+void TyphonToplevelConnection::beginSharedGeneration(quint64 generation)
+{
+    if (!m_started || !m_sharedConnection || generation == 0)
+        return;
+
+    if (m_generation != 0 && m_generation != generation)
+        m_actionState.clearGeneration(m_generation);
+    m_generation = generation;
+    m_model.startGeneration(generation);
+    m_publicSnapshotPublished = false;
+    disconnectAdapterSignals();
+    setState(TyphonConnectionState::Connecting);
+    setState(TyphonConnectionState::WaitingForRegistry);
+    bindAdapter(generation);
+    if (m_adapter)
+        m_adapter->start();
+}
+
+void TyphonToplevelConnection::handleSharedDisconnected(quint64 generation)
+{
+    if (!m_started || !m_sharedConnection || generation != m_generation)
+        return;
+
+    settlePendingActions(ToplevelActionError::Disconnected);
+    if (m_adapter)
+        m_adapter->stop();
+    disconnectAdapterSignals();
+    clearPublicSnapshot();
+    setActionCapability(TyphonActionCapabilityState::Disconnected);
+    setState(TyphonConnectionState::Disconnected);
 }
 
 void TyphonToplevelConnection::bindAdapter(quint64 generation)
@@ -192,6 +251,13 @@ void TyphonToplevelConnection::bindAdapter(quint64 generation)
                                         this, [this, generation] {
         if (generation != m_generation || !m_started)
             return;
+        if (m_sharedConnection) {
+            settlePendingActions(ToplevelActionError::Disconnected);
+            setActionCapability(TyphonActionCapabilityState::Disconnected);
+            clearPublicSnapshot();
+            setState(TyphonConnectionState::Disconnected);
+            return;
+        }
         settlePendingActions(ToplevelActionError::Disconnected);
         setActionCapability(TyphonActionCapabilityState::Disconnected);
         setState(TyphonConnectionState::Disconnected);

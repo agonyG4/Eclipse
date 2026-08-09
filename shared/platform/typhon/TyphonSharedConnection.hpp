@@ -8,6 +8,7 @@
 #include <memory>
 
 struct wl_display;
+class TyphonWaylandDisplay;
 
 class TyphonSharedConnection final : public QObject {
     Q_OBJECT
@@ -42,6 +43,8 @@ public:
     std::uint64_t connectionGeneration() const { return m_generation; }
     std::uint64_t authenticationGeneration() const { return m_authenticationGeneration; }
     wl_display *nativeDisplay() const;
+    TyphonWaylandDisplay *waylandDisplay() const;
+    bool flush();
 
     // Deterministic test driver; production disconnects arrive from the display.
     void reconnectNowForTest();

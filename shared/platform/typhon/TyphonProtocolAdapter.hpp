@@ -10,7 +10,15 @@ class TyphonProtocolAdapter : public QObject {
     Q_OBJECT
 
 public:
-    explicit TyphonProtocolAdapter(QObject *parent = nullptr) : QObject(parent) {}
+    explicit TyphonProtocolAdapter(QObject *parent = nullptr)
+        : QObject(parent)
+    {
+    }
+    TyphonProtocolAdapter(class TyphonSharedConnection *sharedConnection,
+                          QObject *parent = nullptr)
+        : QObject(parent), m_sharedConnection(sharedConnection)
+    {
+    }
     ~TyphonProtocolAdapter() override = default;
 
     virtual void start() = 0;
@@ -28,6 +36,8 @@ public:
         Q_UNUSED(action);
         return Astrea::Typhon::ToplevelActionError::UnsupportedProtocol;
     }
+
+    class TyphonSharedConnection *sharedConnection() const { return m_sharedConnection; }
 
 signals:
     void registryDiscovered(bool managerAvailable);
@@ -50,6 +60,11 @@ signals:
     void capabilityDiagnostic(QString diagnostic);
     void displayDisconnected();
     void protocolError(QString diagnostic);
+
+private:
+    class TyphonSharedConnection *m_sharedConnection = nullptr;
 };
 
 TyphonProtocolAdapter *createDefaultTyphonProtocolAdapter(QObject *parent = nullptr);
+TyphonProtocolAdapter *createDefaultTyphonProtocolAdapter(
+    TyphonSharedConnection *sharedConnection, QObject *parent = nullptr);

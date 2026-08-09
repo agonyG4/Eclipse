@@ -62,6 +62,16 @@ wl_display *TyphonSharedConnection::nativeDisplay() const
     return m_private->display ? m_private->display->nativeDisplay() : nullptr;
 }
 
+TyphonWaylandDisplay *TyphonSharedConnection::waylandDisplay() const
+{
+    return m_private->display.get();
+}
+
+bool TyphonSharedConnection::flush()
+{
+    return m_private->display && m_private->display->flush();
+}
+
 void TyphonSharedConnection::reconnectNowForTest()
 {
     if (!m_started)

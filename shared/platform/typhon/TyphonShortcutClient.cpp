@@ -1,5 +1,6 @@
 #include "platform/typhon/TyphonShortcutClient.hpp"
 
+#include "platform/typhon/TyphonSharedConnection.hpp"
 #include "platform/typhon/TyphonShellAuthenticator.hpp"
 #include "platform/typhon/TyphonWaylandDisplay.hpp"
 
@@ -75,13 +76,22 @@ struct TyphonShortcutRegistration;
 #endif
 
 struct TyphonShortcutClientPrivate {
-    explicit TyphonShortcutClientPrivate(TyphonShortcutClient *owner)
-        : owner(owner), display(std::make_unique<TyphonWaylandDisplay>())
+    explicit TyphonShortcutClientPrivate(TyphonShortcutClient *owner,
+                                         TyphonSharedConnection *sharedConnection)
+        : owner(owner), sharedConnection(sharedConnection)
     {
+        if (sharedConnection)
+            display = sharedConnection->waylandDisplay();
+        else {
+            ownedDisplay = std::make_unique<TyphonWaylandDisplay>();
+            display = ownedDisplay.get();
+        }
     }
 
     TyphonShortcutClient *owner = nullptr;
-    std::unique_ptr<TyphonWaylandDisplay> display;
+    TyphonSharedConnection *sharedConnection = nullptr;
+    std::unique_ptr<TyphonWaylandDisplay> ownedDisplay;
+    TyphonWaylandDisplay *display = nullptr;
     QTimer reconnectTimer;
     TyphonShortcutConnectionState state = TyphonShortcutConnectionState::Stopped;
     std::uint64_t generation = 0;
@@ -325,17 +335,31 @@ const astrea_shortcut_v1_listener TyphonShortcutClientPrivate::shortcutListener 
 #endif
 
 TyphonShortcutClient::TyphonShortcutClient(QObject *parent)
-    : QObject(parent), m_private(std::make_unique<TyphonShortcutClientPrivate>(this))
+    : TyphonShortcutClient(nullptr, parent)
+{
+}
+
+TyphonShortcutClient::TyphonShortcutClient(TyphonSharedConnection *sharedConnection,
+                                           QObject *parent)
+    : QObject(parent), m_private(std::make_unique<TyphonShortcutClientPrivate>(this,
+                                                                                sharedConnection))
 {
     m_private->reconnectTimer.setSingleShot(true);
     connect(&m_private->reconnectTimer, &QTimer::timeout, this, [this] {
         if (m_private->started)
             beginConnection();
     });
-    connect(m_private->display.get(), &TyphonWaylandDisplay::disconnected, this,
-            &TyphonShortcutClient::handleDisplayDisconnected);
-    connect(m_private->display.get(), &TyphonWaylandDisplay::protocolError, this,
-            [this](const QString &message) { enterFailure(message, true); });
+    if (sharedConnection) {
+        connect(sharedConnection, &TyphonSharedConnection::ready, this,
+                [this](quint64 generation) { beginSharedGeneration(generation); });
+        connect(sharedConnection, &TyphonSharedConnection::disconnected, this,
+                [this](quint64 generation) { handleSharedDisconnected(generation); });
+    } else {
+        connect(m_private->display, &TyphonWaylandDisplay::disconnected, this,
+                &TyphonShortcutClient::handleDisplayDisconnected);
+        connect(m_private->display, &TyphonWaylandDisplay::protocolError, this,
+                [this](const QString &message) { enterFailure(message, true); });
+    }
 }
 
 TyphonShortcutClient::~TyphonShortcutClient()
@@ -350,6 +374,15 @@ void TyphonShortcutClient::start()
     m_private->started = true;
     m_private->backoffIndex = 0;
     m_private->reconnectTimer.stop();
+
+    if (m_private->sharedConnection) {
+        if (m_private->sharedConnection->isReady())
+            beginSharedGeneration(m_private->sharedConnection->connectionGeneration());
+        else if (m_private->sharedConnection->state() == TyphonSharedConnection::State::Stopped)
+            m_private->sharedConnection->start();
+        return;
+    }
+
     beginConnection();
 }
 
@@ -362,7 +395,7 @@ void TyphonShortcutClient::stop()
 #if ASTREA_HAVE_TYPHON_PROTOCOL
     m_private->destroyProtocolObjects();
 #endif
-    if (m_private->display->isConnected())
+    if (!m_private->sharedConnection && m_private->display->isConnected())
         m_private->display->disconnectFromDisplay();
     ++m_private->generation;
     setState(TyphonShortcutConnectionState::Stopped);
@@ -442,6 +475,59 @@ void TyphonShortcutClient::beginConnection()
 #endif
 }
 
+void TyphonShortcutClient::beginSharedGeneration(std::uint64_t generation)
+{
+    if (!m_private->started || !m_private->sharedConnection || generation == 0)
+        return;
+
+#if !ASTREA_HAVE_TYPHON_PROTOCOL
+    enterUnsupported(QStringLiteral("Typhon shortcuts protocol is unavailable in this build"));
+    return;
+#else
+    m_private->generation = generation;
+    m_private->backoffIndex = 0;
+    m_private->destroyProtocolObjects();
+    m_private->display = m_private->sharedConnection->waylandDisplay();
+    setState(TyphonShortcutConnectionState::Connecting);
+
+    if (!m_private->display || !m_private->sharedConnection->nativeDisplay()) {
+        enterFailure(QStringLiteral("Shared Typhon display is unavailable"), false);
+        return;
+    }
+
+    m_private->registry = wl_display_get_registry(m_private->sharedConnection->nativeDisplay());
+    if (!m_private->registry
+        || wl_registry_add_listener(m_private->registry,
+                                    &TyphonShortcutClientPrivate::registryListener,
+                                    m_private.get()) != 0) {
+        enterFailure(QStringLiteral("Typhon shared shortcut registry setup failed"), false);
+        return;
+    }
+    m_private->registrySync = wl_display_sync(m_private->sharedConnection->nativeDisplay());
+    if (!m_private->registrySync
+        || wl_callback_add_listener(m_private->registrySync,
+                                    &TyphonShortcutClientPrivate::registrySyncListener,
+                                    m_private.get()) != 0) {
+        enterFailure(QStringLiteral("Typhon shared shortcut synchronization failed"), false);
+        return;
+    }
+    setState(TyphonShortcutConnectionState::WaitingForManager);
+    if (!m_private->sharedConnection->flush())
+        enterFailure(QStringLiteral("Typhon shared shortcut registry flush failed"), false);
+#endif
+}
+
+void TyphonShortcutClient::handleSharedDisconnected(std::uint64_t generation)
+{
+    if (!m_private->started || !m_private->sharedConnection
+        || generation != m_private->generation)
+        return;
+#if ASTREA_HAVE_TYPHON_PROTOCOL
+    m_private->destroyProtocolObjects();
+#endif
+    setState(TyphonShortcutConnectionState::Disconnected);
+}
+
 void TyphonShortcutClient::setState(TyphonShortcutConnectionState state)
 {
     if (m_private->state == state)
@@ -460,7 +546,7 @@ void TyphonShortcutClient::enterFailure(const QString &message, bool reconnect)
 #if ASTREA_HAVE_TYPHON_PROTOCOL
     m_private->destroyProtocolObjects();
 #endif
-    if (m_private->display->isConnected())
+    if (!m_private->sharedConnection && m_private->display->isConnected())
         m_private->display->disconnectFromDisplay();
     m_private->failureInProgress = false;
     setState(TyphonShortcutConnectionState::Degraded);
@@ -477,7 +563,7 @@ void TyphonShortcutClient::enterUnsupported(const QString &message)
 #if ASTREA_HAVE_TYPHON_PROTOCOL
     m_private->destroyProtocolObjects();
 #endif
-    if (m_private->display->isConnected())
+    if (!m_private->sharedConnection && m_private->display->isConnected())
         m_private->display->disconnectFromDisplay();
     m_private->failureInProgress = false;
     setState(TyphonShortcutConnectionState::Unsupported);

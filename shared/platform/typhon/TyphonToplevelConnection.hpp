@@ -7,6 +7,8 @@
 #include <QObject>
 #include <QTimer>
 
+class TyphonSharedConnection;
+
 enum class TyphonConnectionState {
     Stopped,
     Connecting,
@@ -24,6 +26,8 @@ class TyphonToplevelConnection final : public QObject {
 
 public:
     explicit TyphonToplevelConnection(TyphonProtocolAdapter *adapter = nullptr,
+                                      QObject *parent = nullptr);
+    explicit TyphonToplevelConnection(TyphonSharedConnection *sharedConnection,
                                       QObject *parent = nullptr);
     ~TyphonToplevelConnection() override;
 
@@ -64,8 +68,11 @@ private:
     int reconnectDelay() const;
     void settlePendingActions(Astrea::Typhon::ToplevelActionError error);
     void setActionCapability(Astrea::Typhon::TyphonActionCapabilityState state);
+    void beginSharedGeneration(quint64 generation);
+    void handleSharedDisconnected(quint64 generation);
 
     TyphonProtocolAdapter *m_adapter = nullptr;
+    TyphonSharedConnection *m_sharedConnection = nullptr;
     TyphonToplevelModel m_model;
     QTimer m_reconnectTimer;
     QVector<QMetaObject::Connection> m_adapterConnections;

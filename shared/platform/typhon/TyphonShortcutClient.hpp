@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <memory>
 
+class TyphonSharedConnection;
+
 enum class TyphonShortcutPhase {
     Pressed,
     Repeated,
@@ -32,6 +34,8 @@ class TyphonShortcutClient final : public QObject {
 
 public:
     explicit TyphonShortcutClient(QObject *parent = nullptr);
+    explicit TyphonShortcutClient(TyphonSharedConnection *sharedConnection,
+                                  QObject *parent = nullptr);
     ~TyphonShortcutClient() override;
 
     void start();
@@ -58,6 +62,8 @@ private:
     void handleDisplayDisconnected();
     void scheduleReconnect();
     int reconnectDelay() const;
+    void beginSharedGeneration(std::uint64_t generation);
+    void handleSharedDisconnected(std::uint64_t generation);
 
     std::unique_ptr<TyphonShortcutClientPrivate> m_private;
 };

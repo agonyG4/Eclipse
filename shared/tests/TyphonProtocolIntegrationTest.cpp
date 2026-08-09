@@ -243,6 +243,23 @@ public:
     wl_client *lastRejectedClient() const { return m_lastRejectedClient; }
     int authenticationCount() const { return m_authenticatedClients.size(); }
 
+    void sendShortcutPressed(const QString &name, quint32 serial, quint32 timestamp)
+    {
+        const auto it = std::find_if(m_shortcuts.cbegin(), m_shortcuts.cend(),
+                                     [&name](const ShortcutRegistration *registration) {
+            return registration && registration->resource && registration->name == name;
+        });
+        if (it == m_shortcuts.cend())
+            return;
+        astrea_shortcut_v1_send_pressed((*it)->resource, serial, timestamp);
+        flushClients();
+    }
+
+    void pumpServerEventsForTest()
+    {
+        dispatchServerEvents();
+    }
+
 private:
     struct AuthenticatedClientRecord {
         FakeTyphonCompositor *owner = nullptr;
@@ -549,7 +566,9 @@ const struct astrea_shortcut_v1_interface FakeTyphonCompositor::kShortcutImpleme
 };
 
 class TyphonProtocolIntegrationTest final : public QObject {
+#ifndef ASTREA_TYPHON_PROTOCOL_INTEGRATION_NO_MAIN
     Q_OBJECT
+#endif
 
 private slots:
     void registryDiscoveryAndInitialSnapshot();
@@ -1001,5 +1020,9 @@ void TyphonProtocolIntegrationTest::sharedSessionOwnsToplevelAndShortcutTranspor
     session.stop();
 }
 
+#ifndef ASTREA_TYPHON_PROTOCOL_INTEGRATION_NO_MAIN
 QTEST_MAIN(TyphonProtocolIntegrationTest)
+#endif
+#ifndef ASTREA_TYPHON_PROTOCOL_INTEGRATION_NO_MAIN
 #include "TyphonProtocolIntegrationTest.moc"
+#endif

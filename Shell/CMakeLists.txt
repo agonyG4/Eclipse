@@ -7,6 +7,8 @@ find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Qml Quick Network Core5Compat)
 add_library(astrea-shell-runtime STATIC
     runtime/ShellRuntime.cpp
     runtime/ShellRuntime.hpp
+    platform/shortcut/ShellShortcutDispatcher.cpp
+    platform/shortcut/ShellShortcutDispatcher.hpp
     platform/ipc/ShellIpcServer.cpp
     platform/ipc/ShellIpcServer.hpp
     ../Dock/core/DockAppInfo.cpp
@@ -136,6 +138,49 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
         Qt6::Test
     )
     add_test(NAME shell-ipc-test COMMAND shell-ipc-test)
+
+    add_executable(shell-shortcut-dispatcher-test
+        tests/ShellShortcutDispatcherTest.cpp
+    )
+    target_include_directories(shell-shortcut-dispatcher-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/.."
+    )
+    target_sources(shell-shortcut-dispatcher-test PRIVATE
+        ../AltTab/platform/compositor/FakeBackend.cpp
+    )
+    target_link_libraries(shell-shortcut-dispatcher-test PRIVATE
+        astrea-shell-runtime
+        Qt6::Test
+    )
+    add_test(NAME shell-shortcut-dispatcher-test COMMAND shell-shortcut-dispatcher-test)
+
+    if(ASTREA_TYPHON_WAYLAND_AVAILABLE AND ASTREA_WAYLAND_SERVER_FOUND)
+        add_executable(shell-unified-runtime-integration-test
+            tests/ShellUnifiedRuntimeIntegrationTest.cpp
+            "${CMAKE_BINARY_DIR}/shared/generated/typhon/astrea-toplevel-management-v1-server-protocol.c"
+            "${CMAKE_BINARY_DIR}/shared/generated/typhon/astrea-shortcuts-v1-server-protocol.c"
+            "${CMAKE_BINARY_DIR}/shared/generated/typhon/astrea-shell-auth-v1-server-protocol.c"
+        )
+        target_include_directories(shell-unified-runtime-integration-test PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/.."
+            "${CMAKE_CURRENT_BINARY_DIR}/../shared/generated/typhon"
+        )
+        target_link_libraries(shell-unified-runtime-integration-test PRIVATE
+            astrea-shell-runtime
+            Qt6::Test
+            PkgConfig::ASTREA_WAYLAND_SERVER
+        )
+        add_test(NAME shell-unified-runtime-integration-test
+                 COMMAND shell-unified-runtime-integration-test)
+    else()
+        add_test(NAME shell-unified-runtime-integration-test
+            COMMAND ${CMAKE_COMMAND} -E echo
+                    "SKIPPED: Wayland client/server development files are unavailable")
+        set_tests_properties(shell-unified-runtime-integration-test PROPERTIES
+            SKIP_REGULAR_EXPRESSION "SKIPPED")
+    endif()
 
     add_test(NAME legacy-dock-daemon-guard COMMAND $<TARGET_FILE:astrea-dock> --daemon)
     add_test(NAME legacy-alttab-daemon-guard COMMAND $<TARGET_FILE:astrea-alt-tab> --daemon)

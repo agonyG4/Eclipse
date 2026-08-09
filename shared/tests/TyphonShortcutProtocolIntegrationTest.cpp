@@ -118,6 +118,12 @@ public:
         return count;
     }
 
+    void disconnectClients()
+    {
+        if (m_display)
+            wl_display_destroy_clients(m_display);
+    }
+
     void sendPressed(const QString &name, quint32 serial, quint32 timestamp)
     {
         if (Registration *item = registration(name)) {
@@ -323,6 +329,7 @@ private slots:
     void registersReservedShortcutsAndDeliversLifecycle();
     void cancellationDoesNotReregister();
     void sharedSessionOwnsShortcutTransport();
+    void sharedSessionRestoresShortcutOwnershipAcrossGenerations();
 };
 
 void TyphonShortcutProtocolIntegrationTest::registersReservedShortcutsAndDeliversLifecycle()
@@ -333,21 +340,26 @@ void TyphonShortcutProtocolIntegrationTest::registersReservedShortcutsAndDeliver
 
     client.start();
     QVERIFY(compositor.pumpUntil([&client] { return client.isReady(); }));
-    QCOMPARE(client.registeredShortcutCount(), 3);
+    QCOMPARE(client.registeredShortcutCount(), 4);
     QCOMPARE(compositor.registrationNames(),
              QStringList({QStringLiteral("alt_tab_commit"), QStringLiteral("alt_tab_next"),
-                          QStringLiteral("alt_tab_previous")}));
+                          QStringLiteral("alt_tab_previous"),
+                          QStringLiteral("spotlight_toggle")}));
 
     compositor.sendPressed(QStringLiteral("alt_tab_next"), 11, 101);
     compositor.sendRepeated(QStringLiteral("alt_tab_next"), 12, 102);
     compositor.sendReleased(QStringLiteral("alt_tab_next"), 13, 103);
-    QVERIFY(compositor.pumpUntil([&eventSpy] { return eventSpy.count() == 3; }));
+    compositor.sendPressed(QStringLiteral("spotlight_toggle"), 14, 104);
+    QVERIFY(compositor.pumpUntil([&eventSpy] { return eventSpy.count() == 4; }));
     QCOMPARE(qvariant_cast<TyphonShortcutPhase>(eventSpy.at(0).at(2)),
              TyphonShortcutPhase::Pressed);
     QCOMPARE(qvariant_cast<TyphonShortcutPhase>(eventSpy.at(1).at(2)),
              TyphonShortcutPhase::Repeated);
     QCOMPARE(qvariant_cast<TyphonShortcutPhase>(eventSpy.at(2).at(2)),
              TyphonShortcutPhase::Released);
+    QCOMPARE(eventSpy.at(3).at(1).toString(), QStringLiteral("spotlight_toggle"));
+    QCOMPARE(qvariant_cast<TyphonShortcutPhase>(eventSpy.at(3).at(2)),
+             TyphonShortcutPhase::Pressed);
 }
 
 void TyphonShortcutProtocolIntegrationTest::cancellationDoesNotReregister()
@@ -362,9 +374,8 @@ void TyphonShortcutProtocolIntegrationTest::cancellationDoesNotReregister()
     QVERIFY(compositor.pumpUntil([&eventSpy] { return eventSpy.count() == 1; }));
     QCOMPARE(qvariant_cast<TyphonShortcutPhase>(eventSpy.at(0).at(2)),
              TyphonShortcutPhase::Cancelled);
-    QCOMPARE(client.registeredShortcutCount(), 2);
-    QTest::qWait(20);
-    QCOMPARE(compositor.registrationNames().size(), 2);
+    QCOMPARE(client.registeredShortcutCount(), 3);
+    QCOMPARE(compositor.registrationNames().size(), 3);
 }
 
 void TyphonShortcutProtocolIntegrationTest::sharedSessionOwnsShortcutTransport()
@@ -381,6 +392,59 @@ void TyphonShortcutProtocolIntegrationTest::sharedSessionOwnsShortcutTransport()
     QCOMPARE(compositor.clientCount(), 1);
     QCOMPARE(client.connectionGeneration(), session.connectionGeneration());
 
+    client.stop();
+    session.stop();
+}
+
+void TyphonShortcutProtocolIntegrationTest::sharedSessionRestoresShortcutOwnershipAcrossGenerations()
+{
+    FakeShortcutCompositor compositor;
+    TyphonSharedConnection session;
+    TyphonShortcutClient client(&session);
+    QSignalSpy eventSpy(&client, &TyphonShortcutClient::shortcutEvent);
+
+    session.start();
+    client.start();
+    QVERIFY(compositor.pumpUntil([&client] { return client.isReady(); }));
+    QCOMPARE(session.connectionGeneration(), quint64(1));
+    QCOMPARE(client.registeredShortcutCount(), 4);
+
+    compositor.disconnectClients();
+    QVERIFY(compositor.pumpUntil([&session] {
+        return session.state() == TyphonSharedConnection::State::Disconnected
+            || session.state() == TyphonSharedConnection::State::Degraded;
+    }));
+    QCOMPARE(client.registeredShortcutCount(), 0);
+
+    for (int expectedGeneration = 2; expectedGeneration <= 101; ++expectedGeneration) {
+        session.reconnectNowForTest();
+        QVERIFY(compositor.pumpUntil([&client, expectedGeneration] {
+            return client.isReady()
+                && client.connectionGeneration() == static_cast<quint64>(expectedGeneration);
+        }));
+        QCOMPARE(client.registeredShortcutCount(), 4);
+        QCOMPARE(compositor.clientCount(), 1);
+        QCOMPARE(compositor.registrationNames().size(), 4);
+
+        eventSpy.clear();
+        compositor.sendPressed(QStringLiteral("spotlight_toggle"), expectedGeneration, 1);
+        QVERIFY(compositor.pumpUntil([&eventSpy] { return eventSpy.count() == 1; }));
+        QCOMPARE(eventSpy.at(0).at(1).toString(), QStringLiteral("spotlight_toggle"));
+
+        if (expectedGeneration != 101) {
+            compositor.disconnectClients();
+            QVERIFY(compositor.pumpUntil([&session] {
+                return session.state() == TyphonSharedConnection::State::Disconnected
+                    || session.state() == TyphonSharedConnection::State::Degraded;
+            }));
+            QCOMPARE(client.registeredShortcutCount(), 0);
+        }
+    }
+
+    QCOMPARE(session.connectionGeneration(), quint64(101));
+    QCOMPARE(session.authenticationGeneration(), quint64(101));
+    QCOMPARE(compositor.authenticationCount(), 101);
+    QCOMPARE(compositor.clientCount(), 1);
     client.stop();
     session.stop();
 }

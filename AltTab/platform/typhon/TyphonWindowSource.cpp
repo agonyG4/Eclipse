@@ -9,7 +9,7 @@ using namespace Astrea::Typhon;
 TyphonWindowSource::TyphonWindowSource(TyphonToplevelConnection *connection, QObject *parent)
     : CompositorBackend(parent)
 {
-    m_connection = connection ? connection : new TyphonToplevelConnection(nullptr, this);
+    m_connection = connection ? connection : new TyphonToplevelConnection(static_cast<TyphonProtocolAdapter *>(nullptr), this);
     if (!m_connection->parent())
         m_connection->setParent(this);
     connect(m_connection, &TyphonToplevelConnection::stateChanged,

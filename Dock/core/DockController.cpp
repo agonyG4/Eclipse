@@ -103,9 +103,13 @@ void DockController::attachTyphonConnection(TyphonToplevelConnection *connection
     m_typhonConnections.clear();
 
     if (!connection) {
+        m_typhonConnection = nullptr;
+        m_pendingActivations.clear();
         clearTyphonRuntime();
         return;
     }
+
+    m_typhonConnection = connection;
 
     m_typhonConnections.append(connect(connection, &TyphonToplevelConnection::snapshotChanged,
                                       this, [this](const Astrea::Typhon::Snapshot &snapshot) {
@@ -121,6 +125,10 @@ void DockController::attachTyphonConnection(TyphonToplevelConnection *connection
         if (state != TyphonConnectionState::Ready)
             clearTyphonRuntime();
     }));
+    m_typhonConnections.append(connect(connection, &TyphonToplevelConnection::actionFinished,
+                                      this, &DockController::onTyphonActionFinished));
+    m_typhonConnections.append(connect(connection, &TyphonToplevelConnection::actionFailed,
+                                      this, &DockController::onTyphonActionFailed));
 
     if (connection->state() == TyphonConnectionState::Ready && connection->hasSnapshot())
         applyTyphonSnapshot(connection->snapshot());
@@ -141,6 +149,7 @@ void DockController::clearTyphonRuntime()
     const bool changed = m_runtimeKnown || m_runtimeSnapshot.has_value();
     m_runtimeKnown = false;
     m_runtimeSnapshot.reset();
+    m_runtimeStates.clear();
     m_model.applyRuntimeStates({}, false);
     if (changed)
         emit modelChanged();
@@ -154,8 +163,30 @@ void DockController::launch(int row)
 
     const QString key = item->desktopFileName;
     if (item->runtimeKnown && item->running) {
-        qInfo("Dock launch suppressed for running application '%s' until M7 window actions",
-              qPrintable(key));
+        const auto state = m_runtimeStates.constFind(key);
+        if (state == m_runtimeStates.constEnd() || state->windowIds.isEmpty()) {
+            qInfo("Dock activation suppressed for running application '%s' without a live target",
+                  qPrintable(key));
+            return;
+        }
+        if (!m_typhonConnection) {
+            qInfo("Dock activation suppressed for running application '%s' without Typhon actions",
+                  qPrintable(key));
+            return;
+        }
+
+        const quint64 activationToken = ++m_nextActivationToken;
+        const QString targetWindowId = state->windowIds.constFirst();
+        m_pendingActivations.insert(activationToken, key);
+        const auto error = m_typhonConnection->requestAction(
+            targetWindowId, Astrea::Typhon::ToplevelAction::Activate, activationToken);
+        if (error.has_value()) {
+            m_pendingActivations.remove(activationToken);
+            reconcileTyphonActionFailure(error.value());
+        } else {
+            qInfo("Dock activating exact Typhon window '%s' for '%s'",
+                  qPrintable(targetWindowId), qPrintable(key));
+        }
         return;
     }
     if (m_pendingLaunches.contains(key))
@@ -220,6 +251,32 @@ void DockController::onLaunchTimedOut(const QString &desktopId)
     finishLaunch(desktopId, false, QStringLiteral("Launch timed out"));
 }
 
+void DockController::onTyphonActionFinished(
+    quint64 token, Astrea::Typhon::ToplevelAction action,
+    Astrea::Typhon::ToplevelActionResult result)
+{
+    if (action != Astrea::Typhon::ToplevelAction::Activate
+        || !m_pendingActivations.contains(token))
+        return;
+    const QString key = m_pendingActivations.take(token);
+    if (result == Astrea::Typhon::ToplevelActionResult::Unavailable) {
+        qInfo("Dock activation unavailable for '%s'; reconciling without launch",
+              qPrintable(key));
+        reconcileTyphonActionFailure(Astrea::Typhon::ToplevelActionError::ToplevelNotLive);
+    }
+}
+
+void DockController::onTyphonActionFailed(
+    quint64 token, Astrea::Typhon::ToplevelAction action,
+    Astrea::Typhon::ToplevelActionError error)
+{
+    if (action != Astrea::Typhon::ToplevelAction::Activate
+        || !m_pendingActivations.contains(token))
+        return;
+    m_pendingActivations.remove(token);
+    reconcileTyphonActionFailure(error);
+}
+
 QString DockController::keyForLaunchId(const QString &desktopId) const
 {
     auto direct = m_pendingLaunches.key(desktopId);
@@ -271,10 +328,23 @@ void DockController::updateVisibility()
 void DockController::projectRuntime()
 {
     if (!m_runtimeKnown || !m_runtimeSnapshot.has_value()) {
+        m_runtimeStates.clear();
         m_model.applyRuntimeStates({}, false);
         return;
     }
 
-    m_model.applyRuntimeStates(
-        m_runtimeProjector.project(*m_runtimeSnapshot, m_catalogSnapshot, m_config.pins), true);
+    m_runtimeStates = m_runtimeProjector.project(
+        *m_runtimeSnapshot, m_catalogSnapshot, m_config.pins);
+    m_model.applyRuntimeStates(m_runtimeStates, true);
+}
+
+void DockController::reconcileTyphonActionFailure(Astrea::Typhon::ToplevelActionError error)
+{
+    Q_UNUSED(error);
+    if (m_typhonConnection && m_typhonConnection->state() == TyphonConnectionState::Ready
+        && m_typhonConnection->hasSnapshot()) {
+        applyTyphonSnapshot(m_typhonConnection->snapshot());
+    } else {
+        clearTyphonRuntime();
+    }
 }

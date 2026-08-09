@@ -4,6 +4,7 @@
 #include "platform/rust/RustSpotlightBackend.hpp"
 #include "platform/runtime/SpotlightRuntimePaths.hpp"
 #include "services/ApplicationLauncher.hpp"
+#include "apps/DesktopEntryCatalog.hpp"
 
 #include <QObject>
 #include <QTimer>
@@ -12,6 +13,7 @@
 #include <QDateTime>
 #include <QUrl>
 #include <QJsonObject>
+#include <memory>
 
 class SpotlightController : public QObject {
     Q_OBJECT
@@ -33,6 +35,8 @@ class SpotlightController : public QObject {
 
 public:
     explicit SpotlightController(const SpotlightRuntimePaths &paths, QObject *parent = nullptr);
+    SpotlightController(const SpotlightRuntimePaths &paths, DesktopEntryCatalog *catalog,
+                        ApplicationLauncher *launcher, QObject *parent = nullptr);
 
     bool init(const QString &locale = QStringLiteral("en_US"), QString *errorOut = nullptr);
     bool setLocale(const QString &locale, QString *errorOut = nullptr);
@@ -94,9 +98,11 @@ private:
     void clearSearchState();
 
     SpotlightRuntimePaths m_paths;
+    DesktopEntryCatalog *m_catalog = nullptr;
+    std::unique_ptr<ApplicationLauncher> m_ownedLauncher;
+    ApplicationLauncher *m_launcher = nullptr;
     RustSpotlightBackend m_backend;
     SpotlightResultsModel m_results;
-    ApplicationLauncher m_launcher;
 
     QTimer m_searchDebounce;
     QTimer m_closeAnimationTimer;

@@ -8,7 +8,18 @@
 #include <QUrl>
 
 SpotlightController::SpotlightController(const SpotlightRuntimePaths &paths, QObject *parent)
-    : QObject(parent), m_paths(paths), m_launcher(paths.astreaLaunch()) {
+    : SpotlightController(paths, nullptr, nullptr, parent) {
+}
+
+SpotlightController::SpotlightController(const SpotlightRuntimePaths &paths,
+                                         DesktopEntryCatalog *catalog,
+                                         ApplicationLauncher *launcher,
+                                         QObject *parent)
+    : QObject(parent)
+    , m_paths(paths)
+    , m_catalog(catalog)
+    , m_ownedLauncher(launcher ? nullptr : std::make_unique<ApplicationLauncher>(paths.astreaLaunch()))
+    , m_launcher(launcher ? launcher : m_ownedLauncher.get()) {
     m_searchDebounce.setSingleShot(true);
     m_searchDebounce.setInterval(kSearchDebounceMs);
     connect(&m_searchDebounce, &QTimer::timeout, this, &SpotlightController::runSearch);
@@ -34,17 +45,29 @@ SpotlightController::SpotlightController(const SpotlightRuntimePaths &paths, QOb
     });
 
     // Connect launcher signals
-    connect(&m_launcher, &ApplicationLauncher::launchSucceeded,
+    connect(m_launcher, &ApplicationLauncher::launchSucceeded,
             this, &SpotlightController::onLaunchSucceeded);
-    connect(&m_launcher, &ApplicationLauncher::launchFailed,
+    connect(m_launcher, &ApplicationLauncher::launchFailed,
             this, &SpotlightController::onLaunchFailed);
-    connect(&m_launcher, &ApplicationLauncher::launchTimedOut,
+    connect(m_launcher, &ApplicationLauncher::launchTimedOut,
             this, [this](const QString &id) {
         emit launchFailed(QStringLiteral("Launch timed out: ") + id);
         show();
     });
 
     setWeatherEnabled(true);
+
+    if (m_catalog) {
+        connect(m_catalog, &DesktopEntryCatalog::indexUpdated, this, [this] {
+            QString error;
+            if (!m_backend.setCatalog(m_catalog->snapshotJson(), &error)) {
+                qWarning("Shared catalog update failed: %s", qPrintable(error));
+                return;
+            }
+            if (!m_query.isEmpty())
+                runSearch();
+        });
+    }
 
     // Startup weather warmup (only if enabled, even while hidden)
     QTimer::singleShot(500, this, [this]() {
@@ -55,7 +78,10 @@ SpotlightController::SpotlightController(const SpotlightRuntimePaths &paths, QOb
 
 bool SpotlightController::init(const QString &locale, QString *errorOut) {
     m_locale = locale;
-    if (!m_backend.create(m_paths.astreaRoot(), locale, errorOut))
+    const bool created = m_catalog
+        ? m_backend.createWithCatalog(m_paths.astreaRoot(), locale, m_catalog->snapshotJson(), errorOut)
+        : m_backend.create(m_paths.astreaRoot(), locale, errorOut);
+    if (!created)
         return false;
     return true;
 }
@@ -67,7 +93,10 @@ bool SpotlightController::setLocale(const QString &locale, QString *errorOut) {
     const QString previousQuery = m_query;
     const int previousIndex = m_selectedIndex;
     m_locale = locale;
-    if (!m_backend.create(m_paths.astreaRoot(), locale, errorOut))
+    const bool created = m_catalog
+        ? m_backend.createWithCatalog(m_paths.astreaRoot(), locale, m_catalog->snapshotJson(), errorOut)
+        : m_backend.create(m_paths.astreaRoot(), locale, errorOut);
+    if (!created)
         return false;
 
     reloadIndex();
@@ -193,19 +222,28 @@ void SpotlightController::launch(int row) {
         qWarning("Failed to record launch: %s", qPrintable(err));
 
     close();
-    m_launcher.launchDesktop(item.id, item.desktopFileName, item.exec, item.name,
-                             item.icon, item.desktopFilePath);
+    m_launcher->launchDesktop(item.id, item.desktopFileName, item.exec, item.name,
+                              item.icon, item.desktopFilePath);
 }
 
 void SpotlightController::reloadIndex() {
     m_results.clear();
     QString err;
-    m_backend.reload(&err);
+    if (m_catalog)
+        m_backend.setCatalog(m_catalog->snapshotJson(), &err);
+    else
+        m_backend.reload(&err);
     if (!err.isEmpty())
         qWarning("Reload error: %s", qPrintable(err));
 }
 
 QJsonArray SpotlightController::watchedDirectories() {
+    if (m_catalog) {
+        QJsonArray result;
+        for (const QString &directory : m_catalog->watchedDirectories())
+            result.append(directory);
+        return result;
+    }
     return m_backend.watchedDirectories();
 }
 

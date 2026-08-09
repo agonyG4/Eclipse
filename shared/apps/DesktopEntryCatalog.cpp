@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonObject>
 #include <QProcessEnvironment>
 #include <QReadLocker>
 #include <QSet>
@@ -95,6 +96,55 @@ std::optional<DesktopEntryRecord> DesktopEntryCatalog::findByDesktopId(const QSt
 int DesktopEntryCatalog::revision() const
 {
     return static_cast<int>(snapshot()->revision);
+}
+
+QJsonArray DesktopEntryCatalog::snapshotJson() const
+{
+    QJsonArray result;
+    const auto current = snapshot();
+    for (const DesktopEntryRecord &entry : current->entries) {
+        auto listToJson = [](const QStringList &values) {
+            QJsonArray array;
+            for (const QString &value : values)
+                array.append(value);
+            return array;
+        };
+        auto hashToJson = [](const QHash<QString, QString> &values) {
+            QJsonObject object;
+            for (auto it = values.constBegin(); it != values.constEnd(); ++it)
+                object.insert(it.key(), it.value());
+            return object;
+        };
+
+        result.append(QJsonObject{
+            {QStringLiteral("id"), entry.id},
+            {QStringLiteral("name"), entry.name},
+            {QStringLiteral("generic_name"), entry.genericName},
+            {QStringLiteral("comment"), entry.comment},
+            {QStringLiteral("localized_names"), hashToJson(entry.localizedNames)},
+            {QStringLiteral("localized_generic_names"), hashToJson(entry.localizedGenericNames)},
+            {QStringLiteral("localized_comments"), hashToJson(entry.localizedComments)},
+            {QStringLiteral("icon"), entry.icon},
+            {QStringLiteral("exec"), entry.exec},
+            {QStringLiteral("try_exec"), entry.tryExec},
+            {QStringLiteral("keywords"), listToJson(entry.keywords)},
+            {QStringLiteral("categories"), listToJson(entry.categories)},
+            {QStringLiteral("path"), entry.sourceFilePath},
+            {QStringLiteral("startup_wm_class"), entry.startupWmClass},
+            {QStringLiteral("desktop_file_name"), entry.desktopFileName},
+            {QStringLiteral("terminal"), entry.terminal},
+            {QStringLiteral("hidden"), entry.hidden},
+            {QStringLiteral("no_display"), entry.noDisplay},
+            {QStringLiteral("only_show_in"), listToJson(entry.onlyShowIn)},
+            {QStringLiteral("not_show_in"), listToJson(entry.notShowIn)}
+        });
+    }
+    return result;
+}
+
+QStringList DesktopEntryCatalog::watchedDirectories() const
+{
+    return m_watcher.directories();
 }
 
 QStringList DesktopEntryCatalog::searchDirectories() const

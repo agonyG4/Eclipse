@@ -9,6 +9,12 @@ pub struct DesktopEntry {
     pub name: String,
     pub generic_name: String,
     pub comment: String,
+    #[serde(default)]
+    pub localized_names: HashMap<String, String>,
+    #[serde(default)]
+    pub localized_generic_names: HashMap<String, String>,
+    #[serde(default)]
+    pub localized_comments: HashMap<String, String>,
     pub icon: String,
     pub exec: String,
     pub try_exec: String,

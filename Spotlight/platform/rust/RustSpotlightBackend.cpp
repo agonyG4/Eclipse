@@ -35,6 +35,33 @@ bool RustSpotlightBackend::create(const QString &astreaRoot, const QString &loca
     return true;
 }
 
+bool RustSpotlightBackend::createWithCatalog(const QString &astreaRoot, const QString &locale,
+                                             const QJsonArray &catalog, QString *errorOut) {
+    if (m_backend)
+        destroy();
+
+    char *error = nullptr;
+    QByteArray rootUtf8 = astreaRoot.toUtf8();
+    QByteArray localeUtf8 = locale.toUtf8();
+    const QByteArray catalogUtf8 = QJsonDocument(catalog).toJson(QJsonDocument::Compact);
+
+    m_backend = astrea_spotlight_backend_create_with_catalog(
+        rootUtf8.constData(), localeUtf8.constData(), catalogUtf8.constData(), &error);
+
+    if (!m_backend) {
+        if (errorOut && error) {
+            *errorOut = QString::fromUtf8(error);
+            astrea_spotlight_backend_free_string(error);
+        } else if (errorOut) {
+            *errorOut = QStringLiteral("Failed to create backend from catalog");
+        }
+        return false;
+    }
+    m_astreaRoot = astreaRoot;
+    m_locale = locale;
+    return true;
+}
+
 void RustSpotlightBackend::destroy() {
     if (m_backend) {
         astrea_spotlight_backend_destroy(m_backend);
@@ -58,6 +85,28 @@ bool RustSpotlightBackend::reload(QString *errorOut) {
             astrea_spotlight_backend_free_string(error);
         } else if (errorOut) {
             *errorOut = QStringLiteral("Reload failed");
+        }
+        return false;
+    }
+    return true;
+}
+
+bool RustSpotlightBackend::setCatalog(const QJsonArray &catalog, QString *errorOut) {
+    if (!m_backend) {
+        if (errorOut) *errorOut = QStringLiteral("Backend not initialized");
+        return false;
+    }
+
+    char *error = nullptr;
+    const QByteArray catalogUtf8 = QJsonDocument(catalog).toJson(QJsonDocument::Compact);
+    const int ret = astrea_spotlight_backend_set_catalog_json(
+        m_backend, catalogUtf8.constData(), &error);
+    if (ret != 0) {
+        if (errorOut && error) {
+            *errorOut = QString::fromUtf8(error);
+            astrea_spotlight_backend_free_string(error);
+        } else if (errorOut) {
+            *errorOut = QStringLiteral("Set catalog failed");
         }
         return false;
     }

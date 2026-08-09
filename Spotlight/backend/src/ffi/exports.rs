@@ -1,7 +1,13 @@
 use super::conversion::{c_str_to_str, free_c_string, set_error};
+use crate::desktop::entries::DesktopEntry;
 use crate::{AstreaSpotlightBackend, config};
 use std::ffi::CString;
 use std::os::raw::c_char;
+
+unsafe fn parse_catalog(catalog_json: *const c_char) -> Result<Vec<DesktopEntry>, String> {
+    let json = unsafe { c_str_to_str(catalog_json) };
+    serde_json::from_str(json).map_err(|e| format!("invalid catalog JSON: {e}"))
+}
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn astrea_spotlight_backend_create(
@@ -28,6 +34,47 @@ pub unsafe extern "C" fn astrea_spotlight_backend_create(
         Err(_) => {
             unsafe {
                 set_error(error_out, "panic in create");
+            }
+            std::ptr::null_mut()
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn astrea_spotlight_backend_create_with_catalog(
+    astrea_root: *const c_char,
+    locale: *const c_char,
+    catalog_json: *const c_char,
+    error_out: *mut *mut c_char,
+) -> *mut AstreaSpotlightBackend {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let root = unsafe { c_str_to_str(astrea_root) };
+        let loc = unsafe { c_str_to_str(locale) };
+        let entries = match unsafe { parse_catalog(catalog_json) } {
+            Ok(entries) => entries,
+            Err(e) => {
+                unsafe {
+                    set_error(error_out, &e);
+                }
+                return std::ptr::null_mut();
+            }
+        };
+        match AstreaSpotlightBackend::new_with_catalog(root, loc, entries) {
+            Ok(backend) => Box::into_raw(Box::new(backend)),
+            Err(e) => {
+                unsafe {
+                    set_error(error_out, &e);
+                }
+                std::ptr::null_mut()
+            }
+        }
+    }));
+
+    match result {
+        Ok(ptr) => ptr,
+        Err(_) => {
+            unsafe {
+                set_error(error_out, "panic in create_with_catalog");
             }
             std::ptr::null_mut()
         }
@@ -71,6 +118,43 @@ pub unsafe extern "C" fn astrea_spotlight_backend_reload(
         Err(_) => {
             unsafe {
                 set_error(error_out, "panic in reload");
+            }
+            -1
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn astrea_spotlight_backend_set_catalog_json(
+    backend: *mut AstreaSpotlightBackend,
+    catalog_json: *const c_char,
+    error_out: *mut *mut c_char,
+) -> i32 {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if backend.is_null() {
+            unsafe {
+                set_error(error_out, "null backend");
+            }
+            return -1;
+        }
+        let entries = match unsafe { parse_catalog(catalog_json) } {
+            Ok(entries) => entries,
+            Err(e) => {
+                unsafe {
+                    set_error(error_out, &e);
+                }
+                return -1;
+            }
+        };
+        unsafe { (*backend).set_catalog(entries) };
+        0
+    }));
+
+    match result {
+        Ok(v) => v,
+        Err(_) => {
+            unsafe {
+                set_error(error_out, "panic in set_catalog_json");
             }
             -1
         }
@@ -229,7 +313,11 @@ pub unsafe extern "C" fn astrea_spotlight_backend_watched_dirs(
             }
             return std::ptr::null_mut();
         }
-        let dirs = unsafe { (*backend).index.watcher_dirs() };
+        let dirs = if unsafe { (*backend).external_catalog.is_some() } {
+            &[]
+        } else {
+            unsafe { (*backend).index.watcher_dirs() }
+        };
         let json = serde_json::to_string(dirs).unwrap_or_default();
         CString::new(json).unwrap_or_default().into_raw()
     }));

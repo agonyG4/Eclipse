@@ -18,6 +18,7 @@
 #include "../services/SpotlightConfigWatcher.hpp"
 #include "../services/ApplicationLauncher.hpp"
 #include "../core/SpotlightController.hpp"
+#include "apps/DesktopEntryCatalog.hpp"
 #include "icons/AstreaIconTheme.hpp"
 
 class TestSpotlightBackend : public QObject {
@@ -27,6 +28,8 @@ private slots:
     void initTestCase();
     void testResultsRoles();
     void testResultsClear();
+    void testExternalCatalogSnapshot();
+    void testSharedCatalogSnapshot();
     void testIpcParseCommands();
     void testIpcRoundtrip();
     void testIpcStatusResponse();
@@ -88,6 +91,79 @@ void TestSpotlightBackend::testResultsClear() {
 
     model.clear();
     QCOMPARE(model.rowCount(), 0);
+}
+
+void TestSpotlightBackend::testExternalCatalogSnapshot() {
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    QJsonObject entry{
+        {QStringLiteral("id"), QStringLiteral("shared-spotlight")},
+        {QStringLiteral("name"), QStringLiteral("Shared Spotlight")},
+        {QStringLiteral("generic_name"), QStringLiteral("Unified Launcher")},
+        {QStringLiteral("comment"), QStringLiteral("Provided by the shared catalog")},
+        {QStringLiteral("icon"), QStringLiteral("shared-spotlight-icon")},
+        {QStringLiteral("exec"), QStringLiteral("shared-spotlight")},
+        {QStringLiteral("try_exec"), QString()},
+        {QStringLiteral("keywords"), QJsonArray{QStringLiteral("unified"), QStringLiteral("catalog")}},
+        {QStringLiteral("categories"), QJsonArray{QStringLiteral("Utility")}},
+        {QStringLiteral("path"), QStringLiteral("/shared/spotlight.desktop")},
+        {QStringLiteral("startup_wm_class"), QStringLiteral("SharedSpotlight")},
+        {QStringLiteral("desktop_file_name"), QStringLiteral("shared-spotlight.desktop")},
+        {QStringLiteral("terminal"), false},
+        {QStringLiteral("hidden"), false},
+        {QStringLiteral("no_display"), false},
+        {QStringLiteral("only_show_in"), QJsonArray{}},
+        {QStringLiteral("not_show_in"), QJsonArray{}}
+    };
+
+    RustSpotlightBackend backend;
+    QString error;
+    QVERIFY2(backend.createWithCatalog(tempDir.path(), QStringLiteral("en_US"),
+                                       QJsonArray{entry}, &error),
+             qPrintable(error));
+
+    QJsonArray results = backend.search(QStringLiteral("shared spotlight"), 6, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QCOMPARE(results.size(), 1);
+    QCOMPARE(results.first().toObject().value(QStringLiteral("id")).toString(),
+             QStringLiteral("shared-spotlight"));
+
+    QVERIFY2(backend.reload(&error), qPrintable(error));
+    results = backend.search(QStringLiteral("unified launcher"), 6, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QCOMPARE(results.size(), 1);
+    QCOMPARE(results.first().toObject().value(QStringLiteral("desktopFileName")).toString(),
+             QStringLiteral("shared-spotlight.desktop"));
+}
+
+void TestSpotlightBackend::testSharedCatalogSnapshot()
+{
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+    const QString applications = home.path() + QStringLiteral("/.local/share/applications");
+    QVERIFY(QDir().mkpath(applications));
+    QFile file(applications + QStringLiteral("/m7d-shared.desktop"));
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+    file.write("[Desktop Entry]\nType=Application\nName=M7D Unified Catalog\n"
+               "GenericName=Shared Launcher\nComment=One catalog source\n"
+               "Icon=m7d-shared-icon\nExec=m7d-shared\nKeywords=unified;shared;\n"
+               "Categories=Utility;\n");
+    file.close();
+
+    DesktopEntryCatalog catalog;
+    catalog.initialize(home.path());
+
+    RustSpotlightBackend backend;
+    QString error;
+    QVERIFY2(backend.createWithCatalog(home.path(), QStringLiteral("en_US"),
+                                       catalog.snapshotJson(), &error),
+             qPrintable(error));
+    const QJsonArray results = backend.search(QStringLiteral("m7d unified"), 6, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QVERIFY(!results.isEmpty());
+    QCOMPARE(results.first().toObject().value(QStringLiteral("icon")).toString(),
+             QStringLiteral("m7d-shared-icon"));
 }
 
 void TestSpotlightBackend::testIpcParseCommands() {

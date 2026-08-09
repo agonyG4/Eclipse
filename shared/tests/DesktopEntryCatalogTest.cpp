@@ -3,6 +3,7 @@
 #include <QSignalSpy>
 #include <QTest>
 #include <QTemporaryDir>
+#include <QJsonObject>
 
 #include "apps/DesktopEntryCatalog.hpp"
 
@@ -15,6 +16,7 @@ private slots:
     void deletedApplicationsDirectoryRecreatesWatches();
     void higherPriorityEntryOverridesLowerPriorityEntry();
     void preservesSpotlightFieldsAndSharedSnapshotIdentity();
+    void serializesSpotlightCatalogSnapshot();
 };
 
 static void writeDesktopFile(const QString &path, const QString &name)
@@ -160,6 +162,34 @@ void DesktopEntryCatalogTest::preservesSpotlightFieldsAndSharedSnapshotIdentity(
     QCOMPARE(record->onlyShowIn, QStringList({QStringLiteral("Hyprland")}));
     QCOMPARE(record->notShowIn, QStringList({QStringLiteral("GNOME")}));
     QVERIFY(record->terminal);
+}
+
+void DesktopEntryCatalogTest::serializesSpotlightCatalogSnapshot()
+{
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+    const QString applications = home.path() + QStringLiteral("/.local/share/applications");
+    QVERIFY(QDir().mkpath(applications));
+    writeDesktopFile(applications + QStringLiteral("/serialized.desktop"), QStringLiteral("Serialized App"));
+
+    DesktopEntryCatalog catalog;
+    catalog.initialize(home.path());
+    const auto json = catalog.snapshotJson();
+    QJsonObject object;
+    for (const auto &value : json) {
+        const auto candidate = value.toObject();
+        if (candidate.value(QStringLiteral("id")).toString() == QStringLiteral("serialized")) {
+            object = candidate;
+            break;
+        }
+    }
+    QVERIFY(!object.isEmpty());
+    QCOMPARE(object.value(QStringLiteral("id")).toString(), QStringLiteral("serialized"));
+    QCOMPARE(object.value(QStringLiteral("name")).toString(), QStringLiteral("Serialized App"));
+    QCOMPARE(object.value(QStringLiteral("desktop_file_name")).toString(),
+             QStringLiteral("serialized.desktop"));
+    QCOMPARE(object.value(QStringLiteral("keywords")).toArray().size(), 0);
+    QVERIFY(!catalog.watchedDirectories().isEmpty());
 }
 
 QTEST_MAIN(DesktopEntryCatalogTest)

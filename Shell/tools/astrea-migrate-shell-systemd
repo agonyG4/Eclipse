@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+systemctl_command=${ASTREA_SYSTEMCTL:-systemctl}
+if [[ -n "${ASTREA_USER_UNIT_DIR:-}" ]]; then
+    user_unit_dir=$ASTREA_USER_UNIT_DIR
+else
+    user_config_dir=${XDG_CONFIG_HOME:-${HOME:?HOME must be set}}
+    user_unit_dir="$user_config_dir/systemd/user"
+fi
+
+legacy_units=(
+    astrea-dock.service
+    astrea-alt-tabd.service
+    astrea-spotlightd.service
+)
+
+for unit in "${legacy_units[@]}"; do
+    "$systemctl_command" --user disable --now "$unit" >/dev/null 2>&1 || true
+    rm -f -- "$user_unit_dir/$unit"
+done
+
+"$systemctl_command" --user daemon-reload
+"$systemctl_command" --user enable --now astrea-shell.service

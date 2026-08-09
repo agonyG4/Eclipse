@@ -276,6 +276,7 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
         add_executable(typhon-protocol-integration-test
             tests/TyphonProtocolIntegrationTest.cpp
             "${ASTREA_TYPHON_SERVER_GENERATED_SOURCE}"
+            "${ASTREA_SHORTCUT_SERVER_GENERATED_SOURCE}"
             "${ASTREA_SHELL_AUTH_SERVER_GENERATED_SOURCE}"
         )
         target_include_directories(typhon-protocol-integration-test PRIVATE

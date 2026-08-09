@@ -14,6 +14,8 @@
 #include "astrea-shell-auth-v1-server-protocol.h"
 #include "astrea-toplevel-management-v1-server-protocol.h"
 
+#include "TyphonShortcutProtocolServerCompat.hpp"
+#include "platform/typhon/TyphonShortcutClient.hpp"
 #include "platform/typhon/TyphonToplevelConnection.hpp"
 #include "platform/typhon/TyphonSharedConnection.hpp"
 
@@ -35,9 +37,16 @@ public:
         quint32 tokenLo = 0;
     };
 
+    struct ShortcutRegistration {
+        FakeTyphonCompositor *owner = nullptr;
+        wl_resource *resource = nullptr;
+        QString name;
+    };
+
     explicit FakeTyphonCompositor(bool advertiseManager, quint32 managerVersion = 1,
                                   bool authenticate = true,
                                   bool authenticateOnlyFirstClient = false,
+                                  bool advertiseShortcuts = false,
                                   QObject *parent = nullptr)
         : QObject(parent)
         , m_managerAdvertisedVersion(managerVersion)
@@ -73,6 +82,10 @@ public:
             m_global = wl_global_create(m_display, &astrea_toplevel_manager_v1_interface,
                                         m_managerAdvertisedVersion, this, &bindManager);
         QVERIFY(advertiseManager ? m_global != nullptr : true);
+        if (advertiseShortcuts)
+            m_shortcutGlobal = wl_global_create(m_display, &astrea_shortcuts_manager_v1_interface,
+                                                1, this, &bindShortcutManager);
+        QVERIFY(!advertiseShortcuts || m_shortcutGlobal != nullptr);
     }
 
     ~FakeTyphonCompositor() override
@@ -83,6 +96,8 @@ public:
         m_serverNotifier = nullptr;
         if (m_display) {
             wl_display_destroy_clients(m_display);
+            qDeleteAll(m_shortcuts);
+            m_shortcuts.clear();
             wl_display_destroy(m_display);
             m_display = nullptr;
         }
@@ -350,6 +365,68 @@ private:
         wl_resource_destroy(resource);
     }
 
+    static void bindShortcutManager(wl_client *client, void *data, uint32_t version, uint32_t id)
+    {
+        auto *self = static_cast<FakeTyphonCompositor *>(data);
+        auto *manager = new ShortcutRegistration;
+        manager->owner = self;
+        manager->resource = wl_resource_create(client, &astrea_shortcuts_manager_v1_interface,
+                                               std::min(version, 1u), id);
+        if (!manager->resource) {
+            delete manager;
+            return;
+        }
+        wl_resource_set_implementation(manager->resource, &kShortcutManagerImplementation,
+                                       manager, &destroyShortcutManager);
+        self->m_shortcutManager = manager;
+    }
+
+    static void destroyShortcutManager(wl_resource *resource)
+    {
+        auto *manager = static_cast<ShortcutRegistration *>(wl_resource_get_user_data(resource));
+        if (manager && manager->owner && manager->owner->m_shortcutManager == manager)
+            manager->owner->m_shortcutManager = nullptr;
+        delete manager;
+    }
+
+    static void registerShortcutRequest(wl_client *client, wl_resource *managerResource,
+                                        uint32_t id, const char *, const char *name, const char *)
+    {
+        auto *manager = static_cast<ShortcutRegistration *>(
+            wl_resource_get_user_data(managerResource));
+        auto *self = manager ? manager->owner : nullptr;
+        if (!self)
+            return;
+        auto *registration = new ShortcutRegistration;
+        registration->owner = self;
+        registration->name = QString::fromUtf8(name ? name : "");
+        registration->resource = wl_resource_create(client, &astrea_shortcut_v1_interface, 1, id);
+        if (!registration->resource) {
+            delete registration;
+            return;
+        }
+        wl_resource_set_implementation(registration->resource, &kShortcutImplementation,
+                                       registration, &destroyShortcut);
+        self->m_shortcuts.append(registration);
+    }
+
+    static void destroyShortcut(wl_resource *resource)
+    {
+        auto *registration = static_cast<ShortcutRegistration *>(wl_resource_get_user_data(resource));
+        if (registration)
+            registration->resource = nullptr;
+    }
+
+    static void destroyShortcutManagerRequest(wl_client *, wl_resource *resource)
+    {
+        wl_resource_destroy(resource);
+    }
+
+    static void destroyShortcutRequest(wl_client *, wl_resource *resource)
+    {
+        wl_resource_destroy(resource);
+    }
+
     static void destroyWindowRequest(wl_client *, wl_resource *resource)
     {
         wl_resource_destroy(resource);
@@ -413,6 +490,8 @@ private:
     static const struct astrea_toplevel_manager_v1_interface kManagerImplementation;
     static const struct astrea_toplevel_v1_interface kWindowImplementation;
     static const struct astrea_shell_auth_manager_v1_interface kAuthManagerImplementation;
+    static const struct astrea_shortcuts_manager_v1_interface kShortcutManagerImplementation;
+    static const struct astrea_shortcut_v1_interface kShortcutImplementation;
 
     QTemporaryDir m_runtime;
     QByteArray m_previousRuntime;
@@ -423,6 +502,7 @@ private:
     wl_display *m_display = nullptr;
     wl_event_loop *m_loop = nullptr;
     wl_global *m_global = nullptr;
+    wl_global *m_shortcutGlobal = nullptr;
     wl_global *m_authGlobal = nullptr;
     ServerWindow *m_manager = nullptr;
     ServerWindow *m_authManager = nullptr;
@@ -431,6 +511,8 @@ private:
     wl_client *m_lastRejectedClient = nullptr;
     QVector<wl_client *> m_authenticatedClients;
     QVector<ServerWindow *> m_windows;
+    QVector<ShortcutRegistration *> m_shortcuts;
+    ShortcutRegistration *m_shortcutManager = nullptr;
     QVector<ActionRequest> m_actionRequests;
     quint32 m_managerAdvertisedVersion = 1;
     bool m_authenticate = true;
@@ -456,6 +538,16 @@ const struct astrea_shell_auth_manager_v1_interface
         &FakeTyphonCompositor::destroyAuthManagerRequest,
     };
 
+const struct astrea_shortcuts_manager_v1_interface
+    FakeTyphonCompositor::kShortcutManagerImplementation = {
+        &FakeTyphonCompositor::destroyShortcutManagerRequest,
+        &FakeTyphonCompositor::registerShortcutRequest,
+    };
+
+const struct astrea_shortcut_v1_interface FakeTyphonCompositor::kShortcutImplementation = {
+    &FakeTyphonCompositor::destroyShortcutRequest,
+};
+
 class TyphonProtocolIntegrationTest final : public QObject {
     Q_OBJECT
 
@@ -473,6 +565,7 @@ private slots:
     void reconnectRequiresFreshAuthenticationAndClientIdentity();
     void v2WithoutAuthenticationRemainsReadOnly();
     void sharedSessionOwnsToplevelTransport();
+    void sharedSessionOwnsToplevelAndShortcutTransport();
 };
 
 void TyphonProtocolIntegrationTest::registryDiscoveryAndInitialSnapshot()
@@ -880,6 +973,31 @@ void TyphonProtocolIntegrationTest::sharedSessionOwnsToplevelTransport()
     QCOMPARE(session.authenticationGeneration(), session.connectionGeneration());
 
     connection.stop();
+    session.stop();
+}
+
+void TyphonProtocolIntegrationTest::sharedSessionOwnsToplevelAndShortcutTransport()
+{
+    FakeTyphonCompositor compositor(true, 2, true, false, true);
+    TyphonSharedConnection session;
+    TyphonToplevelConnection toplevel(&session);
+    TyphonShortcutClient shortcuts(&session);
+
+    session.start();
+    toplevel.start();
+    shortcuts.start();
+    QVERIFY(compositor.pumpUntil([&] {
+        return toplevel.state() == TyphonConnectionState::WaitingForInitialSnapshot
+            && shortcuts.isReady();
+    }));
+
+    QCOMPARE(compositor.authenticationCount(), 1);
+    QCOMPARE(compositor.clientCount(), 1);
+    QCOMPARE(toplevel.connectionGeneration(), session.connectionGeneration());
+    QCOMPARE(shortcuts.connectionGeneration(), session.connectionGeneration());
+
+    shortcuts.stop();
+    toplevel.stop();
     session.stop();
 }
 

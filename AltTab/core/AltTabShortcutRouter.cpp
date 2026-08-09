@@ -18,5 +18,7 @@ AltTabShortcutAction mapTyphonShortcut(const QString &namespaceName, const QStri
     }
     if (name == QStringLiteral("alt_tab_commit") && phase == TyphonShortcutPhase::Pressed)
         return AltTabShortcutAction::Commit;
+    if (name == QStringLiteral("spotlight_toggle") && phase == TyphonShortcutPhase::Pressed)
+        return AltTabShortcutAction::SpotlightToggle;
     return AltTabShortcutAction::Ignore;
 }

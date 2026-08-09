@@ -15,6 +15,7 @@ struct TyphonWaylandDisplay::Private {
     QSocketNotifier *readNotifier = nullptr;
     QSocketNotifier *writeNotifier = nullptr;
     bool readPrepared = false;
+    bool dispatching = false;
 #endif
 };
 
@@ -94,7 +95,10 @@ bool TyphonWaylandDisplay::dispatchPending()
 #if ASTREA_HAVE_TYPHON_WAYLAND
     if (!m_private->display)
         return false;
-    if (wl_display_dispatch_pending(m_private->display) < 0) {
+    m_private->dispatching = true;
+    const int result = wl_display_dispatch_pending(m_private->display);
+    m_private->dispatching = false;
+    if (result < 0) {
         fail(QStringLiteral("Wayland pending dispatch failed"));
         return false;
     }
@@ -115,7 +119,8 @@ bool TyphonWaylandDisplay::flush()
         if (wl_display_flush(m_private->display) >= 0) {
             if (m_private->writeNotifier)
                 m_private->writeNotifier->setEnabled(false);
-            armRead();
+            if (!m_private->dispatching)
+                armRead();
             return true;
         }
         if (errno == EINTR)
@@ -123,7 +128,8 @@ bool TyphonWaylandDisplay::flush()
         if (errno == EAGAIN) {
             if (m_private->writeNotifier)
                 m_private->writeNotifier->setEnabled(true);
-            armRead();
+            if (!m_private->dispatching)
+                armRead();
             return true;
         }
         fail(QStringLiteral("Wayland request flush failed (errno %1, display error %2, fd %3)")
@@ -161,7 +167,10 @@ void TyphonWaylandDisplay::armRead()
     if (!m_private->display || m_private->readPrepared)
         return;
     while (wl_display_prepare_read(m_private->display) != 0) {
-        if (wl_display_dispatch_pending(m_private->display) < 0) {
+        m_private->dispatching = true;
+        const int result = wl_display_dispatch_pending(m_private->display);
+        m_private->dispatching = false;
+        if (result < 0) {
             fail(QStringLiteral("Wayland pending dispatch failed while preparing read"));
             return;
         }
@@ -184,7 +193,10 @@ void TyphonWaylandDisplay::onReadable()
         return;
     }
     m_private->readPrepared = false;
-    if (wl_display_dispatch_pending(m_private->display) < 0) {
+    m_private->dispatching = true;
+    const int result = wl_display_dispatch_pending(m_private->display);
+    m_private->dispatching = false;
+    if (result < 0) {
         fail(QStringLiteral("Wayland pending dispatch failed after read"));
         return;
     }

@@ -17,6 +17,7 @@ class GameModeMonitor;
 class SpotlightConfigWatcher;
 class SpotlightController;
 class ShellIpcServer;
+class ShellShortcutDispatcher;
 class TyphonShortcutClient;
 class TyphonSharedConnection;
 class TyphonToplevelConnection;
@@ -44,6 +45,7 @@ public:
     DockController *dockController() const { return m_dockController.get(); }
     AltTabController *altTabController() const { return m_altTabController.get(); }
     SpotlightController *spotlightController() const { return m_spotlightController.get(); }
+    ShellShortcutDispatcher *shortcutDispatcher() const { return m_shortcutDispatcher.get(); }
     GameModeMonitor *gameModeMonitor() const { return m_gameMode.get(); }
     ShellIpcServer *ipcServer() const { return m_ipcServer.get(); }
     DockConfigWatcher *dockConfig() const { return m_dockConfig.get(); }
@@ -73,6 +75,7 @@ private:
     std::unique_ptr<DockController> m_dockController;
     std::unique_ptr<AltTabController> m_altTabController;
     std::unique_ptr<SpotlightController> m_spotlightController;
+    std::unique_ptr<ShellShortcutDispatcher> m_shortcutDispatcher;
     std::unique_ptr<ShellIpcServer> m_ipcServer;
     std::unique_ptr<DockConfigWatcher> m_dockConfig;
     std::unique_ptr<AltTabConfigWatcher> m_altTabConfig;

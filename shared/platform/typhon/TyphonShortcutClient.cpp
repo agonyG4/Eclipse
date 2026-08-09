@@ -106,7 +106,7 @@ struct TyphonShortcutClientPrivate {
     bool registryReady = false;
     QVector<TyphonShortcutRegistration *> registrations;
 
-    void destroyProtocolObjects();
+    void destroyProtocolObjects(bool sendDestroyRequests = true);
     void registerShortcuts();
     void handleEvent(TyphonShortcutRegistration *registration, TyphonShortcutPhase phase,
                      std::uint32_t serial, std::uint32_t timestamp);
@@ -150,6 +150,7 @@ constexpr ShortcutSpec kShortcutSpecs[] = {
     {"alt_tab_next", "Advance the native Alt+Tab selection"},
     {"alt_tab_previous", "Reverse the native Alt+Tab selection"},
     {"alt_tab_commit", "Commit the native Alt+Tab selection"},
+    {"spotlight_toggle", "Toggle the Astrea Spotlight shell surface"},
 };
 
 } // namespace
@@ -292,28 +293,25 @@ void TyphonShortcutClientPrivate::shortcutCancelled(void *data, astrea_shortcut_
                                                 serial, 0);
 }
 
-void TyphonShortcutClientPrivate::destroyProtocolObjects()
+void TyphonShortcutClientPrivate::destroyProtocolObjects(bool sendDestroyRequests)
 {
     for (TyphonShortcutRegistration *registration : std::as_const(registrations)) {
-        if (registration->proxy)
+        if (sendDestroyRequests && registration->proxy)
             shortcutDestroy(registration->proxy);
         registration->proxy = nullptr;
         registration->live = false;
         delete registration;
     }
     registrations.clear();
-    if (registrySync) {
+    if (registrySync && sendDestroyRequests)
         wl_callback_destroy(registrySync);
-        registrySync = nullptr;
-    }
-    if (manager) {
+    registrySync = nullptr;
+    if (manager && sendDestroyRequests)
         managerDestroy(manager);
-        manager = nullptr;
-    }
-    if (registry) {
+    manager = nullptr;
+    if (registry && sendDestroyRequests)
         wl_registry_destroy(registry);
-        registry = nullptr;
-    }
+    registry = nullptr;
     registryReady = false;
 }
 
@@ -523,7 +521,10 @@ void TyphonShortcutClient::handleSharedDisconnected(std::uint64_t generation)
         || generation != m_private->generation)
         return;
 #if ASTREA_HAVE_TYPHON_PROTOCOL
-    m_private->destroyProtocolObjects();
+    // The shared display has already reported transport loss. Invalidate the
+    // old generation locally; marshalling destroy requests would use a dead
+    // Wayland connection.
+    m_private->destroyProtocolObjects(false);
 #endif
     setState(TyphonShortcutConnectionState::Disconnected);
 }

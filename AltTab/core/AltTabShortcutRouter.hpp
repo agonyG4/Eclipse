@@ -7,6 +7,8 @@ enum class AltTabShortcutAction {
     Next,
     Previous,
     Commit,
+    // Shared shell shortcut routed to Spotlight by ShellShortcutDispatcher.
+    SpotlightToggle,
 };
 Q_DECLARE_METATYPE(AltTabShortcutAction)
 

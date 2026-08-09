@@ -16,6 +16,7 @@
 #include "apps/DesktopEntryCatalog.hpp"
 #include "launch/ApplicationLauncher.hpp"
 #include "platform/ipc/ShellIpcServer.hpp"
+#include "platform/shortcut/ShellShortcutDispatcher.hpp"
 #include "platform/typhon/TyphonSharedConnection.hpp"
 #include "platform/typhon/TyphonShortcutClient.hpp"
 #include "platform/typhon/TyphonToplevelConnection.hpp"
@@ -66,6 +67,8 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
                                                               m_identityResolver.get());
     m_spotlightController = std::make_unique<SpotlightController>(
         spotlightPaths, m_catalog.get(), m_launcher.get());
+    m_shortcutDispatcher = std::make_unique<ShellShortcutDispatcher>(m_altTabController.get(),
+                                                                       m_spotlightController.get());
     m_ipcServer = std::make_unique<ShellIpcServer>();
     m_gameMode = std::make_unique<GameModeMonitor>();
 
@@ -85,6 +88,8 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
     m_dockController->applyConfig(m_dockConfig->config());
     m_dockController->setComponentEnabled(m_dockConfig->componentEnabled());
     m_dockController->setCatalogSnapshot(m_catalog->snapshot());
+    m_shortcutDispatcher->setAltTabEnabled(m_altTabConfig->componentEnabled());
+    m_shortcutDispatcher->setSpotlightEnabled(m_spotlightConfig->componentEnabled());
     m_spotlightController->setComponentEnabled(m_spotlightConfig->componentEnabled());
     m_spotlightController->applyConfig(m_spotlightConfig->spotlightConfig());
 
@@ -145,16 +150,16 @@ void ShellRuntime::connectServices()
 
     connect(m_altTabConfig.get(), &AltTabConfigWatcher::componentToggled, this,
             [this](bool enabled) {
-        if (enabled)
-            m_shortcutClient->start();
-        else {
+        m_shortcutDispatcher->setAltTabEnabled(enabled);
+        if (!enabled)
             m_altTabController->cancel();
-            m_shortcutClient->stop();
-        }
     });
 
     connect(m_spotlightConfig.get(), &SpotlightConfigWatcher::componentToggled, this,
-            [this](bool enabled) { m_spotlightController->setComponentEnabled(enabled); });
+            [this](bool enabled) {
+        m_shortcutDispatcher->setSpotlightEnabled(enabled);
+        m_spotlightController->setComponentEnabled(enabled);
+    });
     connect(m_spotlightConfig.get(), &SpotlightConfigWatcher::configChanged, this,
             [this] { m_spotlightController->applyConfig(m_spotlightConfig->spotlightConfig()); });
 
@@ -164,14 +169,7 @@ void ShellRuntime::connectServices()
     connect(m_shortcutClient.get(), &TyphonShortcutClient::shortcutEvent, this,
             [this](const QString &namespaceName, const QString &name,
                    TyphonShortcutPhase phase, std::uint32_t, std::uint32_t) {
-        if (!m_altTabConfig->componentEnabled())
-            return;
-        switch (mapTyphonShortcut(namespaceName, name, phase)) {
-        case AltTabShortcutAction::Next: m_altTabController->step(1); break;
-        case AltTabShortcutAction::Previous: m_altTabController->step(-1); break;
-        case AltTabShortcutAction::Commit: m_altTabController->commit(); break;
-        case AltTabShortcutAction::Ignore: break;
-        }
+        m_shortcutDispatcher->dispatch(namespaceName, name, phase);
     });
 }
 
@@ -209,8 +207,7 @@ void ShellRuntime::start()
 #endif
     if (m_windowBackend)
         m_windowBackend->start();
-    if (m_altTabConfig->componentEnabled())
-        m_shortcutClient->start();
+    m_shortcutClient->start();
     m_gameMode->start();
     emit started();
 }

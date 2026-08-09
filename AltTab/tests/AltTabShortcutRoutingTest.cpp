@@ -7,6 +7,7 @@ class AltTabShortcutRoutingTest final : public QObject {
 
 private slots:
     void mapsNativeLifecycleEvents();
+    void mapsSpotlightToggle();
     void ignoresOtherNamespacesAndTerminalPhases();
 };
 
@@ -24,6 +25,16 @@ void AltTabShortcutRoutingTest::mapsNativeLifecycleEvents()
     QCOMPARE(mapTyphonShortcut(QStringLiteral("astrea-shell"), QStringLiteral("alt_tab_commit"),
                                TyphonShortcutPhase::Pressed),
              AltTabShortcutAction::Commit);
+}
+
+void AltTabShortcutRoutingTest::mapsSpotlightToggle()
+{
+    QCOMPARE(mapTyphonShortcut(QStringLiteral("astrea-shell"), QStringLiteral("spotlight_toggle"),
+                               TyphonShortcutPhase::Pressed),
+             AltTabShortcutAction::SpotlightToggle);
+    QCOMPARE(mapTyphonShortcut(QStringLiteral("astrea-shell"), QStringLiteral("spotlight_toggle"),
+                               TyphonShortcutPhase::Repeated),
+             AltTabShortcutAction::Ignore);
 }
 
 void AltTabShortcutRoutingTest::ignoresOtherNamespacesAndTerminalPhases()

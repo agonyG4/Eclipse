@@ -13,6 +13,14 @@ public:
     void start() override { ++starts; }
     void stop() override { ++stops; }
     bool isAvailable() const override { return available; }
+    TyphonActionCapabilityState actionCapability() const override { return capability; }
+    std::optional<ToplevelActionError> requestAction(quint64 handleToken,
+                                                     TyphonActionToken token,
+                                                     ToplevelAction action) override
+    {
+        actionRequests.append({handleToken, token, action});
+        return requestError;
+    }
 
     void advertiseManager(bool present = true) { emit registryDiscovered(present); }
     void create(quint64 token) { emit handleCreated(token); }
@@ -29,8 +37,18 @@ public:
     { emit managerCompleted(revision, total, truncated); }
     void fail(const QString &reason) { emit managerFailed(reason); }
     void disconnectDisplay() { emit displayDisconnected(); }
+    void actionDone(TyphonActionToken token, ToplevelAction action, ToplevelActionResult result)
+    { emit actionCompleted(token.hi, token.lo, action, result); }
 
     bool available = true;
+    TyphonActionCapabilityState capability = TyphonActionCapabilityState::ActionReadyV2;
+    std::optional<ToplevelActionError> requestError;
+    struct ActionRequest {
+        quint64 handleToken = 0;
+        TyphonActionToken token;
+        ToplevelAction action = ToplevelAction::Activate;
+    };
+    QVector<ActionRequest> actionRequests;
     int starts = 0;
     int stops = 0;
 };
@@ -65,6 +83,10 @@ private slots:
     void stress100InitialConnectEnumerateStopCycles();
     void stress100DisconnectReconnectCycles();
     void stress100ManagerFailureReconnectCycles();
+    void v1PublicationRemainsReadOnly();
+    void v2ActionResultsAreManagerOwned();
+    void disconnectSettlesPendingActionOnce();
+    void staleWindowIdDoesNotRetarget();
 };
 
 void TyphonProtocolClientTest::registryAndInitialDoneReachReady()
@@ -211,6 +233,105 @@ void TyphonProtocolClientTest::stress100ManagerFailureReconnectCycles()
     }
     QVERIFY(adapter->starts >= 100);
     QVERIFY(adapter->stops >= 100);
+}
+
+void TyphonProtocolClientTest::v1PublicationRemainsReadOnly()
+{
+    auto *adapter = new FakeTyphonAdapter;
+    adapter->capability = TyphonActionCapabilityState::ReadOnlyV1;
+    TyphonToplevelConnection connection(adapter);
+    connection.start();
+    adapter->advertiseManager();
+    complete(*adapter, 1, QStringLiteral("1"), 1);
+    adapter->done(1, 1);
+    QCOMPARE(connection.state(), TyphonConnectionState::Ready);
+
+    const auto error = connection.requestAction(QStringLiteral("1"), ToplevelAction::Activate, 10);
+    QVERIFY(error.has_value());
+    QCOMPARE(error.value(), ToplevelActionError::UnsupportedProtocol);
+    QCOMPARE(adapter->actionRequests.size(), 0);
+}
+
+void TyphonProtocolClientTest::v2ActionResultsAreManagerOwned()
+{
+    auto *adapter = new FakeTyphonAdapter;
+    TyphonToplevelConnection connection(adapter);
+    QSignalSpy completed(&connection, &TyphonToplevelConnection::actionFinished);
+    connection.start();
+    adapter->advertiseManager();
+    complete(*adapter, 1, QStringLiteral("1"), 1);
+    adapter->done(1, 1);
+
+    for (const auto action : {ToplevelAction::Activate, ToplevelAction::Minimize,
+                              ToplevelAction::Restore, ToplevelAction::Close}) {
+        const auto error = connection.requestAction(QStringLiteral("1"), action, 20);
+        QVERIFY(!error.has_value());
+        QCOMPARE(adapter->actionRequests.size(), 1);
+        const auto request = adapter->actionRequests.takeLast();
+        adapter->actionDone(request.token, action, ToplevelActionResult::Accepted);
+        QCOMPARE(completed.count(), 1);
+        QCOMPARE(completed.last().at(0).value<quint64>(), quint64(20));
+        QCOMPARE(completed.last().at(1).value<ToplevelAction>(), action);
+        QCOMPARE(completed.last().at(2).value<ToplevelActionResult>(),
+                 ToplevelActionResult::Accepted);
+        completed.clear();
+    }
+
+    const auto noChangeError = connection.requestAction(QStringLiteral("1"),
+                                                        ToplevelAction::Activate, 21);
+    QVERIFY(!noChangeError.has_value());
+    const auto noChangeRequest = adapter->actionRequests.takeLast();
+    adapter->actionDone(noChangeRequest.token, ToplevelAction::Activate,
+                        ToplevelActionResult::NoChange);
+    QCOMPARE(completed.count(), 1);
+    QCOMPARE(completed.last().at(2).value<ToplevelActionResult>(),
+             ToplevelActionResult::NoChange);
+    completed.clear();
+
+    const auto unavailableError = connection.requestAction(QStringLiteral("1"),
+                                                           ToplevelAction::Activate, 22);
+    QVERIFY(!unavailableError.has_value());
+    const auto unavailableRequest = adapter->actionRequests.takeLast();
+    adapter->actionDone(unavailableRequest.token, ToplevelAction::Activate,
+                        ToplevelActionResult::Unavailable);
+    QCOMPARE(completed.count(), 1);
+    QCOMPARE(completed.last().at(2).value<ToplevelActionResult>(),
+             ToplevelActionResult::Unavailable);
+}
+
+void TyphonProtocolClientTest::disconnectSettlesPendingActionOnce()
+{
+    auto *adapter = new FakeTyphonAdapter;
+    TyphonToplevelConnection connection(adapter);
+    QSignalSpy failed(&connection, &TyphonToplevelConnection::actionFailed);
+    connection.start();
+    adapter->advertiseManager();
+    complete(*adapter, 1, QStringLiteral("1"), 1);
+    adapter->done(1, 1);
+    QVERIFY(!connection.requestAction(QStringLiteral("1"), ToplevelAction::Activate, 30).has_value());
+    adapter->disconnectDisplay();
+    QCOMPARE(failed.count(), 1);
+    QCOMPARE(failed.at(0).at(0).value<quint64>(), quint64(30));
+    QCOMPARE(failed.at(0).at(2).value<ToplevelActionError>(), ToplevelActionError::Disconnected);
+    adapter->actionDone({1, 1}, ToplevelAction::Activate, ToplevelActionResult::Accepted);
+    QCOMPARE(failed.count(), 1);
+}
+
+void TyphonProtocolClientTest::staleWindowIdDoesNotRetarget()
+{
+    auto *adapter = new FakeTyphonAdapter;
+    TyphonToplevelConnection connection(adapter);
+    connection.start();
+    adapter->advertiseManager();
+    complete(*adapter, 1, QStringLiteral("1"), 1);
+    adapter->done(1, 1);
+    adapter->close(1);
+    adapter->done(2, 0);
+
+    const auto error = connection.requestAction(QStringLiteral("1"), ToplevelAction::Activate, 40);
+    QVERIFY(error.has_value());
+    QCOMPARE(error.value(), ToplevelActionError::ToplevelNotLive);
+    QCOMPARE(adapter->actionRequests.size(), 0);
 }
 
 QTEST_MAIN(TyphonProtocolClientTest)

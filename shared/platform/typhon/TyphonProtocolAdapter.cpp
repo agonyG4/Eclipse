@@ -40,9 +40,13 @@ public:
         m_manager = nullptr;
         m_registry = nullptr;
         m_registrySync = nullptr;
+        m_managerVersion = 0;
+        m_authenticated = false;
+        setActionCapability(TyphonActionCapabilityState::AuthenticatingV2);
 
         if (!m_display->connectToDisplay()) {
             m_running = false;
+            setActionCapability(TyphonActionCapabilityState::Disconnected);
             emit displayDisconnected();
             return;
         }
@@ -50,9 +54,9 @@ public:
         wl_display *display = m_display->nativeDisplay();
         QString diagnostic;
         if (!TyphonShellAuthenticator::authenticate(display, &diagnostic)) {
-            failProtocol(diagnostic);
-            m_display->disconnectFromDisplay();
-            return;
+            emit capabilityDiagnostic(diagnostic);
+        } else {
+            m_authenticated = true;
         }
         m_registry = wl_display_get_registry(display);
         if (!m_registry || wl_registry_add_listener(m_registry, &kRegistryListener, this) != 0) {
@@ -89,9 +93,50 @@ public:
         }
         m_display->disconnectFromDisplay();
         m_registryReady = false;
+        m_managerVersion = 0;
+        m_authenticated = false;
+        setActionCapability(TyphonActionCapabilityState::Disconnected);
     }
 
-    bool isAvailable() const override { return true; }
+    bool isAvailable() const override { return m_running && m_registryReady && m_manager; }
+
+    TyphonActionCapabilityState actionCapability() const override { return m_actionCapability; }
+    quint32 managerVersion() const override { return m_managerVersion; }
+
+    std::optional<ToplevelActionError> requestAction(
+        quint64 handleToken, TyphonActionToken token, ToplevelAction action) override
+    {
+        if (!m_running || !m_manager)
+            return ToplevelActionError::Disconnected;
+        if (m_managerVersion < 2)
+            return ToplevelActionError::UnsupportedProtocol;
+        if (!m_authenticated || m_actionCapability != TyphonActionCapabilityState::ActionReadyV2)
+            return ToplevelActionError::NotAuthenticated;
+
+        const auto it = m_handles.constFind(handleToken);
+        if (it == m_handles.constEnd() || !it.value() || it.value()->closed
+            || !it.value()->proxy || astrea_toplevel_v1_get_version(it.value()->proxy) < 2) {
+            return ToplevelActionError::ToplevelNotLive;
+        }
+
+        switch (action) {
+        case ToplevelAction::Activate:
+            astrea_toplevel_v1_activate(it.value()->proxy, token.hi, token.lo);
+            break;
+        case ToplevelAction::Minimize:
+            astrea_toplevel_v1_minimize(it.value()->proxy, token.hi, token.lo);
+            break;
+        case ToplevelAction::Restore:
+            astrea_toplevel_v1_restore(it.value()->proxy, token.hi, token.lo);
+            break;
+        case ToplevelAction::Close:
+            astrea_toplevel_v1_close(it.value()->proxy, token.hi, token.lo);
+            break;
+        }
+        if (!m_display->flush())
+            return ToplevelActionError::Disconnected;
+        return std::nullopt;
+    }
 
 private:
     struct HandleState {
@@ -109,8 +154,10 @@ private:
             || qstrcmp(interfaceName, "astrea_toplevel_manager_v1") != 0 || version < 1) {
             return;
         }
+        self->m_managerVersion = qMin(version, 2u);
         self->m_manager = static_cast<astrea_toplevel_manager_v1 *>(
-            wl_registry_bind(registry, name, &astrea_toplevel_manager_v1_interface, 1));
+            wl_registry_bind(registry, name, &astrea_toplevel_manager_v1_interface,
+                             self->m_managerVersion));
         if (!self->m_manager
             || astrea_toplevel_manager_v1_add_listener(self->m_manager, &kManagerListener, self) != 0) {
             self->failProtocol(QStringLiteral("Typhon manager binding failed"));
@@ -130,6 +177,15 @@ private:
         if (!self->m_running || self->m_terminal)
             return;
         self->m_registryReady = true;
+        if (!self->m_manager) {
+            self->setActionCapability(TyphonActionCapabilityState::Degraded);
+        } else if (self->m_managerVersion < 2) {
+            self->setActionCapability(TyphonActionCapabilityState::ReadOnlyV1);
+        } else if (self->m_authenticated) {
+            self->setActionCapability(TyphonActionCapabilityState::ActionReadyV2);
+        } else {
+            self->setActionCapability(TyphonActionCapabilityState::ReadOnlyV2);
+        }
         emit self->registryDiscovered(self->m_manager != nullptr);
         self->m_display->flush();
     }
@@ -172,8 +228,55 @@ private:
         if (!self->liveManagerEvent())
             return;
         self->m_terminal = true;
+        self->setActionCapability(TyphonActionCapabilityState::Degraded);
         emit static_cast<TyphonProtocolAdapter *>(self)->managerFailed(
             QStringLiteral("Typhon manager failed (%1)").arg(reason));
+    }
+
+    static void managerActionDone(void *data, astrea_toplevel_manager_v1 *,
+                                  uint32_t tokenHigh, uint32_t tokenLow,
+                                  uint32_t action, uint32_t result)
+    {
+        auto *self = static_cast<GeneratedTyphonProtocolAdapter *>(data);
+        if (!self->liveManagerEvent())
+            return;
+
+        ToplevelAction translatedAction;
+        switch (action) {
+        case ASTREA_TOPLEVEL_MANAGER_V1_ACTION_ACTIVATE:
+            translatedAction = ToplevelAction::Activate;
+            break;
+        case ASTREA_TOPLEVEL_MANAGER_V1_ACTION_MINIMIZE:
+            translatedAction = ToplevelAction::Minimize;
+            break;
+        case ASTREA_TOPLEVEL_MANAGER_V1_ACTION_RESTORE:
+            translatedAction = ToplevelAction::Restore;
+            break;
+        case ASTREA_TOPLEVEL_MANAGER_V1_ACTION_CLOSE:
+            translatedAction = ToplevelAction::Close;
+            break;
+        default:
+            self->failProtocol(QStringLiteral("unknown Typhon action"));
+            return;
+        }
+
+        ToplevelActionResult translatedResult;
+        switch (result) {
+        case ASTREA_TOPLEVEL_MANAGER_V1_ACTION_RESULT_ACCEPTED:
+            translatedResult = ToplevelActionResult::Accepted;
+            break;
+        case ASTREA_TOPLEVEL_MANAGER_V1_ACTION_RESULT_NO_CHANGE:
+            translatedResult = ToplevelActionResult::NoChange;
+            break;
+        case ASTREA_TOPLEVEL_MANAGER_V1_ACTION_RESULT_UNAVAILABLE:
+            translatedResult = ToplevelActionResult::Unavailable;
+            break;
+        default:
+            self->failProtocol(QStringLiteral("unknown Typhon action result"));
+            return;
+        }
+        emit static_cast<TyphonProtocolAdapter *>(self)->actionCompleted(
+            tokenHigh, tokenLow, translatedAction, translatedResult);
     }
 
     static void handleIdentifier(void *data, astrea_toplevel_v1 *, const char *identifier)
@@ -322,6 +425,9 @@ private:
         m_registry = nullptr;
         m_manager = nullptr;
         m_registrySync = nullptr;
+        m_managerVersion = 0;
+        m_authenticated = false;
+        setActionCapability(TyphonActionCapabilityState::Disconnected);
         qDeleteAll(m_handles);
         m_handles.clear();
         if (notify)
@@ -335,6 +441,14 @@ private:
         m_protocolErrorReported = true;
         m_terminal = true;
         emit protocolError(diagnostic);
+    }
+
+    void setActionCapability(TyphonActionCapabilityState state)
+    {
+        if (m_actionCapability == state)
+            return;
+        m_actionCapability = state;
+        emit static_cast<TyphonProtocolAdapter *>(this)->actionCapabilityChanged(state);
     }
 
     static const wl_registry_listener kRegistryListener;
@@ -352,6 +466,10 @@ private:
     bool m_terminal = false;
     bool m_registryReady = false;
     bool m_protocolErrorReported = false;
+    quint32 m_managerVersion = 0;
+    bool m_authenticated = false;
+    TyphonActionCapabilityState m_actionCapability =
+        TyphonActionCapabilityState::Disconnected;
 };
 
 const wl_registry_listener GeneratedTyphonProtocolAdapter::kRegistryListener = {
@@ -366,7 +484,8 @@ const wl_callback_listener GeneratedTyphonProtocolAdapter::kSyncListener = {
 const astrea_toplevel_manager_v1_listener GeneratedTyphonProtocolAdapter::kManagerListener = {
     &GeneratedTyphonProtocolAdapter::managerToplevel,
     &GeneratedTyphonProtocolAdapter::managerDone,
-    &GeneratedTyphonProtocolAdapter::managerFailed
+    &GeneratedTyphonProtocolAdapter::managerFailed,
+    &GeneratedTyphonProtocolAdapter::managerActionDone
 };
 
 const astrea_toplevel_v1_listener GeneratedTyphonProtocolAdapter::kHandleListener = {
@@ -396,6 +515,12 @@ public:
     void start() override { emit registryDiscovered(false); }
     void stop() override {}
     bool isAvailable() const override { return false; }
+    TyphonActionCapabilityState actionCapability() const override
+    { return TyphonActionCapabilityState::Disconnected; }
+    quint32 managerVersion() const override { return 0; }
+    std::optional<ToplevelActionError> requestAction(
+        quint64, TyphonActionToken, ToplevelAction) override
+    { return ToplevelActionError::UnsupportedProtocol; }
 };
 
 } // namespace

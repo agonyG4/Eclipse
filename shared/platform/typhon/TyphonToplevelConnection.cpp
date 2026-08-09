@@ -50,10 +50,12 @@ void TyphonToplevelConnection::stop()
         return;
     m_started = false;
     m_reconnectTimer.stop();
+    settlePendingActions(ToplevelActionError::Disconnected);
     disconnectAdapterSignals();
     if (m_adapter)
         m_adapter->stop();
     clearPublicSnapshot();
+    setActionCapability(TyphonActionCapabilityState::Disconnected);
     setState(TyphonConnectionState::Stopped);
 }
 
@@ -62,6 +64,7 @@ void TyphonToplevelConnection::beginConnection()
     if (!m_started)
         return;
     ++m_generation;
+    m_actionState.clearGeneration(m_generation - 1);
     m_model.startGeneration(m_generation);
     setState(TyphonConnectionState::Connecting);
     setState(TyphonConnectionState::WaitingForRegistry);
@@ -82,6 +85,8 @@ void TyphonToplevelConnection::bindAdapter(quint64 generation)
                                         this, [this, generation](bool available) {
         if (generation != m_generation || !m_started)
             return;
+        if (m_adapter)
+            setActionCapability(m_adapter->actionCapability());
         if (!available) {
             clearPublicSnapshot();
             setState(TyphonConnectionState::Unsupported);
@@ -157,10 +162,38 @@ void TyphonToplevelConnection::bindAdapter(quint64 generation)
                               true);
         }
     }));
+    m_adapterConnections.append(connect(
+        m_adapter, &TyphonProtocolAdapter::actionCapabilityChanged, this,
+        [this, generation](TyphonActionCapabilityState capability) {
+            if (generation == m_generation && m_started)
+                setActionCapability(capability);
+        }));
+    m_adapterConnections.append(connect(
+        m_adapter, &TyphonProtocolAdapter::actionCompleted, this,
+        [this, generation](quint32 tokenHi, quint32 tokenLo, ToplevelAction action,
+                           ToplevelActionResult result) {
+            if (generation != m_generation || !m_started)
+                return;
+            const auto pending = m_actionState.complete(
+                generation, TyphonActionToken{tokenHi, tokenLo}, action, result);
+            if (!pending.has_value()) {
+                qWarning("Ignoring unknown or stale Typhon action completion");
+                return;
+            }
+            emit actionFinished(pending->consumerToken, action, result);
+        }));
+    m_adapterConnections.append(connect(
+        m_adapter, &TyphonProtocolAdapter::capabilityDiagnostic, this,
+        [this, generation](const QString &diagnostic) {
+            if (generation == m_generation && m_started)
+                emit this->diagnostic(diagnostic);
+        }));
     m_adapterConnections.append(connect(m_adapter, &TyphonProtocolAdapter::displayDisconnected,
                                         this, [this, generation] {
         if (generation != m_generation || !m_started)
             return;
+        settlePendingActions(ToplevelActionError::Disconnected);
+        setActionCapability(TyphonActionCapabilityState::Disconnected);
         setState(TyphonConnectionState::Disconnected);
         disconnectAdapterSignals();
         if (m_adapter)
@@ -170,9 +203,53 @@ void TyphonToplevelConnection::bindAdapter(quint64 generation)
     }));
     m_adapterConnections.append(connect(m_adapter, &TyphonProtocolAdapter::protocolError,
                                         this, [this, generation](const QString &diagnostic) {
-        if (generation == m_generation && m_started)
+        if (generation == m_generation && m_started) {
+            settlePendingActions(ToplevelActionError::Disconnected);
+            setActionCapability(TyphonActionCapabilityState::Degraded);
             enterDegraded(diagnostic, true);
+        }
     }));
+}
+
+std::optional<ToplevelActionError> TyphonToplevelConnection::requestAction(
+    const QString &windowId, ToplevelAction action, quint64 consumerToken)
+{
+    if (!m_started || !m_adapter)
+        return ToplevelActionError::Disconnected;
+
+    switch (m_actionCapability) {
+    case TyphonActionCapabilityState::Disconnected:
+        return ToplevelActionError::Disconnected;
+    case TyphonActionCapabilityState::ReadOnlyV1:
+        return ToplevelActionError::UnsupportedProtocol;
+    case TyphonActionCapabilityState::ReadOnlyV2:
+    case TyphonActionCapabilityState::AuthenticatingV2:
+        return ToplevelActionError::NotAuthenticated;
+    case TyphonActionCapabilityState::Degraded:
+        return ToplevelActionError::Disconnected;
+    case TyphonActionCapabilityState::ActionReadyV2:
+        break;
+    }
+
+    const auto handleToken = m_model.handleTokenForWindowId(windowId);
+    if (!handleToken.has_value())
+        return ToplevelActionError::ToplevelNotLive;
+
+    const TyphonActionToken token = m_actionState.nextToken(m_generation);
+    const TyphonActionAdmission admission = m_actionState.reserve(
+        m_generation, token, windowId, action, consumerToken);
+    if (admission != TyphonActionAdmission::Accepted)
+        return ToplevelActionError::LocalCapacityExceeded;
+
+    const auto localError = m_adapter->requestAction(*handleToken, token, action);
+    if (localError.has_value()) {
+        m_actionState.discard(m_generation, token, action);
+        return localError;
+    }
+    qInfo("Typhon action submitted: generation %llu, window %s, action %d",
+          static_cast<unsigned long long>(m_generation), qPrintable(windowId),
+          static_cast<int>(action));
+    return std::nullopt;
 }
 
 void TyphonToplevelConnection::disconnectAdapterSignals()
@@ -207,6 +284,8 @@ void TyphonToplevelConnection::clearPublicSnapshot()
 
 void TyphonToplevelConnection::enterDegraded(const QString &message, bool reconnect)
 {
+    settlePendingActions(ToplevelActionError::Disconnected);
+    setActionCapability(TyphonActionCapabilityState::Degraded);
     if (m_state != TyphonConnectionState::Degraded)
         setState(TyphonConnectionState::Degraded);
     emit diagnostic(message);
@@ -217,6 +296,21 @@ void TyphonToplevelConnection::enterDegraded(const QString &message, bool reconn
     clearPublicSnapshot();
     if (reconnect)
         scheduleReconnect();
+}
+
+void TyphonToplevelConnection::settlePendingActions(ToplevelActionError error)
+{
+    const QVector<TyphonPendingAction> pending = m_actionState.clearGeneration(m_generation);
+    for (const TyphonPendingAction &action : pending)
+        emit actionFailed(action.consumerToken, action.action, error);
+}
+
+void TyphonToplevelConnection::setActionCapability(TyphonActionCapabilityState state)
+{
+    if (m_actionCapability == state)
+        return;
+    m_actionCapability = state;
+    emit actionCapabilityChanged(state);
 }
 
 int TyphonToplevelConnection::reconnectDelay() const

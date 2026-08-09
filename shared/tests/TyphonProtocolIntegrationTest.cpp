@@ -21,10 +21,21 @@ public:
     struct ServerWindow {
         FakeTyphonCompositor *owner = nullptr;
         wl_resource *resource = nullptr;
+        QString id;
     };
 
-    explicit FakeTyphonCompositor(bool advertiseManager, QObject *parent = nullptr)
+    struct ActionRequest {
+        ServerWindow *window = nullptr;
+        quint32 action = 0;
+        quint32 tokenHi = 0;
+        quint32 tokenLo = 0;
+    };
+
+    explicit FakeTyphonCompositor(bool advertiseManager, quint32 managerVersion = 1,
+                                  bool authenticate = true, QObject *parent = nullptr)
         : QObject(parent)
+        , m_managerAdvertisedVersion(managerVersion)
+        , m_authenticate(authenticate)
     {
         QVERIFY(m_runtime.isValid());
         m_previousRuntime = qgetenv("XDG_RUNTIME_DIR");
@@ -52,7 +63,8 @@ public:
                                         this, &bindAuthManager);
         QVERIFY(m_authGlobal);
         if (advertiseManager)
-            m_global = wl_global_create(m_display, &astrea_toplevel_manager_v1_interface, 1, this, &bindManager);
+            m_global = wl_global_create(m_display, &astrea_toplevel_manager_v1_interface,
+                                        m_managerAdvertisedVersion, this, &bindManager);
         QVERIFY(advertiseManager ? m_global != nullptr : true);
     }
 
@@ -88,8 +100,10 @@ public:
             return nullptr;
         auto *window = new ServerWindow;
         window->owner = this;
+        window->id = id;
         window->resource = wl_resource_create(wl_resource_get_client(m_manager->resource),
-                                               &astrea_toplevel_v1_interface, 1, 0);
+                                               &astrea_toplevel_v1_interface,
+                                               wl_resource_get_version(m_manager->resource), 0);
         if (!window->resource) {
             delete window;
             return nullptr;
@@ -162,6 +176,16 @@ public:
         flushClients();
     }
 
+    void sendActionDone(const ActionRequest &request, quint32 result)
+    {
+        if (!m_manager || !request.window)
+            return;
+        astrea_toplevel_manager_v1_send_action_done(
+            m_manager->resource, request.tokenHi, request.tokenLo,
+            request.action, result);
+        flushClients();
+    }
+
     void disconnectClients()
     {
         if (m_display)
@@ -171,6 +195,11 @@ public:
     int liveWindowCount() const
     {
         return m_windows.size();
+    }
+
+    const QVector<ActionRequest> &actionRequests() const
+    {
+        return m_actionRequests;
     }
 
 private:
@@ -200,13 +229,14 @@ private:
 
     static void authenticateRequest(wl_client *, wl_resource *resource, const char *capability)
     {
+        auto *manager = static_cast<ServerWindow *>(wl_resource_get_user_data(resource));
         const QByteArray value = QByteArray(capability ? capability : "");
         bool valid = value.size() == 64;
         for (const char byte : value) {
             valid = valid && ((byte >= '0' && byte <= '9')
                               || (byte >= 'a' && byte <= 'f'));
         }
-        if (valid)
+        if (valid && manager && manager->owner && manager->owner->m_authenticate)
             astrea_shell_auth_manager_v1_send_authenticated(resource);
         else
             astrea_shell_auth_manager_v1_send_rejected(resource);
@@ -223,7 +253,7 @@ private:
         auto *manager = new ServerWindow;
         manager->owner = self;
         manager->resource = wl_resource_create(client, &astrea_toplevel_manager_v1_interface,
-                                               std::min(version, 1u), id);
+                                               std::min(version, self->m_managerAdvertisedVersion), id);
         if (!manager->resource) {
             delete manager;
             return;
@@ -260,6 +290,39 @@ private:
     static void destroyWindowRequest(wl_client *, wl_resource *resource)
     {
         wl_resource_destroy(resource);
+    }
+
+    static void activateRequest(wl_client *, wl_resource *resource,
+                                uint32_t tokenHi, uint32_t tokenLo)
+    {
+        recordAction(resource, ASTREA_TOPLEVEL_MANAGER_V1_ACTION_ACTIVATE, tokenHi, tokenLo);
+    }
+
+    static void minimizeRequest(wl_client *, wl_resource *resource,
+                                uint32_t tokenHi, uint32_t tokenLo)
+    {
+        recordAction(resource, ASTREA_TOPLEVEL_MANAGER_V1_ACTION_MINIMIZE, tokenHi, tokenLo);
+    }
+
+    static void restoreRequest(wl_client *, wl_resource *resource,
+                               uint32_t tokenHi, uint32_t tokenLo)
+    {
+        recordAction(resource, ASTREA_TOPLEVEL_MANAGER_V1_ACTION_RESTORE, tokenHi, tokenLo);
+    }
+
+    static void closeRequest(wl_client *, wl_resource *resource,
+                             uint32_t tokenHi, uint32_t tokenLo)
+    {
+        recordAction(resource, ASTREA_TOPLEVEL_MANAGER_V1_ACTION_CLOSE, tokenHi, tokenLo);
+    }
+
+    static void recordAction(wl_resource *resource, quint32 action,
+                             quint32 tokenHi, quint32 tokenLo)
+    {
+        auto *window = static_cast<ServerWindow *>(wl_resource_get_user_data(resource));
+        if (!window || !window->owner)
+            return;
+        window->owner->m_actionRequests.append({window, action, tokenHi, tokenLo});
     }
 
     void dispatchServerEvents()
@@ -300,6 +363,9 @@ private:
     ServerWindow *m_manager = nullptr;
     ServerWindow *m_authManager = nullptr;
     QVector<ServerWindow *> m_windows;
+    QVector<ActionRequest> m_actionRequests;
+    quint32 m_managerAdvertisedVersion = 1;
+    bool m_authenticate = true;
     QSocketNotifier *m_serverNotifier = nullptr;
 };
 
@@ -308,7 +374,11 @@ const struct astrea_toplevel_manager_v1_interface FakeTyphonCompositor::kManager
 };
 
 const struct astrea_toplevel_v1_interface FakeTyphonCompositor::kWindowImplementation = {
-    &FakeTyphonCompositor::destroyWindowRequest
+    &FakeTyphonCompositor::destroyWindowRequest,
+    &FakeTyphonCompositor::activateRequest,
+    &FakeTyphonCompositor::minimizeRequest,
+    &FakeTyphonCompositor::restoreRequest,
+    &FakeTyphonCompositor::closeRequest
 };
 
 const struct astrea_shell_auth_manager_v1_interface
@@ -329,6 +399,8 @@ private slots:
     void managerFailureDegradesWithoutCrashing();
     void missingGlobalIsUnsupported();
     void unknownKindDegradesConnection();
+    void v2ActionUsesSameAuthenticatedConnectionAndManagerCompletion();
+    void v2WithoutAuthenticationRemainsReadOnly();
 };
 
 void TyphonProtocolIntegrationTest::registryDiscoveryAndInitialSnapshot()
@@ -537,6 +609,106 @@ void TyphonProtocolIntegrationTest::unknownKindDegradesConnection()
     compositor.sendUnknownKind(window);
     QVERIFY(compositor.pumpUntil([&] { return connection.state() == TyphonConnectionState::Degraded; }));
     QVERIFY(connection.reconnectPending());
+    connection.stop();
+}
+
+void TyphonProtocolIntegrationTest::v2ActionUsesSameAuthenticatedConnectionAndManagerCompletion()
+{
+    FakeTyphonCompositor compositor(true, 2);
+    TyphonToplevelConnection connection;
+    QSignalSpy completed(&connection, &TyphonToplevelConnection::actionFinished);
+    connection.start();
+    QVERIFY(compositor.pumpUntil([&] {
+        return connection.state() == TyphonConnectionState::WaitingForInitialSnapshot;
+    }));
+    QCOMPARE(connection.actionCapability(), TyphonActionCapabilityState::ActionReadyV2);
+
+    auto *window = compositor.beginWindow(QStringLiteral("77"));
+    QVERIFY(window);
+    compositor.sendMetadata(window, QStringLiteral("org.example.App"), QStringLiteral("Example"),
+                            77, ASTREA_TOPLEVEL_V1_KIND_XDG_TOPLEVEL, 0, 77);
+    compositor.sendDone(window, 1);
+    auto *managedWindow = compositor.beginWindow(QStringLiteral("78"));
+    QVERIFY(managedWindow);
+    compositor.sendMetadata(managedWindow, QStringLiteral("org.example.X11"),
+                            QStringLiteral("Managed"), 78,
+                            ASTREA_TOPLEVEL_V1_KIND_X11_TOPLEVEL, 0, 78);
+    compositor.sendDone(managedWindow, 1);
+    compositor.sendManagerDone(1, 2);
+    QVERIFY(compositor.pumpUntil([&] { return connection.state() == TyphonConnectionState::Ready; }));
+
+    QVERIFY(!connection.requestAction(QStringLiteral("77"), ToplevelAction::Activate, 123).has_value());
+    QVERIFY(compositor.pumpUntil([&] { return compositor.actionRequests().size() == 1; }));
+    const auto request = compositor.actionRequests().first();
+    QCOMPARE(request.window->id, QStringLiteral("77"));
+    QCOMPARE(request.action, ASTREA_TOPLEVEL_MANAGER_V1_ACTION_ACTIVATE);
+    compositor.sendActionDone(request, ASTREA_TOPLEVEL_MANAGER_V1_ACTION_RESULT_ACCEPTED);
+    QVERIFY(compositor.pumpUntil([&] { return completed.count() == 1; }));
+    QCOMPARE(completed.at(0).at(0).value<quint64>(), quint64(123));
+    QCOMPARE(completed.at(0).at(1).value<ToplevelAction>(), ToplevelAction::Activate);
+    QCOMPARE(completed.at(0).at(2).value<ToplevelActionResult>(), ToplevelActionResult::Accepted);
+
+    const auto submitManagedAction = [&](ToplevelAction action, quint32 wireAction,
+                                         ToplevelActionResult result, quint64 consumerToken) {
+        const int expectedRequestCount = compositor.actionRequests().size() + 1;
+        QVERIFY(!connection.requestAction(QStringLiteral("78"), action, consumerToken).has_value());
+        QVERIFY(compositor.pumpUntil([&] {
+            return compositor.actionRequests().size() == expectedRequestCount;
+        }));
+        const auto managedRequest = compositor.actionRequests().last();
+        QCOMPARE(managedRequest.window->id, QStringLiteral("78"));
+        QCOMPARE(managedRequest.action, wireAction);
+        compositor.sendActionDone(managedRequest,
+                                  result == ToplevelActionResult::Accepted
+                                      ? ASTREA_TOPLEVEL_MANAGER_V1_ACTION_RESULT_ACCEPTED
+                                      : result == ToplevelActionResult::NoChange
+                                          ? ASTREA_TOPLEVEL_MANAGER_V1_ACTION_RESULT_NO_CHANGE
+                                          : ASTREA_TOPLEVEL_MANAGER_V1_ACTION_RESULT_UNAVAILABLE);
+        const int expectedCompletionCount = completed.count() + 1;
+        QVERIFY(compositor.pumpUntil([&] { return completed.count() == expectedCompletionCount; }));
+        const auto completion = completed.last();
+        QCOMPARE(completion.at(0).value<quint64>(), consumerToken);
+        QCOMPARE(completion.at(1).value<ToplevelAction>(), action);
+        QCOMPARE(completion.at(2).value<ToplevelActionResult>(), result);
+    };
+    submitManagedAction(ToplevelAction::Minimize,
+                        ASTREA_TOPLEVEL_MANAGER_V1_ACTION_MINIMIZE,
+                        ToplevelActionResult::NoChange, 124);
+    submitManagedAction(ToplevelAction::Restore,
+                        ASTREA_TOPLEVEL_MANAGER_V1_ACTION_RESTORE,
+                        ToplevelActionResult::Unavailable, 125);
+    submitManagedAction(ToplevelAction::Close,
+                        ASTREA_TOPLEVEL_MANAGER_V1_ACTION_CLOSE,
+                        ToplevelActionResult::Accepted, 126);
+
+    compositor.sendClosed(managedWindow);
+    compositor.sendClosed(window);
+    compositor.sendManagerDone(2, 0);
+    QVERIFY(compositor.pumpUntil([&] { return connection.snapshot().windows.isEmpty(); }));
+    connection.stop();
+}
+
+void TyphonProtocolIntegrationTest::v2WithoutAuthenticationRemainsReadOnly()
+{
+    FakeTyphonCompositor compositor(true, 2, false);
+    TyphonToplevelConnection connection;
+    connection.start();
+    QVERIFY(compositor.pumpUntil([&] {
+        return connection.state() == TyphonConnectionState::WaitingForInitialSnapshot;
+    }));
+    QCOMPARE(connection.actionCapability(), TyphonActionCapabilityState::ReadOnlyV2);
+
+    auto *window = compositor.beginWindow(QStringLiteral("88"));
+    QVERIFY(window);
+    compositor.sendMetadata(window, QStringLiteral("org.example.App"), QStringLiteral("Example"),
+                            88, ASTREA_TOPLEVEL_V1_KIND_XDG_TOPLEVEL, 0, 88);
+    compositor.sendDone(window, 1);
+    compositor.sendManagerDone(1, 1);
+    QVERIFY(compositor.pumpUntil([&] { return connection.state() == TyphonConnectionState::Ready; }));
+    const auto error = connection.requestAction(QStringLiteral("88"), ToplevelAction::Activate, 1);
+    QVERIFY(error.has_value());
+    QCOMPARE(error.value(), ToplevelActionError::NotAuthenticated);
+    QCOMPARE(compositor.actionRequests().size(), 0);
     connection.stop();
 }
 

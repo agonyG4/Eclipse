@@ -9,7 +9,7 @@ and does not change Typhon.
 | Item | Recorded value |
 | --- | --- |
 | Starting Eclipse HEAD | `d3321f3a2c3ca0b5327e38ecac23446903a3ad03` |
-| Final implementation HEAD | `b279a271116d7cdec220bffc52e66489b18917d0` (`feat(dock): activate exact Typhon runtime windows`) |
+| Final implementation HEAD | `d32a4c5c1362d118aa04ba81da1875a7f7861aa8` (`fix(shared): reject invalid Typhon action tokens`) |
 | Eclipse branch | `main` |
 | Typhon pin | `211dfe835d1d6d6faf449e7a0239d6f099945e6` |
 | Canonical protocol | `/home/agony/GitHub/Typhon/protocols/astrea-toplevel-management-v1.xml` |
@@ -24,7 +24,7 @@ Python `pip` executable:
 
 | Test | Result |
 | --- | --- |
-| Typhon action-state primitive | 7 passed, 0 failed |
+| Typhon action-state primitive | 8 passed, 0 failed |
 | Typhon protocol fixture contract | 3 passed, 0 failed |
 | Shared Typhon protocol client | 15 passed, 0 failed |
 | Wayland client/server integration | 12 passed, 0 failed |

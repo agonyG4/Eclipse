@@ -1,6 +1,6 @@
 # Typhon Dock Runtime State
 
-M6.1 connects the live Dock process to one `TyphonToplevelConnection`. The
+M7-C connects the live Dock process to one `TyphonToplevelConnection`. The
 connection is authoritative only after a committed snapshot is available;
 while it is starting, disconnected, degraded, unsupported, or stopped, Dock
 marks runtime state as unknown.
@@ -24,7 +24,9 @@ filename breaking ties.
 
 Only resolved windows are grouped. Minimized windows remain running, active is
 true when any grouped window is active, and duplicate PIDs remain separate
-windows. Snapshot order is preserved in each runtime state's window ID list.
+windows. Runtime window IDs are ordered by descending Typhon focus serial and
+the first ID is the exact activation candidate. Snapshot order is preserved
+for equal focus serials.
 
 ## Model Boundary
 
@@ -34,11 +36,14 @@ when the snapshot is authoritative. Missing runtime entries reset `running`,
 state clears those values without claiming that the application is stopped.
 Pins, resolved metadata, launching state, and launch errors are preserved.
 
-When `runtimeKnown && running` is true, Dock suppresses a duplicate launch.
-Activation, restore, minimize, and close actions remain outside M6.1 and are
-reserved for M7.
+When `runtimeKnown && running` is true, Dock submits exact Typhon activation
+instead of launching. Accepted and no-change results complete without a
+launch; unavailable or local failures reconcile the current runtime only and
+never launch as part of the same click. Restore, minimize, and close remain
+outside Dock policy and are reserved for Typhon-side primitives.
 
 No window action, activation request, thumbnail, icon transport, workspace, or
 output behavior is part of M6.1.
 
-No real Typhon session qualification has been performed.
+No real Typhon session qualification has been performed. M7-C Native remains
+`DEFERRED`.

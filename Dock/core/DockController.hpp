@@ -68,6 +68,10 @@ private slots:
     void onLaunchSucceeded(const QString &desktopId);
     void onLaunchFailed(const QString &desktopId, const QString &error);
     void onLaunchTimedOut(const QString &desktopId);
+    void onTyphonActionFinished(quint64 token, Astrea::Typhon::ToplevelAction action,
+                                Astrea::Typhon::ToplevelActionResult result);
+    void onTyphonActionFailed(quint64 token, Astrea::Typhon::ToplevelAction action,
+                              Astrea::Typhon::ToplevelActionError error);
 
 private:
     QString keyForLaunchId(const QString &desktopId) const;
@@ -75,6 +79,7 @@ private:
     void setLastError(const QString &error);
     void updateVisibility();
     void projectRuntime();
+    void reconcileTyphonActionFailure(Astrea::Typhon::ToplevelActionError error);
 
     DockAppModel m_model;
     DockConfig m_config;
@@ -87,6 +92,10 @@ private:
     bool m_visible = false;
     bool m_runtimeKnown = false;
     std::optional<Astrea::Typhon::Snapshot> m_runtimeSnapshot;
+    QHash<QString, Astrea::Typhon::DockApplicationRuntimeState> m_runtimeStates;
+    QHash<quint64, QString> m_pendingActivations;
+    quint64 m_nextActivationToken = 0;
+    TyphonToplevelConnection *m_typhonConnection = nullptr;
     QVector<QMetaObject::Connection> m_typhonConnections;
     Astrea::Typhon::DockApplicationStateProjector m_runtimeProjector;
     QString m_lastError;

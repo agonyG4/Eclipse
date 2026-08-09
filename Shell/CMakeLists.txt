@@ -4,6 +4,26 @@ set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Qml Quick Network Core5Compat)
 
+function(shell_enable_sanitizers target)
+    if(MSVC)
+        return()
+    endif()
+
+    set(flags)
+    if(ASTREA_ENABLE_ASAN)
+        list(APPEND flags address)
+    endif()
+    if(ASTREA_ENABLE_UBSAN)
+        list(APPEND flags undefined)
+    endif()
+    if(flags)
+        list(JOIN flags "," sanitizer_flags)
+        target_compile_options(${target} PRIVATE -fsanitize=${sanitizer_flags}
+                                                  -fno-omit-frame-pointer)
+        target_link_options(${target} PRIVATE -fsanitize=${sanitizer_flags})
+    endif()
+endfunction()
+
 add_library(astrea-shell-runtime STATIC
     runtime/ShellRuntime.cpp
     runtime/ShellRuntime.hpp
@@ -42,6 +62,7 @@ target_link_libraries(astrea-shell-runtime PUBLIC
     astrea-shared-layer-shell
     astrea_spotlight_backend
 )
+shell_enable_sanitizers(astrea-shell-runtime)
 
 qt_add_executable(astrea-shell
     app/main.cpp
@@ -61,6 +82,7 @@ target_link_libraries(astrea-shell PRIVATE
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Network Qt6::Core5Compat
     dl pthread
 )
+shell_enable_sanitizers(astrea-shell)
 
 set(_shell_qml_files
     "${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/Main.qml"
@@ -125,6 +147,7 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
         astrea-shell-runtime
         Qt6::Test
     )
+    shell_enable_sanitizers(shell-runtime-test)
     add_test(NAME shell-runtime-test COMMAND shell-runtime-test)
 
     add_executable(shell-ipc-test
@@ -138,6 +161,7 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
         astrea-shell-runtime
         Qt6::Test
     )
+    shell_enable_sanitizers(shell-ipc-test)
     add_test(NAME shell-ipc-test COMMAND shell-ipc-test)
 
     add_executable(shell-shortcut-dispatcher-test
@@ -154,6 +178,7 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
         astrea-shell-runtime
         Qt6::Test
     )
+    shell_enable_sanitizers(shell-shortcut-dispatcher-test)
     add_test(NAME shell-shortcut-dispatcher-test COMMAND shell-shortcut-dispatcher-test)
 
     if(ASTREA_TYPHON_WAYLAND_AVAILABLE AND ASTREA_WAYLAND_SERVER_FOUND)
@@ -173,6 +198,7 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
             Qt6::Test
             PkgConfig::ASTREA_WAYLAND_SERVER
         )
+        shell_enable_sanitizers(shell-unified-runtime-integration-test)
         add_test(NAME shell-unified-runtime-integration-test
                  COMMAND shell-unified-runtime-integration-test)
     else()
@@ -195,4 +221,21 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
         legacy-dock-daemon-guard legacy-alttab-daemon-guard legacy-spotlight-daemon-guard
         PROPERTIES WILL_FAIL TRUE TIMEOUT 2
     )
+
+    if(ASTREA_ENABLE_ASAN)
+        set_tests_properties(
+            legacy-dock-daemon-guard legacy-alttab-daemon-guard legacy-spotlight-daemon-guard
+            PROPERTIES TIMEOUT 10
+        )
+    endif()
+
+    if(ASTREA_ENABLE_ASAN)
+        set_tests_properties(
+            shell-runtime-test shell-ipc-test shell-shortcut-dispatcher-test
+            shell-unified-runtime-integration-test
+            PROPERTIES
+            ENVIRONMENT
+                "LSAN_OPTIONS=suppressions=${CMAKE_SOURCE_DIR}/AltTab/lsan.supp:print_suppressions=0;ASAN_OPTIONS=detect_leaks=1:halt_on_error=1;UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1"
+        )
+    endif()
 endif()

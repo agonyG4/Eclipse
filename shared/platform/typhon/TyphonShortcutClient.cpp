@@ -296,21 +296,37 @@ void TyphonShortcutClientPrivate::shortcutCancelled(void *data, astrea_shortcut_
 void TyphonShortcutClientPrivate::destroyProtocolObjects(bool sendDestroyRequests)
 {
     for (TyphonShortcutRegistration *registration : std::as_const(registrations)) {
-        if (sendDestroyRequests && registration->proxy)
-            shortcutDestroy(registration->proxy);
+        if (registration->proxy) {
+            if (sendDestroyRequests)
+                shortcutDestroy(registration->proxy);
+            else
+                wl_proxy_destroy(reinterpret_cast<wl_proxy *>(registration->proxy));
+        }
         registration->proxy = nullptr;
         registration->live = false;
         delete registration;
     }
     registrations.clear();
-    if (registrySync && sendDestroyRequests)
-        wl_callback_destroy(registrySync);
+    if (registrySync) {
+        if (sendDestroyRequests)
+            wl_callback_destroy(registrySync);
+        else
+            wl_proxy_destroy(reinterpret_cast<wl_proxy *>(registrySync));
+    }
     registrySync = nullptr;
-    if (manager && sendDestroyRequests)
-        managerDestroy(manager);
+    if (manager) {
+        if (sendDestroyRequests)
+            managerDestroy(manager);
+        else
+            wl_proxy_destroy(reinterpret_cast<wl_proxy *>(manager));
+    }
     manager = nullptr;
-    if (registry && sendDestroyRequests)
-        wl_registry_destroy(registry);
+    if (registry) {
+        if (sendDestroyRequests)
+            wl_registry_destroy(registry);
+        else
+            wl_proxy_destroy(reinterpret_cast<wl_proxy *>(registry));
+    }
     registry = nullptr;
     registryReady = false;
 }
@@ -521,9 +537,8 @@ void TyphonShortcutClient::handleSharedDisconnected(std::uint64_t generation)
         || generation != m_private->generation)
         return;
 #if ASTREA_HAVE_TYPHON_PROTOCOL
-    // The shared display has already reported transport loss. Invalidate the
-    // old generation locally; marshalling destroy requests would use a dead
-    // Wayland connection.
+    // Invalidate the old generation before the shared connection closes the
+    // transport; marshalling destroy requests is not safe during teardown.
     m_private->destroyProtocolObjects(false);
 #endif
     setState(TyphonShortcutConnectionState::Disconnected);

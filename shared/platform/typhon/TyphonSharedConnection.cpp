@@ -140,10 +140,12 @@ void TyphonSharedConnection::fail(const QString &message)
     emit diagnostic(message);
     qWarning("Typhon shared shell connection degraded: %s", qPrintable(message));
     m_failureInProgress = true;
-    disconnectDisplay();
-    m_failureInProgress = false;
     setState(State::Degraded);
     emit disconnected(m_generation);
+    // Let protocol consumers release their proxies while the display object
+    // is still valid; only then tear down the shared Wayland transport.
+    disconnectDisplay();
+    m_failureInProgress = false;
     scheduleReconnect();
 }
 

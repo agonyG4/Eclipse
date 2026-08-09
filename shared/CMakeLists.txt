@@ -98,6 +98,8 @@ add_library(astrea-shared-typhon STATIC
     platform/typhon/TyphonProtocolTypes.hpp
     platform/typhon/TyphonActionState.cpp
     platform/typhon/TyphonActionState.hpp
+    platform/typhon/TyphonSharedConnection.cpp
+    platform/typhon/TyphonSharedConnection.hpp
     platform/typhon/TyphonWaylandDisplay.cpp
     platform/typhon/TyphonWaylandDisplay.hpp
     platform/typhon/TyphonShortcutClient.cpp
@@ -268,6 +270,7 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     add_typhon_shared_test(dock-application-state-projector-test tests/DockApplicationStateProjectorTest.cpp)
     add_typhon_shared_test(typhon-protocol-client-test tests/TyphonProtocolClientTest.cpp)
     add_typhon_shared_test(typhon-action-state-test tests/TyphonActionStateTest.cpp)
+    add_typhon_shared_test(typhon-shared-connection-test tests/TyphonSharedConnectionTest.cpp)
 
     if(ASTREA_TYPHON_WAYLAND_AVAILABLE AND ASTREA_WAYLAND_SERVER_FOUND)
         add_executable(typhon-protocol-integration-test

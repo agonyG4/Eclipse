@@ -155,7 +155,7 @@ void ShellUnifiedRuntimeIntegrationTest::unifiedRuntimeLifecycleAndStress()
     QVERIFY(compositor.pumpUntil([&runtime] {
         return runtime.typhonSession()->state() == TyphonSharedConnection::State::Degraded
             || runtime.typhonSession()->state() == TyphonSharedConnection::State::Disconnected;
-    }));
+    }, 2000));
     QVERIFY(!runtime.dockController()->runtimeKnown());
     QVERIFY(runtime.shortcutClient()->registeredShortcutCount() == 0);
 

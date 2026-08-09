@@ -449,14 +449,19 @@ private:
             return;
         m_running = false;
         m_terminal = true;
-        m_registry = nullptr;
-        m_manager = nullptr;
+        destroyHandles();
+        if (m_registrySync)
+            wl_callback_destroy(m_registrySync);
         m_registrySync = nullptr;
+        if (m_manager)
+            astrea_toplevel_manager_v1_destroy(m_manager);
+        m_manager = nullptr;
+        if (m_registry)
+            wl_registry_destroy(m_registry);
+        m_registry = nullptr;
         m_managerVersion = 0;
         m_authenticated = false;
         setActionCapability(TyphonActionCapabilityState::Disconnected);
-        qDeleteAll(m_handles);
-        m_handles.clear();
         emit displayDisconnected();
     }
 

@@ -257,9 +257,10 @@ int AltTabWindowModel::indexOf(const QString &address) const {
 
 void AltTabWindowModel::setSelectedIndex(int index) {
     const int old = m_selectedIndex;
+    m_selectedIndex = qBound(-1, index, m_windows.size() - 1);
+
     if (old >= 0 && old < m_windows.size())
         emit dataChanged(createIndex(old, 0), createIndex(old, 0), {SelectedRole});
-    m_selectedIndex = qBound(-1, index, m_windows.size() - 1);
     if (m_selectedIndex >= 0 && m_selectedIndex < m_windows.size())
         emit dataChanged(createIndex(m_selectedIndex, 0), createIndex(m_selectedIndex, 0), {SelectedRole});
     if (old != m_selectedIndex)

@@ -16,6 +16,43 @@ TyphonWindowSource::TyphonWindowSource(TyphonToplevelConnection *connection, QOb
             this, &TyphonWindowSource::onConnectionStateChanged);
     connect(m_connection, &TyphonToplevelConnection::snapshotChanged,
             this, &TyphonWindowSource::onConnectionSnapshot);
+    connect(m_connection, &TyphonToplevelConnection::actionFinished, this,
+            [this](quint64 token, ToplevelAction action, ToplevelActionResult result) {
+        if (!m_started || action != ToplevelAction::Activate)
+            return;
+        ActivationResult activation;
+        activation.success = result != ToplevelActionResult::Unavailable;
+        if (!activation.success)
+            activation.error = QStringLiteral("Typhon activation unavailable");
+        emit activationFinished(token, activation);
+    });
+    connect(m_connection, &TyphonToplevelConnection::actionFailed, this,
+            [this](quint64 token, ToplevelAction action, ToplevelActionError error) {
+        if (!m_started || action != ToplevelAction::Activate)
+            return;
+        QString message;
+        switch (error) {
+        case ToplevelActionError::UnsupportedProtocol:
+            message = QStringLiteral("Typhon toplevel actions are unsupported");
+            break;
+        case ToplevelActionError::NotAuthenticated:
+            message = QStringLiteral("Typhon toplevel actions are not authenticated");
+            break;
+        case ToplevelActionError::Disconnected:
+            message = QStringLiteral("Typhon connection disconnected");
+            break;
+        case ToplevelActionError::LocalCapacityExceeded:
+            message = QStringLiteral("Typhon action capacity is exhausted");
+            break;
+        case ToplevelActionError::ToplevelNotLive:
+            message = QStringLiteral("selected Typhon window is no longer live");
+            break;
+        case ToplevelActionError::InvalidRequest:
+            message = QStringLiteral("invalid Typhon action request");
+            break;
+        }
+        emit activationFinished(token, ActivationResult{false, message});
+    });
 }
 
 TyphonWindowSource::~TyphonWindowSource()
@@ -49,7 +86,7 @@ void TyphonWindowSource::stop()
 
 BackendDescriptor TyphonWindowSource::descriptor() const
 {
-    return {QStringLiteral("typhon"), 1};
+    return {QStringLiteral("typhon"), 2};
 }
 
 BackendState TyphonWindowSource::state() const
@@ -59,9 +96,14 @@ BackendState TyphonWindowSource::state() const
 
 QVector<BackendCapability> TyphonWindowSource::capabilities() const
 {
-    return {BackendCapability::WindowList,
-            BackendCapability::EventStream,
-            BackendCapability::ActiveWindow};
+    QVector<BackendCapability> capabilities = {BackendCapability::WindowList,
+                                               BackendCapability::EventStream,
+                                               BackendCapability::ActiveWindow};
+    if (m_connection
+        && m_connection->actionCapability() == TyphonActionCapabilityState::ActionReadyV2) {
+        capabilities.append(BackendCapability::WindowActivation);
+    }
+    return capabilities;
 }
 
 std::optional<WindowSnapshot> TyphonWindowSource::cachedSnapshot() const
@@ -94,8 +136,39 @@ void TyphonWindowSource::requestSnapshot(RequestToken token)
 
 void TyphonWindowSource::activateWindow(ActivationRequest request)
 {
-    emit activationFinished(request.token,
-                            ActivationResult{false, QStringLiteral("Typhon window activation is unsupported")});
+    if (!m_connection) {
+        emit activationFinished(request.token,
+                                 ActivationResult{false, QStringLiteral("Typhon connection is unavailable")});
+        return;
+    }
+
+    const auto error = m_connection->requestAction(
+        request.windowId.value, ToplevelAction::Activate, request.token);
+    if (!error.has_value())
+        return;
+
+    QString message;
+    switch (error.value()) {
+    case ToplevelActionError::UnsupportedProtocol:
+        message = QStringLiteral("Typhon toplevel actions are unsupported");
+        break;
+    case ToplevelActionError::NotAuthenticated:
+        message = QStringLiteral("Typhon toplevel actions are not authenticated");
+        break;
+    case ToplevelActionError::Disconnected:
+        message = QStringLiteral("Typhon connection disconnected");
+        break;
+    case ToplevelActionError::LocalCapacityExceeded:
+        message = QStringLiteral("Typhon action capacity is exhausted");
+        break;
+    case ToplevelActionError::ToplevelNotLive:
+        message = QStringLiteral("selected Typhon window is no longer live");
+        break;
+    case ToplevelActionError::InvalidRequest:
+        message = QStringLiteral("invalid Typhon action request");
+        break;
+    }
+    emit activationFinished(request.token, ActivationResult{false, message});
 }
 
 void TyphonWindowSource::onConnectionStateChanged(TyphonConnectionState state)

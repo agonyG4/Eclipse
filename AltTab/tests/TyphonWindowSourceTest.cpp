@@ -17,6 +17,13 @@ public:
     void start() override { ++starts; }
     void stop() override { ++stops; }
     bool isAvailable() const override { return available; }
+    TyphonActionCapabilityState actionCapability() const override { return capability; }
+    std::optional<ToplevelActionError> requestAction(
+        quint64 handleToken, TyphonActionToken token, ToplevelAction action) override
+    {
+        actionRequests.append({handleToken, token, action});
+        return requestError;
+    }
 
     void advertiseManager(bool present = true) { emit registryDiscovered(present); }
     void create(quint64 token) { emit handleCreated(token); }
@@ -29,8 +36,21 @@ public:
     void focus(quint64 token, FocusSerial value) { emit focusSerialChanged(token, value); }
     void handleDone(quint64 token, Revision value) { emit handleCompleted(token, value); }
     void done(Revision revision, quint32 total) { emit managerCompleted(revision, total, false); }
+    void completeAction(ToplevelActionResult result)
+    {
+        const auto request = actionRequests.takeLast();
+        emit actionCompleted(request.token.hi, request.token.lo, request.action, result);
+    }
 
     bool available = true;
+    TyphonActionCapabilityState capability = TyphonActionCapabilityState::ActionReadyV2;
+    std::optional<ToplevelActionError> requestError;
+    struct ActionRequest {
+        quint64 handleToken = 0;
+        TyphonActionToken token;
+        ToplevelAction action = ToplevelAction::Activate;
+    };
+    QVector<ActionRequest> actionRequests;
     int starts = 0;
     int stops = 0;
 };
@@ -70,6 +90,7 @@ private slots:
     void descriptorAndCapabilities();
     void snapshotMappingPreservesTyphonIdentity();
     void activeAndMinimizedFlagsMap();
+    void exactActivationUsesTyphonWindowIdAndCompletesAsync();
     void unsupportedActivationIsDeterministic();
     void pendingRequestWaitsForInitialSnapshot();
     void pendingRequestQueueOverflowIsBounded();
@@ -89,7 +110,7 @@ void TyphonWindowSourceTest::descriptorAndCapabilities()
 {
     TyphonWindowSource source;
     QCOMPARE(source.descriptor().name, QStringLiteral("typhon"));
-    QCOMPARE(source.descriptor().protocolVersion, 1);
+    QCOMPARE(source.descriptor().protocolVersion, 2);
     const auto capabilities = source.capabilities();
     QVERIFY(capabilities.contains(BackendCapability::WindowList));
     QVERIFY(capabilities.contains(BackendCapability::EventStream));
@@ -139,7 +160,35 @@ void TyphonWindowSourceTest::unsupportedActivationIsDeterministic()
     QCOMPARE(activationSpy.count(), 1);
     const ActivationResult result = activationSpy.at(0).at(1).value<ActivationResult>();
     QVERIFY(!result.success);
-    QCOMPARE(result.error, QStringLiteral("Typhon window activation is unsupported"));
+    QCOMPARE(result.error, QStringLiteral("Typhon connection disconnected"));
+}
+
+void TyphonWindowSourceTest::exactActivationUsesTyphonWindowIdAndCompletesAsync()
+{
+    auto *adapter = new FakeTyphonAdapter;
+    auto *connection = new TyphonToplevelConnection(adapter);
+    TyphonWindowSource source(connection);
+    QSignalSpy activationSpy(&source, &CompositorBackend::activationFinished);
+
+    source.start();
+    adapter->advertiseManager();
+    completeInitialSnapshot(*adapter, 7, QStringLiteral("77"), 1);
+    source.activateWindow({WindowId{QStringLiteral("77")}, 77});
+    QCOMPARE(adapter->actionRequests.size(), 1);
+    QCOMPARE(adapter->actionRequests.first().handleToken, quint64(7));
+    QCOMPARE(adapter->actionRequests.first().action, ToplevelAction::Activate);
+    QCOMPARE(activationSpy.count(), 0);
+
+    adapter->completeAction(ToplevelActionResult::NoChange);
+    QCOMPARE(activationSpy.count(), 1);
+    QCOMPARE(activationSpy.at(0).at(0).value<ActivationToken>(), ActivationToken(77));
+    QVERIFY(activationSpy.at(0).at(1).value<ActivationResult>().success);
+
+    source.activateWindow({WindowId{QStringLiteral("88")}, 78});
+    QCOMPARE(activationSpy.count(), 2);
+    QVERIFY(!activationSpy.at(1).at(1).value<ActivationResult>().success);
+    QCOMPARE(adapter->actionRequests.size(), 0);
+    source.stop();
 }
 
 void TyphonWindowSourceTest::pendingRequestWaitsForInitialSnapshot()

@@ -75,9 +75,11 @@ Item {
                         required property bool showFallbackText
                         required property string displayName
                         required property bool selected
+                        required property bool active
 
                         windowIndex: index
                         windowSelected: selected
+                        windowActive: active
                         windowIconUrl: iconUrl
                         windowIconName: iconName
                         windowIconPath: iconPath

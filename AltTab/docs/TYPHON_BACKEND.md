@@ -2,8 +2,10 @@
 
 The `typhon` backend maps shared Astrea Toplevel snapshots into the existing
 AltTab `WindowInfo` model. It advertises `WindowList`, `EventStream`, and
-`ActiveWindow`. Window activation is explicitly unsupported in M6 and returns
-a deterministic failure without sending a compositor request.
+`ActiveWindow`; it advertises `WindowActivation` only after the shared
+connection reaches authenticated action-ready v2. Activation submits the
+selected exact Typhon `WindowId` through the shared manager-owned action API.
+It never retargets a stale or unavailable selection.
 
 ## Mapping
 
@@ -57,8 +59,17 @@ asynchronously when the private global is absent.
 
 The existing Hyprland backend and its mutable activation behavior are unchanged.
 
+AltTab keeps selection, active state, and pointer hover independent. Release
+captures the selected `WindowId`, so model changes while the overlay is open
+cannot redirect activation to a different row. Typhon owns the exact action
+primitive and compositor policy, including minimized-window behavior; AltTab
+does not add focus, raise, restore, or stacking requests. `accepted` and
+`no_change` complete the activation request successfully, while
+`unavailable` and typed local errors complete it as a failure without a
+fallback launch or retarget.
+
 ## Qualification
 
-The backend has deterministic model and fake-adapter coverage. No real Typhon
-session qualification has been performed. M7 will add mutable actions only
-after the protocol permits them.
+The backend has deterministic exact-target, asynchronous completion, stale
+target, bounded-state, and QML selection coverage. No real Typhon session
+qualification has been performed. M7-C Native remains `DEFERRED`.

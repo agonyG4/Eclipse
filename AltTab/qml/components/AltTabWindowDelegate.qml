@@ -5,9 +5,12 @@ import "."
 
 Item {
     id: root
+    objectName: "altTabWindowDelegate"
 
     property int windowIndex: 0
     property bool windowSelected: false
+    property bool windowActive: false
+    property bool windowHovered: false
     property string windowIconUrl: ""
     property string windowIconName: ""
     property string windowIconPath: ""
@@ -66,7 +69,11 @@ Item {
         MouseArea {
             anchors.fill: parent
             hoverEnabled: true
-            onEntered: AltTabController.preview(windowIndex)
+            onEntered: {
+                root.windowHovered = true
+                AltTabController.preview(windowIndex)
+            }
+            onExited: root.windowHovered = false
             onClicked: AltTabController.commitIndex(windowIndex)
         }
     }

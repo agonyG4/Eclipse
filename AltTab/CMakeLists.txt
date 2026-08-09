@@ -127,6 +127,7 @@ if(BUILD_TESTING AND ASTREA_ALT_TAB_BUILD_TESTS)
         alttab-model-test
         alttab-factory-test
         alttab-shortcut-routing-test
+        alttab-qml-selection-test
     )
 
     function(add_alttab_test TEST_NAME TEST_FILE)
@@ -152,6 +153,12 @@ if(BUILD_TESTING AND ASTREA_ALT_TAB_BUILD_TESTS)
     add_alttab_test(alttab-model-test tests/AltTabWindowModelTest.cpp)
     add_alttab_test(alttab-factory-test tests/CompositorBackendFactoryTest.cpp)
     add_alttab_test(alttab-shortcut-routing-test tests/AltTabShortcutRoutingTest.cpp)
+    add_alttab_test(alttab-qml-selection-test tests/AltTabQmlSelectionTest.cpp)
+    target_link_libraries(alttab-qml-selection-test PRIVATE astrea-shared-coreplugin)
+    target_compile_definitions(alttab-qml-selection-test PRIVATE
+        ASTREA_ALTTAB_PANEL_QML="${CMAKE_CURRENT_SOURCE_DIR}/qml/components/AltTabPanel.qml"
+        ASTREA_QML_IMPORT_PATH="${CMAKE_BINARY_DIR}"
+    )
 
     # Sanitizer test environment with LSAN suppression for NVIDIA driver
     set(_lsan_supp "${CMAKE_CURRENT_SOURCE_DIR}/lsan.supp")

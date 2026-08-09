@@ -13,10 +13,20 @@ AstreaSpotlightBackend *astrea_spotlight_backend_create(const char *astrea_root,
                                                         const char *locale,
                                                         char **error_out);
 
+AstreaSpotlightBackend *astrea_spotlight_backend_create_with_catalog(
+    const char *astrea_root,
+    const char *locale,
+    const char *catalog_json,
+    char **error_out);
+
 void astrea_spotlight_backend_destroy(AstreaSpotlightBackend *backend);
 
 int astrea_spotlight_backend_reload(AstreaSpotlightBackend *backend,
                                     char **error_out);
+
+int astrea_spotlight_backend_set_catalog_json(AstreaSpotlightBackend *backend,
+                                              const char *catalog_json,
+                                              char **error_out);
 
 char *astrea_spotlight_backend_search_json(AstreaSpotlightBackend *backend,
                                            const char *query,

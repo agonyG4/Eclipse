@@ -2,6 +2,7 @@
 
 #include <QFileSystemWatcher>
 #include <QHash>
+#include <QJsonArray>
 #include <QMultiHash>
 #include <QObject>
 #include <QReadWriteLock>
@@ -54,6 +55,8 @@ public:
     std::shared_ptr<const DesktopEntrySnapshot> getEntries() const { return snapshot(); }
     std::optional<DesktopEntryRecord> findByDesktopFileName(const QString &fileName) const;
     std::optional<DesktopEntryRecord> findByDesktopId(const QString &id) const;
+    QJsonArray snapshotJson() const;
+    QStringList watchedDirectories() const;
     int revision() const;
 
 signals:

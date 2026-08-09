@@ -20,6 +20,7 @@ pub struct AstreaSpotlightBackend {
     astrea_root: String,
     locale: String,
     index: desktop::entries::DesktopEntryIndex,
+    external_catalog: Option<Vec<desktop::entries::DesktopEntry>>,
     searchable_entries: Vec<ranking::SearchableEntry>,
     usage_counts: HashMap<String, i32>,
     config: config::store::SpotlightConfig,
@@ -27,16 +28,37 @@ pub struct AstreaSpotlightBackend {
 
 impl AstreaSpotlightBackend {
     pub fn new(astrea_root: &str, locale: &str) -> Result<Self, String> {
+        Self::new_internal(astrea_root, locale, None)
+    }
+
+    pub fn new_with_catalog(
+        astrea_root: &str,
+        locale: &str,
+        entries: Vec<desktop::entries::DesktopEntry>,
+    ) -> Result<Self, String> {
+        Self::new_internal(astrea_root, locale, Some(entries))
+    }
+
+    fn new_internal(
+        astrea_root: &str,
+        locale: &str,
+        external_catalog: Option<Vec<desktop::entries::DesktopEntry>>,
+    ) -> Result<Self, String> {
         let mut backend = Self {
             astrea_root: astrea_root.to_string(),
             locale: locale.to_string(),
             index: desktop::entries::DesktopEntryIndex::new_with_locale(locale),
+            external_catalog,
             searchable_entries: Vec::new(),
             usage_counts: HashMap::new(),
             config: config::store::SpotlightConfig::default(),
         };
-        backend.index.reload();
-        backend.searchable_entries = ranking::build_searchable_index(backend.index.entries());
+        if let Some(entries) = backend.external_catalog.as_ref() {
+            backend.searchable_entries = ranking::build_searchable_index(entries);
+        } else {
+            backend.index.reload();
+            backend.searchable_entries = ranking::build_searchable_index(backend.index.entries());
+        }
         if let Err(e) = config::store::write_default_config() {
             eprintln!("write_default_config warning: {e}");
         }
@@ -45,10 +67,21 @@ impl AstreaSpotlightBackend {
         Ok(backend)
     }
 
+    pub fn set_catalog(&mut self, entries: Vec<desktop::entries::DesktopEntry>) {
+        self.external_catalog = Some(entries);
+        if let Some(entries) = self.external_catalog.as_ref() {
+            self.searchable_entries = ranking::build_searchable_index(entries);
+        }
+    }
+
     pub fn reload(&mut self) -> Result<(), String> {
-        self.index.set_locale(&self.locale);
-        self.index.reload();
-        self.searchable_entries = ranking::build_searchable_index(self.index.entries());
+        if let Some(entries) = self.external_catalog.as_ref() {
+            self.searchable_entries = ranking::build_searchable_index(entries);
+        } else {
+            self.index.set_locale(&self.locale);
+            self.index.reload();
+            self.searchable_entries = ranking::build_searchable_index(self.index.entries());
+        }
         self.usage_counts = usage::load_usage(&self.astrea_root);
         self.config = config::store::load_config();
         Ok(())

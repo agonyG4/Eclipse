@@ -33,7 +33,6 @@ AppIdentityResolver::AppIdentityResolver(QObject *parent)
 {
     qRegisterMetaType<WindowIdentityInput>();
     qRegisterMetaType<AppIdentity>();
-    m_desktopIndex = new DesktopEntryIndex(this);
     m_steamIndex = new SteamMetadataIndex(this);
 }
 
@@ -43,8 +42,20 @@ AppIdentityResolver::~AppIdentityResolver() {
 
 void AppIdentityResolver::initialize(const QString &customHome, const QString &customProc) {
     m_procRoot = customProc.isEmpty() ? QStringLiteral("/proc") : customProc;
+    if (!m_desktopIndex || !m_ownsDesktopIndex) {
+        m_desktopIndex = new DesktopEntryIndex(this);
+        m_ownsDesktopIndex = true;
+    }
     m_desktopIndex->initialize(customHome);
     m_steamIndex->initialize(customHome);
+}
+
+void AppIdentityResolver::initialize(DesktopEntryCatalog *catalog, const QString &customProc) {
+    m_procRoot = customProc.isEmpty() ? QStringLiteral("/proc") : customProc;
+    m_desktopIndex = catalog;
+    m_ownsDesktopIndex = false;
+    const QString homeDir = catalog ? catalog->snapshot()->homeDir : QString();
+    m_steamIndex->initialize(homeDir);
 }
 
 AppIdentity AppIdentityResolver::resolveSync(const WindowIdentityInput &input) {
@@ -215,15 +226,17 @@ AppIdentity AppIdentityResolver::resolveDeep(const WindowIdentityInput &input) {
     QString exeStem = WineExecutableResolver::parseExeStem(proc.cmdline, input.className);
     if (!exeStem.isEmpty()) {
         // Try matching with desktop files
-        auto desktopSnap = m_desktopIndex->getEntries();
-        for (const auto &entry : desktopSnap->entries) {
-            if (entry.hidden || entry.noDisplay)
-                continue;
-            if (entry.id.contains(exeStem, Qt::CaseInsensitive) || entry.name.contains(exeStem, Qt::CaseInsensitive)) {
-                result.iconName = entry.icon;
-                result.displayName = entry.name;
-                result.source = QStringLiteral("wine-desktop-match");
-                return result;
+        const auto desktopSnap = m_desktopIndex ? m_desktopIndex->getEntries() : nullptr;
+        if (desktopSnap) {
+            for (const auto &entry : desktopSnap->entries) {
+                if (entry.hidden || entry.noDisplay)
+                    continue;
+                if (entry.id.contains(exeStem, Qt::CaseInsensitive) || entry.name.contains(exeStem, Qt::CaseInsensitive)) {
+                    result.iconName = entry.icon;
+                    result.displayName = entry.name;
+                    result.source = QStringLiteral("wine-desktop-match");
+                    return result;
+                }
             }
         }
         result.displayName = exeStem;
@@ -349,6 +362,9 @@ AppIdentity AppIdentityResolver::resolveSteamAppId(const WindowIdentityInput &in
 
 AppIdentity AppIdentityResolver::resolveDesktopEntry(const WindowIdentityInput &input) {
     AppIdentity result;
+    if (!m_desktopIndex)
+        return result;
+
     const QString cls = input.className.toLower();
     const QString initCls = input.initialClass.toLower();
     const QString title = input.title.toLower();

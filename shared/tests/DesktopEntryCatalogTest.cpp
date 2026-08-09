@@ -14,6 +14,7 @@ private slots:
     void missingApplicationsDirectoryRecovers();
     void deletedApplicationsDirectoryRecreatesWatches();
     void higherPriorityEntryOverridesLowerPriorityEntry();
+    void preservesSpotlightFieldsAndSharedSnapshotIdentity();
 };
 
 static void writeDesktopFile(const QString &path, const QString &name)
@@ -118,6 +119,47 @@ void DesktopEntryCatalogTest::higherPriorityEntryOverridesLowerPriorityEntry()
     QCOMPARE(record->name, QStringLiteral("Higher"));
     QCOMPARE(record->sourceFilePath, homeApplications + QStringLiteral("/same.desktop"));
     QVERIFY(catalog.snapshot()->entries.size() >= 1);
+}
+
+void DesktopEntryCatalogTest::preservesSpotlightFieldsAndSharedSnapshotIdentity()
+{
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+    const QString applications = home.path() + QStringLiteral("/.local/share/applications");
+    QVERIFY(QDir().mkpath(applications));
+
+    QFile file(applications + QStringLiteral("/rich.desktop"));
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+    file.write("[Desktop Entry]\nType=Application\nName=Rich App\n"
+               "Name[en_US]=Rich App US\nGenericName=Launcher\n"
+               "GenericName[en_US]=Application Launcher\nComment=Find things\n"
+               "Comment[en_US]=Find applications\nIcon=rich-icon\nExec=rich-app %U\n"
+               "TryExec=rich-app\nStartupWMClass=RichApp\nTerminal=true\n"
+               "Keywords=one;two;\nCategories=Utility;Development;\n"
+               "OnlyShowIn=Hyprland;\nNotShowIn=GNOME;\n");
+    file.close();
+
+    DesktopEntryCatalog catalog;
+    catalog.initialize(home.path());
+
+    const auto firstSnapshot = catalog.snapshot();
+    const auto secondSnapshot = catalog.snapshot();
+    QVERIFY(firstSnapshot == secondSnapshot);
+    const auto record = catalog.findByDesktopFileName(QStringLiteral("rich.desktop"));
+    QVERIFY(record.has_value());
+    QCOMPARE(record->genericName, QStringLiteral("Launcher"));
+    QCOMPARE(record->comment, QStringLiteral("Find things"));
+    QCOMPARE(record->localizedNames.value(QStringLiteral("en_US")), QStringLiteral("Rich App US"));
+    QCOMPARE(record->localizedGenericNames.value(QStringLiteral("en_US")),
+             QStringLiteral("Application Launcher"));
+    QCOMPARE(record->localizedComments.value(QStringLiteral("en_US")),
+             QStringLiteral("Find applications"));
+    QCOMPARE(record->keywords, QStringList({QStringLiteral("one"), QStringLiteral("two")}));
+    QCOMPARE(record->categories,
+             QStringList({QStringLiteral("Utility"), QStringLiteral("Development")}));
+    QCOMPARE(record->onlyShowIn, QStringList({QStringLiteral("Hyprland")}));
+    QCOMPARE(record->notShowIn, QStringList({QStringLiteral("GNOME")}));
+    QVERIFY(record->terminal);
 }
 
 QTEST_MAIN(DesktopEntryCatalogTest)

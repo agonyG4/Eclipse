@@ -51,6 +51,7 @@ add_subdirectory(Spotlight)
 add_subdirectory(AltTab)
 add_subdirectory(Dock)
 add_subdirectory(Settings)
+add_subdirectory(Shell)
 
 if(BUILD_TESTING)
     add_test(NAME create-source-archive-test

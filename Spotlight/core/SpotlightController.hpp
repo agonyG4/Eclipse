@@ -51,6 +51,8 @@ public:
     bool weatherEnabled() const { return m_weatherEnabled; }
     bool weatherReady() const { return m_weatherReady; }
     bool weatherLoading() const { return m_weatherLoading; }
+    DesktopEntryCatalog *catalog() const { return m_catalog; }
+    ApplicationLauncher *launcher() const { return m_launcher; }
     int weatherTemp() const { return m_weatherTemp; }
     QString weatherCity() const { return m_weatherCity; }
     QString weatherCondition() const { return m_weatherCondition; }

@@ -29,50 +29,23 @@ astrea_add_rust_backend(astrea_spotlight_rust_backend
 qt_add_executable(astrea-spotlight
     app/main.cpp
     app/CommandLine.cpp
-    app/SpotlightApplication.cpp
-    core/SpotlightController.cpp
-    core/SpotlightResultsModel.cpp
-    services/GameModeMonitor.cpp
-    services/SpotlightConfigWatcher.cpp
-    services/AstreaI18n.cpp
-    platform/ipc/SpotlightIpcServer.cpp
-    platform/wayland/LayerShellSurface.cpp
-    platform/runtime/SpotlightRuntimePaths.cpp
-    platform/rust/RustSpotlightBackend.cpp
+    ../Shell/platform/ipc/ShellIpcClient.cpp
 )
 
 target_include_directories(astrea-spotlight PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
-    "${CMAKE_CURRENT_SOURCE_DIR}/backend/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Shell"
 )
 
 target_link_libraries(astrea-spotlight PRIVATE
-    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Network
-    astrea_spotlight_backend
+    Qt6::Core Qt6::Gui Qt6::Network
     astrea-shared-core
-    astrea-shared-coreplugin
-    astrea-shared-layer-shell
-    dl pthread
 )
-
-
-qt_add_qml_module(astrea-spotlight
-    URI Astrea.Spotlight
-    VERSION 1.0
-    QML_FILES
-        qml/Main.qml
-        qml/components/SpotlightPanel.qml
-        qml/components/SpotlightResultsList.qml
-        qml/components/SpotlightWeatherChip.qml
-        qml/components/AstreaAppIcon.qml
-)
-qt_import_qml_plugins(astrea-spotlight)
 
 astrea_enable_warnings(astrea-spotlight)
 astrea_enable_sanitizers(astrea-spotlight)
 
 install(TARGETS astrea-spotlight RUNTIME DESTINATION bin)
-install(FILES packaging/systemd/astrea-spotlightd.service DESTINATION share/systemd/user)
 
 include(CTest)
 if(BUILD_TESTING AND ASTREA_SPOTLIGHT_BUILD_TESTS)

@@ -30,7 +30,9 @@ qmllint qml/Main.qml qml/components/*.qml
 
 ## Packaging
 
-The systemd user unit installs to `share/systemd/user/astrea-spotlightd.service`.
+Spotlight runs inside the unified `astrea-shell` process. The systemd user unit
+installs to `share/systemd/user/astrea-shell.service`; `astrea-spotlight` is a
+non-resident IPC compatibility client.
 
 ## CLI
 

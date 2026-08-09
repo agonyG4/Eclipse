@@ -35,7 +35,7 @@ QHash<QString, DockApplicationRuntimeState> DockApplicationStateProjector::proje
             ++state.windowCount;
         int insertAt = 0;
         while (insertAt < state.focusSerials.size()
-               && state.focusSerials.at(insertAt) > window.focusSerial) {
+               && state.focusSerials.at(insertAt) >= window.focusSerial) {
             ++insertAt;
         }
         state.windowIds.insert(insertAt, window.id);

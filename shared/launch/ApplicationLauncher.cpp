@@ -107,8 +107,27 @@ QStringList expandDesktopExec(const ApplicationLaunchRequest &request)
 } // namespace
 
 ApplicationLauncher::ApplicationLauncher(const QString &astreaLaunchPath, QObject *parent)
-    : QObject(parent), m_launchPath(astreaLaunchPath)
+    : QObject(parent)
+    , m_launchPath(resolveLauncherPath(astreaLaunchPath,
+                                       QProcessEnvironment::systemEnvironment()))
 {
+}
+
+QString ApplicationLauncher::resolveLauncherPath(const QString &fallbackPath,
+                                                  const QProcessEnvironment &environment)
+{
+    const bool isTyphon = environment.value(QStringLiteral("ASTREA_COMPOSITOR"))
+                              .compare(QStringLiteral("TYPHON"), Qt::CaseInsensitive)
+            == 0
+        || environment.value(QStringLiteral("ASTREA_COMPOSITOR_BACKEND"))
+                   .compare(QStringLiteral("typhon"), Qt::CaseInsensitive)
+            == 0;
+    if (isTyphon) {
+        const QString bridge = environment.value(QStringLiteral("ASTREA_SHELL_CONTROL_BRIDGE"));
+        if (!bridge.isEmpty())
+            return bridge;
+    }
+    return fallbackPath;
 }
 
 bool ApplicationLauncher::isRunning() const
@@ -168,9 +187,9 @@ void ApplicationLauncher::runSupervised(const QString &desktopId, const QStringL
             return;
         QString message;
         switch (error) {
-        case QProcess::FailedToStart: message = QStringLiteral("Failed to start astrea-launch"); break;
-        case QProcess::Crashed: message = QStringLiteral("astrea-launch crashed"); break;
-        case QProcess::Timedout: message = QStringLiteral("astrea-launch timed out"); break;
+        case QProcess::FailedToStart: message = QStringLiteral("Failed to start launch helper"); break;
+        case QProcess::Crashed: message = QStringLiteral("Launch helper crashed"); break;
+        case QProcess::Timedout: message = QStringLiteral("Launch helper timed out"); break;
         default: message = QStringLiteral("Launch process error"); break;
         }
         complete(process, false, message);

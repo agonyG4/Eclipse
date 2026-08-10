@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QHash>
+#include <QProcessEnvironment>
 #include <QProcess>
 #include <QString>
 #include <QTimer>
@@ -20,6 +21,9 @@ class ApplicationLauncher : public QObject {
 
 public:
     explicit ApplicationLauncher(const QString &astreaLaunchPath, QObject *parent = nullptr);
+
+    static QString resolveLauncherPath(const QString &fallbackPath,
+                                       const QProcessEnvironment &environment);
 
     virtual void launchDesktop(const ApplicationLaunchRequest &request);
     void launchDesktop(const QString &desktopId, const QString &desktopFileName,

@@ -6,7 +6,7 @@
 
 **Architecture:** Extract one pure `DesktopEntryParser` from `DesktopEntryCatalog`; keep catalog discovery, precedence, tombstones, immutable snapshots, indexes, recursive watchers, debounce, revisioning, and JSON serialization in C++. Add locale and searchable-policy projection at the Rust external-catalog boundary without restoring production XDG scanning or a second watcher.
 
-**Tech Stack:** C++20, Qt 6 Core/Test, QFileSystemWatcher, Rust 2021, serde/serde_json, existing CMake/Cargo test targets, CTest.
+**Tech Stack:** C++20, Qt 6 Core/Test, QFileSystemWatcher, Rust 2024, serde/serde_json, existing CMake/Cargo test targets, CTest.
 
 ## Global Constraints
 

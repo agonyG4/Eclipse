@@ -15,6 +15,7 @@ compile_commands.json
 Testing/
 
 # Generated
+__pycache__/
 *.autogen/
 *.moc
 *.rcc

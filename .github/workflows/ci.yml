@@ -44,7 +44,16 @@ jobs:
           fi
       - name: Enforce workflow policy
         run: |
-          if rg -n 'pull_request_target|permissions: write|uses: .*@(main|master|v[0-9])' .github/workflows/ci.yml; then
+          policy_pattern='pull_request_'
+          policy_pattern+='target|permissions: '
+          policy_pattern+='write'
+          if rg -n "$policy_pattern" .github/workflows/ci.yml; then
+            echo "workflow policy violation"
+            exit 1
+          fi
+          mutable_ref_pattern='uses: .*@('
+          mutable_ref_pattern+='main|master|v[0-9])'
+          if rg -n "$mutable_ref_pattern" .github/workflows/ci.yml; then
             echo "workflow policy violation"
             exit 1
           fi

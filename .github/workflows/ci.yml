@@ -1,0 +1,188 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  QT_VERSION: '6.8.3'
+
+jobs:
+  policy:
+    name: policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      # actions/checkout v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - name: Run CI helper unit tests
+        run: python3 -m unittest discover -s tools/ci/tests -p 'test_*.py'
+      - name: Check shell syntax
+        run: bash -n tools/ci/*.sh
+      - name: List canonical CMake presets
+        run: cmake --list-presets=all
+      - name: Check repository whitespace
+        run: git diff --check
+      - name: Run actionlint when available
+        run: |
+          if command -v actionlint >/dev/null 2>&1; then
+            actionlint .github/workflows/ci.yml
+          else
+            echo "actionlint is not installed; workflow structure and pins are checked manually."
+          fi
+      - name: Enforce workflow policy
+        run: |
+          if rg -n 'pull_request_target|permissions: write|uses: .*@(main|master|v[0-9])' .github/workflows/ci.yml; then
+            echo "workflow policy violation"
+            exit 1
+          fi
+
+  rust:
+    name: rust
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      # actions/checkout v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Install stable Rust with quality components
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+          rustup default stable
+      - name: Run Rust gate
+        run: tools/ci/run-rust-gate.sh
+
+  qml:
+    name: qml
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      # actions/checkout v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Install native prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            clang \
+            g++ \
+            libegl1-mesa-dev \
+            libwayland-bin \
+            libwayland-dev \
+            libxkbcommon-dev \
+            ninja-build \
+            pkg-config \
+            python3 \
+            wayland-protocols
+      # jurplel/install-qt-action v4.3.1
+      - uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: linux
+          target: desktop
+          arch: gcc_64
+          modules: qtdeclarative qt5compat qtshadertools qttools
+          install-deps: true
+          cache: false
+      - name: Verify Qt version
+        run: test "$(qtpaths --qt-version)" = "$QT_VERSION"
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Run QML gate
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: tools/ci/run-qml-gate.sh
+
+  cmake-matrix:
+    name: cmake (${{ matrix.preset }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        preset:
+          - debug
+          - release
+          - clang
+          - asan
+          - ubsan
+          - no-typhon
+    steps:
+      # actions/checkout v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Install native prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            clang \
+            g++ \
+            libegl1-mesa-dev \
+            libwayland-bin \
+            libwayland-dev \
+            libxkbcommon-dev \
+            ninja-build \
+            pkg-config \
+            python3 \
+            wayland-protocols
+      # jurplel/install-qt-action v4.3.1
+      - uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: linux
+          target: desktop
+          arch: gcc_64
+          modules: qtdeclarative qt5compat qtshadertools qttools
+          install-deps: true
+          cache: false
+      - name: Verify Qt version
+        run: test "$(qtpaths --qt-version)" = "$QT_VERSION"
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Run CMake gate
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: tools/ci/run-cmake-gate.sh "${{ matrix.preset }}"
+      - name: Upload CMake diagnostics on failure
+        if: ${{ failure() }}
+        # actions/upload-artifact v4.6.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cmake-diagnostics-${{ matrix.preset }}-${{ github.run_id }}
+          path: |
+            build/${{ matrix.preset }}/Testing/Temporary/LastTest.log
+            build/${{ matrix.preset }}/ctest.junit.xml
+            build/${{ matrix.preset }}/CMakeCache.txt
+          if-no-files-found: ignore
+          retention-days: 5
+          compression-level: 0
+
+  required:
+    name: required
+    if: ${{ always() }}
+    needs:
+      - policy
+      - rust
+      - qml
+      - cmake-matrix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require all quality gates
+        if: ${{ needs.policy.result != 'success' || needs.rust.result != 'success' || needs.qml.result != 'success' || needs.cmake-matrix.result != 'success' }}
+        run: exit 1
+      - name: Publish required result
+        run: echo "CI / required passed"

@@ -10,6 +10,8 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick)
 find_package(LayerShellQt QUIET)
 
 add_library(astrea-shared-core STATIC
+    apps/DesktopEntryParser.cpp
+    apps/DesktopEntryParser.hpp
     apps/DesktopEntryCatalog.cpp
     apps/DesktopEntryCatalog.hpp
     launch/ApplicationLauncher.cpp

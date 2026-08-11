@@ -15,6 +15,8 @@ pub struct DesktopEntry {
     pub localized_generic_names: HashMap<String, String>,
     #[serde(default)]
     pub localized_comments: HashMap<String, String>,
+    #[serde(default)]
+    pub localized_keywords: HashMap<String, Vec<String>>,
     pub icon: String,
     pub exec: String,
     pub try_exec: String,
@@ -127,12 +129,14 @@ fn unescape_list_field(value: &str) -> Vec<String> {
 }
 
 fn normalize_locale(locale: &str) -> String {
-    let without_encoding = locale.split('.').next().unwrap_or(locale);
-    let without_modifier = without_encoding
-        .split('@')
-        .next()
-        .unwrap_or(without_encoding);
-    without_modifier.replace('-', "_")
+    let (base, modifier) = locale.split_once('@').unwrap_or((locale, ""));
+    let base_without_encoding = base.split('.').next().unwrap_or(base);
+    let normalized_base = base_without_encoding.replace('-', "_");
+    if modifier.is_empty() {
+        normalized_base
+    } else {
+        format!("{normalized_base}@{modifier}")
+    }
 }
 
 pub fn locale_priority_from_astrea(locale: &str) -> Vec<String> {
@@ -141,27 +145,46 @@ pub fn locale_priority_from_astrea(locale: &str) -> Vec<String> {
         return Vec::new();
     }
 
+    let (base, modifier) = normalized.split_once('@').unwrap_or((&normalized, ""));
+    let language = base.split('_').next().unwrap_or(base);
     let mut priority = Vec::new();
-    priority.push(normalized.clone());
-    if let Some(lang) = normalized.split(['_', '-']).next()
-        && !lang.is_empty()
-        && lang != normalized
-    {
-        priority.push(lang.to_string());
+    let mut append = |candidate: String| {
+        if !candidate.is_empty() && !priority.contains(&candidate) {
+            priority.push(candidate);
+        }
+    };
+    if !modifier.is_empty() {
+        append(format!("{base}@{modifier}"));
+    } else {
+        append(base.to_string());
+    }
+    if !modifier.is_empty() {
+        append(base.to_string());
+        if language != base {
+            append(format!("{language}@{modifier}"));
+        }
+    }
+    if language != base {
+        append(language.to_string());
     }
     priority
 }
 
+fn locale_value_matches(key: &str, priority: &str) -> bool {
+    normalize_locale(key) == priority
+}
+
 fn select_best_locale(candidates: &HashMap<String, String>, priority: &[String]) -> Option<String> {
     for loc in priority {
-        let normalized = normalize_locale(loc);
-        if let Some(val) = candidates.get(&normalized) {
+        if let Some(val) = candidates.get(loc) {
             return Some(val.clone());
         }
-        if let Some(lang) = normalized.split(['_', '-']).next()
-            && let Some(val) = candidates.get(lang)
-        {
-            return Some(val.clone());
+        let mut keys: Vec<&String> = candidates.keys().collect();
+        keys.sort();
+        for key in keys {
+            if locale_value_matches(key, loc) {
+                return candidates.get(key).cloned();
+            }
         }
     }
     candidates.get("").cloned()
@@ -172,17 +195,113 @@ fn select_best_locale_for_keywords(
     priority: &[String],
 ) -> Option<Vec<String>> {
     for loc in priority {
-        let normalized = normalize_locale(loc);
-        if let Some(val) = candidates.get(&normalized) {
+        if let Some(val) = candidates.get(loc) {
             return Some(val.clone());
         }
-        if let Some(lang) = normalized.split(['_', '-']).next()
-            && let Some(val) = candidates.get(lang)
-        {
-            return Some(val.clone());
+        let mut keys: Vec<&String> = candidates.keys().collect();
+        keys.sort();
+        for key in keys {
+            if locale_value_matches(key, loc) {
+                return candidates.get(key).cloned();
+            }
         }
     }
     candidates.get("").cloned()
+}
+
+fn is_executable_regular_file(path: &Path) -> bool {
+    let Ok(metadata) = fs::metadata(path) else {
+        return false;
+    };
+    if !metadata.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        return metadata.permissions().mode() & 0o111 != 0;
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
+fn resolve_try_exec(command: &str) -> Option<PathBuf> {
+    let candidate = Path::new(command);
+    if candidate.is_absolute() {
+        return is_executable_regular_file(candidate).then(|| candidate.to_path_buf());
+    }
+
+    let paths = std::env::var_os("PATH")?;
+    std::env::split_paths(&paths)
+        .map(|directory| directory.join(command))
+        .find(|path| is_executable_regular_file(path))
+}
+
+fn current_desktop_tokens() -> Vec<String> {
+    std::env::var("XDG_CURRENT_DESKTOP")
+        .unwrap_or_default()
+        .split(':')
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+fn desktop_token_matches(tokens: &[String], candidate: &str) -> bool {
+    tokens.iter().any(|token| token == candidate)
+}
+
+pub fn project_external_catalog(entries: &[DesktopEntry], locale: &str) -> Vec<DesktopEntry> {
+    let priority = locale_priority_from_astrea(locale);
+    let desktop_tokens = current_desktop_tokens();
+
+    entries
+        .iter()
+        .filter_map(|entry| {
+            if entry.hidden || entry.no_display {
+                return None;
+            }
+            if !entry.only_show_in.is_empty()
+                && !entry
+                    .only_show_in
+                    .iter()
+                    .any(|candidate| desktop_token_matches(&desktop_tokens, candidate))
+            {
+                return None;
+            }
+            if entry
+                .not_show_in
+                .iter()
+                .any(|candidate| desktop_token_matches(&desktop_tokens, candidate))
+            {
+                return None;
+            }
+            if !entry.try_exec.is_empty() && resolve_try_exec(&entry.try_exec).is_none() {
+                return None;
+            }
+
+            let mut projected = entry.clone();
+            if let Some(name) = select_best_locale(&entry.localized_names, &priority) {
+                projected.name = name;
+            }
+            if let Some(generic_name) =
+                select_best_locale(&entry.localized_generic_names, &priority)
+            {
+                projected.generic_name = generic_name;
+            }
+            if let Some(comment) = select_best_locale(&entry.localized_comments, &priority) {
+                projected.comment = comment;
+            }
+            if let Some(keywords) =
+                select_best_locale_for_keywords(&entry.localized_keywords, &priority)
+            {
+                projected.keywords = keywords;
+            }
+            Some(projected)
+        })
+        .collect()
 }
 
 fn parse_desktop_file(
@@ -254,18 +373,18 @@ fn parse_desktop_file(
             "Path" => entry.path = value,
             "StartupWMClass" => entry.startup_wm_class = value,
             "Keywords" => {
-                let kw = unescape_list_field(&value);
+                let kw = unescape_list_field(&raw_value);
                 entry.keywords.clone_from(&kw);
                 locale_keywords.insert(String::new(), kw);
             }
             "Categories" => {
-                entry.categories = unescape_list_field(&value);
+                entry.categories = unescape_list_field(&raw_value);
             }
             "OnlyShowIn" => {
-                entry.only_show_in = unescape_list_field(&value);
+                entry.only_show_in = unescape_list_field(&raw_value);
             }
             "NotShowIn" => {
-                entry.not_show_in = unescape_list_field(&value);
+                entry.not_show_in = unescape_list_field(&raw_value);
             }
             _ => {
                 if let Some(rest) = key.strip_prefix("Name[") {
@@ -283,7 +402,7 @@ fn parse_desktop_file(
                 } else if let Some(rest) = key.strip_prefix("Keywords[")
                     && let Some(lang) = rest.strip_suffix(']')
                 {
-                    locale_keywords.insert(lang.to_string(), unescape_list_field(&value));
+                    locale_keywords.insert(lang.to_string(), unescape_list_field(&raw_value));
                 }
             }
         }
@@ -311,78 +430,12 @@ fn parse_desktop_file(
 
     if !entry.try_exec.is_empty() {
         let v = &entry.try_exec;
-        let v_path = if v.starts_with('/') {
-            PathBuf::from(v)
-        } else {
-            which(v).unwrap_or_default()
-        };
-        if v_path.as_os_str().is_empty() || !v_path.exists() {
+        if resolve_try_exec(v).is_none() {
             return None;
         }
     }
 
     Some(entry)
-}
-
-fn which(cmd: &str) -> Option<PathBuf> {
-    std::env::var_os("PATH").and_then(|paths| {
-        std::env::split_paths(&paths).find_map(|dir| {
-            let full = dir.join(cmd);
-            if full.is_file() { Some(full) } else { None }
-        })
-    })
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum DesktopEnvironment {
-    Hyprland,
-    GNOME,
-    KDE,
-    Unity,
-    Sway,
-    XFCE,
-    MATE,
-    Cinnamon,
-    LXDE,
-    Budgie,
-    Other,
-}
-
-impl DesktopEnvironment {
-    fn current_tokens() -> Vec<String> {
-        let xdg = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
-        xdg.split(':')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect()
-    }
-
-    fn current() -> Self {
-        let tokens = Self::current_tokens();
-        if tokens.is_empty() {
-            Self::Other
-        } else {
-            match tokens[0].as_str() {
-                "Hyprland" => Self::Hyprland,
-                "GNOME" => Self::GNOME,
-                "KDE" => Self::KDE,
-                "Unity" => Self::Unity,
-                "Sway" => Self::Sway,
-                "XFCE" => Self::XFCE,
-                "MATE" => Self::MATE,
-                "Cinnamon" => Self::Cinnamon,
-                "LXDE" => Self::LXDE,
-                "Budgie" => Self::Budgie,
-                _ => Self::Other,
-            }
-        }
-    }
-
-    fn matches(&self, desktop_name: &str) -> bool {
-        let xdg = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
-        xdg.split(':')
-            .any(|de| de.trim().eq_ignore_ascii_case(desktop_name))
-    }
 }
 
 fn collect_desktop_files(dir: &Path, max_depth: usize) -> Vec<PathBuf> {
@@ -391,7 +444,7 @@ fn collect_desktop_files(dir: &Path, max_depth: usize) -> Vec<PathBuf> {
     let mut visited = HashSet::new();
 
     while let Some((current, depth)) = dirs_to_scan.pop() {
-        if depth >= max_depth || !visited.insert(current.canonicalize().unwrap_or_default()) {
+        if depth > max_depth || !visited.insert(current.canonicalize().unwrap_or_default()) {
             continue;
         }
         if let Ok(read) = fs::read_dir(&current) {
@@ -449,7 +502,7 @@ impl DesktopEntryIndex {
         let mut tombstones = HashSet::new();
         let dirs = find_application_dirs();
         self.watcher_dirs = dirs.clone();
-        let current_de = DesktopEnvironment::current();
+        let current_desktop = current_desktop_tokens();
 
         for dir in &dirs {
             if !dir.exists() {
@@ -469,13 +522,19 @@ impl DesktopEntryIndex {
                         continue;
                     }
                     if !de.only_show_in.is_empty()
-                        && !de.only_show_in.iter().any(|s| current_de.matches(s))
+                        && !de
+                            .only_show_in
+                            .iter()
+                            .any(|s| desktop_token_matches(&current_desktop, s))
                     {
                         tombstones.insert(key);
                         continue;
                     }
                     if !de.not_show_in.is_empty()
-                        && de.not_show_in.iter().any(|s| current_de.matches(s))
+                        && de
+                            .not_show_in
+                            .iter()
+                            .any(|s| desktop_token_matches(&current_desktop, s))
                     {
                         tombstones.insert(key);
                         continue;

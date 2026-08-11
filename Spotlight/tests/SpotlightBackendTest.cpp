@@ -21,6 +21,28 @@
 #include "apps/DesktopEntryCatalog.hpp"
 #include "icons/AstreaIconTheme.hpp"
 
+class ScopedEnvironment final {
+public:
+    ScopedEnvironment(const char *name, const QByteArray &value)
+        : m_name(name), m_wasSet(qEnvironmentVariableIsSet(name)), m_previous(qgetenv(name))
+    {
+        qputenv(m_name.constData(), value);
+    }
+
+    ~ScopedEnvironment()
+    {
+        if (m_wasSet)
+            qputenv(m_name.constData(), m_previous);
+        else
+            qunsetenv(m_name.constData());
+    }
+
+private:
+    QByteArray m_name;
+    bool m_wasSet = false;
+    QByteArray m_previous;
+};
+
 class TestSpotlightBackend : public QObject {
     Q_OBJECT
 
@@ -30,6 +52,7 @@ private slots:
     void testResultsClear();
     void testExternalCatalogSnapshot();
     void testSharedCatalogSnapshot();
+    void testSharedCatalogExternalProjectionIntegration();
     void testIpcParseCommands();
     void testIpcRoundtrip();
     void testIpcStatusResponse();
@@ -164,6 +187,123 @@ void TestSpotlightBackend::testSharedCatalogSnapshot()
     QVERIFY(!results.isEmpty());
     QCOMPARE(results.first().toObject().value(QStringLiteral("icon")).toString(),
              QStringLiteral("m7d-shared-icon"));
+}
+
+void TestSpotlightBackend::testSharedCatalogExternalProjectionIntegration()
+{
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+    const QString applications = home.path()
+        + QStringLiteral("/.local/share/applications/vendor/tools");
+    const QString bin = home.path() + QStringLiteral("/bin");
+    QVERIFY(QDir().mkpath(applications));
+    QVERIFY(QDir().mkpath(bin));
+
+    const QString validExecutable = bin + QStringLiteral("/bridge-runtime");
+    QFile executable(validExecutable);
+    QVERIFY(executable.open(QIODevice::WriteOnly | QIODevice::Text));
+    executable.write("#!/bin/sh\n");
+    executable.close();
+    QVERIFY(QFile::setPermissions(validExecutable,
+                                  QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                      | QFileDevice::ExeOwner));
+
+    auto write = [](const QString &path, const QByteArray &contents) {
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+        QCOMPARE(file.write(contents), static_cast<qint64>(contents.size()));
+    };
+    write(applications + QStringLiteral("/bridge.desktop"),
+          "[Desktop Entry]\nType=Application\nName=Base Bridge\n"
+          "Name[pt_BR]=Nome Ponte\nKeywords=base-bridge;\n"
+          "Keywords[pt_BR]=palavra-ponte;\nExec=bridge\n"
+          "TryExec=bridge-runtime\nStartupWMClass=BridgeApp\n");
+    write(home.path() + QStringLiteral("/.local/share/applications/no-display.desktop"),
+          "[Desktop Entry]\nType=Application\nName=Raw No Display\n"
+          "NoDisplay=true\nExec=raw-no-display\n");
+    write(home.path() + QStringLiteral("/.local/share/applications/incompatible.desktop"),
+          "[Desktop Entry]\nType=Application\nName=Incompatible\n"
+          "OnlyShowIn=GNOME;\nExec=incompatible\n");
+    write(home.path() + QStringLiteral("/.local/share/applications/not-show.desktop"),
+          "[Desktop Entry]\nType=Application\nName=Not Show\n"
+          "NotShowIn=Astrea;\nExec=not-show\n");
+    write(home.path() + QStringLiteral("/.local/share/applications/invalid-try-exec.desktop"),
+          "[Desktop Entry]\nType=Application\nName=Invalid Try Exec\n"
+          "TryExec=missing-bridge-runtime\nExec=invalid-try-exec\n");
+
+    ScopedEnvironment desktop("XDG_CURRENT_DESKTOP", "Astrea");
+    ScopedEnvironment path("PATH", bin.toUtf8());
+    DesktopEntryCatalog catalog;
+    catalog.initialize(home.path());
+
+    QJsonObject nestedRaw;
+    QJsonObject noDisplayRaw;
+    QJsonObject incompatibleRaw;
+    QJsonObject invalidTryExecRaw;
+    for (const QJsonValue &value : catalog.snapshotJson()) {
+        const QJsonObject object = value.toObject();
+        const QString id = object.value(QStringLiteral("id")).toString();
+        if (id == QStringLiteral("vendor-tools-bridge"))
+            nestedRaw = object;
+        else if (id == QStringLiteral("no-display"))
+            noDisplayRaw = object;
+        else if (id == QStringLiteral("incompatible"))
+            incompatibleRaw = object;
+        else if (id == QStringLiteral("invalid-try-exec"))
+            invalidTryExecRaw = object;
+    }
+    QVERIFY(!nestedRaw.isEmpty());
+    QVERIFY(!noDisplayRaw.isEmpty());
+    QVERIFY(!incompatibleRaw.isEmpty());
+    QVERIFY(!invalidTryExecRaw.isEmpty());
+    QCOMPARE(nestedRaw.value(QStringLiteral("desktop_file_name")).toString(),
+             QStringLiteral("vendor-tools-bridge.desktop"));
+    QCOMPARE(nestedRaw.value(QStringLiteral("localized_keywords")).toObject()
+                 .value(QStringLiteral("pt_BR")).toArray().first().toString(),
+             QStringLiteral("palavra-ponte"));
+    QCOMPARE(noDisplayRaw.value(QStringLiteral("no_display")).toBool(), true);
+    QCOMPARE(incompatibleRaw.value(QStringLiteral("only_show_in")).toArray().first().toString(),
+             QStringLiteral("GNOME"));
+
+    RustSpotlightBackend backend;
+    QString error;
+    QVERIFY2(backend.createWithCatalog(home.path(), QStringLiteral("pt_BR.UTF-8"),
+                                       catalog.snapshotJson(), &error),
+             qPrintable(error));
+
+    QJsonArray results = backend.search(QStringLiteral("nome ponte"), 6, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QCOMPARE(results.size(), 1);
+    const QJsonObject nestedResult = results.first().toObject();
+    QCOMPARE(nestedResult.value(QStringLiteral("id")).toString(),
+             QStringLiteral("vendor-tools-bridge"));
+    QCOMPARE(nestedResult.value(QStringLiteral("desktopFileName")).toString(),
+             QStringLiteral("vendor-tools-bridge.desktop"));
+    const QJsonArray keywordResults = backend.search(QStringLiteral("palavra ponte"), 6, &error);
+    bool foundLocalizedKeyword = false;
+    for (const QJsonValue &value : keywordResults) {
+        if (value.toObject().value(QStringLiteral("id")).toString()
+            == QStringLiteral("vendor-tools-bridge")) {
+            foundLocalizedKeyword = true;
+            break;
+        }
+    }
+    QVERIFY(foundLocalizedKeyword);
+    auto resultContainsId = [](const QJsonArray &values, const QString &id) {
+        for (const QJsonValue &value : values) {
+            if (value.toObject().value(QStringLiteral("id")).toString() == id)
+                return true;
+        }
+        return false;
+    };
+    QVERIFY(!resultContainsId(backend.search(QStringLiteral("raw no display"), 6, &error),
+                             QStringLiteral("no-display")));
+    QVERIFY(!resultContainsId(backend.search(QStringLiteral("incompatible"), 6, &error),
+                             QStringLiteral("incompatible")));
+    QVERIFY(!resultContainsId(backend.search(QStringLiteral("not show"), 6, &error),
+                             QStringLiteral("not-show")));
+    QVERIFY(!resultContainsId(backend.search(QStringLiteral("invalid try exec"), 6, &error),
+                             QStringLiteral("invalid-try-exec")));
 }
 
 void TestSpotlightBackend::testIpcParseCommands() {

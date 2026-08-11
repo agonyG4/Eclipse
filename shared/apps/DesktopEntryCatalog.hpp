@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QFileSystemWatcher>
-#include <QHash>
 #include <QJsonArray>
 #include <QMultiHash>
 #include <QObject>
@@ -12,28 +11,7 @@
 #include <memory>
 #include <optional>
 
-struct DesktopEntryRecord {
-    QString desktopFileName;
-    QString id;
-    QString name;
-    QString genericName;
-    QString comment;
-    QHash<QString, QString> localizedNames;
-    QHash<QString, QString> localizedGenericNames;
-    QHash<QString, QString> localizedComments;
-    QString icon;
-    QString exec;
-    QString tryExec;
-    QString startupWmClass;
-    QString sourceFilePath;
-    QStringList keywords;
-    QStringList categories;
-    QStringList onlyShowIn;
-    QStringList notShowIn;
-    bool terminal = false;
-    bool noDisplay = false;
-    bool hidden = false;
-};
+#include "apps/DesktopEntryParser.hpp"
 
 struct DesktopEntrySnapshot {
     quint64 revision = 0;
@@ -64,11 +42,13 @@ signals:
 
 private slots:
     void onDirectoryChanged(const QString &path);
+    void onFileChanged(const QString &path);
     void rebuildIndex();
 
 private:
     QStringList searchDirectories() const;
     void watchDirectories(const QStringList &directories);
+    void watchFiles(const QStringList &files);
 
     mutable QReadWriteLock m_snapshotLock;
     std::shared_ptr<const DesktopEntrySnapshot> m_snapshot;

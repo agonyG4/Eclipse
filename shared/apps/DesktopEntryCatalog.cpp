@@ -1,40 +1,30 @@
 #include "apps/DesktopEntryCatalog.hpp"
 
 #include <QDir>
-#include <QFile>
 #include <QFileInfo>
 #include <QJsonObject>
 #include <QProcessEnvironment>
 #include <QReadLocker>
 #include <QSet>
-#include <QTextStream>
 #include <QWriteLocker>
+
+#include <algorithm>
 
 namespace {
 
-bool parseBoolean(const QString &value)
-{
-    return value.trimmed().compare(QStringLiteral("true"), Qt::CaseInsensitive) == 0;
-}
-
-QStringList parseList(const QString &value)
-{
-    QStringList result;
-    for (const QString &part : value.split(QLatin1Char(';'), Qt::SkipEmptyParts)) {
-        const QString trimmed = part.trimmed();
-        if (!trimmed.isEmpty())
-            result.append(trimmed);
-    }
-    return result;
-}
+constexpr int kMaximumScanDepth = 5;
+constexpr int kMaximumFilesPerRoot = 10000;
 
 QStringList uniquePaths(const QStringList &paths)
 {
     QStringList result;
+    QSet<QString> seen;
     for (const QString &path : paths) {
         const QString clean = QDir::cleanPath(path);
-        if (!clean.isEmpty() && !result.contains(clean))
+        if (!clean.isEmpty() && !seen.contains(clean)) {
+            seen.insert(clean);
             result.append(clean);
+        }
     }
     return result;
 }
@@ -51,6 +41,54 @@ QString nearestExistingDirectory(const QString &path)
     return candidate;
 }
 
+struct CollectedRoot {
+    QStringList files;
+    QStringList directories;
+};
+
+CollectedRoot collectDesktopFiles(const QString &root)
+{
+    CollectedRoot result;
+    const QString absoluteRoot = QFileInfo(root).absoluteFilePath();
+    if (!QDir(absoluteRoot).exists())
+        return result;
+
+    QVector<QPair<QString, int>> pending;
+    pending.append({absoluteRoot, 0});
+    qsizetype nextDirectory = 0;
+    bool fileLimitReached = false;
+    while (nextDirectory < pending.size() && !fileLimitReached) {
+        const auto [currentPath, depth] = pending.at(nextDirectory++);
+        if (depth > kMaximumScanDepth)
+            continue;
+
+        result.directories.append(currentPath);
+        QFileInfoList children = QDir(currentPath).entryInfoList(
+            QDir::AllEntries | QDir::NoDotAndDotDot, QDir::NoSort);
+        std::sort(children.begin(), children.end(), [](const QFileInfo &left, const QFileInfo &right) {
+            return left.absoluteFilePath() < right.absoluteFilePath();
+        });
+
+        for (const QFileInfo &child : children) {
+            if (child.isDir()) {
+                if (!child.isSymLink())
+                    pending.append({child.absoluteFilePath(), depth + 1});
+                continue;
+            }
+            if (child.isFile() && child.suffix() == QStringLiteral("desktop")) {
+                result.files.append(child.absoluteFilePath());
+                if (result.files.size() == kMaximumFilesPerRoot) {
+                    fileLimitReached = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    std::sort(result.files.begin(), result.files.end());
+    return result;
+}
+
 } // namespace
 
 DesktopEntryCatalog::DesktopEntryCatalog(QObject *parent)
@@ -61,6 +99,8 @@ DesktopEntryCatalog::DesktopEntryCatalog(QObject *parent)
     connect(&m_debounceTimer, &QTimer::timeout, this, &DesktopEntryCatalog::rebuildIndex);
     connect(&m_watcher, &QFileSystemWatcher::directoryChanged,
             this, &DesktopEntryCatalog::onDirectoryChanged);
+    connect(&m_watcher, &QFileSystemWatcher::fileChanged,
+            this, &DesktopEntryCatalog::onFileChanged);
 }
 
 void DesktopEntryCatalog::initialize(const QString &customHome)
@@ -102,20 +142,30 @@ QJsonArray DesktopEntryCatalog::snapshotJson() const
 {
     QJsonArray result;
     const auto current = snapshot();
-    for (const DesktopEntryRecord &entry : current->entries) {
-        auto listToJson = [](const QStringList &values) {
+    const auto listToJson = [](const QStringList &values) {
+        QJsonArray array;
+        for (const QString &value : values)
+            array.append(value);
+        return array;
+    };
+    const auto hashToJson = [](const QHash<QString, QString> &values) {
+        QJsonObject object;
+        for (auto it = values.constBegin(); it != values.constEnd(); ++it)
+            object.insert(it.key(), it.value());
+        return object;
+    };
+    const auto hashListToJson = [](const QHash<QString, QStringList> &values) {
+        QJsonObject object;
+        for (auto it = values.constBegin(); it != values.constEnd(); ++it) {
             QJsonArray array;
-            for (const QString &value : values)
+            for (const QString &value : it.value())
                 array.append(value);
-            return array;
-        };
-        auto hashToJson = [](const QHash<QString, QString> &values) {
-            QJsonObject object;
-            for (auto it = values.constBegin(); it != values.constEnd(); ++it)
-                object.insert(it.key(), it.value());
-            return object;
-        };
+            object.insert(it.key(), array);
+        }
+        return object;
+    };
 
+    for (const DesktopEntryRecord &entry : current->entries) {
         result.append(QJsonObject{
             {QStringLiteral("id"), entry.id},
             {QStringLiteral("name"), entry.name},
@@ -124,6 +174,7 @@ QJsonArray DesktopEntryCatalog::snapshotJson() const
             {QStringLiteral("localized_names"), hashToJson(entry.localizedNames)},
             {QStringLiteral("localized_generic_names"), hashToJson(entry.localizedGenericNames)},
             {QStringLiteral("localized_comments"), hashToJson(entry.localizedComments)},
+            {QStringLiteral("localized_keywords"), hashListToJson(entry.localizedKeywords)},
             {QStringLiteral("icon"), entry.icon},
             {QStringLiteral("exec"), entry.exec},
             {QStringLiteral("try_exec"), entry.tryExec},
@@ -185,87 +236,43 @@ void DesktopEntryCatalog::watchDirectories(const QStringList &directories)
     }
 }
 
+void DesktopEntryCatalog::watchFiles(const QStringList &files)
+{
+    const QStringList watched = m_watcher.files();
+    if (!watched.isEmpty())
+        m_watcher.removePaths(watched);
+
+    const QStringList unique = uniquePaths(files);
+    if (!unique.isEmpty())
+        m_watcher.addPaths(unique);
+}
+
 void DesktopEntryCatalog::rebuildIndex()
 {
-    const QStringList directories = searchDirectories();
+    const QStringList roots = searchDirectories();
     auto next = std::make_shared<DesktopEntrySnapshot>();
     next->homeDir = m_homeDir;
     next->revision = snapshot()->revision + 1;
 
-    for (const QString &directory : directories) {
-        const QDir dir(directory);
-        if (!dir.exists())
-            continue;
-
-        const QStringList files = dir.entryList({QStringLiteral("*.desktop")},
-                                                QDir::Files | QDir::Readable, QDir::Name);
-        for (const QString &fileName : files) {
-            if (next->byDesktopFileName.contains(fileName))
+    QStringList watchPaths;
+    QStringList filePaths;
+    QSet<QString> consumedIds;
+    for (const QString &root : roots) {
+        watchPaths.append(root);
+        const CollectedRoot collected = collectDesktopFiles(root);
+        watchPaths.append(collected.directories);
+        filePaths.append(collected.files);
+        for (const QString &sourcePath : collected.files) {
+            const auto parsed = DesktopEntryParser::parse(sourcePath, root);
+            if (!parsed.has_value())
                 continue;
 
-            const QString sourcePath = dir.absoluteFilePath(fileName);
-            QFile file(sourcePath);
-            if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+            const DesktopEntryRecord &record = parsed.value();
+            if (consumedIds.contains(record.id))
                 continue;
-
-            DesktopEntryRecord record;
-            record.desktopFileName = fileName;
-            record.id = fileName.chopped(QStringLiteral(".desktop").size());
-            record.sourceFilePath = sourcePath;
-
-            QTextStream stream(&file);
-            bool inDesktopEntry = false;
-            while (!stream.atEnd()) {
-                const QString line = stream.readLine().trimmed();
-                if (line.startsWith(QLatin1Char('[')) && line.endsWith(QLatin1Char(']'))) {
-                    inDesktopEntry = line == QStringLiteral("[Desktop Entry]");
-                    continue;
-                }
-                if (!inDesktopEntry)
-                    continue;
-
-                const int separator = static_cast<int>(line.indexOf(QLatin1Char('=')));
-                if (separator <= 0)
-                    continue;
-                const QString key = line.left(separator);
-                const QString value = line.mid(separator + 1);
-                if (key == QStringLiteral("Name"))
-                    record.name = value;
-                else if (key == QStringLiteral("GenericName"))
-                    record.genericName = value;
-                else if (key == QStringLiteral("Comment"))
-                    record.comment = value;
-                else if (key == QStringLiteral("Icon"))
-                    record.icon = value;
-                else if (key == QStringLiteral("Exec"))
-                    record.exec = value;
-                else if (key == QStringLiteral("TryExec"))
-                    record.tryExec = value;
-                else if (key == QStringLiteral("StartupWMClass"))
-                    record.startupWmClass = value;
-                else if (key == QStringLiteral("Keywords"))
-                    record.keywords = parseList(value);
-                else if (key == QStringLiteral("Categories"))
-                    record.categories = parseList(value);
-                else if (key == QStringLiteral("OnlyShowIn"))
-                    record.onlyShowIn = parseList(value);
-                else if (key == QStringLiteral("NotShowIn"))
-                    record.notShowIn = parseList(value);
-                else if (key == QStringLiteral("Terminal"))
-                    record.terminal = parseBoolean(value);
-                else if (key == QStringLiteral("NoDisplay"))
-                    record.noDisplay = parseBoolean(value);
-                else if (key == QStringLiteral("Hidden"))
-                    record.hidden = parseBoolean(value);
-                else if (key.startsWith(QStringLiteral("Name[")) && key.endsWith(QLatin1Char(']')))
-                    record.localizedNames.insert(key.mid(5, key.size() - 6), value);
-                else if (key.startsWith(QStringLiteral("GenericName["))
-                         && key.endsWith(QLatin1Char(']')))
-                    record.localizedGenericNames.insert(key.mid(12, key.size() - 13), value);
-                else if (key.startsWith(QStringLiteral("Comment["))
-                         && key.endsWith(QLatin1Char(']')))
-                    record.localizedComments.insert(key.mid(8, key.size() - 9), value);
-            }
+            consumedIds.insert(record.id);
+            if (record.hidden)
+                continue;
 
             const int index = static_cast<int>(next->entries.size());
             next->entries.append(record);
@@ -276,7 +283,8 @@ void DesktopEntryCatalog::rebuildIndex()
         }
     }
 
-    watchDirectories(directories);
+    watchDirectories(watchPaths);
+    watchFiles(filePaths);
     {
         QWriteLocker lock(&m_snapshotLock);
         m_snapshot = std::move(next);
@@ -285,6 +293,12 @@ void DesktopEntryCatalog::rebuildIndex()
 }
 
 void DesktopEntryCatalog::onDirectoryChanged(const QString &path)
+{
+    Q_UNUSED(path);
+    m_debounceTimer.start();
+}
+
+void DesktopEntryCatalog::onFileChanged(const QString &path)
 {
     Q_UNUSED(path);
     m_debounceTimer.start();

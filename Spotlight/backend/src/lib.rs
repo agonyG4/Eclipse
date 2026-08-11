@@ -54,7 +54,9 @@ impl AstreaSpotlightBackend {
             config: config::store::SpotlightConfig::default(),
         };
         if let Some(entries) = backend.external_catalog.as_ref() {
-            backend.searchable_entries = ranking::build_searchable_index(entries);
+            backend.searchable_entries = ranking::build_searchable_index(
+                &desktop::entries::project_external_catalog(entries, &backend.locale),
+            );
         } else {
             backend.index.reload();
             backend.searchable_entries = ranking::build_searchable_index(backend.index.entries());
@@ -70,13 +72,17 @@ impl AstreaSpotlightBackend {
     pub fn set_catalog(&mut self, entries: Vec<desktop::entries::DesktopEntry>) {
         self.external_catalog = Some(entries);
         if let Some(entries) = self.external_catalog.as_ref() {
-            self.searchable_entries = ranking::build_searchable_index(entries);
+            self.searchable_entries = ranking::build_searchable_index(
+                &desktop::entries::project_external_catalog(entries, &self.locale),
+            );
         }
     }
 
     pub fn reload(&mut self) -> Result<(), String> {
         if let Some(entries) = self.external_catalog.as_ref() {
-            self.searchable_entries = ranking::build_searchable_index(entries);
+            self.searchable_entries = ranking::build_searchable_index(
+                &desktop::entries::project_external_catalog(entries, &self.locale),
+            );
         } else {
             self.index.set_locale(&self.locale);
             self.index.reload();

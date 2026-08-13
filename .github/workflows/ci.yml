@@ -27,6 +27,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Run CI helper unit tests
         run: python3 -m unittest discover -s tools/ci/tests -p 'test_*.py'
       - name: Check shell syntax
@@ -34,7 +35,27 @@ jobs:
       - name: List canonical CMake presets
         run: cmake --list-presets=all
       - name: Check repository whitespace
-        run: git diff --check
+        env:
+          CI_EVENT_NAME: ${{ github.event_name }}
+          CI_BEFORE_SHA: ${{ github.event.before }}
+          CI_HEAD_SHA: ${{ github.sha }}
+          CI_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          case "$CI_EVENT_NAME" in
+            pull_request)
+              tools/ci/check-git-whitespace.sh pr "$CI_PR_BASE_SHA" "$CI_HEAD_SHA"
+              ;;
+            push)
+              tools/ci/check-git-whitespace.sh push "$CI_BEFORE_SHA" "$CI_HEAD_SHA"
+              ;;
+            workflow_dispatch)
+              tools/ci/check-git-whitespace.sh commit "$CI_HEAD_SHA"
+              ;;
+            *)
+              echo "unsupported workflow event: $CI_EVENT_NAME" >&2
+              exit 1
+              ;;
+          esac
       - name: Run actionlint when available
         run: |
           if command -v actionlint >/dev/null 2>&1; then
@@ -43,20 +64,7 @@ jobs:
             echo "actionlint is not installed; workflow structure and pins are checked manually."
           fi
       - name: Enforce workflow policy
-        run: |
-          policy_pattern='pull_request_'
-          policy_pattern+='target|permissions: '
-          policy_pattern+='write'
-          if rg -n "$policy_pattern" .github/workflows/ci.yml; then
-            echo "workflow policy violation"
-            exit 1
-          fi
-          mutable_ref_pattern='uses: .*@('
-          mutable_ref_pattern+='main|master|v[0-9])'
-          if rg -n "$mutable_ref_pattern" .github/workflows/ci.yml; then
-            echo "workflow policy violation"
-            exit 1
-          fi
+        run: python3 tools/ci/check-workflow-policy.py .github/workflows/ci.yml
 
   rust:
     name: rust
@@ -65,6 +73,8 @@ jobs:
     steps:
       # actions/checkout v7.0.1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       - name: Install stable Rust with quality components
         run: |
           rustup toolchain install stable --profile minimal --component rustfmt --component clippy
@@ -79,6 +89,8 @@ jobs:
     steps:
       # actions/checkout v7.0.1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       - name: Install native prerequisites
         run: |
           sudo apt-get update
@@ -100,11 +112,13 @@ jobs:
           host: linux
           target: desktop
           arch: gcc_64
-          modules: qtdeclarative qt5compat qtshadertools qttools
+          modules: qt5compat qtshadertools
           install-deps: true
           cache: false
-      - name: Verify Qt version
-        run: test "$(qtpaths --qt-version)" = "$QT_VERSION"
+      - name: Verify Qt installation
+        run: |
+          test "$(qtpaths --qt-version)" = "$QT_VERSION"
+          command -v qmllint
       - name: Install stable Rust
         run: |
           rustup toolchain install stable --profile minimal
@@ -131,6 +145,8 @@ jobs:
     steps:
       # actions/checkout v7.0.1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       - name: Install native prerequisites
         run: |
           sudo apt-get update
@@ -152,11 +168,13 @@ jobs:
           host: linux
           target: desktop
           arch: gcc_64
-          modules: qtdeclarative qt5compat qtshadertools qttools
+          modules: qt5compat qtshadertools
           install-deps: true
           cache: false
-      - name: Verify Qt version
-        run: test "$(qtpaths --qt-version)" = "$QT_VERSION"
+      - name: Verify Qt installation
+        run: |
+          test "$(qtpaths --qt-version)" = "$QT_VERSION"
+          command -v qmllint
       - name: Install stable Rust
         run: |
           rustup toolchain install stable --profile minimal
@@ -167,8 +185,8 @@ jobs:
         run: tools/ci/run-cmake-gate.sh "${{ matrix.preset }}"
       - name: Upload CMake diagnostics on failure
         if: ${{ failure() }}
-        # actions/upload-artifact v4.6.2
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        # actions/upload-artifact v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: cmake-diagnostics-${{ matrix.preset }}-${{ github.run_id }}
           path: |

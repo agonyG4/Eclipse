@@ -42,7 +42,7 @@ class CheckCtestJunitTests(unittest.TestCase):
             xml_path = Path(temporary_directory) / "ctest.junit.xml"
             xml_path.write_text(document, encoding="utf-8")
             return subprocess.run(
-                [sys.executable, str(SCRIPT), mode, str(xml_path)],
+                [sys.executable, str(SCRIPT), "--mode", mode, str(xml_path)],
                 check=False,
                 capture_output=True,
                 text=True,
@@ -53,6 +53,22 @@ class CheckCtestJunitTests(unittest.TestCase):
             "typhon",
             suite(*(testcase(name) for name in REQUIRED_TYPHON_TESTS), testcase("ordinary-test")),
         )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_accepts_documented_mode_flag(self) -> None:
+        document = suite(
+            *(testcase(name) for name in REQUIRED_TYPHON_TESTS),
+            testcase("ordinary-test"),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            xml_path = Path(temporary_directory) / "ctest.junit.xml"
+            xml_path.write_text(document, encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT), "--mode", "typhon", str(xml_path)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_typhon_rejects_unexpected_skip(self) -> None:

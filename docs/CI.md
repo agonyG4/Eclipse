@@ -4,7 +4,7 @@ The protected status is `CI / required`. Branch protection should require that c
 
 ## Prerequisites
 
-The project requires CMake 3.24 or newer, Ninja, Qt 6.6 or newer, a C++20 compiler, Wayland client/server development files and scanner, Python 3, and stable Rust. The hosted workflow installs Qt 6.8.3 with the pinned Qt action and installs the required Qt declarative, Qt5Compat, shader-tools, and tools modules. Native Wayland packages are installed explicitly.
+The project requires CMake 3.24 or newer, Ninja, Qt 6.6 or newer, a C++20 compiler, Wayland client/server development files and scanner, Python 3, and stable Rust. The hosted workflow installs the Qt 6.8.3 base distribution with the pinned Qt action and requests only the additional `qt5compat` and `qtshadertools` modules. It verifies the installed version and that `qmllint` is available; CMake/QML configuration remains the authoritative proof that Eclipse's required Qt components are usable. Native Wayland packages are installed explicitly.
 
 The local commands use the tools already on `PATH`. A temporary Ninja binary is sufficient when a distribution package is unavailable.
 
@@ -62,6 +62,21 @@ Inspect `build/asan/Testing/Temporary/LastTest.log`, `build/asan/ctest.junit.xml
 
 The CI matrix may run configurations concurrently because each has an isolated build directory. Tests within each configuration remain serial to avoid fixed runtime-socket collisions.
 
-## Workflow policy
+## Hosted workflow policy
 
-Checkout, Qt installation, and diagnostics upload actions are pinned to immutable full commit SHAs with release comments. No action cache is enabled. The workflow does not use `pull_request_target`, write permissions, privileged jobs, or mutable action references. The policy job runs helper tests, shell syntax checks, preset listing, whitespace checks, and actionlint if it is already installed; when actionlint is unavailable, manual workflow validation is recorded in the qualification report.
+Checkout, Qt installation, and diagnostics upload actions are pinned to immutable full commit SHAs with release comments. The workflow uses `actions/upload-artifact` v7.0.1 for failure-only CMake diagnostics with five-day retention. Every checkout sets `persist-credentials: false`; no action cache is enabled.
+
+The policy job runs `tools/ci/check-workflow-policy.py`, whose standard-library unit tests cover forbidden events, write permissions, job-level permission overrides, mutable action references, short SHAs, secret expressions, comments, full SHAs, and local actions. The workflow does not use `pull_request_target`, write permissions, privileged jobs, mutable action references, or secrets.
+
+Repository whitespace is checked against committed history rather than an empty post-checkout worktree. The policy job dispatches `tools/ci/check-git-whitespace.sh` as follows:
+
+- pull requests: `pr BASE HEAD`, using the merge-base range;
+- pushes: `push BEFORE HEAD`, with the all-zero new-ref SHA falling back to commit checking;
+- manual dispatch: `commit HEAD`.
+
+The policy job also runs helper tests, shell syntax checks, preset listing, and actionlint if it is already installed. When actionlint is unavailable, manual workflow validation is recorded in the qualification report. Local policy and whitespace checks are available with:
+
+```text
+python3 tools/ci/check-workflow-policy.py .github/workflows/ci.yml
+tools/ci/check-git-whitespace.sh commit HEAD
+```

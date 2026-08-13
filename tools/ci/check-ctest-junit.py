@@ -104,7 +104,7 @@ def validate(mode: str, xml_path: Path) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("typhon", "no-typhon"))
+    parser.add_argument("--mode", required=True, choices=("typhon", "no-typhon"))
     parser.add_argument("xml", type=Path)
     args = parser.parse_args(argv)
     return validate(args.mode, args.xml)

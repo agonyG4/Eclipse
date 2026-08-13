@@ -50,4 +50,4 @@ cmake --build --preset "$preset"
 
 junit_path="$build_dir/ctest.junit.xml"
 ctest --preset "$preset" --output-junit "$junit_path"
-python3 "$script_dir/check-ctest-junit.py" "$junit_mode" "$junit_path"
+python3 "$script_dir/check-ctest-junit.py" --mode "$junit_mode" "$junit_path"

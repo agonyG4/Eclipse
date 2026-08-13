@@ -10,7 +10,38 @@ Local qualification passed on 2026-08-11. The repository was clean before the M7
 - `b6e45d3` — fix the workflow policy check so it cannot match its own regex literals.
 - The final qualification-report commit is the last commit containing this document.
 
+The follow-up CLI-contract correction was committed as:
+
+- `219791c` — align the JUnit validator with the documented `--mode` interface and add regression coverage.
+
 GitHub-hosted execution is pending first push of the workflow.
+
+## Follow-up qualification — 2026-08-13
+
+This follow-up started at `190ec15` and verified the committed correction `219791c` without changing the native matrix, workflow topology, or product behavior. The JUnit validator now accepts the documented form:
+
+```text
+python3 tools/ci/check-ctest-junit.py --mode typhon build/debug/ctest.junit.xml
+```
+
+The new regression test was observed failing with argparse exit 2 before the implementation change and passing afterward. The helper suite then passed 12 tests. Shell syntax, `cmake --list-presets=all`, the unknown-preset exit-2 contract, and `git diff --check` all passed.
+
+Fresh local gates were rerun with temporary Ninja 1.13.2 and the host's Qt 6.11.1 installation:
+
+| Gate | Result |
+| --- | --- |
+| Rust | fmt, locked Clippy with `-D warnings`, and 29 unit tests passed |
+| QML | generated `astrea-shell_qmllint` and `astrea-settings-ui_qmllint` targets passed; existing informational warnings remained non-fatal |
+| Debug | 49/49 passed, 0 skipped |
+| Release | 49/49 passed, 0 skipped |
+| Clang | 49/49 passed, 0 skipped |
+| ASan | 49/49 passed, 0 skipped; sanitizer diagnostics remained fatal |
+| UBSan | 49/49 passed, 0 skipped; sanitizer diagnostics remained fatal |
+| no-Typhon | 49/49 passed, exactly 3 approved skips |
+
+The Typhon-enabled CMake gates again built all three concrete integration targets before the complete build. The no-Typhon skips were exactly `typhon-protocol-integration-test`, `typhon-shortcut-protocol-integration-test`, and `shell-unified-runtime-integration-test`; no total test count was used as a contract. `tools/ci/run-all-local.sh` was rerun sequentially and exited successfully with the same results.
+
+Workflow validation passed with actionlint 1.7.12. The checkout, Qt installer, and artifact-upload SHAs resolve to their commented release tags. No GitHub-hosted execution occurred; GitHub-hosted execution remains pending first push of the workflow. The working tree was clean after the follow-up qualification documentation commit.
 
 ## Changed scope
 

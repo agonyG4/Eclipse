@@ -111,7 +111,7 @@ jobs:
           version: ${{ env.QT_VERSION }}
           host: linux
           target: desktop
-          arch: gcc_64
+          arch: linux_gcc_64
           modules: qt5compat qtshadertools
           install-deps: true
           cache: false
@@ -167,7 +167,7 @@ jobs:
           version: ${{ env.QT_VERSION }}
           host: linux
           target: desktop
-          arch: gcc_64
+          arch: linux_gcc_64
           modules: qt5compat qtshadertools
           install-deps: true
           cache: false

@@ -93,6 +93,15 @@ static std::shared_ptr<DesktopEntrySnapshot> makeCatalog()
     snapshot->entries.append(record);
     snapshot->byDesktopFileName.insert(record.desktopFileName, index);
     snapshot->byDesktopId.insert(record.id, index);
+
+    record = {};
+    record.desktopFileName = QStringLiteral("two.desktop");
+    record.id = QStringLiteral("two");
+    record.name = QStringLiteral("Two");
+    const int secondIndex = snapshot->entries.size();
+    snapshot->entries.append(record);
+    snapshot->byDesktopFileName.insert(record.desktopFileName, secondIndex);
+    snapshot->byDesktopId.insert(record.id, secondIndex);
     return snapshot;
 }
 
@@ -104,6 +113,8 @@ private slots:
     void runningApplicationActivatesMostRecentExactWindow();
     void unavailableActivationNeverLaunchesSameClick();
     void staleExactTargetNeverRetargetsOrLaunches();
+    void nonPinnedMinimizedApplicationAppearsActivatesAndCloses();
+    void connectionLossRemovesDynamicRowsButKeepsPinsUnknown();
 };
 
 void DockTyphonRuntimeIntegrationTest::authoritativeSnapshotDrivesDockRuntimeRoles()
@@ -256,6 +267,86 @@ void DockTyphonRuntimeIntegrationTest::staleExactTargetNeverRetargetsOrLaunches(
     QCOMPARE(adapter->actionRequests.size(), 0);
     QCOMPARE(launcher.requests.size(), 0);
     QCOMPARE(controller.launchingCount(), 0);
+}
+
+void DockTyphonRuntimeIntegrationTest::nonPinnedMinimizedApplicationAppearsActivatesAndCloses()
+{
+    auto *adapter = new FakeTyphonAdapter;
+    TyphonToplevelConnection connection(adapter);
+    FakeLauncher launcher;
+    DockController controller(&launcher);
+    controller.setCatalogSnapshot(makeCatalog());
+    DockConfig config = DockConfig::defaults();
+    config.pins = {QStringLiteral("one.desktop")};
+    controller.applyConfig(config);
+    controller.attachTyphonConnection(&connection);
+
+    connection.start();
+    adapter->advertiseManager();
+    adapter->create(2);
+    adapter->id(2, QStringLiteral("2"));
+    adapter->app(2, QStringLiteral("two"));
+    adapter->title(2, QStringLiteral("Two"));
+    adapter->pid(2, 202);
+    adapter->kind(2, ToplevelKind::XdgToplevel);
+    adapter->state(2, ToplevelStates{ToplevelStateFlag::Minimized});
+    adapter->focus(2, 7);
+    adapter->handleDone(2, 1);
+    adapter->managerDone(1, 1);
+
+    QCOMPARE(controller.appModel()->rowCount(), 2);
+    const QModelIndex dynamic = controller.appModel()->index(1, 0);
+    QCOMPARE(dynamic.data(DockAppModel::DesktopFileNameRole).toString(),
+             QStringLiteral("two.desktop"));
+    QVERIFY(!dynamic.data(DockAppModel::PinnedRole).toBool());
+    QVERIFY(dynamic.data(DockAppModel::RunningRole).toBool());
+    QCOMPARE(dynamic.data(DockAppModel::WindowCountRole).toInt(), 1);
+
+    controller.launch(1);
+    QCOMPARE(launcher.requests.size(), 0);
+    QCOMPARE(adapter->actionRequests.size(), 1);
+    QCOMPARE(adapter->actionRequests.first().handleToken, quint64(2));
+    QCOMPARE(adapter->actionRequests.first().action, ToplevelAction::Activate);
+    adapter->completeAction(ToplevelActionResult::Accepted);
+
+    adapter->close(2);
+    adapter->managerDone(2, 0);
+    QTRY_COMPARE_WITH_TIMEOUT(controller.appModel()->rowCount(), 1, 1000);
+    QCOMPARE(controller.appModel()->desktopFileNameAt(0), QStringLiteral("one.desktop"));
+}
+
+void DockTyphonRuntimeIntegrationTest::connectionLossRemovesDynamicRowsButKeepsPinsUnknown()
+{
+    auto *adapter = new FakeTyphonAdapter;
+    TyphonToplevelConnection connection(adapter);
+    DockController controller;
+    controller.setCatalogSnapshot(makeCatalog());
+    DockConfig config = DockConfig::defaults();
+    config.pins = {QStringLiteral("one.desktop")};
+    controller.applyConfig(config);
+    controller.attachTyphonConnection(&connection);
+
+    connection.start();
+    adapter->advertiseManager();
+    for (const auto &window : QVector<quint64>{1, 2}) {
+        adapter->create(window);
+        adapter->id(window, QString::number(window));
+        adapter->app(window, window == 1 ? QStringLiteral("one") : QStringLiteral("two"));
+        adapter->title(window, window == 1 ? QStringLiteral("One") : QStringLiteral("Two"));
+        adapter->pid(window, 100 + window);
+        adapter->kind(window, ToplevelKind::XdgToplevel);
+        adapter->state(window, {});
+        adapter->focus(window, window);
+        adapter->handleDone(window, 1);
+    }
+    adapter->managerDone(1, 2);
+
+    QCOMPARE(controller.appModel()->rowCount(), 2);
+    adapter->disconnectDisplay();
+
+    QCOMPARE(controller.appModel()->rowCount(), 1);
+    QCOMPARE(controller.appModel()->desktopFileNameAt(0), QStringLiteral("one.desktop"));
+    QVERIFY(!controller.appModel()->index(0, 0).data(DockAppModel::RuntimeKnownRole).toBool());
 }
 
 QTEST_GUILESS_MAIN(DockTyphonRuntimeIntegrationTest)

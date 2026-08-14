@@ -24,13 +24,14 @@ std::shared_ptr<DesktopEntrySnapshot> catalog()
 }
 
 Toplevel window(const QString &id, const QString &appId, bool active = false,
-                bool minimized = false, quint32 pid = 1)
+                bool minimized = false, quint32 pid = 1, FocusSerial focusSerial = 0)
 {
     Toplevel result;
     result.id = id;
     result.appId = appId;
     result.title = id;
     result.pid = pid;
+    result.focusSerial = focusSerial;
     result.states = minimized ? ToplevelStates(ToplevelStateFlag::Minimized) : ToplevelStates{};
     if (active)
         result.states |= ToplevelStateFlag::Active;
@@ -52,11 +53,14 @@ class DockApplicationStateProjectorTest final : public QObject {
 
 private slots:
     void zeroWindowsProducesClearedPinnedState();
+    void nonPinnedApplicationsAreProjected();
     void runningAndActiveStateIsProjected();
     void minimizedWindowsRemainRunning();
     void duplicatePidsRemainSeparateAndOrdered();
     void unresolvedWindowsAreIgnored();
     void aWindowContributesToOnlyOneGroup();
+    void encounterOrderIsUniqueAndDeterministic();
+    void focusSerialOrdersExactActivationTargets();
     void countsAreClampedToInt();
     void stress100ProjectionCycles();
 };
@@ -64,19 +68,29 @@ private slots:
 void DockApplicationStateProjectorTest::zeroWindowsProducesClearedPinnedState()
 {
     DockApplicationStateProjector projector;
-    const auto states = projector.project(snapshot({}), catalog(), {QStringLiteral("one.desktop")});
-    QCOMPARE(states.value(QStringLiteral("one.desktop")).windowCount, 0);
-    QVERIFY(!states.value(QStringLiteral("one.desktop")).running);
-    QVERIFY(!states.value(QStringLiteral("one.desktop")).active);
+    const auto projection = projector.project(snapshot({}), catalog());
+    QVERIFY(projection.states.isEmpty());
+    QVERIFY(projection.encounterOrder.isEmpty());
+}
+
+void DockApplicationStateProjectorTest::nonPinnedApplicationsAreProjected()
+{
+    DockApplicationStateProjector projector;
+    const auto projection = projector.project(
+        snapshot({window(QStringLiteral("1"), QStringLiteral("two"))}), catalog());
+
+    QVERIFY(projection.states.contains(QStringLiteral("two.desktop")));
+    QCOMPARE(projection.encounterOrder, QStringList{QStringLiteral("two.desktop")});
+    QVERIFY(projection.states.value(QStringLiteral("two.desktop")).running);
 }
 
 void DockApplicationStateProjectorTest::runningAndActiveStateIsProjected()
 {
     DockApplicationStateProjector projector;
-    const auto states = projector.project(
+    const auto projection = projector.project(
         snapshot({window(QStringLiteral("1"), QStringLiteral("one"), true)}),
-        catalog(), {QStringLiteral("one.desktop")});
-    const auto state = states.value(QStringLiteral("one.desktop"));
+        catalog());
+    const auto state = projection.states.value(QStringLiteral("one.desktop"));
     QVERIFY(state.running);
     QVERIFY(state.active);
     QCOMPARE(state.windowCount, 1);
@@ -86,33 +100,32 @@ void DockApplicationStateProjectorTest::runningAndActiveStateIsProjected()
 void DockApplicationStateProjectorTest::minimizedWindowsRemainRunning()
 {
     DockApplicationStateProjector projector;
-    const auto states = projector.project(
+    const auto projection = projector.project(
         snapshot({window(QStringLiteral("1"), QStringLiteral("one"), false, true)}),
-        catalog(), {QStringLiteral("one.desktop")});
-    QVERIFY(states.value(QStringLiteral("one.desktop")).running);
-    QVERIFY(!states.value(QStringLiteral("one.desktop")).active);
+        catalog());
+    QVERIFY(projection.states.value(QStringLiteral("one.desktop")).running);
+    QVERIFY(!projection.states.value(QStringLiteral("one.desktop")).active);
 }
 
 void DockApplicationStateProjectorTest::duplicatePidsRemainSeparateAndOrdered()
 {
     DockApplicationStateProjector projector;
-    const auto states = projector.project(
+    const auto projection = projector.project(
         snapshot({window(QStringLiteral("2"), QStringLiteral("one"), false, false, 4),
                   window(QStringLiteral("1"), QStringLiteral("one"), true, false, 4)}),
-        catalog(), {QStringLiteral("one.desktop")});
-    QCOMPARE(states.value(QStringLiteral("one.desktop")).windowCount, 2);
+        catalog());
+    QCOMPARE(projection.states.value(QStringLiteral("one.desktop")).windowCount, 2);
     const QVector<QString> expected{QStringLiteral("2"), QStringLiteral("1")};
-    QCOMPARE(states.value(QStringLiteral("one.desktop")).windowIds, expected);
+    QCOMPARE(projection.states.value(QStringLiteral("one.desktop")).windowIds, expected);
 }
 
 void DockApplicationStateProjectorTest::unresolvedWindowsAreIgnored()
 {
     DockApplicationStateProjector projector;
-    const auto states = projector.project(
-        snapshot({window(QStringLiteral("1"), QStringLiteral("unknown"))}),
-        catalog(), {QStringLiteral("one.desktop")});
-    QCOMPARE(states.value(QStringLiteral("one.desktop")).windowCount, 0);
-    QCOMPARE(states.size(), 1);
+    const auto projection = projector.project(
+        snapshot({window(QStringLiteral("1"), QStringLiteral("unknown"))}), catalog());
+    QVERIFY(projection.states.isEmpty());
+    QVERIFY(projection.encounterOrder.isEmpty());
 }
 
 void DockApplicationStateProjectorTest::aWindowContributesToOnlyOneGroup()
@@ -126,11 +139,34 @@ void DockApplicationStateProjectorTest::aWindowContributesToOnlyOneGroup()
     entries->entries.append(duplicate);
 
     DockApplicationStateProjector projector;
-    const auto states = projector.project(
-        snapshot({window(QStringLiteral("1"), QStringLiteral("one"))}), entries,
-        {QStringLiteral("one.desktop"), QStringLiteral("duplicate.desktop")});
-    QCOMPARE(states.value(QStringLiteral("one.desktop")).windowCount
-             + states.value(QStringLiteral("duplicate.desktop")).windowCount, 1);
+    const auto projection = projector.project(
+        snapshot({window(QStringLiteral("1"), QStringLiteral("one"))}), entries);
+    QCOMPARE(projection.states.size(), 1);
+    QCOMPARE(projection.states.constBegin().value().windowCount, 1);
+}
+
+void DockApplicationStateProjectorTest::encounterOrderIsUniqueAndDeterministic()
+{
+    DockApplicationStateProjector projector;
+    const auto projection = projector.project(
+        snapshot({window(QStringLiteral("1"), QStringLiteral("two")),
+                  window(QStringLiteral("2"), QStringLiteral("one")),
+                  window(QStringLiteral("3"), QStringLiteral("two"))}), catalog());
+
+    const QStringList expected{QStringLiteral("two.desktop"), QStringLiteral("one.desktop")};
+    QCOMPARE(projection.encounterOrder, expected);
+}
+
+void DockApplicationStateProjectorTest::focusSerialOrdersExactActivationTargets()
+{
+    DockApplicationStateProjector projector;
+    const auto projection = projector.project(
+        snapshot({window(QStringLiteral("old"), QStringLiteral("one"), false, false, 1, 4),
+                  window(QStringLiteral("new"), QStringLiteral("one"), false, false, 1, 9)}),
+        catalog());
+
+    const QVector<QString> expected{QStringLiteral("new"), QStringLiteral("old")};
+    QCOMPARE(projection.states.value(QStringLiteral("one.desktop")).windowIds, expected);
 }
 
 void DockApplicationStateProjectorTest::countsAreClampedToInt()
@@ -138,8 +174,8 @@ void DockApplicationStateProjectorTest::countsAreClampedToInt()
     Snapshot input;
     input.total = std::numeric_limits<quint32>::max();
     DockApplicationStateProjector projector;
-    const auto states = projector.project(input, catalog(), {QStringLiteral("one.desktop")});
-    QCOMPARE(states.value(QStringLiteral("one.desktop")).windowCount, 0);
+    const auto projection = projector.project(input, catalog());
+    QVERIFY(projection.states.isEmpty());
 }
 
 void DockApplicationStateProjectorTest::stress100ProjectionCycles()
@@ -147,13 +183,13 @@ void DockApplicationStateProjectorTest::stress100ProjectionCycles()
     DockApplicationStateProjector projector;
     for (int cycle = 0; cycle < 100; ++cycle) {
         const QString id = QString::number(cycle);
-        const auto states = projector.project(
+        const auto projection = projector.project(
             snapshot({window(id, QStringLiteral("one"), cycle % 2 == 0, cycle % 3 == 0, 99)}),
-            catalog(), {QStringLiteral("one.desktop"), QStringLiteral("two.desktop")});
-        QCOMPARE(states.value(QStringLiteral("one.desktop")).windowCount, 1);
-        QCOMPARE(states.value(QStringLiteral("one.desktop")).windowIds,
+            catalog());
+        QCOMPARE(projection.states.value(QStringLiteral("one.desktop")).windowCount, 1);
+        QCOMPARE(projection.states.value(QStringLiteral("one.desktop")).windowIds,
                  QVector<QString>{id});
-        QCOMPARE(states.value(QStringLiteral("two.desktop")).windowCount, 0);
+        QVERIFY(!projection.states.contains(QStringLiteral("two.desktop")));
     }
 }
 

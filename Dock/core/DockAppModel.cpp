@@ -61,39 +61,26 @@ void DockAppModel::setPins(const QStringList &pins)
 {
     QStringList desired;
     for (const QString &pin : pins) {
-        if (!desired.contains(pin))
+        if (!pin.isEmpty() && !desired.contains(pin))
             desired.append(pin);
     }
+    m_pins = std::move(desired);
 
-    for (int row = static_cast<int>(m_items.size()) - 1; row >= 0; --row) {
-        if (!desired.contains(m_items.at(row).desktopFileName)) {
-            beginRemoveRows({}, row, row);
-            m_items.removeAt(row);
-            endRemoveRows();
+    for (int index = m_dynamicOrder.size() - 1; index >= 0; --index) {
+        if (m_pins.contains(m_dynamicOrder.at(index)))
+            m_dynamicOrder.removeAt(index);
+    }
+    if (m_runtimeAuthoritative) {
+        for (const DockAppInfo &item : std::as_const(m_items)) {
+            const auto it = m_runtimeStates.constFind(item.desktopFileName);
+            if (it != m_runtimeStates.constEnd() && it->running
+                && !m_pins.contains(item.desktopFileName)
+                && !m_dynamicOrder.contains(item.desktopFileName)) {
+                m_dynamicOrder.append(item.desktopFileName);
+            }
         }
     }
-
-    for (int row = 0; row < desired.size(); ++row) {
-        const QString &key = desired.at(row);
-        const int existing = rowForDesktopFileName(key);
-        if (existing == row)
-            continue;
-        if (existing >= 0) {
-            const int destination = existing < row ? row + 1 : row;
-            beginMoveRows({}, existing, existing, {}, destination);
-            m_items.move(existing, row);
-            endMoveRows();
-        } else {
-            beginInsertRows({}, row, row);
-            m_items.insert(row, makeItem(key));
-            endInsertRows();
-        }
-    }
-
-    for (int row = 0; row < m_items.size(); ++row) {
-        const DockAppInfo next = makeItem(m_items.at(row).desktopFileName, &m_items.at(row));
-        updateItem(row, next);
-    }
+    reconcileRows();
 }
 
 void DockAppModel::setCatalogSnapshot(std::shared_ptr<const DesktopEntrySnapshot> snapshot)
@@ -148,32 +135,77 @@ bool DockAppModel::setLaunchError(const QString &desktopFileName, const QString 
     return true;
 }
 
-void DockAppModel::applyRuntimeStates(
-    const QHash<QString, Astrea::Typhon::DockApplicationRuntimeState> &states,
+void DockAppModel::applyRuntimeProjection(
+    const Astrea::Typhon::DockApplicationRuntimeProjection &projection,
     bool authoritative)
 {
-    for (int row = 0; row < m_items.size(); ++row) {
-        DockAppInfo next = m_items.at(row);
-        if (!authoritative) {
-            next.runtimeKnown = false;
-            next.running = false;
-            next.active = false;
-            next.windowCount = 0;
-            updateItem(row, next);
-            continue;
-        }
+    if (!authoritative) {
+        clearRuntimeProjection();
+        return;
+    }
 
-        next.runtimeKnown = next.resolved;
-        const auto it = states.constFind(next.desktopFileName);
-        if (!next.runtimeKnown || it == states.constEnd()) {
-            next.running = false;
-            next.active = false;
-            next.windowCount = 0;
-        } else {
-            next.running = it->running;
-            next.active = it->active;
-            next.windowCount = it->windowCount;
+    m_runtimeAuthoritative = true;
+    m_runtimeStates = projection.states;
+    for (const QString &key : projection.encounterOrder) {
+        const auto it = m_runtimeStates.constFind(key);
+        if (it != m_runtimeStates.constEnd() && it->running
+            && !m_pins.contains(key) && !m_dynamicOrder.contains(key)) {
+            m_dynamicOrder.append(key);
         }
+    }
+    for (int index = m_dynamicOrder.size() - 1; index >= 0; --index) {
+        const QString &key = m_dynamicOrder.at(index);
+        const auto it = m_runtimeStates.constFind(key);
+        if (m_pins.contains(key) || it == m_runtimeStates.constEnd() || !it->running)
+            m_dynamicOrder.removeAt(index);
+    }
+    reconcileRows();
+}
+
+void DockAppModel::clearRuntimeProjection()
+{
+    m_runtimeStates.clear();
+    m_dynamicOrder.clear();
+    m_runtimeAuthoritative = false;
+    reconcileRows();
+}
+
+void DockAppModel::reconcileRows()
+{
+    QStringList desired = m_pins;
+    for (const QString &key : std::as_const(m_dynamicOrder)) {
+        const auto it = m_runtimeStates.constFind(key);
+        if (it != m_runtimeStates.constEnd() && it->running && !desired.contains(key))
+            desired.append(key);
+    }
+
+    for (int row = m_items.size() - 1; row >= 0; --row) {
+        if (desired.contains(m_items.at(row).desktopFileName))
+            continue;
+        beginRemoveRows({}, row, row);
+        m_items.removeAt(row);
+        endRemoveRows();
+    }
+
+    for (int row = 0; row < desired.size(); ++row) {
+        const QString &key = desired.at(row);
+        const int existing = rowForDesktopFileName(key);
+        if (existing == row)
+            continue;
+        if (existing >= 0) {
+            const int destination = existing < row ? row + 1 : row;
+            beginMoveRows({}, existing, existing, {}, destination);
+            m_items.move(existing, row);
+            endMoveRows();
+        } else {
+            beginInsertRows({}, row, row);
+            m_items.insert(row, makeItem(key));
+            endInsertRows();
+        }
+    }
+
+    for (int row = 0; row < m_items.size(); ++row) {
+        const DockAppInfo next = makeItem(m_items.at(row).desktopFileName, &m_items.at(row));
         updateItem(row, next);
     }
 }
@@ -188,29 +220,34 @@ DockAppInfo DockAppModel::makeItem(const QString &desktopFileName, const DockApp
     if (previous) {
         item.launching = previous->launching;
         item.launchError = previous->launchError;
-        item.runtimeKnown = previous->runtimeKnown;
-        item.running = previous->running;
-        item.active = previous->active;
-        item.windowCount = previous->windowCount;
     }
 
     const auto it = m_catalog->byDesktopFileName.constFind(desktopFileName);
-    if (it == m_catalog->byDesktopFileName.constEnd())
-        return item;
-
-    const DesktopEntryRecord &record = m_catalog->entries.at(it.value());
-    item.desktopId = record.id;
-    item.displayName = record.name.isEmpty() ? record.id : record.name;
-    if (record.icon.startsWith(QLatin1Char('/')) || record.icon.startsWith(QStringLiteral("file://"))) {
-        item.iconPath = record.icon;
-        item.iconUrl = record.icon.startsWith(QStringLiteral("file://"))
-            ? record.icon : QUrl::fromLocalFile(record.icon).toString();
-    } else if (record.icon.contains(QStringLiteral("://"))) {
-        item.iconUrl = record.icon;
-    } else {
-        item.iconName = record.icon;
+    if (it != m_catalog->byDesktopFileName.constEnd()) {
+        const DesktopEntryRecord &record = m_catalog->entries.at(it.value());
+        item.desktopId = record.id;
+        item.displayName = record.name.isEmpty() ? record.id : record.name;
+        if (record.icon.startsWith(QLatin1Char('/')) || record.icon.startsWith(QStringLiteral("file://"))) {
+            item.iconPath = record.icon;
+            item.iconUrl = record.icon.startsWith(QStringLiteral("file://"))
+                ? record.icon : QUrl::fromLocalFile(record.icon).toString();
+        } else if (record.icon.contains(QStringLiteral("://"))) {
+            item.iconUrl = record.icon;
+        } else {
+            item.iconName = record.icon;
+        }
+        item.resolved = true;
     }
-    item.resolved = true;
+    item.pinned = m_pins.contains(desktopFileName);
+    if (m_runtimeAuthoritative) {
+        const auto runtime = m_runtimeStates.constFind(desktopFileName);
+        item.runtimeKnown = item.resolved || runtime != m_runtimeStates.constEnd();
+        if (runtime != m_runtimeStates.constEnd()) {
+            item.running = runtime->running;
+            item.active = runtime->active;
+            item.windowCount = runtime->windowCount;
+        }
+    }
     return item;
 }
 

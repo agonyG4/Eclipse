@@ -6,27 +6,20 @@
 
 using namespace Astrea::Typhon;
 
-QHash<QString, DockApplicationRuntimeState> DockApplicationStateProjector::project(
+DockApplicationRuntimeProjection DockApplicationStateProjector::project(
     const Snapshot &snapshot,
-    const std::shared_ptr<const DesktopEntrySnapshot> &desktopEntries,
-    const QStringList &currentPins) const
+    const std::shared_ptr<const DesktopEntrySnapshot> &desktopEntries) const
 {
-    QHash<QString, DockApplicationRuntimeState> result;
-    for (const QString &pin : currentPins) {
-        if (pin.isEmpty() || result.contains(pin))
-            continue;
-        DockApplicationRuntimeState state;
-        state.desktopFileName = pin;
-        result.insert(pin, state);
-    }
-
+    DockApplicationRuntimeProjection result;
     TyphonAppMatcher matcher(desktopEntries);
     for (const Toplevel &window : snapshot.windows) {
         const TyphonAppMatch app = matcher.match({window.appId, window.title, window.pid, window.kind});
         if (app.desktopFileName.isEmpty())
             continue;
 
-        DockApplicationRuntimeState &state = result[app.desktopFileName];
+        if (!result.states.contains(app.desktopFileName))
+            result.encounterOrder.append(app.desktopFileName);
+        DockApplicationRuntimeState &state = result.states[app.desktopFileName];
         if (state.desktopFileName.isEmpty())
             state.desktopFileName = app.desktopFileName;
         state.running = true;

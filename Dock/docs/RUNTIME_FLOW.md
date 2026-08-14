@@ -5,9 +5,9 @@ startup
   -> runtime paths
   -> config
   -> desktop-entry catalog
-  -> model
+  -> model (configured pins)
   -> one Typhon toplevel connection
-  -> authoritative runtime projection
+  -> authoritative runtime projection (pins + live resolved apps)
   -> QML
   -> Layer Shell mapping
   -> click
@@ -36,8 +36,14 @@ unavailable or failed action is reconciled without launching on that same
 click.
 
 The Dock owns one Typhon toplevel connection. After the initial snapshot
-commits, it projects `running`, `active`, and `windowCount` through the
-desktop catalog matcher. If the connection is unavailable, each item exposes
-`runtimeKnown=false` and the runtime booleans stay neutral. A resolved running
-item uses exact Typhon activation rather than a duplicate launch; unresolved
-or non-live targets do not fall through to a same-click launch.
+commits, `DockApplicationStateProjector` emits only resolved live applications
+and a deterministic encounter order. `DockAppModel` unions that projection
+with configured pins: pins remain first, and new runtime-only applications
+append without focus-driven reordering. A missing runtime entry removes a
+runtime-only row but leaves a configured pin as a known stopped row.
+
+If the connection is unavailable, each pinned item exposes
+`runtimeKnown=false` and neutral runtime booleans; runtime-only rows are
+removed. A resolved running item uses exact Typhon activation rather than a
+duplicate launch; stale or unavailable targets reconcile state and never fall
+through to a same-click launch.

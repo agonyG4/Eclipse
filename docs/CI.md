@@ -4,7 +4,21 @@ The protected status is `CI / required`. Branch protection should require that c
 
 ## Prerequisites
 
-The project requires CMake 3.24 or newer, Ninja, Qt 6.6 or newer, a C++20 compiler, Wayland client/server development files and scanner, Python 3, and stable Rust. The hosted workflow installs the Qt 6.8.3 base distribution with the pinned Qt action, including QtWayland, then builds the pinned Qt 6 LayerShellQt 6.4.5 release with Extra CMake Modules 6.14.0. The workflow never uses Ubuntu 24.04's Qt 5 `liblayershellqtinterface-dev` package. It verifies the installed version and that `qmllint` is available; CMake/QML configuration remains the authoritative proof that Eclipse's required Qt components are usable. Native Wayland packages are installed explicitly.
+The project requires CMake 3.24 or newer, Ninja, Qt 6.8 or newer, a C++20 compiler, Wayland client/server development files and scanner, Python 3, and stable Rust. The hosted workflow installs the Qt 6.8.3 base distribution with the pinned Qt action, including QtWayland, then builds the pinned Qt 6 LayerShellQt 6.4.5 release with Extra CMake Modules 6.14.0. Eclipse's production CMake contract requires LayerShellQt >= 6.4.5 and a `wayland-client` development target. The workflow never uses Ubuntu 24.04's Qt 5 `liblayershellqtinterface-dev` package. It verifies the installed version and that `qmllint` is available; CMake/QML configuration remains the authoritative proof that Eclipse's required Qt components are usable. Native Wayland packages are installed explicitly.
+
+At runtime, `astrea-shell` uses Qt's existing Wayland display to round-trip the
+registry and prove that the compositor advertises `zwlr_layer_shell_v1` before
+loading any QML surface. A missing protocol is a startup failure; the shell does
+not fall back to ordinary Qt windows. The status response reports this proof as
+`layerShell.waylandBackend` and `layerShell.protocolAdvertised`, while the
+per-surface fields describe configuration requests rather than compositor
+configure acknowledgements.
+
+Eclipse intentionally does not call LayerShellQt's process-global
+`Shell::useLayerShell()` switch. In the supported LayerShellQt 6.4.5 API,
+`Window::get()` creates and attaches the per-window layer-shell integration;
+the global switch only changes `QT_WAYLAND_SHELL_INTEGRATION` and is unnecessary
+for this explicit ownership model.
 
 The local commands use the tools already on `PATH`. A temporary Ninja binary is sufficient when a distribution package is unavailable.
 

@@ -24,6 +24,7 @@ struct AstreaLayerShellConfig {
 
 class AstreaLayerShellHelper final {
 public:
+    static bool prepare(QString *errorOut = nullptr);
     static bool configure(QQuickWindow *window, const AstreaLayerShellConfig &config,
                           QString *errorOut = nullptr);
     static bool compiled();

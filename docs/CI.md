@@ -4,7 +4,7 @@ The protected status is `CI / required`. Branch protection should require that c
 
 ## Prerequisites
 
-The project requires CMake 3.24 or newer, Ninja, Qt 6.6 or newer, a C++20 compiler, Wayland client/server development files and scanner, Python 3, and stable Rust. The hosted workflow installs the Qt 6.8.3 base distribution with the pinned Qt action and requests only the additional `qt5compat` and `qtshadertools` modules. It verifies the installed version and that `qmllint` is available; CMake/QML configuration remains the authoritative proof that Eclipse's required Qt components are usable. Native Wayland packages are installed explicitly.
+The project requires CMake 3.24 or newer, Ninja, Qt 6.6 or newer, a C++20 compiler, Wayland client/server development files and scanner, Python 3, and stable Rust. The hosted workflow installs the Qt 6.8.3 base distribution with the pinned Qt action, including QtWayland, then builds the pinned Qt 6 LayerShellQt 6.4.5 release with Extra CMake Modules 6.14.0. The workflow never uses Ubuntu 24.04's Qt 5 `liblayershellqtinterface-dev` package. It verifies the installed version and that `qmllint` is available; CMake/QML configuration remains the authoritative proof that Eclipse's required Qt components are usable. Native Wayland packages are installed explicitly.
 
 The local commands use the tools already on `PATH`. A temporary Ninja binary is sufficient when a distribution package is unavailable.
 
@@ -18,8 +18,9 @@ The root `CMakePresets.json` defines exactly these configure, build, and test pr
 - `asan`: Debug with AddressSanitizer enabled and UBSan disabled.
 - `ubsan`: Debug with UBSan enabled and ASan disabled.
 - `no-typhon`: Debug with Typhon disabled.
+- `no-layer-shell`: Debug with LayerShellQt explicitly disabled for non-production/test builds.
 
-All presets use Ninja, write to `build/<preset>`, and enable `BUILD_TESTING` and `ASTREA_BUILD_TESTS`. CTest runs with one job and prints output on failure. The total test count is intentionally not part of the contract.
+All presets use Ninja, write to `build/<preset>`, and enable `BUILD_TESTING` and `ASTREA_BUILD_TESTS`. The five normal presets require LayerShellQt and receive its prefix through standard `CMAKE_PREFIX_PATH` discovery. CTest runs with one job and prints output on failure. The total test count is intentionally not part of the contract.
 
 ## Local gates
 
@@ -38,7 +39,7 @@ Run the complete local contract with:
 tools/ci/run-all-local.sh
 ```
 
-It runs the JUnit helper tests, Rust, QML, and then `debug`, `release`, `clang`, `asan`, `ubsan`, and `no-typhon` sequentially. Individual CMake runs are available with `tools/ci/run-cmake-gate.sh <preset>`. Unknown preset names return exit status 2.
+It runs the JUnit helper tests, Rust, QML, and then `debug`, `release`, `clang`, `asan`, `ubsan`, `no-typhon`, and `no-layer-shell` sequentially. Individual CMake runs are available with `tools/ci/run-cmake-gate.sh <preset>`. Unknown preset names return exit status 2.
 
 Each CMake gate creates a unique mode-0700 `XDG_RUNTIME_DIR`, cleans it with a trap, configures with the matching preset, builds, runs serial CTest, writes `build/<preset>/ctest.junit.xml`, and validates that report. The five Typhon-enabled presets must build these concrete targets before the full build:
 

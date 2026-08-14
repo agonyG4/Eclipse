@@ -140,6 +140,13 @@ class LayerShellContractTests(unittest.TestCase):
         self.assertIn("AstreaLayerShellConfig::Layer::Overlay", spotlight)
         self.assertIn("AstreaLayerShellConfig::KeyboardInteractivity::Exclusive", spotlight)
 
+    def test_dock_physical_width_is_not_animated(self) -> None:
+        dock_panel = (REPOSITORY_ROOT / "Dock" / "qml" / "components" / "DockPanel.qml").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("Behavior on width", dock_panel)
+        self.assertNotIn("NumberAnimation { duration: 135", dock_panel)
+
 
 if __name__ == "__main__":
     unittest.main()

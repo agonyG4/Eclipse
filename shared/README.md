@@ -5,7 +5,8 @@ The shared foundation is split by runtime ownership:
 - `astrea-shared-core` contains compositor-independent icons, desktop-entry
   catalogue, launcher helpers, and the `Astrea.Shared` QML module;
 - `astrea-shared-layer-shell` contains `LayerShellHelper` and owns the
-  LayerShellQt link, preparation seam, and compile-time capability flag.
+  LayerShellQt/Wayland links, the compositor protocol probe, and the
+  compile-time capability flag.
 
 Settings links only the core target and its QML plugin. Dock, Spotlight, and
 AltTab link the layer-shell target because they configure Layer Shell surfaces.

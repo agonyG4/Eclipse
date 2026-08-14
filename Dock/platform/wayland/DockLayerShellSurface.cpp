@@ -62,8 +62,7 @@ bool DockLayerShellSurface::setMapped(QQuickWindow *window, bool mapped, QString
             *errorOut = QStringLiteral("Failed to create LayerShellQt::Window");
         return false;
     }
-    if (!mapped)
-        layerWindow->setExclusiveZone(0);
+    layerWindow->setExclusiveZone(mapped ? qMax(0, window->height()) : 0);
     window->setVisible(mapped);
     return true;
 #else

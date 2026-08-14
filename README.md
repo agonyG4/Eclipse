@@ -9,8 +9,9 @@ Native components:
 - `shared/` provides the supervised application launcher, desktop-entry
   catalog, icon provider, and Layer Shell helper.
 
-Production `astrea-shell` builds require the Qt 6 LayerShellQt development
-package and its `LayerShellQt::Interface` CMake target. Non-standard
+Production `astrea-shell` builds require Qt 6.8+, LayerShellQt 6.4.5+ and its
+`LayerShellQt::Interface` CMake target, plus Wayland client development files.
+Non-standard
 installations are supplied with normal CMake package search paths, for
 example `-DCMAKE_PREFIX_PATH=/path/to/layer-shell-qt-prefix` or
 `-DLayerShellQt_DIR=/path/to/lib/cmake/LayerShellQt`. The explicit

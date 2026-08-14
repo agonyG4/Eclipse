@@ -1,10 +1,15 @@
 #include "platform/wayland/LayerShellHelper.hpp"
 
+#include <QCoreApplication>
+#include <QGuiApplication>
 #include <QQuickWindow>
 
 #if defined(ASTREA_HAVE_LAYER_SHELL_QT) && ASTREA_HAVE_LAYER_SHELL_QT
-#include <LayerShellQt/Shell>
 #include <LayerShellQt/Window>
+#include <QtGui/qguiapplication_platform.h>
+#include <wayland-client.h>
+
+#include <cstring>
 #endif
 
 namespace {
@@ -17,20 +22,83 @@ void setError(QString *errorOut, const QString &message)
 
 } // namespace
 
-bool AstreaLayerShellHelper::prepare(QString *errorOut)
+bool AstreaLayerShellHelper::protocolAdvertised(QString *errorOut)
 {
 #if defined(ASTREA_HAVE_LAYER_SHELL_QT) && ASTREA_HAVE_LAYER_SHELL_QT
-    Q_UNUSED(errorOut);
-    QT_WARNING_PUSH
-    QT_WARNING_DISABLE_DEPRECATED
-    LayerShellQt::Shell::useLayerShell();
-    QT_WARNING_POP
+    auto *application = qobject_cast<QGuiApplication *>(QCoreApplication::instance());
+    if (!application) {
+        setError(errorOut, QStringLiteral(
+                            "Layer Shell protocol probe requires QGuiApplication"));
+        return false;
+    }
+
+    // Use Qt's already-open display. A second wl_display connection would have
+    // a separate registry and could produce a false capability result.
+    const auto *waylandApplication =
+        application->nativeInterface<QNativeInterface::QWaylandApplication>();
+    if (!waylandApplication || !waylandApplication->display()) {
+        setError(errorOut, QStringLiteral(
+                            "Qt did not expose its Wayland display for the Layer Shell probe"));
+        return false;
+    }
+
+    bool advertised = false;
+    const wl_registry_listener listener{
+        [](void *data, wl_registry *, uint32_t, const char *interface, uint32_t) {
+            if (std::strcmp(interface, "zwlr_layer_shell_v1") == 0)
+                *static_cast<bool *>(data) = true;
+        },
+        [](void *, wl_registry *, uint32_t) {},
+    };
+    wl_registry *registry = wl_display_get_registry(waylandApplication->display());
+    if (!registry) {
+        setError(errorOut, QStringLiteral("Qt could not create a Wayland registry for the Layer Shell probe"));
+        return false;
+    }
+    if (wl_registry_add_listener(registry, &listener, &advertised) < 0) {
+        wl_registry_destroy(registry);
+        setError(errorOut, QStringLiteral("Qt could not listen to the Wayland registry for the Layer Shell probe"));
+        return false;
+    }
+    if (wl_display_roundtrip(waylandApplication->display()) < 0) {
+        wl_registry_destroy(registry);
+        setError(errorOut, QStringLiteral("The Wayland registry roundtrip failed during the Layer Shell probe"));
+        return false;
+    }
+    wl_registry_destroy(registry);
+
+    if (!advertised) {
+        setError(errorOut, QStringLiteral(
+                            "Compositor does not advertise zwlr_layer_shell_v1"));
+        return false;
+    }
     return true;
 #else
     setError(errorOut, QStringLiteral(
                         "LayerShellQt is disabled; astrea-shell requires Layer Shell surfaces"));
     return false;
 #endif
+}
+
+bool AstreaLayerShellHelper::validateRuntime(bool waylandBackend, bool protocolAvailable,
+                                             QString *errorOut)
+{
+    if (!compiled()) {
+        setError(errorOut, QStringLiteral(
+                            "LayerShellQt is disabled; astrea-shell requires Layer Shell surfaces"));
+        return false;
+    }
+    if (!waylandBackend) {
+        setError(errorOut, QStringLiteral(
+                            "Astrea shell requires the Qt Wayland platform"));
+        return false;
+    }
+    if (!protocolAvailable) {
+        setError(errorOut, QStringLiteral(
+                            "Compositor does not advertise zwlr_layer_shell_v1"));
+        return false;
+    }
+    return true;
 }
 
 bool AstreaLayerShellHelper::configure(QQuickWindow *window,
@@ -55,6 +123,11 @@ bool AstreaLayerShellHelper::configure(QQuickWindow *window,
     }
 
 #if defined(ASTREA_HAVE_LAYER_SHELL_QT) && ASTREA_HAVE_LAYER_SHELL_QT
+    // LayerShellQt 6.4.5 derives the output from the QWindow when its wrapper
+    // is created; newer Window::setScreen APIs are not part of our minimum.
+    if (config.screen)
+        window->setScreen(config.screen);
+
     auto *layerWindow = LayerShellQt::Window::get(window);
     if (!layerWindow) {
         setError(errorOut, QStringLiteral("Failed to create LayerShellQt::Window"));
@@ -94,9 +167,6 @@ bool AstreaLayerShellHelper::configure(QQuickWindow *window,
     layerWindow->setAnchors(anchors);
     layerWindow->setMargins(config.margins);
     layerWindow->setExclusiveZone(config.exclusiveZone);
-    if (config.screen)
-        layerWindow->setScreen(config.screen);
-    layerWindow->setActivateOnShow(false);
     return true;
 #else
     Q_UNUSED(config);

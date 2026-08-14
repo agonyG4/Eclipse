@@ -7,7 +7,7 @@ class LayerShellHelperTest final : public QObject {
 
 private slots:
     void compiledMatchesBuildCapability();
-    void prepareReportsBuildCapability();
+    void runtimeCapabilityRequiresWaylandAndProtocol();
 };
 
 void LayerShellHelperTest::compiledMatchesBuildCapability()
@@ -19,15 +19,31 @@ void LayerShellHelperTest::compiledMatchesBuildCapability()
 #endif
 }
 
-void LayerShellHelperTest::prepareReportsBuildCapability()
+void LayerShellHelperTest::runtimeCapabilityRequiresWaylandAndProtocol()
 {
     QString error;
-    const bool prepared = AstreaLayerShellHelper::prepare(&error);
+    const bool capable = AstreaLayerShellHelper::validateRuntime(true, true, &error);
 #if defined(ASTREA_HAVE_LAYER_SHELL_QT) && ASTREA_HAVE_LAYER_SHELL_QT
-    QVERIFY2(prepared, qPrintable(error));
+    QVERIFY2(capable, qPrintable(error));
     QVERIFY(error.isEmpty());
 #else
-    QVERIFY(!prepared);
+    QVERIFY(!capable);
+    QVERIFY(error.contains(QStringLiteral("LayerShellQt")));
+#endif
+
+    error.clear();
+    QVERIFY(!AstreaLayerShellHelper::validateRuntime(true, false, &error));
+#if defined(ASTREA_HAVE_LAYER_SHELL_QT) && ASTREA_HAVE_LAYER_SHELL_QT
+    QVERIFY(error.contains(QStringLiteral("zwlr_layer_shell_v1")));
+#else
+    QVERIFY(error.contains(QStringLiteral("LayerShellQt")));
+#endif
+
+    error.clear();
+    QVERIFY(!AstreaLayerShellHelper::validateRuntime(false, true, &error));
+#if defined(ASTREA_HAVE_LAYER_SHELL_QT) && ASTREA_HAVE_LAYER_SHELL_QT
+    QVERIFY(error.contains(QStringLiteral("Wayland")));
+#else
     QVERIFY(error.contains(QStringLiteral("LayerShellQt")));
 #endif
 }

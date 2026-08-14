@@ -13,7 +13,9 @@ CONTRACT_MODULE = REPOSITORY_ROOT / "cmake" / "AstreaLayerShell.cmake"
 
 
 class LayerShellContractTests(unittest.TestCase):
-    def configure_fixture(self, *, enabled: bool, package_available: bool) -> subprocess.CompletedProcess[str]:
+    def configure_fixture(
+        self, *, enabled: bool, package_available: bool, package_version: str = "6.4.5"
+    ) -> subprocess.CompletedProcess[str]:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             source = root / "source"
@@ -26,6 +28,18 @@ class LayerShellContractTests(unittest.TestCase):
                 (package / "LayerShellQtConfig.cmake").write_text(
                     "set(LayerShellQt_FOUND TRUE)\n"
                     "add_library(LayerShellQt::Interface INTERFACE IMPORTED)\n",
+                    encoding="utf-8",
+                )
+                (package / "LayerShellQtConfigVersion.cmake").write_text(
+                    f"set(PACKAGE_VERSION \"{package_version}\")\n"
+                    "if(PACKAGE_FIND_VERSION VERSION_GREATER PACKAGE_VERSION)\n"
+                    "  set(PACKAGE_VERSION_COMPATIBLE FALSE)\n"
+                    "else()\n"
+                    "  set(PACKAGE_VERSION_COMPATIBLE TRUE)\n"
+                    "endif()\n"
+                    "if(PACKAGE_FIND_VERSION VERSION_EQUAL PACKAGE_VERSION)\n"
+                    "  set(PACKAGE_VERSION_EXACT TRUE)\n"
+                    "endif()\n",
                     encoding="utf-8",
                 )
 
@@ -56,8 +70,17 @@ class LayerShellContractTests(unittest.TestCase):
         result = self.configure_fixture(enabled=True, package_available=False)
         self.assertNotEqual(result.returncode, 0)
         output = result.stdout + result.stderr
-        self.assertIn("LayerShellQt is required by astrea-shell", output)
+        self.assertIn("LayerShellQt >= 6.4.5 is required", output)
         self.assertIn("ASTREA_ENABLE_LAYER_SHELL=OFF", output)
+
+    def test_enabled_contract_fails_with_too_old_package(self) -> None:
+        result = self.configure_fixture(
+            enabled=True, package_available=True, package_version="6.3.0"
+        )
+        self.assertNotEqual(result.returncode, 0)
+        output = result.stdout + result.stderr
+        self.assertIn("LayerShellQt >= 6.4.5 is required", output)
+        self.assertIn("6.3.0", output)
 
     def test_explicit_disabled_contract_succeeds_without_package(self) -> None:
         result = self.configure_fixture(enabled=False, package_available=False)
@@ -72,13 +95,50 @@ class LayerShellContractTests(unittest.TestCase):
         for source in sources:
             self.assertNotIn("using a normal window", source.read_text(encoding="utf-8"))
 
-    def test_startup_uses_shared_preparation_seam(self) -> None:
+    def test_startup_uses_protocol_preflight(self) -> None:
         helper = (REPOSITORY_ROOT / "shared" / "platform" / "wayland" / "LayerShellHelper.cpp").read_text(
             encoding="utf-8"
         )
         bootstrap = (REPOSITORY_ROOT / "Shell" / "app" / "main.cpp").read_text(encoding="utf-8")
-        self.assertIn("LayerShellQt::Shell::useLayerShell", helper)
-        self.assertIn("AstreaLayerShellHelper::prepare", bootstrap)
+        application = (REPOSITORY_ROOT / "Shell" / "app" / "AstreaShellApplication.cpp").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("LayerShellQt::Shell::useLayerShell", helper)
+        self.assertNotIn("AstreaLayerShellHelper::prepare", bootstrap)
+        self.assertIn("AstreaLayerShellHelper::protocolAdvertised", application)
+        self.assertIn("protocolAdvertised", application)
+        self.assertIn("dockConfigurationRequested", application)
+        self.assertNotIn("dockConfigured", application)
+
+    def test_helper_uses_layer_shell_qt_6_4_5_compatible_screen_api(self) -> None:
+        helper = (REPOSITORY_ROOT / "shared" / "platform" / "wayland" / "LayerShellHelper.cpp").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("window->setScreen(config.screen)", helper)
+        self.assertNotIn("layerWindow->setScreen", helper)
+        self.assertNotIn("setActivateOnShow", helper)
+
+    def test_surface_policies_remain_layer_shell_specific(self) -> None:
+        dock = (REPOSITORY_ROOT / "Dock" / "platform" / "wayland" / "DockLayerShellSurface.cpp").read_text(
+            encoding="utf-8"
+        )
+        alt_tab = (REPOSITORY_ROOT / "AltTab" / "platform" / "wayland" / "LayerShellSurface.cpp").read_text(
+            encoding="utf-8"
+        )
+        spotlight = (REPOSITORY_ROOT / "Spotlight" / "platform" / "wayland" / "LayerShellSurface.cpp").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('QStringLiteral("astrea-dock")', dock)
+        self.assertIn("AstreaLayerShellConfig::Layer::Top", dock)
+        self.assertIn("AstreaLayerShellConfig::KeyboardInteractivity::None", dock)
+        self.assertIn("layerConfig.anchorBottom = true", dock)
+        self.assertIn("layerWindow->setExclusiveZone(mapped ? qMax(0, window->height()) : 0)", dock)
+        self.assertIn('QStringLiteral("astrea-alt-tab")', alt_tab)
+        self.assertIn("AstreaLayerShellConfig::Layer::Overlay", alt_tab)
+        self.assertIn("AstreaLayerShellConfig::KeyboardInteractivity::Exclusive", alt_tab)
+        self.assertIn('QStringLiteral("astrea-spotlight")', spotlight)
+        self.assertIn("AstreaLayerShellConfig::Layer::Overlay", spotlight)
+        self.assertIn("AstreaLayerShellConfig::KeyboardInteractivity::Exclusive", spotlight)
 
 
 if __name__ == "__main__":

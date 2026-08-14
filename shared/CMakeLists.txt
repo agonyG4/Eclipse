@@ -88,7 +88,16 @@ if(ASTREA_ENABLE_LAYER_SHELL)
             "astrea-shared-layer-shell requires LayerShellQt::Interface when "
             "ASTREA_ENABLE_LAYER_SHELL=ON")
     endif()
-    target_link_libraries(astrea-shared-layer-shell PUBLIC LayerShellQt::Interface)
+    if(NOT TARGET PkgConfig::ASTREA_WAYLAND_CLIENT)
+        message(FATAL_ERROR
+            "astrea-shared-layer-shell requires the wayland-client development target when "
+            "ASTREA_ENABLE_LAYER_SHELL=ON; install Wayland client development files or use "
+            "-DASTREA_ENABLE_LAYER_SHELL=OFF for non-production/test builds")
+    endif()
+    target_link_libraries(astrea-shared-layer-shell PUBLIC
+        LayerShellQt::Interface
+        PkgConfig::ASTREA_WAYLAND_CLIENT
+    )
     target_compile_definitions(astrea-shared-layer-shell PUBLIC ASTREA_HAVE_LAYER_SHELL_QT=1)
 else()
     target_compile_definitions(astrea-shared-layer-shell PUBLIC ASTREA_HAVE_LAYER_SHELL_QT=0)
@@ -226,7 +235,7 @@ astrea_shared_enable_sanitizers(astrea-shared-typhon)
 
 option(ASTREA_SHARED_BUILD_TESTS "Build shared foundation tests" ON)
 if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
-    find_package(Qt6 6.6 REQUIRED COMPONENTS Test)
+    find_package(Qt6 6.8 REQUIRED COMPONENTS Test)
 
     add_executable(typhon-shortcut-protocol-contract-test
         tests/TyphonShortcutProtocolContractTest.cpp

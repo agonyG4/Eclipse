@@ -9,10 +9,6 @@ Item {
     width: contentWidth
     height: contentHeight
 
-    Behavior on width {
-        NumberAnimation { duration: 135; easing.type: Easing.OutCubic }
-    }
-
     Rectangle {
         anchors.fill: parent
         radius: 23

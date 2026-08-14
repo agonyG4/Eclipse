@@ -40,6 +40,7 @@ private slots:
     void invalidIndexIsIgnored();
     void catalogRebuildKeepsModelRowsStable();
     void runningRuntimeSuppressesDuplicateLaunch();
+    void pinCountersExcludeRuntimeOnlyRows();
 };
 
 static DockConfig configWithPins(const QStringList &pins)
@@ -285,6 +286,29 @@ void DockControllerTest::runningRuntimeSuppressesDuplicateLaunch()
     QVERIFY(!controller.appModel()->data(index, DockAppModel::RuntimeKnownRole).toBool());
     controller.launch(0);
     QCOMPARE(launcher.requests.size(), 1);
+}
+
+void DockControllerTest::pinCountersExcludeRuntimeOnlyRows()
+{
+    FakeLauncher launcher;
+    DockController controller(&launcher);
+    controller.setCatalogSnapshot(makeCatalog());
+    controller.applyConfig(configWithPins({QStringLiteral("one.desktop"),
+                                           QStringLiteral("missing.desktop")}));
+
+    Astrea::Typhon::Snapshot snapshot;
+    snapshot.connectionGeneration = 1;
+    snapshot.revision = 1;
+    Astrea::Typhon::Toplevel window;
+    window.id = QStringLiteral("window-2");
+    window.appId = QStringLiteral("two");
+    snapshot.windows.append(window);
+    controller.applyTyphonSnapshot(snapshot);
+
+    QCOMPARE(controller.pinCount(), 2);
+    QCOMPARE(controller.appModel()->rowCount(), 3);
+    QCOMPARE(controller.resolvedPinCount(), 1);
+    QVERIFY(!controller.appModel()->index(2, 0).data(DockAppModel::PinnedRole).toBool());
 }
 
 QTEST_MAIN(DockControllerTest)

@@ -1,49 +1,57 @@
 # Typhon Dock Runtime State
 
-M7-C connects the live Dock process to one `TyphonToplevelConnection`. The
-connection is authoritative only after a committed snapshot is available;
-while it is starting, disconnected, degraded, unsupported, or stopped, Dock
-marks runtime state as unknown.
+The Dock consumes one authoritative Typhon toplevel connection. A committed
+snapshot is the only source of `running`, `active`, and `windowCount` state.
+Launch-helper success is separate `launching` state and never implies that a
+window exists.
 
-## Matching And Grouping
+## Matching and grouping
 
-`TyphonAppMatcher` resolves a Typhon app ID against the shared desktop catalog
-in this order:
+`TyphonAppMatcher` resolves a published client app ID in this order:
 
 1. Exact desktop filename when the app ID ends in `.desktop`.
 2. Exact desktop ID.
-3. Case-insensitive exact desktop ID.
+3. Case-insensitive desktop ID.
 4. Exact `StartupWMClass`.
 5. Case-insensitive `StartupWMClass`.
 6. Normalized reverse-DNS desktop ID.
 7. Unresolved.
 
-Titles and PIDs are never used as application identity. Visible entries win
-over hidden or `NoDisplay` entries, with the lexicographically smallest desktop
-filename breaking ties.
+Titles and PIDs are never used as identity. First-party applications must set
+their canonical desktop ID, for example Explorer publishes `astrea-explorer`
+for `astrea-explorer.desktop`. Unresolved windows do not enter the Dock
+projection.
 
-Only resolved windows are grouped. Minimized windows remain running, active is
-true when any grouped window is active, and duplicate PIDs remain separate
-windows. Runtime window IDs are ordered by descending Typhon focus serial and
-the first ID is the exact activation candidate. Snapshot order is preserved
-for equal focus serials.
+Resolved windows are grouped into one state per desktop filename. Minimized
+windows remain running, active is true when any grouped window is active, and
+duplicate PIDs remain separate windows. `windowIds` are ordered by descending
+Typhon focus serial, so the first ID is the exact activation candidate.
 
-## Model Boundary
+## Model membership and ordering
 
-`DockAppModel::applyRuntimeStates()` sets `runtimeKnown` for resolved items
-when the snapshot is authoritative. Missing runtime entries reset `running`,
-`active`, and `windowCount` to false/zero when windows close. Unknown runtime
-state clears those values without claiming that the application is stopped.
-Pins, resolved metadata, launching state, and launch errors are preserved.
+The model owns two inputs:
 
-When `runtimeKnown && running` is true, Dock submits exact Typhon activation
-instead of launching. Accepted and no-change results complete without a
-launch; unavailable or local failures reconcile the current runtime only and
-never launch as part of the same click. Restore, minimize, and close remain
-outside Dock policy and are reserved for Typhon-side primitives.
+```text
+configured pins + resolved running runtime-only applications
+```
 
-No window action, activation request, thumbnail, icon transport, workspace, or
-output behavior is part of M6.1.
+Pins retain configured order. The projector's `encounterOrder` appends newly
+observed runtime-only applications to a model-owned dynamic order. Focus-only
+updates change runtime roles but do not reorder existing dynamic rows. A
+runtime-only application becomes one pinned row when configured, and a running
+pin becomes a dynamic row when unpinned; neither transition duplicates or loses
+its runtime state. A runtime-only row is removed after its last live window
+closes. A pinned row remains with `runtimeKnown=true` and stopped values.
 
-No real Typhon session qualification has been performed. M7-C Native remains
-`DEFERRED`.
+## Authority and activation
+
+While Typhon is authoritative, a resolved pinned application missing from the
+projection is known stopped. On disconnect, degradation, unsupported protocol,
+or another authority loss, pins remain visible with neutral unknown values and
+runtime-only rows are removed. Stale runtime-only order is never retained.
+
+When `runtimeKnown && running` is true, a click uses the retained exact
+`WindowId` and sends Typhon `Activate`, including for minimized and multi-window
+applications. Accepted and no-change results do not launch. Unavailable or
+failed actions reconcile the snapshot and never launch a duplicate application
+on that same click.

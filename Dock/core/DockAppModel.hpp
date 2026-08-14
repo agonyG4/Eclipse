@@ -45,15 +45,21 @@ public:
 
     bool setLaunching(const QString &desktopFileName, bool launching);
     bool setLaunchError(const QString &desktopFileName, const QString &error);
-    void applyRuntimeStates(
-        const QHash<QString, Astrea::Typhon::DockApplicationRuntimeState> &states,
+    void applyRuntimeProjection(
+        const Astrea::Typhon::DockApplicationRuntimeProjection &projection,
         bool authoritative = true);
+    void clearRuntimeProjection();
 
 private:
     DockAppInfo makeItem(const QString &desktopFileName, const DockAppInfo *previous = nullptr) const;
     void updateItem(int row, const DockAppInfo &next);
+    void reconcileRows();
     static QList<int> changedRoles(const DockAppInfo &before, const DockAppInfo &after);
 
     QVector<DockAppInfo> m_items;
+    QStringList m_pins;
+    QHash<QString, Astrea::Typhon::DockApplicationRuntimeState> m_runtimeStates;
+    QStringList m_dynamicOrder;
+    bool m_runtimeAuthoritative = false;
     std::shared_ptr<const DesktopEntrySnapshot> m_catalog;
 };

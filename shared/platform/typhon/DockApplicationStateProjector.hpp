@@ -17,14 +17,19 @@ struct DockApplicationRuntimeState {
     QVector<FocusSerial> focusSerials;
 };
 
+struct DockApplicationRuntimeProjection {
+    QHash<QString, DockApplicationRuntimeState> states;
+    QStringList encounterOrder;
+};
+
 class DockApplicationStateProjector final {
 public:
-    QHash<QString, DockApplicationRuntimeState> project(
+    DockApplicationRuntimeProjection project(
         const Snapshot &snapshot,
-        const std::shared_ptr<const DesktopEntrySnapshot> &desktopEntries,
-        const QStringList &currentPins) const;
+        const std::shared_ptr<const DesktopEntrySnapshot> &desktopEntries) const;
 };
 
 } // namespace Astrea::Typhon
 
 Q_DECLARE_METATYPE(Astrea::Typhon::DockApplicationRuntimeState)
+Q_DECLARE_METATYPE(Astrea::Typhon::DockApplicationRuntimeProjection)

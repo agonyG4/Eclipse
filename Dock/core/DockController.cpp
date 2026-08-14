@@ -47,8 +47,9 @@ bool DockController::visible() const
 int DockController::resolvedPinCount() const
 {
     int count = 0;
-    for (int row = 0; row < m_model.rowCount(); ++row) {
-        if (m_model.data(m_model.index(row, 0), DockAppModel::ResolvedRole).toBool())
+    for (const QString &pin : m_config.pins) {
+        const DockAppInfo *item = m_model.itemAt(m_model.rowForDesktopFileName(pin));
+        if (item && item->pinned && item->resolved)
             ++count;
     }
     return count;
@@ -146,11 +147,11 @@ void DockController::applyTyphonSnapshot(const Astrea::Typhon::Snapshot &snapsho
 
 void DockController::clearTyphonRuntime()
 {
-    const bool changed = m_runtimeKnown || m_runtimeSnapshot.has_value();
+    const bool changed = m_runtimeKnown || m_runtimeSnapshot.has_value() || !m_runtimeStates.isEmpty();
     m_runtimeKnown = false;
     m_runtimeSnapshot.reset();
     m_runtimeStates.clear();
-    m_model.applyRuntimeStates({}, false);
+    m_model.clearRuntimeProjection();
     if (changed)
         emit modelChanged();
 }
@@ -329,13 +330,14 @@ void DockController::projectRuntime()
 {
     if (!m_runtimeKnown || !m_runtimeSnapshot.has_value()) {
         m_runtimeStates.clear();
-        m_model.applyRuntimeStates({}, false);
+        m_model.clearRuntimeProjection();
         return;
     }
 
-    m_runtimeStates = m_runtimeProjector.project(
-        *m_runtimeSnapshot, m_catalogSnapshot, m_config.pins);
-    m_model.applyRuntimeStates(m_runtimeStates, true);
+    const Astrea::Typhon::DockApplicationRuntimeProjection projection =
+        m_runtimeProjector.project(*m_runtimeSnapshot, m_catalogSnapshot);
+    m_runtimeStates = projection.states;
+    m_model.applyRuntimeProjection(projection, true);
 }
 
 void DockController::reconcileTyphonActionFailure(Astrea::Typhon::ToplevelActionError error)

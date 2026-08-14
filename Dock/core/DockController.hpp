@@ -36,7 +36,7 @@ public:
     DockAppModel *appModel() { return &m_model; }
     bool enabled() const { return m_enabled; }
     bool visible() const;
-    int pinCount() const { return m_model.rowCount(); }
+    int pinCount() const { return m_config.pins.size(); }
     int resolvedPinCount() const;
     int launchingCount() const;
     bool runtimeKnown() const { return m_runtimeKnown; }

@@ -16,6 +16,16 @@ private slots:
     void launchingAndErrorArePerItem();
     void pinInsertionAndRemovalUsesStructuralSignals();
     void stableKeyRetainsItemStateAfterReorder();
+    void runtimeOnlyApplicationAppearsAfterPins();
+    void runtimeOnlyApplicationDisappearsAfterLastWindowCloses();
+    void multipleWindowsRemainOneDockRow();
+    void minimizedRuntimeApplicationRemainsVisible();
+    void runtimeOrderSurvivesFocusChanges();
+    void newlyObservedRuntimeApplicationAppends();
+    void runtimeOnlyApplicationBecomesPinnedWithoutDuplication();
+    void runningPinnedApplicationBecomesRuntimeOnly();
+    void stoppedPinnedApplicationIsRemoved();
+    void authorityLossKeepsPinsAndRemovesRuntimeOnlyRows();
     void runtimeStatePreservesLaunchState();
     void runtimeStateDisappearsWhenWindowCloses();
     void unknownRuntimeStateDoesNotClaimStopped();
@@ -36,6 +46,35 @@ static std::shared_ptr<DesktopEntrySnapshot> makeSnapshot(const QStringList &nam
         snapshot->entries.append(record);
     }
     return snapshot;
+}
+
+static Astrea::Typhon::DockApplicationRuntimeState runtimeState(
+    const QString &desktopFileName, int windowCount = 1, bool active = false,
+    bool running = true)
+{
+    Astrea::Typhon::DockApplicationRuntimeState state;
+    state.desktopFileName = desktopFileName;
+    state.running = running;
+    state.active = active;
+    state.windowCount = windowCount;
+    return state;
+}
+
+static Astrea::Typhon::DockApplicationRuntimeProjection runtimeProjection(
+    std::initializer_list<Astrea::Typhon::DockApplicationRuntimeState> states,
+    const QStringList &encounterOrder = {})
+{
+    Astrea::Typhon::DockApplicationRuntimeProjection projection;
+    for (const auto &state : states) {
+        projection.states.insert(state.desktopFileName, state);
+        if (!encounterOrder.contains(state.desktopFileName))
+            projection.encounterOrder.append(state.desktopFileName);
+    }
+    for (const QString &key : encounterOrder) {
+        if (!projection.encounterOrder.contains(key))
+            projection.encounterOrder.append(key);
+    }
+    return projection;
 }
 
 void DockAppModelTest::initialPopulationPreservesConfiguredOrder()
@@ -150,6 +189,149 @@ void DockAppModelTest::stableKeyRetainsItemStateAfterReorder()
     QVERIFY(oneIndex.data(DockAppModel::LaunchingRole).toBool());
 }
 
+void DockAppModelTest::runtimeOnlyApplicationAppearsAfterPins()
+{
+    DockAppModel model;
+    model.setCatalogSnapshot(makeSnapshot({QStringLiteral("one.desktop"),
+                                           QStringLiteral("two.desktop")}));
+    model.setPins({QStringLiteral("one.desktop")});
+
+    model.applyRuntimeProjection(runtimeProjection({runtimeState(QStringLiteral("two.desktop"))},
+                                                    {QStringLiteral("two.desktop")}));
+
+    QCOMPARE(model.rowCount(), 2);
+    QCOMPARE(model.desktopFileNameAt(0), QStringLiteral("one.desktop"));
+    QCOMPARE(model.desktopFileNameAt(1), QStringLiteral("two.desktop"));
+    QVERIFY(model.index(0, 0).data(DockAppModel::PinnedRole).toBool());
+    QVERIFY(!model.index(1, 0).data(DockAppModel::PinnedRole).toBool());
+    QVERIFY(model.index(1, 0).data(DockAppModel::RuntimeKnownRole).toBool());
+    QVERIFY(model.index(1, 0).data(DockAppModel::RunningRole).toBool());
+}
+
+void DockAppModelTest::runtimeOnlyApplicationDisappearsAfterLastWindowCloses()
+{
+    DockAppModel model;
+    model.setPins({QStringLiteral("one.desktop")});
+    model.applyRuntimeProjection(runtimeProjection({runtimeState(QStringLiteral("two.desktop"))}));
+    QSignalSpy removedSpy(&model, &QAbstractItemModel::rowsRemoved);
+
+    model.applyRuntimeProjection({});
+
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(model.desktopFileNameAt(0), QStringLiteral("one.desktop"));
+    QCOMPARE(removedSpy.count(), 1);
+}
+
+void DockAppModelTest::multipleWindowsRemainOneDockRow()
+{
+    DockAppModel model;
+    model.setPins({QStringLiteral("one.desktop")});
+    model.applyRuntimeProjection(runtimeProjection({runtimeState(QStringLiteral("two.desktop"), 3)}));
+
+    QCOMPARE(model.rowCount(), 2);
+    QCOMPARE(model.index(1, 0).data(DockAppModel::WindowCountRole).toInt(), 3);
+}
+
+void DockAppModelTest::minimizedRuntimeApplicationRemainsVisible()
+{
+    DockAppModel model;
+    model.setPins({QStringLiteral("one.desktop")});
+    model.applyRuntimeProjection(runtimeProjection({runtimeState(QStringLiteral("two.desktop"), 1,
+                                                                  false, true)}));
+
+    QCOMPARE(model.rowCount(), 2);
+    QVERIFY(model.index(1, 0).data(DockAppModel::RunningRole).toBool());
+}
+
+void DockAppModelTest::runtimeOrderSurvivesFocusChanges()
+{
+    DockAppModel model;
+    model.setPins({QStringLiteral("one.desktop")});
+    model.applyRuntimeProjection(runtimeProjection({runtimeState(QStringLiteral("two.desktop")),
+                                                    runtimeState(QStringLiteral("three.desktop"))},
+                                                   {QStringLiteral("two.desktop"),
+                                                    QStringLiteral("three.desktop")}));
+    model.applyRuntimeProjection(runtimeProjection({runtimeState(QStringLiteral("two.desktop"), 1,
+                                                                  true),
+                                                    runtimeState(QStringLiteral("three.desktop"), 1,
+                                                                  false)},
+                                                   {QStringLiteral("three.desktop"),
+                                                    QStringLiteral("two.desktop")}));
+
+    QCOMPARE(model.desktopFileNameAt(1), QStringLiteral("two.desktop"));
+    QCOMPARE(model.desktopFileNameAt(2), QStringLiteral("three.desktop"));
+}
+
+void DockAppModelTest::newlyObservedRuntimeApplicationAppends()
+{
+    DockAppModel model;
+    model.setPins({QStringLiteral("one.desktop")});
+    model.applyRuntimeProjection(runtimeProjection({runtimeState(QStringLiteral("two.desktop")),
+                                                    runtimeState(QStringLiteral("three.desktop"))},
+                                                   {QStringLiteral("two.desktop"),
+                                                    QStringLiteral("three.desktop")}));
+    model.applyRuntimeProjection(runtimeProjection({runtimeState(QStringLiteral("two.desktop")),
+                                                    runtimeState(QStringLiteral("three.desktop")),
+                                                    runtimeState(QStringLiteral("four.desktop"))},
+                                                   {QStringLiteral("three.desktop"),
+                                                    QStringLiteral("two.desktop"),
+                                                    QStringLiteral("four.desktop")}));
+
+    QCOMPARE(model.desktopFileNameAt(1), QStringLiteral("two.desktop"));
+    QCOMPARE(model.desktopFileNameAt(2), QStringLiteral("three.desktop"));
+    QCOMPARE(model.desktopFileNameAt(3), QStringLiteral("four.desktop"));
+}
+
+void DockAppModelTest::runtimeOnlyApplicationBecomesPinnedWithoutDuplication()
+{
+    DockAppModel model;
+    model.applyRuntimeProjection(runtimeProjection({runtimeState(QStringLiteral("two.desktop"))}));
+    model.setPins({QStringLiteral("two.desktop"), QStringLiteral("one.desktop")});
+
+    QCOMPARE(model.rowCount(), 2);
+    QCOMPARE(model.desktopFileNameAt(0), QStringLiteral("two.desktop"));
+    QVERIFY(model.index(0, 0).data(DockAppModel::PinnedRole).toBool());
+    QVERIFY(model.index(0, 0).data(DockAppModel::RunningRole).toBool());
+}
+
+void DockAppModelTest::runningPinnedApplicationBecomesRuntimeOnly()
+{
+    DockAppModel model;
+    model.setPins({QStringLiteral("one.desktop"), QStringLiteral("two.desktop")});
+    model.applyRuntimeProjection(runtimeProjection({runtimeState(QStringLiteral("two.desktop"), 2, true)}));
+    model.setPins({QStringLiteral("one.desktop")});
+
+    QCOMPARE(model.rowCount(), 2);
+    QCOMPARE(model.desktopFileNameAt(1), QStringLiteral("two.desktop"));
+    QVERIFY(!model.index(1, 0).data(DockAppModel::PinnedRole).toBool());
+    QCOMPARE(model.index(1, 0).data(DockAppModel::WindowCountRole).toInt(), 2);
+}
+
+void DockAppModelTest::stoppedPinnedApplicationIsRemoved()
+{
+    DockAppModel model;
+    model.setPins({QStringLiteral("one.desktop"), QStringLiteral("two.desktop")});
+    model.applyRuntimeProjection(runtimeProjection({}));
+    model.setPins({QStringLiteral("one.desktop")});
+
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(model.desktopFileNameAt(0), QStringLiteral("one.desktop"));
+}
+
+void DockAppModelTest::authorityLossKeepsPinsAndRemovesRuntimeOnlyRows()
+{
+    DockAppModel model;
+    model.setPins({QStringLiteral("one.desktop")});
+    model.applyRuntimeProjection(runtimeProjection({runtimeState(QStringLiteral("one.desktop")),
+                                                    runtimeState(QStringLiteral("two.desktop"))}));
+
+    model.clearRuntimeProjection();
+
+    QCOMPARE(model.rowCount(), 1);
+    QVERIFY(!model.index(0, 0).data(DockAppModel::RuntimeKnownRole).toBool());
+    QVERIFY(!model.index(0, 0).data(DockAppModel::RunningRole).toBool());
+}
+
 void DockAppModelTest::runtimeStatePreservesLaunchState()
 {
     DockAppModel model;
@@ -163,7 +345,7 @@ void DockAppModelTest::runtimeStatePreservesLaunchState()
     state.running = true;
     state.active = true;
     state.windowCount = 2;
-    model.applyRuntimeStates({{state.desktopFileName, state}});
+    model.applyRuntimeProjection(runtimeProjection({state}));
 
     const QModelIndex index = model.index(0, 0);
     QVERIFY(index.data(DockAppModel::RunningRole).toBool());
@@ -184,8 +366,8 @@ void DockAppModelTest::unknownRuntimeStateDoesNotClaimStopped()
     state.desktopFileName = QStringLiteral("one.desktop");
     state.running = true;
     state.windowCount = 1;
-    model.applyRuntimeStates({{state.desktopFileName, state}});
-    model.applyRuntimeStates({}, false);
+    model.applyRuntimeProjection(runtimeProjection({state}));
+    model.clearRuntimeProjection();
 
     const QModelIndex index = model.index(0, 0);
     QVERIFY(!index.data(DockAppModel::RuntimeKnownRole).toBool());
@@ -202,8 +384,8 @@ void DockAppModelTest::runtimeStateDisappearsWhenWindowCloses()
     state.running = true;
     state.active = true;
     state.windowCount = 1;
-    model.applyRuntimeStates({{state.desktopFileName, state}});
-    model.applyRuntimeStates({});
+    model.applyRuntimeProjection(runtimeProjection({state}));
+    model.applyRuntimeProjection({});
 
     for (int row = 0; row < model.rowCount(); ++row) {
         const QModelIndex index = model.index(row, 0);

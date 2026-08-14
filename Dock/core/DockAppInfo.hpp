@@ -12,7 +12,7 @@ struct DockAppInfo {
     bool resolved = false;
     bool launching = false;
     QString launchError;
-    bool pinned = true;
+    bool pinned = false;
     bool runtimeKnown = false;
     bool running = false;
     bool active = false;

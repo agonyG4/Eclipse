@@ -112,13 +112,18 @@ jobs:
           host: linux
           target: desktop
           arch: linux_gcc_64
-          modules: qt5compat qtshadertools
+          modules: qt5compat qtshadertools qtwayland
           install-deps: true
           cache: false
       - name: Verify Qt installation
         run: |
           test "$(qtpaths --qt-version)" = "$QT_VERSION"
           command -v qmllint
+      - name: Build Qt 6 LayerShellQt
+        run: |
+          layer_shell_prefix="$RUNNER_TEMP/layer-shell-qt"
+          bash tools/ci/install-layer-shell-qt.sh "$layer_shell_prefix"
+          echo "CMAKE_PREFIX_PATH=$layer_shell_prefix${CMAKE_PREFIX_PATH:+:$CMAKE_PREFIX_PATH}" >> "$GITHUB_ENV"
       - name: Install stable Rust
         run: |
           rustup toolchain install stable --profile minimal
@@ -142,6 +147,7 @@ jobs:
           - asan
           - ubsan
           - no-typhon
+          - no-layer-shell
     steps:
       # actions/checkout v7.0.1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -168,13 +174,19 @@ jobs:
           host: linux
           target: desktop
           arch: linux_gcc_64
-          modules: qt5compat qtshadertools
+          modules: qt5compat qtshadertools qtwayland
           install-deps: true
           cache: false
       - name: Verify Qt installation
         run: |
           test "$(qtpaths --qt-version)" = "$QT_VERSION"
           command -v qmllint
+      - name: Build Qt 6 LayerShellQt
+        if: matrix.preset != 'no-layer-shell'
+        run: |
+          layer_shell_prefix="$RUNNER_TEMP/layer-shell-qt"
+          bash tools/ci/install-layer-shell-qt.sh "$layer_shell_prefix"
+          echo "CMAKE_PREFIX_PATH=$layer_shell_prefix${CMAKE_PREFIX_PATH:+:$CMAKE_PREFIX_PATH}" >> "$GITHUB_ENV"
       - name: Install stable Rust
         run: |
           rustup toolchain install stable --profile minimal

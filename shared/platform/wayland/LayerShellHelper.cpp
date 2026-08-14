@@ -3,6 +3,7 @@
 #include <QQuickWindow>
 
 #if defined(ASTREA_HAVE_LAYER_SHELL_QT) && ASTREA_HAVE_LAYER_SHELL_QT
+#include <LayerShellQt/Shell>
 #include <LayerShellQt/Window>
 #endif
 
@@ -15,6 +16,22 @@ void setError(QString *errorOut, const QString &message)
 }
 
 } // namespace
+
+bool AstreaLayerShellHelper::prepare(QString *errorOut)
+{
+#if defined(ASTREA_HAVE_LAYER_SHELL_QT) && ASTREA_HAVE_LAYER_SHELL_QT
+    Q_UNUSED(errorOut);
+    QT_WARNING_PUSH
+    QT_WARNING_DISABLE_DEPRECATED
+    LayerShellQt::Shell::useLayerShell();
+    QT_WARNING_POP
+    return true;
+#else
+    setError(errorOut, QStringLiteral(
+                        "LayerShellQt is disabled; astrea-shell requires Layer Shell surfaces"));
+    return false;
+#endif
+}
 
 bool AstreaLayerShellHelper::configure(QQuickWindow *window,
                                         const AstreaLayerShellConfig &config,
@@ -83,7 +100,8 @@ bool AstreaLayerShellHelper::configure(QQuickWindow *window,
     return true;
 #else
     Q_UNUSED(config);
-    setError(errorOut, QStringLiteral("LayerShellQt not available, using normal window"));
+    setError(errorOut, QStringLiteral(
+                        "LayerShellQt is disabled; Layer Shell surface cannot be configured"));
     return false;
 #endif
 }

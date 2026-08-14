@@ -21,10 +21,12 @@ file, while `DesktopEntryCatalog` publishes an immutable XDG-priority
 snapshot. The controller gives the model the configured pin order and QML
 receives the model through a context property.
 
-The application configures the content-sized QQuickWindow through LayerShellQt
-and updates its exclusive zone when the panel height changes. Configuration
-and component toggles are debounced and re-applied without restarting the
-process. A click calls `DockController::launch`. If authoritative Typhon
+The application configures the content-sized QQuickWindow through the required
+LayerShellQt integration and updates its exclusive zone when the panel height
+changes. Configuration and component toggles are debounced and re-applied
+without restarting the process. A Layer Shell setup or mapping failure is
+reported as a shell failure; the Dock is never shown as an ordinary Qt window.
+A click calls `DockController::launch`. If authoritative Typhon
 runtime state identifies a live window, the controller submits one exact
 `activate` action for the most recent focus-serial candidate, including
 minimized windows. The shared Typhon connection owns authentication, pending

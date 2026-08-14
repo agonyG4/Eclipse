@@ -6,6 +6,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(ASTREA_BUILD_TESTS "Build Eclipse component tests" ON)
+option(ASTREA_ENABLE_LAYER_SHELL
+    "Require LayerShellQt for the production unified shell"
+    ON)
 option(ASTREA_ENABLE_ASAN "Enable AddressSanitizer" OFF)
 option(ASTREA_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
 option(ASTREA_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
@@ -41,6 +44,9 @@ if(COMMAND qt_policy)
     qt_policy(SET QTP0001 NEW)
     qt_policy(SET QTP0004 NEW)
 endif()
+
+include(cmake/AstreaLayerShell.cmake)
+astrea_configure_layer_shell()
 
 include(CTest)
 

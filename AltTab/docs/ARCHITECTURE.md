@@ -24,7 +24,7 @@ CLI compatibility caller → local IPC (astrea-alt-tab-v1) ───┘
                           QML (presentation only)
                                 |
                                 ▼
-                     LayerShellQt overlay (astrea-alt-tab)
+                           required LayerShellQt overlay (astrea-alt-tab)
 ```
 
 ## Directory structure
@@ -56,3 +56,6 @@ AltTab/
 - `WindowSource`: Abstract compositor interface, isolate Hyprland details
 - `AppIdentityResolver`: Maps window metadata to display name, icon name/path
 - QML: Renders state and forwards user intent only
+
+The production unified shell requires LayerShellQt and the Qt Wayland platform;
+there is no ordinary-window fallback when the overlay cannot be configured.

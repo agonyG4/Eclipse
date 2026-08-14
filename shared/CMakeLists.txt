@@ -7,7 +7,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick)
-find_package(LayerShellQt QUIET)
 
 add_library(astrea-shared-core STATIC
     apps/DesktopEntryParser.cpp
@@ -83,7 +82,12 @@ target_link_libraries(astrea-shared-layer-shell PUBLIC
     Qt6::Quick
 )
 
-if(LayerShellQt_FOUND)
+if(ASTREA_ENABLE_LAYER_SHELL)
+    if(NOT TARGET LayerShellQt::Interface)
+        message(FATAL_ERROR
+            "astrea-shared-layer-shell requires LayerShellQt::Interface when "
+            "ASTREA_ENABLE_LAYER_SHELL=ON")
+    endif()
     target_link_libraries(astrea-shared-layer-shell PUBLIC LayerShellQt::Interface)
     target_compile_definitions(astrea-shared-layer-shell PUBLIC ASTREA_HAVE_LAYER_SHELL_QT=1)
 else()
@@ -256,6 +260,19 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     target_link_libraries(desktop-entry-catalog-test PRIVATE astrea-shared-core Qt6::Test)
     astrea_shared_enable_sanitizers(desktop-entry-catalog-test)
     add_test(NAME desktop-entry-catalog-test COMMAND desktop-entry-catalog-test)
+
+    add_executable(layer-shell-helper-test
+        tests/LayerShellHelperTest.cpp
+    )
+    target_include_directories(layer-shell-helper-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_link_libraries(layer-shell-helper-test PRIVATE
+        astrea-shared-layer-shell
+        Qt6::Test
+    )
+    astrea_shared_enable_sanitizers(layer-shell-helper-test)
+    add_test(NAME layer-shell-helper-test COMMAND layer-shell-helper-test)
 
     function(add_typhon_shared_test TEST_NAME TEST_FILE)
         add_executable(${TEST_NAME}

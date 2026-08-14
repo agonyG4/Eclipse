@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ "$#" -ne 1 ]]; then
-    echo "usage: $0 <debug|release|clang|asan|ubsan|no-typhon>" >&2
+    echo "usage: $0 <debug|release|clang|asan|ubsan|no-typhon|no-layer-shell>" >&2
     exit 2
 fi
 
@@ -13,6 +13,9 @@ case "$preset" in
         ;;
     no-typhon)
         junit_mode="no-typhon"
+        ;;
+    no-layer-shell)
+        junit_mode="typhon"
         ;;
     *)
         echo "unknown CMake preset: $preset" >&2

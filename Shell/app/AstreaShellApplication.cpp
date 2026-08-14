@@ -9,6 +9,7 @@
 #include "Spotlight/services/AstreaI18n.hpp"
 #include "platform/ipc/ShellIpcServer.hpp"
 #include "runtime/ShellRuntime.hpp"
+#include "platform/wayland/LayerShellHelper.hpp"
 #include "icons/AstreaIconProvider.hpp"
 #include "icons/AstreaIconTheme.hpp"
 
@@ -28,13 +29,9 @@ namespace {
 
 constexpr QLatin1StringView kIpcName("astrea-shell-v1");
 
-bool isLayerShellQtAvailable()
+bool isWaylandPlatform(const QGuiApplication &application)
 {
-#if defined(ASTREA_HAVE_LAYER_SHELL_QT) && ASTREA_HAVE_LAYER_SHELL_QT
-    return true;
-#else
-    return false;
-#endif
+    return application.platformName().startsWith(QStringLiteral("wayland"), Qt::CaseInsensitive);
 }
 
 } // namespace
@@ -52,6 +49,17 @@ int AstreaShellApplication::run()
     m_application.setOrganizationName(QStringLiteral("AstreaOS"));
     m_application.setQuitOnLastWindowClosed(false);
     AstreaIconTheme::apply();
+
+    if (!AstreaLayerShellHelper::compiled()) {
+        qCritical("Astrea shell requires a production LayerShellQt build; configure with "
+                  "-DASTREA_ENABLE_LAYER_SHELL=ON");
+        return 1;
+    }
+    if (!isWaylandPlatform(m_application)) {
+        qCritical("Astrea shell requires the Qt Wayland platform; current platform is %s",
+                  qPrintable(m_application.platformName()));
+        return 1;
+    }
 
     if (!initializeRuntime() || !listenForCommands() || !initializeQml())
         return 1;
@@ -147,14 +155,16 @@ bool AstreaShellApplication::initializeQml()
 
     if (!loadSurface(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/AltTab/qml/Main.qml")),
                      &window)) {
-        qWarning("Astrea shell Alt+Tab surface is unavailable");
+        qCritical("Astrea shell Alt+Tab surface failed to load");
+        return false;
     } else {
         m_altTabWindow = window;
     }
 
     if (!loadSurface(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Spotlight/qml/Main.qml")),
                      &window)) {
-        qWarning("Astrea shell Spotlight surface is unavailable");
+        qCritical("Astrea shell Spotlight surface failed to load");
+        return false;
     } else {
         m_spotlightWindow = window;
     }
@@ -172,50 +182,56 @@ bool AstreaShellApplication::initializeQml()
 
 bool AstreaShellApplication::configureSurfaces()
 {
-    if (m_dockWindow) {
-        m_dockLayerConfigured = DockLayerShellSurface::compiled();
-        if (m_dockLayerConfigured) {
-            if (!configureDockSurface() && isLayerShellQtAvailable())
-                return false;
-        } else {
-            qWarning("Astrea shell Dock layer shell is unavailable; using a normal window");
-        }
+    if (!m_dockWindow) {
+        qCritical("Astrea shell Dock surface is unavailable");
+        return false;
+    }
+    if (!DockLayerShellSurface::compiled()) {
+        qCritical("Astrea shell Dock requires the compiled LayerShellQt integration");
+        return false;
+    }
+    if (!configureDockSurface()) {
+        qCritical("Astrea shell Dock Layer Shell setup failed");
+        return false;
     }
 
-    if (m_altTabWindow) {
-        QString error;
-        if (!AltTabLayerShellSurface::configure(m_altTabWindow, &error)
-            && isLayerShellQtAvailable()) {
-            qCritical("Astrea shell Alt+Tab layer setup failed: %s", qPrintable(error));
-            return false;
-        }
-        if (!error.isEmpty() && !isLayerShellQtAvailable())
-            qWarning("Astrea shell Alt+Tab layer shell is unavailable: %s", qPrintable(error));
+    if (!m_altTabWindow) {
+        qCritical("Astrea shell Alt+Tab surface is unavailable");
+        return false;
     }
+    QString error;
+    if (!AltTabLayerShellSurface::configure(m_altTabWindow, &error)) {
+        qCritical("Astrea shell Alt+Tab Layer Shell setup failed: %s", qPrintable(error));
+        return false;
+    }
+    m_altTabLayerConfigured = true;
 
-    if (m_spotlightWindow) {
-        QString error;
-        if (!LayerShellSurface::configure(m_spotlightWindow, &error)
-            && isLayerShellQtAvailable()) {
-            qCritical("Astrea shell Spotlight layer setup failed: %s", qPrintable(error));
-            return false;
-        }
-        if (!error.isEmpty() && !isLayerShellQtAvailable())
-            qWarning("Astrea shell Spotlight layer shell is unavailable: %s", qPrintable(error));
+    if (!m_spotlightWindow) {
+        qCritical("Astrea shell Spotlight surface is unavailable");
+        return false;
     }
+    error.clear();
+    if (!LayerShellSurface::configure(m_spotlightWindow, &error)) {
+        qCritical("Astrea shell Spotlight Layer Shell setup failed: %s", qPrintable(error));
+        return false;
+    }
+    m_spotlightLayerConfigured = true;
     return true;
 }
 
 bool AstreaShellApplication::configureDockSurface()
 {
-    if (!m_dockWindow || !m_dockLayerConfigured || !m_runtime->dockConfig())
-        return true;
+    if (!m_dockWindow || !m_runtime || !m_runtime->dockConfig())
+        return false;
     QString error;
     const bool configured = DockLayerShellSurface::configure(
         m_dockWindow, m_runtime->dockConfig()->config(), qMax(0, m_dockWindow->height()),
         QGuiApplication::primaryScreen(), &error);
     if (!configured) {
-        qWarning("Astrea shell Dock layer setup failed: %s", qPrintable(error));
+        qCritical("Astrea shell Dock Layer Shell setup failed: %s", qPrintable(error));
+        m_application.exit(1);
+    } else {
+        m_dockLayerConfigured = true;
     }
     return configured;
 }
@@ -225,13 +241,15 @@ void AstreaShellApplication::syncDockVisibility()
     if (!m_dockWindow)
         return;
     const bool visible = m_runtime->dockController()->visible();
-    if (m_dockLayerConfigured) {
-        QString error;
-        DockLayerShellSurface::setMapped(m_dockWindow, visible, &error);
-        if (!error.isEmpty())
-            qWarning("Astrea shell Dock mapping: %s", qPrintable(error));
-    } else {
-        m_dockWindow->setVisible(visible);
+    if (!m_dockLayerConfigured) {
+        qCritical("Astrea shell Dock cannot change visibility before Layer Shell setup");
+        m_application.exit(1);
+        return;
+    }
+    QString error;
+    if (!DockLayerShellSurface::setMapped(m_dockWindow, visible, &error)) {
+        qCritical("Astrea shell Dock Layer Shell mapping failed: %s", qPrintable(error));
+        m_application.exit(1);
     }
 }
 
@@ -313,6 +331,13 @@ QString AstreaShellApplication::statusJson() const
         {QStringLiteral("schemaVersion"), 1},
         {QStringLiteral("running"), true},
         {QStringLiteral("catalogRevision"), runtime->catalog()->revision()},
+        {QStringLiteral("layerShell"), QJsonObject{
+            {QStringLiteral("compiled"), AstreaLayerShellHelper::compiled()},
+            {QStringLiteral("required"), true},
+            {QStringLiteral("platform"), m_application.platformName()},
+            {QStringLiteral("dockConfigured"), m_dockLayerConfigured},
+            {QStringLiteral("altTabConfigured"), m_altTabLayerConfigured},
+            {QStringLiteral("spotlightConfigured"), m_spotlightLayerConfigured}}},
         {QStringLiteral("dock"), QJsonObject{
             {QStringLiteral("visible"), dock->visible()},
             {QStringLiteral("enabled"), dock->enabled()},

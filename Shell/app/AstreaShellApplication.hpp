@@ -42,4 +42,6 @@ private:
     QPointer<QQuickWindow> m_altTabWindow;
     QPointer<QQuickWindow> m_spotlightWindow;
     bool m_dockLayerConfigured = false;
+    bool m_altTabLayerConfigured = false;
+    bool m_spotlightLayerConfigured = false;
 };

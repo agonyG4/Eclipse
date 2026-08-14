@@ -42,7 +42,8 @@ bool DockLayerShellSurface::updateExclusiveZone(QQuickWindow *window, int surfac
 #else
     Q_UNUSED(surfaceHeight);
     if (errorOut)
-        *errorOut = QStringLiteral("LayerShellQt not available, using normal window");
+        *errorOut = QStringLiteral(
+            "LayerShellQt is disabled; Dock Layer Shell cannot update its exclusive zone");
     return false;
 #endif
 }
@@ -67,8 +68,8 @@ bool DockLayerShellSurface::setMapped(QQuickWindow *window, bool mapped, QString
     return true;
 #else
     if (errorOut)
-        *errorOut = QStringLiteral("LayerShellQt not available, using normal window");
-    window->setVisible(mapped);
+        *errorOut = QStringLiteral(
+            "LayerShellQt is disabled; Dock Layer Shell cannot change its mapped state");
     return false;
 #endif
 }

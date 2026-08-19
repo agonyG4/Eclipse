@@ -109,6 +109,8 @@ bool SpotlightController::setLocale(const QString &locale, QString *errorOut) {
 }
 
 void SpotlightController::show() {
+    if (!m_componentEnabled)
+        return;
     m_closeAnimationTimer.stop();
     if (!m_surfaceVisible) {
         m_surfaceVisible = true;
@@ -154,10 +156,14 @@ void SpotlightController::close() {
 }
 
 void SpotlightController::toggle() {
+    if (!m_componentEnabled)
+        return;
     isOpen() ? close() : show();
 }
 
 void SpotlightController::setQuery(const QString &q) {
+    if (!m_componentEnabled)
+        return;
     if (!isOpen()) show();
     if (m_query != q) {
         m_query = q;
@@ -169,6 +175,8 @@ void SpotlightController::setQuery(const QString &q) {
 }
 
 void SpotlightController::scheduleSearch(const QString &q) {
+    if (!m_componentEnabled)
+        return;
     if (m_query != q) {
         m_query = q;
         emit queryChanged();
@@ -212,6 +220,8 @@ void SpotlightController::activateCurrent() {
 }
 
 void SpotlightController::launch(int row) {
+    if (!m_componentEnabled)
+        return;
     if (row < 0 || row >= m_results.resultCount()) return;
     const SearchResultItem item = m_results.resultAt(row);
 
@@ -387,7 +397,11 @@ void SpotlightController::setGameModeActive(bool active) {
 }
 
 void SpotlightController::setComponentEnabled(bool enabled) {
-    if (!enabled && isOpen())
+    if (m_componentEnabled == enabled)
+        return;
+    m_componentEnabled = enabled;
+    emit componentEnabledChanged();
+    if (!enabled && (isOpen() || m_surfaceVisible))
         close();
 }
 

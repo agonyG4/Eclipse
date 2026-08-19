@@ -9,6 +9,8 @@ class AltTabConfigWatcher;
 class AltTabController;
 class AppIdentityResolver;
 class ApplicationLauncher;
+class BarClockService;
+class BarController;
 class CompositorBackend;
 class DesktopEntryCatalog;
 class DockConfigWatcher;
@@ -21,6 +23,8 @@ class ShellShortcutDispatcher;
 class TyphonShortcutClient;
 class TyphonSharedConnection;
 class TyphonToplevelConnection;
+class ThemeController;
+class WorkspaceModel;
 
 class ShellRuntime final : public QObject {
     Q_OBJECT
@@ -45,6 +49,10 @@ public:
     DockController *dockController() const { return m_dockController.get(); }
     AltTabController *altTabController() const { return m_altTabController.get(); }
     SpotlightController *spotlightController() const { return m_spotlightController.get(); }
+    BarController *barController() const { return m_barController.get(); }
+    BarClockService *barClock() const { return m_barClock.get(); }
+    ThemeController *themeController() const { return m_themeController.get(); }
+    WorkspaceModel *workspaceModel() const { return m_workspaceModel.get(); }
     ShellShortcutDispatcher *shortcutDispatcher() const { return m_shortcutDispatcher.get(); }
     GameModeMonitor *gameModeMonitor() const { return m_gameMode.get(); }
     ShellIpcServer *ipcServer() const { return m_ipcServer.get(); }
@@ -75,6 +83,10 @@ private:
     std::unique_ptr<DockController> m_dockController;
     std::unique_ptr<AltTabController> m_altTabController;
     std::unique_ptr<SpotlightController> m_spotlightController;
+    std::unique_ptr<BarController> m_barController;
+    std::unique_ptr<BarClockService> m_barClock;
+    std::unique_ptr<ThemeController> m_themeController;
+    std::unique_ptr<WorkspaceModel> m_workspaceModel;
     std::unique_ptr<ShellShortcutDispatcher> m_shortcutDispatcher;
     std::unique_ptr<ShellIpcServer> m_ipcServer;
     std::unique_ptr<DockConfigWatcher> m_dockConfig;

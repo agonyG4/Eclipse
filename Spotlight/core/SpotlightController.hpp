@@ -18,6 +18,7 @@
 class SpotlightController : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool open READ isOpen NOTIFY openChanged)
+    Q_PROPERTY(bool componentEnabled READ componentEnabled NOTIFY componentEnabledChanged)
     Q_PROPERTY(bool surfaceVisible READ surfaceVisible NOTIFY surfaceVisibleChanged)
     Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY queryChanged)
     Q_PROPERTY(SpotlightResultsModel *resultsModel READ resultsModel CONSTANT)
@@ -42,6 +43,7 @@ public:
     bool setLocale(const QString &locale, QString *errorOut = nullptr);
 
     bool isOpen() const { return m_open; }
+    bool componentEnabled() const { return m_componentEnabled; }
     bool surfaceVisible() const { return m_surfaceVisible; }
     QString query() const { return m_query; }
     SpotlightResultsModel *resultsModel() { return &m_results; }
@@ -80,6 +82,7 @@ public:
 
 signals:
     void openChanged();
+    void componentEnabledChanged();
     void surfaceVisibleChanged();
     void queryChanged();
     void resultCountChanged();
@@ -112,6 +115,7 @@ private:
     QPointer<QProcess> m_weatherProc;
 
     bool m_open = false;
+    bool m_componentEnabled = true;
     bool m_surfaceVisible = false;
     int m_selectedIndex = -1;
     QString m_query;

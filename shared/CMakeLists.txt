@@ -15,6 +15,8 @@ add_library(astrea-shared-core STATIC
     apps/DesktopEntryCatalog.hpp
     launch/ApplicationLauncher.cpp
     launch/ApplicationLauncher.hpp
+    theme/ThemeController.cpp
+    theme/ThemeController.hpp
     icons/AstreaIconTheme.cpp
     icons/AstreaIconTheme.hpp
     icons/AstreaIconProvider.cpp

@@ -1,4 +1,4 @@
-#include "services/theme/ThemeController.hpp"
+#include "theme/ThemeController.hpp"
 
 #include <QDir>
 #include <QFile>
@@ -10,15 +10,20 @@ ThemeController::ThemeController(const QString &configPath, QObject *parent)
     : QObject(parent)
     , m_configPath(configPath.isEmpty()
                        ? QDir::homePath() + QStringLiteral("/.config/AstreaOS/ui/theme.json")
-                       : configPath)
+                       : QFileInfo(configPath).absoluteFilePath())
 {
-    load();
+    m_reloadTimer.setSingleShot(true);
+    m_reloadTimer.setInterval(100);
+    connect(&m_reloadTimer, &QTimer::timeout, this, &ThemeController::reload);
+    connect(&m_watcher, &QFileSystemWatcher::fileChanged,
+            this, [this](const QString &) { scheduleReload(); });
+    connect(&m_watcher, &QFileSystemWatcher::directoryChanged,
+            this, [this](const QString &) { scheduleReload(); });
+    reload();
+    m_loaded = true;
 }
 
-int ThemeController::themeMode() const
-{
-    return m_themeMode;
-}
+int ThemeController::themeMode() const { return m_themeMode; }
 
 void ThemeController::setThemeMode(int value)
 {
@@ -29,10 +34,7 @@ void ThemeController::setThemeMode(int value)
     emit themeModeChanged();
 }
 
-int ThemeController::shellStyle() const
-{
-    return m_shellStyle;
-}
+int ThemeController::shellStyle() const { return m_shellStyle; }
 
 void ThemeController::setShellStyle(int value)
 {
@@ -43,10 +45,7 @@ void ThemeController::setShellStyle(int value)
     emit shellStyleChanged();
 }
 
-int ThemeController::iconStyle() const
-{
-    return m_iconStyle;
-}
+int ThemeController::iconStyle() const { return m_iconStyle; }
 
 void ThemeController::setIconStyle(int value)
 {
@@ -56,10 +55,7 @@ void ThemeController::setIconStyle(int value)
     emit iconStyleChanged();
 }
 
-QString ThemeController::iconTheme() const
-{
-    return m_iconTheme;
-}
+QString ThemeController::iconTheme() const { return m_iconTheme; }
 
 void ThemeController::setIconTheme(const QString &value)
 {
@@ -69,10 +65,7 @@ void ThemeController::setIconTheme(const QString &value)
     emit iconThemeChanged();
 }
 
-QString ThemeController::accentHex() const
-{
-    return m_accentHex;
-}
+QString ThemeController::accentHex() const { return m_accentHex; }
 
 void ThemeController::setAccentHex(const QString &value)
 {
@@ -83,10 +76,7 @@ void ThemeController::setAccentHex(const QString &value)
     emit accentHexChanged();
 }
 
-int ThemeController::audioOsdStyle() const
-{
-    return m_audioOsdStyle;
-}
+int ThemeController::audioOsdStyle() const { return m_audioOsdStyle; }
 
 void ThemeController::setAudioOsdStyle(int value)
 {
@@ -97,22 +87,12 @@ void ThemeController::setAudioOsdStyle(int value)
     emit audioOsdStyleChanged();
 }
 
-QString ThemeController::configPath() const
-{
-    return m_configPath;
-}
-
-bool ThemeController::loaded() const
-{
-    return m_loaded;
-}
+QString ThemeController::configPath() const { return m_configPath; }
+bool ThemeController::loaded() const { return m_loaded; }
 
 void ThemeController::applyConfig(const QVariantMap &config)
 {
-    const auto value = [&config](const QString &key) {
-        return config.value(key);
-    };
-
+    const auto value = [&config](const QString &key) { return config.value(key); };
     if (value(QStringLiteral("theme_mode")).isValid())
         setThemeMode(value(QStringLiteral("theme_mode")).toInt());
     if (value(QStringLiteral("theme")).toString().compare(QStringLiteral("light"), Qt::CaseInsensitive) == 0)
@@ -131,13 +111,28 @@ void ThemeController::applyConfig(const QVariantMap &config)
         setAudioOsdStyle(value(QStringLiteral("audio_osd_style")).toInt());
 }
 
+void ThemeController::reload()
+{
+    if (m_reloading)
+        return;
+    m_reloading = true;
+    QFile file(m_configPath);
+    if (file.open(QIODevice::ReadOnly)) {
+        QJsonParseError error;
+        const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &error);
+        if (error.error == QJsonParseError::NoError && document.isObject())
+            applyConfig(document.object().toVariantMap());
+    }
+    updateWatchPaths();
+    m_reloading = false;
+}
+
 void ThemeController::save()
 {
     QDir().mkpath(QFileInfo(m_configPath).absolutePath());
     QFile file(m_configPath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
         return;
-
     const QJsonObject object{
         {QStringLiteral("theme"), m_themeMode == 1 ? QStringLiteral("light") : QStringLiteral("dark")},
         {QStringLiteral("theme_mode"), m_themeMode},
@@ -148,16 +143,28 @@ void ThemeController::save()
         {QStringLiteral("audio_osd_style"), m_audioOsdStyle},
     };
     file.write(QJsonDocument(object).toJson(QJsonDocument::Indented));
+    updateWatchPaths();
 }
 
-void ThemeController::load()
+void ThemeController::scheduleReload()
 {
-    QFile file(m_configPath);
-    if (file.open(QIODevice::ReadOnly)) {
-        QJsonParseError error;
-        const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &error);
-        if (error.error == QJsonParseError::NoError && document.isObject())
-            applyConfig(document.object().toVariantMap());
+    m_reloadTimer.start();
+}
+
+void ThemeController::updateWatchPaths()
+{
+    for (const QString &path : m_watcher.files())
+        m_watcher.removePath(path);
+    for (const QString &path : m_watcher.directories())
+        m_watcher.removePath(path);
+
+    const QFileInfo fileInfo(m_configPath);
+    if (fileInfo.exists() && fileInfo.isFile())
+        m_watcher.addPath(fileInfo.absoluteFilePath());
+
+    QDir directory = fileInfo.absoluteDir();
+    while (!directory.exists() && directory.cdUp()) {
     }
-    m_loaded = true;
+    if (directory.exists())
+        m_watcher.addPath(directory.absolutePath());
 }

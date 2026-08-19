@@ -17,15 +17,13 @@ add_library(astrea-settings-core STATIC
     ../services/profile/SettingsUserProfileProvider.cpp
     ../services/profile/SettingsUserProfileProvider.hpp
     ../services/profile/SettingsUserProfile.hpp
-    ../services/theme/ThemeController.cpp
-    ../services/theme/ThemeController.hpp
 )
 
 target_include_directories(astrea-settings-core PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/.."
 )
 
-target_link_libraries(astrea-settings-core PUBLIC Qt6::Core)
+target_link_libraries(astrea-settings-core PUBLIC Qt6::Core astrea-shared-core)
 
 settings_enable_warnings(astrea-settings-core)
 settings_enable_sanitizers(astrea-settings-core)

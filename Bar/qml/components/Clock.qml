@@ -16,6 +16,7 @@ Item {
 
     Row {
         id: row
+        objectName: "clockRow"
         anchors.centerIn: parent
         spacing: 8
 
@@ -25,6 +26,9 @@ Item {
             text: root.clockService ? root.clockService.dateText : ""
             color: theme.shellTextSecondary
             font.pixelSize: 10
+            font.family: theme.shellFontFamily
+            font.weight: theme.shellFontWeightNormal
+            font.letterSpacing: theme.shellClockTracking
             verticalAlignment: Text.AlignVCenter
         }
 
@@ -43,7 +47,9 @@ Item {
             text: root.clockService ? root.clockService.timeText : ""
             color: theme.shellTextMain
             font.pixelSize: 13
-            font.weight: Font.Medium
+            font.family: theme.shellFontFamily
+            font.weight: theme.shellFontWeightMedium
+            font.letterSpacing: theme.shellClockTracking
             verticalAlignment: Text.AlignVCenter
         }
     }
@@ -56,8 +62,8 @@ Item {
 
     SequentialAnimation {
         id: minuteTransition
-        NumberAnimation { target: time; property: "opacity"; to: 0.25; duration: 75 }
-        NumberAnimation { target: time; property: "opacity"; to: 1; duration: 125 }
+        NumberAnimation { target: time; property: "opacity"; to: 0.25; duration: theme.animationQuick / 2 }
+        NumberAnimation { target: time; property: "opacity"; to: 1; duration: theme.animationQuick }
     }
 
     Connections {

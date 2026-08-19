@@ -6,10 +6,14 @@
 #include <QGuiApplication>
 #include <QCoreApplication>
 #include <QColor>
+#include <QFont>
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
+#include <QQmlProperty>
+#include <QQuickItem>
 #include <QQuickWindow>
+#include <QSignalSpy>
 #include <QTest>
 #include <QTemporaryDir>
 #include <QUrl>
@@ -20,8 +24,13 @@ class BarQmlSmokeTest final : public QObject {
 
 private slots:
     void loadsAllProductionSurfaces();
+    void barPaletteMatchesBorealisForAllSixCombinations();
+    void barSegmentUsesBorealisInteractionTokens();
     void statusSurfaceUsesProductionGeometryAuthority();
     void popupSurfaceUsesProductionClampAndClosingLifecycle();
+    void popupEntersAndCompletesAnimation();
+    void popupReopenCancelsExitAnimation();
+    void popupKindSwitchCancelsPreviousExit();
     void clockUsesReferenceHorizontalStructure();
     void barPaletteFollowsSharedThemeState();
 
@@ -64,6 +73,131 @@ void BarQmlSmokeTest::loadsAllProductionSurfaces()
     };
     for (const QString &file : files)
         loadsProductionSurface(file);
+}
+
+void BarQmlSmokeTest::barPaletteMatchesBorealisForAllSixCombinations()
+{
+    struct ExpectedPalette {
+        int themeMode;
+        int shellStyle;
+        QColor background;
+        QColor surface;
+        QColor border;
+        QColor borderHover;
+        QColor hover;
+        QColor textPrimary;
+        QColor textSecondary;
+        QColor separator;
+    };
+    const auto rgba = [](qreal red, qreal green, qreal blue, qreal alpha) {
+        return QColor::fromRgbF(red, green, blue, alpha);
+    };
+    const QColor darkTextMain(QStringLiteral("#f5f5f7"));
+    const QColor darkTextSecondary = rgba(1, 1, 1, 0.60);
+    const QColor darkHover = rgba(1, 1, 1, 0.08);
+    const QColor darkBorderHover = rgba(1, 1, 1, 0.28);
+    const QColor darkSeparator = rgba(1, 1, 1, 0.08);
+    const QColor lightTextMain = rgba(0.05, 0.06, 0.07, 0.94);
+    const QColor lightTextSecondary = rgba(0.13, 0.15, 0.18, 0.68);
+    const QColor lightHover = rgba(0, 0, 0, 0.055);
+    const QColor lightBorderHover = rgba(0, 0, 0, 0.20);
+    const QColor lightSeparator = rgba(1, 1, 1, 0.08);
+    const QList<ExpectedPalette> expected{
+        {0, 0, rgba(0, 0, 0, 0.06), rgba(1, 1, 1, 0.06),
+         rgba(1, 1, 1, 0.14), darkBorderHover, darkHover, darkTextMain,
+         darkTextSecondary, darkSeparator},
+        {0, 1, rgba(0.10, 0.10, 0.11, 0.96), rgba(1, 1, 1, 0.08),
+         rgba(1, 1, 1, 0.11), darkBorderHover, darkHover, darkTextMain,
+         darkTextSecondary, darkSeparator},
+        {0, 2, rgba(0, 0, 0, 0.06), rgba(1, 1, 1, 0.06),
+         rgba(1, 1, 1, 0.14), darkBorderHover, darkHover, darkTextMain,
+         darkTextSecondary, darkSeparator},
+        {1, 0, rgba(1, 1, 1, 0.16), rgba(1, 1, 1, 0.22),
+         rgba(0, 0, 0, 0.08), lightBorderHover, lightHover, lightTextMain,
+         lightTextSecondary, lightSeparator},
+        {1, 1, rgba(0.985, 0.987, 0.994, 0.92), rgba(1, 1, 1, 0.86),
+         rgba(0, 0, 0, 0.12), lightBorderHover, lightHover, lightTextMain,
+         lightTextSecondary, lightSeparator},
+        {1, 2, rgba(0.96, 0.985, 1, 0.30), rgba(0.98, 0.99, 1, 0.38),
+         rgba(0, 0, 0, 0.10), lightBorderHover, lightHover, lightTextMain,
+         lightTextSecondary, lightSeparator},
+    };
+
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    ThemeController controller(directory.filePath(QStringLiteral("missing-theme.json")));
+    QQmlEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &controller);
+    QQmlComponent component(&engine,
+                            QUrl(QStringLiteral(
+                                "qrc:/qt/qml/Astrea/Shell/Bar/qml/components/ShellBarTheme.qml")));
+    QVERIFY(component.status() == QQmlComponent::Ready);
+    QObject *theme = component.create();
+    QVERIFY(theme != nullptr);
+
+    for (const ExpectedPalette &values : expected) {
+        controller.setThemeMode(values.themeMode);
+        controller.setShellStyle(values.shellStyle);
+        QCoreApplication::processEvents();
+        QCOMPARE(theme->property("shellBackground").value<QColor>(), values.background);
+        QCOMPARE(theme->property("shellSurface").value<QColor>(), values.surface);
+        QCOMPARE(theme->property("shellBorder").value<QColor>(), values.border);
+        QCOMPARE(theme->property("shellBorderHover").value<QColor>(), values.borderHover);
+        QCOMPARE(theme->property("shellHover").value<QColor>(), values.hover);
+        QCOMPARE(theme->property("shellTextMain").value<QColor>(), values.textPrimary);
+        QCOMPARE(theme->property("shellTextSecondary").value<QColor>(), values.textSecondary);
+        QCOMPARE(theme->property("shellSeparator").value<QColor>(), values.separator);
+    }
+    delete theme;
+}
+
+void BarQmlSmokeTest::barSegmentUsesBorealisInteractionTokens()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    ThemeController controller(directory.filePath(QStringLiteral("missing-theme.json")));
+    QQmlEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &controller);
+    QQmlComponent component(&engine,
+                            QUrl(QStringLiteral(
+                                "qrc:/qt/qml/Astrea/Shell/Bar/qml/components/BarSegment.qml")));
+    QVERIFY(component.status() == QQmlComponent::Ready);
+    QObject *object = component.create();
+    auto *segment = qobject_cast<QQuickItem *>(object);
+    QVERIFY(segment != nullptr);
+    QObject *surface = object->findChild<QObject *>(QStringLiteral("barSegmentSurface"));
+    QVERIFY(surface != nullptr);
+
+    const auto color = [surface] { return surface->property("color").value<QColor>(); };
+    const auto borderColor = [surface] {
+        return QQmlProperty(surface, QStringLiteral("border.color")).read().value<QColor>();
+    };
+    QCOMPARE(color(), QColor::fromRgbF(0, 0, 0, 0.06));
+    QCOMPARE(borderColor(), QColor::fromRgbF(1, 1, 1, 0.14));
+
+    QQuickWindow window;
+    window.resize(120, 50);
+    segment->setParentItem(window.contentItem());
+    segment->setProperty("interactive", true);
+    segment->setWidth(80);
+    segment->setHeight(36);
+    window.show();
+    QTest::qWait(20);
+
+    QTest::mouseMove(&window, QPoint(30, 25));
+    QCoreApplication::processEvents();
+    QTRY_COMPARE_WITH_TIMEOUT(color(), QColor::fromRgbF(1, 1, 1, 0.08), 500);
+    QTRY_COMPARE_WITH_TIMEOUT(borderColor(), QColor::fromRgbF(1, 1, 1, 0.28), 500);
+
+    QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, QPoint(30, 25));
+    QCoreApplication::processEvents();
+    QTRY_COMPARE_WITH_TIMEOUT(color(), QColor::fromRgbF(1, 1, 1, 0.12), 500);
+    QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, QPoint(30, 25));
+
+    segment->setProperty("active", true);
+    QCoreApplication::processEvents();
+    QTRY_COMPARE_WITH_TIMEOUT(color(), QColor::fromRgbF(1, 1, 1, 0.15), 500);
+    delete object;
 }
 
 void BarQmlSmokeTest::statusSurfaceUsesProductionGeometryAuthority()
@@ -135,6 +269,91 @@ void BarQmlSmokeTest::popupSurfaceUsesProductionClampAndClosingLifecycle()
     delete overlay;
 }
 
+void BarQmlSmokeTest::popupEntersAndCompletesAnimation()
+{
+    QQmlEngine engine;
+    BarLayoutMetrics metrics;
+    BarPopupController popup;
+    QQmlComponent component(&engine,
+                            QUrl(QStringLiteral(
+                                "qrc:/qt/qml/Astrea/Shell/Bar/qml/PopupOverlaySurface.qml")));
+    QObject *overlay = component.createWithInitialProperties({
+        {QStringLiteral("barGeometry"), QVariant::fromValue(&metrics)},
+        {QStringLiteral("popupController"), QVariant::fromValue(&popup)},
+        {QStringLiteral("outputWidth"), 1200},
+        {QStringLiteral("outputHeight"), 700},
+    });
+    QVERIFY(overlay != nullptr);
+    QObject *menu = overlay->findChild<QObject *>(QStringLiteral("astreaMenu"));
+    QVERIFY(menu != nullptr);
+
+    popup.open(BarPopupController::PopupKind::AstreaMenu, 600);
+    QCoreApplication::processEvents();
+    QVERIFY(menu->property("visible").toBool());
+    QVERIFY(menu->property("opacity").toReal() < 1.0);
+    QVERIFY(menu->property("scale").toReal() < 1.0);
+    QTRY_VERIFY_WITH_TIMEOUT(menu->property("opacity").toReal() > 0.99, 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(menu->property("scale").toReal() > 0.99, 1000);
+    QVERIFY(popup.isOpen());
+    delete overlay;
+}
+
+void BarQmlSmokeTest::popupReopenCancelsExitAnimation()
+{
+    QQmlEngine engine;
+    BarLayoutMetrics metrics;
+    BarPopupController popup;
+    QQmlComponent component(&engine,
+                            QUrl(QStringLiteral(
+                                "qrc:/qt/qml/Astrea/Shell/Bar/qml/PopupOverlaySurface.qml")));
+    QObject *overlay = component.createWithInitialProperties({
+        {QStringLiteral("barGeometry"), QVariant::fromValue(&metrics)},
+        {QStringLiteral("popupController"), QVariant::fromValue(&popup)},
+    });
+    QVERIFY(overlay != nullptr);
+    popup.open(BarPopupController::PopupKind::Clock, 500);
+    QTest::qWait(40);
+    popup.close();
+    QCoreApplication::processEvents();
+    QVERIFY(popup.closing());
+    popup.open(BarPopupController::PopupKind::Clock, 520);
+    QCoreApplication::processEvents();
+    QVERIFY(popup.isOpen());
+    QVERIFY(!popup.closing());
+    QTest::qWait(300);
+    QVERIFY(popup.surfaceRequired());
+    QCOMPARE(popup.kind(), BarPopupController::PopupKind::Clock);
+    QCOMPARE(popup.anchorX(), 520);
+    delete overlay;
+}
+
+void BarQmlSmokeTest::popupKindSwitchCancelsPreviousExit()
+{
+    QQmlEngine engine;
+    BarLayoutMetrics metrics;
+    BarPopupController popup;
+    QQmlComponent component(&engine,
+                            QUrl(QStringLiteral(
+                                "qrc:/qt/qml/Astrea/Shell/Bar/qml/PopupOverlaySurface.qml")));
+    QObject *overlay = component.createWithInitialProperties({
+        {QStringLiteral("barGeometry"), QVariant::fromValue(&metrics)},
+        {QStringLiteral("popupController"), QVariant::fromValue(&popup)},
+    });
+    QVERIFY(overlay != nullptr);
+    popup.open(BarPopupController::PopupKind::Clock, 500);
+    QTest::qWait(40);
+    popup.close();
+    QCoreApplication::processEvents();
+    popup.open(BarPopupController::PopupKind::AstreaMenu, 120);
+    QCoreApplication::processEvents();
+    QTest::qWait(300);
+    QVERIFY(popup.surfaceRequired());
+    QVERIFY(popup.isOpen());
+    QCOMPARE(popup.kind(), BarPopupController::PopupKind::AstreaMenu);
+    QCOMPARE(popup.anchorX(), 120);
+    delete overlay;
+}
+
 void BarQmlSmokeTest::clockUsesReferenceHorizontalStructure()
 {
     QQmlEngine engine;
@@ -154,13 +373,22 @@ void BarQmlSmokeTest::clockUsesReferenceHorizontalStructure()
     QObject *date = status->findChild<QObject *>(QStringLiteral("clockDate"));
     QObject *separator = status->findChild<QObject *>(QStringLiteral("clockSeparator"));
     QObject *time = status->findChild<QObject *>(QStringLiteral("clockTime"));
+    QObject *row = status->findChild<QObject *>(QStringLiteral("clockRow"));
     QVERIFY(clockObject != nullptr);
     QVERIFY(date != nullptr);
     QVERIFY(separator != nullptr);
     QVERIFY(time != nullptr);
+    QVERIFY(row != nullptr);
     QCOMPARE(separator->property("width").toInt(), 1);
     QVERIFY(separator->property("height").toInt() > separator->property("width").toInt());
     QCOMPARE(date->property("y").toInt(), time->property("y").toInt());
+    QCOMPARE(row->property("spacing").toInt(), 8);
+    QCOMPARE(QQmlProperty(date, QStringLiteral("font.family")).read().toString(),
+             QStringLiteral("Inter"));
+    QCOMPARE(QQmlProperty(date, QStringLiteral("font.weight")).read().toInt(),
+             static_cast<int>(QFont::Normal));
+    QCOMPARE(QQmlProperty(time, QStringLiteral("font.weight")).read().toInt(),
+             static_cast<int>(QFont::Medium));
     QVERIFY(clockObject->property("implicitWidth").toInt()
             > clockObject->property("implicitHeight").toInt());
     delete status;

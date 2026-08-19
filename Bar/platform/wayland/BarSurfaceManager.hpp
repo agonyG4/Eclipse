@@ -56,4 +56,5 @@ private:
     QHash<QScreen *, BarSurfaceBundle *> m_bundles;
     BundleFactory m_bundleFactory;
     bool m_initialized = false;
+    bool m_stopped = false;
 };

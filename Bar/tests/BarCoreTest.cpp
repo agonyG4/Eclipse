@@ -46,6 +46,8 @@ private slots:
     void barSearchCapabilityTracksSpotlightEnablement();
     void settingsActionUsesCatalogAndLauncherSeam();
     void surfaceManagerOwnsProductionLifecycleAndEnablement();
+    void surfaceRemovalDuringPopupCloseIsImmediate();
+    void surfaceManagerShutdownIsTerminal();
     void surfaceManagerUnwindsBundleCreationFailure();
     void popupOwnershipIsLocalToEachSurfaceBundle();
 };
@@ -477,6 +479,95 @@ void BarCoreTest::surfaceManagerOwnsProductionLifecycleAndEnablement()
     manager.shutdown();
     QCOMPARE(counters.destroyed, 2);
     QCOMPARE(countSpy.count(), signalCount);
+}
+
+void BarCoreTest::surfaceRemovalDuringPopupCloseIsImmediate()
+{
+    auto *application = qobject_cast<QGuiApplication *>(QCoreApplication::instance());
+    QVERIFY(application != nullptr);
+    QScreen *screen = QGuiApplication::primaryScreen();
+    QVERIFY(screen != nullptr);
+    QQmlApplicationEngine engine;
+    BarController bar(nullptr, nullptr, nullptr);
+    BundleCounters counters;
+    BarSurfaceManager::BundleFactory factory = [&counters](QScreen *output, QObject *parent) {
+        return new RecordingBundle(output, &counters, parent);
+    };
+    BarSurfaceManager manager(*application, engine, &bar, nullptr, nullptr,
+                              nullptr, std::move(factory));
+
+    QVERIFY(manager.initialize());
+    BarSurfaceBundle *bundle = nullptr;
+    for (BarSurfaceBundle *candidate : manager.findChildren<BarSurfaceBundle *>()) {
+        if (candidate && candidate->screen() == screen) {
+            bundle = candidate;
+            break;
+        }
+    }
+    QVERIFY(bundle != nullptr);
+    const int initializedBundleCount = manager.bundleCount();
+    bundle->popupController()->open(BarPopupController::PopupKind::Clock, 500);
+    bundle->popupController()->close();
+    QVERIFY(bundle->popupController()->closing());
+
+    application->screenRemoved(screen);
+
+    QCOMPARE(manager.bundleCount(), initializedBundleCount - 1);
+    QCOMPARE(counters.destroyed, 1);
+    QVERIFY(!manager.popupOpen());
+}
+
+void BarCoreTest::surfaceManagerShutdownIsTerminal()
+{
+    auto *application = qobject_cast<QGuiApplication *>(QCoreApplication::instance());
+    QVERIFY(application != nullptr);
+    QScreen *screen = QGuiApplication::primaryScreen();
+    QVERIFY(screen != nullptr);
+    QQmlApplicationEngine engine;
+    BarController bar(nullptr, nullptr, nullptr);
+    BundleCounters counters;
+    BarSurfaceManager::BundleFactory factory = [&counters](QScreen *output, QObject *parent) {
+        return new RecordingBundle(output, &counters, parent);
+    };
+    BarSurfaceManager manager(*application, engine, &bar, nullptr, nullptr,
+                              nullptr, std::move(factory));
+    QSignalSpy countSpy(&manager, &BarSurfaceManager::bundleCountChanged);
+    QSignalSpy popupSpy(&manager, &BarSurfaceManager::popupStateChanged);
+    QSignalSpy layerSpy(&manager, &BarSurfaceManager::layerStateChanged);
+
+    QVERIFY(manager.initialize());
+    const int initializedBundleCount = manager.bundleCount();
+    QCOMPARE(counters.created, initializedBundleCount);
+    manager.shutdown();
+    QCOMPARE(manager.bundleCount(), 0);
+    QCOMPARE(counters.destroyed, initializedBundleCount);
+    const int countSignals = countSpy.count();
+    const int popupSignals = popupSpy.count();
+    const int layerSignals = layerSpy.count();
+
+    application->screenAdded(screen);
+    application->screenRemoved(screen);
+    screen->geometryChanged(screen->geometry());
+    screen->availableGeometryChanged(screen->availableGeometry());
+    bar.setEnabled(false);
+    bar.setEnabled(true);
+
+    QCOMPARE(manager.bundleCount(), 0);
+    QCOMPARE(counters.created, initializedBundleCount);
+    QCOMPARE(counters.destroyed, initializedBundleCount);
+    QCOMPARE(counters.geometryUpdates, 0);
+    QCOMPARE(countSpy.count(), countSignals);
+    QCOMPARE(popupSpy.count(), popupSignals);
+    QCOMPARE(layerSpy.count(), layerSignals);
+
+    QString error;
+    QVERIFY(!manager.initialize(&error));
+    QVERIFY(error.contains(QStringLiteral("shut down"), Qt::CaseInsensitive));
+    manager.shutdown();
+    QCOMPARE(counters.destroyed, initializedBundleCount);
+    QCOMPARE(countSpy.count(), countSignals);
+    QCOMPARE(popupSpy.count(), popupSignals);
+    QCOMPARE(layerSpy.count(), layerSignals);
 }
 
 void BarCoreTest::surfaceManagerUnwindsBundleCreationFailure()

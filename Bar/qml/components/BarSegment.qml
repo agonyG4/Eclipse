@@ -17,15 +17,17 @@ Item {
     height: implicitHeight
 
     Rectangle {
+        objectName: "barSegmentSurface"
         anchors.fill: parent
-        radius: height / 2
-        color: mouse.pressed ? theme.shellPressed
-            : root.active ? theme.shellActive
+        radius: theme.shellRadiusLarge - 2
+        color: root.active ? theme.shellActive
+            : mouse.pressed ? theme.shellPressed
             : mouse.containsMouse ? theme.shellHover
-            : theme.shellSurface
-        border.color: mouse.containsMouse ? theme.shellBorder : "transparent"
+            : theme.shellBackground
+        border.color: mouse.containsMouse ? theme.shellBorderHover : theme.shellBorder
         border.width: 1
         Behavior on color { ColorAnimation { duration: theme.animationQuick } }
+        Behavior on border.color { ColorAnimation { duration: theme.animationNormal } }
     }
 
     Row {

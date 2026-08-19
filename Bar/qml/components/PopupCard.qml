@@ -11,7 +11,7 @@ Rectangle {
     width: implicitWidth
     height: implicitHeight
     radius: theme.shellRadiusLarge
-    color: theme.shellBackground
+    color: theme.shellSurfaceElevated
     border.color: theme.shellBorder
     border.width: 1
 

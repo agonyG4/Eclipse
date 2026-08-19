@@ -31,6 +31,8 @@ BarSurfaceManager::BarSurfaceManager(QGuiApplication &application, QQmlApplicati
     }
     connect(&m_application, &QGuiApplication::screenAdded,
             this, [this](QScreen *screen) {
+        if (m_stopped || !m_initialized)
+            return;
         QString error;
         if (!addScreen(screen, &error)) {
             qCritical("Astrea shell Bar output initialization failed: %s", qPrintable(error));
@@ -38,7 +40,10 @@ BarSurfaceManager::BarSurfaceManager(QGuiApplication &application, QQmlApplicati
         }
     });
     connect(&m_application, &QGuiApplication::screenRemoved,
-            this, [this](QScreen *screen) { removeScreen(screen); });
+            this, [this](QScreen *screen) {
+        if (!m_stopped && m_initialized)
+            removeScreen(screen);
+    });
     if (m_barController) {
         connect(m_barController, &BarController::enabledChanged,
                 this, &BarSurfaceManager::syncBarEnablement);
@@ -52,6 +57,11 @@ BarSurfaceManager::~BarSurfaceManager()
 
 bool BarSurfaceManager::initialize(QString *errorOut)
 {
+    if (m_stopped) {
+        if (errorOut)
+            *errorOut = QStringLiteral("Bar surface manager has been shut down");
+        return false;
+    }
     if (m_initialized)
         return true;
     m_initialized = true;
@@ -66,6 +76,14 @@ bool BarSurfaceManager::initialize(QString *errorOut)
 
 void BarSurfaceManager::shutdown()
 {
+    if (m_stopped)
+        return;
+    m_stopped = true;
+    m_initialized = false;
+    QObject::disconnect(&m_application, nullptr, this, nullptr);
+    if (m_barController)
+        QObject::disconnect(m_barController, nullptr, this, nullptr);
+
     const auto bundles = m_bundles;
     for (QScreen *screen : bundles.keys())
         QObject::disconnect(screen, &QScreen::geometryChanged, this, nullptr);
@@ -77,7 +95,6 @@ void BarSurfaceManager::shutdown()
         emit popupStateChanged();
         emit layerStateChanged();
     }
-    m_initialized = false;
 }
 
 bool BarSurfaceManager::popupOpen() const
@@ -102,6 +119,8 @@ bool BarSurfaceManager::layerConfigurationRequested() const
 
 bool BarSurfaceManager::addScreen(QScreen *screen, QString *errorOut)
 {
+    if (m_stopped || !m_initialized)
+        return false;
     if (!screen || m_bundles.contains(screen))
         return true;
     auto *bundle = m_bundleFactory(screen, this);
@@ -132,6 +151,8 @@ bool BarSurfaceManager::addScreen(QScreen *screen, QString *errorOut)
 
 void BarSurfaceManager::removeScreen(QScreen *screen)
 {
+    if (m_stopped || !m_initialized)
+        return;
     auto it = m_bundles.find(screen);
     if (it == m_bundles.end())
         return;
@@ -146,12 +167,16 @@ void BarSurfaceManager::removeScreen(QScreen *screen)
 
 void BarSurfaceManager::handleScreenGeometryChanged(QScreen *screen)
 {
+    if (m_stopped || !m_initialized)
+        return;
     if (auto it = m_bundles.constFind(screen); it != m_bundles.constEnd() && it.value())
         it.value()->updateForScreen();
 }
 
 void BarSurfaceManager::syncBarEnablement()
 {
+    if (m_stopped || !m_initialized)
+        return;
     const bool enabled = !m_barController || m_barController->enabled();
     for (BarSurfaceBundle *bundle : m_bundles) {
         if (bundle)

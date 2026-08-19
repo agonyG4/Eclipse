@@ -19,6 +19,8 @@ Window {
     width: outputWidth
     height: outputHeight
 
+    ShellBarTheme { id: theme }
+
     MouseArea {
         anchors.fill: parent
         enabled: popupController && popupController.surfaceRequired
@@ -42,6 +44,25 @@ Window {
         popupController: window.popupController
         opacity: 0
         scale: 0.97
+        ParallelAnimation {
+            id: astreaEnter
+            NumberAnimation {
+                target: astreaMenu
+                property: "opacity"
+                from: 0
+                to: 1
+                duration: theme.animationPopover
+                easing.type: Easing.OutCubic
+            }
+            NumberAnimation {
+                target: astreaMenu
+                property: "scale"
+                from: 0.97
+                to: 1
+                duration: theme.animationPopover
+                easing.type: Easing.OutCubic
+            }
+        }
         ParallelAnimation {
             id: astreaExit
             NumberAnimation { target: astreaMenu; property: "opacity"; to: 0; duration: 180 }
@@ -68,6 +89,25 @@ Window {
         opacity: 0
         scale: 0.97
         ParallelAnimation {
+            id: clockEnter
+            NumberAnimation {
+                target: clockPopup
+                property: "opacity"
+                from: 0
+                to: 1
+                duration: theme.animationPopover
+                easing.type: Easing.OutCubic
+            }
+            NumberAnimation {
+                target: clockPopup
+                property: "scale"
+                from: 0.97
+                to: 1
+                duration: theme.animationPopover
+                easing.type: Easing.OutCubic
+            }
+        }
+        ParallelAnimation {
             id: clockExit
             NumberAnimation { target: clockPopup; property: "opacity"; to: 0; duration: 180 }
             NumberAnimation { target: clockPopup; property: "scale"; to: 0.97; duration: 220; easing.type: Easing.OutCubic }
@@ -81,6 +121,8 @@ Window {
         if (!popupController)
             return
         if (popupController.closing) {
+            astreaEnter.stop()
+            clockEnter.stop()
             if (popupController.kind === 1)
                 astreaExit.restart()
             else if (popupController.kind === 2)
@@ -91,11 +133,13 @@ Window {
         clockExit.stop()
         if (popupController.popupOpen) {
             if (popupController.kind === 1) {
-                astreaMenu.opacity = 1
-                astreaMenu.scale = 1
+                astreaMenu.opacity = 0
+                astreaMenu.scale = 0.97
+                astreaEnter.restart()
             } else if (popupController.kind === 2) {
-                clockPopup.opacity = 1
-                clockPopup.scale = 1
+                clockPopup.opacity = 0
+                clockPopup.scale = 0.97
+                clockEnter.restart()
             }
         }
     }

@@ -1,0 +1,326 @@
+#include "system/bluetooth/BluetoothService.hpp"
+
+#include "system/bluetooth/BluetoothDeviceModel.hpp"
+#include "system/bluetooth/BluezBackend.hpp"
+
+#include <QMetaObject>
+#include <QPointer>
+
+namespace Astrea::System {
+
+BluetoothService::BluetoothService(std::unique_ptr<BluetoothBackend> backend, QObject *parent)
+    : QObject(parent)
+    , m_backend(backend ? std::move(backend)
+                        : std::make_unique<BluezBackend>())
+    , m_devicesModel(new BluetoothDeviceModel(this))
+{
+    m_powerTimer.setSingleShot(true);
+    m_powerTimer.setInterval(3000);
+    connect(&m_powerTimer, &QTimer::timeout, this, [this] {
+        if (!m_powerPending)
+            return;
+        finishPowerPending(false, QStringLiteral("Bluetooth power update timed out"));
+    });
+    m_discoveryTimer.setSingleShot(true);
+    m_discoveryTimer.setInterval(3000);
+    connect(&m_discoveryTimer, &QTimer::timeout, this, [this] {
+        if (!m_discoveryRequestInFlight)
+            return;
+        finishDiscoveryRequest(false, QStringLiteral("Bluetooth discovery update timed out"));
+    });
+}
+
+BluetoothService::~BluetoothService()
+{
+    stop();
+}
+
+bool BluetoothService::start()
+{
+    if (m_state != SystemServiceState::Stopped)
+        return true;
+    ++m_generation;
+    setState(SystemServiceState::Starting);
+    setErrorString({});
+    const QPointer<BluetoothService> self(this);
+    const quint64 generation = m_generation;
+    BluetoothBackend::Callbacks callbacks;
+    callbacks.snapshotChanged = [self, generation](BluetoothSnapshot snapshot) {
+        if (!self)
+            return;
+        QMetaObject::invokeMethod(self, [self, generation,
+                                          snapshot = std::move(snapshot)]() mutable {
+            if (self && self->m_generation == generation
+                && self->m_state != SystemServiceState::Stopped)
+                self->applySnapshot(std::move(snapshot));
+        }, Qt::QueuedConnection);
+    };
+    callbacks.errorChanged = [self, generation](QString errorString) {
+        if (!self)
+            return;
+        QMetaObject::invokeMethod(self, [self, generation,
+                                          errorString = std::move(errorString)] {
+            if (!self || self->m_generation != generation
+                || self->m_state == SystemServiceState::Stopped)
+                return;
+            self->setErrorString(errorString);
+            self->setState(SystemServiceState::Degraded);
+        }, Qt::QueuedConnection);
+    };
+    callbacks.operationFinished = [self, generation](QString operation, bool success,
+                                                      QString errorString) {
+        if (!self)
+            return;
+        QMetaObject::invokeMethod(self, [self, generation, operation = std::move(operation),
+                                         success, errorString = std::move(errorString)] {
+            if (self && self->m_generation == generation
+                && self->m_state != SystemServiceState::Stopped)
+                self->handleOperationFinished(operation, success, errorString);
+        }, Qt::QueuedConnection);
+    };
+    QString error;
+    if (!m_backend->start(callbacks, &error)) {
+        setErrorString(error.isEmpty() ? QStringLiteral("Bluetooth backend unavailable") : error);
+        setState(SystemServiceState::Unavailable);
+    } else {
+        m_available = true;
+        m_ready = true;
+        emit healthChanged();
+        setState(SystemServiceState::Ready);
+    }
+    return true;
+}
+
+void BluetoothService::stop()
+{
+    if (m_state == SystemServiceState::Stopped)
+        return;
+    ++m_generation;
+    m_powerTimer.stop();
+    m_discoveryTimer.stop();
+    if (m_scanning || m_discoveryRequestInFlight || !m_scanOwners.isEmpty())
+        m_backend->stopDiscovery();
+    m_scanOwners.clear();
+    m_backend->stop();
+    m_devicesModel->replace({});
+    m_available = false;
+    m_ready = false;
+    const bool oldScanning = m_scanning;
+    const bool oldPending = m_powerPending;
+    m_scanning = false;
+    m_discoveryRequestInFlight = false;
+    m_powerPending = false;
+    emit healthChanged();
+    if (oldScanning)
+        emit scanningChanged();
+    if (oldPending)
+        emit powerPendingChanged();
+    setState(SystemServiceState::Stopped);
+}
+
+bool BluetoothService::setPowered(bool powered)
+{
+    if (!m_backend->setPowered(powered))
+        return false;
+    m_powerTarget = powered;
+    if (!m_powerPending) {
+        m_powerPending = true;
+        emit powerPendingChanged();
+    }
+    m_powerTimer.start();
+    return true;
+}
+
+bool BluetoothService::requestScan(const QString &owner)
+{
+    if (owner.isEmpty())
+        return false;
+    const bool wasEmpty = m_scanOwners.isEmpty();
+    m_scanOwners.insert(owner);
+    if (wasEmpty && m_powered && m_adapterAvailable && !m_scanning
+        && !m_discoveryRequestInFlight) {
+        if (!m_backend->startDiscovery()) {
+            m_scanOwners.remove(owner);
+            return false;
+        }
+        m_discoveryRequestInFlight = true;
+        m_discoveryTimer.start();
+    }
+    return true;
+}
+
+void BluetoothService::releaseScan(const QString &owner)
+{
+    if (!m_scanOwners.remove(owner) || !m_scanOwners.isEmpty())
+        return;
+    reconcileDiscovery();
+}
+
+bool BluetoothService::connectDevice(const QString &objectPath)
+{
+    if (objectPath.isEmpty())
+        return false;
+    bool paired = false;
+    for (int row = 0; row < m_devicesModel->rowCount(); ++row) {
+        const QModelIndex index = m_devicesModel->index(row, 0);
+        if (m_devicesModel->data(index, BluetoothDeviceModel::ObjectPathRole).toString()
+            != objectPath)
+            continue;
+        paired = m_devicesModel->data(index, BluetoothDeviceModel::PairedRole).toBool();
+        break;
+    }
+    if (!paired)
+        return false;
+    return m_backend->connectDevice(objectPath);
+}
+
+bool BluetoothService::disconnectDevice(const QString &objectPath)
+{
+    if (objectPath.isEmpty())
+        return false;
+    return m_backend->disconnectDevice(objectPath);
+}
+
+QJsonObject BluetoothService::healthJson() const
+{
+    QJsonObject result = serviceHealthJson(m_state, m_available, m_ready, m_errorString);
+    result.insert(QStringLiteral("adapterAvailable"), m_adapterAvailable);
+    result.insert(QStringLiteral("powered"), m_powered);
+    result.insert(QStringLiteral("scanning"), m_scanning);
+    result.insert(QStringLiteral("connectedCount"), m_connectedCount);
+    return result;
+}
+
+void BluetoothService::setState(SystemServiceState state)
+{
+    if (m_state == state)
+        return;
+    m_state = state;
+    emit stateChanged();
+    emit healthChanged();
+}
+
+void BluetoothService::setErrorString(const QString &errorString)
+{
+    if (m_errorString == errorString)
+        return;
+    m_errorString = errorString;
+    emit errorStringChanged();
+    emit healthChanged();
+}
+
+void BluetoothService::applySnapshot(const BluetoothSnapshot &snapshot)
+{
+    const bool oldAdapterAvailable = m_adapterAvailable;
+    const bool oldPowered = m_powered;
+    const bool oldPending = m_powerPending;
+    const bool oldScanning = m_scanning;
+    m_available = snapshot.daemonAvailable;
+    m_ready = snapshot.daemonAvailable;
+    m_adapterAvailable = snapshot.adapterAvailable;
+    m_adapterPath = snapshot.adapterPath;
+    m_adapterName = snapshot.adapterName;
+    m_powered = snapshot.powered;
+    if (!snapshot.daemonAvailable)
+        m_powerPending = false;
+    else if (m_powerPending && m_powered == m_powerTarget)
+        m_powerPending = false;
+    m_scanning = snapshot.scanning;
+    const bool discoveryRequestSettled =
+        (m_discoveryRequestInFlight && m_scanning && !m_scanOwners.isEmpty())
+        || (m_discoveryRequestInFlight && !m_scanning && m_scanOwners.isEmpty());
+    if (discoveryRequestSettled) {
+        m_discoveryRequestInFlight = false;
+        m_discoveryTimer.stop();
+    }
+    m_devicesModel->replace(snapshot.devices);
+    m_connectedCount = 0;
+    m_connectedName.clear();
+    for (const BluetoothDevice &device : snapshot.devices) {
+        if (!device.connected)
+            continue;
+        ++m_connectedCount;
+        if (m_connectedName.isEmpty())
+            m_connectedName = device.name;
+    }
+    if (oldAdapterAvailable != m_adapterAvailable)
+        emit adapterChanged();
+    if (oldPowered != m_powered)
+        emit poweredChanged();
+    if (oldPending != m_powerPending)
+        emit powerPendingChanged();
+    if (oldScanning != m_scanning)
+        emit scanningChanged();
+    emit connectedChanged();
+    emit healthChanged();
+    setState(snapshot.daemonAvailable ? SystemServiceState::Ready
+                                      : SystemServiceState::Unavailable);
+    if (!m_powerPending)
+        m_powerTimer.stop();
+    reconcileDiscovery();
+}
+
+void BluetoothService::reconcileDiscovery()
+{
+    const bool shouldScan = !m_scanOwners.isEmpty() && m_adapterAvailable && m_powered;
+    if (!shouldScan && m_scanning && !m_discoveryRequestInFlight) {
+        if (m_backend->stopDiscovery()) {
+            m_discoveryRequestInFlight = true;
+            m_discoveryTimer.start();
+        }
+        return;
+    }
+    if (shouldScan && !m_scanning && !m_discoveryRequestInFlight) {
+        if (m_backend->startDiscovery()) {
+            m_discoveryRequestInFlight = true;
+            m_discoveryTimer.start();
+        }
+    }
+}
+
+void BluetoothService::handleOperationFinished(const QString &operation, bool success,
+                                                const QString &errorString)
+{
+    if (operation == QLatin1String("power")) {
+        if (!success)
+            finishPowerPending(false, errorString);
+        return;
+    }
+    if (operation == QLatin1String("discovery-start")
+        || operation == QLatin1String("discovery-stop")) {
+        finishDiscoveryRequest(success, errorString);
+        return;
+    }
+    if (!success) {
+        if (!errorString.isEmpty())
+            setErrorString(errorString);
+        setState(SystemServiceState::Degraded);
+    }
+}
+
+void BluetoothService::finishPowerPending(bool success, const QString &errorString)
+{
+    m_powerTimer.stop();
+    if (!success) {
+        setErrorString(errorString.isEmpty() ? QStringLiteral("Bluetooth power update failed")
+                                             : errorString);
+        setState(SystemServiceState::Degraded);
+    }
+    if (!m_powerPending)
+        return;
+    m_powerPending = false;
+    emit powerPendingChanged();
+}
+
+void BluetoothService::finishDiscoveryRequest(bool success, const QString &errorString)
+{
+    m_discoveryTimer.stop();
+    m_discoveryRequestInFlight = false;
+    if (!success) {
+        setErrorString(errorString.isEmpty() ? QStringLiteral("Bluetooth discovery update failed")
+                                             : errorString);
+        setState(SystemServiceState::Degraded);
+    }
+}
+
+} // namespace Astrea::System

@@ -11,6 +11,9 @@ set(ASTREA_BAR_QML_FILES
     "${CMAKE_CURRENT_LIST_DIR}/../qml/components/Clock.qml"
     "${CMAKE_CURRENT_LIST_DIR}/../qml/components/MenuAction.qml"
     "${CMAKE_CURRENT_LIST_DIR}/../qml/components/PopupCard.qml"
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/components/NetworkIndicator.qml"
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/components/BluetoothIndicator.qml"
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/components/VolumeIndicator.qml"
 )
 set(ASTREA_BAR_RESOURCES
     "${CMAKE_CURRENT_LIST_DIR}/../assets/astrea.png"
@@ -54,6 +57,15 @@ set_source_files_properties(
 set_source_files_properties(
     "${CMAKE_CURRENT_LIST_DIR}/../qml/components/PopupCard.qml"
     PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/components/PopupCard.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/components/NetworkIndicator.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/components/NetworkIndicator.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/components/BluetoothIndicator.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/components/BluetoothIndicator.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/components/VolumeIndicator.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/components/VolumeIndicator.qml")
 set_source_files_properties(
     "${CMAKE_CURRENT_LIST_DIR}/../assets/astrea.png"
     PROPERTIES QT_RESOURCE_ALIAS "Bar/assets/astrea.png")

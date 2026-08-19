@@ -71,6 +71,7 @@ target_include_directories(astrea-shell-runtime PUBLIC
 target_link_libraries(astrea-shell-runtime PUBLIC
     astrea-alttab-core
     astrea-shared-core
+    astrea-shared-system
     astrea-shared-typhon
     astrea-shared-layer-shell
     astrea_spotlight_backend
@@ -205,7 +206,8 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     add_test(NAME bar-qml-legacy-guard
              COMMAND ${Python3_EXECUTABLE}
                      "${CMAKE_CURRENT_SOURCE_DIR}/../Bar/tests/check_bar_qml.py"
-                     "${CMAKE_CURRENT_SOURCE_DIR}/../Bar/qml")
+                     "${CMAKE_CURRENT_SOURCE_DIR}/../Bar/qml"
+                     "${CMAKE_CURRENT_SOURCE_DIR}/../shared/system")
 
     add_executable(shell-ipc-test
         tests/ShellIpcTest.cpp

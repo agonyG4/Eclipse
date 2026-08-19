@@ -68,7 +68,8 @@ class RecordingBundle final : public BarSurfaceBundle {
 public:
     RecordingBundle(QScreen *screen, BundleCounters *counters, QObject *parent,
                     bool initializeSuccessfully = true)
-        : BarSurfaceBundle(screen, nullptr, nullptr, nullptr, nullptr, parent)
+        : BarSurfaceBundle(screen, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+                           parent)
         , m_counters(counters)
         , m_initializeSuccessfully(initializeSuccessfully)
     {
@@ -432,7 +433,7 @@ void BarCoreTest::surfaceManagerOwnsProductionLifecycleAndEnablement()
         return new RecordingBundle(output, &counters, parent);
     };
     BarSurfaceManager manager(*application, engine, &bar, nullptr, nullptr,
-                              nullptr, std::move(factory));
+                              nullptr, nullptr, nullptr, nullptr, std::move(factory));
     QSignalSpy countSpy(&manager, &BarSurfaceManager::bundleCountChanged);
 
     QVERIFY(manager.initialize());
@@ -494,7 +495,7 @@ void BarCoreTest::surfaceRemovalDuringPopupCloseIsImmediate()
         return new RecordingBundle(output, &counters, parent);
     };
     BarSurfaceManager manager(*application, engine, &bar, nullptr, nullptr,
-                              nullptr, std::move(factory));
+                              nullptr, nullptr, nullptr, nullptr, std::move(factory));
 
     QVERIFY(manager.initialize());
     BarSurfaceBundle *bundle = nullptr;
@@ -530,7 +531,7 @@ void BarCoreTest::surfaceManagerShutdownIsTerminal()
         return new RecordingBundle(output, &counters, parent);
     };
     BarSurfaceManager manager(*application, engine, &bar, nullptr, nullptr,
-                              nullptr, std::move(factory));
+                              nullptr, nullptr, nullptr, nullptr, std::move(factory));
     QSignalSpy countSpy(&manager, &BarSurfaceManager::bundleCountChanged);
     QSignalSpy popupSpy(&manager, &BarSurfaceManager::popupStateChanged);
     QSignalSpy layerSpy(&manager, &BarSurfaceManager::layerStateChanged);
@@ -583,7 +584,7 @@ void BarCoreTest::surfaceManagerUnwindsBundleCreationFailure()
         return new RecordingBundle(output, &counters, parent, false);
     };
     BarSurfaceManager manager(*application, engine, &bar, nullptr, nullptr,
-                              nullptr, std::move(factory));
+                              nullptr, nullptr, nullptr, nullptr, std::move(factory));
 
     QString error;
     QVERIFY(!manager.initialize(&error));
@@ -600,8 +601,10 @@ void BarCoreTest::popupOwnershipIsLocalToEachSurfaceBundle()
 {
     QScreen *screen = QGuiApplication::primaryScreen();
     QVERIFY(screen != nullptr);
-    BarSurfaceBundle first(screen, nullptr, nullptr, nullptr, nullptr);
-    BarSurfaceBundle second(screen, nullptr, nullptr, nullptr, nullptr);
+    BarSurfaceBundle first(screen, nullptr, nullptr, nullptr, nullptr,
+                           nullptr, nullptr, nullptr);
+    BarSurfaceBundle second(screen, nullptr, nullptr, nullptr, nullptr,
+                            nullptr, nullptr, nullptr);
 
     first.popupController()->open(BarPopupController::PopupKind::Clock, 200);
     QVERIFY(first.popupOpen());

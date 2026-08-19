@@ -39,7 +39,7 @@ elseif(ASTREA_ENABLE_TYPHON_BACKEND)
     message(WARNING "ASTREA_ENABLE_TYPHON_BACKEND requested but wayland-client or wayland-scanner is unavailable; Typhon backend will be unsupported")
 endif()
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Qml)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Qml DBus)
 if(COMMAND qt_policy)
     qt_policy(SET QTP0001 NEW)
     qt_policy(SET QTP0004 NEW)

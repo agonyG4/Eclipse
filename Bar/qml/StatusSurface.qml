@@ -6,6 +6,9 @@ Window {
     id: window
 
     property var clockService: null
+    property var audioService: null
+    property var networkService: null
+    property var bluetoothService: null
     property var popupController: null
     property var barGeometry: null
     property int outputWidth: 1
@@ -30,6 +33,18 @@ Window {
         width: barGeometry
             ? barGeometry.statusWidth(outputWidth, launcherWidth, Math.round(implicitWidth))
             : 0
+
+        NetworkIndicator {
+            networkService: window.networkService
+        }
+
+        BluetoothIndicator {
+            bluetoothService: window.bluetoothService
+        }
+
+        VolumeIndicator {
+            audioService: window.audioService
+        }
 
         Clock {
             id: clock

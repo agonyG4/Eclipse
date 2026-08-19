@@ -7,6 +7,9 @@
 #include "core/BarSurfacePolicy.hpp"
 #include "core/WorkspaceModel.hpp"
 #include "platform/wayland/LayerShellHelper.hpp"
+#include "system/audio/AudioService.hpp"
+#include "system/network/NetworkService.hpp"
+#include "system/bluetooth/BluetoothService.hpp"
 
 #include <QQuickWindow>
 #include <QQmlApplicationEngine>
@@ -30,13 +33,20 @@ QVariant objectVariant(QObject *object)
 BarSurfaceBundle::BarSurfaceBundle(QScreen *screen, QQmlApplicationEngine *engine,
                                    BarController *barController,
                                    BarClockService *clockService,
-                                   WorkspaceModel *workspaceModel, QObject *parent)
+                                   WorkspaceModel *workspaceModel,
+                                   Astrea::System::AudioService *audioService,
+                                   Astrea::System::NetworkService *networkService,
+                                   Astrea::System::BluetoothService *bluetoothService,
+                                   QObject *parent)
     : QObject(parent)
     , m_screen(screen)
     , m_engine(engine)
     , m_barController(barController)
     , m_clockService(clockService)
     , m_workspaceModel(workspaceModel)
+    , m_audioService(audioService)
+    , m_networkService(networkService)
+    , m_bluetoothService(bluetoothService)
     , m_popupController(new BarPopupController(this))
     , m_layoutMetrics(new BarLayoutMetrics(this))
 {
@@ -217,6 +227,9 @@ QQuickWindow *BarSurfaceBundle::createSurface(const QUrl &sourceUrl, int width, 
         {QStringLiteral("barController"), objectVariant(m_barController)},
         {QStringLiteral("clockService"), objectVariant(m_clockService)},
         {QStringLiteral("workspaceModel"), objectVariant(m_workspaceModel)},
+        {QStringLiteral("audioService"), objectVariant(m_audioService)},
+        {QStringLiteral("networkService"), objectVariant(m_networkService)},
+        {QStringLiteral("bluetoothService"), objectVariant(m_bluetoothService)},
         {QStringLiteral("popupController"), objectVariant(m_popupController)},
         {QStringLiteral("barGeometry"), objectVariant(m_layoutMetrics)},
         {QStringLiteral("outputWidth"), width},

@@ -17,6 +17,9 @@
 #include "icons/AstreaIconProvider.hpp"
 #include "icons/AstreaIconTheme.hpp"
 #include "theme/ThemeController.hpp"
+#include "system/audio/AudioService.hpp"
+#include "system/network/NetworkService.hpp"
+#include "system/bluetooth/BluetoothService.hpp"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -173,6 +176,12 @@ bool AstreaShellApplication::initializeQml()
                                 static_cast<QObject *>(m_runtime->themeController()));
     context->setContextProperty(QStringLiteral("WorkspaceModel"),
                                 static_cast<QObject *>(m_runtime->workspaceModel()));
+    context->setContextProperty(QStringLiteral("AudioService"),
+                                static_cast<QObject *>(m_runtime->audioService()));
+    context->setContextProperty(QStringLiteral("NetworkService"),
+                                static_cast<QObject *>(m_runtime->networkService()));
+    context->setContextProperty(QStringLiteral("BluetoothService"),
+                                static_cast<QObject *>(m_runtime->bluetoothService()));
 
     QQuickWindow *window = nullptr;
     if (!loadSurface(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Dock/qml/Main.qml")),
@@ -202,7 +211,8 @@ bool AstreaShellApplication::initializeQml()
     QString barError;
     m_barSurfaceManager = std::make_unique<BarSurfaceManager>(
         m_application, *m_engine, m_runtime->barController(), m_runtime->barClock(),
-        m_runtime->workspaceModel(), this);
+        m_runtime->workspaceModel(), m_runtime->audioService(), m_runtime->networkService(),
+        m_runtime->bluetoothService(), this);
     if (!m_barSurfaceManager->initialize(&barError)) {
         qCritical("Astrea shell Bar surface initialization failed: %s", qPrintable(barError));
         return false;
@@ -397,6 +407,10 @@ QString AstreaShellApplication::statusJson() const
              m_barSurfaceManager && m_barSurfaceManager->popupOpen()},
             {QStringLiteral("layerConfigurationRequested"),
              m_barSurfaceManager && m_barSurfaceManager->layerConfigurationRequested()}}}
+        , {QStringLiteral("system"), QJsonObject{
+            {QStringLiteral("audio"), runtime->audioService()->healthJson()},
+            {QStringLiteral("network"), runtime->networkService()->healthJson()},
+            {QStringLiteral("bluetooth"), runtime->bluetoothService()->healthJson()}}}
     };
     return QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact));
 }

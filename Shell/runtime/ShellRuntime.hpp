@@ -26,6 +26,12 @@ class TyphonToplevelConnection;
 class ThemeController;
 class WorkspaceModel;
 
+namespace Astrea::System {
+class AudioService;
+class BluetoothService;
+class NetworkService;
+}
+
 class ShellRuntime final : public QObject {
     Q_OBJECT
 
@@ -59,6 +65,10 @@ public:
     DockConfigWatcher *dockConfig() const { return m_dockConfig.get(); }
     AltTabConfigWatcher *altTabConfig() const { return m_altTabConfig.get(); }
     SpotlightConfigWatcher *spotlightConfig() const { return m_spotlightConfig.get(); }
+    Astrea::System::AudioService *audioService() const { return m_audioService.get(); }
+    Astrea::System::NetworkService *networkService() const { return m_networkService.get(); }
+    Astrea::System::BluetoothService *bluetoothService() const
+    { return m_bluetoothService.get(); }
 
     void reloadCatalog();
     void reloadDockConfig();
@@ -93,6 +103,9 @@ private:
     std::unique_ptr<AltTabConfigWatcher> m_altTabConfig;
     std::unique_ptr<SpotlightConfigWatcher> m_spotlightConfig;
     std::unique_ptr<GameModeMonitor> m_gameMode;
+    std::unique_ptr<Astrea::System::AudioService> m_audioService;
+    std::unique_ptr<Astrea::System::NetworkService> m_networkService;
+    std::unique_ptr<Astrea::System::BluetoothService> m_bluetoothService;
     bool m_initialized = false;
     bool m_started = false;
 };

@@ -6,7 +6,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick DBus)
+if(NOT TARGET PkgConfig::ASTREA_PIPEWIRE)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(ASTREA_PIPEWIRE REQUIRED IMPORTED_TARGET libpipewire-0.3)
+endif()
 
 add_library(astrea-shared-core STATIC
     apps/DesktopEntryParser.cpp
@@ -56,6 +60,48 @@ function(astrea_shared_enable_sanitizers target)
 endfunction()
 
 astrea_shared_enable_sanitizers(astrea-shared-core)
+
+add_library(astrea-shared-system STATIC
+    system/SystemServiceState.cpp
+    system/SystemServiceState.hpp
+    system/audio/AudioOutputModel.cpp
+    system/audio/AudioOutputModel.hpp
+    system/audio/AudioBackend.hpp
+    system/audio/AudioService.cpp
+    system/audio/AudioService.hpp
+    system/audio/PipeWireAudioBackend.cpp
+    system/audio/PipeWireAudioBackend.hpp
+    system/network/WifiNetworkModel.cpp
+    system/network/WifiNetworkModel.hpp
+    system/network/NetworkBackend.hpp
+    system/network/NetworkService.cpp
+    system/network/NetworkService.hpp
+    system/network/NetworkManagerBackend.cpp
+    system/network/NetworkManagerBackend.hpp
+    system/bluetooth/BluetoothDeviceModel.cpp
+    system/bluetooth/BluetoothDeviceModel.hpp
+    system/bluetooth/BluetoothBackend.hpp
+    system/bluetooth/BluetoothService.cpp
+    system/bluetooth/BluetoothService.hpp
+    system/bluetooth/BluezBackend.cpp
+    system/bluetooth/BluezBackend.hpp
+)
+
+target_include_directories(astrea-shared-system PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(astrea-shared-system PUBLIC
+    Qt6::Core
+    Qt6::DBus
+    PkgConfig::ASTREA_PIPEWIRE
+)
+
+if(NOT MSVC)
+    target_compile_options(astrea-shared-system PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+astrea_shared_enable_sanitizers(astrea-shared-system)
 
 qt_add_qml_module(astrea-shared-core
     URI Astrea.Shared
@@ -271,6 +317,19 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     target_link_libraries(desktop-entry-catalog-test PRIVATE astrea-shared-core Qt6::Test)
     astrea_shared_enable_sanitizers(desktop-entry-catalog-test)
     add_test(NAME desktop-entry-catalog-test COMMAND desktop-entry-catalog-test)
+
+    add_executable(system-services-test
+        system/tests/SystemServicesTest.cpp
+    )
+    target_include_directories(system-services-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_link_libraries(system-services-test PRIVATE
+        astrea-shared-system
+        Qt6::Test
+    )
+    astrea_shared_enable_sanitizers(system-services-test)
+    add_test(NAME system-services-test COMMAND system-services-test)
 
     add_executable(layer-shell-helper-test
         tests/LayerShellHelperTest.cpp

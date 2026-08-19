@@ -98,6 +98,7 @@ jobs:
             clang \
             g++ \
             libegl1-mesa-dev \
+            libpipewire-0.3-dev \
             libwayland-bin \
             libwayland-dev \
             libxkbcommon-dev \
@@ -160,6 +161,7 @@ jobs:
             clang \
             g++ \
             libegl1-mesa-dev \
+            libpipewire-0.3-dev \
             libwayland-bin \
             libwayland-dev \
             libxkbcommon-dev \

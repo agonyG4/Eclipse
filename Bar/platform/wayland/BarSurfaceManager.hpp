@@ -14,6 +14,11 @@ class QQmlApplicationEngine;
 class QGuiApplication;
 class QScreen;
 class WorkspaceModel;
+namespace Astrea::System {
+class AudioService;
+class BluetoothService;
+class NetworkService;
+}
 
 class BarSurfaceManager final : public QObject {
     Q_OBJECT
@@ -26,7 +31,10 @@ public:
 
     BarSurfaceManager(QGuiApplication &application, QQmlApplicationEngine &engine,
                       BarController *barController, BarClockService *clockService,
-                      WorkspaceModel *workspaceModel, QObject *parent = nullptr,
+                      WorkspaceModel *workspaceModel, Astrea::System::AudioService *audioService,
+                      Astrea::System::NetworkService *networkService,
+                      Astrea::System::BluetoothService *bluetoothService,
+                      QObject *parent = nullptr,
                       BundleFactory bundleFactory = {});
     ~BarSurfaceManager() override;
 
@@ -53,6 +61,9 @@ private:
     BarController *m_barController = nullptr;
     BarClockService *m_clockService = nullptr;
     WorkspaceModel *m_workspaceModel = nullptr;
+    Astrea::System::AudioService *m_audioService = nullptr;
+    Astrea::System::NetworkService *m_networkService = nullptr;
+    Astrea::System::BluetoothService *m_bluetoothService = nullptr;
     QHash<QScreen *, BarSurfaceBundle *> m_bundles;
     BundleFactory m_bundleFactory;
     bool m_initialized = false;

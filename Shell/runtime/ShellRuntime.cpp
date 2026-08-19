@@ -25,6 +25,9 @@
 #include "platform/typhon/TyphonToplevelConnection.hpp"
 #include "services/AppIdentityResolver.hpp"
 #include "theme/ThemeController.hpp"
+#include "system/audio/AudioService.hpp"
+#include "system/network/NetworkService.hpp"
+#include "system/bluetooth/BluetoothService.hpp"
 
 #if ASTREA_HAVE_TYPHON_PROTOCOL
 #include "AltTab/platform/typhon/TyphonWindowSource.hpp"
@@ -81,6 +84,9 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
                                                                        m_spotlightController.get());
     m_ipcServer = std::make_unique<ShellIpcServer>();
     m_gameMode = std::make_unique<GameModeMonitor>();
+    m_audioService = std::make_unique<Astrea::System::AudioService>();
+    m_networkService = std::make_unique<Astrea::System::NetworkService>();
+    m_bluetoothService = std::make_unique<Astrea::System::BluetoothService>();
 
     const DockRuntimePaths dockPaths = DockRuntimePaths::fromEnvironment();
     const AltTabRuntimePaths altTabPaths = AltTabRuntimePaths::fromEnvironment();
@@ -220,6 +226,9 @@ void ShellRuntime::start()
     m_shortcutClient->start();
     m_gameMode->start();
     m_barClock->start();
+    m_audioService->start();
+    m_networkService->start();
+    m_bluetoothService->start();
     emit started();
 }
 
@@ -228,6 +237,12 @@ void ShellRuntime::stop()
     if (!m_started && !m_initialized)
         return;
     m_started = false;
+    if (m_bluetoothService)
+        m_bluetoothService->stop();
+    if (m_networkService)
+        m_networkService->stop();
+    if (m_audioService)
+        m_audioService->stop();
     m_gameMode->stop();
     m_shortcutClient->stop();
     if (m_barClock)

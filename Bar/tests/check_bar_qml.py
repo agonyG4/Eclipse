@@ -27,18 +27,25 @@ FORBIDDEN = (
 )
 
 
+def production_paths(root: Path):
+    if root.name == "qml":
+        yield from root.rglob("*.qml")
+        source_root = root.parent
+        for directory in (source_root / "core", source_root / "platform"):
+            yield from directory.rglob("*.cpp")
+            yield from directory.rglob("*.hpp")
+        return
+    for suffix in ("*.qml", "*.cpp", "*.hpp", "*.h", "*.cc", "*.cxx"):
+        yield from root.rglob(suffix)
+
+
 def main() -> int:
-    if len(sys.argv) != 2:
-        print("usage: check_bar_qml.py BAR_QML_DIR", file=sys.stderr)
+    if len(sys.argv) < 2:
+        print("usage: check_bar_qml.py PRODUCTION_ROOT ...", file=sys.stderr)
         return 2
 
-    qml_root = Path(sys.argv[1])
-    bar_root = qml_root.parent if qml_root.name == "qml" else qml_root
     failures = []
-    paths = list(qml_root.rglob("*.qml"))
-    for directory in (bar_root / "core", bar_root / "platform"):
-        paths.extend(directory.rglob("*.cpp"))
-        paths.extend(directory.rglob("*.hpp"))
+    paths = {path for argument in sys.argv[1:] for path in production_paths(Path(argument))}
     for path in sorted(paths):
         text = path.read_text(encoding="utf-8")
         for token in FORBIDDEN:

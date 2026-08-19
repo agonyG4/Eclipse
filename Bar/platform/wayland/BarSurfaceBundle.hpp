@@ -14,6 +14,11 @@ class BarPopupController;
 class QQuickWindow;
 class QQmlApplicationEngine;
 class WorkspaceModel;
+namespace Astrea::System {
+class AudioService;
+class BluetoothService;
+class NetworkService;
+}
 
 class BarSurfaceBundle : public QObject {
     Q_OBJECT
@@ -21,7 +26,10 @@ class BarSurfaceBundle : public QObject {
 public:
     BarSurfaceBundle(QScreen *screen, QQmlApplicationEngine *engine,
                      BarController *barController, BarClockService *clockService,
-                     WorkspaceModel *workspaceModel, QObject *parent = nullptr);
+                     WorkspaceModel *workspaceModel, Astrea::System::AudioService *audioService,
+                     Astrea::System::NetworkService *networkService,
+                     Astrea::System::BluetoothService *bluetoothService,
+                     QObject *parent = nullptr);
     ~BarSurfaceBundle() override;
 
     virtual bool initialize(QString *errorOut = nullptr);
@@ -52,6 +60,9 @@ private:
     BarController *m_barController = nullptr;
     BarClockService *m_clockService = nullptr;
     WorkspaceModel *m_workspaceModel = nullptr;
+    Astrea::System::AudioService *m_audioService = nullptr;
+    Astrea::System::NetworkService *m_networkService = nullptr;
+    Astrea::System::BluetoothService *m_bluetoothService = nullptr;
     BarPopupController *m_popupController = nullptr;
     BarLayoutMetrics *m_layoutMetrics = nullptr;
     QPointer<QQuickWindow> m_reserveWindow;

@@ -12,6 +12,9 @@
 #include "launch/ApplicationLauncher.hpp"
 #include "runtime/ShellRuntime.hpp"
 #include "theme/ThemeController.hpp"
+#include "system/audio/AudioService.hpp"
+#include "system/network/NetworkService.hpp"
+#include "system/bluetooth/BluetoothService.hpp"
 
 #include <initializer_list>
 #include <utility>
@@ -64,6 +67,7 @@ class ShellRuntimeTest final : public QObject {
 
 private slots:
     void createsOneSharedOwnershipGraph();
+    void systemServicesRemainRestartableAcrossRuntimeLifecycle();
     void selectsTyphonShellControlBridgeForTyphonRuntime();
     void sharedLauncherUsesTyphonBridgeAndPreservesHelperEnvironment();
 };
@@ -96,6 +100,34 @@ void ShellRuntimeTest::createsOneSharedOwnershipGraph()
     QCOMPARE(runtime.spotlightController()->launcher(), runtime.launcher());
     QCOMPARE(runtime.altTabController()->identityResolver(), runtime.identityResolver());
     QCOMPARE(runtime.barController()->workspaceModel(), runtime.workspaceModel());
+    QVERIFY(runtime.audioService());
+    QVERIFY(runtime.networkService());
+    QVERIFY(runtime.bluetoothService());
+    QVERIFY(static_cast<QObject *>(runtime.audioService())
+            != static_cast<QObject *>(runtime.networkService()));
+    QVERIFY(static_cast<QObject *>(runtime.audioService())
+            != static_cast<QObject *>(runtime.bluetoothService()));
+    QVERIFY(static_cast<QObject *>(runtime.networkService())
+            != static_cast<QObject *>(runtime.bluetoothService()));
+}
+
+void ShellRuntimeTest::systemServicesRemainRestartableAcrossRuntimeLifecycle()
+{
+    ShellRuntime runtime;
+    QString error;
+    QVERIFY2(runtime.initialize(QStringLiteral("auto"), &error), qPrintable(error));
+    auto *audio = runtime.audioService();
+    auto *network = runtime.networkService();
+    auto *bluetooth = runtime.bluetoothService();
+    QVERIFY(audio && network && bluetooth);
+
+    runtime.start();
+    runtime.stop();
+    runtime.start();
+    QCOMPARE(runtime.audioService(), audio);
+    QCOMPARE(runtime.networkService(), network);
+    QCOMPARE(runtime.bluetoothService(), bluetooth);
+    runtime.stop();
 }
 
 void ShellRuntimeTest::selectsTyphonShellControlBridgeForTyphonRuntime()

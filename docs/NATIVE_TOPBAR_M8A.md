@@ -61,3 +61,21 @@ session.
 Shell IPC remains schema version 1 and exposes the stable `bar` state plus
 `layerShell.barConfigurationRequested`; this does not imply that any M8-B
 service is implemented.
+
+## M8-A.2 visual and lifecycle closure
+
+- `ShellBarTheme` now mirrors the six Borealis combinations from the Settings
+  Shell authority exactly: transparent, default, and frosted styles in both
+  dark and light modes. Popup cards use the elevated `Apps.popupBg` token;
+  Bar segments use the shell background/border at rest and the exact hover,
+  pressed, and active interaction tokens.
+- Popup opening has a separate opacity/scale enter transition (`0` to `1`,
+  `0.97` to `1`) aligned with the Borealis popover duration. Reopen and
+  Clock-to-Astrea switches stop stale exits before starting the new enter;
+  exit completion remains guarded by the current popup kind and closing state.
+- `BarSurfaceManager::shutdown()` is terminal. It disconnects application and
+  BarController callbacks before tearing down bundles, rejects reinitialize,
+  and ignores later screen, geometry, enablement, and repeated-shutdown events.
+- Clock remains a native horizontal date/separator/time indicator and now
+  uses the shared Inter/weight/timing tokens with offscreen assertions for its
+  structure and typography mapping.

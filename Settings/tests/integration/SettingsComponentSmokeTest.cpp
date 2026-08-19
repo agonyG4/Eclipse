@@ -1,5 +1,5 @@
 #include "services/i18n/SettingsTranslationController.hpp"
-#include "services/theme/ThemeController.hpp"
+#include "theme/ThemeController.hpp"
 
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>

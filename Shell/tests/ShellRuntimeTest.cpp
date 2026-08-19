@@ -6,10 +6,12 @@
 #include <QTest>
 
 #include "AltTab/core/AltTabController.hpp"
+#include "Bar/core/BarController.hpp"
 #include "Dock/core/DockController.hpp"
 #include "Spotlight/core/SpotlightController.hpp"
 #include "launch/ApplicationLauncher.hpp"
 #include "runtime/ShellRuntime.hpp"
+#include "theme/ThemeController.hpp"
 
 #include <initializer_list>
 #include <utility>
@@ -85,10 +87,15 @@ void ShellRuntimeTest::createsOneSharedOwnershipGraph()
     QVERIFY(runtime.dockController());
     QVERIFY(runtime.altTabController());
     QVERIFY(runtime.spotlightController());
+    QVERIFY(runtime.barController());
+    QVERIFY(runtime.barClock());
+    QVERIFY(runtime.themeController());
+    QVERIFY(runtime.workspaceModel());
     QCOMPARE(runtime.dockController()->catalog(), runtime.catalog());
     QCOMPARE(runtime.spotlightController()->catalog(), runtime.catalog());
     QCOMPARE(runtime.spotlightController()->launcher(), runtime.launcher());
     QCOMPARE(runtime.altTabController()->identityResolver(), runtime.identityResolver());
+    QCOMPARE(runtime.barController()->workspaceModel(), runtime.workspaceModel());
 }
 
 void ShellRuntimeTest::selectsTyphonShellControlBridgeForTyphonRuntime()

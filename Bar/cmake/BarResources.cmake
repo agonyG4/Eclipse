@@ -1,0 +1,66 @@
+set(ASTREA_BAR_QML_FILES
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/ReserveSurface.qml"
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/LauncherSurface.qml"
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/StatusSurface.qml"
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/PopupOverlaySurface.qml"
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/AstreaMenu.qml"
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/ClockPopup.qml"
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/components/ShellBarTheme.qml"
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/components/BarSegment.qml"
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/components/WorkspaceStrip.qml"
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/components/Clock.qml"
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/components/MenuAction.qml"
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/components/PopupCard.qml"
+)
+set(ASTREA_BAR_RESOURCES
+    "${CMAKE_CURRENT_LIST_DIR}/../assets/astrea.png"
+)
+
+set_source_files_properties(${ASTREA_BAR_QML_FILES} ${ASTREA_BAR_RESOURCES}
+    PROPERTIES QT_RESOURCE_PREFIX "/qt/qml/Astrea/Shell")
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/ReserveSurface.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/ReserveSurface.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/LauncherSurface.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/LauncherSurface.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/StatusSurface.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/StatusSurface.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/PopupOverlaySurface.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/PopupOverlaySurface.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/AstreaMenu.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/AstreaMenu.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/ClockPopup.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/ClockPopup.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/components/ShellBarTheme.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/components/ShellBarTheme.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/components/BarSegment.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/components/BarSegment.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/components/WorkspaceStrip.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/components/WorkspaceStrip.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/components/Clock.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/components/Clock.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/components/MenuAction.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/components/MenuAction.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/components/PopupCard.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/components/PopupCard.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/../assets/astrea.png"
+    PROPERTIES QT_RESOURCE_ALIAS "Bar/assets/astrea.png")
+
+function(astrea_add_bar_qml_resources target)
+    qt_add_resources(${target} astrea_bar_resources
+        PREFIX "/qt/qml/Astrea/Shell"
+        FILES ${ASTREA_BAR_QML_FILES} ${ASTREA_BAR_RESOURCES}
+    )
+endfunction()

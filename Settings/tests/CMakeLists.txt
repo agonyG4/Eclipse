@@ -4,6 +4,7 @@ function(add_settings_unit_test target source)
     add_executable(${target} "${source}")
     target_include_directories(${target} PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/.."
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../shared"
     )
     target_link_libraries(${target} PRIVATE astrea-settings-core Qt6::Test)
     settings_enable_warnings(${target})

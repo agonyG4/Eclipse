@@ -25,6 +25,18 @@ function(shell_enable_sanitizers target)
 endfunction()
 
 add_library(astrea-shell-runtime STATIC
+    ../Bar/core/BarClockService.cpp
+    ../Bar/core/BarClockService.hpp
+    ../Bar/core/BarController.cpp
+    ../Bar/core/BarController.hpp
+    ../Bar/core/BarLayoutMetrics.cpp
+    ../Bar/core/BarLayoutMetrics.hpp
+    ../Bar/core/BarPopupController.cpp
+    ../Bar/core/BarPopupController.hpp
+    ../Bar/core/BarSurfacePolicy.cpp
+    ../Bar/core/BarSurfacePolicy.hpp
+    ../Bar/core/WorkspaceModel.cpp
+    ../Bar/core/WorkspaceModel.hpp
     runtime/ShellRuntime.cpp
     runtime/ShellRuntime.hpp
     platform/shortcut/ShellShortcutDispatcher.cpp
@@ -50,6 +62,7 @@ add_library(astrea-shell-runtime STATIC
 target_include_directories(astrea-shell-runtime PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/.."
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Bar"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Dock"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Spotlight"
     "${CMAKE_CURRENT_SOURCE_DIR}/../AltTab"
@@ -68,10 +81,15 @@ qt_add_executable(astrea-shell
     app/main.cpp
     app/AstreaShellApplication.cpp
     app/AstreaShellApplication.hpp
+    ../Bar/platform/wayland/BarSurfaceBundle.cpp
+    ../Bar/platform/wayland/BarSurfaceBundle.hpp
+    ../Bar/platform/wayland/BarSurfaceManager.cpp
+    ../Bar/platform/wayland/BarSurfaceManager.hpp
 )
 target_include_directories(astrea-shell PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/.."
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Bar"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Dock"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Spotlight"
     "${CMAKE_CURRENT_SOURCE_DIR}/../AltTab"
@@ -83,6 +101,8 @@ target_link_libraries(astrea-shell PRIVATE
     dl pthread
 )
 shell_enable_sanitizers(astrea-shell)
+
+include("${CMAKE_CURRENT_SOURCE_DIR}/../Bar/cmake/BarResources.cmake")
 
 set(_shell_qml_files
     "${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/Main.qml"
@@ -122,12 +142,12 @@ set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../Spotlight/qml/compon
     PROPERTIES QT_RESOURCE_ALIAS "Spotlight/qml/components/SpotlightWeatherChip.qml")
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../Spotlight/qml/components/AstreaAppIcon.qml"
     PROPERTIES QT_RESOURCE_ALIAS "Spotlight/qml/components/AstreaAppIcon.qml")
-
 qt_add_qml_module(astrea-shell
     URI Astrea.Shell
     VERSION 1.0
     QML_FILES ${_shell_qml_files}
 )
+astrea_add_bar_qml_resources(astrea-shell)
 qt_import_qml_plugins(astrea-shell)
 
 install(TARGETS astrea-shell RUNTIME DESTINATION bin)
@@ -149,6 +169,43 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     )
     shell_enable_sanitizers(shell-runtime-test)
     add_test(NAME shell-runtime-test COMMAND shell-runtime-test)
+
+    add_executable(bar-core-test
+        ../Bar/tests/BarCoreTest.cpp
+        ../Bar/platform/wayland/BarSurfaceBundle.cpp
+        ../Bar/platform/wayland/BarSurfaceBundle.hpp
+        ../Bar/platform/wayland/BarSurfaceManager.cpp
+        ../Bar/platform/wayland/BarSurfaceManager.hpp
+    )
+    target_include_directories(bar-core-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/.."
+        "${CMAKE_CURRENT_SOURCE_DIR}/../Bar"
+    )
+    target_link_libraries(bar-core-test PRIVATE
+        astrea-shell-runtime
+        Qt6::Qml Qt6::Quick
+        Qt6::Test
+    )
+    shell_enable_sanitizers(bar-core-test)
+    add_test(NAME bar-core-test COMMAND bar-core-test)
+
+    add_executable(bar-qml-smoke-test
+        ../Bar/tests/BarQmlSmokeTest.cpp
+    )
+    astrea_add_bar_qml_resources(bar-qml-smoke-test)
+    target_link_libraries(bar-qml-smoke-test PRIVATE
+        astrea-shell-runtime
+        Qt6::Qml Qt6::Quick Qt6::Test
+    )
+    shell_enable_sanitizers(bar-qml-smoke-test)
+    add_test(NAME bar-qml-smoke-test COMMAND bar-qml-smoke-test)
+
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME bar-qml-legacy-guard
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/../Bar/tests/check_bar_qml.py"
+                     "${CMAKE_CURRENT_SOURCE_DIR}/../Bar/qml")
 
     add_executable(shell-ipc-test
         tests/ShellIpcTest.cpp

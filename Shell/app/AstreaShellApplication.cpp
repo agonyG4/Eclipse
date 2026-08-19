@@ -7,17 +7,23 @@
 #include "Spotlight/core/SpotlightController.hpp"
 #include "Spotlight/platform/wayland/LayerShellSurface.hpp"
 #include "Spotlight/services/AstreaI18n.hpp"
+#include "Bar/platform/wayland/BarSurfaceManager.hpp"
+#include "Bar/core/BarController.hpp"
+#include "Bar/core/BarClockService.hpp"
+#include "Bar/core/WorkspaceModel.hpp"
 #include "platform/ipc/ShellIpcServer.hpp"
 #include "runtime/ShellRuntime.hpp"
 #include "platform/wayland/LayerShellHelper.hpp"
 #include "icons/AstreaIconProvider.hpp"
 #include "icons/AstreaIconTheme.hpp"
+#include "theme/ThemeController.hpp"
 
 #include <QCoreApplication>
 #include <QDebug>
 #include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLocale>
 #include <QProcessEnvironment>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -95,6 +101,7 @@ bool AstreaShellApplication::initializeRuntime()
 
     const SpotlightRuntimePaths paths = SpotlightRuntimePaths::fromEnvironment();
     m_i18n = std::make_unique<AstreaI18n>(paths.i18nDir());
+    m_runtime->barClock()->setLocale(QLocale(m_i18n->language()));
     if (m_i18n->language() != QStringLiteral("en_US")) {
         if (!m_runtime->spotlightController()->setLocale(m_i18n->language(), &error)) {
             qCritical("Astrea shell locale initialization failed: %s", qPrintable(error));
@@ -158,6 +165,14 @@ bool AstreaShellApplication::initializeQml()
     context->setContextProperty(QStringLiteral("SpotlightController"),
                                 m_runtime->spotlightController());
     context->setContextProperty(QStringLiteral("AstreaI18n"), m_i18n.get());
+    context->setContextProperty(QStringLiteral("BarController"),
+                                static_cast<QObject *>(m_runtime->barController()));
+    context->setContextProperty(QStringLiteral("BarClockService"),
+                                static_cast<QObject *>(m_runtime->barClock()));
+    context->setContextProperty(QStringLiteral("ThemeController"),
+                                static_cast<QObject *>(m_runtime->themeController()));
+    context->setContextProperty(QStringLiteral("WorkspaceModel"),
+                                static_cast<QObject *>(m_runtime->workspaceModel()));
 
     QQuickWindow *window = nullptr;
     if (!loadSurface(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Dock/qml/Main.qml")),
@@ -183,6 +198,15 @@ bool AstreaShellApplication::initializeQml()
 
     if (!configureSurfaces())
         return false;
+
+    QString barError;
+    m_barSurfaceManager = std::make_unique<BarSurfaceManager>(
+        m_application, *m_engine, m_runtime->barController(), m_runtime->barClock(),
+        m_runtime->workspaceModel(), this);
+    if (!m_barSurfaceManager->initialize(&barError)) {
+        qCritical("Astrea shell Bar surface initialization failed: %s", qPrintable(barError));
+        return false;
+    }
 
     connect(m_runtime->dockController(), &DockController::visibleChanged,
             this, &AstreaShellApplication::syncDockVisibility);
@@ -339,6 +363,7 @@ QString AstreaShellApplication::statusJson() const
     const auto *dock = runtime->dockController();
     const auto *altTab = runtime->altTabController();
     const auto *spotlight = runtime->spotlightController();
+    const auto *bar = runtime->barController();
     const QJsonObject object{
         {QStringLiteral("schemaVersion"), 1},
         {QStringLiteral("running"), true},
@@ -351,7 +376,9 @@ QString AstreaShellApplication::statusJson() const
             {QStringLiteral("protocolAdvertised"), m_layerShellProtocolAdvertised},
             {QStringLiteral("dockConfigurationRequested"), m_dockLayerConfigurationRequested},
             {QStringLiteral("altTabConfigurationRequested"), m_altTabLayerConfigurationRequested},
-            {QStringLiteral("spotlightConfigurationRequested"), m_spotlightLayerConfigurationRequested}}},
+            {QStringLiteral("spotlightConfigurationRequested"), m_spotlightLayerConfigurationRequested},
+            {QStringLiteral("barConfigurationRequested"),
+             m_barSurfaceManager && m_barSurfaceManager->layerConfigurationRequested()}}},
         {QStringLiteral("dock"), QJsonObject{
             {QStringLiteral("visible"), dock->visible()},
             {QStringLiteral("enabled"), dock->enabled()},
@@ -361,7 +388,15 @@ QString AstreaShellApplication::statusJson() const
             {QStringLiteral("windows"), altTab->windowCount()}}},
         {QStringLiteral("spotlight"), QJsonObject{
             {QStringLiteral("open"), spotlight->isOpen()},
-            {QStringLiteral("results"), spotlight->resultCount()}}}
+            {QStringLiteral("results"), spotlight->resultCount()}}},
+        {QStringLiteral("bar"), QJsonObject{
+            {QStringLiteral("enabled"), bar && bar->enabled()},
+            {QStringLiteral("outputBundles"),
+             m_barSurfaceManager ? m_barSurfaceManager->bundleCount() : 0},
+            {QStringLiteral("popupOpen"),
+             m_barSurfaceManager && m_barSurfaceManager->popupOpen()},
+            {QStringLiteral("layerConfigurationRequested"),
+             m_barSurfaceManager && m_barSurfaceManager->layerConfigurationRequested()}}}
     };
     return QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact));
 }

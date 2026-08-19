@@ -1,6 +1,8 @@
 #pragma once
 
+#include <QFileSystemWatcher>
 #include <QObject>
+#include <QTimer>
 #include <QString>
 #include <QVariantMap>
 
@@ -34,6 +36,7 @@ public:
     bool loaded() const;
 
     Q_INVOKABLE void applyConfig(const QVariantMap &config);
+    Q_INVOKABLE void reload();
     Q_INVOKABLE void save();
 
 signals:
@@ -45,9 +48,12 @@ signals:
     void audioOsdStyleChanged();
 
 private:
-    void load();
+    void scheduleReload();
+    void updateWatchPaths();
 
     QString m_configPath;
+    QFileSystemWatcher m_watcher;
+    QTimer m_reloadTimer;
     int m_themeMode = 0;
     int m_shellStyle = 0;
     int m_iconStyle = 0;
@@ -55,4 +61,5 @@ private:
     QString m_accentHex = QStringLiteral("#0a84ff");
     int m_audioOsdStyle = 0;
     bool m_loaded = false;
+    bool m_reloading = false;
 };

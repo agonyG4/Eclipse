@@ -6,6 +6,9 @@
 #include "AltTab/platform/hyprland/HyprlandWindowSource.hpp"
 #include "AltTab/platform/runtime/AltTabRuntimePaths.hpp"
 #include "AltTab/services/AltTabConfigWatcher.hpp"
+#include "Bar/core/BarClockService.hpp"
+#include "Bar/core/BarController.hpp"
+#include "Bar/core/WorkspaceModel.hpp"
 #include "Dock/core/DockController.hpp"
 #include "Dock/platform/runtime/DockRuntimePaths.hpp"
 #include "Dock/services/DockConfigWatcher.hpp"
@@ -21,6 +24,7 @@
 #include "platform/typhon/TyphonShortcutClient.hpp"
 #include "platform/typhon/TyphonToplevelConnection.hpp"
 #include "services/AppIdentityResolver.hpp"
+#include "theme/ThemeController.hpp"
 
 #if ASTREA_HAVE_TYPHON_PROTOCOL
 #include "AltTab/platform/typhon/TyphonWindowSource.hpp"
@@ -67,6 +71,12 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
                                                               m_identityResolver.get());
     m_spotlightController = std::make_unique<SpotlightController>(
         spotlightPaths, m_catalog.get(), m_launcher.get());
+    m_workspaceModel = std::make_unique<WorkspaceModel>();
+    m_barClock = std::make_unique<BarClockService>();
+    m_themeController = std::make_unique<ThemeController>();
+    m_barController = std::make_unique<BarController>(m_catalog.get(), m_launcher.get(),
+                                                       m_spotlightController.get(),
+                                                       m_workspaceModel.get());
     m_shortcutDispatcher = std::make_unique<ShellShortcutDispatcher>(m_altTabController.get(),
                                                                        m_spotlightController.get());
     m_ipcServer = std::make_unique<ShellIpcServer>();
@@ -209,6 +219,7 @@ void ShellRuntime::start()
         m_windowBackend->start();
     m_shortcutClient->start();
     m_gameMode->start();
+    m_barClock->start();
     emit started();
 }
 
@@ -219,6 +230,8 @@ void ShellRuntime::stop()
     m_started = false;
     m_gameMode->stop();
     m_shortcutClient->stop();
+    if (m_barClock)
+        m_barClock->stop();
     if (m_windowBackend)
         m_windowBackend->stop();
 #if ASTREA_HAVE_TYPHON_PROTOCOL

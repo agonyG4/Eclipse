@@ -57,7 +57,6 @@ set(core_production_cpp_files
     services/assets/SettingsIconResolver.cpp
     services/i18n/SettingsTranslationController.cpp
     services/profile/SettingsUserProfileProvider.cpp
-    services/theme/ThemeController.cpp
 )
 foreach(relative_path IN LISTS core_production_cpp_files)
     string(FIND "${settings_tests_cmake}" "${relative_path}" repeated_position)
@@ -118,8 +117,6 @@ set(production_source_files
     services/profile/SettingsUserProfile.hpp
     services/profile/SettingsUserProfileProvider.cpp
     services/profile/SettingsUserProfileProvider.hpp
-    services/theme/ThemeController.cpp
-    services/theme/ThemeController.hpp
     app/main.cpp
     app/SettingsApplication.cpp
     app/SettingsApplication.hpp

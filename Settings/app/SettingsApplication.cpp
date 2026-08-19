@@ -9,7 +9,7 @@
 #include "services/assets/SettingsIconResolver.hpp"
 #include "services/i18n/SettingsTranslationController.hpp"
 #include "services/profile/SettingsUserProfileProvider.hpp"
-#include "services/theme/ThemeController.hpp"
+#include "theme/ThemeController.hpp"
 
 #include <QGuiApplication>
 #include <QIcon>

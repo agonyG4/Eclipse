@@ -11,9 +11,12 @@ Window {
     property var bluetoothService: null
     property var popupController: null
     property var barGeometry: null
+    property var workspaceModel: null
     property int outputWidth: 1
     property int outputHeight: 1
     property int launcherWidth: 48
+    property int statusLeft: barGeometry
+        ? barGeometry.statusLeft(outputWidth, statusPill.width) : 0
     property real clockIndicatorLocalX: statusPill.mapFromItem(clock, clock.width / 2, 0).x
     property int clockAnchorX: barGeometry
         ? barGeometry.statusAnchorX(outputWidth, statusPill.width,
@@ -30,27 +33,42 @@ Window {
         objectName: "statusPill"
         interactive: false
         horizontalPadding: barGeometry ? barGeometry.sidePadding : 10
+        spacing: 0
         width: barGeometry
             ? barGeometry.statusWidth(outputWidth, launcherWidth, Math.round(implicitWidth))
             : 0
 
         NetworkIndicator {
             networkService: window.networkService
+            popupController: window.popupController
+            popupKind: 3
+            anchorItem: statusPill
+            anchorOffset: window.statusLeft
         }
 
         BluetoothIndicator {
             bluetoothService: window.bluetoothService
+            popupController: window.popupController
+            popupKind: 4
+            anchorItem: statusPill
+            anchorOffset: window.statusLeft
         }
 
         VolumeIndicator {
             audioService: window.audioService
+            popupController: window.popupController
+            popupKind: 5
+            anchorItem: statusPill
+            anchorOffset: window.statusLeft
         }
 
         Clock {
             id: clock
             clockService: window.clockService
-            interactive: true
-            onClicked: popupController && popupController.toggleClock(window.clockAnchorX)
+            popupController: window.popupController
+            popupKind: 2
+            anchorItem: statusPill
+            anchorOffset: window.statusLeft
         }
     }
 }

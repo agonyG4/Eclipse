@@ -6,45 +6,41 @@ PopupCard {
 
     property var barController: null
     property var popupController: null
+    implicitWidth: 200
+    cardPadding: 12
+    contentSpacing: 4
 
-    MenuAction {
-        label: "Search"
+    MenuItem {
+        icon: "󰍉"
+        text: "Search"
         enabled: root.barController && root.barController.searchAvailable
-        onTriggered: {
+        onClicked: {
             root.popupController.close()
             root.barController.showSearch()
         }
     }
 
-    MenuAction {
-        label: "Settings"
+    MenuSeparator {}
+
+    MenuItem {
+        icon: "󰋖"
+        text: "About this PC"
+        enabled: root.barController && root.barController.aboutAvailable
+    }
+
+    MenuItem {
+        icon: "󰍜"
+        text: "Settings"
         enabled: root.barController && root.barController.settingsAvailable
-        onTriggered: {
+        onClicked: {
             root.popupController.close()
             root.barController.launchSettings()
         }
     }
 
-    // These capability-gated actions stay absent until Eclipse has a safe
-    // native implementation.  No legacy command fallback is permitted.
-    MenuAction {
-        label: "About Astrea"
-        visible: root.barController && root.barController.aboutAvailable
-        enabled: visible
-    }
-    MenuAction {
-        label: "Force Quit"
-        visible: root.barController && root.barController.forceQuitAvailable
-        enabled: visible
-    }
-    MenuAction {
-        label: "Lockscreen"
-        visible: root.barController && root.barController.lockscreenAvailable
-        enabled: visible
-    }
-    MenuAction {
-        label: "Power"
-        visible: root.barController && root.barController.powerAvailable
-        enabled: visible
-    }
+    MenuSeparator {}
+
+    MenuItem { icon: "󰅙"; text: "Force Quit"; enabled: root.barController && root.barController.forceQuitAvailable }
+    MenuItem { icon: "󰷛"; text: "Lockscreen"; enabled: root.barController && root.barController.lockscreenAvailable }
+    MenuItem { icon: "󰐥"; text: "Power"; enabled: root.barController && root.barController.powerAvailable }
 }

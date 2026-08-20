@@ -26,7 +26,10 @@ BluetoothService::BluetoothService(std::unique_ptr<BluetoothBackend> backend, QO
     connect(&m_discoveryTimer, &QTimer::timeout, this, [this] {
         if (!m_discoveryRequestInFlight)
             return;
+        const bool start = m_discoveryState.lease() == BluezDiscoveryLease::StartPending;
+        m_discoveryState.operationFinished(start, false);
         finishDiscoveryRequest(false, QStringLiteral("Bluetooth discovery update timed out"));
+        reconcileDiscovery();
     });
 }
 
@@ -40,6 +43,7 @@ bool BluetoothService::start()
     if (m_state != SystemServiceState::Stopped)
         return true;
     ++m_generation;
+    m_discoveryState.reset();
     setState(SystemServiceState::Starting);
     setErrorString({});
     const QPointer<BluetoothService> self(this);
@@ -98,9 +102,12 @@ void BluetoothService::stop()
     ++m_generation;
     m_powerTimer.stop();
     m_discoveryTimer.stop();
-    if (m_scanning || m_discoveryRequestInFlight || !m_scanOwners.isEmpty())
+    if (m_discoveryState.lease() == BluezDiscoveryLease::Held
+        || m_discoveryState.lease() == BluezDiscoveryLease::StartPending
+        || m_discoveryState.lease() == BluezDiscoveryLease::StopPending)
         m_backend->stopDiscovery();
     m_scanOwners.clear();
+    m_discoveryState.reset();
     m_backend->stop();
     m_devicesModel->replace({});
     m_available = false;
@@ -137,22 +144,17 @@ bool BluetoothService::requestScan(const QString &owner)
         return false;
     const bool wasEmpty = m_scanOwners.isEmpty();
     m_scanOwners.insert(owner);
-    if (wasEmpty && m_powered && m_adapterAvailable && !m_scanning
-        && !m_discoveryRequestInFlight) {
-        if (!m_backend->startDiscovery()) {
-            m_scanOwners.remove(owner);
-            return false;
-        }
-        m_discoveryRequestInFlight = true;
-        m_discoveryTimer.start();
-    }
+    m_discoveryState.request(owner);
+    if (wasEmpty)
+        reconcileDiscovery();
     return true;
 }
 
 void BluetoothService::releaseScan(const QString &owner)
 {
-    if (!m_scanOwners.remove(owner) || !m_scanOwners.isEmpty())
+    if (!m_scanOwners.remove(owner))
         return;
+    m_discoveryState.release(owner);
     reconcileDiscovery();
 }
 
@@ -226,10 +228,10 @@ void BluetoothService::applySnapshot(const BluetoothSnapshot &snapshot)
     else if (m_powerPending && m_powered == m_powerTarget)
         m_powerPending = false;
     m_scanning = snapshot.scanning;
-    const bool discoveryRequestSettled =
-        (m_discoveryRequestInFlight && m_scanning && !m_scanOwners.isEmpty())
-        || (m_discoveryRequestInFlight && !m_scanning && m_scanOwners.isEmpty());
-    if (discoveryRequestSettled) {
+    m_discoveryState.setAdapterReady(snapshot.daemonAvailable && snapshot.adapterAvailable
+                                     && snapshot.powered);
+    m_discoveryState.setActualDiscovering(snapshot.scanning);
+    if (!snapshot.daemonAvailable || !snapshot.adapterAvailable || !snapshot.powered) {
         m_discoveryRequestInFlight = false;
         m_discoveryTimer.stop();
     }
@@ -262,16 +264,17 @@ void BluetoothService::applySnapshot(const BluetoothSnapshot &snapshot)
 
 void BluetoothService::reconcileDiscovery()
 {
-    const bool shouldScan = !m_scanOwners.isEmpty() && m_adapterAvailable && m_powered;
-    if (!shouldScan && m_scanning && !m_discoveryRequestInFlight) {
+    if (m_discoveryState.wantsStop() && !m_discoveryRequestInFlight) {
         if (m_backend->stopDiscovery()) {
+            m_discoveryState.stopRequested();
             m_discoveryRequestInFlight = true;
             m_discoveryTimer.start();
         }
         return;
     }
-    if (shouldScan && !m_scanning && !m_discoveryRequestInFlight) {
+    if (m_discoveryState.wantsStart() && !m_discoveryRequestInFlight) {
         if (m_backend->startDiscovery()) {
+            m_discoveryState.startRequested();
             m_discoveryRequestInFlight = true;
             m_discoveryTimer.start();
         }
@@ -288,7 +291,11 @@ void BluetoothService::handleOperationFinished(const QString &operation, bool su
     }
     if (operation == QLatin1String("discovery-start")
         || operation == QLatin1String("discovery-stop")) {
+        const bool start = operation == QLatin1String("discovery-start");
+        m_discoveryState.operationFinished(start, success);
         finishDiscoveryRequest(success, errorString);
+        if (success)
+            reconcileDiscovery();
         return;
     }
     if (!success) {

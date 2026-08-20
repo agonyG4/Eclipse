@@ -9,11 +9,14 @@
 #include <QVariant>
 #include <QVector>
 
+#include <memory>
+
 class QDBusServiceWatcher;
 
 namespace Astrea::System {
 
 class BluezPropertyWatcher;
+class BluezObjectStore;
 
 using BluezDBusProperties = QMap<QString, QVariant>;
 using BluezDBusInterfaces = QMap<QString, BluezDBusProperties>;
@@ -44,6 +47,8 @@ private:
     void publishManagedObjects(const QDBusArgument &objects);
     void handlePropertiesChanged(const QString &objectPath, const QString &interfaceName,
                                  const QVariantMap &changed, const QStringList &invalidated);
+    void refreshInvalidatedProperties(const QString &objectPath, const QString &interfaceName,
+                                      quint64 generation);
     void rebuildPropertyWatchers();
     void publishSnapshot();
     void callDeviceMethod(const QString &objectPath, const QString &method);
@@ -55,6 +60,7 @@ private:
     QDBusServiceWatcher *m_serviceWatcher = nullptr;
     QVector<BluezPropertyWatcher *> m_propertyWatchers;
     BluezManagedObjects m_objects;
+    std::unique_ptr<BluezObjectStore> m_objectStore;
     QString m_adapterPath;
     bool m_running = false;
     quint64 m_generation = 0;

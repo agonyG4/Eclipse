@@ -16,7 +16,7 @@ struct BluetoothDevice {
     bool connected = false;
     bool discovered = false;
     QString icon;
-    int rssi = 0;
+    int rssi = -1;
     int batteryPercent = -1;
 
     friend bool operator==(const BluetoothDevice &, const BluetoothDevice &) = default;

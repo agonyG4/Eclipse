@@ -22,6 +22,7 @@ AudioService::AudioService(std::unique_ptr<AudioBackend> backend, QObject *paren
     connect(&m_reconnectTimer, &QTimer::timeout, this, [this] {
         if (!m_wantsRunning || m_state == SystemServiceState::Stopped)
             return;
+        ++m_attemptGeneration;
         m_backend->stop();
         startBackend();
     });
@@ -44,37 +45,42 @@ bool AudioService::start()
     return true;
 }
 
-AudioBackend::Callbacks AudioService::callbacksForGeneration(quint64 generation)
+AudioBackend::Callbacks AudioService::callbacksForGeneration(quint64 generation,
+                                                              quint64 attemptGeneration)
 {
     const QPointer<AudioService> self(this);
     AudioBackend::Callbacks callbacks;
-    callbacks.outputsChanged = [self, generation](QVector<AudioOutput> outputs,
+    callbacks.outputsChanged = [self, generation, attemptGeneration](QVector<AudioOutput> outputs,
                                                    quint32 defaultNodeId) {
         if (!self)
             return;
-        QMetaObject::invokeMethod(self, [self, generation, outputs = std::move(outputs),
+        QMetaObject::invokeMethod(self, [self, generation, attemptGeneration,
+                                          outputs = std::move(outputs),
                                           defaultNodeId]() mutable {
             if (self && self->m_generation == generation
+                && self->m_attemptGeneration == attemptGeneration
                 && self->m_state != SystemServiceState::Stopped)
                 self->applyOutputs(std::move(outputs), defaultNodeId);
         }, Qt::QueuedConnection);
     };
-    callbacks.defaultStateChanged = [self, generation](bool available, bool ready,
+    callbacks.defaultStateChanged = [self, generation, attemptGeneration](bool available, bool ready,
                                                         QString errorString) {
         if (!self)
             return;
-        QMetaObject::invokeMethod(self, [self, generation, available, ready,
+        QMetaObject::invokeMethod(self, [self, generation, attemptGeneration, available, ready,
                                           errorString = std::move(errorString)] {
             if (self && self->m_generation == generation
+                && self->m_attemptGeneration == attemptGeneration
                 && self->m_state != SystemServiceState::Stopped)
                 self->applyDefaultState(available, ready, errorString);
         }, Qt::QueuedConnection);
     };
-    callbacks.volumeChanged = [self, generation](double linear, bool muted) {
+    callbacks.volumeChanged = [self, generation, attemptGeneration](double linear, bool muted) {
         if (!self)
             return;
-        QMetaObject::invokeMethod(self, [self, generation, linear, muted] {
+        QMetaObject::invokeMethod(self, [self, generation, attemptGeneration, linear, muted] {
             if (!self || self->m_generation != generation
+                || self->m_attemptGeneration != attemptGeneration
                 || self->m_state == SystemServiceState::Stopped)
                 return;
             const double volume = AudioService::linearToUiPercent(linear);
@@ -86,14 +92,19 @@ AudioBackend::Callbacks AudioService::callbacksForGeneration(quint64 generation)
                 self->m_muted = muted;
                 emit self->mutedChanged();
             }
+            if (!self->m_defaultStateAvailable) {
+                self->m_defaultStateAvailable = true;
+                emit self->defaultStateAvailableChanged();
+            }
         }, Qt::QueuedConnection);
     };
-    callbacks.errorChanged = [self, generation](QString errorString) {
+    callbacks.errorChanged = [self, generation, attemptGeneration](QString errorString) {
         if (!self)
             return;
-        QMetaObject::invokeMethod(self, [self, generation,
+        QMetaObject::invokeMethod(self, [self, generation, attemptGeneration,
                                           errorString = std::move(errorString)] {
             if (!self || self->m_generation != generation
+                || self->m_attemptGeneration != attemptGeneration
                 || self->m_state == SystemServiceState::Stopped)
                 return;
             self->setErrorString(errorString);
@@ -107,7 +118,8 @@ AudioBackend::Callbacks AudioService::callbacksForGeneration(quint64 generation)
 void AudioService::startBackend()
 {
     const quint64 generation = m_generation;
-    const AudioBackend::Callbacks callbacks = callbacksForGeneration(generation);
+    const quint64 attemptGeneration = ++m_attemptGeneration;
+    const AudioBackend::Callbacks callbacks = callbacksForGeneration(generation, attemptGeneration);
     QString error;
     if (!m_backend->start(callbacks, &error)) {
         setErrorString(error.isEmpty() ? QStringLiteral("Audio backend unavailable") : error);
@@ -142,11 +154,17 @@ void AudioService::stop()
     if (m_state == SystemServiceState::Stopped)
         return;
     ++m_generation;
+    ++m_attemptGeneration;
     m_wantsRunning = false;
     m_reconnectTimer.stop();
     m_reconnectAttempt = 0;
     m_backend->stop();
     m_outputsModel->replace({}, 0);
+    m_defaultNodeId = 0;
+    if (m_defaultStateAvailable) {
+        m_defaultStateAvailable = false;
+        emit defaultStateAvailableChanged();
+    }
     m_available = false;
     m_ready = false;
     emit healthChanged();
@@ -158,11 +176,8 @@ void AudioService::adjustVolume(double deltaPercent)
     const double next = std::clamp(m_volume + deltaPercent, 0.0, 150.0);
     if (qFuzzyCompare(next, m_volume))
         return;
-    quint32 defaultNodeId = 0;
-    if (m_outputsModel->rowCount() > 0)
-        defaultNodeId = m_outputsModel->data(m_outputsModel->index(0, 0),
-                                             AudioOutputModel::NodeIdRole).toUInt();
-    if (!defaultNodeId || !m_backend->setVolume(defaultNodeId, uiPercentToLinear(next)))
+    if (!m_defaultNodeId || !m_defaultStateAvailable
+        || !m_backend->setVolume(m_defaultNodeId, uiPercentToLinear(next)))
         return;
     m_volume = next;
     emit volumeChanged();
@@ -172,11 +187,8 @@ void AudioService::setMuted(bool muted)
 {
     if (m_muted == muted)
         return;
-    quint32 defaultNodeId = 0;
-    if (m_outputsModel->rowCount() > 0)
-        defaultNodeId = m_outputsModel->data(m_outputsModel->index(0, 0),
-                                             AudioOutputModel::NodeIdRole).toUInt();
-    if (!defaultNodeId || !m_backend->setMute(defaultNodeId, muted))
+    if (!m_defaultNodeId || !m_defaultStateAvailable
+        || !m_backend->setMute(m_defaultNodeId, muted))
         return;
     m_muted = muted;
     emit mutedChanged();
@@ -192,6 +204,7 @@ QJsonObject AudioService::healthJson() const
     QJsonObject result = serviceHealthJson(m_state, m_available, m_ready, m_errorString);
     result.insert(QStringLiteral("muted"), m_muted);
     result.insert(QStringLiteral("volume"), m_volume);
+    result.insert(QStringLiteral("defaultStateAvailable"), m_defaultStateAvailable);
     return result;
 }
 
@@ -226,6 +239,13 @@ void AudioService::setErrorString(const QString &errorString)
 
 void AudioService::applyOutputs(QVector<AudioOutput> outputs, quint32 defaultNodeId)
 {
+    if (m_defaultNodeId != defaultNodeId) {
+        m_defaultNodeId = defaultNodeId;
+        if (m_defaultStateAvailable) {
+            m_defaultStateAvailable = false;
+            emit defaultStateAvailableChanged();
+        }
+    }
     m_outputsModel->replace(std::move(outputs), defaultNodeId);
 }
 
@@ -234,6 +254,10 @@ void AudioService::applyDefaultState(bool available, bool ready,
 {
     m_available = available;
     m_ready = ready;
+    if (!ready && m_defaultStateAvailable) {
+        m_defaultStateAvailable = false;
+        emit defaultStateAvailableChanged();
+    }
     setErrorString(errorString);
     setState(ready ? SystemServiceState::Ready
                    : available ? SystemServiceState::Degraded

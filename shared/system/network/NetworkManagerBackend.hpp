@@ -1,6 +1,7 @@
 #pragma once
 
 #include "system/network/NetworkBackend.hpp"
+#include "system/network/NetworkManagerState.hpp"
 
 #include <QDBusObjectPath>
 #include <QMap>
@@ -42,11 +43,12 @@ private:
     void refreshDevices();
     void refreshActiveConnection(const QString &objectPath);
     void refreshAccessPoints();
-    void publishAccessPoint(const QVariantMap &properties);
+    void refreshAccessPoint(const QString &objectPath);
     void publishUnavailable();
     void publishFromProperties(const QVariantMap &properties);
     void rebuildPropertyWatchers();
     void reconcileDevices(quint64 generation);
+    void finishDeviceReconciliation(quint64 generation);
     void publishReconciledSnapshot();
     void sampleTraffic();
 
@@ -55,15 +57,14 @@ private:
     QVector<NetworkPropertyWatcher *> m_propertyWatchers;
     QVariantMap m_managerProperties;
     QMap<QString, QVariantMap> m_deviceProperties;
+    NetworkManagerState m_state;
+    NetworkScanState m_scanState;
     quint64 m_generation = 0;
     quint64 m_refreshGeneration = 0;
     int m_pendingDeviceProperties = 0;
     QString m_wifiDevicePath;
     QString m_activeAccessPointPath;
-    qint64 m_lastScanMs = -1;
     bool m_running = false;
-    bool m_scanQueued = false;
-    bool m_scanInFlight = false;
     QTimer *m_scanCooldownTimer = nullptr;
     QElapsedTimer m_scanClock;
     QTimer *m_trafficTimer = nullptr;
@@ -73,8 +74,11 @@ private:
     quint64 m_previousTx = 0;
     bool m_haveTrafficSample = false;
     QString m_trafficInterface;
-    QVector<WifiNetwork> m_pendingAccessPoints;
+    QString m_activeConnectionPath;
+    quint64 m_primaryEpoch = 0;
     int m_pendingAccessPointProperties = 0;
+    quint64 m_accessPointRefreshGeneration = 0;
+    int m_pendingWirelessProperties = 0;
 };
 
 } // namespace Astrea::System

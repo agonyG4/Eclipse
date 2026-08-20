@@ -69,6 +69,8 @@ add_library(astrea-shared-system STATIC
     system/audio/AudioBackend.hpp
     system/audio/AudioService.cpp
     system/audio/AudioService.hpp
+    system/audio/PipeWireAudioState.cpp
+    system/audio/PipeWireAudioState.hpp
     system/audio/PipeWireAudioBackend.cpp
     system/audio/PipeWireAudioBackend.hpp
     system/network/WifiNetworkModel.cpp
@@ -76,6 +78,8 @@ add_library(astrea-shared-system STATIC
     system/network/NetworkBackend.hpp
     system/network/NetworkService.cpp
     system/network/NetworkService.hpp
+    system/network/NetworkManagerState.cpp
+    system/network/NetworkManagerState.hpp
     system/network/NetworkManagerBackend.cpp
     system/network/NetworkManagerBackend.hpp
     system/bluetooth/BluetoothDeviceModel.cpp
@@ -83,6 +87,10 @@ add_library(astrea-shared-system STATIC
     system/bluetooth/BluetoothBackend.hpp
     system/bluetooth/BluetoothService.cpp
     system/bluetooth/BluetoothService.hpp
+    system/bluetooth/BluezObjectStore.cpp
+    system/bluetooth/BluezObjectStore.hpp
+    system/bluetooth/BluezDiscoveryState.cpp
+    system/bluetooth/BluezDiscoveryState.hpp
     system/bluetooth/BluezBackend.cpp
     system/bluetooth/BluezBackend.hpp
 )

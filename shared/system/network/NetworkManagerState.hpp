@@ -89,9 +89,9 @@ enum class NetworkScanPhase {
 class NetworkScanState final {
 public:
     bool request(quint64 generation, const QString &devicePath, qint64 lastScan,
-                 qint64 nowMs);
+                 qint64 nowMs, quint64 requestId);
     bool requestFinished(quint64 generation, const QString &devicePath,
-                         bool success, qint64 nowMs);
+                         quint64 requestId, bool success, qint64 nowMs);
     bool lastScanAdvanced(quint64 generation, const QString &devicePath, qint64 lastScan,
                           qint64 nowMs);
     bool cooldownExpired(qint64 nowMs);
@@ -104,6 +104,7 @@ public:
     bool queuedDemand() const { return m_queuedDemand; }
     quint64 generation() const { return m_generation; }
     const QString &devicePath() const { return m_devicePath; }
+    quint64 requestId() const { return m_requestId; }
     qint64 baselineLastScan() const { return m_baselineLastScan; }
     qint64 cooldownUntilMs() const { return m_cooldownUntilMs; }
 
@@ -114,6 +115,7 @@ private:
     QString m_devicePath;
     qint64 m_baselineLastScan = -1;
     qint64 m_cooldownUntilMs = -1;
+    quint64 m_requestId = 0;
 };
 
 } // namespace Astrea::System

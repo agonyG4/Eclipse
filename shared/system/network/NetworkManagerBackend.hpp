@@ -26,7 +26,7 @@ public:
 
     bool start(const Callbacks &callbacks, QString *errorOut) override;
     void stop() override;
-    bool setWifiEnabled(bool enabled) override;
+    bool setWifiEnabled(bool enabled, quint64 requestId) override;
     bool requestWifiScan() override;
 
 private slots:
@@ -61,6 +61,7 @@ private:
     NetworkManagerState m_state;
     NetworkScanState m_scanState;
     quint64 m_generation = 0;
+    quint64 m_scanOperationId = 0;
     quint64 m_refreshGeneration = 0;
     int m_pendingDeviceProperties = 0;
     QString m_wifiDevicePath;

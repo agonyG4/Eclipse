@@ -50,7 +50,7 @@ void BluezDiscoveryState::operationFinished(bool start, bool success)
     if (start && m_lease == BluezDiscoveryLease::StartPending) {
         m_lease = success ? BluezDiscoveryLease::Held : BluezDiscoveryLease::None;
     } else if (!start && m_lease == BluezDiscoveryLease::StopPending) {
-        m_lease = BluezDiscoveryLease::None;
+        m_lease = success ? BluezDiscoveryLease::None : BluezDiscoveryLease::Held;
     }
 }
 

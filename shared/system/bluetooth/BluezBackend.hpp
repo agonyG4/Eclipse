@@ -31,7 +31,7 @@ public:
 
     bool start(const Callbacks &callbacks, QString *errorOut) override;
     void stop() override;
-    bool setPowered(bool powered) override;
+    bool setPowered(bool powered, quint64 requestId) override;
     bool startDiscovery(quint64 requestId) override;
     bool stopDiscovery(quint64 requestId) override;
     bool connectDevice(const QString &objectPath) override;

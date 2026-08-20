@@ -46,7 +46,7 @@ public:
     virtual ~BluetoothBackend() = default;
     virtual bool start(const Callbacks &callbacks, QString *errorOut) = 0;
     virtual void stop() = 0;
-    virtual bool setPowered(bool powered) = 0;
+    virtual bool setPowered(bool powered, quint64 requestId) = 0;
     virtual bool startDiscovery(quint64 requestId) = 0;
     virtual bool stopDiscovery(quint64 requestId) = 0;
     virtual bool connectDevice(const QString &objectPath) = 0;

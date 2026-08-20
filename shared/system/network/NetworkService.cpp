@@ -34,6 +34,7 @@ bool NetworkService::start()
     if (m_state != SystemServiceState::Stopped)
         return true;
     ++m_generation;
+    m_wifiRequestId = 0;
     setState(SystemServiceState::Starting);
     setErrorString({});
     const QPointer<NetworkService> self(this);
@@ -61,15 +62,13 @@ bool NetworkService::start()
             self->setState(SystemServiceState::Degraded);
         }, Qt::QueuedConnection);
     };
-    callbacks.operationFinished = [self, generation](QString operation, bool success,
-                                                      QString errorString) {
+    callbacks.operationFinished = [self, generation](NetworkOperationResult result) {
         if (!self)
             return;
-        QMetaObject::invokeMethod(self, [self, generation, operation = std::move(operation),
-                                         success, errorString = std::move(errorString)] {
+        QMetaObject::invokeMethod(self, [self, generation, result = std::move(result)] {
             if (self && self->m_generation == generation
                 && self->m_state != SystemServiceState::Stopped)
-                self->handleOperationFinished(operation, success, errorString);
+                self->handleOperationFinished(result);
         }, Qt::QueuedConnection);
     };
     QString error;
@@ -90,6 +89,7 @@ void NetworkService::stop()
     if (m_state == SystemServiceState::Stopped)
         return;
     ++m_generation;
+    m_wifiRequestId = 0;
     m_wifiTimer.stop();
     m_backend->stop();
     m_wifiModel->replace({});
@@ -111,9 +111,11 @@ void NetworkService::stop()
 
 bool NetworkService::setWifiEnabled(bool enabled)
 {
-    if (!m_backend->setWifiEnabled(enabled))
+    const quint64 requestId = ++m_wifiOperationId;
+    if (!m_backend->setWifiEnabled(enabled, requestId))
         return false;
     m_wifiTarget = enabled;
+    m_wifiRequestId = requestId;
     if (!m_wifiPending) {
         m_wifiPending = true;
         emit wifiPendingChanged();
@@ -181,10 +183,15 @@ void NetworkService::applySnapshot(const NetworkSnapshot &snapshot)
     const bool oldWifiPending = m_wifiPending;
     m_wifiAvailable = snapshot.wifiAvailable;
     m_wifiEnabled = snapshot.wifiEnabled;
-    if (!snapshot.daemonAvailable)
+    if (!snapshot.daemonAvailable || !snapshot.wifiAvailable) {
+        m_wifiRequestId = 0;
         m_wifiPending = false;
-    else if (m_wifiPending && m_wifiEnabled == m_wifiTarget)
+        m_wifiTimer.stop();
+    } else if (m_wifiPending && m_wifiEnabled == m_wifiTarget) {
+        m_wifiTimer.stop();
+        m_wifiRequestId = 0;
         m_wifiPending = false;
+    }
     m_wifiScanning = snapshot.wifiScanning;
     m_connectionType = snapshot.connectionType;
     m_connected = snapshot.connected;
@@ -211,17 +218,18 @@ void NetworkService::applySnapshot(const NetworkSnapshot &snapshot)
         m_wifiTimer.stop();
 }
 
-void NetworkService::handleOperationFinished(const QString &operation, bool success,
-                                              const QString &errorString)
+void NetworkService::handleOperationFinished(const NetworkOperationResult &result)
 {
-    if (operation == QLatin1String("wifi-enabled")) {
-        if (!success)
-            finishWifiPending(false, errorString);
+    if (result.kind == NetworkOperationKind::WifiEnabled) {
+        if (!m_wifiPending || result.requestId != m_wifiRequestId)
+            return;
+        if (!result.success)
+            finishWifiPending(false, result.error);
         return;
     }
-    if (!success) {
-        if (!errorString.isEmpty())
-            setErrorString(errorString);
+    if (!result.success) {
+        if (!result.error.isEmpty())
+            setErrorString(result.error);
         setState(SystemServiceState::Degraded);
     }
 }
@@ -229,6 +237,7 @@ void NetworkService::handleOperationFinished(const QString &operation, bool succ
 void NetworkService::finishWifiPending(bool success, const QString &errorString)
 {
     m_wifiTimer.stop();
+    m_wifiRequestId = 0;
     if (!success) {
         setErrorString(errorString.isEmpty() ? QStringLiteral("Wi-Fi power update failed")
                                              : errorString);

@@ -78,8 +78,7 @@ private:
     void setState(SystemServiceState state);
     void setErrorString(const QString &errorString);
     void applySnapshot(const NetworkSnapshot &snapshot);
-    void handleOperationFinished(const QString &operation, bool success,
-                                const QString &errorString);
+    void handleOperationFinished(const NetworkOperationResult &result);
     void finishWifiPending(bool success, const QString &errorString = {});
 
     std::unique_ptr<NetworkBackend> m_backend;
@@ -100,6 +99,8 @@ private:
     quint64 m_downloadBytesPerSecond = 0;
     quint64 m_uploadBytesPerSecond = 0;
     quint64 m_generation = 0;
+    quint64 m_wifiOperationId = 0;
+    quint64 m_wifiRequestId = 0;
     QTimer m_wifiTimer;
 };
 

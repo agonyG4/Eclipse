@@ -21,6 +21,7 @@ class AudioService final : public QObject {
     Q_PROPERTY(QString errorString READ errorString NOTIFY errorStringChanged)
     Q_PROPERTY(double volume READ volume NOTIFY volumeChanged)
     Q_PROPERTY(bool muted READ muted NOTIFY mutedChanged)
+    Q_PROPERTY(bool defaultStateAvailable READ defaultStateAvailable NOTIFY defaultStateAvailableChanged)
     Q_PROPERTY(AudioOutputModel *outputsModel READ outputsModel CONSTANT)
 
 public:
@@ -33,6 +34,7 @@ public:
     QString errorString() const { return m_errorString; }
     double volume() const { return m_volume; }
     bool muted() const { return m_muted; }
+    bool defaultStateAvailable() const { return m_defaultStateAvailable; }
     AudioOutputModel *outputsModel() const { return m_outputsModel; }
 
     bool start();
@@ -51,13 +53,14 @@ signals:
     void errorStringChanged();
     void volumeChanged();
     void mutedChanged();
+    void defaultStateAvailableChanged();
 
 private:
     void setState(SystemServiceState state);
     void setErrorString(const QString &errorString);
     void applyOutputs(QVector<AudioOutput> outputs, quint32 defaultNodeId);
     void applyDefaultState(bool available, bool ready, const QString &errorString);
-    AudioBackend::Callbacks callbacksForGeneration(quint64 generation);
+    AudioBackend::Callbacks callbacksForGeneration(quint64 generation, quint64 attemptGeneration);
     void startBackend();
     void scheduleReconnect();
 
@@ -69,7 +72,10 @@ private:
     QString m_errorString;
     double m_volume = 100.0;
     bool m_muted = false;
+    bool m_defaultStateAvailable = false;
     quint64 m_generation = 0;
+    quint64 m_attemptGeneration = 0;
+    quint32 m_defaultNodeId = 0;
     bool m_wantsRunning = false;
     int m_reconnectAttempt = 0;
     QTimer m_reconnectTimer;

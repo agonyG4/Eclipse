@@ -1,5 +1,7 @@
 #include "system/audio/PipeWireAudioBackend.hpp"
 
+#include "system/audio/PipeWireAudioState.hpp"
+
 #include <pipewire/core.h>
 #include <pipewire/extensions/metadata.h>
 #include <pipewire/keys.h>
@@ -55,19 +57,14 @@ struct PipeWireAudioBackend::Impl {
     std::map<quint32, AudioOutput> outputs;
     std::map<quint32, pw_node *> nodes;
     std::map<quint32, std::unique_ptr<NodeBinding>> nodeBindings;
+    PipeWireAudioState state;
+    quint64 attemptGeneration = 0;
     QString defaultName;
     quint32 metadataDefaultId = 0;
 
     quint32 defaultNodeId() const
     {
-        if (metadataDefaultId && outputs.contains(metadataDefaultId))
-            return metadataDefaultId;
-        for (const auto &[id, output] : outputs) {
-            if (!defaultName.isEmpty()
-                && (output.name == defaultName || output.nick == defaultName))
-                return id;
-        }
-        return outputs.empty() ? 0 : outputs.cbegin()->first;
+        return state.defaultNodeId();
     }
 
     static void registryGlobal(void *data, uint32_t id, uint32_t, const char *type,
@@ -110,6 +107,10 @@ struct PipeWireAudioBackend::Impl {
         output.mediaClass = QString::fromUtf8(mediaClass);
         output.isVirtual = virtualValue && QString::fromUtf8(virtualValue) == QStringLiteral("true");
         impl->outputs[id] = output;
+        PipeWireNodeAudioState nodeState;
+        nodeState.nodeId = id;
+        nodeState.output = output;
+        impl->state.upsertNode(std::move(nodeState));
         impl->nodes[id] = static_cast<pw_node *>(
             pw_registry_bind(impl->registry, id, PW_TYPE_INTERFACE_Node,
                              PW_VERSION_NODE, 0));
@@ -149,6 +150,8 @@ struct PipeWireAudioBackend::Impl {
                 pw_core_destroy(impl->core, impl->metadata);
             impl->metadata = nullptr;
             impl->metadataId = 0;
+            impl->state.clearMetadataDefault();
+            impl->publishOutputs();
             return;
         }
         const auto nodeIt = impl->nodes.find(id);
@@ -157,6 +160,7 @@ struct PipeWireAudioBackend::Impl {
         impl->nodes.erase(id);
         impl->nodeBindings.erase(id);
         impl->outputs.erase(id);
+        impl->state.removeNode(id);
         impl->publishOutputs();
     }
 
@@ -178,6 +182,9 @@ struct PipeWireAudioBackend::Impl {
             } else {
                 impl->defaultName = QString::fromUtf8(value);
             }
+            impl->state.setMetadataDefault(impl->defaultName, impl->metadataDefaultId);
+        } else {
+            impl->state.clearMetadataDefault();
         }
         impl->publishOutputs();
         impl->publishDefaultVolume();
@@ -201,6 +208,8 @@ struct PipeWireAudioBackend::Impl {
             it->second.description = QString::fromUtf8(description);
         if (nick)
             it->second.nick = QString::fromUtf8(nick);
+        binding->owner->state.updateNodeMetadata(binding->id, it->second.name,
+                                                 it->second.description, it->second.nick);
         binding->owner->publishOutputs();
     }
 
@@ -236,6 +245,9 @@ struct PipeWireAudioBackend::Impl {
                     binding->channelVolumes.append(values[index]);
             }
         }
+        binding->owner->state.updateNodeProps(binding->id, binding->volume,
+                                              binding->volumeKnown, binding->muted,
+                                              binding->muteKnown, binding->channelVolumes);
         if (binding->id == binding->owner->defaultNodeId())
             binding->owner->publishDefaultVolume();
     }
@@ -245,13 +257,8 @@ struct PipeWireAudioBackend::Impl {
         if (!callbacks.outputsChanged)
             return;
         QVector<AudioOutput> values;
-        values.reserve(static_cast<qsizetype>(outputs.size()));
+        values = state.outputs();
         const quint32 defaultNodeId = this->defaultNodeId();
-        for (const auto &[id, output] : outputs) {
-            AudioOutput copy = output;
-            copy.isDefault = id == defaultNodeId;
-            values.append(std::move(copy));
-        }
         callbacks.outputsChanged(std::move(values), defaultNodeId);
     }
 
@@ -259,20 +266,11 @@ struct PipeWireAudioBackend::Impl {
     {
         if (!callbacks.volumeChanged)
             return;
-        const auto binding = nodeBindings.find(defaultNodeId());
-        if (binding == nodeBindings.end())
+        float volume = 0.0f;
+        bool muted = false;
+        if (!state.defaultVolume(&volume, &muted))
             return;
-        const NodeBinding &state = *binding->second;
-        if (!state.volumeKnown && state.channelVolumes.isEmpty() && !state.muteKnown)
-            return;
-        float volume = state.volume;
-        if (!state.channelVolumes.isEmpty()) {
-            double total = 0.0;
-            for (const float channel : state.channelVolumes)
-                total += channel;
-            volume = static_cast<float>(total / state.channelVolumes.size());
-        }
-        callbacks.volumeChanged(std::max(0.0f, volume), state.muted);
+        callbacks.volumeChanged(volume, muted);
     }
 
     bool setProps(quint32 nodeId, const spa_pod *pod)
@@ -298,6 +296,7 @@ bool PipeWireAudioBackend::start(const Callbacks &callbacks, QString *errorOut)
     if (m_impl->loop)
         return true;
     m_impl->callbacks = callbacks;
+    m_impl->state.reset(++m_impl->attemptGeneration);
     static std::once_flag initialized;
     std::call_once(initialized, [] { pw_init(nullptr, nullptr); });
 
@@ -407,6 +406,7 @@ bool PipeWireAudioBackend::setDefaultOutput(quint32 nodeId)
     }
     m_impl->defaultName = it->second.name;
     m_impl->metadataDefaultId = nodeId;
+    m_impl->state.setMetadataDefault(m_impl->defaultName, nodeId);
     if (m_impl->metadata) {
         const QByteArray value = QByteArray("{\"name\":\"")
             + it->second.name.toUtf8() + QByteArray("\"}");

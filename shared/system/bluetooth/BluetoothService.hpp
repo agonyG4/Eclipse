@@ -2,6 +2,7 @@
 
 #include "system/SystemServiceState.hpp"
 #include "system/bluetooth/BluetoothBackend.hpp"
+#include "system/bluetooth/BluezDiscoveryState.hpp"
 
 #include <QJsonObject>
 #include <QObject>
@@ -81,6 +82,7 @@ private:
     std::unique_ptr<BluetoothBackend> m_backend;
     BluetoothDeviceModel *m_devicesModel = nullptr;
     QSet<QString> m_scanOwners;
+    BluezDiscoveryState m_discoveryState;
     SystemServiceState m_state = SystemServiceState::Stopped;
     bool m_available = false;
     bool m_ready = false;

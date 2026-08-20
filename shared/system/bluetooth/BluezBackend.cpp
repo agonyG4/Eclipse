@@ -1,5 +1,7 @@
 #include "system/bluetooth/BluezBackend.hpp"
 
+#include "system/bluetooth/BluezObjectStore.hpp"
+
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDBusMetaType>
@@ -63,6 +65,7 @@ bool propertyBool(const BluezDBusProperties &properties, const QString &name)
 
 BluezBackend::BluezBackend(QObject *parent)
     : QObject(parent)
+    , m_objectStore(std::make_unique<BluezObjectStore>())
 {
     qRegisterMetaType<BluezDBusInterfaces>("Astrea::System::BluezDBusInterfaces");
     qRegisterMetaType<BluezManagedObjects>("Astrea::System::BluezManagedObjects");
@@ -93,6 +96,7 @@ bool BluezBackend::start(const Callbacks &callbacks, QString *errorOut)
     m_running = true;
     ++m_generation;
     m_objects.clear();
+    m_objectStore->clear();
     m_adapterPath.clear();
     m_serviceWatcher = new QDBusServiceWatcher(QString::fromLatin1(serviceName), bus,
                                                QDBusServiceWatcher::WatchForRegistration
@@ -142,6 +146,7 @@ void BluezBackend::stop()
                    this, nullptr);
     rebuildPropertyWatchers();
     m_objects.clear();
+    m_objectStore->clear();
     m_adapterPath.clear();
     delete m_serviceWatcher;
     m_serviceWatcher = nullptr;
@@ -162,7 +167,7 @@ bool BluezBackend::setPowered(bool powered)
                                                  this);
     const quint64 generation = m_generation;
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, generation, powered](QDBusPendingCallWatcher *finished) {
+            [this, generation](QDBusPendingCallWatcher *finished) {
         if (generation == m_generation && m_running) {
             const QDBusMessage reply = finished->reply();
             if (reply.type() == QDBusMessage::ErrorMessage)
@@ -206,7 +211,8 @@ void BluezBackend::interfacesAdded(const QDBusObjectPath &path,
 {
     if (!m_running)
         return;
-    m_objects.insert(path, interfaces);
+    m_objectStore->interfacesAdded(path, interfaces);
+    m_objects = m_objectStore->objects();
     rebuildPropertyWatchers();
     publishSnapshot();
 }
@@ -216,14 +222,8 @@ void BluezBackend::interfacesRemoved(const QDBusObjectPath &path,
 {
     if (!m_running)
         return;
-    if (interfaces.isEmpty()) {
-        m_objects.remove(path);
-    } else if (auto object = m_objects.find(path); object != m_objects.end()) {
-        for (const QString &interfaceName : interfaces)
-            object->remove(interfaceName);
-        if (object->isEmpty())
-            m_objects.erase(object);
-    }
+    m_objectStore->interfacesRemoved(path, interfaces);
+    m_objects = m_objectStore->objects();
     rebuildPropertyWatchers();
     publishSnapshot();
 }
@@ -262,7 +262,8 @@ void BluezBackend::publishManagedObjects(const QDBusArgument &objects)
 {
     BluezManagedObjects parsed;
     objects >> parsed;
-    m_objects = std::move(parsed);
+    m_objectStore->replace(std::move(parsed));
+    m_objects = m_objectStore->objects();
     rebuildPropertyWatchers();
     publishSnapshot();
 }
@@ -275,17 +276,42 @@ void BluezBackend::handlePropertiesChanged(const QString &objectPath,
     if (!m_running)
         return;
     const QDBusObjectPath path(objectPath);
-    auto object = m_objects.find(path);
-    if (object == m_objects.end())
+    const bool changedApplied = m_objectStore->propertiesChanged(path, interfaceName, changed);
+    if (!changedApplied)
         return;
-    auto interface = object->find(interfaceName);
-    if (interface == object->end())
-        interface = object->insert(interfaceName, {});
-    for (auto it = changed.constBegin(); it != changed.constEnd(); ++it)
-        interface->insert(it.key(), it.value());
-    for (const QString &name : invalidated)
-        interface->remove(name);
+    m_objects = m_objectStore->objects();
     publishSnapshot();
+    if (!invalidated.isEmpty())
+        refreshInvalidatedProperties(objectPath, interfaceName, m_generation);
+}
+
+void BluezBackend::refreshInvalidatedProperties(const QString &objectPath,
+                                                const QString &interfaceName,
+                                                quint64 generation)
+{
+    if (!m_running || generation != m_generation)
+        return;
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        QString::fromLatin1(serviceName), objectPath,
+        QString::fromLatin1(propertiesInterface), QStringLiteral("GetAll"));
+    message << interfaceName;
+    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(message),
+                                                 this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, generation, objectPath, interfaceName](QDBusPendingCallWatcher *finished) {
+        if (generation == m_generation && m_running) {
+            const QDBusMessage reply = finished->reply();
+            if (reply.type() != QDBusMessage::ErrorMessage && !reply.arguments().isEmpty()) {
+                m_objectStore->replaceInterface(QDBusObjectPath(objectPath), interfaceName,
+                                                reply.arguments().constFirst().toMap());
+                m_objects = m_objectStore->objects();
+                publishSnapshot();
+            } else if (reply.type() == QDBusMessage::ErrorMessage && m_callbacks.errorChanged) {
+                m_callbacks.errorChanged(reply.errorMessage());
+            }
+        }
+        finished->deleteLater();
+    });
 }
 
 void BluezBackend::rebuildPropertyWatchers()
@@ -371,7 +397,8 @@ void BluezBackend::publishSnapshot()
         device.connected = propertyBool(properties, QStringLiteral("Connected"));
         device.discovered = true;
         device.icon = propertyString(properties, QStringLiteral("Icon"));
-        device.rssi = properties.value(QStringLiteral("RSSI"), 0).toInt();
+        device.rssi = properties.contains(QStringLiteral("RSSI"))
+            ? properties.value(QStringLiteral("RSSI")).toInt() : -1;
         const BluezDBusProperties battery =
             it.value().value(QString::fromLatin1(batteryInterface));
         device.batteryPercent = battery.value(QStringLiteral("Percentage"), -1).toInt();
@@ -394,6 +421,7 @@ void BluezBackend::publishSnapshot()
 void BluezBackend::publishUnavailable()
 {
     m_objects.clear();
+    m_objectStore->clear();
     m_adapterPath.clear();
     rebuildPropertyWatchers();
     if (!m_callbacks.snapshotChanged)
@@ -470,6 +498,7 @@ void BluezBackend::clearGeneration()
 {
     ++m_generation;
     m_objects.clear();
+    m_objectStore->clear();
     m_adapterPath.clear();
     rebuildPropertyWatchers();
 }

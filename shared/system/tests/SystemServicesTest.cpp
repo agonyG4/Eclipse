@@ -1,12 +1,18 @@
 #include "system/SystemServiceState.hpp"
 #include "system/audio/AudioService.hpp"
 #include "system/audio/AudioOutputModel.hpp"
+#include "system/audio/PipeWireAudioState.hpp"
 #include "system/network/NetworkService.hpp"
 #include "system/network/WifiNetworkModel.hpp"
+#include "system/network/NetworkManagerState.hpp"
 #include "system/bluetooth/BluetoothService.hpp"
 #include "system/bluetooth/BluetoothDeviceModel.hpp"
+#include "system/bluetooth/BluezDiscoveryState.hpp"
+#include "system/bluetooth/BluezObjectStore.hpp"
 
 #include <QJsonObject>
+#include <QDBusObjectPath>
+#include <QCoreApplication>
 #include <QSignalSpy>
 #include <QTest>
 
@@ -63,6 +69,8 @@ public:
         if (m_callbacks.defaultStateChanged)
             m_callbacks.defaultStateChanged(available, ready, error);
     }
+
+    Callbacks currentCallbacks() const { return m_callbacks; }
 
     bool startResult = true;
     bool actionResult = true;
@@ -176,6 +184,12 @@ public:
             m_callbacks.snapshotChanged(snapshot);
     }
 
+    void finish(const QString &operation, bool success, const QString &error = {})
+    {
+        if (m_callbacks.operationFinished)
+            m_callbacks.operationFinished(operation, success, error);
+    }
+
     bool startResult = true;
     bool actionResult = true;
     int startCount = 0;
@@ -207,9 +221,15 @@ private slots:
     void serviceStatesAreRestartable();
     void audioUnavailableThenReconnects();
     void audioRuntimeFailureReconnects();
+    void audioLateAttemptCallbacksAreIgnored();
     void audioUsesCubicUiScaleAndStableModelOrder();
     void networkWifiAvailabilityAndScanningAreAuthoritative();
+    void networkStateSeparatesWirelessAndPrimaryState();
+    void networkScanUsesLastScanAndCoalesces();
     void wifiModelDeduplicatesAndAvoidsSemanticReset();
+    void bluezObjectStoreMergesInterfaces();
+    void bluezDiscoverySeparatesDemandLeaseAndActualState();
+    void pipewireStateUsesMetadataAndPerNodeCache();
     void bluetoothModelReconcilesAndScanOwnershipIsReferenceCounted();
     void bluetoothRejectsUnpairedConnect();
     void bluetoothScanningFollowsBackendState();
@@ -265,6 +285,24 @@ void SystemServicesTest::audioRuntimeFailureReconnects()
     QCOMPARE(service.state(), SystemServiceState::Ready);
 }
 
+void SystemServicesTest::audioLateAttemptCallbacksAreIgnored()
+{
+    auto backend = std::make_unique<FakeAudioBackend>();
+    auto *backendPtr = backend.get();
+    AudioService service(std::move(backend));
+    QVERIFY(service.start());
+    const AudioBackend::Callbacks attemptA = backendPtr->currentCallbacks();
+    attemptA.defaultStateChanged(false, false, QStringLiteral("attempt A failed"));
+    QTRY_VERIFY_WITH_TIMEOUT(backendPtr->startCount >= 2, 1500);
+    const AudioBackend::Callbacks attemptB = backendPtr->currentCallbacks();
+    attemptA.volumeChanged(3.375, true);
+    QCoreApplication::processEvents();
+    QVERIFY(service.volume() != 150.0);
+    attemptB.volumeChanged(0.125, false);
+    QTRY_COMPARE_WITH_TIMEOUT(service.volume(), 50.0, 500);
+    QVERIFY(!service.muted());
+}
+
 void SystemServicesTest::audioUsesCubicUiScaleAndStableModelOrder()
 {
     QCOMPARE(AudioService::uiPercentToLinear(0.0), 0.0);
@@ -313,6 +351,75 @@ void SystemServicesTest::networkWifiAvailabilityAndScanningAreAuthoritative()
     QTRY_VERIFY_WITH_TIMEOUT(service.wifiAvailable() && service.wifiScanning(), 500);
 }
 
+void SystemServicesTest::networkStateSeparatesWirelessAndPrimaryState()
+{
+    NetworkManagerState state;
+    state.setManagerProperties({{QStringLiteral("WirelessEnabled"), true}});
+    state.upsertDevice(QStringLiteral("/device/wifi"),
+                       {{QStringLiteral("DeviceType"), 2},
+                        {QStringLiteral("Interface"), QStringLiteral("wlan-test")},
+                        {QStringLiteral("ActiveAccessPoint"),
+                         QVariant::fromValue(QDBusObjectPath(QStringLiteral("/ap/active")))}});
+    state.setWirelessProperties(QStringLiteral("/device/wifi"),
+                                {{QStringLiteral("ActiveAccessPoint"),
+                                  QVariant::fromValue(QDBusObjectPath(QStringLiteral("/ap/active")))},
+                                 {QStringLiteral("LastScan"), qint64(10)}});
+    state.upsertAccessPoint(QStringLiteral("/ap/active"),
+                            {{QStringLiteral("Ssid"), QByteArray("Cafe")},
+                             {QStringLiteral("Strength"), 40},
+                             {QStringLiteral("HwAddress"), QStringLiteral("AA")}});
+    state.setPrimaryProperties(QStringLiteral("/active/connection"),
+                               {{QStringLiteral("Id"), QStringLiteral("Cafe")},
+                                {QStringLiteral("State"), 2},
+                                {QStringLiteral("Devices"), QVariantList{
+                                    QVariant::fromValue(QDBusObjectPath(QStringLiteral("/device/wifi")))}}});
+    const NetworkSnapshot snapshot = state.snapshot();
+    QCOMPARE(snapshot.connectionType, NetworkConnectionType::Wifi);
+    QVERIFY(snapshot.connected);
+    QCOMPARE(snapshot.interfaceName, QStringLiteral("wlan-test"));
+    QCOMPARE(snapshot.wifiNetworks.size(), 1);
+    QVERIFY(snapshot.wifiNetworks.constFirst().active);
+    QCOMPARE(state.activeAccessPointPath(), QStringLiteral("/ap/active"));
+    const quint64 epochA = state.beginPrimaryRequest(QStringLiteral("/active/A"));
+    const quint64 epochB = state.beginPrimaryRequest(QStringLiteral("/active/B"));
+    QVERIFY(epochB > epochA);
+    QVERIFY(!state.applyPrimaryReply(QStringLiteral("/active/A"), epochA,
+                                     {{QStringLiteral("State"), 2}}));
+    QVERIFY(state.applyPrimaryReply(QStringLiteral("/active/B"), epochB,
+                                    {{QStringLiteral("State"), 2}}));
+    QCOMPARE(state.primaryPath(), QStringLiteral("/active/B"));
+}
+
+void SystemServicesTest::networkScanUsesLastScanAndCoalesces()
+{
+    NetworkScanState scan;
+    QVERIFY(scan.request(7, QStringLiteral("/wifi"), 100, 0));
+    QCOMPARE(scan.phase(), NetworkScanPhase::RequestPending);
+    QVERIFY(scan.requestFinished(true, 10));
+    QCOMPARE(scan.phase(), NetworkScanPhase::WaitingForLastScan);
+    QVERIFY(scan.request(7, QStringLiteral("/wifi"), 100, 20));
+    QVERIFY(scan.queuedDemand());
+    QVERIFY(!scan.lastScanAdvanced(7, QStringLiteral("/wifi"), 100, 30));
+    QVERIFY(scan.lastScanAdvanced(7, QStringLiteral("/wifi"), 101, 40));
+    QCOMPARE(scan.phase(), NetworkScanPhase::Cooldown);
+    QVERIFY(scan.cooldownExpired(3040));
+    QCOMPARE(scan.phase(), NetworkScanPhase::Idle);
+    QVERIFY(scan.request(7, QStringLiteral("/wifi"), 101, 3050));
+    scan.requestFinished(false, 3060);
+    QCOMPARE(scan.phase(), NetworkScanPhase::Idle);
+    QVERIFY(scan.request(7, QStringLiteral("/wifi"), 101, 3070));
+    QVERIFY(scan.requestFinished(true, 3080));
+    QVERIFY(scan.request(7, QStringLiteral("/wifi"), 101, 3090));
+    scan.timeout(4000);
+    QCOMPARE(scan.phase(), NetworkScanPhase::Cooldown);
+    QVERIFY(scan.cooldownExpired(7000));
+    QCOMPARE(scan.phase(), NetworkScanPhase::Idle);
+    QVERIFY(scan.request(8, QStringLiteral("/wifi"), 200, 0));
+    scan.invalidate();
+    QCOMPARE(scan.phase(), NetworkScanPhase::Idle);
+    QVERIFY(!scan.lastScanAdvanced(8, QStringLiteral("/wifi"), 201, 500));
+}
+
 void SystemServicesTest::wifiModelDeduplicatesAndAvoidsSemanticReset()
 {
     WifiNetworkModel model;
@@ -331,6 +438,83 @@ void SystemServicesTest::wifiModelDeduplicatesAndAvoidsSemanticReset()
     QVERIFY(model.data(model.index(0, 0), WifiNetworkModel::ActiveRole).toBool());
     model.replace({duplicateA, office, duplicateB});
     QCOMPARE(resetSpy.count(), 1);
+}
+
+void SystemServicesTest::bluezObjectStoreMergesInterfaces()
+{
+    BluezObjectStore store;
+    const QDBusObjectPath devicePath(QStringLiteral("/org/bluez/hci0/dev_AA"));
+    store.interfacesAdded(devicePath,
+                          {{QStringLiteral("org.bluez.Device1"),
+                            {{QStringLiteral("Paired"), true},
+                             {QStringLiteral("Connected"), false}}}});
+    store.interfacesAdded(devicePath,
+                          {{QStringLiteral("org.bluez.Battery1"),
+                            {{QStringLiteral("Percentage"), 80}}}});
+    QCOMPARE(store.objects().value(devicePath).size(), 2);
+    store.propertiesChanged(devicePath, QStringLiteral("org.bluez.Device1"),
+                            {{QStringLiteral("Connected"), true}});
+    QVERIFY(store.objects().value(devicePath).value(QStringLiteral("org.bluez.Device1"))
+                .value(QStringLiteral("Connected")).toBool());
+    store.interfacesRemoved(devicePath, {QStringLiteral("org.bluez.Battery1")});
+    QCOMPARE(store.objects().value(devicePath).size(), 1);
+    store.interfacesRemoved(devicePath, {QStringLiteral("org.bluez.Device1")});
+    QVERIFY(!store.objects().contains(devicePath));
+}
+
+void SystemServicesTest::bluezDiscoverySeparatesDemandLeaseAndActualState()
+{
+    BluezDiscoveryState state;
+    state.setAdapterReady(true);
+    state.request(QStringLiteral("topbar"));
+    QVERIFY(state.wantsStart());
+    state.startRequested();
+    QCOMPARE(state.lease(), BluezDiscoveryLease::StartPending);
+    state.operationFinished(true, true);
+    QCOMPARE(state.lease(), BluezDiscoveryLease::Held);
+    state.setActualDiscovering(true);
+    state.release(QStringLiteral("topbar"));
+    QVERIFY(state.wantsStop());
+    state.stopRequested();
+    state.request(QStringLiteral("popup"));
+    state.operationFinished(false, true);
+    QCOMPARE(state.lease(), BluezDiscoveryLease::None);
+    QVERIFY(state.wantsStart());
+    QVERIFY(state.actualDiscovering());
+}
+
+void SystemServicesTest::pipewireStateUsesMetadataAndPerNodeCache()
+{
+    PipeWireAudioState state;
+    state.reset(11);
+    PipeWireNodeAudioState first;
+    first.nodeId = 4;
+    first.output = output(4, QStringLiteral("sink-a"));
+    first.volume = 0.125f;
+    first.volumeKnown = true;
+    state.upsertNode(first);
+    PipeWireNodeAudioState second;
+    second.nodeId = 9;
+    second.output = output(9, QStringLiteral("sink-b"));
+    second.volume = 1.0f;
+    second.volumeKnown = true;
+    second.muted = true;
+    second.muteKnown = true;
+    state.upsertNode(second);
+    QCOMPARE(state.defaultNodeId(), quint32(0));
+    state.setMetadataDefault(QStringLiteral("sink-b"));
+    QCOMPARE(state.defaultNodeId(), quint32(9));
+    float volume = 0.0f;
+    bool muted = false;
+    QVERIFY(state.defaultVolume(&volume, &muted));
+    QCOMPARE(volume, 1.0f);
+    QVERIFY(muted);
+    state.removeNode(9);
+    QCOMPARE(state.defaultNodeId(), quint32(0));
+    state.reset(12);
+    state.upsertNode(first);
+    state.setMetadataDefault(QString(), 9);
+    QCOMPARE(state.defaultNodeId(), quint32(0));
 }
 
 void SystemServicesTest::bluetoothModelReconcilesAndScanOwnershipIsReferenceCounted()
@@ -364,12 +548,15 @@ void SystemServicesTest::bluetoothModelReconcilesAndScanOwnershipIsReferenceCoun
     snapshot.scanning = true;
     backendPtr->publish(snapshot);
     QTRY_VERIFY_WITH_TIMEOUT(service.scanning(), 500);
+    backendPtr->finish(QStringLiteral("discovery-start"), true);
+    QCoreApplication::processEvents();
     QVERIFY(service.requestScan(QStringLiteral("popup")));
     QCOMPARE(backendPtr->startDiscoveryCount, 1);
     service.releaseScan(QStringLiteral("topbar"));
     QCOMPARE(backendPtr->stopDiscoveryCount, 0);
     service.releaseScan(QStringLiteral("popup"));
     QCOMPARE(backendPtr->stopDiscoveryCount, 1);
+    backendPtr->finish(QStringLiteral("discovery-stop"), true);
     service.releaseScan(QStringLiteral("popup"));
 }
 

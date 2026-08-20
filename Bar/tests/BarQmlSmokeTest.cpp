@@ -24,11 +24,13 @@ class FakeAudioService final : public QObject {
     Q_OBJECT
     Q_PROPERTY(double volume READ volume NOTIFY volumeChanged)
     Q_PROPERTY(bool muted READ muted NOTIFY mutedChanged)
+    Q_PROPERTY(bool defaultStateAvailable READ defaultStateAvailable NOTIFY defaultStateAvailableChanged)
 
 public:
     explicit FakeAudioService(QObject *parent = nullptr) : QObject(parent) {}
     double volume() const { return m_volume; }
     bool muted() const { return m_muted; }
+    bool defaultStateAvailable() const { return m_defaultStateAvailable; }
     bool available() const { return true; }
     Q_INVOKABLE void adjustVolume(double delta) {
         m_lastDelta = delta;
@@ -43,15 +45,23 @@ public:
         m_volume = volume;
         emit volumeChanged();
     }
+    void setDefaultStateAvailableForTest(bool available) {
+        if (m_defaultStateAvailable == available)
+            return;
+        m_defaultStateAvailable = available;
+        emit defaultStateAvailableChanged();
+    }
     double m_lastDelta = 0.0;
 
 signals:
     void volumeChanged();
     void mutedChanged();
+    void defaultStateAvailableChanged();
 
 private:
     double m_volume = 50.0;
     bool m_muted = false;
+    bool m_defaultStateAvailable = true;
 };
 
 class FakeNetworkService final : public QObject {
@@ -145,6 +155,7 @@ private slots:
     void indicatorGlyphsMatchReferenceStates();
     void workspaceDelegatesExposeReferenceHitboxes();
     void popupVisualsUseNativeServiceInputs();
+    void volumeUiDisablesWhenDefaultStateUnavailable();
 
 private:
     void loadsProductionSurface(const QString &fileName);
@@ -819,6 +830,56 @@ void BarQmlSmokeTest::popupVisualsUseNativeServiceInputs()
     QVERIFY(volumePopup->findChild<QObject *>(QStringLiteral("volumeSlider")) != nullptr);
 
     delete overlay;
+}
+
+void BarQmlSmokeTest::volumeUiDisablesWhenDefaultStateUnavailable()
+{
+    QQmlEngine engine;
+    FakeAudioService audio;
+    QQmlComponent indicatorComponent(
+        &engine, QUrl(QStringLiteral(
+            "qrc:/qt/qml/Astrea/Shell/Bar/qml/components/VolumeIndicator.qml")));
+    QObject *indicator = indicatorComponent.createWithInitialProperties({
+        {QStringLiteral("audioService"), QVariant::fromValue(&audio)},
+    });
+    QVERIFY(indicator != nullptr);
+    auto *indicatorItem = qobject_cast<QQuickItem *>(indicator);
+    QVERIFY(indicatorItem != nullptr);
+    QObject *wheel = indicator->findChild<QObject *>(QStringLiteral("volumeWheelArea"));
+    QVERIFY(wheel != nullptr);
+    QQuickWindow window;
+    window.resize(100, 40);
+    indicatorItem->setParentItem(window.contentItem());
+    indicatorItem->setWidth(100);
+    indicatorItem->setHeight(40);
+    window.show();
+    QTest::qWait(20);
+
+    audio.setDefaultStateAvailableForTest(false);
+    QCoreApplication::processEvents();
+    QTest::wheelEvent(&window, QPointF(50, 20), QPoint(0, 120));
+    QCoreApplication::processEvents();
+    QCOMPARE(audio.m_lastDelta, 0.0);
+
+    QQmlComponent popupComponent(
+        &engine, QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Bar/qml/VolumePopup.qml")));
+    QObject *popup = popupComponent.createWithInitialProperties({
+        {QStringLiteral("audioService"), QVariant::fromValue(&audio)},
+    });
+    QVERIFY(popup != nullptr);
+    QObject *muteMouse = popup->findChild<QObject *>(QStringLiteral("volumeMuteMouse"));
+    QObject *sliderMouse = popup->findChild<QObject *>(QStringLiteral("volumeSliderMouse"));
+    QVERIFY(muteMouse != nullptr);
+    QVERIFY(sliderMouse != nullptr);
+    QVERIFY(!muteMouse->property("enabled").toBool());
+    QVERIFY(!sliderMouse->property("enabled").toBool());
+
+    audio.setDefaultStateAvailableForTest(true);
+    QCoreApplication::processEvents();
+    QVERIFY(muteMouse->property("enabled").toBool());
+    QVERIFY(sliderMouse->property("enabled").toBool());
+    delete popup;
+    delete indicator;
 }
 
 int main(int argc, char **argv)

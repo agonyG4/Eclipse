@@ -74,10 +74,11 @@ private:
     void setErrorString(const QString &errorString);
     void applySnapshot(const BluetoothSnapshot &snapshot);
     void reconcileDiscovery();
-    void handleOperationFinished(const QString &operation, bool success,
-                                 const QString &errorString);
+    void handleOperationFinished(const BluetoothOperationResult &result);
     void finishPowerPending(bool success, const QString &errorString = {});
     void finishDiscoveryRequest(bool success, const QString &errorString = {});
+    void scheduleDiscoveryRetry();
+    void cancelDiscoveryRetry();
 
     std::unique_ptr<BluetoothBackend> m_backend;
     BluetoothDeviceModel *m_devicesModel = nullptr;
@@ -98,8 +99,12 @@ private:
     QString m_connectedName;
     QString m_errorString;
     quint64 m_generation = 0;
+    quint64 m_discoveryOperationId = 0;
+    quint64 m_discoveryRequestId = 0;
     QTimer m_powerTimer;
     QTimer m_discoveryTimer;
+    QTimer m_discoveryRetryTimer;
+    int m_discoveryRetryAttempt = 0;
 };
 
 } // namespace Astrea::System

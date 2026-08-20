@@ -278,7 +278,13 @@ bool NetworkManagerBackend::requestWifiScan()
         reportAsyncError(finished, m_callbacks);
         const bool success = finished->reply().type() != QDBusMessage::ErrorMessage;
         const qint64 now = m_scanClock.elapsed();
-        m_scanState.requestFinished(success, now);
+        if (m_scanState.phase() != NetworkScanPhase::RequestPending
+            || m_scanState.generation() != generation
+            || m_scanState.devicePath() != devicePath) {
+            finished->deleteLater();
+            return;
+        }
+        m_scanState.requestFinished(generation, devicePath, success, now);
         if (!success) {
             if (m_scanCooldownTimer)
                 m_scanCooldownTimer->stop();
@@ -431,8 +437,9 @@ void NetworkManagerBackend::reconcileDevices(quint64 generation)
             wifiPaths.append(it.key());
     }
     std::sort(wifiPaths.begin(), wifiPaths.end());
-    m_pendingWirelessProperties = wifiPaths.size();
-    if (m_pendingWirelessProperties > 0) {
+    const quint64 refreshGeneration = m_refreshGeneration;
+    m_wirelessRefresh.begin(generation, refreshGeneration, wifiPaths);
+    if (!wifiPaths.isEmpty()) {
         for (const QString &path : wifiPaths) {
             QDBusMessage wirelessCall = QDBusMessage::createMethodCall(
                 QString::fromLatin1(serviceName), path,
@@ -441,15 +448,19 @@ void NetworkManagerBackend::reconcileDevices(quint64 generation)
             auto *wirelessWatcher = new QDBusPendingCallWatcher(
                 QDBusConnection::systemBus().asyncCall(wirelessCall), this);
             connect(wirelessWatcher, &QDBusPendingCallWatcher::finished, this,
-                    [this, generation, path](QDBusPendingCallWatcher *finished) {
-                if (generation == m_generation && m_running) {
-                    const QDBusMessage reply = finished->reply();
-                    if (reply.type() != QDBusMessage::ErrorMessage && !reply.arguments().isEmpty())
-                        m_state.setWirelessProperties(path,
-                                                       reply.arguments().constFirst().toMap());
-                    if (--m_pendingWirelessProperties == 0)
-                        finishDeviceReconciliation(generation);
+                    [this, generation, refreshGeneration, path](QDBusPendingCallWatcher *finished) {
+                if (generation != m_generation || refreshGeneration != m_refreshGeneration
+                    || !m_running
+                    || !m_wirelessRefresh.acceptReply(generation, refreshGeneration, path)) {
+                    finished->deleteLater();
+                    return;
                 }
+                const QDBusMessage reply = finished->reply();
+                if (reply.type() != QDBusMessage::ErrorMessage && !reply.arguments().isEmpty())
+                    m_state.setWirelessProperties(path,
+                                                   reply.arguments().constFirst().toMap());
+                if (m_wirelessRefresh.complete())
+                    finishDeviceReconciliation(generation);
                 finished->deleteLater();
             });
         }
@@ -462,8 +473,7 @@ void NetworkManagerBackend::finishDeviceReconciliation(quint64 generation)
 {
     if (!m_running || generation != m_generation)
         return;
-    m_wifiDevicePath = m_state.selectedWifiDevicePath();
-    m_activeAccessPointPath = m_state.activeAccessPointPath();
+    const bool wifiDeviceChanged = reconcileSelectedWifiDevice();
     m_snapshot = m_state.snapshot();
     m_snapshot.wifiScanning = m_scanState.active();
     const QString primaryPath = objectPathString(
@@ -473,8 +483,34 @@ void NetworkManagerBackend::finishDeviceReconciliation(quint64 generation)
         return;
     }
     publishReconciledSnapshot();
-    if (m_snapshot.wifiAvailable)
+    if (!wifiDeviceChanged && m_snapshot.wifiAvailable)
         refreshAccessPoints();
+}
+
+bool NetworkManagerBackend::reconcileSelectedWifiDevice()
+{
+    if (!m_running)
+        return false;
+    const QString next = m_state.selectedWifiDevicePath();
+    if (next == m_wifiDevicePath) {
+        m_activeAccessPointPath = m_state.activeAccessPointPath();
+        return false;
+    }
+
+    ++m_accessPointRefreshGeneration;
+    m_scanState.invalidate();
+    if (m_scanCooldownTimer)
+        m_scanCooldownTimer->stop();
+    m_state.clearAccessPoints();
+    m_wifiDevicePath = next;
+    m_activeAccessPointPath = m_state.activeAccessPointPath();
+    m_snapshot = m_state.snapshot();
+    m_snapshot.wifiScanning = false;
+    rebuildPropertyWatchers();
+    publishReconciledSnapshot();
+    if (!m_wifiDevicePath.isEmpty() && m_snapshot.wifiAvailable)
+        refreshAccessPoints();
+    return true;
 }
 
 void NetworkManagerBackend::refreshActiveConnection(const QString &objectPath)
@@ -501,6 +537,7 @@ void NetworkManagerBackend::refreshActiveConnection(const QString &objectPath)
             return;
         }
         const QDBusMessage reply = finished->reply();
+        bool wifiDeviceChanged = false;
         if (reply.type() == QDBusMessage::ErrorMessage) {
             if (m_callbacks.errorChanged)
                 m_callbacks.errorChanged(reply.errorMessage());
@@ -510,13 +547,15 @@ void NetworkManagerBackend::refreshActiveConnection(const QString &objectPath)
                 finished->deleteLater();
                 return;
             }
+            wifiDeviceChanged = reconcileSelectedWifiDevice();
             m_snapshot = m_state.snapshot();
             m_snapshot.wifiScanning = m_scanState.active();
-            rebuildPropertyWatchers();
         }
-        publishReconciledSnapshot();
-        if (m_snapshot.wifiAvailable)
-            refreshAccessPoints();
+        if (!wifiDeviceChanged) {
+            publishReconciledSnapshot();
+            if (m_snapshot.wifiAvailable)
+                refreshAccessPoints();
+        }
         finished->deleteLater();
     });
 }
@@ -660,7 +699,14 @@ void NetworkManagerBackend::deviceRemoved(const QDBusObjectPath &path)
 {
     m_state.removeDevice(path.path());
     if (path.path() == m_wifiDevicePath) {
+        ++m_accessPointRefreshGeneration;
         m_scanState.invalidate();
+        if (m_scanCooldownTimer)
+            m_scanCooldownTimer->stop();
+        m_state.clearAccessPoints();
+        m_wifiDevicePath.clear();
+        m_activeAccessPointPath.clear();
+        m_snapshot = m_state.snapshot();
         m_snapshot.wifiScanning = false;
         publishReconciledSnapshot();
     }
@@ -734,11 +780,14 @@ void NetworkManagerBackend::rebuildPropertyWatchers()
             if (interfaceName == QString::fromLatin1(activeConnectionInterface)
                 && path == m_activeConnectionPath) {
                 m_state.updatePrimaryProperties(changed, invalidated);
+                if (!invalidated.isEmpty()) {
+                    refreshActiveConnection(path);
+                    return;
+                }
+                reconcileSelectedWifiDevice();
                 m_snapshot = m_state.snapshot();
                 m_snapshot.wifiScanning = m_scanState.active();
                 publishReconciledSnapshot();
-                if (!invalidated.isEmpty())
-                    refreshActiveConnection(path);
                 return;
             }
             if (interfaceName == QString::fromLatin1(accessPointInterface)) {

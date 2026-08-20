@@ -219,35 +219,44 @@ struct PipeWireAudioBackend::Impl {
         if (id != SPA_PARAM_Props || !param || !spa_pod_is_object(param))
             return;
         auto *binding = static_cast<NodeBinding *>(data);
-        if (!binding->owner->callbacks.volumeChanged)
-            return;
         const auto *object = reinterpret_cast<const spa_pod_object *>(param);
         const spa_pod_prop *volumeProperty =
             spa_pod_object_find_prop(object, nullptr, SPA_PROP_volume);
         const spa_pod_prop *muteProperty =
             spa_pod_object_find_prop(object, nullptr, SPA_PROP_mute);
-        if (volumeProperty)
-            spa_pod_get_float(&volumeProperty->value, &binding->volume);
-        if (muteProperty)
-            spa_pod_get_bool(&muteProperty->value, &binding->muted);
-        binding->volumeKnown = volumeProperty != nullptr;
-        binding->muteKnown = muteProperty != nullptr;
+        PipeWireNodePropsPatch patch;
+        if (volumeProperty) {
+            float volume = binding->volume;
+            if (spa_pod_get_float(&volumeProperty->value, &volume) >= 0) {
+                binding->volume = volume;
+                binding->volumeKnown = true;
+                patch.volume = volume;
+            }
+        }
+        if (muteProperty) {
+            bool muted = binding->muted;
+            if (spa_pod_get_bool(&muteProperty->value, &muted) >= 0) {
+                binding->muted = muted;
+                binding->muteKnown = true;
+                patch.muted = muted;
+            }
+        }
         const spa_pod_prop *channelProperty =
             spa_pod_object_find_prop(object, nullptr, SPA_PROP_channelVolumes);
         if (channelProperty) {
             uint32_t count = 0;
             const auto *values = static_cast<const float *>(
                 spa_pod_get_array(&channelProperty->value, &count));
+            QVector<float> channelVolumes;
             if (values && count > 0) {
-                binding->channelVolumes.clear();
-                binding->channelVolumes.reserve(static_cast<qsizetype>(count));
+                channelVolumes.reserve(static_cast<qsizetype>(count));
                 for (uint32_t index = 0; index < count; ++index)
-                    binding->channelVolumes.append(values[index]);
+                    channelVolumes.append(values[index]);
             }
+            binding->channelVolumes = channelVolumes;
+            patch.channelVolumes = std::move(channelVolumes);
         }
-        binding->owner->state.updateNodeProps(binding->id, binding->volume,
-                                              binding->volumeKnown, binding->muted,
-                                              binding->muteKnown, binding->channelVolumes);
+        binding->owner->state.applyNodePropsPatch(binding->id, patch);
         if (binding->id == binding->owner->defaultNodeId())
             binding->owner->publishDefaultVolume();
     }
@@ -399,23 +408,16 @@ bool PipeWireAudioBackend::setDefaultOutput(quint32 nodeId)
     if (!m_impl->loop)
         return false;
     pw_thread_loop_lock(m_impl->loop);
-    const auto it = m_impl->outputs.find(nodeId);
-    if (it == m_impl->outputs.end()) {
-        pw_thread_loop_unlock(m_impl->loop);
-        return false;
-    }
-    m_impl->defaultName = it->second.name;
-    m_impl->metadataDefaultId = nodeId;
-    m_impl->state.setMetadataDefault(m_impl->defaultName, nodeId);
-    if (m_impl->metadata) {
-        const QByteArray value = QByteArray("{\"name\":\"")
-            + it->second.name.toUtf8() + QByteArray("\"}");
-        pw_metadata_set_property(m_impl->metadata, PW_ID_CORE, "default.audio.sink",
-                                 "Spa:String:JSON", value.constData());
-    }
-    m_impl->publishOutputs();
+    const bool result = m_impl->state.requestMetadataDefault(
+        nodeId, m_impl->metadata != nullptr, [this](const QString &name) {
+            QJsonObject object;
+            object.insert(QStringLiteral("name"), name);
+            const QByteArray value = QJsonDocument(object).toJson(QJsonDocument::Compact);
+            return pw_metadata_set_property(m_impl->metadata, PW_ID_CORE, "default.audio.sink",
+                                            "Spa:String:JSON", value.constData()) >= 0;
+        });
     pw_thread_loop_unlock(m_impl->loop);
-    return true;
+    return result;
 }
 
 bool PipeWireAudioBackend::setVolume(quint32 nodeId, double linear)

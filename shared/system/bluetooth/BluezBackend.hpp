@@ -32,8 +32,8 @@ public:
     bool start(const Callbacks &callbacks, QString *errorOut) override;
     void stop() override;
     bool setPowered(bool powered) override;
-    bool startDiscovery() override;
-    bool stopDiscovery() override;
+    bool startDiscovery(quint64 requestId) override;
+    bool stopDiscovery(quint64 requestId) override;
     bool connectDevice(const QString &objectPath) override;
     bool disconnectDevice(const QString &objectPath) override;
 
@@ -48,12 +48,13 @@ private:
     void handlePropertiesChanged(const QString &objectPath, const QString &interfaceName,
                                  const QVariantMap &changed, const QStringList &invalidated);
     void refreshInvalidatedProperties(const QString &objectPath, const QString &interfaceName,
-                                      quint64 generation);
+                                      quint64 generation, quint64 interfaceRevision);
     void rebuildPropertyWatchers();
     void publishSnapshot();
     void callDeviceMethod(const QString &objectPath, const QString &method);
-    bool callAdapterMethod(const QString &method);
-    void finishOperation(const QString &operation, bool success, const QString &error = {});
+    bool callAdapterMethod(const QString &method, quint64 requestId);
+    void finishOperation(BluetoothOperationKind kind, quint64 requestId,
+                         bool success, const QString &error = {});
     void clearGeneration();
 
     Callbacks m_callbacks;

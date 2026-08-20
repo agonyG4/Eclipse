@@ -3,6 +3,7 @@
 #include "system/network/NetworkBackend.hpp"
 
 #include <QMap>
+#include <QSet>
 #include <QVariantMap>
 
 namespace Astrea::System {
@@ -63,6 +64,21 @@ private:
     quint64 m_primaryEpoch = 0;
 };
 
+class NetworkWirelessRefreshState final {
+public:
+    void begin(quint64 daemonGeneration, quint64 refreshGeneration,
+               const QStringList &devicePaths);
+    bool acceptReply(quint64 daemonGeneration, quint64 refreshGeneration,
+                     const QString &devicePath);
+    bool complete() const { return m_pendingDevicePaths.isEmpty(); }
+    int remaining() const { return m_pendingDevicePaths.size(); }
+
+private:
+    quint64 m_daemonGeneration = 0;
+    quint64 m_refreshGeneration = 0;
+    QSet<QString> m_pendingDevicePaths;
+};
+
 enum class NetworkScanPhase {
     Idle,
     RequestPending,
@@ -74,7 +90,8 @@ class NetworkScanState final {
 public:
     bool request(quint64 generation, const QString &devicePath, qint64 lastScan,
                  qint64 nowMs);
-    bool requestFinished(bool success, qint64 nowMs);
+    bool requestFinished(quint64 generation, const QString &devicePath,
+                         bool success, qint64 nowMs);
     bool lastScanAdvanced(quint64 generation, const QString &devicePath, qint64 lastScan,
                           qint64 nowMs);
     bool cooldownExpired(qint64 nowMs);

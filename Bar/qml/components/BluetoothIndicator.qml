@@ -1,35 +1,63 @@
 import QtQuick
 
-Item {
+TopbarIndicator {
     id: root
 
     ShellBarTheme { id: theme }
 
     property var bluetoothService: null
     objectName: "bluetoothIndicator"
-    implicitWidth: 22
-    implicitHeight: 22
-    width: implicitWidth
-    height: implicitHeight
+    fixedWidth: 28
+    height: 34
 
-    Text {
-        id: icon
-        objectName: "bluetoothIcon"
-        anchors.centerIn: parent
-        text: "\uf293"
-        color: !root.bluetoothService || !root.bluetoothService.available
+    readonly property bool btAvailable: Boolean(root.bluetoothService
+                                                 && root.bluetoothService.available
+                                                 && root.bluetoothService.adapterAvailable)
+    readonly property bool btOn: Boolean(root.bluetoothService && root.bluetoothService.powered)
+    readonly property int connectedCount: root.bluetoothService
+        ? root.bluetoothService.connectedCount : 0
+    readonly property bool scanning: Boolean(root.bluetoothService && root.bluetoothService.scanning)
+
+        Item {
+            width: 16
+            height: 16
+
+        Rectangle {
+            id: scanPulse
+            objectName: "scanPulse"
+            anchors.centerIn: parent
+            width: 16
+            height: 16
+            radius: 8
+            color: "transparent"
+            border.width: 1.5
+            border.color: Qt.rgba(0.35, 0.65, 1, 0.7)
+            visible: root.scanning
+
+            SequentialAnimation on opacity {
+                running: root.scanning
+                loops: Animation.Infinite
+                NumberAnimation { to: 0; duration: theme.animationPulse }
+                NumberAnimation { to: 0.9; duration: 0 }
+            }
+            SequentialAnimation on scale {
+                running: root.scanning
+                loops: Animation.Infinite
+                NumberAnimation { to: 1.8; duration: theme.animationPulse; easing.type: Easing.OutCubic }
+                NumberAnimation { to: 1.0; duration: 0 }
+            }
+        }
+
+        Text {
+            id: icon
+            objectName: "bluetoothIcon"
+            text: root.btOn ? "󰂯" : "󰂲"
+            color: !root.btAvailable || !root.btOn
             ? theme.shellIconMuted
-            : root.bluetoothService.connectedCount > 0
+            : root.connectedCount > 0
                 ? theme.shellIconAccent : theme.shellIconMain
-        font.family: "Symbols Nerd Font"
-        font.pixelSize: 15
-    }
-
-    SequentialAnimation {
-        id: scanPulse
-        running: Boolean(root.bluetoothService && root.bluetoothService.scanning)
-        loops: Animation.Infinite
-        NumberAnimation { target: icon; property: "opacity"; from: 1; to: 0.35; duration: 420 }
-        NumberAnimation { target: icon; property: "opacity"; from: 0.35; to: 1; duration: 420 }
+            font { family: theme.iconFontFamily; pixelSize: theme.fontSizeIcon }
+            Behavior on color { ColorAnimation { duration: theme.animationFast } }
+        }
     }
 }

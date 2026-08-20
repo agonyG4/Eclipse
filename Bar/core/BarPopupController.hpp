@@ -15,6 +15,9 @@ public:
         None,
         AstreaMenu,
         Clock,
+        Network,
+        Bluetooth,
+        Volume,
     };
     Q_ENUM(PopupKind)
 
@@ -30,6 +33,9 @@ public:
     Q_INVOKABLE void toggle(PopupKind kind, int anchorX);
     Q_INVOKABLE void toggleAstreaMenu(int anchorX);
     Q_INVOKABLE void toggleClock(int anchorX);
+    Q_INVOKABLE void toggleNetwork(int anchorX);
+    Q_INVOKABLE void toggleBluetooth(int anchorX);
+    Q_INVOKABLE void toggleVolume(int anchorX);
     Q_INVOKABLE void close();
     Q_INVOKABLE void completeClose();
     Q_INVOKABLE void clearForOutput();

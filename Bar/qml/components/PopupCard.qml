@@ -7,20 +7,24 @@ Rectangle {
 
     default property alias contentData: content.data
     implicitWidth: 200
-    implicitHeight: content.implicitHeight + 24
+    property int cardPadding: 18
+    property int contentSpacing: 14
+    property color backgroundColor: theme.popupBackground
+    property color borderColor: theme.popupBorder
+    implicitHeight: content.implicitHeight + cardPadding * 2
     width: implicitWidth
     height: implicitHeight
     radius: theme.shellRadiusLarge
-    color: theme.shellSurfaceElevated
-    border.color: theme.shellBorder
+    color: backgroundColor
+    border.color: borderColor
     border.width: 1
 
     Column {
         id: content
         z: 1
         anchors.fill: parent
-        anchors.margins: 12
-        spacing: 4
+        anchors.margins: root.cardPadding
+        spacing: root.contentSpacing
     }
 
     // Consume clicks inside the card so the overlay's outside-click handler

@@ -16,30 +16,50 @@ Window {
     visible: false
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint
-    width: launcherPill.width
+    width: Math.max(48, launcherPill.width)
     height: barGeometry ? barGeometry.pillHeight : 36
+
+    ShellBarTheme { id: theme }
 
     BarSegment {
         id: launcherPill
         objectName: "launcherPill"
-        interactive: true
+        interactive: false
         horizontalPadding: barGeometry ? barGeometry.sidePadding : 10
-        onClicked: popupController && popupController.toggleAstreaMenu(
-            barGeometry ? barGeometry.launcherAnchorX(width) : 0)
 
-        Image {
-            objectName: "logoImage"
-            source: window.logoSource
-            sourceSize.width: 20
-            sourceSize.height: 20
-            width: 20
-            height: 20
-            fillMode: Image.PreserveAspectFit
-            smooth: true
+        TopbarIndicator {
+            id: logoButton
+            objectName: "logoButton"
+            popupController: window.popupController
+            popupKind: 1
+            anchorItem: launcherPill
+            anchorOffset: barGeometry ? barGeometry.launcherLeftMargin : 8
+            fixedWidth: 28
+            height: 34
+            backgroundMargin: 0
+            backgroundRadius: theme.shellRadiusMedium
+
+            Image {
+                id: logoImage
+                objectName: "logoImage"
+                source: window.logoSource
+                sourceSize.width: 18
+                sourceSize.height: 18
+                width: 18
+                height: 18
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+                opacity: theme.opacityMuted
+            }
         }
 
         WorkspaceStrip {
+            id: workspaceStrip
             workspaceModel: window.workspaceModel
+            onWorkspaceActivated: workspaceId => {
+                if (window.barController && window.barController.activateWorkspace)
+                    window.barController.activateWorkspace(workspaceId)
+            }
         }
     }
 }

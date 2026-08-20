@@ -42,6 +42,7 @@ private slots:
     void popupReplacesAndClearsOutputLocalState();
     void popupCloseRetainsRenderedStateUntilAnimationCompletes();
     void popupReopenCancelsClosingTransition();
+    void popupSupportsNativeIndicatorKinds();
     void spotlightComponentEnablementIsAuthoritative();
     void barSearchCapabilityTracksSpotlightEnablement();
     void settingsActionUsesCatalogAndLauncherSeam();
@@ -323,6 +324,32 @@ void BarCoreTest::popupReopenCancelsClosingTransition()
     QVERIFY(controller.isOpen());
     QCOMPARE(controller.kind(), BarPopupController::PopupKind::AstreaMenu);
     QCOMPARE(controller.anchorX(), 160);
+}
+
+void BarCoreTest::popupSupportsNativeIndicatorKinds()
+{
+    BarPopupController controller;
+
+    controller.toggleNetwork(240);
+    QCOMPARE(controller.kind(), BarPopupController::PopupKind::Network);
+    QCOMPARE(controller.anchorX(), 240);
+    QVERIFY(controller.isOpen());
+
+    controller.toggleBluetooth(280);
+    QCOMPARE(controller.kind(), BarPopupController::PopupKind::Bluetooth);
+    QCOMPARE(controller.anchorX(), 280);
+
+    controller.toggleVolume(320);
+    QCOMPARE(controller.kind(), BarPopupController::PopupKind::Volume);
+    QCOMPARE(controller.anchorX(), 320);
+
+    controller.close();
+    QVERIFY(controller.closing());
+    QVERIFY(controller.surfaceRequired());
+    QCOMPARE(controller.kind(), BarPopupController::PopupKind::Volume);
+    controller.completeClose();
+    QVERIFY(!controller.surfaceRequired());
+    QCOMPARE(controller.kind(), BarPopupController::PopupKind::None);
 }
 
 void BarCoreTest::spotlightComponentEnablementIsAuthoritative()

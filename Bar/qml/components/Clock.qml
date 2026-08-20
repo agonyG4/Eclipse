@@ -1,35 +1,49 @@
 import QtQuick
 
-Item {
+TopbarIndicator {
     id: root
 
     ShellBarTheme { id: theme }
 
     property var clockService: null
-    property bool interactive: false
-    signal clicked()
+    popupKind: 2
     objectName: "clock"
     implicitWidth: row.implicitWidth
-    implicitHeight: row.implicitHeight
+    implicitHeight: 36
     width: implicitWidth
     height: implicitHeight
 
     Row {
         id: row
         objectName: "clockRow"
-        anchors.centerIn: parent
-        spacing: 8
+        spacing: 0
 
-        Text {
-            id: date
-            objectName: "clockDate"
-            text: root.clockService ? root.clockService.dateText : ""
-            color: theme.shellTextSecondary
-            font.pixelSize: 10
-            font.family: theme.shellFontFamily
-            font.weight: theme.shellFontWeightNormal
-            font.letterSpacing: theme.shellClockTracking
-            verticalAlignment: Text.AlignVCenter
+        Item {
+            width: date.implicitWidth + 8
+            height: root.height
+
+            Text {
+                id: date
+                objectName: "clockDate"
+                anchors.fill: parent
+                text: root.clockService ? root.clockService.dateText : ""
+                color: theme.shellTextSecondary
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                font {
+                    family: theme.fontFamilyDisplay
+                    pixelSize: theme.fontSizeSmall
+                    weight: Font.Medium
+                    letterSpacing: 0.3
+                }
+                renderType: Text.NativeRendering
+                Behavior on text {
+                    SequentialAnimation {
+                        NumberAnimation { target: date; property: "opacity"; to: 0; duration: theme.animationQuick }
+                        NumberAnimation { target: date; property: "opacity"; to: 1; duration: theme.animationQuick }
+                    }
+                }
+            }
         }
 
         Rectangle {
@@ -38,36 +52,35 @@ Item {
             height: 16
             radius: 1
             color: theme.shellSeparator
-            anchors.verticalCenter: parent.verticalCenter
+            y: (root.height - height) / 2
         }
 
-        Text {
-            id: time
-            objectName: "clockTime"
-            text: root.clockService ? root.clockService.timeText : ""
-            color: theme.shellTextMain
-            font.pixelSize: 13
-            font.family: theme.shellFontFamily
-            font.weight: theme.shellFontWeightMedium
-            font.letterSpacing: theme.shellClockTracking
-            verticalAlignment: Text.AlignVCenter
+        Item {
+            width: time.implicitWidth + 16
+            height: root.height
+
+            Text {
+                id: time
+                objectName: "clockTime"
+                anchors.fill: parent
+                text: root.clockService ? root.clockService.timeText : ""
+                color: theme.shellTextActive
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                font {
+                    family: theme.fontFamilyDisplay
+                    pixelSize: theme.fontSizeTitle
+                    weight: Font.Medium
+                    letterSpacing: 0.35
+                }
+                renderType: Text.NativeRendering
+                Behavior on text {
+                    SequentialAnimation {
+                        NumberAnimation { target: time; property: "opacity"; to: 0; duration: theme.animationFast; easing.type: Easing.InQuad }
+                        NumberAnimation { target: time; property: "opacity"; to: 1; duration: theme.animationNormal; easing.type: Easing.OutQuad }
+                    }
+                }
+            }
         }
-    }
-
-    MouseArea {
-        anchors.fill: parent
-        enabled: root.interactive
-        onClicked: root.clicked()
-    }
-
-    SequentialAnimation {
-        id: minuteTransition
-        NumberAnimation { target: time; property: "opacity"; to: 0.25; duration: theme.animationQuick / 2 }
-        NumberAnimation { target: time; property: "opacity"; to: 1; duration: theme.animationQuick }
-    }
-
-    Connections {
-        target: root.clockService
-        function onChanged() { minuteTransition.restart() }
     }
 }

@@ -40,6 +40,21 @@ void BarPopupController::toggleClock(int anchorX)
     toggle(PopupKind::Clock, anchorX);
 }
 
+void BarPopupController::toggleNetwork(int anchorX)
+{
+    toggle(PopupKind::Network, anchorX);
+}
+
+void BarPopupController::toggleBluetooth(int anchorX)
+{
+    toggle(PopupKind::Bluetooth, anchorX);
+}
+
+void BarPopupController::toggleVolume(int anchorX)
+{
+    toggle(PopupKind::Volume, anchorX);
+}
+
 void BarPopupController::close()
 {
     if (!m_surfaceRequired || m_closing)

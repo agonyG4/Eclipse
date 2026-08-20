@@ -34,14 +34,12 @@ BluetoothService::BluetoothService(std::unique_ptr<BluetoothBackend> backend, QO
         m_discoveryRequestInFlight = false;
         m_discoveryState.operationFinished(start, false);
         finishDiscoveryRequest(false, QStringLiteral("Bluetooth discovery update timed out"));
-        if (start)
-            scheduleDiscoveryRetry();
+        scheduleDiscoveryRetry();
         reconcileDiscovery();
     });
     m_discoveryRetryTimer.setSingleShot(true);
     connect(&m_discoveryRetryTimer, &QTimer::timeout, this, [this] {
-        if (!m_discoveryState.hasDemand() || !m_adapterAvailable || !m_powered
-            || !m_available)
+        if (!m_adapterAvailable || !m_powered || !m_available)
             return;
         reconcileDiscovery();
     });
@@ -58,6 +56,7 @@ bool BluetoothService::start()
         return true;
     ++m_generation;
     m_discoveryState.reset();
+    m_powerRequestId = 0;
     m_discoveryRequestId = 0;
     cancelDiscoveryRetry();
     setState(SystemServiceState::Starting);
@@ -132,6 +131,7 @@ void BluetoothService::stop()
     m_scanning = false;
     m_discoveryRequestInFlight = false;
     m_discoveryRequestId = 0;
+    m_powerRequestId = 0;
     m_powerPending = false;
     emit healthChanged();
     if (oldScanning)
@@ -143,9 +143,11 @@ void BluetoothService::stop()
 
 bool BluetoothService::setPowered(bool powered)
 {
-    if (!m_backend->setPowered(powered))
+    const quint64 requestId = ++m_powerOperationId;
+    if (!m_backend->setPowered(powered, requestId))
         return false;
     m_powerTarget = powered;
+    m_powerRequestId = requestId;
     if (!m_powerPending) {
         m_powerPending = true;
         emit powerPendingChanged();
@@ -241,10 +243,15 @@ void BluetoothService::applySnapshot(const BluetoothSnapshot &snapshot)
     m_adapterPath = snapshot.adapterPath;
     m_adapterName = snapshot.adapterName;
     m_powered = snapshot.powered;
-    if (!snapshot.daemonAvailable)
+    if (!snapshot.daemonAvailable || !snapshot.adapterAvailable) {
+        m_powerRequestId = 0;
         m_powerPending = false;
-    else if (m_powerPending && m_powered == m_powerTarget)
+        m_powerTimer.stop();
+    } else if (m_powerPending && m_powered == m_powerTarget) {
+        m_powerTimer.stop();
+        m_powerRequestId = 0;
         m_powerPending = false;
+    }
     m_scanning = snapshot.scanning;
     m_discoveryState.setAdapterReady(snapshot.daemonAvailable && snapshot.adapterAvailable
                                      && snapshot.powered);
@@ -284,6 +291,12 @@ void BluetoothService::applySnapshot(const BluetoothSnapshot &snapshot)
 
 void BluetoothService::reconcileDiscovery()
 {
+    if (!m_discoveryState.wantsStart() && !m_discoveryState.wantsStop()) {
+        cancelDiscoveryRetry();
+        return;
+    }
+    if (m_discoveryRetryTimer.isActive())
+        return;
     if (m_discoveryState.wantsStop() && !m_discoveryRequestInFlight) {
         const quint64 requestId = ++m_discoveryOperationId;
         if (m_backend->stopDiscovery(requestId)) {
@@ -291,11 +304,12 @@ void BluetoothService::reconcileDiscovery()
             m_discoveryRequestId = requestId;
             m_discoveryRequestInFlight = true;
             m_discoveryTimer.start();
+        } else {
+            scheduleDiscoveryRetry();
         }
         return;
     }
-    if (m_discoveryState.wantsStart() && !m_discoveryRequestInFlight
-        && !m_discoveryRetryTimer.isActive()) {
+    if (m_discoveryState.wantsStart() && !m_discoveryRequestInFlight) {
         const quint64 requestId = ++m_discoveryOperationId;
         if (m_backend->startDiscovery(requestId)) {
             m_discoveryState.startRequested();
@@ -311,6 +325,8 @@ void BluetoothService::reconcileDiscovery()
 void BluetoothService::handleOperationFinished(const BluetoothOperationResult &result)
 {
     if (result.kind == BluetoothOperationKind::Power) {
+        if (!m_powerPending || result.requestId != m_powerRequestId)
+            return;
         if (!result.success)
             finishPowerPending(false, result.error);
         return;
@@ -320,6 +336,9 @@ void BluetoothService::handleOperationFinished(const BluetoothOperationResult &r
         if (!m_discoveryRequestInFlight || result.requestId != m_discoveryRequestId)
             return;
         const bool start = result.kind == BluetoothOperationKind::StartDiscovery;
+        const bool expectedStart = m_discoveryState.lease() == BluezDiscoveryLease::StartPending;
+        if (start != expectedStart)
+            return;
         m_discoveryRequestId = 0;
         m_discoveryState.operationFinished(start, result.success);
         finishDiscoveryRequest(result.success, result.error);
@@ -327,12 +346,10 @@ void BluetoothService::handleOperationFinished(const BluetoothOperationResult &r
             setErrorString({});
             setState(SystemServiceState::Ready);
             cancelDiscoveryRetry();
-            reconcileDiscovery();
-        } else if (start) {
-            scheduleDiscoveryRetry();
         } else {
-            reconcileDiscovery();
+            scheduleDiscoveryRetry();
         }
+        reconcileDiscovery();
         return;
     }
     if (!result.success) {
@@ -345,6 +362,7 @@ void BluetoothService::handleOperationFinished(const BluetoothOperationResult &r
 void BluetoothService::finishPowerPending(bool success, const QString &errorString)
 {
     m_powerTimer.stop();
+    m_powerRequestId = 0;
     if (!success) {
         setErrorString(errorString.isEmpty() ? QStringLiteral("Bluetooth power update failed")
                                              : errorString);
@@ -369,8 +387,10 @@ void BluetoothService::finishDiscoveryRequest(bool success, const QString &error
 
 void BluetoothService::scheduleDiscoveryRetry()
 {
-    if (!m_discoveryState.hasDemand() || !m_adapterAvailable || !m_powered
-        || !m_available || m_discoveryRequestInFlight || m_discoveryRetryTimer.isActive())
+    if (!m_discoveryState.wantsStart() && !m_discoveryState.wantsStop())
+        return;
+    if (!m_adapterAvailable || !m_powered || !m_available || m_discoveryRequestInFlight
+        || m_discoveryRetryTimer.isActive())
         return;
     static constexpr int delays[] = {500, 1000, 2000, 5000};
     const int index = std::min(m_discoveryRetryAttempt,

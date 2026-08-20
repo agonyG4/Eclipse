@@ -153,7 +153,7 @@ void BluezBackend::stop()
     m_callbacks = {};
 }
 
-bool BluezBackend::setPowered(bool powered)
+bool BluezBackend::setPowered(bool powered, quint64 requestId)
 {
     if (!m_running || m_adapterPath.isEmpty())
         return false;
@@ -167,13 +167,14 @@ bool BluezBackend::setPowered(bool powered)
                                                  this);
     const quint64 generation = m_generation;
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, generation](QDBusPendingCallWatcher *finished) {
+            [this, generation, requestId](QDBusPendingCallWatcher *finished) {
         if (generation == m_generation && m_running) {
             const QDBusMessage reply = finished->reply();
             if (reply.type() == QDBusMessage::ErrorMessage)
-                finishOperation(BluetoothOperationKind::Power, 0, false, reply.errorMessage());
+                finishOperation(BluetoothOperationKind::Power, requestId, false,
+                                reply.errorMessage());
             else
-                finishOperation(BluetoothOperationKind::Power, 0, true);
+                finishOperation(BluetoothOperationKind::Power, requestId, true);
         }
         finished->deleteLater();
     });

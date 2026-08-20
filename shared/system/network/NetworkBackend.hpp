@@ -25,18 +25,29 @@ struct NetworkSnapshot {
     QVector<WifiNetwork> wifiNetworks;
 };
 
+enum class NetworkOperationKind {
+    WifiEnabled,
+};
+
+struct NetworkOperationResult {
+    NetworkOperationKind kind = NetworkOperationKind::WifiEnabled;
+    quint64 requestId = 0;
+    bool success = false;
+    QString error;
+};
+
 class NetworkBackend {
 public:
     struct Callbacks {
         std::function<void(NetworkSnapshot)> snapshotChanged;
         std::function<void(QString)> errorChanged;
-        std::function<void(QString, bool, QString)> operationFinished;
+        std::function<void(NetworkOperationResult)> operationFinished;
     };
 
     virtual ~NetworkBackend() = default;
     virtual bool start(const Callbacks &callbacks, QString *errorOut) = 0;
     virtual void stop() = 0;
-    virtual bool setWifiEnabled(bool enabled) = 0;
+    virtual bool setWifiEnabled(bool enabled, quint64 requestId) = 0;
     virtual bool requestWifiScan() = 0;
 };
 

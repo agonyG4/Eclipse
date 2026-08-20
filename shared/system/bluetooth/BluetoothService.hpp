@@ -99,6 +99,8 @@ private:
     QString m_connectedName;
     QString m_errorString;
     quint64 m_generation = 0;
+    quint64 m_powerOperationId = 0;
+    quint64 m_powerRequestId = 0;
     quint64 m_discoveryOperationId = 0;
     quint64 m_discoveryRequestId = 0;
     QTimer m_powerTimer;

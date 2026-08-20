@@ -304,7 +304,7 @@ bool NetworkWirelessRefreshState::acceptReply(quint64 daemonGeneration,
 }
 
 bool NetworkScanState::request(quint64 generation, const QString &devicePath, qint64 lastScan,
-                               qint64 nowMs)
+                               qint64 nowMs, quint64 requestId)
 {
     if (m_phase != NetworkScanPhase::Idle) {
         m_queuedDemand = true;
@@ -316,23 +316,26 @@ bool NetworkScanState::request(quint64 generation, const QString &devicePath, qi
     m_devicePath = devicePath;
     m_baselineLastScan = lastScan;
     m_cooldownUntilMs = -1;
+    m_requestId = requestId;
     Q_UNUSED(nowMs)
     return true;
 }
 
 bool NetworkScanState::requestFinished(quint64 generation, const QString &devicePath,
-                                       bool success, qint64 nowMs)
+                                       quint64 requestId, bool success, qint64 nowMs)
 {
     if (m_phase != NetworkScanPhase::RequestPending || generation != m_generation
-        || devicePath != m_devicePath)
+        || devicePath != m_devicePath || requestId != m_requestId)
         return false;
     if (!success) {
         if (m_queuedDemand) {
             m_phase = NetworkScanPhase::Cooldown;
             m_cooldownUntilMs = nowMs + 3000;
+            m_requestId = 0;
         } else {
             m_phase = NetworkScanPhase::Idle;
             m_devicePath.clear();
+            m_requestId = 0;
         }
         return false;
     }
@@ -362,10 +365,12 @@ bool NetworkScanState::cooldownExpired(qint64 nowMs)
         m_devicePath.clear();
         m_baselineLastScan = -1;
         m_cooldownUntilMs = -1;
+        m_requestId = 0;
         return true;
     }
     m_phase = NetworkScanPhase::Idle;
     m_devicePath.clear();
+    m_requestId = 0;
     m_cooldownUntilMs = -1;
     return false;
 }
@@ -378,11 +383,13 @@ void NetworkScanState::timeout(qint64 nowMs)
     if (m_queuedDemand) {
         m_phase = NetworkScanPhase::Cooldown;
         m_cooldownUntilMs = nowMs + 3000;
+        m_requestId = 0;
         return;
     }
     m_phase = NetworkScanPhase::Idle;
     m_devicePath.clear();
     m_baselineLastScan = -1;
+    m_requestId = 0;
 }
 
 void NetworkScanState::invalidate()
@@ -393,6 +400,7 @@ void NetworkScanState::invalidate()
     m_devicePath.clear();
     m_baselineLastScan = -1;
     m_cooldownUntilMs = -1;
+    m_requestId = 0;
 }
 
 } // namespace Astrea::System

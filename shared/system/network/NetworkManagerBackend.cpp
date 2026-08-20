@@ -212,7 +212,7 @@ void NetworkManagerBackend::stop()
     m_callbacks = {};
 }
 
-bool NetworkManagerBackend::setWifiEnabled(bool enabled)
+bool NetworkManagerBackend::setWifiEnabled(bool enabled, quint64 requestId)
 {
     if (!m_running)
         return false;
@@ -225,15 +225,15 @@ bool NetworkManagerBackend::setWifiEnabled(bool enabled)
     auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(call),
                                                  this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, generation](QDBusPendingCallWatcher *finished) {
+            [this, generation, requestId](QDBusPendingCallWatcher *finished) {
         if (generation == m_generation && m_running) {
             reportAsyncError(finished, m_callbacks);
             const QDBusMessage reply = finished->reply();
             if (m_callbacks.operationFinished)
-                m_callbacks.operationFinished(QStringLiteral("wifi-enabled"),
-                                               reply.type() != QDBusMessage::ErrorMessage,
-                                               reply.type() == QDBusMessage::ErrorMessage
-                                                   ? reply.errorMessage() : QString());
+                m_callbacks.operationFinished(NetworkOperationResult{
+                    NetworkOperationKind::WifiEnabled, requestId,
+                    reply.type() != QDBusMessage::ErrorMessage,
+                    reply.type() == QDBusMessage::ErrorMessage ? reply.errorMessage() : QString()});
         }
         finished->deleteLater();
     });
@@ -248,7 +248,8 @@ bool NetworkManagerBackend::requestWifiScan()
     const auto device = m_state.devices().constFind(m_wifiDevicePath);
     const qint64 lastScan = device == m_state.devices().cend()
         ? -1 : device->wirelessProperties.value(QStringLiteral("LastScan")).toLongLong();
-    m_scanState.request(m_generation, m_wifiDevicePath, lastScan, now);
+    const quint64 requestId = ++m_scanOperationId;
+    m_scanState.request(m_generation, m_wifiDevicePath, lastScan, now, requestId);
     if (m_scanState.phase() != NetworkScanPhase::RequestPending) {
         if (m_scanState.phase() == NetworkScanPhase::Cooldown && m_scanCooldownTimer)
             m_scanCooldownTimer->start(static_cast<int>(std::max<qint64>(1,
@@ -270,7 +271,7 @@ bool NetworkManagerBackend::requestWifiScan()
     if (m_scanCooldownTimer)
         m_scanCooldownTimer->start(5000);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, generation, devicePath](QDBusPendingCallWatcher *finished) {
+            [this, generation, devicePath, requestId](QDBusPendingCallWatcher *finished) {
         if (generation != m_generation || !m_running) {
             finished->deleteLater();
             return;
@@ -280,11 +281,12 @@ bool NetworkManagerBackend::requestWifiScan()
         const qint64 now = m_scanClock.elapsed();
         if (m_scanState.phase() != NetworkScanPhase::RequestPending
             || m_scanState.generation() != generation
-            || m_scanState.devicePath() != devicePath) {
+            || m_scanState.devicePath() != devicePath
+            || m_scanState.requestId() != requestId) {
             finished->deleteLater();
             return;
         }
-        m_scanState.requestFinished(generation, devicePath, success, now);
+        m_scanState.requestFinished(generation, devicePath, requestId, success, now);
         if (!success) {
             if (m_scanCooldownTimer)
                 m_scanCooldownTimer->stop();

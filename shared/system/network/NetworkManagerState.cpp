@@ -278,6 +278,31 @@ NetworkSnapshot NetworkManagerState::snapshot() const
     return result;
 }
 
+void NetworkWirelessRefreshState::begin(quint64 daemonGeneration,
+                                         quint64 refreshGeneration,
+                                         const QStringList &devicePaths)
+{
+    m_daemonGeneration = daemonGeneration;
+    m_refreshGeneration = refreshGeneration;
+    m_pendingDevicePaths.clear();
+    for (const QString &devicePath : devicePaths)
+        m_pendingDevicePaths.insert(devicePath);
+}
+
+bool NetworkWirelessRefreshState::acceptReply(quint64 daemonGeneration,
+                                               quint64 refreshGeneration,
+                                               const QString &devicePath)
+{
+    if (daemonGeneration != m_daemonGeneration
+        || refreshGeneration != m_refreshGeneration)
+        return false;
+    const auto it = m_pendingDevicePaths.find(devicePath);
+    if (it == m_pendingDevicePaths.end())
+        return false;
+    m_pendingDevicePaths.erase(it);
+    return true;
+}
+
 bool NetworkScanState::request(quint64 generation, const QString &devicePath, qint64 lastScan,
                                qint64 nowMs)
 {
@@ -295,9 +320,11 @@ bool NetworkScanState::request(quint64 generation, const QString &devicePath, qi
     return true;
 }
 
-bool NetworkScanState::requestFinished(bool success, qint64 nowMs)
+bool NetworkScanState::requestFinished(quint64 generation, const QString &devicePath,
+                                       bool success, qint64 nowMs)
 {
-    if (m_phase != NetworkScanPhase::RequestPending)
+    if (m_phase != NetworkScanPhase::RequestPending || generation != m_generation
+        || devicePath != m_devicePath)
         return false;
     if (!success) {
         if (m_queuedDemand) {

@@ -49,6 +49,7 @@ private:
     void rebuildPropertyWatchers();
     void reconcileDevices(quint64 generation);
     void finishDeviceReconciliation(quint64 generation);
+    bool reconcileSelectedWifiDevice();
     void publishReconciledSnapshot();
     void sampleTraffic();
 
@@ -78,7 +79,7 @@ private:
     quint64 m_primaryEpoch = 0;
     int m_pendingAccessPointProperties = 0;
     quint64 m_accessPointRefreshGeneration = 0;
-    int m_pendingWirelessProperties = 0;
+    NetworkWirelessRefreshState m_wirelessRefresh;
 };
 
 } // namespace Astrea::System

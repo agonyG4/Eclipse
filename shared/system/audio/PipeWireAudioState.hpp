@@ -4,7 +4,9 @@
 
 #include <QVector>
 
+#include <functional>
 #include <map>
+#include <optional>
 
 namespace Astrea::System {
 
@@ -16,6 +18,13 @@ struct PipeWireNodeAudioState {
     bool muted = false;
     bool volumeKnown = false;
     bool muteKnown = false;
+    bool channelVolumesKnown = false;
+};
+
+struct PipeWireNodePropsPatch {
+    std::optional<float> volume;
+    std::optional<bool> muted;
+    std::optional<QVector<float>> channelVolumes;
 };
 
 class PipeWireAudioState final {
@@ -26,13 +35,14 @@ public:
     void updateNodeMetadata(quint32 nodeId, const QString &name,
                             const QString &description, const QString &nick);
     void removeNode(quint32 nodeId);
-    void updateNodeProps(quint32 nodeId, float volume, bool volumeKnown,
-                         bool muted, bool muteKnown, QVector<float> channelVolumes);
+    void applyNodePropsPatch(quint32 nodeId, const PipeWireNodePropsPatch &patch);
     void setMetadataDefault(QString nodeName, quint32 nodeId = 0);
     void clearMetadataDefault();
     quint32 defaultNodeId() const;
     QVector<AudioOutput> outputs() const;
     bool defaultVolume(float *volume, bool *muted) const;
+    bool requestMetadataDefault(quint32 nodeId, bool metadataAvailable,
+                                const std::function<bool(const QString &)> &writer) const;
     bool hasDefaultMetadata() const { return m_metadataPresent; }
 
 private:

@@ -171,23 +171,23 @@ bool BluezBackend::setPowered(bool powered)
         if (generation == m_generation && m_running) {
             const QDBusMessage reply = finished->reply();
             if (reply.type() == QDBusMessage::ErrorMessage)
-                finishOperation(QStringLiteral("power"), false, reply.errorMessage());
+                finishOperation(BluetoothOperationKind::Power, 0, false, reply.errorMessage());
             else
-                finishOperation(QStringLiteral("power"), true);
+                finishOperation(BluetoothOperationKind::Power, 0, true);
         }
         finished->deleteLater();
     });
     return true;
 }
 
-bool BluezBackend::startDiscovery()
+bool BluezBackend::startDiscovery(quint64 requestId)
 {
-    return callAdapterMethod(QStringLiteral("StartDiscovery"));
+    return callAdapterMethod(QStringLiteral("StartDiscovery"), requestId);
 }
 
-bool BluezBackend::stopDiscovery()
+bool BluezBackend::stopDiscovery(quint64 requestId)
 {
-    return callAdapterMethod(QStringLiteral("StopDiscovery"));
+    return callAdapterMethod(QStringLiteral("StopDiscovery"), requestId);
 }
 
 bool BluezBackend::connectDevice(const QString &objectPath)
@@ -279,15 +279,17 @@ void BluezBackend::handlePropertiesChanged(const QString &objectPath,
     const bool changedApplied = m_objectStore->propertiesChanged(path, interfaceName, changed);
     if (!changedApplied)
         return;
+    const quint64 interfaceRevision = m_objectStore->interfaceRevision(path, interfaceName);
     m_objects = m_objectStore->objects();
     publishSnapshot();
     if (!invalidated.isEmpty())
-        refreshInvalidatedProperties(objectPath, interfaceName, m_generation);
+        refreshInvalidatedProperties(objectPath, interfaceName, m_generation, interfaceRevision);
 }
 
 void BluezBackend::refreshInvalidatedProperties(const QString &objectPath,
                                                 const QString &interfaceName,
-                                                quint64 generation)
+                                                quint64 generation,
+                                                quint64 interfaceRevision)
 {
     if (!m_running || generation != m_generation)
         return;
@@ -298,14 +300,17 @@ void BluezBackend::refreshInvalidatedProperties(const QString &objectPath,
     auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(message),
                                                  this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, generation, objectPath, interfaceName](QDBusPendingCallWatcher *finished) {
+            [this, generation, objectPath, interfaceName,
+             interfaceRevision](QDBusPendingCallWatcher *finished) {
         if (generation == m_generation && m_running) {
             const QDBusMessage reply = finished->reply();
             if (reply.type() != QDBusMessage::ErrorMessage && !reply.arguments().isEmpty()) {
-                m_objectStore->replaceInterface(QDBusObjectPath(objectPath), interfaceName,
-                                                reply.arguments().constFirst().toMap());
-                m_objects = m_objectStore->objects();
-                publishSnapshot();
+                if (m_objectStore->replaceInterfaceIfRevision(
+                        QDBusObjectPath(objectPath), interfaceName, interfaceRevision,
+                        reply.arguments().constFirst().toMap())) {
+                    m_objects = m_objectStore->objects();
+                    publishSnapshot();
+                }
             } else if (reply.type() == QDBusMessage::ErrorMessage && m_callbacks.errorChanged) {
                 m_callbacks.errorChanged(reply.errorMessage());
             }
@@ -437,27 +442,28 @@ void BluezBackend::callDeviceMethod(const QString &objectPath, const QString &me
         QString::fromLatin1(serviceName), objectPath,
         QString::fromLatin1(deviceInterface), method);
     const quint64 generation = m_generation;
-    const QString operation = method.compare(QStringLiteral("Connect"), Qt::CaseInsensitive) == 0
-        ? QStringLiteral("connect") : QStringLiteral("disconnect");
+    const BluetoothOperationKind kind = method.compare(QStringLiteral("Connect"),
+                                                       Qt::CaseInsensitive) == 0
+        ? BluetoothOperationKind::Connect : BluetoothOperationKind::Disconnect;
     auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(message),
                                                  this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, generation, operation](QDBusPendingCallWatcher *finished) {
+            [this, generation, kind](QDBusPendingCallWatcher *finished) {
         if (generation == m_generation && m_running) {
             const QDBusMessage reply = finished->reply();
             if (reply.type() == QDBusMessage::ErrorMessage) {
                 if (m_callbacks.errorChanged)
                     m_callbacks.errorChanged(reply.errorMessage());
-                finishOperation(operation, false, reply.errorMessage());
+                finishOperation(kind, 0, false, reply.errorMessage());
             } else {
-                finishOperation(operation, true);
+                finishOperation(kind, 0, true);
             }
         }
         finished->deleteLater();
     });
 }
 
-bool BluezBackend::callAdapterMethod(const QString &method)
+bool BluezBackend::callAdapterMethod(const QString &method, quint64 requestId)
 {
     if (!m_running || m_adapterPath.isEmpty())
         return false;
@@ -465,20 +471,21 @@ bool BluezBackend::callAdapterMethod(const QString &method)
         QString::fromLatin1(serviceName), m_adapterPath,
         QString::fromLatin1(adapterInterface), method);
     const quint64 generation = m_generation;
-    const QString operation = method.compare(QStringLiteral("StartDiscovery"), Qt::CaseInsensitive) == 0
-        ? QStringLiteral("discovery-start") : QStringLiteral("discovery-stop");
+    const BluetoothOperationKind kind = method.compare(QStringLiteral("StartDiscovery"),
+                                                       Qt::CaseInsensitive) == 0
+        ? BluetoothOperationKind::StartDiscovery : BluetoothOperationKind::StopDiscovery;
     auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(message),
                                                  this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, generation, operation](QDBusPendingCallWatcher *finished) {
+            [this, generation, kind, requestId](QDBusPendingCallWatcher *finished) {
         if (generation == m_generation && m_running) {
             const QDBusMessage reply = finished->reply();
             if (reply.type() == QDBusMessage::ErrorMessage) {
                 if (m_callbacks.errorChanged)
                     m_callbacks.errorChanged(reply.errorMessage());
-                finishOperation(operation, false, reply.errorMessage());
+                finishOperation(kind, requestId, false, reply.errorMessage());
             } else {
-                finishOperation(operation, true);
+                finishOperation(kind, requestId, true);
             }
         }
         finished->deleteLater();
@@ -486,12 +493,13 @@ bool BluezBackend::callAdapterMethod(const QString &method)
     return true;
 }
 
-void BluezBackend::finishOperation(const QString &operation, bool success, const QString &error)
+void BluezBackend::finishOperation(BluetoothOperationKind kind, quint64 requestId,
+                                   bool success, const QString &error)
 {
     if (error.isEmpty() == false && m_callbacks.errorChanged)
         m_callbacks.errorChanged(error);
     if (m_callbacks.operationFinished)
-        m_callbacks.operationFinished(operation, success, error);
+        m_callbacks.operationFinished({kind, requestId, success, error});
 }
 
 void BluezBackend::clearGeneration()

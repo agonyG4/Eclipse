@@ -37,18 +37,24 @@ void PipeWireAudioState::removeNode(quint32 nodeId)
     m_nodes.erase(nodeId);
 }
 
-void PipeWireAudioState::updateNodeProps(quint32 nodeId, float volume, bool volumeKnown,
-                                         bool muted, bool muteKnown,
-                                         QVector<float> channelVolumes)
+void PipeWireAudioState::applyNodePropsPatch(quint32 nodeId,
+                                             const PipeWireNodePropsPatch &patch)
 {
     auto node = m_nodes.find(nodeId);
     if (node == m_nodes.end())
         return;
-    node->second.volume = volume;
-    node->second.volumeKnown = volumeKnown;
-    node->second.muted = muted;
-    node->second.muteKnown = muteKnown;
-    node->second.channelVolumes = std::move(channelVolumes);
+    if (patch.volume) {
+        node->second.volume = *patch.volume;
+        node->second.volumeKnown = true;
+    }
+    if (patch.muted) {
+        node->second.muted = *patch.muted;
+        node->second.muteKnown = true;
+    }
+    if (patch.channelVolumes) {
+        node->second.channelVolumes = *patch.channelVolumes;
+        node->second.channelVolumesKnown = true;
+    }
 }
 
 void PipeWireAudioState::setMetadataDefault(QString nodeName, quint32 nodeId)
@@ -99,7 +105,9 @@ bool PipeWireAudioState::defaultVolume(float *volume, bool *muted) const
     if (node == m_nodes.end())
         return false;
     const PipeWireNodeAudioState &state = node->second;
-    if (!state.volumeKnown && state.channelVolumes.isEmpty() && !state.muteKnown)
+    const bool volumeAvailable = state.volumeKnown
+        || (state.channelVolumesKnown && !state.channelVolumes.isEmpty());
+    if (!volumeAvailable || !state.muteKnown)
         return false;
     float aggregate = state.volume;
     if (!state.channelVolumes.isEmpty()) {
@@ -113,6 +121,18 @@ bool PipeWireAudioState::defaultVolume(float *volume, bool *muted) const
     if (muted)
         *muted = state.muted;
     return true;
+}
+
+bool PipeWireAudioState::requestMetadataDefault(
+    quint32 nodeId, bool metadataAvailable,
+    const std::function<bool(const QString &)> &writer) const
+{
+    if (!metadataAvailable || !writer)
+        return false;
+    const auto node = m_nodes.find(nodeId);
+    if (node == m_nodes.end() || node->second.output.name.isEmpty())
+        return false;
+    return writer(node->second.output.name);
 }
 
 } // namespace Astrea::System

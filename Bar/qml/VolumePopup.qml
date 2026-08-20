@@ -7,8 +7,10 @@ PopupCard {
     ShellBarTheme { id: theme }
 
     property var audioService: null
-    readonly property real volume: root.audioService ? root.audioService.volume : 0
-    readonly property bool muted: Boolean(root.audioService && root.audioService.muted)
+    readonly property bool defaultStateAvailable: Boolean(root.audioService
+        && root.audioService.defaultStateAvailable)
+    readonly property real volume: root.defaultStateAvailable ? root.audioService.volume : 0
+    readonly property bool muted: Boolean(root.defaultStateAvailable && root.audioService.muted)
 
     objectName: "volumePopupCard"
     implicitWidth: 300
@@ -16,7 +18,7 @@ PopupCard {
     contentSpacing: 14
 
     function setVolumeFromPosition(position, width) {
-        if (!root.audioService || width <= 0)
+        if (!root.audioService || !root.defaultStateAvailable || width <= 0)
             return
         const next = Math.round(Math.max(0, Math.min(width, position)) / width * 100)
         const delta = next - Math.round(root.volume)
@@ -31,6 +33,7 @@ PopupCard {
 
         Rectangle {
             id: muteButton
+            objectName: "volumeMuteButton"
             anchors.centerIn: parent
             width: 28
             height: 28
@@ -52,8 +55,9 @@ PopupCard {
 
             MouseArea {
                 id: muteMouse
+                objectName: "volumeMuteMouse"
                 anchors.fill: parent
-                enabled: Boolean(root.audioService)
+                enabled: Boolean(root.audioService && root.defaultStateAvailable)
                 hoverEnabled: enabled
                 cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                 onClicked: root.audioService.setMuted(!root.muted)
@@ -115,10 +119,11 @@ PopupCard {
 
             MouseArea {
                 id: sliderMouse
+                objectName: "volumeSliderMouse"
                 anchors.fill: parent
                 anchors.topMargin: -10
                 anchors.bottomMargin: -10
-                enabled: Boolean(root.audioService)
+                enabled: Boolean(root.audioService && root.defaultStateAvailable)
                 hoverEnabled: enabled
                 preventStealing: true
                 cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
@@ -128,7 +133,7 @@ PopupCard {
                         root.setVolumeFromPosition(event.x, track.width)
                 }
                 onWheel: event => {
-                    if (!root.audioService)
+                    if (!root.audioService || !root.defaultStateAvailable)
                         return
                     root.audioService.adjustVolume(event.angleDelta.y > 0 ? 2 : -2)
                     event.accepted = true

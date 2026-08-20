@@ -14,11 +14,16 @@ public:
                            const QVariantMap &changed);
     bool replaceInterface(const QDBusObjectPath &path, const QString &interfaceName,
                           QVariantMap properties);
+    bool replaceInterfaceIfRevision(const QDBusObjectPath &path, const QString &interfaceName,
+                                    quint64 expectedRevision, QVariantMap properties);
+    quint64 interfaceRevision(const QDBusObjectPath &path, const QString &interfaceName) const;
 
     const BluezManagedObjects &objects() const { return m_objects; }
 
 private:
     BluezManagedObjects m_objects;
+    QMap<QDBusObjectPath, QMap<QString, quint64>> m_revisions;
+    quint64 m_nextRevision = 0;
 };
 
 } // namespace Astrea::System

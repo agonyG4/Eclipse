@@ -10,6 +10,7 @@ struct WorkspaceItem {
     bool occupied = false;
     bool urgent = false;
     QString outputId;
+    QString protocolId;
 };
 
 class WorkspaceModel final : public QAbstractListModel {
@@ -23,6 +24,7 @@ public:
         OccupiedRole,
         UrgentRole,
         OutputIdRole,
+        ProtocolIdRole,
     };
     Q_ENUM(Role)
 

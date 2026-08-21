@@ -56,9 +56,11 @@ Window {
         WorkspaceStrip {
             id: workspaceStrip
             workspaceModel: window.workspaceModel
+            activationAvailable: window.barController && window.barController.workspaceController
+                ? window.barController.workspaceController.activationAvailable : false
             onWorkspaceActivated: workspaceId => {
-                if (window.barController && window.barController.activateWorkspace)
-                    window.barController.activateWorkspace(workspaceId)
+                if (window.barController && window.barController.workspaceController)
+                    window.barController.workspaceController.activateWorkspace(workspaceId)
             }
         }
     }

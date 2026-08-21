@@ -29,6 +29,14 @@ bool BarController::searchAvailable() const
     return m_spotlight != nullptr && m_spotlight->componentEnabled();
 }
 
+void BarController::setWorkspaceController(QObject *controller)
+{
+    if (m_workspaceController == controller)
+        return;
+    m_workspaceController = controller;
+    emit workspaceControllerChanged();
+}
+
 void BarController::setEnabled(bool enabled)
 {
     if (m_enabled == enabled)

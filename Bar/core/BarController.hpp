@@ -19,6 +19,8 @@ class BarController final : public QObject {
     Q_PROPERTY(bool powerAvailable READ powerAvailable CONSTANT)
     Q_PROPERTY(bool notificationHistoryAvailable READ notificationHistoryAvailable CONSTANT)
     Q_PROPERTY(WorkspaceModel *workspaceModel READ workspaceModel CONSTANT)
+    Q_PROPERTY(QObject *workspaceController READ workspaceController WRITE setWorkspaceController
+                   NOTIFY workspaceControllerChanged)
 
 public:
     BarController(DesktopEntryCatalog *catalog, ApplicationLauncher *launcher,
@@ -36,6 +38,8 @@ public:
     bool powerAvailable() const { return false; }
     bool notificationHistoryAvailable() const { return false; }
     WorkspaceModel *workspaceModel() const { return m_workspaceModel; }
+    QObject *workspaceController() const { return m_workspaceController; }
+    void setWorkspaceController(QObject *controller);
 
     Q_INVOKABLE bool showSearch();
     Q_INVOKABLE bool launchSettings();
@@ -43,6 +47,7 @@ public:
 signals:
     void enabledChanged();
     void capabilitiesChanged();
+    void workspaceControllerChanged();
 
 private:
     bool findSettingsEntry() const;
@@ -51,5 +56,6 @@ private:
     ApplicationLauncher *m_launcher = nullptr;
     SpotlightController *m_spotlight = nullptr;
     WorkspaceModel *m_workspaceModel = nullptr;
+    QObject *m_workspaceController = nullptr;
     bool m_enabled = true;
 };

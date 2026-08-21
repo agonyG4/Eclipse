@@ -6,6 +6,7 @@ Item {
     ShellBarTheme { id: theme }
 
     property var workspaceModel: null
+    property bool activationAvailable: false
     signal workspaceActivated(string workspaceId)
     implicitWidth: row.implicitWidth
     implicitHeight: theme.workspaceDotSize
@@ -24,10 +25,11 @@ Item {
             delegate: Item {
                 objectName: "workspaceDelegate"
                 required property string id
-                required property bool active
-                required property bool occupied
-                required property bool urgent
-                property string workspaceId: id
+                    required property bool active
+                    required property bool occupied
+                    required property bool urgent
+                    required property string protocolId
+                    property string workspaceId: protocolId.length > 0 ? protocolId : id
 
                 width: active ? theme.workspaceActiveWidth : theme.workspaceDotSize
                 height: theme.workspaceDotSize
@@ -60,8 +62,9 @@ Item {
                     anchors.bottomMargin: -10
                     anchors.leftMargin: -6
                     anchors.rightMargin: -6
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
+                    enabled: root.activationAvailable
+                    hoverEnabled: root.activationAvailable
+                    cursorShape: root.activationAvailable ? Qt.PointingHandCursor : Qt.ArrowCursor
                     onClicked: root.workspaceActivated(workspaceId)
                 }
             }

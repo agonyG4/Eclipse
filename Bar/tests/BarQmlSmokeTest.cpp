@@ -1,4 +1,5 @@
 #include "core/BarClockService.hpp"
+#include "core/BarController.hpp"
 #include "core/BarLayoutMetrics.hpp"
 #include "core/BarPopupController.hpp"
 #include "core/WorkspaceModel.hpp"
@@ -136,6 +137,34 @@ private:
     bool m_scanning = true;
 };
 
+class FakeWorkspaceController final : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(bool activationAvailable READ activationAvailable NOTIFY activationAvailableChanged)
+
+public:
+    explicit FakeWorkspaceController(QObject *parent = nullptr) : QObject(parent) {}
+
+    bool activationAvailable() const { return m_activationAvailable; }
+    const QString &lastActivation() const { return m_lastActivation; }
+
+    Q_INVOKABLE bool activateWorkspace(const QString &stableId)
+    {
+        if (!m_activationAvailable)
+            return false;
+        m_lastActivation = stableId;
+        emit activated(stableId);
+        return true;
+    }
+
+signals:
+    void activationAvailableChanged();
+    void activated(QString stableId);
+
+private:
+    bool m_activationAvailable = true;
+    QString m_lastActivation;
+};
+
 class BarQmlSmokeTest final : public QObject {
     Q_OBJECT
 
@@ -154,6 +183,7 @@ private slots:
     void launcherAndStatusUsePerIndicatorHitTargets();
     void indicatorGlyphsMatchReferenceStates();
     void workspaceDelegatesExposeReferenceHitboxes();
+    void workspaceClickActivatesStableProtocolId();
     void popupVisualsUseNativeServiceInputs();
     void volumeUiDisablesWhenDefaultStateUnavailable();
 
@@ -751,6 +781,7 @@ void BarQmlSmokeTest::workspaceDelegatesExposeReferenceHitboxes()
             "qrc:/qt/qml/Astrea/Shell/Bar/qml/components/WorkspaceStrip.qml")));
     QObject *object = component.createWithInitialProperties({
         {QStringLiteral("workspaceModel"), QVariant::fromValue(&model)},
+        {QStringLiteral("activationAvailable"), true},
     });
     QVERIFY(object != nullptr);
     QCoreApplication::processEvents();
@@ -778,6 +809,54 @@ void BarQmlSmokeTest::workspaceDelegatesExposeReferenceHitboxes()
                  static_cast<int>(Qt::PointingHandCursor));
     }
     delete object;
+}
+
+void BarQmlSmokeTest::workspaceClickActivatesStableProtocolId()
+{
+    QQmlEngine engine;
+    BarLayoutMetrics metrics;
+    BarPopupController popup;
+    WorkspaceModel model;
+    model.replaceWorkspaces({
+        {QStringLiteral("1"), true, true, false, {}, QStringLiteral("typhon.workspace.1")},
+        {QStringLiteral("2"), false, false, false, {}, QStringLiteral("typhon.workspace.2")},
+    });
+    FakeWorkspaceController workspaceController;
+    BarController barController(nullptr, nullptr, nullptr, &model);
+    barController.setWorkspaceController(&workspaceController);
+    QSignalSpy activationSpy(&workspaceController, &FakeWorkspaceController::activated);
+
+    QQmlComponent component(
+        &engine, QUrl(QStringLiteral(
+            "qrc:/qt/qml/Astrea/Shell/Bar/qml/LauncherSurface.qml")));
+    auto *window = qobject_cast<QQuickWindow *>(component.createWithInitialProperties({
+        {QStringLiteral("barController"), QVariant::fromValue(&barController)},
+        {QStringLiteral("barGeometry"), QVariant::fromValue(&metrics)},
+        {QStringLiteral("popupController"), QVariant::fromValue(&popup)},
+        {QStringLiteral("workspaceModel"), QVariant::fromValue(&model)},
+    }));
+    QVERIFY(window != nullptr);
+    window->resize(240, 40);
+    window->show();
+    QTest::qWait(20);
+
+    QObject *repeater = window->findChild<QObject *>(QStringLiteral("workspaceRepeater"));
+    QVERIFY(repeater != nullptr);
+    QQuickItem *delegate = nullptr;
+    QVERIFY(QMetaObject::invokeMethod(repeater, "itemAt", Qt::DirectConnection,
+                                      Q_RETURN_ARG(QQuickItem *, delegate), Q_ARG(int, 1)));
+    QVERIFY(delegate != nullptr);
+    auto hitboxes = delegate->findChildren<QObject *>(QStringLiteral("workspaceHitTarget"));
+    QCOMPARE(hitboxes.size(), 1);
+    auto *hitbox = qobject_cast<QQuickItem *>(hitboxes.front());
+    QVERIFY(hitbox != nullptr);
+    const QPointF localPoint = hitbox->mapToItem(window->contentItem(),
+                                                  QPointF(hitbox->width() / 2.0,
+                                                          hitbox->height() / 2.0));
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, localPoint.toPoint());
+    QTRY_COMPARE_WITH_TIMEOUT(activationSpy.count(), 1, 500);
+    QCOMPARE(workspaceController.lastActivation(), QStringLiteral("typhon.workspace.2"));
+    delete window;
 }
 
 void BarQmlSmokeTest::popupVisualsUseNativeServiceInputs()

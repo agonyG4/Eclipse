@@ -23,6 +23,7 @@
 #include "platform/typhon/TyphonSharedConnection.hpp"
 #include "platform/typhon/TyphonShortcutClient.hpp"
 #include "platform/typhon/TyphonToplevelConnection.hpp"
+#include "platform/typhon/TyphonWorkspaceClient.hpp"
 #include "services/AppIdentityResolver.hpp"
 #include "theme/ThemeController.hpp"
 #include "system/audio/AudioService.hpp"
@@ -59,9 +60,13 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
 
     m_typhonSession = std::make_unique<TyphonSharedConnection>();
     m_shortcutClient = std::make_unique<TyphonShortcutClient>(m_typhonSession.get());
+    m_workspaceClient = std::make_unique<TyphonWorkspaceClient>(m_typhonSession.get());
+    m_workspaceController = std::make_unique<TyphonWorkspaceController>(m_workspaceClient.get());
 
     if (!createBackend(backendName, errorOut)) {
         m_shortcutClient.reset();
+        m_workspaceController.reset();
+        m_workspaceClient.reset();
         m_typhonSession.reset();
         m_identityResolver.reset();
         m_launcher.reset();
@@ -75,11 +80,22 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
     m_spotlightController = std::make_unique<SpotlightController>(
         spotlightPaths, m_catalog.get(), m_launcher.get());
     m_workspaceModel = std::make_unique<WorkspaceModel>();
+    connect(m_workspaceClient.get(), &TyphonWorkspaceClient::snapshotChanged, this,
+            [this](QVector<TyphonWorkspaceRecord> workspaces) {
+        QVector<WorkspaceItem> items;
+        items.reserve(workspaces.size());
+        for (const TyphonWorkspaceRecord &workspace : workspaces) {
+            items.append({workspace.name, workspace.active, false, workspace.urgent, {},
+                          workspace.id});
+        }
+        m_workspaceModel->replaceWorkspaces(std::move(items));
+    });
     m_barClock = std::make_unique<BarClockService>();
     m_themeController = std::make_unique<ThemeController>();
     m_barController = std::make_unique<BarController>(m_catalog.get(), m_launcher.get(),
                                                        m_spotlightController.get(),
                                                        m_workspaceModel.get());
+    m_barController->setWorkspaceController(m_workspaceController.get());
     m_shortcutDispatcher = std::make_unique<ShellShortcutDispatcher>(m_altTabController.get(),
                                                                        m_spotlightController.get());
     m_ipcServer = std::make_unique<ShellIpcServer>();
@@ -220,6 +236,7 @@ void ShellRuntime::start()
     m_started = true;
 #if ASTREA_HAVE_TYPHON_PROTOCOL
     m_typhonSession->start();
+    m_workspaceClient->start();
 #endif
     if (m_windowBackend)
         m_windowBackend->start();
@@ -245,6 +262,7 @@ void ShellRuntime::stop()
         m_audioService->stop();
     m_gameMode->stop();
     m_shortcutClient->stop();
+    m_workspaceClient->stop();
     if (m_barClock)
         m_barClock->stop();
     if (m_windowBackend)

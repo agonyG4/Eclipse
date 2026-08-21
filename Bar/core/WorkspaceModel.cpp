@@ -40,6 +40,7 @@ QVariant WorkspaceModel::data(const QModelIndex &index, int role) const
     case OccupiedRole: return item.occupied;
     case UrgentRole: return item.urgent;
     case OutputIdRole: return item.outputId;
+    case ProtocolIdRole: return item.protocolId;
     default: return {};
     }
 }
@@ -52,6 +53,7 @@ QHash<int, QByteArray> WorkspaceModel::roleNames() const
         {OccupiedRole, QByteArrayLiteral("occupied")},
         {UrgentRole, QByteArrayLiteral("urgent")},
         {OutputIdRole, QByteArrayLiteral("outputId")},
+        {ProtocolIdRole, QByteArrayLiteral("protocolId")},
     };
 }
 

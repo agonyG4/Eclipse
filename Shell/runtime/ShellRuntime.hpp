@@ -23,6 +23,8 @@ class ShellShortcutDispatcher;
 class TyphonShortcutClient;
 class TyphonSharedConnection;
 class TyphonToplevelConnection;
+class TyphonWorkspaceClient;
+class TyphonWorkspaceController;
 class ThemeController;
 class WorkspaceModel;
 
@@ -51,6 +53,8 @@ public:
     TyphonSharedConnection *typhonSession() const { return m_typhonSession.get(); }
     TyphonToplevelConnection *typhonToplevelConnection() const { return m_typhonToplevel.get(); }
     TyphonShortcutClient *shortcutClient() const { return m_shortcutClient.get(); }
+    TyphonWorkspaceClient *workspaceClient() const { return m_workspaceClient.get(); }
+    TyphonWorkspaceController *workspaceController() const { return m_workspaceController.get(); }
     CompositorBackend *windowBackend() const { return m_windowBackend.get(); }
     DockController *dockController() const { return m_dockController.get(); }
     AltTabController *altTabController() const { return m_altTabController.get(); }
@@ -89,6 +93,8 @@ private:
     std::unique_ptr<TyphonSharedConnection> m_typhonSession;
     std::unique_ptr<TyphonToplevelConnection> m_typhonToplevel;
     std::unique_ptr<TyphonShortcutClient> m_shortcutClient;
+    std::unique_ptr<TyphonWorkspaceClient> m_workspaceClient;
+    std::unique_ptr<TyphonWorkspaceController> m_workspaceController;
     std::unique_ptr<CompositorBackend> m_windowBackend;
     std::unique_ptr<DockController> m_dockController;
     std::unique_ptr<AltTabController> m_altTabController;

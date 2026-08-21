@@ -171,6 +171,10 @@ add_library(astrea-shared-typhon STATIC
     platform/typhon/TyphonActionState.hpp
     platform/typhon/TyphonSharedConnection.cpp
     platform/typhon/TyphonSharedConnection.hpp
+    platform/typhon/TyphonWorkspaceState.cpp
+    platform/typhon/TyphonWorkspaceState.hpp
+    platform/typhon/TyphonWorkspaceClient.cpp
+    platform/typhon/TyphonWorkspaceClient.hpp
     platform/typhon/TyphonWaylandDisplay.cpp
     platform/typhon/TyphonWaylandDisplay.hpp
     platform/typhon/TyphonShortcutClient.cpp
@@ -226,6 +230,12 @@ if(ASTREA_TYPHON_WAYLAND_AVAILABLE)
         "${ASTREA_TYPHON_GENERATED_DIR}/astrea-shell-auth-v1-server-protocol.h")
     set(ASTREA_SHELL_AUTH_SERVER_GENERATED_SOURCE
         "${ASTREA_TYPHON_GENERATED_DIR}/astrea-shell-auth-v1-server-protocol.c")
+    set(ASTREA_EXT_WORKSPACE_PROTOCOL_XML
+        "${CMAKE_CURRENT_SOURCE_DIR}/platform/typhon/protocols/ext-workspace-v1.xml")
+    set(ASTREA_EXT_WORKSPACE_GENERATED_HEADER
+        "${ASTREA_TYPHON_GENERATED_DIR}/ext-workspace-v1-client-protocol.h")
+    set(ASTREA_EXT_WORKSPACE_GENERATED_SOURCE
+        "${ASTREA_TYPHON_GENERATED_DIR}/ext-workspace-v1-protocol.c")
     add_custom_command(
         OUTPUT "${ASTREA_TYPHON_GENERATED_HEADER}" "${ASTREA_TYPHON_GENERATED_SOURCE}"
                "${ASTREA_TYPHON_SERVER_GENERATED_HEADER}" "${ASTREA_TYPHON_SERVER_GENERATED_SOURCE}"
@@ -233,6 +243,7 @@ if(ASTREA_TYPHON_WAYLAND_AVAILABLE)
                "${ASTREA_SHORTCUT_SERVER_GENERATED_HEADER}" "${ASTREA_SHORTCUT_SERVER_GENERATED_SOURCE}"
                "${ASTREA_SHELL_AUTH_GENERATED_HEADER}" "${ASTREA_SHELL_AUTH_GENERATED_SOURCE}"
                "${ASTREA_SHELL_AUTH_SERVER_GENERATED_HEADER}" "${ASTREA_SHELL_AUTH_SERVER_GENERATED_SOURCE}"
+               "${ASTREA_EXT_WORKSPACE_GENERATED_HEADER}" "${ASTREA_EXT_WORKSPACE_GENERATED_SOURCE}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${ASTREA_TYPHON_GENERATED_DIR}"
         COMMAND "${ASTREA_WAYLAND_SCANNER}" client-header
                 "${ASTREA_TYPHON_PROTOCOL_XML}" "${ASTREA_TYPHON_GENERATED_HEADER}"
@@ -258,8 +269,12 @@ if(ASTREA_TYPHON_WAYLAND_AVAILABLE)
                 "${ASTREA_SHELL_AUTH_PROTOCOL_XML}" "${ASTREA_SHELL_AUTH_SERVER_GENERATED_HEADER}"
         COMMAND "${ASTREA_WAYLAND_SCANNER}" private-code
                 "${ASTREA_SHELL_AUTH_PROTOCOL_XML}" "${ASTREA_SHELL_AUTH_SERVER_GENERATED_SOURCE}"
+        COMMAND "${ASTREA_WAYLAND_SCANNER}" client-header
+                "${ASTREA_EXT_WORKSPACE_PROTOCOL_XML}" "${ASTREA_EXT_WORKSPACE_GENERATED_HEADER}"
+        COMMAND "${ASTREA_WAYLAND_SCANNER}" private-code
+                "${ASTREA_EXT_WORKSPACE_PROTOCOL_XML}" "${ASTREA_EXT_WORKSPACE_GENERATED_SOURCE}"
         DEPENDS "${ASTREA_TYPHON_PROTOCOL_XML}" "${ASTREA_SHORTCUT_PROTOCOL_XML}"
-                "${ASTREA_SHELL_AUTH_PROTOCOL_XML}"
+                "${ASTREA_SHELL_AUTH_PROTOCOL_XML}" "${ASTREA_EXT_WORKSPACE_PROTOCOL_XML}"
         VERBATIM
     )
     set_source_files_properties("${ASTREA_TYPHON_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
@@ -268,6 +283,7 @@ if(ASTREA_TYPHON_WAYLAND_AVAILABLE)
     set_source_files_properties("${ASTREA_SHORTCUT_SERVER_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
     set_source_files_properties("${ASTREA_SHELL_AUTH_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
     set_source_files_properties("${ASTREA_SHELL_AUTH_SERVER_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
+    set_source_files_properties("${ASTREA_EXT_WORKSPACE_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
     target_sources(astrea-shared-typhon PRIVATE
         "${ASTREA_TYPHON_GENERATED_HEADER}"
         "${ASTREA_TYPHON_GENERATED_SOURCE}"
@@ -277,6 +293,8 @@ if(ASTREA_TYPHON_WAYLAND_AVAILABLE)
         "${ASTREA_SHELL_AUTH_GENERATED_SOURCE}"
         "${ASTREA_SHELL_AUTH_SERVER_GENERATED_HEADER}"
         "${ASTREA_SHELL_AUTH_SERVER_GENERATED_SOURCE}"
+        "${ASTREA_EXT_WORKSPACE_GENERATED_HEADER}"
+        "${ASTREA_EXT_WORKSPACE_GENERATED_SOURCE}"
     )
     target_include_directories(astrea-shared-typhon PRIVATE "${ASTREA_TYPHON_GENERATED_DIR}")
     target_link_libraries(astrea-shared-typhon PRIVATE PkgConfig::ASTREA_WAYLAND_CLIENT)
@@ -368,6 +386,7 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     add_typhon_shared_test(typhon-protocol-client-test tests/TyphonProtocolClientTest.cpp)
     add_typhon_shared_test(typhon-action-state-test tests/TyphonActionStateTest.cpp)
     add_typhon_shared_test(typhon-shared-connection-test tests/TyphonSharedConnectionTest.cpp)
+    add_typhon_shared_test(typhon-workspace-state-test tests/TyphonWorkspaceStateTest.cpp)
 
     if(ASTREA_TYPHON_WAYLAND_AVAILABLE AND ASTREA_WAYLAND_SERVER_FOUND)
         add_executable(typhon-protocol-integration-test

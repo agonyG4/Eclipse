@@ -117,6 +117,8 @@ PopupCard {
             }
 
             Rectangle {
+                id: volumeThumb
+                objectName: "volumeThumb"
                 anchors.verticalCenter: track.verticalCenter
                 x: Math.max(0, Math.min(track.width - width,
                     track.width * Math.min(1, root.volume / 100) - width / 2))
@@ -127,6 +129,16 @@ PopupCard {
 
                 Behavior on width {
                     NumberAnimation { duration: theme.animationMicro; easing.type: Easing.OutCubic }
+                }
+
+                Behavior on x {
+                    objectName: "volumeThumbXBehavior"
+                    enabled: !sliderMouse.pressed
+                    NumberAnimation {
+                        objectName: "volumeThumbXAnimation"
+                        duration: theme.animationSlider
+                        easing.type: Easing.OutCubic
+                    }
                 }
 
                 Rectangle {

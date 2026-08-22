@@ -30,7 +30,6 @@ IndicatorButton {
         const x = root.resolvedAnchorX()
         switch (root.popupKind) {
         case 1: root.popupController.toggleAstreaMenu(x); break
-        case 2: root.popupController.toggleClock(x); break
         case 3: root.popupController.toggleNetwork(x); break
         case 4: root.popupController.toggleBluetooth(x); break
         case 5: root.popupController.toggleVolume(x); break

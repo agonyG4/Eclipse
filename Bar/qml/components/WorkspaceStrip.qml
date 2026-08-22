@@ -8,12 +8,16 @@ Item {
     property var workspaceModel: null
     property bool activationAvailable: false
     readonly property int workspaceCount: repeater.count
+    readonly property int stableWidth: workspaceCount <= 0 ? 0
+        : theme.workspaceActiveWidth
+          + Math.max(0, workspaceCount - 1)
+              * (theme.workspaceDotSize + theme.spacingSmall)
     readonly property int reservedWorkspaceSlots: 10
     readonly property int reservedWidth: theme.workspaceActiveWidth
         + Math.max(0, reservedWorkspaceSlots - 1)
             * (theme.workspaceDotSize + theme.spacingSmall)
     signal workspaceActivated(string workspaceId)
-    implicitWidth: row.implicitWidth
+    implicitWidth: stableWidth
     implicitHeight: theme.workspaceDotSize
     width: implicitWidth
     height: implicitHeight
@@ -22,6 +26,7 @@ Item {
     Row {
         id: row
         objectName: "workspaceRow"
+        anchors.left: parent.left
         spacing: theme.spacingSmall
         anchors.verticalCenter: parent.verticalCenter
         Repeater {

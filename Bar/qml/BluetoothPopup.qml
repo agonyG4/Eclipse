@@ -15,6 +15,8 @@ PopupCard {
     readonly property bool scanning: root.available
         && Boolean(root.bluetoothService && root.bluetoothService.scanning)
     readonly property bool powerPending: Boolean(root.bluetoothService && root.bluetoothService.powerPending)
+    readonly property var devicesModel: root.bluetoothService && root.powered
+        ? root.bluetoothService.devicesModel : null
 
     objectName: "bluetoothPopupCard"
     implicitWidth: 280
@@ -70,110 +72,74 @@ PopupCard {
         }
     }
 
-    Rectangle { width: parent.width; height: 1; color: theme.shellSeparator }
+    Text {
+        visible: !root.available || !root.powered
+        width: parent.width
+        height: 36
+        text: !root.available ? "Bluetooth unavailable" : "Bluetooth off"
+        color: theme.shellTextSecondary
+        font { family: theme.fontFamily; pixelSize: theme.fontSizeSmall }
+        verticalAlignment: Text.AlignVCenter
+        horizontalAlignment: Text.AlignHCenter
+    }
+
+    Text {
+        id: pairedSection
+        objectName: "pairedSection"
+        visible: root.powered && pairedRows.height > 0
+        width: parent.width
+        text: "Paired devices"
+        color: theme.shellTextSecondary
+        font { family: theme.fontFamily; pixelSize: theme.fontSizeCaption; weight: Font.DemiBold }
+        bottomPadding: 2
+    }
 
     Column {
+        id: pairedRows
+        objectName: "pairedRows"
         width: parent.width
         spacing: 2
-
-        Text {
-            visible: !root.available || !root.powered
-            width: parent.width
-            height: 36
-            text: !root.available ? "Bluetooth unavailable" : "Bluetooth off"
-            color: theme.shellTextSecondary
-            font { family: theme.fontFamily; pixelSize: theme.fontSizeSmall }
-            verticalAlignment: Text.AlignVCenter
-            horizontalAlignment: Text.AlignHCenter
-        }
+        height: childrenRect.height
 
         Repeater {
-            model: root.bluetoothService && root.powered
-                ? root.bluetoothService.devicesModel : null
-
-            delegate: Rectangle {
-                required property string name
-                required property string objectPath
-                required property bool paired
-                required property bool connected
-                required property int rssi
-                required property int batteryPercent
-
-                width: root.width
-                height: 38
-                radius: theme.shellControlRadius
-                color: connected ? Qt.rgba(0.20, 0.60, 1.0, 0.12)
-                                  : rowMouse.containsMouse ? theme.shellSeparator : "transparent"
-                border.width: connected ? 1 : 0
-                border.color: Qt.rgba(0.20, 0.60, 1.0, 0.25)
-
-                Row {
-                    anchors.fill: parent
-                    anchors.leftMargin: theme.spacingMedium
-                    anchors.rightMargin: theme.spacingMedium
-                    spacing: theme.spacingMedium
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: paired ? "󰂱" : "󰂴"
-                        color: connected ? theme.shellIconAccent : theme.shellIconMain
-                        font { family: theme.iconFontFamily; pixelSize: theme.fontSizeIcon }
-                    }
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: name || "Bluetooth device"
-                        color: connected ? theme.shellTextActive : theme.shellTextSecondary
-                        width: parent.width - 28 - theme.spacingMedium
-                            - (deviceStatus.visible
-                                ? deviceStatus.implicitWidth + theme.spacingMedium : 0)
-                        elide: Text.ElideRight
-                        font {
-                            family: theme.fontFamily
-                            pixelSize: theme.fontSizeBody
-                            weight: connected ? Font.DemiBold : Font.Normal
-                        }
-                    }
-
-                    Text {
-                        id: deviceStatus
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        visible: batteryPercent >= 0 || rssi !== -1
-                        text: batteryPercent >= 0
-                            ? batteryPercent + "%"
-                              + (rssi !== -1 ? " · " + rssi + " dBm" : "")
-                            : rssi + " dBm"
-                        color: connected ? theme.shellTextLight : theme.shellTextDim
-                        font {
-                            family: theme.fontFamily
-                            pixelSize: theme.fontSizeCaption
-                        }
-                    }
-                }
-
-                MouseArea {
-                    id: rowMouse
-                    anchors.fill: parent
-                    enabled: paired || connected
-                    hoverEnabled: enabled
-                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                    onClicked: connected
-                        ? root.bluetoothService.disconnectDevice(objectPath)
-                        : root.bluetoothService.connectDevice(objectPath)
-                }
-            }
+            model: root.devicesModel
+            delegate: BluetoothDeviceRow { showPaired: true }
         }
     }
 
+    Text {
+        visible: root.powered && pairedRows.height === 0 && availableRows.height === 0
+        width: parent.width
+        height: 36
+        text: "No paired devices"
+        color: theme.shellTextSecondary
+        font { family: theme.fontFamily; pixelSize: theme.fontSizeSmall }
+        verticalAlignment: Text.AlignVCenter
+        horizontalAlignment: Text.AlignHCenter
+    }
+
     Rectangle {
+        id: deviceScanSeparator
+        objectName: "deviceScanSeparator"
+        visible: root.powered
+        width: parent.width
+        height: 1
+        color: theme.shellSeparator
+    }
+
+    Rectangle {
+        id: scanAction
+        objectName: "scanAction"
         visible: root.powered
         width: parent.width
         height: 32
         radius: theme.shellControlRadius
-        color: scanMouse.containsMouse ? theme.shellSeparator : "transparent"
+        color: root.scanning
+            ? Qt.rgba(0.20, 0.60, 1.0, 0.10)
+            : scanMouse.containsMouse ? theme.shellSeparator : "transparent"
         border.width: root.scanning ? 1 : 0
         border.color: Qt.rgba(0.20, 0.60, 1.0, 0.25)
+        Behavior on color { ColorAnimation { duration: theme.animationFast } }
 
         Row {
             anchors.centerIn: parent
@@ -208,6 +174,110 @@ PopupCard {
             hoverEnabled: enabled
             cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
             onClicked: root.bluetoothService.requestScan("bluetooth-popup")
+        }
+    }
+
+    Text {
+        id: availableSection
+        objectName: "availableSection"
+        visible: root.powered && availableRows.height > 0
+        width: parent.width
+        text: "Available devices"
+        color: theme.shellTextSecondary
+        font { family: theme.fontFamily; pixelSize: theme.fontSizeCaption; weight: Font.DemiBold }
+        bottomPadding: 2
+    }
+
+    Column {
+        id: availableRows
+        objectName: "availableRows"
+        width: parent.width
+        spacing: 2
+        height: childrenRect.height
+
+        Repeater {
+            model: root.devicesModel
+            delegate: BluetoothDeviceRow { showPaired: false }
+        }
+    }
+
+    component BluetoothDeviceRow: Rectangle {
+        id: deviceRow
+        required property string name
+        required property string objectPath
+        required property bool paired
+        required property bool connected
+        required property int rssi
+        required property int batteryPercent
+        property bool showPaired: true
+
+        objectName: showPaired ? "pairedDeviceRow" : "availableDeviceRow"
+        width: root.width
+        height: (paired === showPaired) ? 38 : 0
+        visible: paired === showPaired
+        radius: theme.shellControlRadius
+        color: connected ? Qt.rgba(0.20, 0.60, 1.0, 0.12)
+                          : rowMouse.containsMouse ? theme.shellSeparator : "transparent"
+        border.width: connected ? 1 : 0
+        border.color: Qt.rgba(0.20, 0.60, 1.0, 0.25)
+
+        Row {
+            anchors.fill: parent
+            anchors.leftMargin: theme.spacingMedium
+            anchors.rightMargin: theme.spacingMedium
+            spacing: theme.spacingMedium
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: paired ? "󰂱" : "󰂴"
+                color: connected ? theme.shellIconAccent : theme.shellIconMain
+                font { family: theme.iconFontFamily; pixelSize: theme.fontSizeIcon }
+            }
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: name || "Bluetooth device"
+                color: connected ? theme.shellTextActive : theme.shellTextSecondary
+                width: parent.width - 28 - theme.spacingMedium
+                    - (deviceStatus.visible
+                        ? deviceStatus.implicitWidth + theme.spacingMedium : 0)
+                elide: Text.ElideRight
+                font {
+                    family: theme.fontFamily
+                    pixelSize: theme.fontSizeBody
+                    weight: connected ? Font.DemiBold : Font.Normal
+                }
+            }
+
+            Item {
+                id: deviceStatusSlot
+                width: deviceStatus.visible ? deviceStatus.implicitWidth : 0
+                height: parent.height
+
+                Text {
+                    id: deviceStatus
+                    anchors.centerIn: parent
+                    visible: batteryPercent >= 0 || rssi !== -1
+                    text: batteryPercent >= 0
+                        ? batteryPercent + "%"
+                          + (rssi !== -1 ? " · " + rssi + " dBm" : "")
+                        : rssi + " dBm"
+                    color: connected ? theme.shellTextLight : theme.shellTextDim
+                    font { family: theme.fontFamily; pixelSize: theme.fontSizeCaption }
+                }
+            }
+        }
+
+        MouseArea {
+            id: rowMouse
+            objectName: "deviceMouse"
+            anchors.fill: parent
+            enabled: paired
+            hoverEnabled: enabled
+            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+            onClicked: connected
+                ? root.bluetoothService.disconnectDevice(objectPath)
+                : root.bluetoothService.connectDevice(objectPath)
         }
     }
 }

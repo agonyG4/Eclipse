@@ -14,10 +14,9 @@ public:
     enum class PopupKind {
         None,
         AstreaMenu,
-        Clock,
-        Network,
-        Bluetooth,
-        Volume,
+        Network = 3,
+        Bluetooth = 4,
+        Volume = 5,
     };
     Q_ENUM(PopupKind)
 
@@ -32,7 +31,6 @@ public:
     Q_INVOKABLE void open(PopupKind kind, int anchorX);
     Q_INVOKABLE void toggle(PopupKind kind, int anchorX);
     Q_INVOKABLE void toggleAstreaMenu(int anchorX);
-    Q_INVOKABLE void toggleClock(int anchorX);
     Q_INVOKABLE void toggleNetwork(int anchorX);
     Q_INVOKABLE void toggleBluetooth(int anchorX);
     Q_INVOKABLE void toggleVolume(int anchorX);
@@ -44,6 +42,7 @@ signals:
     void changed();
 
 private:
+    static bool isSupported(PopupKind kind);
     PopupKind m_kind = PopupKind::None;
     bool m_open = false;
     bool m_closing = false;

@@ -24,6 +24,7 @@ TopbarIndicator {
     readonly property int scanPulseScaleEasing: Easing.OutCubic
 
         Item {
+            objectName: "bluetoothVisual"
             width: 16
             height: 16
 
@@ -58,6 +59,7 @@ TopbarIndicator {
         Text {
             id: icon
             objectName: "bluetoothIcon"
+            anchors.centerIn: parent
             text: root.btOn ? "󰂯" : "󰂲"
             color: !root.btAvailable || !root.btOn
             ? theme.shellIconMuted

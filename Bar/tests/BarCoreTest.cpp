@@ -42,6 +42,7 @@ private slots:
     void popupReplacesAndClearsOutputLocalState();
     void popupCloseRetainsRenderedStateUntilAnimationCompletes();
     void popupReopenCancelsClosingTransition();
+    void popupRejectsUnsupportedKinds();
     void popupSupportsNativeIndicatorKinds();
     void spotlightComponentEnablementIsAuthoritative();
     void barSearchCapabilityTracksSpotlightEnablement();
@@ -269,10 +270,11 @@ void BarCoreTest::popupReplacesAndClearsOutputLocalState()
     QCOMPARE(controller.kind(), BarPopupController::PopupKind::AstreaMenu);
     QCOMPARE(controller.anchorX(), 120);
 
-    controller.open(BarPopupController::PopupKind::Clock, 1770);
+    const auto unsupported = static_cast<BarPopupController::PopupKind>(2);
+    controller.open(unsupported, 1770);
     QVERIFY(controller.isOpen());
-    QCOMPARE(controller.kind(), BarPopupController::PopupKind::Clock);
-    QCOMPARE(controller.anchorX(), 1770);
+    QCOMPARE(controller.kind(), BarPopupController::PopupKind::AstreaMenu);
+    QCOMPARE(controller.anchorX(), 120);
 
     controller.close();
     controller.close();
@@ -286,14 +288,14 @@ void BarCoreTest::popupReplacesAndClearsOutputLocalState()
 void BarCoreTest::popupCloseRetainsRenderedStateUntilAnimationCompletes()
 {
     BarPopupController controller;
-    controller.open(BarPopupController::PopupKind::Clock, 900);
+    controller.open(BarPopupController::PopupKind::AstreaMenu, 900);
 
     controller.close();
 
     QVERIFY(!controller.isOpen());
     QVERIFY(controller.closing());
     QVERIFY(controller.surfaceRequired());
-    QCOMPARE(controller.kind(), BarPopupController::PopupKind::Clock);
+    QCOMPARE(controller.kind(), BarPopupController::PopupKind::AstreaMenu);
     QCOMPARE(controller.anchorX(), 900);
 
     controller.completeClose();
@@ -308,15 +310,15 @@ void BarCoreTest::popupCloseRetainsRenderedStateUntilAnimationCompletes()
 void BarCoreTest::popupReopenCancelsClosingTransition()
 {
     BarPopupController controller;
-    controller.open(BarPopupController::PopupKind::Clock, 900);
+    controller.open(BarPopupController::PopupKind::AstreaMenu, 900);
     controller.close();
 
-    controller.toggleClock(920);
+    controller.toggleAstreaMenu(920);
 
     QVERIFY(controller.isOpen());
     QVERIFY(!controller.closing());
     QVERIFY(controller.surfaceRequired());
-    QCOMPARE(controller.kind(), BarPopupController::PopupKind::Clock);
+    QCOMPARE(controller.kind(), BarPopupController::PopupKind::AstreaMenu);
     QCOMPARE(controller.anchorX(), 920);
 
     controller.close();
@@ -324,6 +326,22 @@ void BarCoreTest::popupReopenCancelsClosingTransition()
     QVERIFY(controller.isOpen());
     QCOMPARE(controller.kind(), BarPopupController::PopupKind::AstreaMenu);
     QCOMPARE(controller.anchorX(), 160);
+}
+
+void BarCoreTest::popupRejectsUnsupportedKinds()
+{
+    BarPopupController controller;
+    const auto unsupported = static_cast<BarPopupController::PopupKind>(2);
+
+    controller.open(unsupported, 300);
+    QVERIFY(!controller.isOpen());
+    QVERIFY(!controller.surfaceRequired());
+    QCOMPARE(controller.kind(), BarPopupController::PopupKind::None);
+
+    controller.toggle(unsupported, 300);
+    QVERIFY(!controller.isOpen());
+    QVERIFY(!controller.surfaceRequired());
+    QCOMPARE(controller.kind(), BarPopupController::PopupKind::None);
 }
 
 void BarCoreTest::popupSupportsNativeIndicatorKinds()
@@ -476,7 +494,7 @@ void BarCoreTest::surfaceManagerOwnsProductionLifecycleAndEnablement()
     auto *first = qobject_cast<BarSurfaceBundle *>(manager.findChild<BarSurfaceBundle *>());
     QVERIFY(first != nullptr);
     QPointer<BarSurfaceBundle> firstGuard(first);
-    first->popupController()->open(BarPopupController::PopupKind::Clock, 300);
+    first->popupController()->open(BarPopupController::PopupKind::AstreaMenu, 300);
     QVERIFY(manager.popupOpen());
 
     screen->geometryChanged(screen->geometry());
@@ -534,7 +552,7 @@ void BarCoreTest::surfaceRemovalDuringPopupCloseIsImmediate()
     }
     QVERIFY(bundle != nullptr);
     const int initializedBundleCount = manager.bundleCount();
-    bundle->popupController()->open(BarPopupController::PopupKind::Clock, 500);
+    bundle->popupController()->open(BarPopupController::PopupKind::AstreaMenu, 500);
     bundle->popupController()->close();
     QVERIFY(bundle->popupController()->closing());
 
@@ -633,7 +651,7 @@ void BarCoreTest::popupOwnershipIsLocalToEachSurfaceBundle()
     BarSurfaceBundle second(screen, nullptr, nullptr, nullptr, nullptr,
                             nullptr, nullptr, nullptr);
 
-    first.popupController()->open(BarPopupController::PopupKind::Clock, 200);
+    first.popupController()->open(BarPopupController::PopupKind::AstreaMenu, 200);
     QVERIFY(first.popupOpen());
     QVERIFY(!second.popupOpen());
 

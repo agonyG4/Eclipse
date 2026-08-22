@@ -408,6 +408,41 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     astrea_shared_enable_sanitizers(statusnotifier-test)
     add_test(NAME statusnotifier-test COMMAND statusnotifier-test)
 
+    add_executable(statusnotifier-dbus-fixture
+        tests/StatusNotifierDBusFixture.cpp
+    )
+    target_include_directories(statusnotifier-dbus-fixture PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_link_libraries(statusnotifier-dbus-fixture PRIVATE
+        astrea-shared-statusnotifier
+        Qt6::Core
+        Qt6::DBus
+    )
+    astrea_shared_enable_sanitizers(statusnotifier-dbus-fixture)
+
+    add_executable(statusnotifier-dbus-integration-test
+        tests/StatusNotifierIntegrationTest.cpp
+    )
+    target_include_directories(statusnotifier-dbus-integration-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_link_libraries(statusnotifier-dbus-integration-test PRIVATE
+        astrea-shared-statusnotifier
+        Qt6::Test
+    )
+    target_compile_definitions(statusnotifier-dbus-integration-test PRIVATE
+        ASTREA_STATUSNOTIFIER_FIXTURE_PATH="${CMAKE_CURRENT_BINARY_DIR}/statusnotifier-dbus-fixture"
+    )
+    add_dependencies(statusnotifier-dbus-integration-test statusnotifier-dbus-fixture)
+    astrea_shared_enable_sanitizers(statusnotifier-dbus-integration-test)
+    find_program(ASTREA_DBUS_RUN_SESSION dbus-run-session)
+    if(ASTREA_DBUS_RUN_SESSION)
+        add_test(NAME statusnotifier-dbus-integration-test
+            COMMAND "${ASTREA_DBUS_RUN_SESSION}" --
+                    "$<TARGET_FILE:statusnotifier-dbus-integration-test>")
+    endif()
+
     add_executable(layer-shell-helper-test
         tests/LayerShellHelperTest.cpp
     )

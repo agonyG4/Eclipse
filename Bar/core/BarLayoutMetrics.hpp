@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QVariantMap>
 
 class BarLayoutMetrics final : public QObject {
     Q_OBJECT
@@ -36,4 +37,7 @@ public:
                                int sidePadding = -1) const;
     Q_INVOKABLE int popupX(int outputWidth, int cardWidth, int anchorX,
                            int sidePadding = -1) const;
+    Q_INVOKABLE QVariantMap trayAnchor(int outputOriginX, int outputOriginY,
+                                       int statusLeft, int statusTop,
+                                       int indicatorLocalX, int indicatorLocalY) const;
 };

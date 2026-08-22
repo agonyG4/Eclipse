@@ -21,6 +21,7 @@ class StatusNotifierService final : public QObject {
     Q_PROPERTY(QAbstractItemModel *itemModel READ itemModel CONSTANT)
     Q_PROPERTY(WatcherMode watcherMode READ watcherMode NOTIFY stateChanged)
     Q_PROPERTY(QString watcherOwner READ watcherOwner NOTIFY stateChanged)
+    Q_PROPERTY(QString hostServiceName READ hostServiceName NOTIFY stateChanged)
     Q_PROPERTY(bool hostRegistered READ hostRegistered NOTIFY stateChanged)
     Q_PROPERTY(int itemCount READ itemCount NOTIFY stateChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY stateChanged)
@@ -40,6 +41,7 @@ public:
     StatusNotifierIconStore *iconStore() const { return m_iconStore.get(); }
     WatcherMode watcherMode() const;
     QString watcherOwner() const;
+    QString hostServiceName() const;
     bool hostRegistered() const;
     int itemCount() const;
     QString lastError() const;
@@ -52,8 +54,10 @@ public:
     Q_INVOKABLE QString tooltipDescriptionForItem(const QString &itemKey) const;
     Q_INVOKABLE void activate(const QString &itemKey, int x, int y);
     Q_INVOKABLE void secondaryActivate(const QString &itemKey, int x, int y);
+    Q_INVOKABLE void contextMenu(const QString &itemKey, int x, int y);
     Q_INVOKABLE void scroll(const QString &itemKey, int delta, const QString &orientation);
     Q_INVOKABLE void openMenu(const QString &itemKey);
+    Q_INVOKABLE void aboutToShowMenu(const QString &itemKey, int nodeId);
     Q_INVOKABLE void closeMenu(const QString &itemKey);
 
     void upsertTestItem(const ItemSnapshot &snapshot);

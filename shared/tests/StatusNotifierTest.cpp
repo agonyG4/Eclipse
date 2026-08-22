@@ -15,11 +15,13 @@ class StatusNotifierTest final : public QObject {
 
 private slots:
     void registrationFormsNormalize();
+    void dbusServiceNamesUseProtocolSyntax();
     void malformedRegistrationsAreRejected();
     void argb32NetworkPixelsDecodeExactly();
     void iconSelectionPrefersLargerThenSmaller();
     void iconRevisionInvalidatesProviderSource();
     void menuLabelsAndBoundsAreSafe();
+    void menuWireShapeAndSubtreesArePreserved();
     void menuModelExposesNestedChildren();
     void serviceKeepsPassiveItemsAndHealthIsSafe();
     void testWatcherDeduplicatesAndRecoversAddresses();
@@ -42,6 +44,25 @@ void StatusNotifierTest::registrationFormsNormalize()
         QStringLiteral("com.canonical.AppIndicator/foo/bar"));
     QCOMPARE(combined.service, QStringLiteral("com.canonical.AppIndicator"));
     QCOMPARE(combined.objectPath, QStringLiteral("/foo/bar"));
+}
+
+void StatusNotifierTest::dbusServiceNamesUseProtocolSyntax()
+{
+    QVERIFY(isValidDBusServiceName(QStringLiteral("org.example.Application")));
+    QVERIFY(isValidDBusServiceName(QStringLiteral("org.kde.SomeService")));
+    QVERIFY(isValidDBusServiceName(QStringLiteral(":1.42")));
+    QVERIFY(isValidDBusServiceName(QStringLiteral(":1.105")));
+    QVERIFY(!isValidDBusServiceName(QStringLiteral(":1")));
+    QVERIFY(!isValidDBusServiceName(QStringLiteral(":foo.1")));
+    QVERIFY(!isValidDBusServiceName(QStringLiteral("org..example")));
+    QVERIFY(!isValidDBusServiceName(QStringLiteral("1org.example")));
+    QVERIFY(!isValidDBusServiceName(QStringLiteral("org.example-Application")));
+
+    const auto pathOnly = normalizeRegistration(QStringLiteral("/org/example/Tray"),
+                                                 QStringLiteral(":1.42"));
+    QVERIFY(pathOnly.isValid());
+    QCOMPARE(pathOnly.service, QStringLiteral(":1.42"));
+    QCOMPARE(pathOnly.objectPath, QStringLiteral("/org/example/Tray"));
 }
 
 void StatusNotifierTest::malformedRegistrationsAreRejected()
@@ -118,6 +139,42 @@ void StatusNotifierTest::menuLabelsAndBoundsAreSafe()
     limits.maxChildren = 0;
     const auto rejected = parseMenuLayout(QVariantList{quint32(7), node}, limits);
     QVERIFY(!rejected.ok());
+}
+
+void StatusNotifierTest::menuWireShapeAndSubtreesArePreserved()
+{
+    registerDBusMenuMetaTypes();
+    DBusMenuLayoutReply reply;
+    reply.revision = 12;
+    reply.root.id = 0;
+    DBusMenuLayoutNodeWire tools;
+    tools.id = 10;
+    tools.properties = {{QStringLiteral("label"), QStringLiteral("_Tools")}};
+    DBusMenuLayoutNodeWire preferences;
+    preferences.id = 11;
+    preferences.properties = {{QStringLiteral("label"), QStringLiteral("Preferences")}};
+    tools.children.append(preferences);
+    DBusMenuLayoutNodeWire separator;
+    separator.id = 12;
+    separator.properties = {{QStringLiteral("type"), QStringLiteral("separator")}};
+    reply.root.children = {tools, separator};
+    const auto parsed = parseMenuLayout(QVariant::fromValue(reply));
+    QVERIFY(parsed.ok());
+    QCOMPARE(parsed.revision, quint32(12));
+    QCOMPARE(parsed.root.children.constFirst().label, QStringLiteral("Tools"));
+    QCOMPARE(parsed.root.children.constFirst().children.constFirst().id, 11);
+    QVERIFY(parsed.root.children.at(1).separator);
+
+    DBusMenuModel model;
+    model.setRoot(parsed.root);
+    DBusMenuNode child;
+    child.id = 10;
+    child.children = {{13, QStringLiteral("About")}};
+    QVERIFY(model.replaceSubtree(10, child));
+    QCOMPARE(model.childModel(10)->property("objectName").toString(), QString());
+    auto *nested = qobject_cast<DBusMenuModel *>(model.childModel(10));
+    QVERIFY(nested);
+    QCOMPARE(nested->data(nested->index(0, 0), DBusMenuModel::NodeIdRole).toInt(), 13);
 }
 
 void StatusNotifierTest::menuModelExposesNestedChildren()

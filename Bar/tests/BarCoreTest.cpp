@@ -34,6 +34,7 @@ private slots:
     void launcherAndStatusPoliciesPreserveReferenceGeometry();
     void statusWidthIsCappedBeforeLauncherGap();
     void layoutMetricsAreSingleGeometryAuthority();
+    void trayAnchorPreservesOutputAndSurfaceCoordinates();
     void popupPositionIsClampedToOutputPadding();
     void workspaceModelSortsAndExposesStableRoles();
     void workspaceModelAcceptsEmptyProductionData();
@@ -208,6 +209,16 @@ void BarCoreTest::layoutMetricsAreSingleGeometryAuthority()
     QCOMPARE(metrics.statusLeft(1, 0), 0);
     QCOMPARE(metrics.popupWidth(10, 220), 0);
     QCOMPARE(metrics.popupX(10, 220, 5), 8);
+}
+
+void BarCoreTest::trayAnchorPreservesOutputAndSurfaceCoordinates()
+{
+    BarLayoutMetrics metrics;
+    const QVariantMap anchor = metrics.trayAnchor(1920, 1080, 1400, 5, 24, 18);
+    QCOMPARE(anchor.value(QStringLiteral("localX")).toInt(), 1424);
+    QCOMPARE(anchor.value(QStringLiteral("localY")).toInt(), 23);
+    QCOMPARE(anchor.value(QStringLiteral("globalX")).toInt(), 3344);
+    QCOMPARE(anchor.value(QStringLiteral("globalY")).toInt(), 1103);
 }
 
 void BarCoreTest::popupPositionIsClampedToOutputPadding()

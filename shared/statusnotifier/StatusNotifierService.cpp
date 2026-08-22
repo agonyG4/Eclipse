@@ -114,6 +114,11 @@ QString StatusNotifierService::watcherOwner() const
     return m_watcher->watcherOwner();
 }
 
+QString StatusNotifierService::hostServiceName() const
+{
+    return m_watcher->hostServiceName();
+}
+
 bool StatusNotifierService::hostRegistered() const
 {
     return m_watcher->hostRegistered();
@@ -181,6 +186,12 @@ void StatusNotifierService::secondaryActivate(const QString &itemKey, int x, int
         proxy->secondaryActivate(x, y);
 }
 
+void StatusNotifierService::contextMenu(const QString &itemKey, int x, int y)
+{
+    if (auto *proxy = m_proxies.value(itemKey))
+        proxy->contextMenu(x, y);
+}
+
 void StatusNotifierService::scroll(const QString &itemKey, int delta, const QString &orientation)
 {
     if (auto *proxy = m_proxies.value(itemKey))
@@ -191,6 +202,12 @@ void StatusNotifierService::openMenu(const QString &itemKey)
 {
     if (auto *menu = m_menus.value(itemKey))
         menu->load();
+}
+
+void StatusNotifierService::aboutToShowMenu(const QString &itemKey, int nodeId)
+{
+    if (auto *menu = m_menus.value(itemKey))
+        menu->aboutToShow(nodeId);
 }
 
 void StatusNotifierService::closeMenu(const QString &itemKey)
@@ -311,7 +328,7 @@ void StatusNotifierService::updateMenu(const QString &key, const QString &menuPa
         old->stop();
         old->deleteLater();
     }
-    auto *menu = new DBusMenuClient(snapshot.address, menuPath, this);
+    auto *menu = new DBusMenuClient(snapshot.address, menuPath, m_iconStore.get(), this);
     m_menus.insert(key, menu);
     connect(menu, &DBusMenuClient::failed, this,
             [this](const QString &error) { emit healthWarning(error); });

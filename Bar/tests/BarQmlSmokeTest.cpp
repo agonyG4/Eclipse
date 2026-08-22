@@ -3,6 +3,9 @@
 #include "core/BarPopupController.hpp"
 #include "core/WorkspaceModel.hpp"
 #include "theme/ThemeController.hpp"
+#include "statusnotifier/StatusNotifierService.hpp"
+#include "statusnotifier/StatusNotifierIconProvider.hpp"
+#include "statusnotifier/StatusNotifierTypes.hpp"
 
 #include <QAbstractListModel>
 #include <QGuiApplication>
@@ -279,6 +282,8 @@ private slots:
     void barSegmentUsesBorealisInteractionTokens();
     void statusSurfaceUsesProductionGeometryAuthority();
     void statusSurfaceUsesInjectedSystemServices();
+    void traySurfaceUsesNativeModelAndTooltipBoundary();
+    void trayMenuUsesStableContextKey();
     void popupSurfaceUsesProductionClampAndClosingLifecycle();
     void popupEntersAndCompletesAnimation();
     void popupReopenCancelsExitAnimation();
@@ -551,6 +556,90 @@ void BarQmlSmokeTest::statusSurfaceUsesInjectedSystemServices()
     QCoreApplication::processEvents();
     QCOMPARE(audio.m_lastDelta, 2.0);
     delete status;
+}
+
+void BarQmlSmokeTest::traySurfaceUsesNativeModelAndTooltipBoundary()
+{
+    QQmlEngine engine;
+    BarLayoutMetrics metrics;
+    BarClockService clock;
+    clock.start();
+    Astrea::StatusNotifier::StatusNotifierService service;
+    engine.addImageProvider(QStringLiteral("astrea-tray"),
+        new Astrea::StatusNotifier::StatusNotifierIconProvider(service.iconStore()));
+    Astrea::StatusNotifier::ItemSnapshot snapshot;
+    snapshot.address = {QStringLiteral("org.example.Tray"), QStringLiteral("/StatusNotifierItem"),
+                        QStringLiteral(":1.81")};
+    snapshot.id = QStringLiteral("example");
+    snapshot.title = QStringLiteral("Example tray");
+    snapshot.tooltipTitle = QStringLiteral("Example tooltip");
+    snapshot.ready = true;
+    service.upsertTestItem(snapshot);
+
+    QQmlComponent statusComponent(&engine,
+        QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Bar/qml/StatusSurface.qml")));
+    QObject *status = statusComponent.createWithInitialProperties({
+        {QStringLiteral("barGeometry"), QVariant::fromValue(&metrics)},
+        {QStringLiteral("clockService"), QVariant::fromValue(&clock)},
+        {QStringLiteral("statusNotifierService"), QVariant::fromValue(&service)},
+        {QStringLiteral("outputWidth"), 800},
+        {QStringLiteral("launcherWidth"), 100},
+    });
+    QVERIFY(status != nullptr);
+    QCoreApplication::processEvents();
+    QObject *tray = status->findChild<QObject *>(QStringLiteral("tray"));
+    QVERIFY(tray != nullptr);
+    QCOMPARE(tray->property("itemCount").toInt(), 1);
+    QCOMPARE(tray->property("trayService").value<QObject *>(), &service);
+
+    QQmlComponent tooltipComponent(&engine,
+        QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Bar/qml/TrayTooltipSurface.qml")));
+    QObject *tooltip = tooltipComponent.createWithInitialProperties({
+        {QStringLiteral("statusNotifierService"), QVariant::fromValue(&service)},
+        {QStringLiteral("outputWidth"), 800},
+    });
+    QVERIFY(tooltip != nullptr);
+    QVERIFY(QMetaObject::invokeMethod(tooltip, "showTooltip",
+                                      Q_ARG(QVariant, QVariant(snapshot.address.key())),
+                                      Q_ARG(QVariant, QVariant(700.0))));
+    QCOMPARE(tooltip->property("tooltipVisible").toBool(), true);
+    QCOMPARE(tooltip->property("tooltipTitle").toString(), QStringLiteral("Example tooltip"));
+    delete tooltip;
+    delete status;
+}
+
+void BarQmlSmokeTest::trayMenuUsesStableContextKey()
+{
+    QQmlEngine engine;
+    BarLayoutMetrics metrics;
+    BarPopupController popup;
+    Astrea::StatusNotifier::StatusNotifierService service;
+    Astrea::StatusNotifier::ItemSnapshot snapshot;
+    snapshot.address = {QStringLiteral("org.example.Menu"), QStringLiteral("/StatusNotifierItem"),
+                        QStringLiteral(":1.82")};
+    snapshot.id = QStringLiteral("menu");
+    snapshot.title = QStringLiteral("Menu tray");
+    snapshot.menuPath = QStringLiteral("/Menu");
+    snapshot.ready = true;
+    service.upsertTestItem(snapshot);
+
+    QQmlComponent component(&engine,
+        QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Bar/qml/PopupOverlaySurface.qml")));
+    QObject *overlay = component.createWithInitialProperties({
+        {QStringLiteral("barGeometry"), QVariant::fromValue(&metrics)},
+        {QStringLiteral("popupController"), QVariant::fromValue(&popup)},
+        {QStringLiteral("statusNotifierService"), QVariant::fromValue(&service)},
+        {QStringLiteral("outputWidth"), 800},
+        {QStringLiteral("outputHeight"), 600},
+    });
+    QVERIFY(overlay != nullptr);
+    popup.toggleTrayMenu(420, snapshot.address.key());
+    QCoreApplication::processEvents();
+    QCOMPARE(popup.kind(), BarPopupController::PopupKind::TrayMenu);
+    QCOMPARE(popup.contextKey(), snapshot.address.key());
+    QCOMPARE(overlay->findChild<QObject *>(QStringLiteral("trayMenu"))->property("contextKey").toString(),
+             snapshot.address.key());
+    delete overlay;
 }
 
 void BarQmlSmokeTest::popupSurfaceUsesProductionClampAndClosingLifecycle()

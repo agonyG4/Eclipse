@@ -5,10 +5,14 @@ import "components"
 Window {
     id: window
 
+    ShellBarTheme { id: theme }
+
     property var clockService: null
     property var audioService: null
     property var networkService: null
     property var bluetoothService: null
+    property var statusNotifierService: null
+    property var trayTooltipSurface: null
     property var popupController: null
     property var barGeometry: null
     property var workspaceModel: null
@@ -38,6 +42,22 @@ Window {
         fixedWidth: barGeometry
             ? barGeometry.statusWidth(outputWidth, launcherWidth, Math.round(implicitWidth))
             : 0
+
+        Tray {
+            id: tray
+            objectName: "tray"
+            trayService: window.statusNotifierService
+            popupController: window.popupController
+            tooltipSurface: window.trayTooltipSurface
+            outputWidth: window.outputWidth
+            statusLeft: window.statusLeft
+        }
+
+        Item {
+            objectName: "trayNetworkSpacer"
+            width: tray.itemCount > 0 ? theme.spacingTiny : 0
+            height: 1
+        }
 
         NetworkIndicator {
             networkService: window.networkService

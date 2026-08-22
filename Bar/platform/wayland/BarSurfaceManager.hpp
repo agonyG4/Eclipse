@@ -19,6 +19,9 @@ class AudioService;
 class BluetoothService;
 class NetworkService;
 }
+namespace Astrea::StatusNotifier {
+class StatusNotifierService;
+}
 
 class BarSurfaceManager final : public QObject {
     Q_OBJECT
@@ -35,7 +38,8 @@ public:
                       Astrea::System::NetworkService *networkService,
                       Astrea::System::BluetoothService *bluetoothService,
                       QObject *parent = nullptr,
-                      BundleFactory bundleFactory = {});
+                      BundleFactory bundleFactory = {},
+                      Astrea::StatusNotifier::StatusNotifierService *statusNotifier = nullptr);
     ~BarSurfaceManager() override;
 
     bool initialize(QString *errorOut = nullptr);
@@ -64,6 +68,7 @@ private:
     Astrea::System::AudioService *m_audioService = nullptr;
     Astrea::System::NetworkService *m_networkService = nullptr;
     Astrea::System::BluetoothService *m_bluetoothService = nullptr;
+    Astrea::StatusNotifier::StatusNotifierService *m_statusNotifier = nullptr;
     QHash<QScreen *, BarSurfaceBundle *> m_bundles;
     BundleFactory m_bundleFactory;
     bool m_initialized = false;

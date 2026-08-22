@@ -167,6 +167,16 @@ void BarCoreTest::launcherAndStatusPoliciesPreserveReferenceGeometry()
     QVERIFY(popup.anchorRight);
     QCOMPARE(popup.exclusiveZone, -1);
     QCOMPARE(popup.margins, QMargins());
+
+    const auto trayTooltip = BarSurfacePolicy::trayTooltip();
+    QCOMPARE(trayTooltip.scope, QStringLiteral("astrea-bar-tray-tooltip"));
+    QCOMPARE(trayTooltip.layer, AstreaLayerShellConfig::Layer::Top);
+    QVERIFY(trayTooltip.anchorTop);
+    QVERIFY(trayTooltip.anchorLeft);
+    QVERIFY(trayTooltip.anchorRight);
+    QCOMPARE(trayTooltip.exclusiveZone, -1);
+    QCOMPARE(trayTooltip.margins, QMargins(0, 51, 0, 0));
+    QCOMPARE(BarSurfacePolicy::surfaceHeight(BarSurfaceKind::TrayTooltip), 28);
 }
 
 void BarCoreTest::statusWidthIsCappedBeforeLauncherGap()
@@ -361,10 +371,14 @@ void BarCoreTest::popupSupportsNativeIndicatorKinds()
     QCOMPARE(controller.kind(), BarPopupController::PopupKind::Volume);
     QCOMPARE(controller.anchorX(), 320);
 
+    controller.toggleTrayMenu(420, QStringLiteral("org.example.Tray|/StatusNotifierItem"));
+    QCOMPARE(controller.kind(), BarPopupController::PopupKind::TrayMenu);
+    QCOMPARE(controller.contextKey(), QStringLiteral("org.example.Tray|/StatusNotifierItem"));
+
     controller.close();
     QVERIFY(controller.closing());
     QVERIFY(controller.surfaceRequired());
-    QCOMPARE(controller.kind(), BarPopupController::PopupKind::Volume);
+    QCOMPARE(controller.kind(), BarPopupController::PopupKind::TrayMenu);
     controller.completeClose();
     QVERIFY(!controller.surfaceRequired());
     QCOMPARE(controller.kind(), BarPopupController::PopupKind::None);

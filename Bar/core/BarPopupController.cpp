@@ -12,6 +12,7 @@ bool BarPopupController::isSupported(PopupKind kind)
     case PopupKind::Network:
     case PopupKind::Bluetooth:
     case PopupKind::Volume:
+    case PopupKind::TrayMenu:
         return true;
     case PopupKind::None:
         return false;
@@ -21,19 +22,27 @@ bool BarPopupController::isSupported(PopupKind kind)
 
 void BarPopupController::open(PopupKind kind, int anchorX)
 {
+    openWithContext(kind, anchorX, {});
+}
+
+void BarPopupController::openWithContext(PopupKind kind, int anchorX,
+                                         const QString &contextKey)
+{
     if (kind == PopupKind::None) {
         close();
         return;
     }
     if (!isSupported(kind))
         return;
-    if (m_kind == kind && m_anchorX == anchorX && m_open && !m_closing)
+    if (m_kind == kind && m_anchorX == anchorX && m_contextKey == contextKey
+        && m_open && !m_closing)
         return;
     m_kind = kind;
     m_open = true;
     m_closing = false;
     m_surfaceRequired = true;
     m_anchorX = anchorX;
+    m_contextKey = contextKey;
     emit changed();
 }
 
@@ -43,7 +52,7 @@ void BarPopupController::toggle(PopupKind kind, int anchorX)
         close();
         return;
     }
-    open(kind, anchorX);
+    openWithContext(kind, anchorX, {});
 }
 
 void BarPopupController::toggleAstreaMenu(int anchorX)
@@ -66,6 +75,15 @@ void BarPopupController::toggleVolume(int anchorX)
     toggle(PopupKind::Volume, anchorX);
 }
 
+void BarPopupController::toggleTrayMenu(int anchorX, const QString &contextKey)
+{
+    if (m_kind == PopupKind::TrayMenu && m_contextKey == contextKey && m_open && !m_closing) {
+        close();
+        return;
+    }
+    openWithContext(PopupKind::TrayMenu, anchorX, contextKey);
+}
+
 void BarPopupController::close()
 {
     if (!m_surfaceRequired || m_closing)
@@ -84,6 +102,7 @@ void BarPopupController::completeClose()
     m_surfaceRequired = false;
     m_kind = PopupKind::None;
     m_anchorX = 0;
+    m_contextKey.clear();
     emit changed();
 }
 
@@ -96,5 +115,6 @@ void BarPopupController::clearForOutput()
     m_surfaceRequired = false;
     m_kind = PopupKind::None;
     m_anchorX = 0;
+    m_contextKey.clear();
     emit changed();
 }

@@ -19,6 +19,9 @@ class AudioService;
 class BluetoothService;
 class NetworkService;
 }
+namespace Astrea::StatusNotifier {
+class StatusNotifierService;
+}
 
 class BarSurfaceBundle : public QObject {
     Q_OBJECT
@@ -29,7 +32,8 @@ public:
                      WorkspaceModel *workspaceModel, Astrea::System::AudioService *audioService,
                      Astrea::System::NetworkService *networkService,
                      Astrea::System::BluetoothService *bluetoothService,
-                     QObject *parent = nullptr);
+                     QObject *parent = nullptr,
+                     Astrea::StatusNotifier::StatusNotifierService *statusNotifier = nullptr);
     ~BarSurfaceBundle() override;
 
     virtual bool initialize(QString *errorOut = nullptr);
@@ -53,6 +57,10 @@ private:
                                 QString *errorOut, bool sizeWindow);
     bool configureSurface(QQuickWindow *window, BarSurfaceKind kind, QString *errorOut);
     void syncPopupMapping();
+private slots:
+    void syncTooltipMapping();
+
+private:
     void destroyWindow(QPointer<QQuickWindow> &window);
 
     QPointer<QScreen> m_screen;
@@ -63,12 +71,14 @@ private:
     Astrea::System::AudioService *m_audioService = nullptr;
     Astrea::System::NetworkService *m_networkService = nullptr;
     Astrea::System::BluetoothService *m_bluetoothService = nullptr;
+    Astrea::StatusNotifier::StatusNotifierService *m_statusNotifier = nullptr;
     BarPopupController *m_popupController = nullptr;
     BarLayoutMetrics *m_layoutMetrics = nullptr;
     QPointer<QQuickWindow> m_reserveWindow;
     QPointer<QQuickWindow> m_launcherWindow;
     QPointer<QQuickWindow> m_statusWindow;
     QPointer<QQuickWindow> m_popupWindow;
+    QPointer<QQuickWindow> m_tooltipWindow;
     bool m_layerConfigurationRequested = false;
     bool m_mapped = false;
     bool m_barEnabled = true;

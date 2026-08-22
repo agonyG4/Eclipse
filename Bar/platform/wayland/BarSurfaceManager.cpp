@@ -18,7 +18,8 @@ BarSurfaceManager::BarSurfaceManager(QGuiApplication &application, QQmlApplicati
                                      Astrea::System::NetworkService *networkService,
                                      Astrea::System::BluetoothService *bluetoothService,
                                      QObject *parent,
-                                     BundleFactory bundleFactory)
+                                     BundleFactory bundleFactory,
+                                     Astrea::StatusNotifier::StatusNotifierService *statusNotifier)
     : QObject(parent)
     , m_application(application)
     , m_engine(engine)
@@ -28,13 +29,14 @@ BarSurfaceManager::BarSurfaceManager(QGuiApplication &application, QQmlApplicati
     , m_audioService(audioService)
     , m_networkService(networkService)
     , m_bluetoothService(bluetoothService)
+    , m_statusNotifier(statusNotifier)
     , m_bundleFactory(std::move(bundleFactory))
 {
     if (!m_bundleFactory) {
         m_bundleFactory = [this](QScreen *screen, QObject *parent) {
             return new BarSurfaceBundle(screen, &m_engine, m_barController, m_clockService,
                                         m_workspaceModel, m_audioService, m_networkService,
-                                        m_bluetoothService, parent);
+                                        m_bluetoothService, parent, m_statusNotifier);
         };
     }
     connect(&m_application, &QGuiApplication::screenAdded,

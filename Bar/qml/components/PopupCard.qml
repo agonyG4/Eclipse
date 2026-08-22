@@ -9,8 +9,8 @@ Rectangle {
     implicitWidth: 200
     property int cardPadding: 18
     property int contentSpacing: 14
-    property color backgroundColor: theme.popupBackground
-    property color borderColor: theme.popupBorder
+    property color backgroundColor: theme.background
+    property color borderColor: theme.border
     implicitHeight: content.implicitHeight + cardPadding * 2
     width: implicitWidth
     height: implicitHeight

@@ -25,6 +25,7 @@ Window {
         id: launcherPill
         objectName: "launcherPill"
         interactive: false
+        spacing: theme.spacing
         horizontalPadding: barGeometry ? barGeometry.sidePadding : 10
 
         TopbarIndicator {
@@ -35,7 +36,7 @@ Window {
             anchorItem: launcherPill
             anchorOffset: barGeometry ? barGeometry.launcherLeftMargin : 8
             fixedWidth: 28
-            height: 34
+            height: 28
             backgroundMargin: 0
             backgroundRadius: theme.shellRadiusMedium
 
@@ -55,13 +56,9 @@ Window {
 
         WorkspaceStrip {
             id: workspaceStrip
+            objectName: "workspaceStrip"
             workspaceModel: window.workspaceModel
-            activationAvailable: window.barController && window.barController.workspaceController
-                ? window.barController.workspaceController.activationAvailable : false
-            onWorkspaceActivated: workspaceId => {
-                if (window.barController && window.barController.workspaceController)
-                    window.barController.workspaceController.activateWorkspace(workspaceId)
-            }
+            activationAvailable: false
         }
     }
 }

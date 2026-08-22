@@ -1,5 +1,4 @@
 #include "core/BarClockService.hpp"
-#include "core/BarController.hpp"
 #include "core/BarLayoutMetrics.hpp"
 #include "core/BarPopupController.hpp"
 #include "core/WorkspaceModel.hpp"
@@ -137,34 +136,6 @@ private:
     bool m_scanning = true;
 };
 
-class FakeWorkspaceController final : public QObject {
-    Q_OBJECT
-    Q_PROPERTY(bool activationAvailable READ activationAvailable NOTIFY activationAvailableChanged)
-
-public:
-    explicit FakeWorkspaceController(QObject *parent = nullptr) : QObject(parent) {}
-
-    bool activationAvailable() const { return m_activationAvailable; }
-    const QString &lastActivation() const { return m_lastActivation; }
-
-    Q_INVOKABLE bool activateWorkspace(const QString &stableId)
-    {
-        if (!m_activationAvailable)
-            return false;
-        m_lastActivation = stableId;
-        emit activated(stableId);
-        return true;
-    }
-
-signals:
-    void activationAvailableChanged();
-    void activated(QString stableId);
-
-private:
-    bool m_activationAvailable = true;
-    QString m_lastActivation;
-};
-
 class BarQmlSmokeTest final : public QObject {
     Q_OBJECT
 
@@ -183,7 +154,7 @@ private slots:
     void launcherAndStatusUsePerIndicatorHitTargets();
     void indicatorGlyphsMatchReferenceStates();
     void workspaceDelegatesExposeReferenceHitboxes();
-    void workspaceClickActivatesStableProtocolId();
+    void workspaceActivationIsTruthfullyUnavailable();
     void popupVisualsUseNativeServiceInputs();
     void volumeUiDisablesWhenDefaultStateUnavailable();
 
@@ -338,17 +309,17 @@ void BarQmlSmokeTest::barSegmentUsesBorealisInteractionTokens()
 
     QTest::mouseMove(&window, QPoint(30, 25));
     QCoreApplication::processEvents();
-    QTRY_COMPARE_WITH_TIMEOUT(color(), QColor::fromRgbF(1, 1, 1, 0.08), 500);
+    QTRY_COMPARE_WITH_TIMEOUT(color(), QColor::fromRgbF(0, 0, 0, 0.06), 500);
     QTRY_COMPARE_WITH_TIMEOUT(borderColor(), QColor::fromRgbF(1, 1, 1, 0.28), 500);
 
     QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, QPoint(30, 25));
     QCoreApplication::processEvents();
-    QTRY_COMPARE_WITH_TIMEOUT(color(), QColor::fromRgbF(1, 1, 1, 0.12), 500);
+    QTRY_COMPARE_WITH_TIMEOUT(color(), QColor::fromRgbF(0, 0, 0, 0.06), 500);
     QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, QPoint(30, 25));
 
     segment->setProperty("active", true);
     QCoreApplication::processEvents();
-    QTRY_COMPARE_WITH_TIMEOUT(color(), QColor::fromRgbF(1, 1, 1, 0.15), 500);
+    QTRY_COMPARE_WITH_TIMEOUT(color(), QColor::fromRgbF(0, 0, 0, 0.06), 500);
     delete object;
 }
 
@@ -462,6 +433,28 @@ void BarQmlSmokeTest::popupSurfaceUsesProductionClampAndClosingLifecycle()
     QVERIFY(overlay != nullptr);
     QObject *menu = overlay->findChild<QObject *>(QStringLiteral("astreaMenu"));
     QVERIFY(menu != nullptr);
+    QCOMPARE(overlay->property("hiddenScale").toReal(), 0.97);
+    QCOMPARE(overlay->property("fadeDuration").toInt(), 180);
+    QCOMPARE(overlay->property("scaleDuration").toInt(), 220);
+    QCOMPARE(menu->property("cardPadding").toInt(), 12);
+    QCOMPARE(menu->property("contentSpacing").toInt(), 4);
+    QCOMPARE(menu->property("radius").toReal(), 14.0);
+    QCOMPARE(menu->property("backgroundColor").value<QColor>(),
+             QColor::fromRgbF(0, 0, 0, 0.06));
+    QCOMPARE(menu->property("borderColor").value<QColor>(),
+             QColor::fromRgbF(1, 1, 1, 0.14));
+    QObject *enterFade = overlay->findChild<QObject *>(QStringLiteral("popupEnterFade"));
+    QObject *enterScale = overlay->findChild<QObject *>(QStringLiteral("popupEnterScale"));
+    QObject *exitFade = overlay->findChild<QObject *>(QStringLiteral("popupExitFade"));
+    QObject *exitScale = overlay->findChild<QObject *>(QStringLiteral("popupExitScale"));
+    QVERIFY(enterFade != nullptr);
+    QVERIFY(enterScale != nullptr);
+    QVERIFY(exitFade != nullptr);
+    QVERIFY(exitScale != nullptr);
+    QCOMPARE(enterFade->property("duration").toInt(), 180);
+    QCOMPARE(enterScale->property("duration").toInt(), 220);
+    QCOMPARE(exitFade->property("duration").toInt(), 180);
+    QCOMPARE(exitScale->property("duration").toInt(), 220);
 
     popup.open(BarPopupController::PopupKind::AstreaMenu, 96);
     QCoreApplication::processEvents();
@@ -494,6 +487,7 @@ void BarQmlSmokeTest::popupEntersAndCompletesAnimation()
         {QStringLiteral("outputHeight"), 700},
     });
     QVERIFY(overlay != nullptr);
+    QVERIFY(overlay->findChild<QObject *>(QStringLiteral("clockPopup")) == nullptr);
     QObject *menu = overlay->findChild<QObject *>(QStringLiteral("astreaMenu"));
     QVERIFY(menu != nullptr);
 
@@ -580,11 +574,13 @@ void BarQmlSmokeTest::clockUsesReferenceHorizontalStructure()
     });
     QVERIFY(status != nullptr);
     QObject *clockObject = status->findChild<QObject *>(QStringLiteral("clock"));
+    QObject *clockButton = status->findChild<QObject *>(QStringLiteral("clockButton"));
     QObject *date = status->findChild<QObject *>(QStringLiteral("clockDate"));
     QObject *separator = status->findChild<QObject *>(QStringLiteral("clockSeparator"));
     QObject *time = status->findChild<QObject *>(QStringLiteral("clockTime"));
     QObject *row = status->findChild<QObject *>(QStringLiteral("clockRow"));
     QVERIFY(clockObject != nullptr);
+    QVERIFY(clockButton != nullptr);
     QVERIFY(date != nullptr);
     QVERIFY(separator != nullptr);
     QVERIFY(time != nullptr);
@@ -593,6 +589,10 @@ void BarQmlSmokeTest::clockUsesReferenceHorizontalStructure()
     QVERIFY(separator->property("height").toInt() > separator->property("width").toInt());
     QCOMPARE(date->property("y").toInt(), time->property("y").toInt());
     QCOMPARE(row->property("spacing").toInt(), 0);
+    QCOMPARE(clockObject->property("height").toInt(), 36);
+    QVERIFY(!clockButton->property("interactive").toBool());
+    QCOMPARE(date->property("width").toReal() - date->property("implicitWidth").toReal(), 8.0);
+    QCOMPARE(time->property("width").toReal() - time->property("implicitWidth").toReal(), 16.0);
     QCOMPARE(QQmlProperty(date, QStringLiteral("font.family")).read().toString(),
              QStringLiteral("Inter Display"));
     QCOMPARE(QQmlProperty(date, QStringLiteral("font.weight")).read().toInt(),
@@ -669,6 +669,29 @@ void BarQmlSmokeTest::launcherAndStatusUsePerIndicatorHitTargets()
     QVERIFY(!launcherPill->property("interactive").toBool());
     QVERIFY(logoButton->property("interactive").toBool());
     QCOMPARE(logoButton->property("fixedWidth").toInt(), 28);
+    QCOMPARE(logoButton->property("width").toInt(), 28);
+    QCOMPARE(logoButton->property("height").toInt(), 28);
+    QObject *logoImage = launcher->findChild<QObject *>(QStringLiteral("logoImage"));
+    QVERIFY(logoImage != nullptr);
+    QCOMPARE(logoImage->property("width").toInt(), 18);
+    QCOMPARE(logoImage->property("height").toInt(), 18);
+    QCOMPARE(logoImage->property("opacity").toReal(), 0.80);
+
+    auto *launcherWindow = qobject_cast<QQuickWindow *>(launcher);
+    QVERIFY(launcherWindow != nullptr);
+    launcherWindow->show();
+    QTest::qWait(20);
+    QTest::mouseClick(launcherWindow, Qt::LeftButton, Qt::NoModifier,
+                      QPoint(qMax(0, launcherWindow->width() - 4), launcherWindow->height() / 2));
+    QCoreApplication::processEvents();
+    QVERIFY(!popup.isOpen());
+    const QPointF logoPoint = qobject_cast<QQuickItem *>(logoButton)->mapToItem(
+        launcherWindow->contentItem(), QPointF(logoButton->property("width").toReal() / 2,
+                                               logoButton->property("height").toReal() / 2));
+    QTest::mouseClick(launcherWindow, Qt::LeftButton, Qt::NoModifier, logoPoint.toPoint());
+    QTRY_VERIFY_WITH_TIMEOUT(popup.isOpen(), 500);
+    QCOMPARE(popup.kind(), BarPopupController::PopupKind::AstreaMenu);
+    popup.clearForOutput();
 
     QQmlComponent statusComponent(
         &engine, QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Bar/qml/StatusSurface.qml")));
@@ -689,8 +712,45 @@ void BarQmlSmokeTest::launcherAndStatusUsePerIndicatorHitTargets()
                                 QStringLiteral("clock")}) {
         QObject *indicator = status->findChild<QObject *>(name);
         QVERIFY2(indicator != nullptr, qPrintable(name));
+        if (name == QStringLiteral("clock"))
+            continue;
         QVERIFY2(indicator->property("interactive").toBool(), qPrintable(name));
     }
+
+    QObject *networkIndicator = status->findChild<QObject *>(QStringLiteral("networkIndicator"));
+    QVERIFY(networkIndicator != nullptr);
+    auto *statusWindow = qobject_cast<QQuickWindow *>(status);
+    QVERIFY(statusWindow != nullptr);
+    statusWindow->show();
+    QTest::qWait(20);
+    auto *clockItem = qobject_cast<QQuickItem *>(status->findChild<QObject *>(QStringLiteral("clock")));
+    QVERIFY(clockItem != nullptr);
+    const QPointF clockPoint = clockItem->mapToItem(
+        statusWindow->contentItem(), QPointF(clockItem->width() / 2, clockItem->height() / 2));
+    QTest::mouseClick(statusWindow, Qt::LeftButton, Qt::NoModifier, clockPoint.toPoint());
+    QCoreApplication::processEvents();
+    QVERIFY(!popup.isOpen());
+    const auto clickIndicator = [statusWindow](QObject *object) {
+        auto *item = qobject_cast<QQuickItem *>(object);
+        QVERIFY(item != nullptr);
+        const QPointF point = item->mapToItem(
+            statusWindow->contentItem(), QPointF(item->width() / 2, item->height() / 2));
+        QTest::mouseClick(statusWindow, Qt::LeftButton, Qt::NoModifier, point.toPoint());
+        QCoreApplication::processEvents();
+    };
+    clickIndicator(networkIndicator);
+    QTRY_COMPARE_WITH_TIMEOUT(popup.kind(), BarPopupController::PopupKind::Network, 500);
+    QVERIFY(networkIndicator->property("active").toBool());
+    popup.close();
+    QCoreApplication::processEvents();
+    QVERIFY(networkIndicator->property("active").toBool());
+    popup.completeClose();
+    clickIndicator(status->findChild<QObject *>(QStringLiteral("bluetoothIndicator")));
+    QTRY_COMPARE_WITH_TIMEOUT(popup.kind(), BarPopupController::PopupKind::Bluetooth, 500);
+    popup.completeClose();
+    clickIndicator(status->findChild<QObject *>(QStringLiteral("volumeIndicator")));
+    QTRY_COMPARE_WITH_TIMEOUT(popup.kind(), BarPopupController::PopupKind::Volume, 500);
+    popup.clearForOutput();
 
     delete status;
     delete launcher;
@@ -732,6 +792,11 @@ void BarQmlSmokeTest::indicatorGlyphsMatchReferenceStates()
     QObject *scanPulse = bluetoothIndicator->findChild<QObject *>(QStringLiteral("scanPulse"));
     QVERIFY(bluetoothIcon != nullptr);
     QVERIFY(scanPulse != nullptr);
+    QCOMPARE(scanPulse->property("width").toReal(), 16.0);
+    QCOMPARE(scanPulse->property("height").toReal(), 16.0);
+    QCOMPARE(QQmlProperty(scanPulse, QStringLiteral("border.width")).read().toReal(), 1.5);
+    QCOMPARE(bluetoothIndicator->property("scanPulseAnimationDuration").toInt(), 900);
+    QCOMPARE(bluetoothIndicator->property("scanPulseScaleEasing").toInt(), 6);
     bluetooth.setState(false, false, false, 0, false);
     QCoreApplication::processEvents();
     QCOMPARE(bluetoothIcon->property("text").toString(), QStringLiteral("󰂲"));
@@ -781,17 +846,21 @@ void BarQmlSmokeTest::workspaceDelegatesExposeReferenceHitboxes()
             "qrc:/qt/qml/Astrea/Shell/Bar/qml/components/WorkspaceStrip.qml")));
     QObject *object = component.createWithInitialProperties({
         {QStringLiteral("workspaceModel"), QVariant::fromValue(&model)},
-        {QStringLiteral("activationAvailable"), true},
+        {QStringLiteral("activationAvailable"), false},
     });
     QVERIFY(object != nullptr);
     QCoreApplication::processEvents();
     QCOMPARE(model.rowCount(), 3);
     QCOMPARE(object->property("workspaceModel").value<QObject *>(),
              static_cast<QObject *>(&model));
+    QVERIFY(object->property("clip").toBool());
     QObject *repeater = object->findChild<QObject *>(QStringLiteral("workspaceRepeater"));
     QVERIFY(repeater != nullptr);
     const int delegateCount = repeater->property("count").toInt();
     QCOMPARE(delegateCount, 3);
+    QObject *row = object->findChild<QObject *>(QStringLiteral("workspaceRow"));
+    QVERIFY(row != nullptr);
+    QCOMPARE(row->property("spacing").toReal(), 6.0);
     QList<QObject *> hitboxes;
     for (int i = 0; i < delegateCount; ++i) {
         QQuickItem *delegate = nullptr;
@@ -804,14 +873,29 @@ void BarQmlSmokeTest::workspaceDelegatesExposeReferenceHitboxes()
     }
     QCOMPARE(hitboxes.size(), 3);
     for (QObject *hitbox : hitboxes) {
-        QVERIFY(hitbox->property("hoverEnabled").toBool());
+        QVERIFY(!hitbox->property("hoverEnabled").toBool());
         QCOMPARE(hitbox->property("cursorShape").toInt(),
-                 static_cast<int>(Qt::PointingHandCursor));
+                 static_cast<int>(Qt::ArrowCursor));
     }
+    QQuickItem *activeDelegate = nullptr;
+    QQuickItem *inactiveDelegate = nullptr;
+    QVERIFY(QMetaObject::invokeMethod(repeater, "itemAt", Qt::DirectConnection,
+                                      Q_RETURN_ARG(QQuickItem *, activeDelegate), Q_ARG(int, 0)));
+    QVERIFY(QMetaObject::invokeMethod(repeater, "itemAt", Qt::DirectConnection,
+                                      Q_RETURN_ARG(QQuickItem *, inactiveDelegate), Q_ARG(int, 1)));
+    QCOMPARE(activeDelegate->property("width").toInt(), 32);
+    QCOMPARE(inactiveDelegate->property("width").toInt(), 10);
+    QCOMPARE(activeDelegate->findChild<QObject *>(QStringLiteral("workspaceDot"))
+                 ->property("color").value<QColor>(), QColor(QStringLiteral("#ffffffff")));
+    QCOMPARE(inactiveDelegate->findChild<QObject *>(QStringLiteral("workspaceDot"))
+                 ->property("color").value<QColor>(), QColor::fromRgbF(1, 1, 1, 0.22));
+    QCOMPARE(activeDelegate->property("workspaceWidthAnimationDuration").toInt(), 200);
+    QCOMPARE(activeDelegate->property("workspaceColorAnimationDuration").toInt(), 180);
+    QCOMPARE(activeDelegate->property("workspaceWidthAnimationEasing").toInt(), 22);
     delete object;
 }
 
-void BarQmlSmokeTest::workspaceClickActivatesStableProtocolId()
+void BarQmlSmokeTest::workspaceActivationIsTruthfullyUnavailable()
 {
     QQmlEngine engine;
     BarLayoutMetrics metrics;
@@ -821,16 +905,11 @@ void BarQmlSmokeTest::workspaceClickActivatesStableProtocolId()
         {QStringLiteral("1"), true, true, false, {}, QStringLiteral("typhon.workspace.1")},
         {QStringLiteral("2"), false, false, false, {}, QStringLiteral("typhon.workspace.2")},
     });
-    FakeWorkspaceController workspaceController;
-    BarController barController(nullptr, nullptr, nullptr, &model);
-    barController.setWorkspaceController(&workspaceController);
-    QSignalSpy activationSpy(&workspaceController, &FakeWorkspaceController::activated);
 
     QQmlComponent component(
         &engine, QUrl(QStringLiteral(
             "qrc:/qt/qml/Astrea/Shell/Bar/qml/LauncherSurface.qml")));
     auto *window = qobject_cast<QQuickWindow *>(component.createWithInitialProperties({
-        {QStringLiteral("barController"), QVariant::fromValue(&barController)},
         {QStringLiteral("barGeometry"), QVariant::fromValue(&metrics)},
         {QStringLiteral("popupController"), QVariant::fromValue(&popup)},
         {QStringLiteral("workspaceModel"), QVariant::fromValue(&model)},
@@ -840,6 +919,9 @@ void BarQmlSmokeTest::workspaceClickActivatesStableProtocolId()
     window->show();
     QTest::qWait(20);
 
+    QObject *workspaceStrip = window->findChild<QObject *>(QStringLiteral("workspaceStrip"));
+    QVERIFY(workspaceStrip != nullptr);
+    QSignalSpy activationSpy(workspaceStrip, SIGNAL(workspaceActivated(QString)));
     QObject *repeater = window->findChild<QObject *>(QStringLiteral("workspaceRepeater"));
     QVERIFY(repeater != nullptr);
     QQuickItem *delegate = nullptr;
@@ -854,8 +936,8 @@ void BarQmlSmokeTest::workspaceClickActivatesStableProtocolId()
                                                   QPointF(hitbox->width() / 2.0,
                                                           hitbox->height() / 2.0));
     QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, localPoint.toPoint());
-    QTRY_COMPARE_WITH_TIMEOUT(activationSpy.count(), 1, 500);
-    QCOMPARE(workspaceController.lastActivation(), QStringLiteral("typhon.workspace.2"));
+    QTest::qWait(50);
+    QCOMPARE(activationSpy.count(), 0);
     delete window;
 }
 

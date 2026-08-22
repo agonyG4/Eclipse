@@ -71,8 +71,8 @@ QtObject {
     readonly property color iconWarning: shellIconWarning
     readonly property color iconAccent: shellIconAccent
 
-    readonly property color popupBackground: shellSurfaceElevated
-    readonly property color popupBorder: shellBorder
+    readonly property color popupBackground: background
+    readonly property color popupBorder: border
 
     readonly property real shellRadiusLarge: 14
     readonly property real shellRadiusMedium: 8

@@ -7,11 +7,17 @@ Item {
 
     property var workspaceModel: null
     property bool activationAvailable: false
+    readonly property int workspaceCount: repeater.count
+    readonly property int reservedWorkspaceSlots: 10
+    readonly property int reservedWidth: theme.workspaceActiveWidth
+        + Math.max(0, reservedWorkspaceSlots - 1)
+            * (theme.workspaceDotSize + theme.spacingSmall)
     signal workspaceActivated(string workspaceId)
     implicitWidth: row.implicitWidth
     implicitHeight: theme.workspaceDotSize
     width: implicitWidth
     height: implicitHeight
+    clip: true
 
     Row {
         id: row
@@ -19,38 +25,45 @@ Item {
         spacing: theme.spacingSmall
         anchors.verticalCenter: parent.verticalCenter
         Repeater {
+            id: repeater
             objectName: "workspaceRepeater"
             model: root.workspaceModel
 
             delegate: Item {
                 objectName: "workspaceDelegate"
                 required property string id
-                    required property bool active
-                    required property bool occupied
-                    required property bool urgent
-                    required property string protocolId
-                    property string workspaceId: protocolId.length > 0 ? protocolId : id
+                required property bool active
+                required property bool occupied
+                required property bool urgent
+                required property string protocolId
+                property string workspaceId: protocolId.length > 0 ? protocolId : id
+                readonly property int workspaceWidthAnimationDuration: theme.animationNormal
+                readonly property int workspaceColorAnimationDuration: theme.animationNormal - 20
+                readonly property int workspaceWidthAnimationEasing: Easing.OutExpo
 
                 width: active ? theme.workspaceActiveWidth : theme.workspaceDotSize
                 height: theme.workspaceDotSize
 
+                Behavior on width {
+                    NumberAnimation {
+                        objectName: "workspaceWidthAnimation"
+                        duration: theme.animationNormal
+                        easing.type: Easing.OutExpo
+                    }
+                }
+
                 Rectangle {
+                    objectName: "workspaceDot"
                     anchors.centerIn: parent
                     width: parent.width
                     height: theme.workspaceDotSize
                     radius: height / 2
-                    color: urgent ? theme.shellIconWarning
-                        : active ? theme.workspaceActive
-                        : occupied ? theme.workspaceInactive
-                        : theme.shellIconMuted
-                    Behavior on width {
-                        NumberAnimation {
-                            duration: theme.animationNormal
-                            easing.type: Easing.OutExpo
-                        }
-                    }
+                    color: active ? theme.workspaceActive : theme.workspaceInactive
                     Behavior on color {
-                        ColorAnimation { duration: theme.animationNormal - 20 }
+                        ColorAnimation {
+                            objectName: "workspaceColorAnimation"
+                            duration: theme.animationNormal - 20
+                        }
                     }
                 }
 

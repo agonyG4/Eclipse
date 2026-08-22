@@ -8,14 +8,16 @@ Item {
     default property alias contentData: content.data
     property bool interactive: false
     property bool active: false
-    property int horizontalPadding: 12
+    property int segmentHeight: theme.pillHeight
+    property int fixedWidth: 0
+    property int horizontalPadding: 10
     property alias spacing: content.spacing
     signal clicked()
 
     implicitWidth: content.implicitWidth + horizontalPadding * 2
-    implicitHeight: theme.pillHeight
-    width: implicitWidth
-    height: implicitHeight
+    implicitHeight: segmentHeight
+    width: fixedWidth > 0 ? fixedWidth : implicitWidth
+    height: segmentHeight
     opacity: 0
 
     function reveal() { opacity = 1 }
@@ -28,13 +30,9 @@ Item {
         objectName: "barSegmentSurface"
         anchors.fill: parent
         radius: theme.shellRadiusLarge - 2
-        color: root.active ? theme.shellActive
-            : mouse.pressed ? theme.shellPressed
-            : hoverHandler.hovered ? theme.shellHover
-            : theme.shellBackground
+        color: theme.shellBackground
         border.color: hoverHandler.hovered ? theme.shellBorderHover : theme.shellBorder
         border.width: 1
-        Behavior on color { ColorAnimation { duration: theme.animationQuick } }
         Behavior on border.color { ColorAnimation { duration: theme.animationNormal } }
     }
 

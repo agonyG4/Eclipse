@@ -7,6 +7,11 @@ IndicatorButton {
     property int popupKind: 0
     property Item anchorItem: null
     property int anchorOffset: 0
+    readonly property bool popupActive: root.popupController
+        ? root.popupController.surfaceRequired && root.popupController.kind === root.popupKind
+        : false
+
+    active: root.popupActive
 
     signal activated(real anchorX)
 
@@ -20,7 +25,7 @@ IndicatorButton {
     }
 
     function togglePopup(anchorX) {
-        if (!root.popupController)
+        if (!root.popupController || root.popupKind === 0)
             return
         const x = root.resolvedAnchorX()
         switch (root.popupKind) {

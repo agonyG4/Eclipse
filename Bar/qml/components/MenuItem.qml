@@ -57,7 +57,7 @@ Rectangle {
 
         Text {
             anchors.verticalCenter: parent.verticalCenter
-            width: parent.width - x
+            width: parent.width - x - theme.spacingLarge
             text: root.text
             color: mouse.containsMouse && root.enabled
                 ? theme.shellTextActive : theme.shellTextSecondary

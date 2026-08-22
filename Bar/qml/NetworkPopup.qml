@@ -13,7 +13,9 @@ PopupCard {
     cardPadding: 18
     contentSpacing: 14
 
-    readonly property bool connected: Boolean(root.networkService && root.networkService.connected)
+    readonly property bool connected: Boolean(root.networkService
+        && root.networkService.available !== false
+        && root.networkService.connected)
     readonly property int connectionType: root.networkService
         ? root.networkService.connectionType : 0
     readonly property string connectionTitle: root.connected
@@ -35,7 +37,7 @@ PopupCard {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "󰇚"
-                color: theme.shellIconMuted
+                color: Qt.rgba(1, 1, 1, 0.40)
                 font { family: theme.iconFontFamily; pixelSize: theme.fontSizeIconLarge }
             }
             Column {
@@ -59,7 +61,7 @@ PopupCard {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "󰕒"
-                color: theme.shellIconMuted
+                color: Qt.rgba(1, 1, 1, 0.40)
                 font { family: theme.iconFontFamily; pixelSize: theme.fontSizeIconLarge }
             }
             Column {

@@ -16,6 +16,9 @@ Window {
     property int outputHeight: 1
     property int sidePadding: barGeometry ? barGeometry.popupSidePadding : 8
     property int topOffset: barGeometry ? barGeometry.popupTop : 54
+    readonly property real hiddenScale: 0.97
+    readonly property int fadeDuration: 180
+    readonly property int scaleDuration: 220
     visible: false
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint
@@ -45,23 +48,6 @@ Window {
         z: 2
         barController: window.barController
         popupController: window.popupController
-        opacity: 0
-        scale: 0.97
-    }
-
-    ClockPopup {
-        id: clockPopup
-        objectName: "clockPopup"
-        visible: popupController && popupController.surfaceRequired
-                  && popupController.kind === 2
-        width: barGeometry ? barGeometry.popupWidth(outputWidth, implicitWidth, sidePadding)
-                           : implicitWidth
-        x: popupController && barGeometry
-            ? barGeometry.popupX(outputWidth, width, popupController.anchorX, sidePadding)
-            : sidePadding
-        y: topOffset
-        z: 2
-        clockService: window.clockService
         opacity: 0
         scale: 0.97
     }
@@ -122,7 +108,6 @@ Window {
     function popupForKind(kind) {
         switch (kind) {
         case 1: return astreaMenu
-        case 2: return clockPopup
         case 3: return networkPopup
         case 4: return bluetoothPopup
         case 5: return volumePopup
@@ -133,36 +118,41 @@ Window {
     ParallelAnimation {
         id: popupEnter
         NumberAnimation {
+            objectName: "popupEnterFade"
             target: window.activePopup
             property: "opacity"
             from: 0
             to: 1
-            duration: theme.animationPopover
+            duration: window.fadeDuration
             easing.type: Easing.OutCubic
         }
         NumberAnimation {
+            objectName: "popupEnterScale"
             target: window.activePopup
             property: "scale"
-            from: 0.97
+            from: window.hiddenScale
             to: 1
-            duration: theme.animationPopover
-            easing.type: Easing.OutCubic
+            duration: window.scaleDuration
+            easing.type: Easing.OutBack
         }
     }
 
     ParallelAnimation {
         id: popupExit
         NumberAnimation {
+            objectName: "popupExitFade"
             target: window.activePopup
             property: "opacity"
             to: 0
-            duration: 180
+            duration: window.fadeDuration
+            easing.type: Easing.OutCubic
         }
         NumberAnimation {
+            objectName: "popupExitScale"
             target: window.activePopup
             property: "scale"
-            to: 0.97
-            duration: 220
+            to: window.hiddenScale
+            duration: window.scaleDuration
             easing.type: Easing.OutCubic
         }
         onFinished: {
@@ -189,7 +179,7 @@ Window {
             activePopup = popupForKind(popupController.kind)
             if (activePopup) {
                 activePopup.opacity = 0
-                activePopup.scale = 0.97
+                activePopup.scale = window.hiddenScale
                 popupEnter.restart()
             }
         } else {

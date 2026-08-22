@@ -10,8 +10,11 @@ TopbarIndicator {
     fixedWidth: 28
     height: 34
 
-    readonly property bool netConnected: Boolean(root.networkService && root.networkService.connected)
-    readonly property int netType: root.networkService ? root.networkService.connectionType : 0
+    readonly property bool netConnected: Boolean(root.networkService
+        && root.networkService.available !== false
+        && root.networkService.connected)
+    readonly property int netType: root.netConnected && root.networkService
+        ? root.networkService.connectionType : 0
     readonly property bool wifiAvailable: Boolean(root.networkService && root.networkService.wifiAvailable)
 
     Text {

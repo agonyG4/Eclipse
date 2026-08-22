@@ -9,14 +9,19 @@ TopbarIndicator {
     objectName: "bluetoothIndicator"
     fixedWidth: 28
     height: 34
+    spacing: 5
 
     readonly property bool btAvailable: Boolean(root.bluetoothService
                                                  && root.bluetoothService.available
                                                  && root.bluetoothService.adapterAvailable)
-    readonly property bool btOn: Boolean(root.bluetoothService && root.bluetoothService.powered)
-    readonly property int connectedCount: root.bluetoothService
+    readonly property bool btOn: root.btAvailable
+        && Boolean(root.bluetoothService && root.bluetoothService.powered)
+    readonly property int connectedCount: root.btOn && root.bluetoothService
         ? root.bluetoothService.connectedCount : 0
-    readonly property bool scanning: Boolean(root.bluetoothService && root.bluetoothService.scanning)
+    readonly property bool scanning: root.btAvailable
+        && Boolean(root.bluetoothService && root.bluetoothService.scanning)
+    readonly property int scanPulseAnimationDuration: theme.animationPulse
+    readonly property int scanPulseScaleEasing: Easing.OutCubic
 
         Item {
             width: 16
@@ -35,12 +40,14 @@ TopbarIndicator {
             visible: root.scanning
 
             SequentialAnimation on opacity {
+                objectName: "scanPulseOpacityAnimation"
                 running: root.scanning
                 loops: Animation.Infinite
                 NumberAnimation { to: 0; duration: theme.animationPulse }
                 NumberAnimation { to: 0.9; duration: 0 }
             }
             SequentialAnimation on scale {
+                objectName: "scanPulseScaleAnimation"
                 running: root.scanning
                 loops: Animation.Infinite
                 NumberAnimation { to: 1.8; duration: theme.animationPulse; easing.type: Easing.OutCubic }

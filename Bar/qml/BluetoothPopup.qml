@@ -10,14 +10,16 @@ PopupCard {
     readonly property bool available: Boolean(root.bluetoothService
                                              && root.bluetoothService.available
                                              && root.bluetoothService.adapterAvailable)
-    readonly property bool powered: Boolean(root.bluetoothService && root.bluetoothService.powered)
-    readonly property bool scanning: Boolean(root.bluetoothService && root.bluetoothService.scanning)
+    readonly property bool powered: root.available
+        && Boolean(root.bluetoothService && root.bluetoothService.powered)
+    readonly property bool scanning: root.available
+        && Boolean(root.bluetoothService && root.bluetoothService.scanning)
     readonly property bool powerPending: Boolean(root.bluetoothService && root.bluetoothService.powerPending)
 
     objectName: "bluetoothPopupCard"
     implicitWidth: 280
     cardPadding: 18
-    contentSpacing: 8
+    contentSpacing: 14
 
     onVisibleChanged: {
         if (!root.bluetoothService)
@@ -94,6 +96,8 @@ PopupCard {
                 required property string objectPath
                 required property bool paired
                 required property bool connected
+                required property int rssi
+                required property int batteryPercent
 
                 width: root.width
                 height: 38
@@ -121,11 +125,29 @@ PopupCard {
                         text: name || "Bluetooth device"
                         color: connected ? theme.shellTextActive : theme.shellTextSecondary
                         width: parent.width - 28 - theme.spacingMedium
+                            - (deviceStatus.visible
+                                ? deviceStatus.implicitWidth + theme.spacingMedium : 0)
                         elide: Text.ElideRight
                         font {
                             family: theme.fontFamily
                             pixelSize: theme.fontSizeBody
                             weight: connected ? Font.DemiBold : Font.Normal
+                        }
+                    }
+
+                    Text {
+                        id: deviceStatus
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: batteryPercent >= 0 || rssi !== -1
+                        text: batteryPercent >= 0
+                            ? batteryPercent + "%"
+                              + (rssi !== -1 ? " · " + rssi + " dBm" : "")
+                            : rssi + " dBm"
+                        color: connected ? theme.shellTextLight : theme.shellTextDim
+                        font {
+                            family: theme.fontFamily
+                            pixelSize: theme.fontSizeCaption
                         }
                     }
                 }

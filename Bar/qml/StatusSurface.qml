@@ -34,7 +34,8 @@ Window {
         interactive: false
         horizontalPadding: barGeometry ? barGeometry.sidePadding : 10
         spacing: 0
-        width: barGeometry
+        clip: true
+        fixedWidth: barGeometry
             ? barGeometry.statusWidth(outputWidth, launcherWidth, Math.round(implicitWidth))
             : 0
 
@@ -65,10 +66,6 @@ Window {
         Clock {
             id: clock
             clockService: window.clockService
-            popupController: window.popupController
-            popupKind: 2
-            anchorItem: statusPill
-            anchorOffset: window.statusLeft
         }
     }
 }

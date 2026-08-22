@@ -4,7 +4,6 @@ set(ASTREA_BAR_QML_FILES
     "${CMAKE_CURRENT_LIST_DIR}/../qml/StatusSurface.qml"
     "${CMAKE_CURRENT_LIST_DIR}/../qml/PopupOverlaySurface.qml"
     "${CMAKE_CURRENT_LIST_DIR}/../qml/AstreaMenu.qml"
-    "${CMAKE_CURRENT_LIST_DIR}/../qml/ClockPopup.qml"
     "${CMAKE_CURRENT_LIST_DIR}/../qml/NetworkPopup.qml"
     "${CMAKE_CURRENT_LIST_DIR}/../qml/BluetoothPopup.qml"
     "${CMAKE_CURRENT_LIST_DIR}/../qml/VolumePopup.qml"
@@ -44,9 +43,6 @@ set_source_files_properties(
 set_source_files_properties(
     "${CMAKE_CURRENT_LIST_DIR}/../qml/AstreaMenu.qml"
     PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/AstreaMenu.qml")
-set_source_files_properties(
-    "${CMAKE_CURRENT_LIST_DIR}/../qml/ClockPopup.qml"
-    PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/ClockPopup.qml")
 set_source_files_properties(
     "${CMAKE_CURRENT_LIST_DIR}/../qml/NetworkPopup.qml"
     PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/NetworkPopup.qml")

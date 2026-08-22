@@ -43,6 +43,8 @@ PopupCard {
             border.width: 1
             border.color: root.muted ? Qt.rgba(1, 0.23, 0.19, 0.40)
                                      : Qt.rgba(1, 1, 1, 0.08)
+            Behavior on color { ColorAnimation { duration: theme.animationFast } }
+            Behavior on border.color { ColorAnimation { duration: theme.animationFast } }
 
             Text {
                 anchors.centerIn: parent
@@ -72,14 +74,14 @@ PopupCard {
         Text {
             anchors.verticalCenter: parent.verticalCenter
             text: "󰕿"
-            color: theme.shellIconMuted
+            color: Qt.rgba(1, 1, 1, 0.30)
             font { family: theme.iconFontFamily; pixelSize: theme.fontSizeTitle }
         }
 
         Item {
             id: sliderArea
             objectName: "volumeSlider"
-            width: parent.width - 14 - 14 - theme.spacingMedium
+            width: parent.width - 14 - 14 - 20
             height: 30
             anchors.verticalCenter: parent.verticalCenter
 
@@ -89,14 +91,25 @@ PopupCard {
                 width: parent.width
                 height: 5
                 radius: 3
-                color: theme.shellSeparator
+                color: Qt.rgba(1, 1, 1, 0.10)
 
                 Rectangle {
                     width: Math.max(radius * 2, track.width * Math.min(1, root.volume / 100))
                     height: parent.height
                     radius: parent.radius
-                    color: root.muted ? theme.shellIconMuted : theme.shellTextActive
-                    opacity: root.muted ? 0.65 : 0.75
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop {
+                            position: 0.0
+                            color: root.muted ? Qt.rgba(1, 1, 1, 0.15)
+                                               : Qt.rgba(1, 1, 1, 0.45)
+                        }
+                        GradientStop {
+                            position: 1.0
+                            color: root.muted ? Qt.rgba(1, 1, 1, 0.20)
+                                               : Qt.rgba(1, 1, 1, 0.90)
+                        }
+                    }
                     Behavior on width {
                         NumberAnimation { duration: theme.animationSlider; easing.type: Easing.OutCubic }
                     }
@@ -110,10 +123,18 @@ PopupCard {
                 width: sliderMouse.pressed ? 22 : sliderMouse.containsMouse ? 20 : 16
                 height: width
                 radius: width / 2
-                color: theme.shellTextActive
+                color: "white"
 
                 Behavior on width {
                     NumberAnimation { duration: theme.animationMicro; easing.type: Easing.OutCubic }
+                }
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: parent.radius
+                    color: "transparent"
+                    border.width: 1
+                    border.color: Qt.rgba(0, 0, 0, 0.15)
                 }
             }
 
@@ -144,7 +165,7 @@ PopupCard {
         Text {
             anchors.verticalCenter: parent.verticalCenter
             text: "󰕾"
-            color: theme.shellIconMuted
+            color: Qt.rgba(1, 1, 1, 0.30)
             font { family: theme.iconFontFamily; pixelSize: theme.fontSizeTitle }
         }
     }

@@ -7,6 +7,7 @@ enum class BarSurfaceKind {
     Launcher,
     Status,
     PopupOverlay,
+    TrayTooltip,
 };
 
 class BarSurfacePolicy final {
@@ -20,11 +21,14 @@ public:
     static constexpr int kSidePadding = 10;
     static constexpr int kPopupSidePadding = 8;
     static constexpr int kPopupTopOffset = 54;
+    static constexpr int kTrayTooltipHeight = 28;
+    static constexpr int kTrayTooltipTopMargin = 51;
 
     static AstreaLayerShellConfig reserve();
     static AstreaLayerShellConfig launcher();
     static AstreaLayerShellConfig status();
     static AstreaLayerShellConfig popupOverlay();
+    static AstreaLayerShellConfig trayTooltip();
 
     static int surfaceHeight(BarSurfaceKind kind);
     static int statusWidth(int outputWidth, int launcherWidth, int pillWidth);

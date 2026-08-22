@@ -10,6 +10,7 @@ Window {
     property var audioService: null
     property var networkService: null
     property var bluetoothService: null
+    property var statusNotifierService: null
     property var popupController: null
     property var barGeometry: null
     property int outputWidth: 1
@@ -105,6 +106,25 @@ Window {
         scale: 0.97
     }
 
+    TrayContextMenu {
+        id: trayMenu
+        objectName: "trayMenu"
+        visible: popupController && popupController.surfaceRequired
+                  && popupController.kind === 6
+        width: barGeometry ? barGeometry.popupWidth(outputWidth, implicitWidth, sidePadding)
+                           : implicitWidth
+        x: popupController && barGeometry
+            ? barGeometry.popupX(outputWidth, width, popupController.anchorX, sidePadding)
+            : sidePadding
+        y: topOffset
+        z: 2
+        trayService: window.statusNotifierService
+        popupController: window.popupController
+        contextKey: popupController ? popupController.contextKey : ""
+        opacity: 0
+        scale: 0.97
+    }
+
     property Item activePopup: null
 
     function popupForKind(kind) {
@@ -113,6 +133,7 @@ Window {
         case 3: return networkPopup
         case 4: return bluetoothPopup
         case 5: return volumePopup
+        case 6: return trayMenu
         default: return null
         }
     }

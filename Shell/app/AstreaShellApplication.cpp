@@ -16,6 +16,8 @@
 #include "platform/wayland/LayerShellHelper.hpp"
 #include "icons/AstreaIconProvider.hpp"
 #include "icons/AstreaIconTheme.hpp"
+#include "statusnotifier/StatusNotifierIconProvider.hpp"
+#include "statusnotifier/StatusNotifierService.hpp"
 #include "theme/ThemeController.hpp"
 #include "system/audio/AudioService.hpp"
 #include "system/network/NetworkService.hpp"
@@ -160,6 +162,9 @@ bool AstreaShellApplication::initializeQml()
     auto *iconProvider = new AstreaIconProvider;
     context->setContextProperty(QStringLiteral("AstreaIconProvider"), iconProvider);
     m_engine->addImageProvider(QStringLiteral("astrea-icon"), iconProvider);
+    auto *trayIconProvider = new Astrea::StatusNotifier::StatusNotifierIconProvider(
+        m_runtime->statusNotifier()->iconStore());
+    m_engine->addImageProvider(QStringLiteral("astrea-tray"), trayIconProvider);
     context->setContextProperty(QStringLiteral("DockController"), m_runtime->dockController());
     context->setContextProperty(QStringLiteral("AltTabController"),
                                 m_runtime->altTabController());
@@ -182,6 +187,8 @@ bool AstreaShellApplication::initializeQml()
                                 static_cast<QObject *>(m_runtime->networkService()));
     context->setContextProperty(QStringLiteral("BluetoothService"),
                                 static_cast<QObject *>(m_runtime->bluetoothService()));
+    context->setContextProperty(QStringLiteral("StatusNotifierService"),
+                                static_cast<QObject *>(m_runtime->statusNotifier()));
 
     QQuickWindow *window = nullptr;
     if (!loadSurface(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Dock/qml/Main.qml")),
@@ -212,7 +219,8 @@ bool AstreaShellApplication::initializeQml()
     m_barSurfaceManager = std::make_unique<BarSurfaceManager>(
         m_application, *m_engine, m_runtime->barController(), m_runtime->barClock(),
         m_runtime->workspaceModel(), m_runtime->audioService(), m_runtime->networkService(),
-        m_runtime->bluetoothService(), this);
+        m_runtime->bluetoothService(), this, BarSurfaceManager::BundleFactory{},
+        m_runtime->statusNotifier());
     if (!m_barSurfaceManager->initialize(&barError)) {
         qCritical("Astrea shell Bar surface initialization failed: %s", qPrintable(barError));
         return false;
@@ -411,6 +419,7 @@ QString AstreaShellApplication::statusJson() const
             {QStringLiteral("audio"), runtime->audioService()->healthJson()},
             {QStringLiteral("network"), runtime->networkService()->healthJson()},
             {QStringLiteral("bluetooth"), runtime->bluetoothService()->healthJson()}}}
+        , {QStringLiteral("statusNotifier"), runtime->statusNotifier()->healthJson()}
     };
     return QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact));
 }

@@ -29,6 +29,7 @@
 #include "system/audio/AudioService.hpp"
 #include "system/network/NetworkService.hpp"
 #include "system/bluetooth/BluetoothService.hpp"
+#include "statusnotifier/StatusNotifierService.hpp"
 
 #if ASTREA_HAVE_TYPHON_PROTOCOL
 #include "AltTab/platform/typhon/TyphonWindowSource.hpp"
@@ -103,6 +104,8 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
     m_audioService = std::make_unique<Astrea::System::AudioService>();
     m_networkService = std::make_unique<Astrea::System::NetworkService>();
     m_bluetoothService = std::make_unique<Astrea::System::BluetoothService>();
+    m_statusNotifier = std::make_unique<Astrea::StatusNotifier::StatusNotifierService>();
+    m_statusNotifier->initialize();
 
     const DockRuntimePaths dockPaths = DockRuntimePaths::fromEnvironment();
     const AltTabRuntimePaths altTabPaths = AltTabRuntimePaths::fromEnvironment();
@@ -246,6 +249,7 @@ void ShellRuntime::start()
     m_audioService->start();
     m_networkService->start();
     m_bluetoothService->start();
+    m_statusNotifier->start();
     emit started();
 }
 
@@ -256,6 +260,8 @@ void ShellRuntime::stop()
     m_started = false;
     if (m_bluetoothService)
         m_bluetoothService->stop();
+    if (m_statusNotifier)
+        m_statusNotifier->stop();
     if (m_networkService)
         m_networkService->stop();
     if (m_audioService)

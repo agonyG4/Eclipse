@@ -61,6 +61,44 @@ endfunction()
 
 astrea_shared_enable_sanitizers(astrea-shared-core)
 
+add_library(astrea-shared-statusnotifier STATIC
+    statusnotifier/StatusNotifierTypes.cpp
+    statusnotifier/StatusNotifierTypes.hpp
+    statusnotifier/StatusNotifierIconStore.cpp
+    statusnotifier/StatusNotifierIconStore.hpp
+    statusnotifier/StatusNotifierIconProvider.cpp
+    statusnotifier/StatusNotifierIconProvider.hpp
+    statusnotifier/StatusNotifierItemModel.cpp
+    statusnotifier/StatusNotifierItemModel.hpp
+    statusnotifier/DBusMenuModel.cpp
+    statusnotifier/DBusMenuModel.hpp
+    statusnotifier/StatusNotifierWatcherBridge.cpp
+    statusnotifier/StatusNotifierWatcherBridge.hpp
+    statusnotifier/StatusNotifierItemProxy.cpp
+    statusnotifier/StatusNotifierItemProxy.hpp
+    statusnotifier/StatusNotifierService.cpp
+    statusnotifier/StatusNotifierService.hpp
+)
+
+target_include_directories(astrea-shared-statusnotifier PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(astrea-shared-statusnotifier PUBLIC
+    astrea-shared-core
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Qml
+    Qt6::Quick
+    Qt6::DBus
+)
+
+if(NOT MSVC)
+    target_compile_options(astrea-shared-statusnotifier PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+astrea_shared_enable_sanitizers(astrea-shared-statusnotifier)
+
 add_library(astrea-shared-system STATIC
     system/SystemServiceState.cpp
     system/SystemServiceState.hpp
@@ -356,6 +394,19 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     )
     astrea_shared_enable_sanitizers(system-services-test)
     add_test(NAME system-services-test COMMAND system-services-test)
+
+    add_executable(statusnotifier-test
+        tests/StatusNotifierTest.cpp
+    )
+    target_include_directories(statusnotifier-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_link_libraries(statusnotifier-test PRIVATE
+        astrea-shared-statusnotifier
+        Qt6::Test
+    )
+    astrea_shared_enable_sanitizers(statusnotifier-test)
+    add_test(NAME statusnotifier-test COMMAND statusnotifier-test)
 
     add_executable(layer-shell-helper-test
         tests/LayerShellHelperTest.cpp

@@ -27,6 +27,9 @@ class TyphonWorkspaceClient;
 class TyphonWorkspaceController;
 class ThemeController;
 class WorkspaceModel;
+namespace Astrea::StatusNotifier {
+class StatusNotifierService;
+}
 
 namespace Astrea::System {
 class AudioService;
@@ -73,6 +76,8 @@ public:
     Astrea::System::NetworkService *networkService() const { return m_networkService.get(); }
     Astrea::System::BluetoothService *bluetoothService() const
     { return m_bluetoothService.get(); }
+    Astrea::StatusNotifier::StatusNotifierService *statusNotifier() const
+    { return m_statusNotifier.get(); }
 
     void reloadCatalog();
     void reloadDockConfig();
@@ -112,6 +117,7 @@ private:
     std::unique_ptr<Astrea::System::AudioService> m_audioService;
     std::unique_ptr<Astrea::System::NetworkService> m_networkService;
     std::unique_ptr<Astrea::System::BluetoothService> m_bluetoothService;
+    std::unique_ptr<Astrea::StatusNotifier::StatusNotifierService> m_statusNotifier;
     bool m_initialized = false;
     bool m_started = false;
 };

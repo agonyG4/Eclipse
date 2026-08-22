@@ -54,9 +54,23 @@ AstreaLayerShellConfig BarSurfacePolicy::popupOverlay()
     return config;
 }
 
+AstreaLayerShellConfig BarSurfacePolicy::trayTooltip()
+{
+    auto config = baseConfig(QStringLiteral("astrea-bar-tray-tooltip"));
+    config.anchorTop = true;
+    config.anchorLeft = true;
+    config.anchorRight = true;
+    config.margins = QMargins(0, kTrayTooltipTopMargin, 0, 0);
+    return config;
+}
+
 int BarSurfacePolicy::surfaceHeight(BarSurfaceKind kind)
 {
-    return kind == BarSurfaceKind::Reserve ? kBarHeight : kPillHeight;
+    if (kind == BarSurfaceKind::Reserve)
+        return kBarHeight;
+    if (kind == BarSurfaceKind::TrayTooltip)
+        return kTrayTooltipHeight;
+    return kPillHeight;
 }
 
 int BarSurfacePolicy::statusWidth(int outputWidth, int launcherWidth, int pillWidth)

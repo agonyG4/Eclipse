@@ -142,8 +142,37 @@ void StatusNotifierIconStore::updateItem(const ItemSnapshot &snapshot)
     emit itemIconChanged(snapshot.address.key(), entry.revision);
 }
 
+void StatusNotifierIconStore::updateAuxiliaryImage(const QString &key, const QImage &image)
+{
+    if (key.isEmpty())
+        return;
+    if (image.isNull()) {
+        if (m_auxiliaryImages.remove(key) > 0) {
+            m_auxiliaryRevisions.insert(key, m_nextRevision);
+            emit itemIconChanged(key, m_nextRevision++);
+        }
+        return;
+    }
+    m_auxiliaryImages.insert(key, image);
+    m_auxiliaryRevisions.insert(key, m_nextRevision);
+    emit itemIconChanged(key, m_nextRevision++);
+}
+
+void StatusNotifierIconStore::clearAuxiliaryImages(const QString &prefix)
+{
+    const QStringList keys = m_auxiliaryImages.keys();
+    for (const QString &key : keys) {
+        if (!key.startsWith(prefix))
+            continue;
+        m_auxiliaryImages.remove(key);
+        m_auxiliaryRevisions.remove(key);
+        emit itemIconChanged(key, m_nextRevision++);
+    }
+}
+
 void StatusNotifierIconStore::clearItem(const QString &itemKey)
 {
+    clearAuxiliaryImages(QStringLiteral("menu:%1:").arg(itemKey));
     if (m_entries.remove(itemKey) > 0)
         emit itemIconChanged(itemKey, m_nextRevision++);
 }
@@ -154,10 +183,19 @@ void StatusNotifierIconStore::clear()
     m_entries.clear();
     for (const QString &key : keys)
         emit itemIconChanged(key, m_nextRevision++);
+    const auto auxiliaryKeys = m_auxiliaryImages.keys();
+    m_auxiliaryImages.clear();
+    m_auxiliaryRevisions.clear();
+    for (const QString &key : auxiliaryKeys)
+        emit itemIconChanged(key, m_nextRevision++);
 }
 
 QImage StatusNotifierIconStore::image(const QString &itemKey, const QSize &requestedSize) const
 {
+    const auto auxiliary = m_auxiliaryImages.constFind(itemKey);
+    if (auxiliary != m_auxiliaryImages.constEnd())
+        return auxiliary.value().scaled(requestedSize, Qt::KeepAspectRatio,
+                                        Qt::SmoothTransformation);
     const auto it = m_entries.constFind(itemKey);
     if (it == m_entries.constEnd())
         return {};
@@ -171,22 +209,23 @@ QPixmap StatusNotifierIconStore::pixmap(const QString &itemKey, const QSize &req
 
 QString StatusNotifierIconStore::imageSource(const QString &itemKey) const
 {
-    const auto it = m_entries.constFind(itemKey);
-    if (it == m_entries.constEnd())
+    if (!m_auxiliaryImages.contains(itemKey) && !m_entries.contains(itemKey))
         return {};
     return QStringLiteral("image://astrea-tray/%1?revision=%2")
         .arg(QString::fromUtf8(QUrl::toPercentEncoding(itemKey)))
-        .arg(it->revision);
+        .arg(revision(itemKey));
 }
 
 quint64 StatusNotifierIconStore::revision(const QString &itemKey) const
 {
+    if (m_auxiliaryImages.contains(itemKey))
+        return m_auxiliaryRevisions.value(itemKey);
     return m_entries.value(itemKey).revision;
 }
 
 bool StatusNotifierIconStore::hasIcon(const QString &itemKey) const
 {
-    return !image(itemKey).isNull();
+    return m_auxiliaryImages.contains(itemKey) || !image(itemKey).isNull();
 }
 
 void StatusNotifierIconStore::invalidateThemeIcons()

@@ -205,6 +205,8 @@ void BarSurfaceBundle::updateForScreen()
             continue;
         window->setProperty("outputWidth", width);
         window->setProperty("outputHeight", height);
+        window->setProperty("outputOriginX", geometry.x());
+        window->setProperty("outputOriginY", geometry.y());
         if (window == m_statusWindow && m_launcherWindow)
             window->setProperty("launcherWidth", m_launcherWindow->width());
         window->setScreen(m_screen.data());
@@ -253,6 +255,8 @@ QQuickWindow *BarSurfaceBundle::createSurface(const QUrl &sourceUrl, int width, 
         {QStringLiteral("barGeometry"), objectVariant(m_layoutMetrics)},
         {QStringLiteral("outputWidth"), width},
         {QStringLiteral("outputHeight"), height},
+        {QStringLiteral("outputOriginX"), m_screen ? m_screen->geometry().x() : 0},
+        {QStringLiteral("outputOriginY"), m_screen ? m_screen->geometry().y() : 0},
     };
     QObject *object = component.createWithInitialProperties(properties, m_engine->rootContext());
     auto *window = qobject_cast<QQuickWindow *>(object);

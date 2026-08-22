@@ -86,3 +86,15 @@ int BarLayoutMetrics::popupX(int outputWidth, int cardWidth, int anchorX, int si
     return BarSurfacePolicy::popupX(outputWidth, popupWidth(outputWidth, cardWidth, padding),
                                     anchorX, padding);
 }
+
+QVariantMap BarLayoutMetrics::trayAnchor(int outputOriginX, int outputOriginY,
+                                         int statusLeftValue, int statusTopValue,
+                                         int indicatorLocalX, int indicatorLocalY) const
+{
+    const int localX = qMax(0, statusLeftValue) + qMax(0, indicatorLocalX);
+    const int localY = qMax(0, statusTopValue) + qMax(0, indicatorLocalY);
+    return {{QStringLiteral("localX"), localX},
+            {QStringLiteral("localY"), localY},
+            {QStringLiteral("globalX"), outputOriginX + localX},
+            {QStringLiteral("globalY"), outputOriginY + localY}};
+}

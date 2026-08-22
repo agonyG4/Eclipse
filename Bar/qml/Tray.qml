@@ -9,13 +9,34 @@ Item {
     property var trayService: null
     property var popupController: null
     property var tooltipSurface: null
+    property var barGeometry: null
     property int outputWidth: 1
     property int statusLeft: 0
+    property int outputOriginX: 0
+    property int outputOriginY: 0
+    property int statusTop: 5
     readonly property int itemCount: trayRepeater.count
     implicitWidth: trayRow.implicitWidth
     implicitHeight: 36
     width: implicitWidth
     height: 36
+
+    function usableMenu(key) {
+        if (!root.trayService)
+            return false
+        const menu = root.trayService.menuModelForItem(key)
+        return menu && menu.rowCount() > 0
+    }
+
+    function anchorFor(delegate, x, y) {
+        if (root.barGeometry)
+            return root.barGeometry.trayAnchor(root.outputOriginX, root.outputOriginY,
+                                               root.statusLeft, root.statusTop,
+                                               Math.round(x), Math.round(y))
+        return {localX: root.statusLeft + x, localY: root.statusTop + y,
+                globalX: root.outputOriginX + root.statusLeft + x,
+                globalY: root.outputOriginY + root.statusTop + y}
+    }
 
     Row {
         id: trayRow
@@ -82,9 +103,10 @@ Item {
                     repeat: false
                     onTriggered: {
                         if (root.tooltipSurface) {
-                            const point = itemDelegate.mapToItem(null,
+                            const point = itemDelegate.mapToItem(root,
                                 itemDelegate.width / 2, itemDelegate.height / 2)
-                            root.tooltipSurface.showTooltip(itemDelegate.key, point.x)
+                            const anchor = root.anchorFor(itemDelegate, point.x, point.y)
+                            root.tooltipSurface.showTooltip(itemDelegate.key, anchor.localX)
                         }
                     }
                 }
@@ -109,22 +131,27 @@ Item {
                         }
                     }
                     onClicked: mouse => {
-                        const point = itemDelegate.mapToItem(null,
+                        const point = itemDelegate.mapToItem(root,
                             itemDelegate.width / 2, itemDelegate.height / 2)
+                        const anchor = root.anchorFor(itemDelegate, point.x, point.y)
+                        const hasUsableMenu = root.usableMenu(itemDelegate.key)
                         if (mouse.button === Qt.MiddleButton) {
                             if (root.trayService)
                                 root.trayService.secondaryActivate(itemDelegate.key,
-                                    Math.round(point.x), Math.round(point.y))
-                        } else if (mouse.button === Qt.RightButton
-                                   || (mouse.button === Qt.LeftButton && itemDelegate.onlyMenu)) {
-                            if (itemDelegate.hasMenu && root.popupController)
-                                root.popupController.toggleTrayMenu(Math.round(point.x),
-                                                                    itemDelegate.key)
-                        } else if (itemDelegate.hasMenu && root.popupController) {
-                            root.popupController.toggleTrayMenu(Math.round(point.x), itemDelegate.key)
+                                    anchor.globalX, anchor.globalY)
+                        } else if (mouse.button === Qt.RightButton) {
+                            if (hasUsableMenu && root.popupController)
+                                root.popupController.toggleTrayMenu(anchor.localX, itemDelegate.key)
+                            else if (root.trayService)
+                                root.trayService.contextMenu(itemDelegate.key,
+                                    anchor.globalX, anchor.globalY)
+                        } else if (mouse.button === Qt.LeftButton
+                                   && itemDelegate.onlyMenu && hasUsableMenu
+                                   && root.popupController) {
+                            root.popupController.toggleTrayMenu(anchor.localX, itemDelegate.key)
                         } else if (root.trayService) {
                             root.trayService.activate(itemDelegate.key,
-                                Math.round(point.x), Math.round(point.y))
+                                anchor.globalX, anchor.globalY)
                         }
                     }
                 }

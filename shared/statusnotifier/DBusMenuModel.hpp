@@ -8,6 +8,8 @@
 
 namespace Astrea::StatusNotifier {
 
+class StatusNotifierIconStore;
+
 struct DBusMenuNode {
     int id = 0;
     QString label;
@@ -20,6 +22,19 @@ struct DBusMenuNode {
     bool visible = true;
     bool separator = false;
     QList<DBusMenuNode> children;
+    QByteArray iconData;
+    QString iconSource;
+};
+
+struct DBusMenuLayoutNodeWire {
+    int id = 0;
+    QVariantMap properties;
+    QList<DBusMenuLayoutNodeWire> children;
+};
+
+struct DBusMenuLayoutReply {
+    quint32 revision = 0;
+    DBusMenuLayoutNodeWire root;
 };
 
 struct DBusMenuParseResult {
@@ -34,6 +49,7 @@ DBusMenuParseResult parseMenuLayout(const QVariant &value,
                                     const DBusMenuLimits &limits = {});
 DBusMenuParseResult parseMenuLayoutArgument(const QDBusArgument &argument, quint32 revision,
                                             const DBusMenuLimits &limits = {});
+void registerDBusMenuMetaTypes();
 QString menuLabelWithoutMnemonic(const QString &label);
 
 class DBusMenuModel final : public QAbstractListModel {
@@ -43,7 +59,8 @@ public:
     enum Role {
         NodeIdRole = Qt::UserRole + 1,
         LabelRole,
-        IconNameRole,
+    IconNameRole,
+        IconSourceRole,
         TypeRole,
         ToggleTypeRole,
         StateRole,
@@ -64,6 +81,9 @@ public:
 
     void setNodes(const QList<DBusMenuNode> &nodes);
     void setRoot(const DBusMenuNode &root);
+    bool replaceSubtree(int parentId, const DBusMenuNode &subtree);
+    bool updateNodeProperties(const QList<DBusMenuPropertyUpdate> &updates,
+                              const QList<DBusMenuRemovedProperties> &removedProperties);
     DBusMenuNode node(int row) const;
     Q_INVOKABLE QObject *childModel(int nodeId) const;
     Q_INVOKABLE void activate(int nodeId);
@@ -73,6 +93,11 @@ signals:
 
 private:
     void rebuildChildren();
+    bool replaceSubtreeInNodes(int parentId, const DBusMenuNode &subtree);
+    bool updatePropertiesInNodes(const QList<DBusMenuPropertyUpdate> &updates,
+                                 const QList<DBusMenuRemovedProperties> &removedProperties);
+    static void applyProperties(DBusMenuNode &node, const QVariantMap &properties,
+                                const QStringList &removedProperties);
 
     QList<DBusMenuNode> m_nodes;
     QHash<int, DBusMenuModel *> m_children;
@@ -85,6 +110,7 @@ class DBusMenuClient final : public QObject {
 
 public:
     DBusMenuClient(const ItemAddress &address, const QString &menuPath,
+                   StatusNotifierIconStore *iconStore = nullptr,
                    QObject *parent = nullptr);
 
     DBusMenuModel *rootModel() const { return m_rootModel; }
@@ -104,17 +130,39 @@ signals:
 
 private:
     void requestLayout(int parentId = 0);
-    void applyLayout(const DBusMenuParseResult &layout);
+    void applyLayout(const DBusMenuParseResult &layout, int requestedParentId);
+    void connectSignals();
+    void disconnectSignals();
+    void decorateIcons(DBusMenuNode &node);
 
+private slots:
+    void onLayoutUpdated(quint32 revision, int parentId);
+    void onItemsPropertiesUpdated(const QList<DBusMenuPropertyUpdate> &updated,
+                                  const QList<DBusMenuRemovedProperties> &removed);
+
+private:
     ItemAddress m_address;
     QString m_menuPath;
     DBusMenuModel *m_rootModel = nullptr;
+    StatusNotifierIconStore *m_iconStore = nullptr;
     quint32 m_revision = 0;
     quint64 m_generation = 0;
     bool m_loading = false;
     bool m_stopped = false;
+    bool m_signalsConnected = false;
 };
 
 } // namespace Astrea::StatusNotifier
 
 Q_DECLARE_METATYPE(Astrea::StatusNotifier::DBusMenuNode)
+Q_DECLARE_METATYPE(Astrea::StatusNotifier::DBusMenuLayoutNodeWire)
+Q_DECLARE_METATYPE(Astrea::StatusNotifier::DBusMenuLayoutReply)
+
+QDBusArgument &operator<<(QDBusArgument &argument,
+                          const Astrea::StatusNotifier::DBusMenuLayoutNodeWire &node);
+const QDBusArgument &operator>>(const QDBusArgument &argument,
+                                Astrea::StatusNotifier::DBusMenuLayoutNodeWire &node);
+QDBusArgument &operator<<(QDBusArgument &argument,
+                          const Astrea::StatusNotifier::DBusMenuLayoutReply &reply);
+const QDBusArgument &operator>>(const QDBusArgument &argument,
+                                Astrea::StatusNotifier::DBusMenuLayoutReply &reply);

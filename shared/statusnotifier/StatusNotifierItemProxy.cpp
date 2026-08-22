@@ -19,10 +19,25 @@ QVariant unwrap(const QVariant &value)
     return value;
 }
 
-QList<PixmapData> parsePixmaps(const QVariant &value)
+QList<PixmapData> parsePixmaps(const QVariant &input)
 {
+    const QVariant value = unwrap(input);
     QList<PixmapData> result;
-    const QVariantList list = unwrap(value).toList();
+    if (value.canConvert<StatusNotifierPixmapList>()) {
+        const StatusNotifierPixmapList typed = value.value<StatusNotifierPixmapList>();
+        for (const StatusNotifierPixmap &entry : typed)
+            result.append({entry.width, entry.height, entry.bytes});
+        return result;
+    }
+    if (value.canConvert<QDBusArgument>()) {
+        StatusNotifierPixmapList typed;
+        const QDBusArgument argument = value.value<QDBusArgument>();
+        argument >> typed;
+        for (const StatusNotifierPixmap &entry : typed)
+            result.append({entry.width, entry.height, entry.bytes});
+        return result;
+    }
+    const QVariantList list = value.toList();
     for (const QVariant &entry : list) {
         const QVariantList tuple = unwrap(entry).toList();
         if (tuple.size() < 3)
@@ -36,12 +51,43 @@ QList<PixmapData> parsePixmaps(const QVariant &value)
     return result;
 }
 
+bool parseTooltip(const QVariant &input, QString *title, QString *description)
+{
+    const QVariant value = unwrap(input);
+    if (value.canConvert<StatusNotifierToolTip>()) {
+        const auto tooltip = value.value<StatusNotifierToolTip>();
+        *title = tooltip.title;
+        *description = tooltip.description;
+        return true;
+    }
+    if (value.canConvert<QDBusArgument>()) {
+        StatusNotifierToolTip tooltip;
+        const QDBusArgument argument = value.value<QDBusArgument>();
+        argument >> tooltip;
+        *title = tooltip.title;
+        *description = tooltip.description;
+        return true;
+    }
+    const QVariantList tuple = value.toList();
+    if (tuple.size() >= 4) {
+        *title = unwrap(tuple.at(2)).toString();
+        *description = unwrap(tuple.at(3)).toString();
+        return true;
+    }
+    if (value.typeId() == QMetaType::QString) {
+        *title = value.toString();
+        return true;
+    }
+    return false;
+}
+
 } // namespace
 
 StatusNotifierItemProxy::StatusNotifierItemProxy(const ItemAddress &address, quint64 generation,
                                                  QObject *parent)
     : QObject(parent), m_address(address), m_generation(generation)
 {
+    registerStatusNotifierDBusMetaTypes();
     m_snapshot.address = address;
     m_snapshot.generation = generation;
     m_snapshot.category = QStringLiteral("ApplicationStatus");
@@ -63,7 +109,7 @@ void StatusNotifierItemProxy::stop()
         return;
     m_started = false;
     ++m_requestGeneration;
-    QObject::disconnect(this, nullptr, this, nullptr);
+    disconnectSignals();
 }
 
 void StatusNotifierItemProxy::refresh(const QString &interfaceName, bool allowFallback)
@@ -127,20 +173,13 @@ void StatusNotifierItemProxy::applyProperties(const QString &interfaceName,
     m_snapshot.pixmaps = parsePixmaps(value(QStringLiteral("IconPixmap")));
     m_snapshot.attentionPixmaps = parsePixmaps(value(QStringLiteral("AttentionIconPixmap")));
     m_snapshot.overlayPixmaps = parsePixmaps(value(QStringLiteral("OverlayIconPixmap")));
-    const QVariant tooltip = value(QStringLiteral("ToolTip"));
-    if (tooltip.typeId() == QMetaType::QString) {
-        m_snapshot.tooltipTitle = tooltip.toString();
-    } else {
-        const QVariantList tuple = tooltip.toList();
-        if (tuple.size() >= 2) {
-            m_snapshot.tooltipTitle = tuple.at(0).toString();
-            m_snapshot.tooltipDescription = tuple.at(1).toString();
-        }
-    }
+    m_snapshot.tooltipTitle.clear();
+    m_snapshot.tooltipDescription.clear();
+    parseTooltip(value(QStringLiteral("ToolTip")), &m_snapshot.tooltipTitle,
+                 &m_snapshot.tooltipDescription);
     m_snapshot.menuPath = value(QStringLiteral("Menu")).toString();
     m_snapshot.itemIsMenu = value(QStringLiteral("ItemIsMenu")).toBool();
-    m_snapshot.ready = !m_snapshot.id.isEmpty() || !m_snapshot.title.isEmpty()
-        || !m_snapshot.iconName.isEmpty() || !m_snapshot.pixmaps.isEmpty();
+    m_snapshot.ready = true;
     m_snapshot.generation = m_generation;
     emitSnapshot();
     emit menuPathChanged(m_address.key(), m_snapshot.menuPath);
@@ -148,6 +187,9 @@ void StatusNotifierItemProxy::applyProperties(const QString &interfaceName,
 
 void StatusNotifierItemProxy::connectSignals(const QString &interfaceName)
 {
+    if (interfaceName == m_connectedInterface)
+        return;
+    disconnectSignals();
     QDBusConnection bus = QDBusConnection::sessionBus();
     bus.connect(m_address.service, m_address.objectPath, interfaceName,
                 QStringLiteral("NewTitle"), this, SLOT(onNewTitle()));
@@ -165,6 +207,35 @@ void StatusNotifierItemProxy::connectSignals(const QString &interfaceName)
                 QStringLiteral("org.freedesktop.DBus.Properties"),
                 QStringLiteral("PropertiesChanged"), this,
                 SLOT(onPropertiesChanged(QString,QVariantMap,QStringList)));
+    m_connectedInterface = interfaceName;
+}
+
+void StatusNotifierItemProxy::disconnectSignals()
+{
+    if (m_connectedInterface.isEmpty())
+        return;
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    const QStringList signalNames{
+        QStringLiteral("NewTitle"), QStringLiteral("NewIcon"),
+        QStringLiteral("NewAttentionIcon"), QStringLiteral("NewOverlayIcon"),
+        QStringLiteral("NewToolTip"), QStringLiteral("NewStatus")};
+    for (const QString &signalName : signalNames) {
+        bus.disconnect(m_address.service, m_address.objectPath, m_connectedInterface, signalName,
+                       this, signalName == QStringLiteral("NewStatus")
+                           ? SLOT(onNewStatus(QString))
+                           : signalName == QStringLiteral("NewTitle") ? SLOT(onNewTitle())
+                           : signalName == QStringLiteral("NewIcon") ? SLOT(onNewIcon())
+                           : signalName == QStringLiteral("NewAttentionIcon")
+                               ? SLOT(onNewAttentionIcon())
+                           : signalName == QStringLiteral("NewOverlayIcon")
+                               ? SLOT(onNewOverlayIcon())
+                           : SLOT(onNewToolTip()));
+    }
+    bus.disconnect(m_address.service, m_address.objectPath,
+                   QStringLiteral("org.freedesktop.DBus.Properties"),
+                   QStringLiteral("PropertiesChanged"), this,
+                   SLOT(onPropertiesChanged(QString,QVariantMap,QStringList)));
+    m_connectedInterface.clear();
 }
 
 void StatusNotifierItemProxy::callAction(const QString &method, const QVariantList &arguments)
@@ -194,6 +265,11 @@ void StatusNotifierItemProxy::activate(int x, int y)
 void StatusNotifierItemProxy::secondaryActivate(int x, int y)
 {
     callAction(QStringLiteral("SecondaryActivate"), {x, y});
+}
+
+void StatusNotifierItemProxy::contextMenu(int x, int y)
+{
+    callAction(QStringLiteral("ContextMenu"), {x, y});
 }
 
 void StatusNotifierItemProxy::scroll(int delta, const QString &orientation)

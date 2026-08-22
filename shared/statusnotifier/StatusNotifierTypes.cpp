@@ -1,13 +1,94 @@
 #include "statusnotifier/StatusNotifierTypes.hpp"
 
-#include <QRegularExpression>
-
+#include <QDBusMetaType>
 namespace Astrea::StatusNotifier {
+
+namespace {
+
+bool isAsciiNameComponent(const QString &component)
+{
+    if (component.isEmpty() || component.toUtf8().size() > 255)
+        return false;
+    const auto isLetterOrUnderscore = [](QChar ch) {
+        return (ch >= QLatin1Char('A') && ch <= QLatin1Char('Z'))
+            || (ch >= QLatin1Char('a') && ch <= QLatin1Char('z'))
+            || ch == QLatin1Char('_');
+    };
+    const auto isAllowed = [&](QChar ch) {
+        return isLetterOrUnderscore(ch)
+            || (ch >= QLatin1Char('0') && ch <= QLatin1Char('9'));
+    };
+    if (!isLetterOrUnderscore(component.at(0)))
+        return false;
+    for (const QChar ch : component.mid(1)) {
+        if (!isAllowed(ch))
+            return false;
+    }
+    return true;
+}
+
+bool isUniqueName(const QString &name)
+{
+    if (!name.startsWith(QLatin1Char(':')) || name.toUtf8().size() > 255)
+        return false;
+    const QStringList components = name.mid(1).split(QLatin1Char('.'));
+    if (components.size() < 2)
+        return false;
+    for (const QString &component : components) {
+        if (component.isEmpty())
+            return false;
+        for (const QChar ch : component) {
+            if (ch < QLatin1Char('0') || ch > QLatin1Char('9'))
+                return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
+
+bool isValidDBusServiceName(const QString &name)
+{
+    if (name.toUtf8().size() > 255 || name.isEmpty())
+        return false;
+    if (name.startsWith(QLatin1Char(':')))
+        return isUniqueName(name);
+    const QStringList components = name.split(QLatin1Char('.'));
+    if (components.size() < 2)
+        return false;
+    for (const QString &component : components) {
+        if (!isAsciiNameComponent(component))
+            return false;
+    }
+    return true;
+}
+
+bool isValidDBusObjectPath(const QString &path)
+{
+    if (path.isEmpty() || path.toUtf8().size() > 255 || !path.startsWith(QLatin1Char('/')))
+        return false;
+    if (path == QLatin1StringView("/"))
+        return true;
+    const QStringList components = path.mid(1).split(QLatin1Char('/'));
+    for (const QString &component : components) {
+        if (component.isEmpty())
+            return false;
+        for (const QChar ch : component) {
+            const bool valid = (ch >= QLatin1Char('A') && ch <= QLatin1Char('Z'))
+                || (ch >= QLatin1Char('a') && ch <= QLatin1Char('z'))
+                || (ch >= QLatin1Char('0') && ch <= QLatin1Char('9'))
+                || ch == QLatin1Char('_');
+            if (!valid)
+                return false;
+        }
+    }
+    return true;
+}
 
 bool ItemAddress::isValid() const
 {
-    return !service.isEmpty() && service.contains(QLatin1Char('.'))
-        && objectPath.startsWith(QLatin1Char('/')) && objectPath.size() > 1;
+    return isValidDBusServiceName(service) && isValidDBusObjectPath(objectPath)
+        && objectPath != QLatin1StringView("/");
 }
 
 QString ItemAddress::key() const
@@ -87,9 +168,8 @@ ItemAddress normalizeRegistration(const QString &registration, const QString &se
             address.objectPath = value.mid(slash);
         }
     }
-    if (address.service.isEmpty() || !address.service.contains(QLatin1Char('.'))
-        || !address.objectPath.startsWith(QLatin1Char('/')) || address.objectPath.size() <= 1
-        || address.objectPath.contains(QRegularExpression(QStringLiteral("[^A-Za-z0-9_/]")))) {
+    if (!isValidDBusServiceName(address.service) || !isValidDBusObjectPath(address.objectPath)
+        || address.objectPath == QLatin1StringView("/")) {
         if (errorOut)
             *errorOut = QStringLiteral("malformed StatusNotifierItem registration: %1").arg(value);
         return {};
@@ -97,6 +177,21 @@ ItemAddress normalizeRegistration(const QString &registration, const QString &se
     if (address.service.startsWith(QLatin1Char(':')))
         address.uniqueOwner = address.service;
     return address;
+}
+
+void registerStatusNotifierDBusMetaTypes()
+{
+    static const bool registered = [] {
+        qDBusRegisterMetaType<StatusNotifierPixmap>();
+        qDBusRegisterMetaType<StatusNotifierPixmapList>();
+        qDBusRegisterMetaType<StatusNotifierToolTip>();
+        qDBusRegisterMetaType<DBusMenuPropertyUpdate>();
+        qDBusRegisterMetaType<QList<DBusMenuPropertyUpdate>>();
+        qDBusRegisterMetaType<DBusMenuRemovedProperties>();
+        qDBusRegisterMetaType<QList<DBusMenuRemovedProperties>>();
+        return true;
+    }();
+    Q_UNUSED(registered)
 }
 
 QString itemStatusName(ItemStatus status)
@@ -123,3 +218,75 @@ ItemStatus itemStatusFromString(const QString &status)
 }
 
 } // namespace Astrea::StatusNotifier
+
+QDBusArgument &operator<<(QDBusArgument &argument,
+                          const Astrea::StatusNotifier::StatusNotifierPixmap &pixmap)
+{
+    argument.beginStructure();
+    argument << pixmap.width << pixmap.height << pixmap.bytes;
+    argument.endStructure();
+    return argument;
+}
+
+const QDBusArgument &operator>>(const QDBusArgument &argument,
+                                Astrea::StatusNotifier::StatusNotifierPixmap &pixmap)
+{
+    argument.beginStructure();
+    argument >> pixmap.width >> pixmap.height >> pixmap.bytes;
+    argument.endStructure();
+    return argument;
+}
+
+QDBusArgument &operator<<(QDBusArgument &argument,
+                          const Astrea::StatusNotifier::StatusNotifierToolTip &tooltip)
+{
+    argument.beginStructure();
+    argument << tooltip.iconName << tooltip.iconPixmaps << tooltip.title << tooltip.description;
+    argument.endStructure();
+    return argument;
+}
+
+const QDBusArgument &operator>>(const QDBusArgument &argument,
+                                Astrea::StatusNotifier::StatusNotifierToolTip &tooltip)
+{
+    argument.beginStructure();
+    argument >> tooltip.iconName >> tooltip.iconPixmaps >> tooltip.title >> tooltip.description;
+    argument.endStructure();
+    return argument;
+}
+
+QDBusArgument &operator<<(QDBusArgument &argument,
+                          const Astrea::StatusNotifier::DBusMenuPropertyUpdate &update)
+{
+    argument.beginStructure();
+    argument << update.id << update.properties;
+    argument.endStructure();
+    return argument;
+}
+
+const QDBusArgument &operator>>(const QDBusArgument &argument,
+                                Astrea::StatusNotifier::DBusMenuPropertyUpdate &update)
+{
+    argument.beginStructure();
+    argument >> update.id >> update.properties;
+    argument.endStructure();
+    return argument;
+}
+
+QDBusArgument &operator<<(QDBusArgument &argument,
+                          const Astrea::StatusNotifier::DBusMenuRemovedProperties &removed)
+{
+    argument.beginStructure();
+    argument << removed.id << removed.properties;
+    argument.endStructure();
+    return argument;
+}
+
+const QDBusArgument &operator>>(const QDBusArgument &argument,
+                                Astrea::StatusNotifier::DBusMenuRemovedProperties &removed)
+{
+    argument.beginStructure();
+    argument >> removed.id >> removed.properties;
+    argument.endStructure();
+    return argument;
+}

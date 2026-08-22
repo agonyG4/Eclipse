@@ -18,6 +18,8 @@ Window {
     property var workspaceModel: null
     property int outputWidth: 1
     property int outputHeight: 1
+    property int outputOriginX: 0
+    property int outputOriginY: 0
     property int launcherWidth: 48
     property int statusLeft: barGeometry
         ? barGeometry.statusLeft(outputWidth, statusPill.width) : 0
@@ -49,8 +51,12 @@ Window {
             trayService: window.statusNotifierService
             popupController: window.popupController
             tooltipSurface: window.trayTooltipSurface
+            barGeometry: window.barGeometry
             outputWidth: window.outputWidth
             statusLeft: window.statusLeft
+            outputOriginX: window.outputOriginX
+            outputOriginY: window.outputOriginY
+            statusTop: window.barGeometry ? window.barGeometry.topMargin : 5
         }
 
         Item {

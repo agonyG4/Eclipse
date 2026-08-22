@@ -17,6 +17,8 @@ public:
     explicit StatusNotifierIconStore(QObject *parent = nullptr);
 
     void updateItem(const ItemSnapshot &snapshot);
+    void updateAuxiliaryImage(const QString &key, const QImage &image);
+    void clearAuxiliaryImages(const QString &prefix);
     void clearItem(const QString &itemKey);
     void clear();
 
@@ -50,6 +52,8 @@ private:
     static QImage fallbackImage(const Entry &entry, const QSize &requestedSize);
 
     QHash<QString, Entry> m_entries;
+    QHash<QString, QImage> m_auxiliaryImages;
+    QHash<QString, quint64> m_auxiliaryRevisions;
     QFileSystemWatcher m_themeWatcher;
     quint64 m_nextRevision = 1;
 };

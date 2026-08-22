@@ -21,6 +21,7 @@ public:
     void stop();
     void activate(int x, int y);
     void secondaryActivate(int x, int y);
+    void contextMenu(int x, int y);
     void scroll(int delta, const QString &orientation);
 
 signals:
@@ -43,6 +44,7 @@ private:
     void refresh(const QString &interfaceName, bool allowFallback);
     void applyProperties(const QString &interfaceName, const QVariantMap &properties);
     void connectSignals(const QString &interfaceName);
+    void disconnectSignals();
     void callAction(const QString &method, const QVariantList &arguments);
     void emitSnapshot();
 
@@ -51,6 +53,7 @@ private:
     quint64 m_requestGeneration = 0;
     ItemSnapshot m_snapshot;
     QString m_interfaceName;
+    QString m_connectedInterface;
     bool m_started = false;
 };
 

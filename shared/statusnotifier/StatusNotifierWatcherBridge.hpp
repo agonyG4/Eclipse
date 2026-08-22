@@ -21,34 +21,36 @@ public:
     {
     }
 
-    QStringList items() const { return m_items; }
-    bool hostRegistered() const { return m_hostRegistered; }
-    void registerItem(const QString &registration)
-    {
-        const QString sender = calledFromDBus() ? message().service() : QString();
-        if (!m_items.contains(registration)) {
-            m_items.append(registration);
-            emit itemRegistered(registration, sender);
-            emit itemRegisteredForDbus(registration);
-        }
-    }
-    void registerHost(const QString &host)
-    {
-        if (host.isEmpty())
-            return;
-        m_hostRegistered = true;
-        emit hostRegisteredChanged(host);
-    }
+    QStringList items() const;
+    bool hostRegistered() const { return !m_hosts.isEmpty(); }
+    void registerItem(const QString &registration);
+    void registerItemFromOwner(const QString &registration, const QString &owner);
+    void registerHost(const QString &host);
+    void registerHostFromOwner(const QString &host, const QString &owner);
+    void registerOwnedHost(const QString &host, const QString &owner);
+    void removeOwner(const QString &owner);
+    void clear();
 
 signals:
     void itemRegistered(const QString &registration, const QString &sender);
+    void itemUnregistered(const QString &registration, const QString &sender);
     void itemRegisteredForDbus(const QString &registration);
+    void itemUnregisteredForDbus(const QString &registration);
     void itemUnregistered(const QString &registration);
-    void hostRegisteredChanged(const QString &host);
+    void hostRegisteredChanged(const QString &host, bool registered);
 
 private:
-    QStringList m_items;
-    bool m_hostRegistered = false;
+    struct ItemRecord {
+        ItemAddress address;
+        QString registration;
+        QString owner;
+    };
+
+    void registerItemForOwner(const QString &registration, const QString &owner);
+    void registerHostForOwner(const QString &host, const QString &owner);
+
+    QHash<QString, ItemRecord> m_items;
+    QHash<QString, QString> m_hosts;
 };
 
 class StatusNotifierWatcherBridge final : public QObject {
@@ -56,6 +58,7 @@ class StatusNotifierWatcherBridge final : public QObject {
     Q_PROPERTY(WatcherMode mode READ mode NOTIFY stateChanged)
     Q_PROPERTY(QString watcherName READ watcherName NOTIFY stateChanged)
     Q_PROPERTY(QString watcherOwner READ watcherOwner NOTIFY stateChanged)
+    Q_PROPERTY(QString hostServiceName READ hostServiceName NOTIFY stateChanged)
     Q_PROPERTY(bool hostRegistered READ hostRegistered NOTIFY stateChanged)
     Q_PROPERTY(int protocolVersion READ protocolVersion CONSTANT)
 
@@ -68,7 +71,9 @@ public:
     WatcherMode mode() const { return m_mode; }
     QString watcherName() const { return m_watcherName; }
     QString watcherOwner() const { return m_watcherOwner; }
-    bool hostRegistered() const { return m_hostRegistered; }
+    QString hostServiceName() const { return m_hostServiceName; }
+    bool hostRegistered() const
+    { return m_localWatcher ? m_localWatcher->hostRegistered() : m_hostRegistered; }
     int protocolVersion() const { return 0; }
     QString lastError() const { return m_lastError; }
 
@@ -89,28 +94,39 @@ private slots:
     void onItemRegistered(const QString &registration);
     void onItemUnregistered(const QString &registration);
     void onLocalItemRegistered(const QString &registration, const QString &sender);
-    void onLocalHostRegistered(const QString &host);
+    void onLocalItemUnregistered(const QString &registration, const QString &sender);
+    void onLocalHostRegistered(const QString &host, bool registered);
     void resolveWatcherOwners();
 
 private:
-    void handleRegistration(const QString &registration, const QString &senderUniqueOwner = {});
+    void handleRegistration(const QString &registration, const QString &senderUniqueOwner = {},
+                            quint64 generation = 0);
     void enumerateExternalItems();
     void selectWatcher();
     void tryOwnWatcher();
     void attachExternalWatcher(const QString &name, const QString &owner);
+    void detachExternalWatcher();
+    void disconnectExternalWatcher();
     void registerHostWithExternalWatcher();
     void registerItemOwnerWatcher(const ItemAddress &address);
+    void resolveWatcherOwner(const QString &name, quint64 generation);
+    void clearRegisteredItems();
+    bool ensureHostService();
+    void releaseHostService();
     void setError(const QString &error);
 
     WatcherMode m_mode = WatcherMode::Unavailable;
     QString m_watcherName;
     QString m_watcherOwner;
+    QString m_hostServiceName;
     QString m_lastError;
-    bool m_hostRegistered = false;
     bool m_started = false;
     int m_resolutionPending = 0;
+    quint64 m_watcherGeneration = 0;
+    quint64 m_hostGeneration = 0;
+    bool m_hostServiceOwned = false;
+    bool m_hostRegistered = false;
     QHash<QString, QString> m_ownerByName;
-    QHash<QString, QString> m_keyByService;
     QHash<QString, ItemAddress> m_addresses;
     QPointer<QDBusServiceWatcher> m_serviceWatcher;
     QPointer<StatusNotifierLocalWatcherObject> m_localWatcher;

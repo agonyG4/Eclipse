@@ -5,12 +5,28 @@ BarPopupController::BarPopupController(QObject *parent)
 {
 }
 
+bool BarPopupController::isSupported(PopupKind kind)
+{
+    switch (kind) {
+    case PopupKind::AstreaMenu:
+    case PopupKind::Network:
+    case PopupKind::Bluetooth:
+    case PopupKind::Volume:
+        return true;
+    case PopupKind::None:
+        return false;
+    }
+    return false;
+}
+
 void BarPopupController::open(PopupKind kind, int anchorX)
 {
     if (kind == PopupKind::None) {
         close();
         return;
     }
+    if (!isSupported(kind))
+        return;
     if (m_kind == kind && m_anchorX == anchorX && m_open && !m_closing)
         return;
     m_kind = kind;
@@ -33,11 +49,6 @@ void BarPopupController::toggle(PopupKind kind, int anchorX)
 void BarPopupController::toggleAstreaMenu(int anchorX)
 {
     toggle(PopupKind::AstreaMenu, anchorX);
-}
-
-void BarPopupController::toggleClock(int anchorX)
-{
-    toggle(PopupKind::Clock, anchorX);
 }
 
 void BarPopupController::toggleNetwork(int anchorX)

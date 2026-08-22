@@ -28,8 +28,10 @@ Window {
     ShellBarTheme { id: theme }
 
     MouseArea {
+        objectName: "popupClickShield"
         anchors.fill: parent
         enabled: popupController && popupController.surfaceRequired
+            && window.popupForKind(popupController.kind) !== null
         z: 0
         onClicked: popupController.close()
     }

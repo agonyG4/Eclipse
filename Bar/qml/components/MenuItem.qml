@@ -25,11 +25,12 @@ Rectangle {
 
     Row {
         anchors.fill: parent
-        anchors.leftMargin: theme.spacingLarge
-        anchors.rightMargin: theme.spacingLarge
+        objectName: "menuItemRow"
+        anchors.leftMargin: 12
         spacing: theme.spacingLarge
 
         Item {
+            objectName: "menuItemIconSlot"
             width: root.icon === "" ? 0 : theme.fontSizeIcon
             height: parent.height
 
@@ -56,8 +57,9 @@ Rectangle {
         }
 
         Text {
+            objectName: "menuItemText"
             anchors.verticalCenter: parent.verticalCenter
-            width: parent.width - x - theme.spacingLarge
+            width: parent.width - x - 12
             text: root.text
             color: mouse.containsMouse && root.enabled
                 ? theme.shellTextActive : theme.shellTextSecondary

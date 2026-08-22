@@ -13,10 +13,15 @@ Window {
     property int outputHeight: 1
     property int leftMargin: barGeometry ? barGeometry.launcherLeftMargin : 8
     property string logoSource: "qrc:/qt/qml/Astrea/Shell/Bar/assets/astrea.png"
+    readonly property int launcherVisualWidth: Math.max(48, launcherPill.width)
+    readonly property int launcherSurfaceWidth: Math.max(
+        launcherVisualWidth,
+        launcherPill.horizontalPadding * 2 + logoButton.width
+            + launcherPill.spacing + workspaceStrip.reservedWidth)
     visible: false
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint
-    width: Math.max(48, launcherPill.width)
+    width: launcherSurfaceWidth
     height: barGeometry ? barGeometry.pillHeight : 36
 
     ShellBarTheme { id: theme }

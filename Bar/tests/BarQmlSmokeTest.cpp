@@ -4,6 +4,7 @@
 #include "core/WorkspaceModel.hpp"
 #include "theme/ThemeController.hpp"
 
+#include <QAbstractListModel>
 #include <QGuiApplication>
 #include <QCoreApplication>
 #include <QColor>
@@ -66,6 +67,7 @@ private:
 
 class FakeNetworkService final : public QObject {
     Q_OBJECT
+    Q_PROPERTY(bool available READ available NOTIFY changed)
     Q_PROPERTY(bool connected READ connected NOTIFY changed)
     Q_PROPERTY(bool wifiAvailable READ wifiAvailable NOTIFY changed)
     Q_PROPERTY(int connectionType READ connectionType NOTIFY changed)
@@ -73,6 +75,7 @@ class FakeNetworkService final : public QObject {
 
 public:
     explicit FakeNetworkService(QObject *parent = nullptr) : QObject(parent) {}
+    bool available() const { return m_available; }
     bool connected() const { return m_connected; }
     bool wifiAvailable() const { return m_wifiAvailable; }
     int connectionType() const { return m_connectionType; }
@@ -88,14 +91,97 @@ public:
         emit changed();
     }
 
+    void setAvailable(bool available)
+    {
+        m_available = available;
+        emit changed();
+    }
+
 signals:
     void changed();
 
 private:
+    bool m_available = true;
     bool m_connected = true;
     bool m_wifiAvailable = true;
     int m_connectionType = 1;
     QString m_connectionName = QStringLiteral("Office");
+};
+
+class FakeBluetoothDeviceModel final : public QAbstractListModel {
+    Q_OBJECT
+
+public:
+    enum Role {
+        IdRole = Qt::UserRole + 1,
+        ObjectPathRole,
+        NameRole,
+        PairedRole,
+        ConnectedRole,
+        RssiRole,
+        BatteryPercentRole,
+    };
+
+    struct Device {
+        QString id;
+        QString objectPath;
+        QString name;
+        bool paired = false;
+        bool connected = false;
+        int rssi = -1;
+        int batteryPercent = -1;
+    };
+
+    explicit FakeBluetoothDeviceModel(QObject *parent = nullptr)
+        : QAbstractListModel(parent)
+    {
+    }
+
+    int rowCount(const QModelIndex &parent = {}) const override
+    {
+        return parent.isValid() ? 0 : m_devices.size();
+    }
+
+    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override
+    {
+        if (!index.isValid() || index.row() < 0 || index.row() >= m_devices.size())
+            return {};
+        const Device &device = m_devices.at(index.row());
+        switch (role) {
+        case IdRole: return device.id;
+        case ObjectPathRole: return device.objectPath;
+        case NameRole: return device.name;
+        case PairedRole: return device.paired;
+        case ConnectedRole: return device.connected;
+        case RssiRole: return device.rssi;
+        case BatteryPercentRole: return device.batteryPercent;
+        case Qt::DisplayRole: return device.name;
+        default: return {};
+        }
+    }
+
+    QHash<int, QByteArray> roleNames() const override
+    {
+        return {
+            {IdRole, "id"},
+            {ObjectPathRole, "objectPath"},
+            {NameRole, "name"},
+            {PairedRole, "paired"},
+            {ConnectedRole, "connected"},
+            {RssiRole, "rssi"},
+            {BatteryPercentRole, "batteryPercent"},
+        };
+    }
+
+    void replace(QVector<Device> devices)
+    {
+        beginResetModel();
+        m_devices = std::move(devices);
+        endResetModel();
+    }
+
+private:
+    QVector<Device> m_devices;
 };
 
 class FakeBluetoothService final : public QObject {
@@ -105,14 +191,60 @@ class FakeBluetoothService final : public QObject {
     Q_PROPERTY(bool powered READ powered NOTIFY changed)
     Q_PROPERTY(int connectedCount READ connectedCount NOTIFY changed)
     Q_PROPERTY(bool scanning READ scanning NOTIFY changed)
+    Q_PROPERTY(QAbstractItemModel *devicesModel READ devicesModel CONSTANT)
 
 public:
-    explicit FakeBluetoothService(QObject *parent = nullptr) : QObject(parent) {}
+    explicit FakeBluetoothService(QObject *parent = nullptr)
+        : QObject(parent)
+        , m_devicesModel(new FakeBluetoothDeviceModel(this))
+    {
+    }
     bool available() const { return m_available; }
     bool powered() const { return m_powered; }
     bool adapterAvailable() const { return m_adapterAvailable; }
     int connectedCount() const { return m_connectedCount; }
     bool scanning() const { return m_scanning; }
+    QAbstractItemModel *devicesModel() const { return m_devicesModel; }
+
+    void setDevices(QVector<FakeBluetoothDeviceModel::Device> devices)
+    {
+        m_devicesModel->replace(std::move(devices));
+        emit changed();
+    }
+
+    Q_INVOKABLE bool setPowered(bool powered)
+    {
+        m_powered = powered;
+        emit changed();
+        return true;
+    }
+
+    Q_INVOKABLE bool requestScan(const QString &)
+    {
+        m_scanning = true;
+        emit changed();
+        return true;
+    }
+
+    Q_INVOKABLE void releaseScan(const QString &)
+    {
+        m_scanning = false;
+        emit changed();
+    }
+
+    Q_INVOKABLE bool connectDevice(const QString &objectPath)
+    {
+        m_lastDeviceAction = QStringLiteral("connect:") + objectPath;
+        return true;
+    }
+
+    Q_INVOKABLE bool disconnectDevice(const QString &objectPath)
+    {
+        m_lastDeviceAction = QStringLiteral("disconnect:") + objectPath;
+        return true;
+    }
+
+    QString lastDeviceAction() const { return m_lastDeviceAction; }
 
     void setState(bool available, bool adapterAvailable, bool powered,
                   int connectedCount, bool scanning)
@@ -133,7 +265,9 @@ private:
     bool m_adapterAvailable = true;
     bool m_powered = true;
     int m_connectedCount = 1;
-    bool m_scanning = true;
+    bool m_scanning = false;
+    FakeBluetoothDeviceModel *m_devicesModel = nullptr;
+    QString m_lastDeviceAction;
 };
 
 class BarQmlSmokeTest final : public QObject {
@@ -153,7 +287,14 @@ private slots:
     void barPaletteFollowsSharedThemeState();
     void launcherAndStatusUsePerIndicatorHitTargets();
     void indicatorGlyphsMatchReferenceStates();
+    void bluetoothIndicatorCentersGlyphInVisualContainer();
+    void volumeSliderAnimatesProgrammaticChangesOnly();
+    void networkPopupProjectsOneCoherentConnectionState();
+    void menuItemMatchesReferenceRightPadding();
+    void bluetoothPopupOrganizesPairedAndAvailableDevices();
+    void popupOverlayRejectsUnsupportedKinds();
     void workspaceDelegatesExposeReferenceHitboxes();
+    void workspaceAndLauncherReserveStableWidth();
     void workspaceActivationIsTruthfullyUnavailable();
     void popupVisualsUseNativeServiceInputs();
     void volumeUiDisablesWhenDefaultStateUnavailable();
@@ -515,18 +656,18 @@ void BarQmlSmokeTest::popupReopenCancelsExitAnimation()
         {QStringLiteral("popupController"), QVariant::fromValue(&popup)},
     });
     QVERIFY(overlay != nullptr);
-    popup.open(BarPopupController::PopupKind::Clock, 500);
+    popup.open(BarPopupController::PopupKind::AstreaMenu, 500);
     QTest::qWait(40);
     popup.close();
     QCoreApplication::processEvents();
     QVERIFY(popup.closing());
-    popup.open(BarPopupController::PopupKind::Clock, 520);
+    popup.open(BarPopupController::PopupKind::AstreaMenu, 520);
     QCoreApplication::processEvents();
     QVERIFY(popup.isOpen());
     QVERIFY(!popup.closing());
     QTest::qWait(300);
     QVERIFY(popup.surfaceRequired());
-    QCOMPARE(popup.kind(), BarPopupController::PopupKind::Clock);
+    QCOMPARE(popup.kind(), BarPopupController::PopupKind::AstreaMenu);
     QCOMPARE(popup.anchorX(), 520);
     delete overlay;
 }
@@ -544,7 +685,7 @@ void BarQmlSmokeTest::popupKindSwitchCancelsPreviousExit()
         {QStringLiteral("popupController"), QVariant::fromValue(&popup)},
     });
     QVERIFY(overlay != nullptr);
-    popup.open(BarPopupController::PopupKind::Clock, 500);
+    popup.open(BarPopupController::PopupKind::AstreaMenu, 500);
     QTest::qWait(40);
     popup.close();
     QCoreApplication::processEvents();
@@ -832,6 +973,306 @@ void BarQmlSmokeTest::indicatorGlyphsMatchReferenceStates()
     delete networkIndicator;
 }
 
+void BarQmlSmokeTest::bluetoothIndicatorCentersGlyphInVisualContainer()
+{
+    QQmlEngine engine;
+    FakeBluetoothService bluetooth;
+    QQmlComponent component(
+        &engine, QUrl(QStringLiteral(
+            "qrc:/qt/qml/Astrea/Shell/Bar/qml/components/BluetoothIndicator.qml")));
+    auto *indicator = qobject_cast<QQuickItem *>(component.createWithInitialProperties({
+        {QStringLiteral("bluetoothService"), QVariant::fromValue(&bluetooth)},
+    }));
+    QVERIFY(indicator != nullptr);
+
+    QQuickWindow window;
+    window.resize(120, 50);
+    indicator->setParentItem(window.contentItem());
+    indicator->setWidth(28);
+    indicator->setHeight(34);
+    window.show();
+    QTest::qWait(20);
+
+    auto *visual = qobject_cast<QQuickItem *>(indicator->findChild<QObject *>(
+        QStringLiteral("bluetoothVisual")));
+    auto *icon = qobject_cast<QQuickItem *>(indicator->findChild<QObject *>(
+        QStringLiteral("bluetoothIcon")));
+    QVERIFY(visual != nullptr);
+    QVERIFY(icon != nullptr);
+    QCOMPARE(visual->width(), 16.0);
+    QCOMPARE(visual->height(), 16.0);
+    const QPointF visualCenter = visual->mapToItem(
+        indicator, QPointF(visual->width() / 2.0, visual->height() / 2.0));
+    const QPointF iconCenter = icon->mapToItem(
+        indicator, QPointF(icon->width() / 2.0, icon->height() / 2.0));
+    const qreal visualCenterX = visualCenter.x();
+    const qreal visualCenterY = visualCenter.y();
+    const qreal iconCenterX = iconCenter.x();
+    const qreal iconCenterY = iconCenter.y();
+    QVERIFY(QQmlProperty(icon, QStringLiteral("anchors.centerIn")).isValid());
+    QVERIFY(qAbs(iconCenterX - visualCenterX) < 0.25);
+    QVERIFY(qAbs(iconCenterY - visualCenterY) < 0.01);
+
+    delete indicator;
+}
+
+void BarQmlSmokeTest::volumeSliderAnimatesProgrammaticChangesOnly()
+{
+    QQmlEngine engine;
+    FakeAudioService audio;
+    QQmlComponent component(
+        &engine, QUrl(QStringLiteral(
+            "qrc:/qt/qml/Astrea/Shell/Bar/qml/VolumePopup.qml")));
+    auto *popup = qobject_cast<QQuickItem *>(component.createWithInitialProperties({
+        {QStringLiteral("audioService"), QVariant::fromValue(&audio)},
+    }));
+    QVERIFY(popup != nullptr);
+    auto *slider = qobject_cast<QQuickItem *>(popup->findChild<QObject *>(
+        QStringLiteral("volumeSlider")));
+    auto *sliderMouse = qobject_cast<QQuickItem *>(popup->findChild<QObject *>(
+        QStringLiteral("volumeSliderMouse")));
+    auto *thumb = qobject_cast<QQuickItem *>(popup->findChild<QObject *>(
+        QStringLiteral("volumeThumb")));
+    QObject *thumbBehavior = popup->findChild<QObject *>(
+        QStringLiteral("volumeThumbXBehavior"));
+    QVERIFY(slider != nullptr);
+    QVERIFY(sliderMouse != nullptr);
+    QVERIFY(thumb != nullptr);
+    QVERIFY(thumbBehavior != nullptr);
+
+    QQuickWindow window;
+    window.resize(340, 120);
+    popup->setParentItem(window.contentItem());
+    popup->setWidth(300);
+    popup->setHeight(popup->implicitHeight());
+    window.show();
+    QTest::qWait(20);
+
+    const qreal oldX = thumb->x();
+    audio.setVolumeForTest(75.0);
+    QCoreApplication::processEvents();
+    QTRY_VERIFY_WITH_TIMEOUT(thumb->x() != oldX, 500);
+    QVERIFY(thumbBehavior->property("enabled").toBool());
+
+    const QPointF sliderPoint = sliderMouse->mapToItem(
+        window.contentItem(), QPointF(sliderMouse->width() / 2.0,
+                                      sliderMouse->height() / 2.0));
+    QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, sliderPoint.toPoint());
+    QCoreApplication::processEvents();
+    QVERIFY(!thumbBehavior->property("enabled").toBool());
+    QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, sliderPoint.toPoint());
+
+    delete popup;
+}
+
+void BarQmlSmokeTest::networkPopupProjectsOneCoherentConnectionState()
+{
+    QQmlEngine engine;
+    FakeNetworkService network;
+    QQmlComponent component(
+        &engine, QUrl(QStringLiteral(
+            "qrc:/qt/qml/Astrea/Shell/Bar/qml/NetworkPopup.qml")));
+    QVERIFY2(component.status() == QQmlComponent::Ready,
+             qPrintable(component.errors().isEmpty()
+                 ? QStringLiteral("NetworkPopup is not ready")
+                 : component.errors().constFirst().toString()));
+    QObject *popup = component.createWithInitialProperties({
+        {QStringLiteral("networkService"), QVariant::fromValue(&network)},
+    });
+    QVERIFY(popup != nullptr);
+
+    QObject *header = popup->findChild<QObject *>(QStringLiteral("networkPopupHeader"));
+    QVERIFY(header != nullptr);
+    auto state = [popup] { return popup->property("connectionState").toInt(); };
+    auto title = [popup] { return popup->property("connectionTitle").toString(); };
+    auto icon = [header] { return header->property("icon").toString(); };
+
+    network.setAvailable(false);
+    QCoreApplication::processEvents();
+    QCOMPARE(state(), 0);
+    QCOMPARE(title(), QStringLiteral("Network"));
+    QCOMPARE(icon(), QStringLiteral("󰖪"));
+
+    network.setAvailable(true);
+    network.setState(false, true, 0, {});
+    QCoreApplication::processEvents();
+    QCOMPARE(state(), 1);
+    QCOMPARE(title(), QStringLiteral("Network"));
+    QCOMPARE(icon(), QStringLiteral("󰖪"));
+
+    network.setState(true, true, 1, QStringLiteral("Office Wi-Fi"));
+    QCoreApplication::processEvents();
+    QCOMPARE(state(), 2);
+    QCOMPARE(title(), QStringLiteral("Office Wi-Fi"));
+    QCOMPARE(icon(), QStringLiteral("󰖩"));
+
+    network.setState(true, false, 2, QStringLiteral("Ethernet"));
+    QCoreApplication::processEvents();
+    QCOMPARE(state(), 3);
+    QCOMPARE(icon(), QStringLiteral("󰈀"));
+
+    network.setState(true, false, 3, QStringLiteral("VPN"));
+    QCoreApplication::processEvents();
+    QCOMPARE(state(), 4);
+    QCOMPARE(title(), QStringLiteral("VPN"));
+    QVERIFY(icon() != QStringLiteral("󰈀"));
+
+    delete popup;
+}
+
+void BarQmlSmokeTest::menuItemMatchesReferenceRightPadding()
+{
+    QQmlEngine engine;
+    QQmlComponent component(
+        &engine, QUrl(QStringLiteral(
+            "qrc:/qt/qml/Astrea/Shell/Bar/qml/components/MenuItem.qml")));
+    QObject *item = component.createWithInitialProperties({
+        {QStringLiteral("icon"), QStringLiteral("󰍉")},
+        {QStringLiteral("text"), QStringLiteral("A long menu item that must elide")},
+    });
+    QVERIFY(item != nullptr);
+    item->setProperty("width", 240);
+    item->setProperty("enabled", false);
+    QCoreApplication::processEvents();
+
+    QObject *row = item->findChild<QObject *>(QStringLiteral("menuItemRow"));
+    QObject *iconSlot = item->findChild<QObject *>(QStringLiteral("menuItemIconSlot"));
+    QObject *text = item->findChild<QObject *>(QStringLiteral("menuItemText"));
+    QVERIFY(row != nullptr);
+    QVERIFY(iconSlot != nullptr);
+    QVERIFY(text != nullptr);
+    QCOMPARE(row->property("x").toReal(), 12.0);
+    QVERIFY(iconSlot->property("width").toReal() > 0.0);
+    QCOMPARE(text->property("width").toReal(),
+             row->property("width").toReal() - text->property("x").toReal() - 12.0);
+    QCOMPARE(text->property("elide").toInt(), static_cast<int>(Qt::ElideRight));
+
+    item->setProperty("icon", QString());
+    item->setProperty("text", QStringLiteral("Short"));
+    QCoreApplication::processEvents();
+    QCOMPARE(iconSlot->property("width").toReal(), 0.0);
+    QCOMPARE(text->property("width").toReal(),
+             row->property("width").toReal() - text->property("x").toReal() - 12.0);
+    QVERIFY(!item->property("enabled").toBool());
+    delete item;
+}
+
+void BarQmlSmokeTest::bluetoothPopupOrganizesPairedAndAvailableDevices()
+{
+    QQmlEngine engine;
+    FakeBluetoothService bluetooth;
+    QQmlComponent component(
+        &engine, QUrl(QStringLiteral(
+            "qrc:/qt/qml/Astrea/Shell/Bar/qml/BluetoothPopup.qml")));
+    QVERIFY2(component.status() == QQmlComponent::Ready,
+             qPrintable(component.errors().isEmpty()
+                 ? QStringLiteral("BluetoothPopup is not ready")
+                 : component.errors().constFirst().toString()));
+    QObject *popup = component.createWithInitialProperties({
+        {QStringLiteral("bluetoothService"), QVariant::fromValue(&bluetooth)},
+    });
+    QVERIFY(popup != nullptr);
+    QObject *pairedSection = popup->findChild<QObject *>(QStringLiteral("pairedSection"));
+    QObject *availableSection = popup->findChild<QObject *>(QStringLiteral("availableSection"));
+    QObject *separator = popup->findChild<QObject *>(QStringLiteral("deviceScanSeparator"));
+    QObject *scanAction = popup->findChild<QObject *>(QStringLiteral("scanAction"));
+    QVERIFY(pairedSection != nullptr);
+    QVERIFY(availableSection != nullptr);
+    QVERIFY(separator != nullptr);
+    QVERIFY(scanAction != nullptr);
+
+    using Device = FakeBluetoothDeviceModel::Device;
+    bluetooth.setDevices({});
+    QCoreApplication::processEvents();
+    QVERIFY(!pairedSection->property("visible").toBool());
+    QVERIFY(!availableSection->property("visible").toBool());
+
+    bluetooth.setDevices({Device{QStringLiteral("headphones"), QStringLiteral("/paired"),
+                                 QStringLiteral("Headphones"), true, false, -42, 80}});
+    QTRY_VERIFY_WITH_TIMEOUT(pairedSection->property("visible").toBool(), 500);
+    QVERIFY(!availableSection->property("visible").toBool());
+    QVERIFY(separator->property("visible").toBool());
+
+    bluetooth.setDevices({Device{QStringLiteral("keyboard"), QStringLiteral("/available"),
+                                 QStringLiteral("Keyboard"), false, false, -60, -1}});
+    QTRY_VERIFY_WITH_TIMEOUT(availableSection->property("visible").toBool(), 500);
+    QVERIFY(!pairedSection->property("visible").toBool());
+    auto *availableRows = qobject_cast<QQuickItem *>(popup->findChild<QObject *>(
+        QStringLiteral("availableRows")));
+    QVERIFY(availableRows != nullptr);
+    QQuickItem *availableRow = nullptr;
+    for (QQuickItem *child : availableRows->childItems()) {
+        if (child->objectName() == QStringLiteral("availableDeviceRow")) {
+            availableRow = child;
+            break;
+        }
+    }
+    QVERIFY(availableRow != nullptr);
+    QObject *availableMouse = availableRow->findChild<QObject *>(QStringLiteral("deviceMouse"));
+    QVERIFY(availableMouse != nullptr);
+    QVERIFY(!availableMouse->property("enabled").toBool());
+    QVERIFY(popup->findChild<QObject *>(QStringLiteral("pairButton")) == nullptr);
+
+    bluetooth.setDevices({
+        Device{QStringLiteral("headphones"), QStringLiteral("/paired"),
+               QStringLiteral("Headphones"), true, true, -42, 80},
+        Device{QStringLiteral("keyboard"), QStringLiteral("/available"),
+               QStringLiteral("Keyboard"), false, false, -60, -1},
+    });
+    QTRY_VERIFY_WITH_TIMEOUT(pairedSection->property("visible").toBool(), 500);
+    QTRY_VERIFY_WITH_TIMEOUT(availableSection->property("visible").toBool(), 500);
+
+    bluetooth.setState(true, true, true, 1, false);
+    QCoreApplication::processEvents();
+    QCOMPARE(QQmlProperty(scanAction, QStringLiteral("border.width")).read().toInt(), 0);
+    bluetooth.setState(true, true, true, 1, true);
+    QTRY_VERIFY_WITH_TIMEOUT(popup->property("scanning").toBool(), 500);
+    QTRY_COMPARE_WITH_TIMEOUT(scanAction->property("color").value<QColor>(),
+                              QColor::fromRgbF(0.20, 0.60, 1.0, 0.10), 500);
+    QTRY_COMPARE_WITH_TIMEOUT(
+        QQmlProperty(scanAction, QStringLiteral("border.width")).read().toInt(), 1, 500);
+    QVERIFY(separator->property("visible").toBool());
+
+    delete popup;
+}
+
+void BarQmlSmokeTest::popupOverlayRejectsUnsupportedKinds()
+{
+    QQmlEngine engine;
+    BarLayoutMetrics metrics;
+    BarPopupController popup;
+    QQmlComponent component(&engine, QUrl(QStringLiteral(
+        "qrc:/qt/qml/Astrea/Shell/Bar/qml/PopupOverlaySurface.qml")));
+    QVERIFY2(component.status() == QQmlComponent::Ready,
+             qPrintable(component.errors().isEmpty()
+                 ? QStringLiteral("PopupOverlaySurface is not ready")
+                 : component.errors().constFirst().toString()));
+    QObject *overlay = component.createWithInitialProperties({
+        {QStringLiteral("barGeometry"), QVariant::fromValue(&metrics)},
+        {QStringLiteral("popupController"), QVariant::fromValue(&popup)},
+    });
+    QVERIFY(overlay != nullptr);
+    QObject *shield = overlay->findChild<QObject *>(QStringLiteral("popupClickShield"));
+    QVERIFY(shield != nullptr);
+
+    const auto unsupported = static_cast<BarPopupController::PopupKind>(2);
+    popup.open(unsupported, 400);
+    QCoreApplication::processEvents();
+    QVERIFY(!popup.isOpen());
+    QVERIFY(!popup.surfaceRequired());
+    QVERIFY(overlay->findChild<QObject *>(QStringLiteral("astreaMenu"))
+                ->property("visible").toBool() == false);
+    QVERIFY(!shield->property("enabled").toBool());
+
+    popup.open(BarPopupController::PopupKind::AstreaMenu, 400);
+    QCoreApplication::processEvents();
+    QVERIFY(popup.isOpen());
+    QVERIFY(overlay->findChild<QObject *>(QStringLiteral("astreaMenu"))
+                ->property("visible").toBool());
+    QVERIFY(shield->property("enabled").toBool());
+    delete overlay;
+}
+
 void BarQmlSmokeTest::workspaceDelegatesExposeReferenceHitboxes()
 {
     QQmlEngine engine;
@@ -893,6 +1334,78 @@ void BarQmlSmokeTest::workspaceDelegatesExposeReferenceHitboxes()
     QCOMPARE(activeDelegate->property("workspaceColorAnimationDuration").toInt(), 180);
     QCOMPARE(activeDelegate->property("workspaceWidthAnimationEasing").toInt(), 22);
     delete object;
+}
+
+void BarQmlSmokeTest::workspaceAndLauncherReserveStableWidth()
+{
+    QQmlEngine engine;
+    BarLayoutMetrics metrics;
+    BarPopupController popup;
+    WorkspaceModel model;
+    model.replaceWorkspaces({
+        {QStringLiteral("1"), true, true, false, {}},
+        {QStringLiteral("2"), false, false, false, {}},
+        {QStringLiteral("3"), false, false, false, {}},
+        {QStringLiteral("4"), false, false, false, {}},
+    });
+
+    QQmlComponent stripComponent(&engine, QUrl(QStringLiteral(
+        "qrc:/qt/qml/Astrea/Shell/Bar/qml/components/WorkspaceStrip.qml")));
+    QObject *strip = stripComponent.createWithInitialProperties({
+        {QStringLiteral("workspaceModel"), QVariant::fromValue(&model)},
+    });
+    QVERIFY(strip != nullptr);
+    QCoreApplication::processEvents();
+    QCOMPARE(strip->property("stableWidth").toInt(), 80);
+    QCOMPARE(strip->property("width").toInt(), 80);
+    const int firstWidth = strip->property("width").toInt();
+
+    model.replaceWorkspaces({
+        {QStringLiteral("1"), false, true, false, {}},
+        {QStringLiteral("2"), false, false, false, {}},
+        {QStringLiteral("3"), false, false, false, {}},
+        {QStringLiteral("4"), true, false, false, {}},
+    });
+    QTRY_COMPARE_WITH_TIMEOUT(strip->property("width").toInt(), firstWidth, 500);
+    model.replaceWorkspaces({
+        {QStringLiteral("1"), false, true, false, {}},
+        {QStringLiteral("2"), false, false, false, {}},
+        {QStringLiteral("3"), false, false, false, {}},
+        {QStringLiteral("4"), false, false, false, {}},
+    });
+    QTRY_COMPARE_WITH_TIMEOUT(strip->property("width").toInt(), firstWidth, 500);
+    model.replaceWorkspaces({});
+    QTRY_COMPARE_WITH_TIMEOUT(strip->property("width").toInt(), 0, 500);
+    QVERIFY(strip->property("width").toInt() >= 0);
+    delete strip;
+
+    model.replaceWorkspaces({
+        {QStringLiteral("1"), true, true, false, {}},
+        {QStringLiteral("2"), false, false, false, {}},
+        {QStringLiteral("3"), false, false, false, {}},
+        {QStringLiteral("4"), false, false, false, {}},
+    });
+    QQmlComponent launcherComponent(&engine, QUrl(QStringLiteral(
+        "qrc:/qt/qml/Astrea/Shell/Bar/qml/LauncherSurface.qml")));
+    auto *launcher = qobject_cast<QQuickWindow *>(launcherComponent.createWithInitialProperties({
+        {QStringLiteral("barGeometry"), QVariant::fromValue(&metrics)},
+        {QStringLiteral("popupController"), QVariant::fromValue(&popup)},
+        {QStringLiteral("workspaceModel"), QVariant::fromValue(&model)},
+    }));
+    QVERIFY(launcher != nullptr);
+    launcher->show();
+    QTest::qWait(20);
+    QCOMPARE(launcher->width(), launcher->property("launcherSurfaceWidth").toInt());
+    QVERIFY(launcher->width() >= 176);
+    const int reservedLauncherWidth = launcher->width();
+    model.replaceWorkspaces({
+        {QStringLiteral("1"), false, true, false, {}},
+        {QStringLiteral("2"), false, false, false, {}},
+        {QStringLiteral("3"), false, false, false, {}},
+        {QStringLiteral("4"), true, false, false, {}},
+    });
+    QTRY_COMPARE_WITH_TIMEOUT(launcher->width(), reservedLauncherWidth, 500);
+    delete launcher;
 }
 
 void BarQmlSmokeTest::workspaceActivationIsTruthfullyUnavailable()

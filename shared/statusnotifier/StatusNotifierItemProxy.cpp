@@ -181,12 +181,16 @@ void StatusNotifierItemProxy::applyProperties(const QString &interfaceName,
     m_snapshot.tooltipDescription.clear();
     parseTooltip(value(QStringLiteral("ToolTip")), &m_snapshot.tooltipTitle,
                  &m_snapshot.tooltipDescription);
+    const QString oldMenuPath = m_snapshot.menuPath;
     m_snapshot.menuPath = value(QStringLiteral("Menu")).toString();
+    if (m_snapshot.menuPath == QStringLiteral("/"))
+        m_snapshot.menuPath.clear();
     m_snapshot.itemIsMenu = value(QStringLiteral("ItemIsMenu")).toBool();
     m_snapshot.ready = true;
     m_snapshot.generation = m_generation;
     emitSnapshot();
-    emit menuPathChanged(m_address.key(), m_snapshot.menuPath);
+    if (oldMenuPath != m_snapshot.menuPath)
+        emit menuPathChanged(m_address.key(), m_snapshot.menuPath);
 }
 
 void StatusNotifierItemProxy::connectSignals(const QString &interfaceName)
@@ -300,13 +304,15 @@ void StatusNotifierItemProxy::onNewToolTip() { refresh(m_interfaceName, false); 
 
 void StatusNotifierItemProxy::onNewStatus(const QString &status)
 {
+    if (!m_started)
+        return;
     m_snapshot.status = itemStatusFromString(status);
     emitSnapshot();
 }
 
 void StatusNotifierItemProxy::emitSnapshot()
 {
-    if (m_snapshot.generation != m_generation)
+    if (!m_started || m_snapshot.generation != m_generation)
         return;
     emit snapshotChanged(m_snapshot);
 }

@@ -9,6 +9,7 @@
 #include <QDBusPendingCallWatcher>
 #include <QDBusObjectPath>
 #include <QDBusVariant>
+#include <QSet>
 #include <QTimer>
 
 using namespace Astrea::StatusNotifier;
@@ -29,6 +30,11 @@ public:
     int lastDelta = 0;
     QString lastOrientation;
     bool itemIsMenuValue = false;
+    QString titleValue = QStringLiteral("Integration tray item");
+    QString menuPathValue = QStringLiteral("/org/test/Menu");
+
+signals:
+    void refreshRequested();
 };
 
 class FixtureItemAdaptor final : public QDBusAbstractAdaptor {
@@ -60,11 +66,12 @@ public:
     explicit FixtureItemAdaptor(FixtureItem *item)
         : QDBusAbstractAdaptor(item), m_item(item)
     {
+        connect(m_item, &FixtureItem::refreshRequested, this, &FixtureItemAdaptor::NewTitle);
     }
 
     QString category() const { return QStringLiteral("ApplicationStatus"); }
     QString id() const { return QStringLiteral("integration-item"); }
-    QString title() const { return QStringLiteral("Integration tray item"); }
+    QString title() const { return m_item->titleValue; }
     QString status() const { return QStringLiteral("Active"); }
     QString iconName() const { return {}; }
     StatusNotifierPixmapList iconPixmap() const { return m_item->pixmaps; }
@@ -78,7 +85,11 @@ public:
                 QStringLiteral("Exact tooltip body")};
     }
     bool itemIsMenu() const { return m_item->itemIsMenuValue; }
-    QDBusObjectPath menu() const { return QDBusObjectPath(QStringLiteral("/org/test/Menu")); }
+    QDBusObjectPath menu() const
+    {
+        return QDBusObjectPath(m_item->menuPathValue.isEmpty()
+                                   ? QStringLiteral("/") : m_item->menuPathValue);
+    }
     int activateCalls() const { return m_item->activateCalls; }
     int secondaryActivateCalls() const { return m_item->secondaryCalls; }
     int contextMenuCalls() const { return m_item->contextCalls; }
@@ -273,6 +284,121 @@ private:
     FixtureMenu *m_menu = nullptr;
 };
 
+class FixtureWatcher final : public QObject {
+    Q_OBJECT
+
+public:
+    explicit FixtureWatcher(const QDBusConnection &bus, QObject *parent = nullptr)
+        : QObject(parent), m_bus(bus)
+    {
+    }
+
+    QStringList registeredItems() const { return {}; }
+    bool hostRegistered() const { return m_hostRegistered; }
+
+    bool claim(const QString &name)
+    {
+        return m_bus.registerService(name) == QDBusConnectionInterface::ServiceRegistered;
+    }
+
+    bool release(const QString &name)
+    {
+        return m_bus.unregisterService(name);
+    }
+
+public slots:
+    void RegisterStatusNotifierHost(const QString &)
+    {
+        if (m_hostRegistered)
+            return;
+        m_hostRegistered = true;
+        emit hostRegisteredChanged();
+        emit StatusNotifierHostRegistered();
+    }
+    void RegisterStatusNotifierItem(const QString &) { }
+    void UnregisterStatusNotifierItem(const QString &) { }
+
+signals:
+    void hostRegisteredChanged();
+    void StatusNotifierHostRegistered();
+
+private:
+    QDBusConnection m_bus;
+    bool m_hostRegistered = false;
+};
+
+class FixtureFreedesktopWatcherAdaptor final : public QDBusAbstractAdaptor {
+    Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "org.freedesktop.StatusNotifierWatcher")
+    Q_PROPERTY(QStringList RegisteredStatusNotifierItems READ registeredItems)
+    Q_PROPERTY(bool IsStatusNotifierHostRegistered READ hostRegistered)
+    Q_PROPERTY(int ProtocolVersion READ protocolVersion)
+
+public:
+    explicit FixtureFreedesktopWatcherAdaptor(FixtureWatcher *watcher)
+        : QDBusAbstractAdaptor(watcher), m_watcher(watcher)
+    {
+        connect(m_watcher, &FixtureWatcher::StatusNotifierHostRegistered, this,
+                &FixtureFreedesktopWatcherAdaptor::StatusNotifierHostRegistered);
+    }
+
+    QStringList registeredItems() const { return m_watcher->registeredItems(); }
+    bool hostRegistered() const { return m_watcher->hostRegistered(); }
+    int protocolVersion() const { return 0; }
+
+public slots:
+    void RegisterStatusNotifierHost(const QString &host)
+    { m_watcher->RegisterStatusNotifierHost(host); }
+    void RegisterStatusNotifierItem(const QString &item)
+    { m_watcher->RegisterStatusNotifierItem(item); }
+    void UnregisterStatusNotifierItem(const QString &item)
+    { m_watcher->UnregisterStatusNotifierItem(item); }
+
+signals:
+    void StatusNotifierItemRegistered(const QString &service);
+    void StatusNotifierItemUnregistered(const QString &service);
+    void StatusNotifierHostRegistered();
+
+private:
+    FixtureWatcher *m_watcher = nullptr;
+};
+
+class FixtureKdeWatcherAdaptor final : public QDBusAbstractAdaptor {
+    Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "org.kde.StatusNotifierWatcher")
+    Q_PROPERTY(QStringList RegisteredStatusNotifierItems READ registeredItems)
+    Q_PROPERTY(bool IsStatusNotifierHostRegistered READ hostRegistered)
+    Q_PROPERTY(int ProtocolVersion READ protocolVersion)
+
+public:
+    explicit FixtureKdeWatcherAdaptor(FixtureWatcher *watcher)
+        : QDBusAbstractAdaptor(watcher), m_watcher(watcher)
+    {
+        connect(m_watcher, &FixtureWatcher::StatusNotifierHostRegistered, this,
+                &FixtureKdeWatcherAdaptor::StatusNotifierHostRegistered);
+    }
+
+    QStringList registeredItems() const { return m_watcher->registeredItems(); }
+    bool hostRegistered() const { return m_watcher->hostRegistered(); }
+    int protocolVersion() const { return 0; }
+
+public slots:
+    void RegisterStatusNotifierHost(const QString &host)
+    { m_watcher->RegisterStatusNotifierHost(host); }
+    void RegisterStatusNotifierItem(const QString &item)
+    { m_watcher->RegisterStatusNotifierItem(item); }
+    void UnregisterStatusNotifierItem(const QString &item)
+    { m_watcher->UnregisterStatusNotifierItem(item); }
+
+signals:
+    void StatusNotifierItemRegistered(const QString &service);
+    void StatusNotifierItemUnregistered(const QString &service);
+    void StatusNotifierHostRegistered();
+
+private:
+    FixtureWatcher *m_watcher = nullptr;
+};
+
 class FixtureControl final : public QObject {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "org.astrea.tests.StatusNotifierFixture")
@@ -280,8 +406,9 @@ class FixtureControl final : public QObject {
     Q_PROPERTY(QString LastError READ lastError NOTIFY lastErrorChanged)
 
 public:
-    FixtureControl(FixtureItem *item, FixtureMenu *menu, QObject *parent = nullptr)
-        : QObject(parent), m_item(item), m_menu(menu)
+    FixtureControl(FixtureItem *item, FixtureMenu *menu, FixtureWatcher *watcher,
+                   QObject *parent = nullptr)
+        : QObject(parent), m_item(item), m_menu(menu), m_watcher(watcher)
     {
     }
 
@@ -294,6 +421,18 @@ public slots:
     bool UnregisterServiceOnly() { return sendUnregistration(QStringLiteral("org.astrea.tests.StatusNotifierFixtureItem")); }
     bool UnregisterPathOnly() { return sendUnregistration(QStringLiteral("/org/test/Tray")); }
     void SetItemIsMenu(bool value) { m_item->itemIsMenuValue = value; }
+    void SetTitle(const QString &title)
+    {
+        m_item->titleValue = title;
+        emit m_item->refreshRequested();
+    }
+    void SetMenuPath(const QString &path)
+    {
+        m_item->menuPathValue = path;
+        emit m_item->refreshRequested();
+    }
+    bool ClaimWatcherAlias(const QString &name) { return m_watcher->claim(name); }
+    bool ReleaseWatcherAlias(const QString &name) { return m_watcher->release(name); }
     void SetEmptyMenu(bool value)
     {
         m_menu->emptyMenu = value;
@@ -364,6 +503,7 @@ private:
 
     FixtureItem *m_item = nullptr;
     FixtureMenu *m_menu = nullptr;
+    FixtureWatcher *m_watcher = nullptr;
     QString m_lastError;
     int m_callCount = 0;
     int m_lastReplyType = -1;
@@ -388,12 +528,19 @@ int main(int argc, char **argv)
     FixtureItemAdaptor itemAdaptor(&item);
     FixtureMenu menu;
     FixtureMenuAdaptor menuAdaptor(&menu);
-    FixtureControl control(&item, &menu);
+    FixtureWatcher watcher(bus);
+    FixtureFreedesktopWatcherAdaptor freedesktopWatcherAdaptor(&watcher);
+    FixtureKdeWatcherAdaptor kdeWatcherAdaptor(&watcher);
+    FixtureControl control(&item, &menu, &watcher);
     if (!bus.registerObject(QStringLiteral("/StatusNotifierItem"), &item,
                             QDBusConnection::ExportAdaptors)
         || !bus.registerObject(QStringLiteral("/org/test/Tray"), &item,
                             QDBusConnection::ExportAdaptors)
         || !bus.registerObject(QStringLiteral("/org/test/Menu"), &menu,
+                               QDBusConnection::ExportAdaptors)
+        || !bus.registerObject(QStringLiteral("/org/test/Menu2"), &menu,
+                               QDBusConnection::ExportAdaptors)
+        || !bus.registerObject(QStringLiteral("/StatusNotifierWatcher"), &watcher,
                                QDBusConnection::ExportAdaptors)
         || !bus.registerObject(QStringLiteral("/org/astrea/tests/StatusNotifierFixture"),
                                &control, QDBusConnection::ExportAllSlots

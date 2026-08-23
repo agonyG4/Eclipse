@@ -176,7 +176,7 @@ void BarCoreTest::launcherAndStatusPoliciesPreserveReferenceGeometry()
     QVERIFY(trayTooltip.anchorLeft);
     QVERIFY(trayTooltip.anchorRight);
     QCOMPARE(trayTooltip.exclusiveZone, -1);
-    QCOMPARE(trayTooltip.margins, QMargins(0, 51, 0, 0));
+    QCOMPARE(trayTooltip.margins, QMargins(0, 43, 0, 0));
     QCOMPARE(BarSurfacePolicy::surfaceHeight(BarSurfaceKind::TrayTooltip), 28);
 }
 

@@ -6,6 +6,8 @@
 #include <QDBusArgument>
 #include <QPointer>
 
+#include <optional>
+
 namespace Astrea::StatusNotifier {
 
 class StatusNotifierIconStore;
@@ -55,6 +57,12 @@ enum class DBusMenuLifecycleState {
     Stopped,
 };
 
+enum class DBusMenuMutationResult {
+    Applied,
+    TargetNotFound,
+    RejectedByLimits,
+};
+
 DBusMenuParseResult parseMenuLayout(const QVariant &value,
                                     const DBusMenuLimits &limits = {});
 DBusMenuParseResult parseMenuLayoutArgument(const QDBusArgument &argument, quint32 revision,
@@ -93,6 +101,7 @@ public:
     void setNodes(const QList<DBusMenuNode> &nodes);
     void setRoot(const DBusMenuNode &root);
     bool replaceSubtree(int parentId, const DBusMenuNode &subtree);
+    DBusMenuMutationResult replaceSubtreeResult(int parentId, const DBusMenuNode &subtree);
     bool updateNodeProperties(const QList<DBusMenuPropertyUpdate> &updates,
                               const QList<DBusMenuRemovedProperties> &removedProperties);
     bool setIconSource(int nodeId, const QString &source);
@@ -105,8 +114,19 @@ signals:
     void activateRequested(int nodeId);
 
 private:
+    struct TreeStats {
+        int nodeCount = 0;
+        int maxDepth = -1;
+        int rootDepth = -1;
+    };
+
+    explicit DBusMenuModel(const DBusMenuLimits &limits, QObject *parent, bool rootModel);
     void rebuildChildren();
     bool replaceSubtreeInNodes(int parentId, const DBusMenuNode &subtree);
+    static TreeStats statsForNode(const DBusMenuNode &node, int depth);
+    TreeStats liveStatsForNode(const DBusMenuNode &node, int depth) const;
+    TreeStats treeStats(int firstDepth) const;
+    std::optional<TreeStats> subtreeStats(int nodeId, int firstDepth) const;
     bool updatePropertiesInNodes(const QList<DBusMenuPropertyUpdate> &updates,
                                  const QList<DBusMenuRemovedProperties> &removedProperties);
     static void applyProperties(DBusMenuNode &node, const QVariantMap &properties,
@@ -116,6 +136,7 @@ private:
     DBusMenuLimits m_limits;
     QList<DBusMenuNode> m_nodes;
     QHash<int, DBusMenuModel *> m_children;
+    bool m_rootModel = true;
 };
 
 class DBusMenuClient final : public QObject {
@@ -135,6 +156,7 @@ public:
     bool loading() const { return m_loading; }
     DBusMenuLifecycleState state() const { return m_state; }
     QString menuPath() const { return m_menuPath; }
+    quint64 itemGeneration() const { return m_itemGeneration; }
 
     void load();
     Q_INVOKABLE void prepareForPresentation(int nodeId = 0);
@@ -179,6 +201,7 @@ private:
 
 Q_DECLARE_METATYPE(Astrea::StatusNotifier::DBusMenuNode)
 Q_DECLARE_METATYPE(Astrea::StatusNotifier::DBusMenuLifecycleState)
+Q_DECLARE_METATYPE(Astrea::StatusNotifier::DBusMenuMutationResult)
 Q_DECLARE_METATYPE(Astrea::StatusNotifier::DBusMenuLayoutNodeWire)
 Q_DECLARE_METATYPE(Astrea::StatusNotifier::DBusMenuLayoutReply)
 

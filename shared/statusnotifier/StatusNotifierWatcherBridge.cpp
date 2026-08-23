@@ -857,8 +857,6 @@ void StatusNotifierWatcherBridge::disconnectExternalWatcher()
                    QStringLiteral("org.freedesktop.DBus.Properties"),
                    QStringLiteral("PropertiesChanged"), this,
                    SLOT(onWatcherPropertiesChanged(QString,QVariantMap,QStringList)));
-    if (m_serviceWatcher)
-        m_serviceWatcher->removeWatchedService(m_watcherName);
 }
 
 void StatusNotifierWatcherBridge::detachExternalWatcher()

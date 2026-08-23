@@ -113,6 +113,11 @@ WatcherMode StatusNotifierService::watcherMode() const
     return m_watcher->mode();
 }
 
+QString StatusNotifierService::watcherName() const
+{
+    return m_watcher->watcherName();
+}
+
 QString StatusNotifierService::watcherOwner() const
 {
     return m_watcher->watcherOwner();
@@ -175,6 +180,16 @@ int StatusNotifierService::menuStateForItem(const QString &itemKey) const
                 : static_cast<int>(DBusMenuLifecycleState::Unavailable);
 }
 
+QString StatusNotifierService::displayTitleForItem(const QString &itemKey) const
+{
+    return m_model->item(itemKey).title;
+}
+
+QString StatusNotifierService::iconSourceForItem(const QString &itemKey) const
+{
+    return m_iconStore->hasIcon(itemKey) ? m_iconStore->imageSource(itemKey) : QString();
+}
+
 QString StatusNotifierService::tooltipTitleForItem(const QString &itemKey) const
 {
     const ItemSnapshot snapshot = m_model->item(itemKey);
@@ -226,13 +241,6 @@ void StatusNotifierService::aboutToShowMenu(const QString &itemKey, int nodeId)
     prepareMenuForPresentation(itemKey, nodeId);
 }
 
-void StatusNotifierService::closeMenu(const QString &itemKey)
-{
-    if (auto *menu = m_menus.value(itemKey))
-        menu->stop();
-    emit menuClosed(itemKey);
-}
-
 void StatusNotifierService::upsertTestItem(const ItemSnapshot &snapshot)
 {
     if (!snapshot.address.isValid())
@@ -262,7 +270,6 @@ void StatusNotifierService::onItemUnregistered(const QString &key)
 void StatusNotifierService::onItemOwnerVanished(const QString &key, const QString &)
 {
     removeItem(key);
-    emit menuClosed(key);
 }
 
 void StatusNotifierService::onSnapshotChanged(const ItemSnapshot &snapshot)
@@ -329,6 +336,14 @@ void StatusNotifierService::updateSnapshot(const ItemSnapshot &snapshot)
 
 void StatusNotifierService::updateMenu(const QString &key, const QString &menuPath)
 {
+    const ItemSnapshot snapshot = m_model->item(key);
+    if (!snapshot.address.isValid())
+        return;
+    if (auto *existing = m_menus.value(key)) {
+        if (existing->menuPath() == menuPath
+            && existing->itemGeneration() == snapshot.generation)
+            return;
+    }
     if (menuPath.isEmpty()) {
         if (auto *menu = m_menus.take(key)) {
             menu->stop();
@@ -338,9 +353,6 @@ void StatusNotifierService::updateMenu(const QString &key, const QString &menuPa
         emit stateChanged();
         return;
     }
-    const ItemSnapshot snapshot = m_model->item(key);
-    if (!snapshot.address.isValid())
-        return;
     if (auto *old = m_menus.take(key)) {
         old->stop();
         old->deleteLater();

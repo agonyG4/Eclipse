@@ -20,6 +20,7 @@ class StatusNotifierService final : public QObject {
     Q_OBJECT
     Q_PROPERTY(QAbstractItemModel *itemModel READ itemModel CONSTANT)
     Q_PROPERTY(WatcherMode watcherMode READ watcherMode NOTIFY stateChanged)
+    Q_PROPERTY(QString watcherName READ watcherName NOTIFY stateChanged)
     Q_PROPERTY(QString watcherOwner READ watcherOwner NOTIFY stateChanged)
     Q_PROPERTY(QString hostServiceName READ hostServiceName NOTIFY stateChanged)
     Q_PROPERTY(bool hostRegistered READ hostRegistered NOTIFY stateChanged)
@@ -40,6 +41,7 @@ public:
     StatusNotifierItemModel *typedItemModel() const { return m_model.get(); }
     StatusNotifierIconStore *iconStore() const { return m_iconStore.get(); }
     WatcherMode watcherMode() const;
+    QString watcherName() const;
     QString watcherOwner() const;
     QString hostServiceName() const;
     bool hostRegistered() const;
@@ -51,6 +53,8 @@ public:
     Q_INVOKABLE bool hasMenuForItem(const QString &itemKey) const;
     Q_INVOKABLE QObject *menuModelForItem(const QString &itemKey) const;
     Q_INVOKABLE int menuStateForItem(const QString &itemKey) const;
+    Q_INVOKABLE QString displayTitleForItem(const QString &itemKey) const;
+    Q_INVOKABLE QString iconSourceForItem(const QString &itemKey) const;
     Q_INVOKABLE QString tooltipTitleForItem(const QString &itemKey) const;
     Q_INVOKABLE QString tooltipDescriptionForItem(const QString &itemKey) const;
     Q_INVOKABLE void activate(const QString &itemKey, int x, int y);
@@ -60,7 +64,6 @@ public:
     Q_INVOKABLE void openMenu(const QString &itemKey);
     Q_INVOKABLE void prepareMenuForPresentation(const QString &itemKey, int nodeId = 0);
     Q_INVOKABLE void aboutToShowMenu(const QString &itemKey, int nodeId);
-    Q_INVOKABLE void closeMenu(const QString &itemKey);
 
     void upsertTestItem(const ItemSnapshot &snapshot);
     void removeTestItem(const QString &key);
@@ -69,7 +72,6 @@ signals:
     void stateChanged();
     void itemChanged(const QString &itemKey);
     void itemRemoved(const QString &itemKey);
-    void menuClosed(const QString &itemKey);
     void menuClientChanged(const QString &itemKey);
     void menuContentChanged(const QString &itemKey);
     void healthWarning(const QString &warning);

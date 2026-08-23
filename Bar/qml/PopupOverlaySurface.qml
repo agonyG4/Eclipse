@@ -28,6 +28,15 @@ Window {
 
     ShellBarTheme { id: theme }
 
+    Connections {
+        target: window.statusNotifierService
+        function onItemRemoved(key) {
+            if (window.popupController && window.popupController.kind === 6
+                    && window.popupController.contextKey === key)
+                window.popupController.close()
+        }
+    }
+
     MouseArea {
         objectName: "popupClickShield"
         anchors.fill: parent

@@ -19,6 +19,8 @@ PopupCard {
     property int presentationSerial: 0
     property int outputWidth: 1
     property string emptyText: "No actions exposed"
+    readonly property bool hasRemoteMenu: trayService
+        ? trayService.hasMenuForItem(contextKey) : false
     implicitWidth: 220
     cardPadding: 12
     contentSpacing: 4
@@ -84,7 +86,7 @@ PopupCard {
 
     function iconFor(iconSource, iconName, toggleType, state, hasChildren) {
         if (hasChildren)
-            return "›"
+            return "󰅂"
         if (toggleType === "checkmark")
             return state === 1 ? "󰄲" : state === 2 ? "󰡖" : ""
         if (toggleType === "radio")
@@ -100,7 +102,7 @@ PopupCard {
         target: trayService
         function onItemChanged(key) {
             if (key === root.contextKey)
-                root.resetMenu()
+                root.presentationSerial += 1
         }
         function onMenuClientChanged(key) {
             if (key === root.contextKey)
@@ -118,42 +120,57 @@ PopupCard {
         width: parent.width
         height: 28
 
-        Text {
+        Image {
+            id: headerIcon
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            text: "•"
-            color: theme.shellIconMain
-            font.pixelSize: theme.fontSizeIcon
+            width: 18
+            height: 18
+            sourceSize: Qt.size(18, 18)
+            source: {
+                root.presentationSerial
+                return root.trayService
+                    ? root.trayService.iconSourceForItem(root.contextKey) : ""
+            }
+            fillMode: Image.PreserveAspectFit
+            visible: source !== ""
         }
 
         Text {
             anchors.left: parent.left
-            anchors.leftMargin: 24
+            anchors.leftMargin: 28
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            text: root.trayService
-                ? root.trayService.tooltipTitleForItem(root.contextKey) : "System tray"
-            color: theme.shellTextSecondary
+            text: {
+                root.presentationSerial
+                return root.trayService
+                    ? root.trayService.displayTitleForItem(root.contextKey) : "System tray"
+            }
+            color: theme.shellTextActive
             elide: Text.ElideRight
-            font.family: theme.fontFamilyText
-            font.pixelSize: theme.fontSizeCaption
+            font.family: theme.fontFamily
+            font.pixelSize: theme.fontSizeBody
+            font.weight: Font.DemiBold
         }
     }
 
-    MenuSeparator { objectName: "trayMenuHeaderSeparator" }
+    MenuSeparator {
+        objectName: "trayMenuHeaderSeparator"
+        visible: root.hasRemoteMenu
+    }
 
     Text {
-        visible: !root.menuModel || !root.trayService
+        visible: !root.hasRemoteMenu || !root.menuModel || !root.trayService
                  || root.trayService.menuStateForItem(root.contextKey) === 4
                  || root.trayService.menuStateForItem(root.contextKey) === 5
         text: root.emptyText
         width: parent.width
-        height: 36
+        height: 32
         verticalAlignment: Text.AlignVCenter
         horizontalAlignment: Text.AlignHCenter
-        color: theme.shellTextDim
-        font.family: theme.fontFamilyText
-        font.pixelSize: theme.fontSizeBody
+        color: theme.shellTextSecondary
+        font.family: theme.fontFamily
+        font.pixelSize: theme.fontSizeSmall
     }
 
     Component {
@@ -177,10 +194,8 @@ PopupCard {
             height: !itemVisible ? 0 : separator ? 1 : 36
             visible: itemVisible
 
-            Rectangle {
-                anchors.fill: parent
+            MenuSeparator {
                 visible: row.separator
-                color: theme.shellSeparator
             }
 
             MenuItem {

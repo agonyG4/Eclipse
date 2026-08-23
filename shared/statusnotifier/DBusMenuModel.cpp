@@ -299,12 +299,17 @@ DBusMenuParseResult parseMenuLayoutArgument(const QDBusArgument &argument, quint
 }
 
 DBusMenuModel::DBusMenuModel(QObject *parent)
-    : DBusMenuModel(DBusMenuLimits{}, parent)
+    : DBusMenuModel(DBusMenuLimits{}, parent, true)
 {
 }
 
 DBusMenuModel::DBusMenuModel(const DBusMenuLimits &limits, QObject *parent)
-    : QAbstractListModel(parent), m_limits(limits)
+    : DBusMenuModel(limits, parent, true)
+{
+}
+
+DBusMenuModel::DBusMenuModel(const DBusMenuLimits &limits, QObject *parent, bool rootModel)
+    : QAbstractListModel(parent), m_limits(limits), m_rootModel(rootModel)
 {
 }
 
@@ -399,11 +404,96 @@ DBusMenuNode DBusMenuModel::nodeById(int nodeId) const
 
 bool DBusMenuModel::replaceSubtree(int parentId, const DBusMenuNode &subtree)
 {
-    if (parentId == 0) {
-        setRoot(subtree);
-        return true;
+    return replaceSubtreeResult(parentId, subtree) == DBusMenuMutationResult::Applied;
+}
+
+DBusMenuModel::TreeStats DBusMenuModel::statsForNode(const DBusMenuNode &node, int depth)
+{
+    TreeStats stats;
+    stats.nodeCount = 1;
+    stats.maxDepth = depth;
+    stats.rootDepth = depth;
+    for (const DBusMenuNode &child : node.children) {
+        const TreeStats childStats = statsForNode(child, depth + 1);
+        stats.nodeCount += childStats.nodeCount;
+        stats.maxDepth = qMax(stats.maxDepth, childStats.maxDepth);
     }
-    return replaceSubtreeInNodes(parentId, subtree);
+    return stats;
+}
+
+DBusMenuModel::TreeStats DBusMenuModel::liveStatsForNode(const DBusMenuNode &node, int depth) const
+{
+    TreeStats stats;
+    stats.nodeCount = 1;
+    stats.maxDepth = depth;
+    stats.rootDepth = depth;
+    if (auto *child = m_children.value(node.id)) {
+        const TreeStats childStats = child->treeStats(depth + 1);
+        stats.nodeCount += childStats.nodeCount;
+        stats.maxDepth = qMax(stats.maxDepth, childStats.maxDepth);
+        return stats;
+    }
+    for (const DBusMenuNode &child : node.children) {
+        const TreeStats childStats = statsForNode(child, depth + 1);
+        stats.nodeCount += childStats.nodeCount;
+        stats.maxDepth = qMax(stats.maxDepth, childStats.maxDepth);
+    }
+    return stats;
+}
+
+DBusMenuModel::TreeStats DBusMenuModel::treeStats(int firstDepth) const
+{
+    TreeStats stats;
+    for (const DBusMenuNode &node : m_nodes) {
+        const TreeStats nodeStats = liveStatsForNode(node, firstDepth);
+        stats.nodeCount += nodeStats.nodeCount;
+        stats.maxDepth = qMax(stats.maxDepth, nodeStats.maxDepth);
+    }
+    return stats;
+}
+
+std::optional<DBusMenuModel::TreeStats> DBusMenuModel::subtreeStats(int nodeId,
+                                                                    int firstDepth) const
+{
+    for (const DBusMenuNode &node : m_nodes) {
+        if (node.id == nodeId)
+            return liveStatsForNode(node, firstDepth);
+        if (auto *child = m_children.value(node.id)) {
+            if (const auto result = child->subtreeStats(nodeId, firstDepth + 1))
+                return result;
+        } else {
+            for (const DBusMenuNode &nested : node.children) {
+                if (nested.id == nodeId)
+                    return statsForNode(nested, firstDepth + 1);
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+DBusMenuMutationResult DBusMenuModel::replaceSubtreeResult(int parentId,
+                                                            const DBusMenuNode &subtree)
+{
+    if (parentId == 0) {
+        const TreeStats candidate = statsForNode(subtree, 0);
+        if (candidate.nodeCount > m_limits.maxNodes || candidate.maxDepth > m_limits.maxDepth)
+            return DBusMenuMutationResult::RejectedByLimits;
+        setRoot(subtree);
+        return DBusMenuMutationResult::Applied;
+    }
+
+    const auto old = subtreeStats(parentId, 1);
+    if (!old)
+        return DBusMenuMutationResult::TargetNotFound;
+    const TreeStats candidate = statsForNode(subtree, old->rootDepth);
+    const TreeStats current = treeStats(1);
+    const int currentNodeCount = current.nodeCount + (m_rootModel ? 1 : 0);
+    const int nextNodeCount = currentNodeCount - old->nodeCount + candidate.nodeCount;
+    if (nextNodeCount > m_limits.maxNodes || candidate.maxDepth > m_limits.maxDepth)
+        return DBusMenuMutationResult::RejectedByLimits;
+    if (!replaceSubtreeInNodes(parentId, subtree))
+        return DBusMenuMutationResult::TargetNotFound;
+    return DBusMenuMutationResult::Applied;
 }
 
 bool DBusMenuModel::replaceSubtreeInNodes(int parentId, const DBusMenuNode &subtree)
@@ -421,7 +511,7 @@ bool DBusMenuModel::replaceSubtreeInNodes(int parentId, const DBusMenuNode &subt
         } else if (childIt != m_children.end()) {
             childIt.value()->setNodes(subtree.children);
         } else {
-            auto *child = new DBusMenuModel(m_limits, this);
+            auto *child = new DBusMenuModel(m_limits, this, false);
             child->setNodes(subtree.children);
             connect(child, &DBusMenuModel::activateRequested, this,
                     &DBusMenuModel::activateRequested);
@@ -503,7 +593,7 @@ void DBusMenuModel::rebuildChildren()
     for (const DBusMenuNode &node : m_nodes) {
         if (node.children.isEmpty())
             continue;
-        auto *child = new DBusMenuModel(m_limits, const_cast<DBusMenuModel *>(this));
+        auto *child = new DBusMenuModel(m_limits, const_cast<DBusMenuModel *>(this), false);
         child->setNodes(node.children);
         connect(child, &DBusMenuModel::activateRequested, this,
                 &DBusMenuModel::activateRequested);
@@ -533,7 +623,6 @@ void DBusMenuClient::prepareForPresentation(int nodeId)
 {
     if (m_stopped || m_menuPath.isEmpty())
         return;
-    m_stopped = false;
     connectSignals();
     const bool initialRoot = nodeId == 0
         && (m_state == DBusMenuLifecycleState::Unloaded
@@ -677,11 +766,12 @@ void DBusMenuClient::applyLayout(const DBusMenuParseResult &layout, int requeste
         return;
     DBusMenuNode decorated = layout.root;
     decorateIcons(decorated);
-    const bool applied = requestedParentId == 0
-        ? (m_rootModel->setRoot(decorated), true)
-        : m_rootModel->replaceSubtree(requestedParentId, decorated);
-    if (!applied && requestedParentId != 0)
+    const DBusMenuMutationResult mutation = m_rootModel->replaceSubtreeResult(
+        requestedParentId, decorated);
+    if (mutation == DBusMenuMutationResult::TargetNotFound && requestedParentId != 0)
         requestLayout();
+    if (mutation == DBusMenuMutationResult::RejectedByLimits)
+        emit failed(QStringLiteral("DBusMenu subtree rejected by cumulative safety limits"));
     m_revision = qMax(m_revision, layout.revision);
     m_state = m_rootModel->rowCount() == 0 ? DBusMenuLifecycleState::Empty
                                            : DBusMenuLifecycleState::Ready;

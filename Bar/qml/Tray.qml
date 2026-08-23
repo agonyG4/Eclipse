@@ -16,6 +16,8 @@ Item {
     property int outputOriginY: 0
     property int statusTop: 5
     readonly property int itemCount: trayRepeater.count
+    readonly property int firstDelegateHeight: trayRepeater.count > 0
+        && trayRepeater.itemAt(0) ? trayRepeater.itemAt(0).height : 0
     implicitWidth: trayRow.implicitWidth
     implicitHeight: 36
     width: implicitWidth
@@ -51,7 +53,7 @@ Item {
                 required property bool ready
 
                 width: ready ? 28 : 0
-                height: 36
+                height: 28
                 visible: ready
 
                 Rectangle {
@@ -61,7 +63,7 @@ Item {
                     width: 28
                     height: 28
                     radius: theme.shellRadiusMedium
-                    color: mouse.pressed ? theme.shellPressed
+                    color: mouse.pressed ? Qt.rgba(1, 1, 1, 0.2)
                          : hover.hovered ? theme.shellSeparator : "transparent"
 
                     Behavior on color {
@@ -69,6 +71,7 @@ Item {
                     }
 
                     Image {
+                        objectName: "trayItemIcon"
                         anchors.centerIn: parent
                         width: 16
                         height: 16
@@ -79,30 +82,9 @@ Item {
                         visible: status !== Image.Error && status !== Image.Null
                     }
 
-                    Text {
-                        anchors.centerIn: parent
-                        visible: !itemDelegate.iconSource
-                        text: "•"
-                        color: theme.shellIconMain
-                        font.pixelSize: theme.fontSizeIcon
-                    }
                 }
 
                 HoverHandler { id: hover }
-
-                Timer {
-                    id: tooltipTimer
-                    interval: 420
-                    repeat: false
-                    onTriggered: {
-                        if (root.tooltipSurface) {
-                            const point = itemDelegate.mapToItem(root,
-                                itemDelegate.width / 2, itemDelegate.height / 2)
-                            const anchor = root.anchorFor(itemDelegate, point.x, point.y)
-                            root.tooltipSurface.showTooltip(itemDelegate.key, anchor.localX)
-                        }
-                    }
-                }
 
                 MouseArea {
                     id: mouse
@@ -110,9 +92,17 @@ Item {
                     enabled: itemDelegate.ready
                     acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
                     hoverEnabled: true
-                    onEntered: tooltipTimer.restart()
+                    cursorShape: itemDelegate.ready ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    onEntered: {
+                        if (root.tooltipSurface && root.trayService
+                                && root.trayService.tooltipTitleForItem(itemDelegate.key) !== "") {
+                            const point = itemDelegate.mapToItem(root,
+                                itemDelegate.width / 2, itemDelegate.height / 2)
+                            const anchor = root.anchorFor(itemDelegate, point.x, point.y)
+                            root.tooltipSurface.showTooltip(itemDelegate.key, anchor.localX)
+                        }
+                    }
                     onExited: {
-                        tooltipTimer.stop()
                         if (root.tooltipSurface)
                             root.tooltipSurface.hideTooltip()
                     }

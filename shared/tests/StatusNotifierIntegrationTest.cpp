@@ -11,6 +11,7 @@
 #include <QElapsedTimer>
 #include <QProcess>
 #include <QRegularExpression>
+#include <QSignalSpy>
 #include <QTest>
 #include <QThread>
 
@@ -21,6 +22,7 @@ class StatusNotifierIntegrationTest final : public QObject {
 
 private slots:
     void realSessionBusRegistrationActionsAndMenuLifecycle();
+    void watcherAliasesRemainObservedAcrossAuthoritySwitches();
 
 private:
     static bool waitForItemCount(StatusNotifierService &service, int expected, int timeoutMs);
@@ -200,6 +202,14 @@ void StatusNotifierIntegrationTest::realSessionBusRegistrationActionsAndMenuLife
     QVERIFY(model);
     auto *menuClient = qobject_cast<DBusMenuClient *>(model->parent());
     QVERIFY(menuClient);
+    QSignalSpy menuIdentityChanges(&service, &StatusNotifierService::menuClientChanged);
+    QVERIFY(control.call(QStringLiteral("SetTitle"), QStringLiteral("Presentation update"))
+                .type() != QDBusMessage::ErrorMessage);
+    QTRY_COMPARE_WITH_TIMEOUT(service.typedItemModel()->item(key).title,
+                              QStringLiteral("Presentation update"), 3000);
+    QCOMPARE(menuIdentityChanges.count(), 0);
+    QCOMPARE(service.menuModelForItem(key), model);
+    QCOMPARE(qobject_cast<DBusMenuClient *>(model->parent()), menuClient);
     QElapsedTimer menuTimer;
     menuTimer.start();
     while (model->rowCount() != 2 && menuTimer.elapsed() < 4000) {
@@ -257,6 +267,17 @@ void StatusNotifierIntegrationTest::realSessionBusRegistrationActionsAndMenuLife
                               static_cast<int>(DBusMenuLifecycleState::Empty), 3000);
     QVERIFY(menuClient->rootModel()->rowCount() == 0);
 
+    QVERIFY(control.call(QStringLiteral("SetMenuPath"), QString()).type()
+            != QDBusMessage::ErrorMessage);
+    QTRY_COMPARE_WITH_TIMEOUT(service.typedItemModel()->item(key).menuPath,
+                              QString(), 3000);
+    QTRY_COMPARE_WITH_TIMEOUT(service.menuClientCount(), 0, 3000);
+    QCOMPARE(menuIdentityChanges.count(), 1);
+    QVERIFY(control.call(QStringLiteral("SetMenuPath"), QStringLiteral("/org/test/Menu"))
+                .type() != QDBusMessage::ErrorMessage);
+    QTRY_COMPARE_WITH_TIMEOUT(service.menuClientCount(), 1, 3000);
+    QCOMPARE(menuIdentityChanges.count(), 2);
+
     QVERIFY2(control.call(QStringLiteral("UnregisterServiceOnly")).type()
                  != QDBusMessage::ErrorMessage,
              qPrintable(diagnostics(fixture)));
@@ -281,6 +302,58 @@ void StatusNotifierIntegrationTest::realSessionBusRegistrationActionsAndMenuLife
     service.stop();
     QTRY_VERIFY_WITH_TIMEOUT(!QDBusConnection::sessionBus().interface()->isServiceRegistered(
                                  hostServiceName), 2000);
+}
+
+void StatusNotifierIntegrationTest::watcherAliasesRemainObservedAcrossAuthoritySwitches()
+{
+    QVERIFY2(!qEnvironmentVariable("DBUS_SESSION_BUS_ADDRESS").isEmpty(),
+             "the mandatory integration test requires an isolated session bus");
+
+    QProcess fixture;
+    fixture.setProcessChannelMode(QProcess::SeparateChannels);
+    fixture.start(QStringLiteral(ASTREA_STATUSNOTIFIER_FIXTURE_PATH));
+    QVERIFY2(fixture.waitForStarted(2000), qPrintable(fixture.errorString()));
+
+    QDBusConnectionInterface *busInterface = QDBusConnection::sessionBus().interface();
+    QVERIFY(busInterface);
+    QTRY_VERIFY_WITH_TIMEOUT(busInterface->isServiceRegistered(
+                                 QStringLiteral("org.astrea.tests.StatusNotifierFixture")),
+                             3000);
+    QDBusInterface control(QStringLiteral("org.astrea.tests.StatusNotifierFixture"),
+                           QStringLiteral("/org/astrea/tests/StatusNotifierFixture"),
+                           QStringLiteral("org.astrea.tests.StatusNotifierFixture"),
+                           QDBusConnection::sessionBus());
+    QVERIFY2(control.isValid(), qPrintable(diagnostics(fixture)));
+
+    QVERIFY2(control.call(QStringLiteral("ClaimWatcherAlias"),
+                          QStringLiteral("org.kde.StatusNotifierWatcher"))
+                 .arguments().value(0).toBool(),
+              qPrintable(diagnostics(fixture)));
+    StatusNotifierService service;
+    service.start();
+    QTRY_COMPARE_WITH_TIMEOUT(service.watcherMode(), WatcherMode::External, 3000);
+    QVERIFY(!service.watcherOwner().isEmpty());
+
+    QVERIFY(control.call(QStringLiteral("ClaimWatcherAlias"),
+                         QStringLiteral("org.freedesktop.StatusNotifierWatcher"))
+                .arguments().value(0).toBool());
+    QTRY_COMPARE_WITH_TIMEOUT(service.watcherName(),
+                              QStringLiteral("org.freedesktop.StatusNotifierWatcher"), 3000);
+
+    QVERIFY(control.call(QStringLiteral("ReleaseWatcherAlias"),
+                         QStringLiteral("org.kde.StatusNotifierWatcher"))
+                .arguments().value(0).toBool());
+    QTRY_COMPARE_WITH_TIMEOUT(service.watcherName(),
+                              QStringLiteral("org.freedesktop.StatusNotifierWatcher"), 3000);
+
+    QVERIFY(control.call(QStringLiteral("ReleaseWatcherAlias"),
+                         QStringLiteral("org.freedesktop.StatusNotifierWatcher"))
+                .arguments().value(0).toBool());
+    QTRY_COMPARE_WITH_TIMEOUT(service.watcherMode(), WatcherMode::Owned, 3000);
+
+    QVERIFY(control.call(QStringLiteral("Exit")).type() != QDBusMessage::ErrorMessage);
+    QVERIFY2(fixture.waitForFinished(3000), qPrintable(diagnostics(fixture)));
+    service.stop();
 }
 
 QTEST_GUILESS_MAIN(StatusNotifierIntegrationTest)

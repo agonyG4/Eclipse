@@ -592,6 +592,7 @@ void BarQmlSmokeTest::traySurfaceUsesNativeModelAndTooltipBoundary()
     QVERIFY(tray != nullptr);
     QCOMPARE(tray->property("itemCount").toInt(), 1);
     QCOMPARE(tray->property("trayService").value<QObject *>(), &service);
+    QCOMPARE(tray->property("firstDelegateHeight").toInt(), 28);
 
     QQmlComponent tooltipComponent(&engine,
         QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Bar/qml/TrayTooltipSurface.qml")));
@@ -605,6 +606,13 @@ void BarQmlSmokeTest::traySurfaceUsesNativeModelAndTooltipBoundary()
                                       Q_ARG(QVariant, QVariant(700.0))));
     QCOMPARE(tooltip->property("tooltipVisible").toBool(), true);
     QCOMPARE(tooltip->property("tooltipTitle").toString(), QStringLiteral("Example tooltip"));
+    QObject *tooltipCard = tooltip->findChild<QObject *>(QStringLiteral("tooltipCard"));
+    QVERIFY(tooltipCard != nullptr);
+    QCOMPARE(tooltipCard->property("height").toInt(), 28);
+    QVERIFY(tooltipCard->property("width").toInt() <= 260);
+    service.removeTestItem(snapshot.address.key());
+    QTRY_VERIFY_WITH_TIMEOUT(!tooltip->property("tooltipVisible").toBool(), 1000);
+    QCOMPARE(tooltip->property("itemKey").toString(), QString());
     delete tooltip;
     delete status;
 }
@@ -640,6 +648,8 @@ void BarQmlSmokeTest::trayMenuUsesStableContextKey()
     QCOMPARE(popup.contextKey(), snapshot.address.key());
     QCOMPARE(overlay->findChild<QObject *>(QStringLiteral("trayMenu"))->property("contextKey").toString(),
              snapshot.address.key());
+    service.removeTestItem(snapshot.address.key());
+    QTRY_VERIFY_WITH_TIMEOUT(popup.closing() || !popup.isOpen(), 1000);
     delete overlay;
 }
 

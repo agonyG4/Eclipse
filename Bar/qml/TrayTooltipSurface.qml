@@ -13,10 +13,8 @@ Window {
     property bool tooltipVisible: false
     readonly property string tooltipTitle: statusNotifierService
         ? statusNotifierService.tooltipTitleForItem(itemKey) : ""
-    readonly property string tooltipDescription: statusNotifierService
-        ? statusNotifierService.tooltipDescriptionForItem(itemKey) : ""
 
-    visible: false
+    visible: tooltipVisible
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.Tool | Qt.WindowTransparentForInput
     width: outputWidth
@@ -32,13 +30,24 @@ Window {
 
     function hideTooltip() {
         tooltipVisible = false
+        itemKey = ""
+    }
+
+    Connections {
+        target: window.statusNotifierService
+        function onItemRemoved(key) {
+            if (key === window.itemKey)
+                window.hideTooltip()
+        }
     }
 
     Rectangle {
         id: tooltipCard
+        objectName: "tooltipCard"
+        visible: window.tooltipVisible && window.tooltipTitle !== ""
         x: Math.max(0, Math.min(window.width - width, window.anchorX - width / 2))
         anchors.verticalCenter: parent.verticalCenter
-        width: Math.min(260, Math.max(40, tooltipText.implicitWidth + 20))
+        width: Math.min(260, tooltipText.implicitWidth + 18)
         height: 28
         radius: theme.shellRadiusSmall
         color: theme.shellBackground
@@ -47,14 +56,14 @@ Window {
 
         Text {
             id: tooltipText
+            objectName: "tooltipText"
             anchors.centerIn: parent
-            width: Math.min(240, implicitWidth)
-            text: window.tooltipDescription
-                ? window.tooltipTitle + " — " + window.tooltipDescription
-                : window.tooltipTitle
-            color: theme.shellTextMain
+            width: parent.width - 12
+            text: window.tooltipTitle
+            color: theme.shellTextActive
             elide: Text.ElideRight
-            font.family: theme.fontFamilyText
+            horizontalAlignment: Text.AlignHCenter
+            font.family: theme.fontFamily
             font.pixelSize: theme.fontSizeCaption
             maximumLineCount: 1
         }

@@ -23,7 +23,7 @@ PopupCard {
 
     function iconFor(iconSource, toggleType, state, hasChildren) {
         if (hasChildren)
-            return "›"
+            return "󰅂"
         if (toggleType === "checkmark")
             return state === 1 ? "󰄲" : state === 2 ? "󰡖" : ""
         if (toggleType === "radio")
@@ -77,12 +77,12 @@ PopupCard {
         visible: root.menuModel && root.menuModel.rowCount() === 0
         text: root.emptyText
         width: parent.width
-        height: 36
+        height: 32
         verticalAlignment: Text.AlignVCenter
         horizontalAlignment: Text.AlignHCenter
-        color: theme.shellTextDim
-        font.family: theme.fontFamilyText
-        font.pixelSize: theme.fontSizeBody
+        color: theme.shellTextSecondary
+        font.family: theme.fontFamily
+        font.pixelSize: theme.fontSizeSmall
     }
 
     Repeater {
@@ -104,10 +104,8 @@ PopupCard {
             height: !itemVisible ? 0 : separator ? 1 : 36
             visible: itemVisible
 
-            Rectangle {
-                anchors.fill: parent
+            MenuSeparator {
                 visible: row.separator
-                color: theme.shellSeparator
             }
 
             MenuItem {

@@ -22,7 +22,7 @@ public:
     static constexpr int kPopupSidePadding = 8;
     static constexpr int kPopupTopOffset = 54;
     static constexpr int kTrayTooltipHeight = 28;
-    static constexpr int kTrayTooltipTopMargin = 51;
+    static constexpr int kTrayTooltipTopMargin = 43;
 
     static AstreaLayerShellConfig reserve();
     static AstreaLayerShellConfig launcher();

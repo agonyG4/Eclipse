@@ -2,6 +2,7 @@
 #include "statusnotifier/StatusNotifierIconStore.hpp"
 #include "statusnotifier/StatusNotifierService.hpp"
 #include "statusnotifier/StatusNotifierItemModel.hpp"
+#include "statusnotifier/StatusNotifierItemProxy.hpp"
 #include "statusnotifier/StatusNotifierTypes.hpp"
 #include "statusnotifier/StatusNotifierWatcherBridge.hpp"
 
@@ -35,6 +36,10 @@ private slots:
     void localHostOwnershipExpires();
     void watcherAuthorityPrefersFreedesktopOnAliasConflict();
     void watcherStartAndStopAreNonBlocking();
+    void stoppedProxyIgnoresQueuedStatus();
+    void cumulativeNodeLimitRejectsSubtree();
+    void cumulativeDepthLimitRejectsSubtree();
+    void acceptedSubtreeReplacementUpdatesLiveTree();
 };
 
 void StatusNotifierTest::registrationFormsNormalize()
@@ -427,6 +432,80 @@ void StatusNotifierTest::watcherStartAndStopAreNonBlocking()
             || bridge.mode() == WatcherMode::Owned);
     bridge.stop();
     QCOMPARE(bridge.mode(), WatcherMode::Unavailable);
+}
+
+void StatusNotifierTest::stoppedProxyIgnoresQueuedStatus()
+{
+    const ItemAddress address{QStringLiteral("org.example.Stopped"),
+                              QStringLiteral("/StatusNotifierItem"), QStringLiteral(":1.200")};
+    StatusNotifierItemProxy proxy(address, 1);
+    QSignalSpy snapshots(&proxy, &StatusNotifierItemProxy::snapshotChanged);
+    QVERIFY(QMetaObject::invokeMethod(&proxy, "onNewStatus", Qt::DirectConnection,
+                                      Q_ARG(QString, QStringLiteral("Active"))));
+    QCOMPARE(snapshots.count(), 0);
+}
+
+DBusMenuNode menuNode(int id, const QString &label, QList<DBusMenuNode> children = {})
+{
+    DBusMenuNode node;
+    node.id = id;
+    node.label = label;
+    node.children = std::move(children);
+    node.childrenDisplay = node.children.isEmpty() ? QString() : QStringLiteral("submenu");
+    return node;
+}
+
+void StatusNotifierTest::cumulativeNodeLimitRejectsSubtree()
+{
+    DBusMenuLimits limits;
+    limits.maxNodes = 5;
+    DBusMenuModel model(limits);
+    DBusMenuNode root;
+    root.children = {menuNode(1, QStringLiteral("Branch"), {menuNode(2, QStringLiteral("Old"))}),
+                     menuNode(3, QStringLiteral("Other"))};
+    model.setRoot(root);
+
+    const DBusMenuNode candidate = menuNode(
+        1, QStringLiteral("Branch"),
+        {menuNode(10, QStringLiteral("One")), menuNode(11, QStringLiteral("Two")),
+         menuNode(12, QStringLiteral("Three"))});
+    QCOMPARE(model.replaceSubtreeResult(1, candidate), DBusMenuMutationResult::RejectedByLimits);
+    QCOMPARE(model.nodeById(1).children.constFirst().id, 2);
+}
+
+void StatusNotifierTest::cumulativeDepthLimitRejectsSubtree()
+{
+    DBusMenuLimits limits;
+    limits.maxDepth = 3;
+    DBusMenuModel model(limits);
+    DBusMenuNode root;
+    root.children = {menuNode(1, QStringLiteral("Branch"), {menuNode(2, QStringLiteral("Old"))})};
+    model.setRoot(root);
+
+    const DBusMenuNode candidate = menuNode(
+        1, QStringLiteral("Branch"),
+        {menuNode(10, QStringLiteral("One"),
+                   {menuNode(11, QStringLiteral("Two"),
+                              {menuNode(12, QStringLiteral("Three"))})})});
+    QCOMPARE(model.replaceSubtreeResult(1, candidate), DBusMenuMutationResult::RejectedByLimits);
+    QCOMPARE(model.nodeById(1).children.constFirst().id, 2);
+}
+
+void StatusNotifierTest::acceptedSubtreeReplacementUpdatesLiveTree()
+{
+    DBusMenuLimits limits;
+    limits.maxNodes = 8;
+    limits.maxDepth = 4;
+    DBusMenuModel model(limits);
+    DBusMenuNode root;
+    root.children = {menuNode(1, QStringLiteral("Branch"), {menuNode(2, QStringLiteral("Old"))})};
+    model.setRoot(root);
+
+    const DBusMenuNode candidate = menuNode(
+        1, QStringLiteral("Branch"), {menuNode(10, QStringLiteral("New"))});
+    QCOMPARE(model.replaceSubtreeResult(1, candidate), DBusMenuMutationResult::Applied);
+    QCOMPARE(model.nodeById(1).children.constFirst().id, 10);
+    QVERIFY(model.childModel(1) != nullptr);
 }
 
 QTEST_APPLESS_MAIN(StatusNotifierTest)

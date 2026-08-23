@@ -13,6 +13,9 @@ PopupCard {
     readonly property var menuModel: trayService ? trayService.menuModelForItem(contextKey) : null
     property var cascadeModel: null
     property int cascadeAnchorY: 0
+    property var pendingCascadeOwner: null
+    property int pendingCascadeNodeId: -1
+    property int pendingCascadeAnchorY: 0
     property int presentationSerial: 0
     property int outputWidth: 1
     property string emptyText: "No actions exposed"
@@ -24,24 +27,59 @@ PopupCard {
         presentationSerial += 1
         cascadeModel = null
         cascadeAnchorY = 0
+        pendingCascadeOwner = null
+        pendingCascadeNodeId = -1
+        pendingCascadeAnchorY = 0
         if (trayService)
             trayService.prepareMenuForPresentation(contextKey)
     }
 
-    function openChild(ownerModel, nodeId, y) {
-        if (!ownerModel)
+    function cascadeXFor(parentX, parentWidth, childWidth, outputWidth) {
+        const rightX = parentX + parentWidth - 4
+        const leftX = parentX - childWidth + 4
+        const maxX = Math.max(0, outputWidth - childWidth)
+        if (rightX + childWidth <= outputWidth)
+            return rightX
+        if (leftX >= 0 && leftX + childWidth <= outputWidth)
+            return leftX
+        return Math.max(0, Math.min(maxX, rightX))
+    }
+
+    function cascadeYFor(parentY, anchorY, childHeight, outputHeight) {
+        const maxY = Math.max(0, outputHeight - childHeight)
+        return Math.max(0, Math.min(maxY, parentY + anchorY))
+    }
+
+    function resolvePendingCascade() {
+        if (!pendingCascadeOwner || pendingCascadeNodeId < 0 || !trayService)
             return
-        const child = ownerModel.childModel(nodeId)
+        if (trayService.menuStateForItem(contextKey) === 2)
+            return
+        const child = pendingCascadeOwner.childModel(pendingCascadeNodeId)
         if (!child)
             return
         cascadeModel = child
-        cascadeAnchorY = y
-        if (trayService)
-            trayService.aboutToShowMenu(contextKey, nodeId)
+        cascadeAnchorY = pendingCascadeAnchorY
+        pendingCascadeOwner = null
+        pendingCascadeNodeId = -1
+    }
+
+    function openChild(ownerModel, nodeId, y) {
+        if (!ownerModel || !trayService)
+            return
+        cascadeModel = null
+        pendingCascadeOwner = ownerModel
+        pendingCascadeNodeId = nodeId
+        pendingCascadeAnchorY = y
+        trayService.aboutToShowMenu(contextKey, nodeId)
+        resolvePendingCascade()
     }
 
     function closeCascades() {
         cascadeModel = null
+        pendingCascadeOwner = null
+        pendingCascadeNodeId = -1
+        pendingCascadeAnchorY = 0
     }
 
     function iconFor(iconSource, iconName, toggleType, state, hasChildren) {
@@ -67,6 +105,10 @@ PopupCard {
         function onMenuClientChanged(key) {
             if (key === root.contextKey)
                 root.resetMenu()
+        }
+        function onMenuContentChanged(key) {
+            if (key === root.contextKey)
+                root.resolvePendingCascade()
         }
     }
 
@@ -179,10 +221,8 @@ PopupCard {
             item.contextKey = root.contextKey
             item.presentationParent = root.parent
             item.depth = 1
-            item.x = root.x + root.width - 4 <= root.parent.width
-                ? root.x + root.width - 4 : root.x - width + 4
-            item.y = Math.max(0, Math.min(root.parent.height - height,
-                                           root.y + root.cascadeAnchorY))
+            item.x = root.cascadeXFor(root.x, root.width, width, root.parent.width)
+            item.y = root.cascadeYFor(root.y, root.cascadeAnchorY, height, root.parent.height)
         }
         onCascadeMenuModelChanged: if (item) item.menuModel = cascadeMenuModel
     }

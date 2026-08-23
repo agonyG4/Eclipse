@@ -71,6 +71,7 @@ signals:
     void itemRemoved(const QString &itemKey);
     void menuClosed(const QString &itemKey);
     void menuClientChanged(const QString &itemKey);
+    void menuContentChanged(const QString &itemKey);
     void healthWarning(const QString &warning);
 
 private slots:
@@ -92,6 +93,7 @@ private:
     std::unique_ptr<StatusNotifierItemModel> m_model;
     QHash<QString, StatusNotifierItemProxy *> m_proxies;
     QHash<QString, DBusMenuClient *> m_menus;
+    QString m_lastHealthWarning;
     quint64 m_nextGeneration = 1;
     bool m_initialized = false;
     bool m_started = false;

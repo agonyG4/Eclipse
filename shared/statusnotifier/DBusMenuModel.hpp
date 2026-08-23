@@ -84,6 +84,7 @@ public:
     Q_ENUM(Role)
 
     explicit DBusMenuModel(QObject *parent = nullptr);
+    explicit DBusMenuModel(const DBusMenuLimits &limits, QObject *parent = nullptr);
 
     int rowCount(const QModelIndex &parent = {}) const override;
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
@@ -109,8 +110,10 @@ private:
     bool updatePropertiesInNodes(const QList<DBusMenuPropertyUpdate> &updates,
                                  const QList<DBusMenuRemovedProperties> &removedProperties);
     static void applyProperties(DBusMenuNode &node, const QVariantMap &properties,
-                                const QStringList &removedProperties);
+                                const QStringList &removedProperties,
+                                const DBusMenuLimits &limits);
 
+    DBusMenuLimits m_limits;
     QList<DBusMenuNode> m_nodes;
     QHash<int, DBusMenuModel *> m_children;
 };
@@ -124,6 +127,7 @@ class DBusMenuClient final : public QObject {
 public:
     DBusMenuClient(const ItemAddress &address, const QString &menuPath,
                    StatusNotifierIconStore *iconStore = nullptr,
+                   quint64 itemGeneration = 0,
                    QObject *parent = nullptr);
 
     DBusMenuModel *rootModel() const { return m_rootModel; }
@@ -159,6 +163,8 @@ private slots:
 private:
     ItemAddress m_address;
     QString m_menuPath;
+    quint64 m_itemGeneration = 0;
+    DBusMenuLimits m_limits;
     DBusMenuModel *m_rootModel = nullptr;
     StatusNotifierIconStore *m_iconStore = nullptr;
     quint32 m_revision = 0;

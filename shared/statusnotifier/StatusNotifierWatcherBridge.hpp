@@ -13,6 +13,14 @@ class QDBusServiceWatcher;
 
 namespace Astrea::StatusNotifier {
 
+struct WatcherAuthority {
+    QString name;
+    QString owner;
+    bool conflict = false;
+
+    bool isValid() const { return !name.isEmpty() && !owner.isEmpty(); }
+};
+
 class StatusNotifierLocalWatcherObject final : public QObject, protected QDBusContext {
     Q_OBJECT
 
@@ -84,9 +92,12 @@ public:
     QString watcherOwner() const { return m_watcherOwner; }
     QString hostServiceName() const { return m_hostServiceName; }
     bool hostRegistered() const
-    { return m_localWatcher ? m_localWatcher->hostRegistered() : m_hostRegistered; }
+    { return m_localWatcher ? m_localWatcher->hostRegistered() : !m_registeredHosts.isEmpty(); }
     int protocolVersion() const { return 0; }
     QString lastError() const { return m_lastError; }
+
+    static WatcherAuthority selectAuthority(const QString &freedesktopOwner,
+                                            const QString &kdeOwner);
 
     // These two hooks make parser/model and session-bus recovery tests deterministic.
     void registerTestAddress(const ItemAddress &address);
@@ -107,6 +118,9 @@ private slots:
     void onLocalItemRegistered(const QString &registration, const QString &sender);
     void onLocalItemUnregistered(const QString &registration, const QString &sender);
     void onLocalHostRegistered(const QString &host, bool registered);
+    void onWatcherPropertiesChanged(const QString &interfaceName,
+                                    const QVariantMap &changed,
+                                    const QStringList &invalidated);
     void resolveWatcherOwners();
 
 private:
@@ -115,10 +129,13 @@ private:
     void enumerateExternalItems();
     void selectWatcher();
     void tryOwnWatcher();
+    void detachLocalWatcher();
+    void reevaluateWatcherAuthority();
     void attachExternalWatcher(const QString &name, const QString &owner);
     void detachExternalWatcher();
     void disconnectExternalWatcher();
     void registerHostWithExternalWatcher();
+    void refreshExternalHostRegistration();
     void registerItemOwnerWatcher(const ItemAddress &address);
     void resolveWatcherOwner(const QString &name, quint64 generation);
     void clearRegisteredItems();
@@ -136,8 +153,8 @@ private:
     quint64 m_watcherGeneration = 0;
     quint64 m_hostGeneration = 0;
     bool m_hostServiceOwned = false;
-    bool m_hostRegistered = false;
     QHash<QString, QString> m_ownerByName;
+    QHash<QString, QString> m_registeredHosts;
     QHash<QString, ItemAddress> m_addresses;
     QPointer<QDBusServiceWatcher> m_serviceWatcher;
     QPointer<StatusNotifierLocalWatcherObject> m_localWatcher;

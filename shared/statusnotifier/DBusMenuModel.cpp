@@ -26,18 +26,8 @@ QVariant unwrap(const QVariant &value)
     return value;
 }
 
-QString propertyString(const QVariantMap &properties, const QString &name)
-{
-    return unwrap(properties.value(name)).toString();
-}
-
-bool propertyBool(const QVariantMap &properties, const QString &name, bool fallback)
-{
-    const auto it = properties.constFind(name);
-    return it == properties.constEnd() ? fallback : unwrap(it.value()).toBool();
-}
-
 bool parseWireVariant(const QVariant &value, DBusMenuLayoutNodeWire &node, QString *errorOut);
+QVariantMap normalizedProperties(const QVariantMap &properties);
 
 bool parseWireArgument(const QDBusArgument &argument, DBusMenuLayoutNodeWire &node,
                        QString *errorOut)
@@ -52,21 +42,23 @@ bool isSafeIconData(const QByteArray &data, const DBusMenuLimits &limits, QStrin
 {
     if (data.isEmpty())
         return true;
+    if (limits.maxIconDataBytes < 0 || data.size() > limits.maxIconDataBytes) {
+        if (errorOut)
+            *errorOut = QStringLiteral("DBusMenu icon data exceeds the safety limit");
+        return false;
+    }
     QBuffer buffer;
     buffer.setData(data);
     buffer.open(QIODevice::ReadOnly);
     QImageReader reader(&buffer);
     const QSize size = reader.size();
-    constexpr int maxDimension = 4096;
-    constexpr qint64 maxPixels = 16 * 1024 * 1024;
     if (!reader.canRead() || !size.isValid() || size.width() <= 0 || size.height() <= 0
-        || size.width() > maxDimension || size.height() > maxDimension
-        || qint64(size.width()) * qint64(size.height()) > maxPixels) {
+        || size.width() > limits.maxIconDimension || size.height() > limits.maxIconDimension
+        || qint64(size.width()) * qint64(size.height()) > limits.maxIconPixels) {
         if (errorOut)
             *errorOut = QStringLiteral("DBusMenu icon-data is not a safe PNG image");
         return false;
     }
-    Q_UNUSED(limits)
     return true;
 }
 
@@ -114,6 +106,65 @@ bool parseWireVariant(const QVariant &value, DBusMenuLayoutNodeWire &node, QStri
     return false;
 }
 
+void applyNodeProperties(DBusMenuNode &node, const QVariantMap &rawProperties,
+                         const QStringList &removedProperties, const DBusMenuLimits &limits)
+{
+    const QVariantMap properties = normalizedProperties(rawProperties);
+    const auto removed = [&removedProperties](const QString &name) {
+        return removedProperties.contains(name);
+    };
+    const bool iconChanged = properties.contains(QStringLiteral("icon-name"))
+        || properties.contains(QStringLiteral("icon-data"))
+        || removed(QStringLiteral("icon-name")) || removed(QStringLiteral("icon-data"));
+
+    if (properties.contains(QStringLiteral("label")))
+        node.label = menuLabelWithoutMnemonic(properties.value(QStringLiteral("label")).toString());
+    else if (removed(QStringLiteral("label")))
+        node.label.clear();
+    if (limits.maxLabelLength >= 0 && node.label.size() > limits.maxLabelLength)
+        node.label.truncate(limits.maxLabelLength);
+
+    if (properties.contains(QStringLiteral("icon-name")))
+        node.iconName = properties.value(QStringLiteral("icon-name")).toString();
+    else if (removed(QStringLiteral("icon-name")))
+        node.iconName.clear();
+    if (properties.contains(QStringLiteral("icon-data"))) {
+        const QByteArray iconData = properties.value(QStringLiteral("icon-data")).toByteArray();
+        QString ignored;
+        node.iconData = isSafeIconData(iconData, limits, &ignored) ? iconData : QByteArray();
+    } else if (removed(QStringLiteral("icon-data"))) {
+        node.iconData.clear();
+    }
+    if (properties.contains(QStringLiteral("type")))
+        node.type = properties.value(QStringLiteral("type")).toString();
+    else if (removed(QStringLiteral("type")))
+        node.type.clear();
+    if (properties.contains(QStringLiteral("toggle-type")))
+        node.toggleType = properties.value(QStringLiteral("toggle-type")).toString();
+    else if (removed(QStringLiteral("toggle-type")))
+        node.toggleType.clear();
+    if (properties.contains(QStringLiteral("toggle-state")))
+        node.state = properties.value(QStringLiteral("toggle-state")).toInt();
+    else if (removed(QStringLiteral("toggle-state")))
+        node.state = 0;
+    if (properties.contains(QStringLiteral("children-display")))
+        node.childrenDisplay = properties.value(QStringLiteral("children-display")).toString();
+    else if (removed(QStringLiteral("children-display")))
+        node.childrenDisplay.clear();
+    if (properties.contains(QStringLiteral("enabled")))
+        node.enabled = properties.value(QStringLiteral("enabled")).toBool();
+    else if (removed(QStringLiteral("enabled")))
+        node.enabled = true;
+    if (properties.contains(QStringLiteral("visible")))
+        node.visible = properties.value(QStringLiteral("visible")).toBool();
+    else if (removed(QStringLiteral("visible")))
+        node.visible = true;
+
+    node.separator = node.type == QStringLiteral("separator");
+    if (iconChanged)
+        node.iconSource.clear();
+}
+
 bool parseNodeWire(const DBusMenuLayoutNodeWire &wire, DBusMenuNode &node,
                   const DBusMenuLimits &limits, int depth, int &nodeCount, QString *errorOut)
 {
@@ -130,27 +181,9 @@ bool parseNodeWire(const DBusMenuLayoutNodeWire &wire, DBusMenuNode &node,
         return false;
     }
 
+    node = {};
     node.id = wire.id;
-    const QVariantMap properties = wire.properties;
-    const QString rawLabel = propertyString(properties, QStringLiteral("label"));
-    node.label = menuLabelWithoutMnemonic(rawLabel);
-    if (limits.maxLabelLength >= 0 && node.label.size() > limits.maxLabelLength)
-        node.label.truncate(limits.maxLabelLength);
-    node.iconName = propertyString(properties, QStringLiteral("icon-name"));
-    node.iconData = unwrap(properties.value(QStringLiteral("icon-data"))).toByteArray();
-    if (node.iconData.size() > limits.maxIconDataBytes) {
-        *errorOut = QStringLiteral("DBusMenu icon data exceeds the safety limit");
-        return false;
-    }
-    if (!isSafeIconData(node.iconData, limits, errorOut))
-        return false;
-    node.type = propertyString(properties, QStringLiteral("type"));
-    node.toggleType = propertyString(properties, QStringLiteral("toggle-type"));
-    node.childrenDisplay = propertyString(properties, QStringLiteral("children-display"));
-    node.state = unwrap(properties.value(QStringLiteral("toggle-state"))).toInt();
-    node.enabled = propertyBool(properties, QStringLiteral("enabled"), true);
-    node.visible = propertyBool(properties, QStringLiteral("visible"), true);
-    node.separator = node.type == QStringLiteral("separator");
+    applyNodeProperties(node, wire.properties, {}, limits);
     node.children.clear();
     for (const auto &childWire : wire.children) {
         DBusMenuNode child;
@@ -179,13 +212,13 @@ QVariantMap normalizedProperties(const QVariantMap &properties)
 }
 
 void updateIconSource(StatusNotifierIconStore *store, const QString &key,
-                      const QByteArray &iconData)
+                      const QByteArray &iconData, const DBusMenuLimits &limits)
 {
     if (!store)
         return;
     QImage image;
     QString ignored;
-    if (!iconData.isEmpty() && isSafeIconData(iconData, DBusMenuLimits{}, &ignored))
+    if (!iconData.isEmpty() && isSafeIconData(iconData, limits, &ignored))
         image = QImage::fromData(iconData);
     store->updateAuxiliaryImage(key, image);
 }
@@ -266,7 +299,12 @@ DBusMenuParseResult parseMenuLayoutArgument(const QDBusArgument &argument, quint
 }
 
 DBusMenuModel::DBusMenuModel(QObject *parent)
-    : QAbstractListModel(parent)
+    : DBusMenuModel(DBusMenuLimits{}, parent)
+{
+}
+
+DBusMenuModel::DBusMenuModel(const DBusMenuLimits &limits, QObject *parent)
+    : QAbstractListModel(parent), m_limits(limits)
 {
 }
 
@@ -291,7 +329,8 @@ QVariant DBusMenuModel::data(const QModelIndex &index, int role) const
     case EnabledRole: return node.enabled;
     case VisibleRole: return node.visible;
     case SeparatorRole: return node.separator;
-    case HasChildrenRole: return !node.children.isEmpty();
+    case HasChildrenRole: return !node.children.isEmpty()
+        || node.childrenDisplay == QStringLiteral("submenu");
     case ChildrenDisplayRole: return node.childrenDisplay;
     case ChildModelRole: return QVariant::fromValue(static_cast<QObject *>(childModel(node.id)));
     default: return {};
@@ -382,7 +421,7 @@ bool DBusMenuModel::replaceSubtreeInNodes(int parentId, const DBusMenuNode &subt
         } else if (childIt != m_children.end()) {
             childIt.value()->setNodes(subtree.children);
         } else {
-            auto *child = new DBusMenuModel(this);
+            auto *child = new DBusMenuModel(m_limits, this);
             child->setNodes(subtree.children);
             connect(child, &DBusMenuModel::activateRequested, this,
                     &DBusMenuModel::activateRequested);
@@ -416,13 +455,13 @@ bool DBusMenuModel::updatePropertiesInNodes(
         for (const auto &update : updates) {
             if (update.id != node.id)
                 continue;
-            applyProperties(node, update.properties, {});
+            applyProperties(node, update.properties, {}, m_limits);
             changed = true;
         }
         for (const auto &removed : removedProperties) {
             if (removed.id != node.id)
                 continue;
-            applyProperties(node, {}, removed.properties);
+            applyProperties(node, {}, removed.properties, m_limits);
             changed = true;
         }
         if (changed) {
@@ -438,42 +477,10 @@ bool DBusMenuModel::updatePropertiesInNodes(
 }
 
 void DBusMenuModel::applyProperties(DBusMenuNode &node, const QVariantMap &rawProperties,
-                                    const QStringList &removedProperties)
+                                    const QStringList &removedProperties,
+                                    const DBusMenuLimits &limits)
 {
-    const QVariantMap properties = normalizedProperties(rawProperties);
-    const auto removed = [&removedProperties](const QString &name) {
-        return removedProperties.contains(name);
-    };
-    if (properties.contains(QStringLiteral("label")))
-        node.label = menuLabelWithoutMnemonic(properties.value(QStringLiteral("label")).toString());
-    else if (removed(QStringLiteral("label")))
-        node.label.clear();
-    if (properties.contains(QStringLiteral("icon-name")))
-        node.iconName = properties.value(QStringLiteral("icon-name")).toString();
-    else if (removed(QStringLiteral("icon-name")))
-        node.iconName.clear();
-    if (properties.contains(QStringLiteral("icon-data")))
-        node.iconData = properties.value(QStringLiteral("icon-data")).toByteArray();
-    else if (removed(QStringLiteral("icon-data")))
-        node.iconData.clear();
-    if (properties.contains(QStringLiteral("type"))) {
-        node.type = properties.value(QStringLiteral("type")).toString();
-        node.separator = node.type == QStringLiteral("separator");
-    }
-    if (properties.contains(QStringLiteral("toggle-type")))
-        node.toggleType = properties.value(QStringLiteral("toggle-type")).toString();
-    if (properties.contains(QStringLiteral("toggle-state")))
-        node.state = properties.value(QStringLiteral("toggle-state")).toInt();
-    if (properties.contains(QStringLiteral("children-display")))
-        node.childrenDisplay = properties.value(QStringLiteral("children-display")).toString();
-    if (properties.contains(QStringLiteral("enabled")))
-        node.enabled = properties.value(QStringLiteral("enabled")).toBool();
-    else if (removed(QStringLiteral("enabled")))
-        node.enabled = true;
-    if (properties.contains(QStringLiteral("visible")))
-        node.visible = properties.value(QStringLiteral("visible")).toBool();
-    else if (removed(QStringLiteral("visible")))
-        node.visible = true;
+    applyNodeProperties(node, rawProperties, removedProperties, limits);
 }
 
 DBusMenuNode DBusMenuModel::node(int row) const
@@ -496,7 +503,7 @@ void DBusMenuModel::rebuildChildren()
     for (const DBusMenuNode &node : m_nodes) {
         if (node.children.isEmpty())
             continue;
-        auto *child = new DBusMenuModel(const_cast<DBusMenuModel *>(this));
+        auto *child = new DBusMenuModel(m_limits, const_cast<DBusMenuModel *>(this));
         child->setNodes(node.children);
         connect(child, &DBusMenuModel::activateRequested, this,
                 &DBusMenuModel::activateRequested);
@@ -505,9 +512,11 @@ void DBusMenuModel::rebuildChildren()
 }
 
 DBusMenuClient::DBusMenuClient(const ItemAddress &address, const QString &menuPath,
-                               StatusNotifierIconStore *iconStore, QObject *parent)
+                               StatusNotifierIconStore *iconStore, quint64 itemGeneration,
+                               QObject *parent)
     : QObject(parent), m_address(address), m_menuPath(menuPath),
-      m_rootModel(new DBusMenuModel(this)), m_iconStore(iconStore)
+      m_itemGeneration(itemGeneration),
+      m_rootModel(new DBusMenuModel(m_limits, this)), m_iconStore(iconStore)
 {
     registerStatusNotifierDBusMetaTypes();
     registerDBusMenuMetaTypes();
@@ -536,12 +545,13 @@ void DBusMenuClient::prepareForPresentation(int nodeId)
                          QDBusConnection::sessionBus());
     QDBusPendingCall pending = iface.asyncCall(QStringLiteral("AboutToShow"), nodeId);
     const quint64 generation = m_generation;
+    const quint64 itemGeneration = m_itemGeneration;
     auto *watcher = new QDBusPendingCallWatcher(pending, this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, watcher, generation, nodeId, initialRoot] {
+            [this, watcher, generation, itemGeneration, nodeId, initialRoot] {
         const QDBusMessage reply = watcher->reply();
         watcher->deleteLater();
-        if (generation != m_generation || m_stopped)
+        if (generation != m_generation || itemGeneration != m_itemGeneration || m_stopped)
             return;
         const bool failed = reply.type() == QDBusMessage::ErrorMessage;
         const QVariantList args = reply.arguments();
@@ -576,11 +586,12 @@ void DBusMenuClient::activate(int nodeId)
     auto *watcher = new QDBusPendingCallWatcher(
         QDBusConnection::sessionBus().asyncCall(event), this);
     const quint64 generation = m_generation;
+    const quint64 itemGeneration = m_itemGeneration;
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, watcher, generation] {
+            [this, watcher, generation, itemGeneration] {
         const QDBusMessage reply = watcher->reply();
         watcher->deleteLater();
-        if (generation != m_generation || m_stopped)
+        if (generation != m_generation || itemGeneration != m_itemGeneration || m_stopped)
             return;
         if (reply.type() == QDBusMessage::ErrorMessage)
             emit failed(reply.errorMessage());
@@ -615,11 +626,12 @@ void DBusMenuClient::requestLayout(int parentId)
     QDBusPendingCall pending = iface.asyncCall(QStringLiteral("GetLayout"), parentId, -1,
                                                QStringList());
     auto *watcher = new QDBusPendingCallWatcher(pending, this);
+    const quint64 itemGeneration = m_itemGeneration;
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, watcher, generation, parentId] {
+            [this, watcher, generation, itemGeneration, parentId] {
         const QDBusMessage reply = watcher->reply();
         watcher->deleteLater();
-        if (generation != m_generation || m_stopped)
+        if (generation != m_generation || itemGeneration != m_itemGeneration || m_stopped)
             return;
         m_loading = false;
         if (reply.type() == QDBusMessage::ErrorMessage || reply.arguments().isEmpty()) {
@@ -635,18 +647,19 @@ void DBusMenuClient::requestLayout(int parentId)
         if (args.size() == 1) {
             const QVariant only = args.constFirst();
             if (only.canConvert<DBusMenuLayoutReply>())
-                result = parseMenuLayout(only, DBusMenuLimits{});
+                result = parseMenuLayout(only, m_limits);
             else if (only.canConvert<QDBusArgument>())
-                result = parseMenuLayoutArgument(only.value<QDBusArgument>(), 0);
+                result = parseMenuLayoutArgument(only.value<QDBusArgument>(), 0, m_limits);
             else
-                result = parseMenuLayout(only, DBusMenuLimits{});
+                result = parseMenuLayout(only, m_limits);
         } else {
             const quint32 revision = unwrap(args.at(0)).toUInt();
             const QVariant layoutValue = args.at(1);
             if (layoutValue.canConvert<QDBusArgument>())
-                result = parseMenuLayoutArgument(layoutValue.value<QDBusArgument>(), revision);
+                result = parseMenuLayoutArgument(layoutValue.value<QDBusArgument>(), revision,
+                                                 m_limits);
             else
-                result = parseMenuLayout(layoutValue, DBusMenuLimits{});
+                result = parseMenuLayout(layoutValue, m_limits);
         }
         if (!result.ok()) {
             emit failed(result.error);
@@ -747,8 +760,8 @@ void DBusMenuClient::updateRemoteIcon(DBusMenuNode &node)
         return;
     const QString key = QStringLiteral("menu:%1:%2").arg(m_address.key()).arg(node.id);
     QString ignored;
-    if (!node.iconData.isEmpty() && isSafeIconData(node.iconData, DBusMenuLimits{}, &ignored))
-        updateIconSource(m_iconStore, key, node.iconData);
+    if (!node.iconData.isEmpty() && isSafeIconData(node.iconData, m_limits, &ignored))
+        updateIconSource(m_iconStore, key, node.iconData, m_limits);
     else
         m_iconStore->updateAuxiliaryNamedImage(key, node.iconName);
     node.iconSource = m_iconStore->hasIcon(key) ? m_iconStore->imageSource(key) : QString();

@@ -121,6 +121,8 @@ struct DBusMenuLimits {
     int maxChildren = 256;
     int maxLabelLength = 512;
     int maxIconDataBytes = 1024 * 1024;
+    int maxIconDimension = 4096;
+    qint64 maxIconPixels = 16 * 1024 * 1024;
 };
 
 PixmapDecodeResult decodeArgb32NetworkPixmap(const PixmapData &pixmap,

@@ -12,6 +12,9 @@
 
 namespace Astrea::StatusNotifier {
 
+inline constexpr QLatin1StringView kDefaultStatusNotifierItemObjectPath(
+    "/StatusNotifierItem");
+
 enum class WatcherMode {
     Unavailable,
     External,
@@ -128,8 +131,6 @@ void registerStatusNotifierDBusMetaTypes();
 
 ItemAddress normalizeRegistration(const QString &registration,
                                   const QString &senderUniqueOwner = QString(),
-                                  const QString &defaultObjectPath =
-                                      QStringLiteral("/StatusNotifierItem"),
                                   QString *errorOut = nullptr);
 
 QString itemStatusName(ItemStatus status);

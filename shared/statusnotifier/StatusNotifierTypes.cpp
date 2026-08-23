@@ -5,20 +5,20 @@ namespace Astrea::StatusNotifier {
 
 namespace {
 
-bool isAsciiNameComponent(const QString &component)
+bool isAsciiNameComponent(const QString &component, bool allowLeadingDigit)
 {
-    if (component.isEmpty() || component.toUtf8().size() > 255)
+    if (component.isEmpty())
         return false;
-    const auto isLetterOrUnderscore = [](QChar ch) {
+    const auto isAllowed = [](QChar ch) {
         return (ch >= QLatin1Char('A') && ch <= QLatin1Char('Z'))
             || (ch >= QLatin1Char('a') && ch <= QLatin1Char('z'))
-            || ch == QLatin1Char('_');
+            || (ch >= QLatin1Char('0') && ch <= QLatin1Char('9'))
+            || ch == QLatin1Char('_') || ch == QLatin1Char('-');
     };
-    const auto isAllowed = [&](QChar ch) {
-        return isLetterOrUnderscore(ch)
-            || (ch >= QLatin1Char('0') && ch <= QLatin1Char('9'));
-    };
-    if (!isLetterOrUnderscore(component.at(0)))
+    if (!isAllowed(component.at(0)))
+        return false;
+    if (!allowLeadingDigit && component.at(0) >= QLatin1Char('0')
+        && component.at(0) <= QLatin1Char('9'))
         return false;
     for (const QChar ch : component.mid(1)) {
         if (!isAllowed(ch))
@@ -37,10 +37,8 @@ bool isUniqueName(const QString &name)
     for (const QString &component : components) {
         if (component.isEmpty())
             return false;
-        for (const QChar ch : component) {
-            if (ch < QLatin1Char('0') || ch > QLatin1Char('9'))
-                return false;
-        }
+        if (!isAsciiNameComponent(component, true))
+            return false;
     }
     return true;
 }
@@ -57,7 +55,7 @@ bool isValidDBusServiceName(const QString &name)
     if (components.size() < 2)
         return false;
     for (const QString &component : components) {
-        if (!isAsciiNameComponent(component))
+        if (!isAsciiNameComponent(component, false))
             return false;
     }
     return true;
@@ -65,7 +63,7 @@ bool isValidDBusServiceName(const QString &name)
 
 bool isValidDBusObjectPath(const QString &path)
 {
-    if (path.isEmpty() || path.toUtf8().size() > 255 || !path.startsWith(QLatin1Char('/')))
+    if (path.isEmpty() || !path.startsWith(QLatin1Char('/')))
         return false;
     if (path == QLatin1StringView("/"))
         return true;
@@ -144,7 +142,7 @@ PixmapDecodeResult decodeArgb32NetworkPixmap(const PixmapData &pixmap, int maxDi
 }
 
 ItemAddress normalizeRegistration(const QString &registration, const QString &senderUniqueOwner,
-                                  const QString &defaultObjectPath, QString *errorOut)
+                                  QString *errorOut)
 {
     ItemAddress address;
     const QString value = registration.trimmed();
@@ -162,7 +160,7 @@ ItemAddress normalizeRegistration(const QString &registration, const QString &se
         const int slash = value.indexOf(QLatin1Char('/'));
         if (slash < 0) {
             address.service = value;
-            address.objectPath = defaultObjectPath;
+            address.objectPath = QString::fromLatin1(kDefaultStatusNotifierItemObjectPath);
         } else {
             address.service = value.left(slash);
             address.objectPath = value.mid(slash);

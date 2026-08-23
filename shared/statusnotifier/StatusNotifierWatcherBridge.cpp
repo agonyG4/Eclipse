@@ -38,7 +38,7 @@ QString watcherInterface(const QString &name)
         : QString::fromLatin1(kKdeInterface);
 }
 
-class FreedesktopWatcherAdaptor final : public QDBusAbstractAdaptor, protected QDBusContext {
+class FreedesktopWatcherAdaptor final : public QDBusAbstractAdaptor {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "org.freedesktop.StatusNotifierWatcher")
     Q_PROPERTY(QStringList RegisteredStatusNotifierItems READ registeredItems)
@@ -55,8 +55,9 @@ public:
                 &FreedesktopWatcherAdaptor::StatusNotifierItemUnregistered);
         connect(m_object, &StatusNotifierLocalWatcherObject::hostRegisteredChanged, this,
                 [this](const QString &host, bool registered) {
+            Q_UNUSED(host)
             if (registered)
-                emit StatusNotifierHostRegistered(host);
+                emit StatusNotifierHostRegistered();
         });
     }
 
@@ -67,23 +68,27 @@ public:
 public slots:
     void RegisterStatusNotifierItem(const QString &service)
     {
-        m_object->registerItemFromOwner(service, calledFromDBus() ? message().service() : QString());
+        m_object->registerItemFromOwner(service, m_object->callerUniqueOwner());
+    }
+    void UnregisterStatusNotifierItem(const QString &service)
+    {
+        m_object->unregisterItemFromOwner(service, m_object->callerUniqueOwner());
     }
     void RegisterStatusNotifierHost(const QString &host)
     {
-        m_object->registerHostFromOwner(host, calledFromDBus() ? message().service() : QString());
+        m_object->registerHostFromOwner(host, m_object->callerUniqueOwner());
     }
 
 signals:
     void StatusNotifierItemRegistered(const QString &service);
     void StatusNotifierItemUnregistered(const QString &service);
-    void StatusNotifierHostRegistered(const QString &service);
+    void StatusNotifierHostRegistered();
 
 private:
     StatusNotifierLocalWatcherObject *m_object = nullptr;
 };
 
-class KdeWatcherAdaptor final : public QDBusAbstractAdaptor, protected QDBusContext {
+class KdeWatcherAdaptor final : public QDBusAbstractAdaptor {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "org.kde.StatusNotifierWatcher")
     Q_PROPERTY(QStringList RegisteredStatusNotifierItems READ registeredItems)
@@ -100,8 +105,9 @@ public:
                 &KdeWatcherAdaptor::StatusNotifierItemUnregistered);
         connect(m_object, &StatusNotifierLocalWatcherObject::hostRegisteredChanged, this,
                 [this](const QString &host, bool registered) {
+            Q_UNUSED(host)
             if (registered)
-                emit StatusNotifierHostRegistered(host);
+                emit StatusNotifierHostRegistered();
         });
     }
 
@@ -112,17 +118,21 @@ public:
 public slots:
     void RegisterStatusNotifierItem(const QString &service)
     {
-        m_object->registerItemFromOwner(service, calledFromDBus() ? message().service() : QString());
+        m_object->registerItemFromOwner(service, m_object->callerUniqueOwner());
+    }
+    void UnregisterStatusNotifierItem(const QString &service)
+    {
+        m_object->unregisterItemFromOwner(service, m_object->callerUniqueOwner());
     }
     void RegisterStatusNotifierHost(const QString &host)
     {
-        m_object->registerHostFromOwner(host, calledFromDBus() ? message().service() : QString());
+        m_object->registerHostFromOwner(host, m_object->callerUniqueOwner());
     }
 
 signals:
     void StatusNotifierItemRegistered(const QString &service);
     void StatusNotifierItemUnregistered(const QString &service);
-    void StatusNotifierHostRegistered(const QString &service);
+    void StatusNotifierHostRegistered();
 
 private:
     StatusNotifierLocalWatcherObject *m_object = nullptr;
@@ -152,13 +162,43 @@ void StatusNotifierLocalWatcherObject::registerItemFromOwner(const QString &regi
     registerItemForOwner(registration, owner);
 }
 
+void StatusNotifierLocalWatcherObject::unregisterItemFromOwner(const QString &registration,
+                                                               const QString &owner)
+{
+    unregisterItemForOwner(registration, owner);
+}
+
+void StatusNotifierLocalWatcherObject::unregisterItemForOwner(const QString &registration,
+                                                              const QString &owner)
+{
+    QString error;
+    ItemAddress address = normalizeRegistration(registration, owner, &error);
+    if (!address.isValid()) {
+        emit registrationRejected(error);
+        return;
+    }
+    if (address.uniqueOwner.isEmpty())
+        address.uniqueOwner = owner;
+    const QString key = address.key();
+    const auto it = m_items.constFind(key);
+    if (it == m_items.constEnd())
+        return;
+    const QString canonical = it->registration;
+    const QString itemOwner = it->owner;
+    m_items.erase(it);
+    emit itemUnregistered(canonical, itemOwner);
+    emit itemUnregisteredForDbus(canonical);
+}
+
 void StatusNotifierLocalWatcherObject::registerItemForOwner(const QString &registration,
                                                             const QString &owner)
 {
     QString error;
-    ItemAddress address = normalizeRegistration(registration, owner, QString(), &error);
-    if (!address.isValid())
+    ItemAddress address = normalizeRegistration(registration, owner, &error);
+    if (!address.isValid()) {
+        emit registrationRejected(error);
         return;
+    }
     if (address.uniqueOwner.isEmpty())
         address.uniqueOwner = owner;
     const QString key = address.key();
@@ -191,14 +231,50 @@ void StatusNotifierLocalWatcherObject::registerHostFromOwner(const QString &host
 void StatusNotifierLocalWatcherObject::registerOwnedHost(const QString &host,
                                                           const QString &owner)
 {
-    registerHostForOwner(host, owner);
+    registerVerifiedHost(host, owner);
 }
 
 void StatusNotifierLocalWatcherObject::registerHostForOwner(const QString &host,
                                                             const QString &owner)
 {
-    if (!isValidDBusServiceName(host))
+    if (!isValidDBusServiceName(host) || !isValidDBusServiceName(owner)
+        || !owner.startsWith(QLatin1Char(':')))
         return;
+    if (host.startsWith(QLatin1Char(':'))) {
+        if (host != owner)
+            return;
+        registerVerifiedHost(host, owner);
+        return;
+    }
+
+    const quint64 request = m_nextHostRequest++;
+    m_hostRequestGeneration.insert(host, request);
+    m_hostRequestOwner.insert(host, owner);
+    QDBusInterface dbus(QStringLiteral("org.freedesktop.DBus"),
+                        QStringLiteral("/org/freedesktop/DBus"),
+                        QStringLiteral("org.freedesktop.DBus"),
+                        QDBusConnection::sessionBus());
+    auto *pending = new QDBusPendingCallWatcher(
+        dbus.asyncCall(QStringLiteral("GetNameOwner"), host), this);
+    connect(pending, &QDBusPendingCallWatcher::finished, this,
+            [this, pending, host, owner, request] {
+        const QDBusMessage reply = pending->reply();
+        pending->deleteLater();
+        if (m_hostRequestGeneration.value(host) != request
+            || m_hostRequestOwner.value(host) != owner)
+            return;
+        m_hostRequestGeneration.remove(host);
+        m_hostRequestOwner.remove(host);
+        if (reply.type() == QDBusMessage::ErrorMessage || reply.arguments().isEmpty()
+            || reply.arguments().constFirst().toString() != owner)
+            return;
+        registerVerifiedHost(host, owner);
+    });
+}
+
+void StatusNotifierLocalWatcherObject::registerVerifiedHost(const QString &host,
+                                                             const QString &owner)
+{
     const bool wasRegistered = hostRegistered();
     const bool changed = !m_hosts.contains(host) || m_hosts.value(host) != owner;
     m_hosts.insert(host, owner);
@@ -206,8 +282,22 @@ void StatusNotifierLocalWatcherObject::registerHostForOwner(const QString &host,
         emit hostRegisteredChanged(host, true);
 }
 
+void StatusNotifierLocalWatcherObject::removeHost(const QString &host)
+{
+    m_hostRequestGeneration.remove(host);
+    m_hostRequestOwner.remove(host);
+    if (m_hosts.remove(host) > 0)
+        emit hostRegisteredChanged(host, false);
+}
+
 void StatusNotifierLocalWatcherObject::removeOwner(const QString &owner)
 {
+    const QStringList pendingHosts = m_hostRequestOwner.keys(owner);
+    for (const QString &host : pendingHosts) {
+        m_hostRequestGeneration.remove(host);
+        m_hostRequestOwner.remove(host);
+    }
+
     const QStringList itemKeys = m_items.keys();
     for (const QString &key : itemKeys) {
         const auto it = m_items.constFind(key);
@@ -232,6 +322,8 @@ void StatusNotifierLocalWatcherObject::clear()
 {
     m_items.clear();
     m_hosts.clear();
+    m_hostRequestGeneration.clear();
+    m_hostRequestOwner.clear();
 }
 
 StatusNotifierWatcherBridge::StatusNotifierWatcherBridge(QObject *parent)
@@ -334,7 +426,8 @@ void StatusNotifierWatcherBridge::unregisterTestKey(const QString &key)
 }
 
 void StatusNotifierWatcherBridge::onServiceOwnerChanged(const QString &service,
-                                                        const QString &, const QString &newOwner)
+                                                        const QString &oldOwner,
+                                                        const QString &newOwner)
 {
     const QStringList aliases = watcherNames();
     if (aliases.contains(service)) {
@@ -351,8 +444,13 @@ void StatusNotifierWatcherBridge::onServiceOwnerChanged(const QString &service,
         return;
     }
 
-    if (m_mode == WatcherMode::Owned && m_localWatcher && newOwner.isEmpty())
-        m_localWatcher->removeOwner(service);
+    if (m_mode == WatcherMode::Owned && m_localWatcher) {
+        if (!oldOwner.isEmpty() && oldOwner != newOwner)
+            m_localWatcher->removeOwner(oldOwner);
+        if (newOwner.isEmpty())
+            m_localWatcher->removeOwner(service);
+        m_localWatcher->removeHost(service);
+    }
 
     const QStringList keys = m_addresses.keys();
     for (const QString &key : keys) {
@@ -382,7 +480,7 @@ void StatusNotifierWatcherBridge::onItemRegistered(const QString &registration)
 void StatusNotifierWatcherBridge::onItemUnregistered(const QString &registration)
 {
     QString error;
-    const auto address = normalizeRegistration(registration, {}, QString(), &error);
+    const auto address = normalizeRegistration(registration, {}, &error);
     QStringList keys;
     if (address.isValid()) {
         if (m_addresses.contains(address.key()))
@@ -411,8 +509,10 @@ void StatusNotifierWatcherBridge::onLocalItemUnregistered(const QString &registr
     onItemUnregistered(registration);
 }
 
-void StatusNotifierWatcherBridge::onLocalHostRegistered(const QString &, bool)
+void StatusNotifierWatcherBridge::onLocalHostRegistered(const QString &host, bool)
 {
+    if (m_serviceWatcher && !host.startsWith(QLatin1Char(':')))
+        m_serviceWatcher->addWatchedService(host);
     m_hostRegistered = m_localWatcher && m_localWatcher->hostRegistered();
     emit stateChanged();
 }
@@ -454,12 +554,12 @@ void StatusNotifierWatcherBridge::handleRegistration(const QString &registration
     if (generation != 0 && generation != m_watcherGeneration)
         return;
     QString error;
-    const auto partial = normalizeRegistration(registration, senderUniqueOwner, QString(), &error);
+    const auto partial = normalizeRegistration(registration, senderUniqueOwner, &error);
     if (!partial.isValid()) {
         emit healthWarning(error);
         return;
     }
-    if (!partial.uniqueOwner.isEmpty()) {
+    if (!partial.uniqueOwner.isEmpty() || !senderUniqueOwner.isEmpty()) {
         ItemAddress address = partial;
         if (address.uniqueOwner.isEmpty())
             address.uniqueOwner = senderUniqueOwner;
@@ -630,7 +730,9 @@ void StatusNotifierWatcherBridge::tryOwnWatcher()
             &StatusNotifierWatcherBridge::onLocalItemUnregistered);
     connect(m_localWatcher, &StatusNotifierLocalWatcherObject::hostRegisteredChanged, this,
             &StatusNotifierWatcherBridge::onLocalHostRegistered);
-    m_localWatcher->registerOwnedHost(m_hostServiceName, bus.baseService());
+    connect(m_localWatcher, &StatusNotifierLocalWatcherObject::registrationRejected, this,
+            &StatusNotifierWatcherBridge::healthWarning);
+    m_localWatcher->registerVerifiedHost(m_hostServiceName, bus.baseService());
     m_mode = WatcherMode::Owned;
     m_watcherName = freedesktop;
     m_watcherOwner = bus.baseService();

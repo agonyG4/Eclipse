@@ -10,9 +10,10 @@ PopupCard {
     property var trayService: null
     property var popupController: null
     property string contextKey: ""
-    property var menuModel: trayService ? trayService.menuModelForItem(contextKey) : null
+    readonly property var menuModel: trayService ? trayService.menuModelForItem(contextKey) : null
     property var cascadeModel: null
     property int cascadeAnchorY: 0
+    property int presentationSerial: 0
     property int outputWidth: 1
     property string emptyText: "No actions exposed"
     implicitWidth: 220
@@ -20,11 +21,11 @@ PopupCard {
     contentSpacing: 4
 
     function resetMenu() {
+        presentationSerial += 1
         cascadeModel = null
         cascadeAnchorY = 0
-        menuModel = trayService ? trayService.menuModelForItem(contextKey) : null
         if (trayService)
-            trayService.openMenu(contextKey)
+            trayService.prepareMenuForPresentation(contextKey)
     }
 
     function openChild(ownerModel, nodeId, y) {
@@ -50,14 +51,20 @@ PopupCard {
             return state === 1 ? "󰄲" : state === 2 ? "󰡖" : ""
         if (toggleType === "radio")
             return state === 1 ? "󰐕" : ""
-        return iconSource || iconName || ""
+        return iconSource || ""
     }
 
     Component.onCompleted: resetMenu()
+    onContextKeyChanged: resetMenu()
+    onVisibleChanged: if (visible) resetMenu(); else closeCascades()
 
     Connections {
         target: trayService
         function onItemChanged(key) {
+            if (key === root.contextKey)
+                root.resetMenu()
+        }
+        function onMenuClientChanged(key) {
             if (key === root.contextKey)
                 root.resetMenu()
         }
@@ -94,7 +101,9 @@ PopupCard {
     MenuSeparator { objectName: "trayMenuHeaderSeparator" }
 
     Text {
-        visible: !root.menuModel || root.menuModel.rowCount() === 0
+        visible: !root.menuModel || !root.trayService
+                 || root.trayService.menuStateForItem(root.contextKey) === 4
+                 || root.trayService.menuStateForItem(root.contextKey) === 5
         text: root.emptyText
         width: parent.width
         height: 36
@@ -159,33 +168,22 @@ PopupCard {
 
     Loader {
         id: cascadeLoader
-        parent: root
+        parent: root.parent
         active: root.cascadeModel !== null
-        sourceComponent: cascadeCard
+        source: root.cascadeModel !== null ? Qt.resolvedUrl("TrayMenuCard.qml") : ""
         property var cascadeMenuModel: root.cascadeModel
-        x: root.parent && root.x + root.width + width <= root.parent.width
-            ? root.width - 4 : -width + 4
-        y: Math.max(0, Math.min(root.parent ? root.parent.height - height : root.cascadeAnchorY,
-                                root.cascadeAnchorY))
-    }
-
-    Component {
-        id: cascadeCard
-
-        PopupCard {
-            objectName: "trayCascadeMenu"
-            width: 220
-            cardPadding: 12
-            contentSpacing: 4
-            property var cascadeMenuModel: null
-
-            Repeater {
-                model: parent.cascadeMenuModel
-                delegate: menuRow
-                onItemAdded: function(index, item) {
-                    item.menuOwner = parent.cascadeMenuModel
-                }
-            }
+        onLoaded: {
+            item.menuModel = cascadeMenuModel
+            item.trayService = root.trayService
+            item.popupController = root.popupController
+            item.contextKey = root.contextKey
+            item.presentationParent = root.parent
+            item.depth = 1
+            item.x = root.x + root.width - 4 <= root.parent.width
+                ? root.x + root.width - 4 : root.x - width + 4
+            item.y = Math.max(0, Math.min(root.parent.height - height,
+                                           root.y + root.cascadeAnchorY))
         }
+        onCascadeMenuModelChanged: if (item) item.menuModel = cascadeMenuModel
     }
 }

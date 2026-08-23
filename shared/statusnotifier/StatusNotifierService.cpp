@@ -163,6 +163,13 @@ QObject *StatusNotifierService::menuModelForItem(const QString &itemKey) const
     return menu ? menu->rootModel() : nullptr;
 }
 
+int StatusNotifierService::menuStateForItem(const QString &itemKey) const
+{
+    const auto *menu = m_menus.value(itemKey);
+    return menu ? static_cast<int>(menu->state())
+                : static_cast<int>(DBusMenuLifecycleState::Unavailable);
+}
+
 QString StatusNotifierService::tooltipTitleForItem(const QString &itemKey) const
 {
     const ItemSnapshot snapshot = m_model->item(itemKey);
@@ -200,14 +207,18 @@ void StatusNotifierService::scroll(const QString &itemKey, int delta, const QStr
 
 void StatusNotifierService::openMenu(const QString &itemKey)
 {
+    prepareMenuForPresentation(itemKey);
+}
+
+void StatusNotifierService::prepareMenuForPresentation(const QString &itemKey, int nodeId)
+{
     if (auto *menu = m_menus.value(itemKey))
-        menu->load();
+        menu->prepareForPresentation(nodeId);
 }
 
 void StatusNotifierService::aboutToShowMenu(const QString &itemKey, int nodeId)
 {
-    if (auto *menu = m_menus.value(itemKey))
-        menu->aboutToShow(nodeId);
+    prepareMenuForPresentation(itemKey, nodeId);
 }
 
 void StatusNotifierService::closeMenu(const QString &itemKey)
@@ -318,6 +329,7 @@ void StatusNotifierService::updateMenu(const QString &key, const QString &menuPa
             menu->stop();
             menu->deleteLater();
         }
+        emit menuClientChanged(key);
         emit stateChanged();
         return;
     }
@@ -333,6 +345,7 @@ void StatusNotifierService::updateMenu(const QString &key, const QString &menuPa
     connect(menu, &DBusMenuClient::failed, this,
             [this](const QString &error) { emit healthWarning(error); });
     emit stateChanged();
+    emit menuClientChanged(key);
 }
 
 } // namespace Astrea::StatusNotifier

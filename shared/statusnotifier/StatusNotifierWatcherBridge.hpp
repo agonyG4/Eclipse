@@ -4,6 +4,7 @@
 
 #include <QDBusContext>
 #include <QDBusMessage>
+#include <QDBusPendingCallWatcher>
 #include <QObject>
 #include <QHash>
 #include <QPointer>
@@ -22,13 +23,18 @@ public:
     }
 
     QStringList items() const;
+    QString callerUniqueOwner() const
+    { return calledFromDBus() ? message().service() : QString(); }
     bool hostRegistered() const { return !m_hosts.isEmpty(); }
     void registerItem(const QString &registration);
     void registerItemFromOwner(const QString &registration, const QString &owner);
+    void unregisterItemFromOwner(const QString &registration, const QString &owner);
     void registerHost(const QString &host);
     void registerHostFromOwner(const QString &host, const QString &owner);
     void registerOwnedHost(const QString &host, const QString &owner);
+    void registerVerifiedHost(const QString &host, const QString &owner);
     void removeOwner(const QString &owner);
+    void removeHost(const QString &host);
     void clear();
 
 signals:
@@ -38,6 +44,7 @@ signals:
     void itemUnregisteredForDbus(const QString &registration);
     void itemUnregistered(const QString &registration);
     void hostRegisteredChanged(const QString &host, bool registered);
+    void registrationRejected(const QString &error);
 
 private:
     struct ItemRecord {
@@ -47,10 +54,14 @@ private:
     };
 
     void registerItemForOwner(const QString &registration, const QString &owner);
+    void unregisterItemForOwner(const QString &registration, const QString &owner);
     void registerHostForOwner(const QString &host, const QString &owner);
 
     QHash<QString, ItemRecord> m_items;
     QHash<QString, QString> m_hosts;
+    QHash<QString, quint64> m_hostRequestGeneration;
+    QHash<QString, QString> m_hostRequestOwner;
+    quint64 m_nextHostRequest = 1;
 };
 
 class StatusNotifierWatcherBridge final : public QObject {

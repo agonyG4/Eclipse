@@ -158,6 +158,12 @@ void StatusNotifierIconStore::updateAuxiliaryImage(const QString &key, const QIm
     emit itemIconChanged(key, m_nextRevision++);
 }
 
+void StatusNotifierIconStore::updateAuxiliaryNamedImage(const QString &key, const QString &name,
+                                                        const QString &themePath)
+{
+    updateAuxiliaryImage(key, loadNamedIcon(name, themePath, QSize(32, 32)));
+}
+
 void StatusNotifierIconStore::clearAuxiliaryImages(const QString &prefix)
 {
     const QStringList keys = m_auxiliaryImages.keys();

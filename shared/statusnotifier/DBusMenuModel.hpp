@@ -45,6 +45,16 @@ struct DBusMenuParseResult {
     bool ok() const { return error.isEmpty(); }
 };
 
+enum class DBusMenuLifecycleState {
+    Unavailable,
+    Unloaded,
+    Loading,
+    Ready,
+    Empty,
+    Error,
+    Stopped,
+};
+
 DBusMenuParseResult parseMenuLayout(const QVariant &value,
                                     const DBusMenuLimits &limits = {});
 DBusMenuParseResult parseMenuLayoutArgument(const QDBusArgument &argument, quint32 revision,
@@ -84,6 +94,8 @@ public:
     bool replaceSubtree(int parentId, const DBusMenuNode &subtree);
     bool updateNodeProperties(const QList<DBusMenuPropertyUpdate> &updates,
                               const QList<DBusMenuRemovedProperties> &removedProperties);
+    bool setIconSource(int nodeId, const QString &source);
+    DBusMenuNode nodeById(int nodeId) const;
     DBusMenuNode node(int row) const;
     Q_INVOKABLE QObject *childModel(int nodeId) const;
     Q_INVOKABLE void activate(int nodeId);
@@ -107,6 +119,7 @@ class DBusMenuClient final : public QObject {
     Q_OBJECT
     Q_PROPERTY(quint32 revision READ revision NOTIFY changed)
     Q_PROPERTY(bool loading READ loading NOTIFY changed)
+    Q_PROPERTY(DBusMenuLifecycleState state READ state NOTIFY changed)
 
 public:
     DBusMenuClient(const ItemAddress &address, const QString &menuPath,
@@ -116,9 +129,11 @@ public:
     DBusMenuModel *rootModel() const { return m_rootModel; }
     quint32 revision() const { return m_revision; }
     bool loading() const { return m_loading; }
+    DBusMenuLifecycleState state() const { return m_state; }
     QString menuPath() const { return m_menuPath; }
 
     void load();
+    Q_INVOKABLE void prepareForPresentation(int nodeId = 0);
     Q_INVOKABLE void aboutToShow(int nodeId);
     Q_INVOKABLE void activate(int nodeId);
     void stop();
@@ -134,6 +149,7 @@ private:
     void connectSignals();
     void disconnectSignals();
     void decorateIcons(DBusMenuNode &node);
+    void updateRemoteIcon(DBusMenuNode &node);
 
 private slots:
     void onLayoutUpdated(quint32 revision, int parentId);
@@ -148,6 +164,7 @@ private:
     quint32 m_revision = 0;
     quint64 m_generation = 0;
     bool m_loading = false;
+    DBusMenuLifecycleState m_state = DBusMenuLifecycleState::Unloaded;
     bool m_stopped = false;
     bool m_signalsConnected = false;
 };
@@ -155,6 +172,7 @@ private:
 } // namespace Astrea::StatusNotifier
 
 Q_DECLARE_METATYPE(Astrea::StatusNotifier::DBusMenuNode)
+Q_DECLARE_METATYPE(Astrea::StatusNotifier::DBusMenuLifecycleState)
 Q_DECLARE_METATYPE(Astrea::StatusNotifier::DBusMenuLayoutNodeWire)
 Q_DECLARE_METATYPE(Astrea::StatusNotifier::DBusMenuLayoutReply)
 

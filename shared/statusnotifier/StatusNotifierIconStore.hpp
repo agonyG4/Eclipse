@@ -18,6 +18,8 @@ public:
 
     void updateItem(const ItemSnapshot &snapshot);
     void updateAuxiliaryImage(const QString &key, const QImage &image);
+    void updateAuxiliaryNamedImage(const QString &key, const QString &name,
+                                   const QString &themePath = QString());
     void clearAuxiliaryImages(const QString &prefix);
     void clearItem(const QString &itemKey);
     void clear();

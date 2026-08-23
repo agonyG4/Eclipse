@@ -38,7 +38,11 @@ StatusNotifierService::StatusNotifierService(QObject *parent)
     connect(m_watcher.get(), &StatusNotifierWatcherBridge::stateChanged,
             this, &StatusNotifierService::onWatcherStateChanged);
     connect(m_watcher.get(), &StatusNotifierWatcherBridge::healthWarning,
-            this, &StatusNotifierService::healthWarning);
+            this, [this](const QString &warning) {
+        m_lastHealthWarning = warning;
+        emit healthWarning(warning);
+        emit stateChanged();
+    });
     connect(m_model.get(), &StatusNotifierItemModel::itemRemoved, this,
             &StatusNotifierService::itemRemoved);
     connect(m_iconStore.get(), &StatusNotifierIconStore::itemIconChanged, this,
@@ -148,6 +152,7 @@ QJsonObject StatusNotifierService::healthJson() const
         {QStringLiteral("itemCount"), itemCount()},
         {QStringLiteral("menuClientCount"), menuClientCount()},
         {QStringLiteral("lastError"), lastError()},
+        {QStringLiteral("healthWarning"), m_lastHealthWarning},
     };
 }
 
@@ -340,8 +345,11 @@ void StatusNotifierService::updateMenu(const QString &key, const QString &menuPa
         old->stop();
         old->deleteLater();
     }
-    auto *menu = new DBusMenuClient(snapshot.address, menuPath, m_iconStore.get(), this);
+    auto *menu = new DBusMenuClient(snapshot.address, menuPath, m_iconStore.get(),
+                                    snapshot.generation, this);
     m_menus.insert(key, menu);
+    connect(menu, &DBusMenuClient::changed, this,
+            [this, key] { emit menuContentChanged(key); });
     connect(menu, &DBusMenuClient::failed, this,
             [this](const QString &error) { emit healthWarning(error); });
     emit stateChanged();

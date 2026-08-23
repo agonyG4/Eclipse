@@ -102,6 +102,10 @@ void StatusNotifierIntegrationTest::realSessionBusRegistrationActionsAndMenuLife
     QTRY_VERIFY_WITH_TIMEOUT(service.watcherMode() == WatcherMode::Owned, 2000);
     QTRY_VERIFY_WITH_TIMEOUT(service.hostRegistered(), 2000);
     QVERIFY(!service.hostServiceName().isEmpty());
+    QVERIFY(service.hostServiceName().startsWith(
+        QStringLiteral("org.freedesktop.StatusNotifierHost-")));
+    const QString hostServiceName = service.hostServiceName();
+    QVERIFY(QDBusConnection::sessionBus().interface()->isServiceRegistered(hostServiceName));
 
     QDBusInterface watcherIntrospection(QStringLiteral("org.freedesktop.StatusNotifierWatcher"),
                                         QStringLiteral("/StatusNotifierWatcher"),
@@ -212,6 +216,15 @@ void StatusNotifierIntegrationTest::realSessionBusRegistrationActionsAndMenuLife
              QStringLiteral("Tools"));
     QVERIFY(model->data(model->index(1, 0), DBusMenuModel::SeparatorRole).toBool());
 
+    QVERIFY(control.call(QStringLiteral("SetLazySubmenu"), true).type()
+                != QDBusMessage::ErrorMessage);
+    service.prepareMenuForPresentation(key);
+    QTRY_COMPARE_WITH_TIMEOUT(model->rowCount(), 2, 3000);
+    QVERIFY(model->data(model->index(0, 0), DBusMenuModel::HasChildrenRole).toBool());
+    QTRY_VERIFY_WITH_TIMEOUT(model->childModel(10) == nullptr, 3000);
+    menuClient->aboutToShow(10);
+    QTRY_VERIFY_WITH_TIMEOUT(model->childModel(10) != nullptr, 3000);
+
     const int rootShows = menu.property("RootAboutToShowCount").toInt();
     QVERIFY(rootShows >= 1);
     service.prepareMenuForPresentation(key);
@@ -266,6 +279,8 @@ void StatusNotifierIntegrationTest::realSessionBusRegistrationActionsAndMenuLife
     QVERIFY2(fixture.waitForFinished(3000), qPrintable(diagnostics(fixture)));
     QTRY_COMPARE_WITH_TIMEOUT(service.itemCount(), 0, 4000);
     service.stop();
+    QTRY_VERIFY_WITH_TIMEOUT(!QDBusConnection::sessionBus().interface()->isServiceRegistered(
+                                 hostServiceName), 2000);
 }
 
 QTEST_GUILESS_MAIN(StatusNotifierIntegrationTest)

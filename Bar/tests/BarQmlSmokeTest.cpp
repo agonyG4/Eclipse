@@ -284,6 +284,7 @@ private slots:
     void statusSurfaceUsesInjectedSystemServices();
     void traySurfaceUsesNativeModelAndTooltipBoundary();
     void trayMenuUsesStableContextKey();
+    void traySubmenuPlacementChecksFullBoundsAtEveryDepth();
     void popupSurfaceUsesProductionClampAndClosingLifecycle();
     void popupEntersAndCompletesAnimation();
     void popupReopenCancelsExitAnimation();
@@ -640,6 +641,36 @@ void BarQmlSmokeTest::trayMenuUsesStableContextKey()
     QCOMPARE(overlay->findChild<QObject *>(QStringLiteral("trayMenu"))->property("contextKey").toString(),
              snapshot.address.key());
     delete overlay;
+}
+
+void BarQmlSmokeTest::traySubmenuPlacementChecksFullBoundsAtEveryDepth()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine,
+                            QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Bar/qml/TrayContextMenu.qml")));
+    QVERIFY2(component.status() == QQmlComponent::Ready,
+             qPrintable(component.errors().isEmpty()
+                 ? QStringLiteral("Tray context menu is not ready")
+                 : component.errors().constFirst().toString()));
+    QObject *menu = component.create();
+    QVERIFY(menu);
+
+    QVariant x;
+    QVERIFY(QMetaObject::invokeMethod(menu, "cascadeXFor", Q_RETURN_ARG(QVariant, x),
+                                      Q_ARG(QVariant, 300), Q_ARG(QVariant, 220),
+                                      Q_ARG(QVariant, 220), Q_ARG(QVariant, 800)));
+    QCOMPARE(x.toInt(), 516);
+    QVERIFY(QMetaObject::invokeMethod(menu, "cascadeXFor", Q_RETURN_ARG(QVariant, x),
+                                      Q_ARG(QVariant, 500), Q_ARG(QVariant, 220),
+                                      Q_ARG(QVariant, 220), Q_ARG(QVariant, 800)));
+    QCOMPARE(x.toInt(), 284);
+
+    QVariant y;
+    QVERIFY(QMetaObject::invokeMethod(menu, "cascadeYFor", Q_RETURN_ARG(QVariant, y),
+                                      Q_ARG(QVariant, 500), Q_ARG(QVariant, 32),
+                                      Q_ARG(QVariant, 180), Q_ARG(QVariant, 600)));
+    QCOMPARE(y.toInt(), 420);
+    delete menu;
 }
 
 void BarQmlSmokeTest::popupSurfaceUsesProductionClampAndClosingLifecycle()

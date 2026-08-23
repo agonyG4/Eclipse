@@ -331,6 +331,22 @@ StatusNotifierWatcherBridge::StatusNotifierWatcherBridge(QObject *parent)
 {
 }
 
+WatcherAuthority StatusNotifierWatcherBridge::selectAuthority(const QString &freedesktopOwner,
+                                                              const QString &kdeOwner)
+{
+    WatcherAuthority authority;
+    authority.conflict = !freedesktopOwner.isEmpty() && !kdeOwner.isEmpty()
+        && freedesktopOwner != kdeOwner;
+    if (!freedesktopOwner.isEmpty()) {
+        authority.name = QString::fromLatin1(kFreedesktopWatcher);
+        authority.owner = freedesktopOwner;
+    } else if (!kdeOwner.isEmpty()) {
+        authority.name = QString::fromLatin1(kKdeWatcher);
+        authority.owner = kdeOwner;
+    }
+    return authority;
+}
+
 StatusNotifierWatcherBridge::~StatusNotifierWatcherBridge()
 {
     stop();
@@ -368,6 +384,7 @@ void StatusNotifierWatcherBridge::start()
                             QStringLiteral("/org/freedesktop/DBus"),
                             QStringLiteral("org.freedesktop.DBus"),
                             QDBusConnection::sessionBus());
+        m_ownerByName.clear();
         for (const QString &name : watcherNames()) {
             const QDBusMessage reply = dbus.call(QStringLiteral("GetNameOwner"), name);
             if (reply.type() != QDBusMessage::ErrorMessage && !reply.arguments().isEmpty())
@@ -404,7 +421,7 @@ void StatusNotifierWatcherBridge::stop()
     m_watcherOwner.clear();
     m_ownerByName.clear();
     m_resolutionPending = 0;
-    m_hostRegistered = false;
+    m_registeredHosts.clear();
     emit stateChanged();
 }
 
@@ -431,17 +448,25 @@ void StatusNotifierWatcherBridge::onServiceOwnerChanged(const QString &service,
 {
     const QStringList aliases = watcherNames();
     if (aliases.contains(service)) {
-        m_ownerByName.insert(service, newOwner);
-        if (m_mode == WatcherMode::External && service == m_watcherName
-            && newOwner != m_watcherOwner) {
-            detachExternalWatcher();
-            if (m_started)
-                selectWatcher();
-        } else if (m_mode == WatcherMode::Unavailable && m_resolutionPending == 0
-                   && m_started) {
-            selectWatcher();
-        }
+        if (newOwner.isEmpty())
+            m_ownerByName.remove(service);
+        else
+            m_ownerByName.insert(service, newOwner);
+        reevaluateWatcherAuthority();
         return;
+    }
+
+    if (m_registeredHosts.contains(service)) {
+        m_registeredHosts.remove(service);
+        emit stateChanged();
+    }
+    for (auto it = m_registeredHosts.begin(); it != m_registeredHosts.end();) {
+        if (it.value() == service) {
+            it = m_registeredHosts.erase(it);
+            emit stateChanged();
+        } else {
+            ++it;
+        }
     }
 
     if (m_mode == WatcherMode::Owned && m_localWatcher) {
@@ -511,10 +536,22 @@ void StatusNotifierWatcherBridge::onLocalItemUnregistered(const QString &registr
 
 void StatusNotifierWatcherBridge::onLocalHostRegistered(const QString &host, bool)
 {
-    if (m_serviceWatcher && !host.startsWith(QLatin1Char(':')))
+    if (m_serviceWatcher)
         m_serviceWatcher->addWatchedService(host);
-    m_hostRegistered = m_localWatcher && m_localWatcher->hostRegistered();
     emit stateChanged();
+}
+
+void StatusNotifierWatcherBridge::onWatcherPropertiesChanged(const QString &interfaceName,
+                                                             const QVariantMap &changed,
+                                                             const QStringList &invalidated)
+{
+    Q_UNUSED(invalidated)
+    if (m_mode != WatcherMode::External || interfaceName != watcherInterface(m_watcherName))
+        return;
+    if (changed.contains(QStringLiteral("RegisteredStatusNotifierItems")))
+        enumerateExternalItems();
+    if (changed.contains(QStringLiteral("IsStatusNotifierHostRegistered")))
+        refreshExternalHostRegistration();
 }
 
 void StatusNotifierWatcherBridge::resolveWatcherOwner(const QString &name, quint64 generation)
@@ -620,6 +657,8 @@ void StatusNotifierWatcherBridge::enumerateExternalItems()
     if (m_mode != WatcherMode::External)
         return;
     const quint64 generation = m_watcherGeneration;
+    const QString expectedName = m_watcherName;
+    const QString expectedOwner = m_watcherOwner;
     QDBusInterface watcher(m_watcherName, QString::fromLatin1(kWatcherPath),
                             QStringLiteral("org.freedesktop.DBus.Properties"),
                             QDBusConnection::sessionBus());
@@ -627,10 +666,11 @@ void StatusNotifierWatcherBridge::enumerateExternalItems()
         watcher.asyncCall(QStringLiteral("Get"), watcherInterface(m_watcherName),
                           QStringLiteral("RegisteredStatusNotifierItems")), this);
     connect(pending, &QDBusPendingCallWatcher::finished, this,
-            [this, pending, generation] {
+            [this, pending, generation, expectedName, expectedOwner] {
         const QDBusMessage reply = pending->reply();
         pending->deleteLater();
-        if (generation != m_watcherGeneration || !m_started || m_mode != WatcherMode::External)
+        if (generation != m_watcherGeneration || !m_started || m_mode != WatcherMode::External
+            || expectedName != m_watcherName || expectedOwner != m_watcherOwner)
             return;
         if (reply.type() == QDBusMessage::ErrorMessage || reply.arguments().isEmpty())
             return;
@@ -646,31 +686,60 @@ void StatusNotifierWatcherBridge::enumerateExternalItems()
 
 void StatusNotifierWatcherBridge::selectWatcher()
 {
-    if (!m_started || m_mode == WatcherMode::Owned)
+    if (!m_started)
         return;
     const QString freedesktop = QString::fromLatin1(kFreedesktopWatcher);
     const QString kde = QString::fromLatin1(kKdeWatcher);
     const QString fdoOwner = m_ownerByName.value(freedesktop);
     const QString kdeOwner = m_ownerByName.value(kde);
-    if (!fdoOwner.isEmpty() || !kdeOwner.isEmpty()) {
-        if (!fdoOwner.isEmpty() && !kdeOwner.isEmpty() && fdoOwner != kdeOwner)
-            emit healthWarning(QStringLiteral(
-                "freedesktop and KDE StatusNotifierWatcher owners differ; using freedesktop"));
-        attachExternalWatcher(!fdoOwner.isEmpty() ? freedesktop : kde,
-                               !fdoOwner.isEmpty() ? fdoOwner : kdeOwner);
+
+    WatcherAuthority authority = selectAuthority(fdoOwner, kdeOwner);
+    const QString localOwner = QDBusConnection::sessionBus().baseService();
+    if (authority.conflict) {
+        emit healthWarning(QStringLiteral(
+            "freedesktop and KDE StatusNotifierWatcher owners differ; using %1")
+                               .arg(authority.name));
+        // Never keep an Eclipse-owned alias while the other compatibility alias
+        // is controlled by an external registry.
+        if (fdoOwner == localOwner && kdeOwner != localOwner)
+            authority = {kde, kdeOwner, true};
+        else if (kdeOwner == localOwner && fdoOwner != localOwner)
+            authority = {freedesktop, fdoOwner, true};
+    }
+
+    if (authority.isValid()) {
+        if (m_mode == WatcherMode::Owned && authority.owner == localOwner)
+            return;
+        if (m_mode == WatcherMode::Owned)
+            detachLocalWatcher();
+        attachExternalWatcher(authority.name, authority.owner);
         return;
     }
+
+    if (m_mode == WatcherMode::External)
+        detachExternalWatcher();
+    if (m_mode == WatcherMode::Owned)
+        detachLocalWatcher();
     tryOwnWatcher();
+}
+
+void StatusNotifierWatcherBridge::reevaluateWatcherAuthority()
+{
+    if (!m_started || m_resolutionPending > 0)
+        return;
+    selectWatcher();
 }
 
 bool StatusNotifierWatcherBridge::ensureHostService()
 {
     if (m_hostServiceOwned)
         return true;
-    const QString suffix = QStringLiteral("%1_%2")
-        .arg(QCoreApplication::applicationPid()).arg(++m_hostGeneration);
-    m_hostServiceName = QStringLiteral("org.astrea.StatusNotifierHost_%1").arg(suffix);
     QDBusConnection bus = QDBusConnection::sessionBus();
+    const QString uniqueId = bus.baseService().mid(1).replace(QLatin1Char('.'), QLatin1Char('-'));
+    m_hostServiceName = QStringLiteral("org.freedesktop.StatusNotifierHost-%1-%2-%3")
+        .arg(uniqueId)
+        .arg(QCoreApplication::applicationPid())
+        .arg(++m_hostGeneration);
     if (bus.registerService(m_hostServiceName)
         != QDBusConnectionInterface::ServiceRegistered) {
         setError(QStringLiteral("unable to own StatusNotifierHost service %1")
@@ -684,10 +753,11 @@ bool StatusNotifierWatcherBridge::ensureHostService()
 
 void StatusNotifierWatcherBridge::releaseHostService()
 {
-    if (m_hostServiceOwned)
+    if (m_hostServiceOwned) {
         QDBusConnection::sessionBus().unregisterService(m_hostServiceName);
+        m_registeredHosts.remove(m_hostServiceName);
+    }
     m_hostServiceOwned = false;
-    m_hostRegistered = false;
     m_hostServiceName.clear();
 }
 
@@ -715,9 +785,11 @@ void StatusNotifierWatcherBridge::tryOwnWatcher()
         return;
     }
     m_ownedNames.append(freedesktop);
+    m_ownerByName.insert(freedesktop, bus.baseService());
     if (bus.registerService(QString::fromLatin1(kKdeWatcher))
         == QDBusConnectionInterface::ServiceRegistered) {
         m_ownedNames.append(QString::fromLatin1(kKdeWatcher));
+        m_ownerByName.insert(QString::fromLatin1(kKdeWatcher), bus.baseService());
     } else {
         emit healthWarning(QStringLiteral(
             "owned watcher could not claim the KDE compatibility alias"));
@@ -736,7 +808,36 @@ void StatusNotifierWatcherBridge::tryOwnWatcher()
     m_mode = WatcherMode::Owned;
     m_watcherName = freedesktop;
     m_watcherOwner = bus.baseService();
-    m_hostRegistered = m_localWatcher->hostRegistered();
+    emit stateChanged();
+
+    const QString kdeOwner = bus.interface()
+        ? bus.interface()->serviceOwner(QString::fromLatin1(kKdeWatcher)).value()
+        : QString();
+    if (!kdeOwner.isEmpty() && kdeOwner != bus.baseService()) {
+        m_ownerByName.insert(QString::fromLatin1(kKdeWatcher), kdeOwner);
+        QTimer::singleShot(0, this, [this] { reevaluateWatcherAuthority(); });
+    }
+}
+
+void StatusNotifierWatcherBridge::detachLocalWatcher()
+{
+    if (m_mode != WatcherMode::Owned && !m_localWatcher && m_ownedNames.isEmpty())
+        return;
+    ++m_watcherGeneration;
+    clearRegisteredItems();
+    if (m_localWatcher) {
+        m_localWatcher->clear();
+        QDBusConnection::sessionBus().unregisterObject(QString::fromLatin1(kWatcherPath));
+        m_localWatcher.clear();
+    }
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    for (const QString &name : std::as_const(m_ownedNames))
+        bus.unregisterService(name);
+    m_ownedNames.clear();
+    releaseHostService();
+    m_mode = WatcherMode::Unavailable;
+    m_watcherName.clear();
+    m_watcherOwner.clear();
     emit stateChanged();
 }
 
@@ -752,6 +853,12 @@ void StatusNotifierWatcherBridge::disconnectExternalWatcher()
     bus.disconnect(m_watcherName, QString::fromLatin1(kWatcherPath), interfaceName,
                    QStringLiteral("StatusNotifierItemUnregistered"), this,
                    SLOT(onItemUnregistered(QString)));
+    bus.disconnect(m_watcherName, QString::fromLatin1(kWatcherPath),
+                   QStringLiteral("org.freedesktop.DBus.Properties"),
+                   QStringLiteral("PropertiesChanged"), this,
+                   SLOT(onWatcherPropertiesChanged(QString,QVariantMap,QStringList)));
+    if (m_serviceWatcher)
+        m_serviceWatcher->removeWatchedService(m_watcherName);
 }
 
 void StatusNotifierWatcherBridge::detachExternalWatcher()
@@ -765,6 +872,7 @@ void StatusNotifierWatcherBridge::detachExternalWatcher()
     m_mode = WatcherMode::Unavailable;
     m_watcherName.clear();
     m_watcherOwner.clear();
+    m_registeredHosts.clear();
     emit stateChanged();
 }
 
@@ -789,29 +897,75 @@ void StatusNotifierWatcherBridge::attachExternalWatcher(const QString &name,
     bus.connect(name, QString::fromLatin1(kWatcherPath), interfaceName,
                 QStringLiteral("StatusNotifierItemUnregistered"), this,
                 SLOT(onItemUnregistered(QString)));
+    bus.connect(name, QString::fromLatin1(kWatcherPath),
+                QStringLiteral("org.freedesktop.DBus.Properties"),
+                QStringLiteral("PropertiesChanged"), this,
+                SLOT(onWatcherPropertiesChanged(QString,QVariantMap,QStringList)));
+    m_serviceWatcher->addWatchedService(m_hostServiceName);
     registerHostWithExternalWatcher();
     enumerateExternalItems();
+    refreshExternalHostRegistration();
     emit stateChanged();
 }
 
 void StatusNotifierWatcherBridge::registerHostWithExternalWatcher()
 {
     const quint64 generation = m_watcherGeneration;
+    const QString expectedName = m_watcherName;
+    const QString expectedOwner = m_watcherOwner;
     QDBusInterface watcher(m_watcherName, QString::fromLatin1(kWatcherPath),
                             watcherInterface(m_watcherName), QDBusConnection::sessionBus());
     auto *pending = new QDBusPendingCallWatcher(
         watcher.asyncCall(QStringLiteral("RegisterStatusNotifierHost"), m_hostServiceName), this);
     connect(pending, &QDBusPendingCallWatcher::finished, this,
-            [this, pending, generation] {
+            [this, pending, generation, expectedName, expectedOwner] {
         const QDBusMessage reply = pending->reply();
         pending->deleteLater();
-        if (!m_started || generation != m_watcherGeneration || m_mode != WatcherMode::External)
+        if (!m_started || generation != m_watcherGeneration || m_mode != WatcherMode::External
+            || expectedName != m_watcherName || expectedOwner != m_watcherOwner)
             return;
         if (reply.type() == QDBusMessage::ErrorMessage) {
             setError(reply.errorMessage());
             return;
         }
-        m_hostRegistered = true;
+        m_registeredHosts.insert(m_hostServiceName,
+                                 QDBusConnection::sessionBus().baseService());
+        emit stateChanged();
+    });
+}
+
+void StatusNotifierWatcherBridge::refreshExternalHostRegistration()
+{
+    if (m_mode != WatcherMode::External || m_watcherName.isEmpty())
+        return;
+    const quint64 generation = m_watcherGeneration;
+    const QString expectedName = m_watcherName;
+    const QString expectedOwner = m_watcherOwner;
+    QDBusInterface watcher(m_watcherName, QString::fromLatin1(kWatcherPath),
+                            QStringLiteral("org.freedesktop.DBus.Properties"),
+                            QDBusConnection::sessionBus());
+    auto *pending = new QDBusPendingCallWatcher(
+        watcher.asyncCall(QStringLiteral("Get"), watcherInterface(m_watcherName),
+                          QStringLiteral("IsStatusNotifierHostRegistered")), this);
+    connect(pending, &QDBusPendingCallWatcher::finished, this,
+            [this, pending, generation, expectedName, expectedOwner] {
+        const QDBusMessage reply = pending->reply();
+        pending->deleteLater();
+        if (!m_started || generation != m_watcherGeneration || m_mode != WatcherMode::External
+            || expectedName != m_watcherName || expectedOwner != m_watcherOwner)
+            return;
+        bool registered = false;
+        if (reply.type() != QDBusMessage::ErrorMessage && !reply.arguments().isEmpty()) {
+            QVariant value = reply.arguments().constFirst();
+            if (value.canConvert<QDBusVariant>())
+                value = value.value<QDBusVariant>().variant();
+            registered = value.toBool();
+        }
+        if (registered)
+            m_registeredHosts.insert(m_hostServiceName,
+                                     QDBusConnection::sessionBus().baseService());
+        else
+            m_registeredHosts.remove(m_hostServiceName);
         emit stateChanged();
     });
 }

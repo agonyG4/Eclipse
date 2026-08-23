@@ -6,6 +6,9 @@
 #include "statusnotifier/StatusNotifierWatcherBridge.hpp"
 
 #include <QSignalSpy>
+#include <QDir>
+#include <QImage>
+#include <QTemporaryDir>
 #include <QTest>
 
 using namespace Astrea::StatusNotifier;
@@ -19,14 +22,18 @@ private slots:
     void malformedRegistrationsAreRejected();
     void argb32NetworkPixelsDecodeExactly();
     void iconSelectionPrefersLargerThenSmaller();
+    void iconSelectionPrefersThemeNamesAndFallsBackPerEntry();
     void iconRevisionInvalidatesProviderSource();
     void menuLabelsAndBoundsAreSafe();
+    void menuLiveUpdatesKeepLimitsAndRemovedPropertiesResetState();
+    void lazySubmenusAdvertiseChildrenBeforeTheyLoad();
     void emptyMenuRootIsValid();
     void menuWireShapeAndSubtreesArePreserved();
     void menuModelExposesNestedChildren();
     void serviceKeepsPassiveItemsAndHealthIsSafe();
     void testWatcherDeduplicatesAndRecoversAddresses();
     void localHostOwnershipExpires();
+    void watcherAuthorityPrefersFreedesktopOnAliasConflict();
     void watcherStartAndStopAreNonBlocking();
 };
 
@@ -121,6 +128,65 @@ void StatusNotifierTest::iconSelectionPrefersLargerThenSmaller()
     QVERIFY(!store.image(snapshot.address.key(), QSize(40, 40)).isNull());
 }
 
+void StatusNotifierTest::iconSelectionPrefersThemeNamesAndFallsBackPerEntry()
+{
+    QTemporaryDir themeDir;
+    QVERIFY(themeDir.isValid());
+    QVERIFY(QDir(themeDir.path()).mkpath(QStringLiteral("16x16")));
+
+    QImage named(16, 16, QImage::Format_ARGB32);
+    named.fill(qRgba(255, 0, 0, 255));
+    QVERIFY(named.save(QDir(themeDir.path()).filePath(QStringLiteral("16x16/normal.png"))));
+
+    QImage attention(16, 16, QImage::Format_ARGB32);
+    attention.fill(qRgba(0, 255, 0, 255));
+    QVERIFY(attention.save(QDir(themeDir.path()).filePath(QStringLiteral("16x16/attention.png"))));
+
+    QImage overlay(16, 16, QImage::Format_ARGB32);
+    overlay.fill(qRgba(255, 255, 0, 255));
+    QVERIFY(overlay.save(QDir(themeDir.path()).filePath(QStringLiteral("16x16/overlay.png"))));
+
+    const QByteArray pixmapBytes(16 * 16 * 4, '\x02');
+    ItemSnapshot snapshot;
+    snapshot.address = {QStringLiteral("org.example.IconPriority"),
+                        QStringLiteral("/StatusNotifierItem"), QStringLiteral(":1.6")};
+    snapshot.iconName = QStringLiteral("normal");
+    snapshot.attentionIconName = QStringLiteral("attention");
+    snapshot.overlayIconName = QStringLiteral("overlay");
+    snapshot.iconThemePath = themeDir.path();
+    snapshot.pixmaps = {{16, 16, pixmapBytes}};
+    snapshot.attentionPixmaps = {{16, 16, pixmapBytes}};
+    snapshot.overlayPixmaps = {{16, 16, pixmapBytes}};
+    snapshot.status = ItemStatus::Active;
+
+    StatusNotifierIconStore store;
+    store.updateItem(snapshot);
+    const QString key = snapshot.address.key();
+    ItemSnapshot other = snapshot;
+    other.address = {QStringLiteral("org.example.IconPriorityOther"),
+                     QStringLiteral("/StatusNotifierItem"), QStringLiteral(":1.7")};
+    other.iconName.clear();
+    other.attentionIconName.clear();
+    other.overlayIconName.clear();
+    other.overlayPixmaps.clear();
+    store.updateItem(other);
+    const quint64 otherRevision = store.revision(other.address.key());
+    snapshot.overlayIconName.clear();
+    snapshot.overlayPixmaps.clear();
+    store.updateItem(snapshot);
+    QCOMPARE(store.image(key).pixel(0, 0), qRgba(255, 0, 0, 255));
+    QCOMPARE(store.revision(other.address.key()), otherRevision);
+
+    snapshot.status = ItemStatus::NeedsAttention;
+    snapshot.iconName.clear();
+    store.updateItem(snapshot);
+    QCOMPARE(store.image(key).pixel(0, 0), qRgba(0, 255, 0, 255));
+
+    snapshot.attentionIconName.clear();
+    store.updateItem(snapshot);
+    QCOMPARE(store.image(key).pixel(0, 0), qRgba(2, 2, 2, 2));
+}
+
 void StatusNotifierTest::iconRevisionInvalidatesProviderSource()
 {
     StatusNotifierIconStore store;
@@ -134,6 +200,62 @@ void StatusNotifierTest::iconRevisionInvalidatesProviderSource()
     store.updateItem(snapshot);
     QVERIFY(store.revision(snapshot.address.key()) > first);
     QVERIFY(source != store.imageSource(snapshot.address.key()));
+}
+
+void StatusNotifierTest::menuLiveUpdatesKeepLimitsAndRemovedPropertiesResetState()
+{
+    DBusMenuModel model;
+    DBusMenuNode root;
+    DBusMenuNode node;
+    node.id = 7;
+    node.label = QStringLiteral("Checked");
+    node.iconName = QStringLiteral("old-icon");
+    node.iconData = QByteArrayLiteral("old-data");
+    node.toggleType = QStringLiteral("checkmark");
+    node.childrenDisplay = QStringLiteral("submenu");
+    node.state = 1;
+    node.enabled = false;
+    node.visible = false;
+    root.children = {node};
+    model.setRoot(root);
+
+    const QByteArray oversized(1024 * 1024 + 1, '\x01');
+    DBusMenuPropertyUpdate update;
+    update.id = 7;
+    update.properties = {{QStringLiteral("label"), QStringLiteral("Updated")},
+                         {QStringLiteral("icon-data"), oversized}};
+    QVERIFY(model.updateNodeProperties({update}, {}));
+    const DBusMenuNode afterUpdate = model.nodeById(7);
+    QCOMPARE(afterUpdate.label, QStringLiteral("Updated"));
+    QVERIFY(afterUpdate.iconData.isEmpty());
+
+    DBusMenuRemovedProperties removed;
+    removed.id = 7;
+    removed.properties = {QStringLiteral("label"), QStringLiteral("icon-name"),
+                          QStringLiteral("icon-data"), QStringLiteral("toggle-type"),
+                          QStringLiteral("toggle-state"), QStringLiteral("children-display"),
+                          QStringLiteral("enabled"), QStringLiteral("visible")};
+    QVERIFY(model.updateNodeProperties({}, {removed}));
+    const DBusMenuNode afterRemoval = model.nodeById(7);
+    QCOMPARE(afterRemoval.label, QString());
+    QCOMPARE(afterRemoval.iconName, QString());
+    QVERIFY(afterRemoval.iconData.isEmpty());
+    QCOMPARE(afterRemoval.toggleType, QString());
+    QCOMPARE(afterRemoval.state, 0);
+    QCOMPARE(afterRemoval.childrenDisplay, QString());
+    QVERIFY(afterRemoval.enabled);
+    QVERIFY(afterRemoval.visible);
+}
+
+void StatusNotifierTest::lazySubmenusAdvertiseChildrenBeforeTheyLoad()
+{
+    DBusMenuModel model;
+    DBusMenuNode root;
+    root.children = {{10, QStringLiteral("Lazy"), {}, {}, {},
+                      QStringLiteral("submenu"), 0, true, true, false, {}, {}, {}}};
+    model.setRoot(root);
+    QVERIFY(model.data(model.index(0, 0), DBusMenuModel::HasChildrenRole).toBool());
+    QVERIFY(model.childModel(10) == nullptr);
 }
 
 void StatusNotifierTest::menuLabelsAndBoundsAreSafe()
@@ -156,6 +278,17 @@ void StatusNotifierTest::menuLabelsAndBoundsAreSafe()
     limits.maxChildren = 0;
     const auto rejected = parseMenuLayout(QVariantList{quint32(7), node}, limits);
     QVERIFY(!rejected.ok());
+
+    DBusMenuLayoutNodeWire malformedIcon;
+    malformedIcon.id = 3;
+    malformedIcon.properties = {{QStringLiteral("label"), QStringLiteral("Keep me")},
+                                {QStringLiteral("icon-data"), QByteArrayLiteral("not-an-image")}};
+    DBusMenuLayoutReply iconReply;
+    iconReply.root.children = {malformedIcon};
+    const auto malformed = parseMenuLayout(QVariant::fromValue(iconReply));
+    QVERIFY(malformed.ok());
+    QCOMPARE(malformed.root.children.constFirst().label, QStringLiteral("Keep me"));
+    QVERIFY(malformed.root.children.constFirst().iconData.isEmpty());
 }
 
 void StatusNotifierTest::emptyMenuRootIsValid()
@@ -268,6 +401,20 @@ void StatusNotifierTest::localHostOwnershipExpires()
     QCOMPARE(hostChanges.count(), 2);
     QCOMPARE(hostChanges.at(1).at(0).toString(), QStringLiteral("org.example.Host"));
     QVERIFY(!hostChanges.at(1).at(1).toBool());
+
+    watcher.registerVerifiedHost(QStringLiteral(":1.43"), QStringLiteral(":1.43"));
+    QVERIFY(watcher.hostRegistered());
+    watcher.removeOwner(QStringLiteral(":1.43"));
+    QVERIFY(!watcher.hostRegistered());
+}
+
+void StatusNotifierTest::watcherAuthorityPrefersFreedesktopOnAliasConflict()
+{
+    const auto authority = StatusNotifierWatcherBridge::selectAuthority(
+        QStringLiteral(":1.20"), QStringLiteral(":1.21"));
+    QCOMPARE(authority.name, QStringLiteral("org.freedesktop.StatusNotifierWatcher"));
+    QCOMPARE(authority.owner, QStringLiteral(":1.20"));
+    QVERIFY(authority.conflict);
 }
 
 void StatusNotifierTest::watcherStartAndStopAreNonBlocking()

@@ -111,19 +111,19 @@ QImage StatusNotifierIconStore::compose(const QImage &base, const QImage &overla
 QImage StatusNotifierIconStore::fallbackImage(const Entry &entry, const QSize &requestedSize)
 {
     QString ignored;
-    QImage image = selectPixmap(entry.snapshot.pixmaps, requestedSize, &ignored);
+    QImage image = entry.named;
     if (image.isNull())
-        image = entry.named;
+        image = selectPixmap(entry.snapshot.pixmaps, requestedSize, &ignored);
     if (entry.snapshot.status == ItemStatus::NeedsAttention) {
-        QImage attention = selectPixmap(entry.snapshot.attentionPixmaps, requestedSize, &ignored);
+        QImage attention = entry.attention;
         if (attention.isNull())
-            attention = entry.attention;
+            attention = selectPixmap(entry.snapshot.attentionPixmaps, requestedSize, &ignored);
         if (!attention.isNull())
             image = attention;
     }
-    QImage overlay = selectPixmap(entry.snapshot.overlayPixmaps, requestedSize, &ignored);
+    QImage overlay = entry.overlay;
     if (overlay.isNull())
-        overlay = entry.overlay;
+        overlay = selectPixmap(entry.snapshot.overlayPixmaps, requestedSize, &ignored);
     return compose(image, overlay);
 }
 

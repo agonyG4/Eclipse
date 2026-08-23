@@ -120,6 +120,7 @@ public:
     quint32 revision = 4;
     bool submenuUpdated = false;
     bool emptyMenu = false;
+    bool lazySubmenu = false;
     int eventCount = 0;
     int aboutToShowCount = 0;
     int rootAboutToShowCount = 0;
@@ -156,7 +157,8 @@ public:
         leaf.properties = {{QStringLiteral("label"), QStringLiteral("Leaf")},
                            {QStringLiteral("enabled"), true}};
         nested.children = {leaf};
-        tools.children = {open, nested};
+        tools.children = lazySubmenu ? QList<DBusMenuLayoutNodeWire>{}
+                                     : QList<DBusMenuLayoutNodeWire>{open, nested};
         DBusMenuLayoutNodeWire separator;
         separator.id = 12;
         separator.properties = {{QStringLiteral("type"), QStringLiteral("separator")}};
@@ -223,6 +225,7 @@ public slots:
         if (nodeId == 0)
             ++m_menu->rootAboutToShowCount;
         if (nodeId == 10) {
+            m_menu->lazySubmenu = false;
             m_menu->submenuUpdated = true;
             ++m_menu->revision;
         }
@@ -294,6 +297,12 @@ public slots:
     void SetEmptyMenu(bool value)
     {
         m_menu->emptyMenu = value;
+        ++m_menu->revision;
+        emit m_menu->layoutUpdated(m_menu->revision, 0);
+    }
+    void SetLazySubmenu(bool value)
+    {
+        m_menu->lazySubmenu = value;
         ++m_menu->revision;
         emit m_menu->layoutUpdated(m_menu->revision, 0);
     }

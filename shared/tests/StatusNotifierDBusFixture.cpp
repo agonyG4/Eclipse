@@ -4,9 +4,12 @@
 #include <QCoreApplication>
 #include <QDBusAbstractAdaptor>
 #include <QDBusConnection>
+#include <QDBusConnectionInterface>
 #include <QDBusMessage>
 #include <QDBusPendingCallWatcher>
 #include <QDBusObjectPath>
+#include <QDBusVariant>
+#include <QTimer>
 
 using namespace Astrea::StatusNotifier;
 
@@ -21,6 +24,11 @@ public:
     int secondaryCalls = 0;
     int contextCalls = 0;
     int scrollCalls = 0;
+    int lastX = 0;
+    int lastY = 0;
+    int lastDelta = 0;
+    QString lastOrientation;
+    bool itemIsMenuValue = false;
 };
 
 class FixtureItemAdaptor final : public QDBusAbstractAdaptor {
@@ -43,6 +51,10 @@ class FixtureItemAdaptor final : public QDBusAbstractAdaptor {
     Q_PROPERTY(int SecondaryActivateCalls READ secondaryActivateCalls)
     Q_PROPERTY(int ContextMenuCalls READ contextMenuCalls)
     Q_PROPERTY(int ScrollCalls READ scrollCalls)
+    Q_PROPERTY(int LastX READ lastX)
+    Q_PROPERTY(int LastY READ lastY)
+    Q_PROPERTY(int LastDelta READ lastDelta)
+    Q_PROPERTY(QString LastOrientation READ lastOrientation)
 
 public:
     explicit FixtureItemAdaptor(FixtureItem *item)
@@ -65,18 +77,29 @@ public:
         return {QString(), {}, QStringLiteral("Exact tooltip title"),
                 QStringLiteral("Exact tooltip body")};
     }
-    bool itemIsMenu() const { return false; }
+    bool itemIsMenu() const { return m_item->itemIsMenuValue; }
     QDBusObjectPath menu() const { return QDBusObjectPath(QStringLiteral("/org/test/Menu")); }
     int activateCalls() const { return m_item->activateCalls; }
     int secondaryActivateCalls() const { return m_item->secondaryCalls; }
     int contextMenuCalls() const { return m_item->contextCalls; }
     int scrollCalls() const { return m_item->scrollCalls; }
+    int lastX() const { return m_item->lastX; }
+    int lastY() const { return m_item->lastY; }
+    int lastDelta() const { return m_item->lastDelta; }
+    QString lastOrientation() const { return m_item->lastOrientation; }
 
 public slots:
-    void Activate(int, int) { ++m_item->activateCalls; }
-    void SecondaryActivate(int, int) { ++m_item->secondaryCalls; }
-    void ContextMenu(int, int) { ++m_item->contextCalls; }
-    void Scroll(int, const QString &) { ++m_item->scrollCalls; }
+    void Activate(int x, int y) { ++m_item->activateCalls; m_item->lastX = x; m_item->lastY = y; }
+    void SecondaryActivate(int x, int y)
+    { ++m_item->secondaryCalls; m_item->lastX = x; m_item->lastY = y; }
+    void ContextMenu(int x, int y)
+    { ++m_item->contextCalls; m_item->lastX = x; m_item->lastY = y; }
+    void Scroll(int delta, const QString &orientation)
+    {
+        ++m_item->scrollCalls;
+        m_item->lastDelta = delta;
+        m_item->lastOrientation = orientation;
+    }
 
 signals:
     void NewTitle();
@@ -96,13 +119,18 @@ class FixtureMenu final : public QObject {
 public:
     quint32 revision = 4;
     bool submenuUpdated = false;
+    bool emptyMenu = false;
     int eventCount = 0;
     int aboutToShowCount = 0;
+    int rootAboutToShowCount = 0;
+    int lastAboutToShowNode = -1;
 
     DBusMenuLayoutNodeWire root() const
     {
         DBusMenuLayoutNodeWire root;
         root.id = 0;
+        if (emptyMenu)
+            return root;
         DBusMenuLayoutNodeWire tools;
         tools.id = 10;
         tools.properties = {{QStringLiteral("label"), submenuUpdated
@@ -117,7 +145,18 @@ public:
                            {QStringLiteral("enabled"), true},
                            {QStringLiteral("toggle-type"), QStringLiteral("checkmark")},
                            {QStringLiteral("toggle-state"), 1}};
-        tools.children = {open};
+        DBusMenuLayoutNodeWire nested;
+        nested.id = 20;
+        nested.properties = {{QStringLiteral("label"), submenuUpdated
+                                  ? QStringLiteral("More updated")
+                                  : QStringLiteral("More")},
+                             {QStringLiteral("children-display"), QStringLiteral("submenu")}};
+        DBusMenuLayoutNodeWire leaf;
+        leaf.id = 30;
+        leaf.properties = {{QStringLiteral("label"), QStringLiteral("Leaf")},
+                           {QStringLiteral("enabled"), true}};
+        nested.children = {leaf};
+        tools.children = {open, nested};
         DBusMenuLayoutNodeWire separator;
         separator.id = 12;
         separator.properties = {{QStringLiteral("type"), QStringLiteral("separator")}};
@@ -136,6 +175,8 @@ class FixtureMenuAdaptor final : public QDBusAbstractAdaptor {
     Q_CLASSINFO("D-Bus Interface", "com.canonical.dbusmenu")
     Q_PROPERTY(int EventCount READ eventCount)
     Q_PROPERTY(int AboutToShowCount READ aboutToShowCount)
+    Q_PROPERTY(int RootAboutToShowCount READ rootAboutToShowCount)
+    Q_PROPERTY(int LastAboutToShowNode READ lastAboutToShowNode)
 
 public:
     explicit FixtureMenuAdaptor(FixtureMenu *menu)
@@ -148,25 +189,59 @@ public:
 
     int eventCount() const { return m_menu->eventCount; }
     int aboutToShowCount() const { return m_menu->aboutToShowCount; }
+    int rootAboutToShowCount() const { return m_menu->rootAboutToShowCount; }
+    int lastAboutToShowNode() const { return m_menu->lastAboutToShowNode; }
 
 public slots:
-    DBusMenuLayoutReply GetLayout(int, int, const QStringList &)
+    DBusMenuLayoutReply GetLayout(int parentId, int, const QStringList &)
     {
-        return {m_menu->revision, m_menu->root()};
+        const DBusMenuLayoutNodeWire fullRoot = m_menu->root();
+        if (parentId == 0)
+            return {m_menu->revision, fullRoot};
+        if (parentId == 10) {
+            for (const auto &node : fullRoot.children) {
+                if (node.id == parentId)
+                    return {m_menu->revision, node};
+            }
+        }
+        if (parentId == 20) {
+            for (const auto &node : fullRoot.children) {
+                for (const auto &child : node.children) {
+                    if (child.id == parentId)
+                        return {m_menu->revision, child};
+                }
+            }
+        }
+        DBusMenuLayoutNodeWire unknown;
+        unknown.id = parentId;
+        return {m_menu->revision, unknown};
     }
     bool AboutToShow(int nodeId)
     {
         ++m_menu->aboutToShowCount;
+        m_menu->lastAboutToShowNode = nodeId;
+        if (nodeId == 0)
+            ++m_menu->rootAboutToShowCount;
         if (nodeId == 10) {
             m_menu->submenuUpdated = true;
             ++m_menu->revision;
         }
-        return nodeId == 10;
+        if (nodeId == 20) {
+            m_menu->submenuUpdated = true;
+            ++m_menu->revision;
+        }
+        return nodeId == 10 || nodeId == 20;
     }
-    void Event(int, const QString &, const QVariant &, quint32) { ++m_menu->eventCount; }
+    void Event(int, const QString &, const QDBusVariant &, quint32) { ++m_menu->eventCount; }
     void SetSubmenuUpdated(bool updated)
     {
         m_menu->submenuUpdated = updated;
+        ++m_menu->revision;
+        emit m_menu->layoutUpdated(m_menu->revision, 0);
+    }
+    void SetEmptyMenu(bool empty)
+    {
+        m_menu->emptyMenu = empty;
         ++m_menu->revision;
         emit m_menu->layoutUpdated(m_menu->revision, 0);
     }
@@ -178,6 +253,14 @@ public slots:
         emit m_menu->itemsPropertiesUpdated({update}, {});
     }
 
+    void EmitRemovedProperty()
+    {
+        DBusMenuRemovedProperties removed;
+        removed.id = 11;
+        removed.properties = {QStringLiteral("label")};
+        emit m_menu->itemsPropertiesUpdated({}, {removed});
+    }
+
 signals:
     void LayoutUpdated(quint32 revision, int parentId);
     void ItemsPropertiesUpdated(const QList<DBusMenuPropertyUpdate> &updated,
@@ -185,6 +268,97 @@ signals:
 
 private:
     FixtureMenu *m_menu = nullptr;
+};
+
+class FixtureControl final : public QObject {
+    Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "org.astrea.tests.StatusNotifierFixture")
+    Q_PROPERTY(bool Ready READ ready CONSTANT)
+    Q_PROPERTY(QString LastError READ lastError NOTIFY lastErrorChanged)
+
+public:
+    FixtureControl(FixtureItem *item, FixtureMenu *menu, QObject *parent = nullptr)
+        : QObject(parent), m_item(item), m_menu(menu)
+    {
+    }
+
+    bool ready() const { return true; }
+    QString lastError() const { return m_lastError; }
+
+public slots:
+    bool RegisterServiceOnly() { return sendRegistration(QStringLiteral("org.astrea.tests.StatusNotifierFixtureItem")); }
+    bool RegisterPathOnly() { return sendRegistration(QStringLiteral("/org/test/Tray")); }
+    bool UnregisterServiceOnly() { return sendUnregistration(QStringLiteral("org.astrea.tests.StatusNotifierFixtureItem")); }
+    bool UnregisterPathOnly() { return sendUnregistration(QStringLiteral("/org/test/Tray")); }
+    void SetItemIsMenu(bool value) { m_item->itemIsMenuValue = value; }
+    void SetEmptyMenu(bool value)
+    {
+        m_menu->emptyMenu = value;
+        ++m_menu->revision;
+        emit m_menu->layoutUpdated(m_menu->revision, 0);
+    }
+    void ResetCounters()
+    {
+        m_item->activateCalls = 0;
+        m_item->secondaryCalls = 0;
+        m_item->contextCalls = 0;
+        m_item->scrollCalls = 0;
+        m_menu->eventCount = 0;
+        m_menu->aboutToShowCount = 0;
+        m_menu->rootAboutToShowCount = 0;
+    }
+    void Exit() { QTimer::singleShot(0, qApp, &QCoreApplication::quit); }
+    QString Status() const
+    { return QStringLiteral("calls=%1 replyType=%2 operation=%3 error=%4")
+          .arg(m_callCount).arg(m_lastReplyType).arg(m_lastOperation).arg(m_lastError); }
+
+signals:
+    void lastErrorChanged();
+
+private:
+    bool sendRegistration(const QString &registration)
+    {
+        return sendWatcherCall(QStringLiteral("RegisterStatusNotifierItem"), registration);
+    }
+
+    bool sendUnregistration(const QString &registration)
+    {
+        return sendWatcherCall(QStringLiteral("UnregisterStatusNotifierItem"), registration);
+    }
+
+    bool sendWatcherCall(const QString &method, const QString &registration)
+    {
+        ++m_callCount;
+        QTimer::singleShot(0, this, [this, method, registration] {
+            m_lastOperation = QStringLiteral("sending %1 registration=%2 owner=%3")
+                .arg(method, registration, QDBusConnection::sessionBus().baseService());
+            const QDBusMessage call = QDBusMessage::createMethodCall(
+                QStringLiteral("org.freedesktop.StatusNotifierWatcher"),
+                QStringLiteral("/StatusNotifierWatcher"),
+                QStringLiteral("org.freedesktop.StatusNotifierWatcher"), method);
+            QDBusMessage withArguments = call;
+            withArguments << registration;
+            auto *watcher = new QDBusPendingCallWatcher(
+                QDBusConnection::sessionBus().asyncCall(withArguments), this);
+            connect(watcher, &QDBusPendingCallWatcher::finished, this,
+                    [this, watcher] {
+                const QDBusMessage reply = watcher->reply();
+                m_lastReplyType = static_cast<int>(reply.type());
+                m_lastError = reply.errorMessage();
+            if (reply.type() == QDBusMessage::ErrorMessage)
+                emit lastErrorChanged();
+                watcher->deleteLater();
+            });
+        });
+        return true;
+    }
+
+    FixtureItem *m_item = nullptr;
+    FixtureMenu *m_menu = nullptr;
+    QString m_lastError;
+    int m_callCount = 0;
+    int m_lastReplyType = -1;
+    QString m_lastOperation;
 };
 
 } // namespace
@@ -195,33 +369,28 @@ int main(int argc, char **argv)
     registerStatusNotifierDBusMetaTypes();
     registerDBusMenuMetaTypes();
     QDBusConnection bus = QDBusConnection::sessionBus();
+    if (bus.registerService(QStringLiteral("org.astrea.tests.StatusNotifierFixture"))
+            != QDBusConnectionInterface::ServiceRegistered
+        || bus.registerService(QStringLiteral("org.astrea.tests.StatusNotifierFixtureItem"))
+            != QDBusConnectionInterface::ServiceRegistered) {
+        return 2;
+    }
     FixtureItem item;
     FixtureItemAdaptor itemAdaptor(&item);
     FixtureMenu menu;
     FixtureMenuAdaptor menuAdaptor(&menu);
-    if (!bus.registerObject(QStringLiteral("/org/test/Tray"), &item,
+    FixtureControl control(&item, &menu);
+    if (!bus.registerObject(QStringLiteral("/StatusNotifierItem"), &item,
+                            QDBusConnection::ExportAdaptors)
+        || !bus.registerObject(QStringLiteral("/org/test/Tray"), &item,
                             QDBusConnection::ExportAdaptors)
         || !bus.registerObject(QStringLiteral("/org/test/Menu"), &menu,
-                               QDBusConnection::ExportAdaptors)) {
+                               QDBusConnection::ExportAdaptors)
+        || !bus.registerObject(QStringLiteral("/org/astrea/tests/StatusNotifierFixture"),
+                               &control, QDBusConnection::ExportAllSlots
+                                   | QDBusConnection::ExportAllProperties)) {
         return 2;
     }
-
-    const QDBusMessage registration = QDBusMessage::createMethodCall(
-        QStringLiteral("org.freedesktop.StatusNotifierWatcher"),
-        QStringLiteral("/StatusNotifierWatcher"),
-        QStringLiteral("org.freedesktop.StatusNotifierWatcher"),
-        QStringLiteral("RegisterStatusNotifierItem"));
-    QDBusMessage registrationWithArgs = registration;
-    registrationWithArgs << QStringLiteral("/org/test/Tray");
-    auto *registrationWatcher = new QDBusPendingCallWatcher(
-        bus.asyncCall(registrationWithArgs), &app);
-    QObject::connect(registrationWatcher, &QDBusPendingCallWatcher::finished,
-                     &app, [registrationWatcher](QDBusPendingCallWatcher *) {
-        const QDBusMessage reply = registrationWatcher->reply();
-        if (reply.type() == QDBusMessage::ErrorMessage)
-            QCoreApplication::exit(3);
-        registrationWatcher->deleteLater();
-    });
     return app.exec();
 }
 

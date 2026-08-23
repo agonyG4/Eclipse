@@ -21,13 +21,6 @@ Item {
     width: implicitWidth
     height: 36
 
-    function usableMenu(key) {
-        if (!root.trayService)
-            return false
-        const menu = root.trayService.menuModelForItem(key)
-        return menu && menu.rowCount() > 0
-    }
-
     function anchorFor(delegate, x, y) {
         if (root.barGeometry)
             return root.barGeometry.trayAnchor(root.outputOriginX, root.outputOriginY,
@@ -134,19 +127,18 @@ Item {
                         const point = itemDelegate.mapToItem(root,
                             itemDelegate.width / 2, itemDelegate.height / 2)
                         const anchor = root.anchorFor(itemDelegate, point.x, point.y)
-                        const hasUsableMenu = root.usableMenu(itemDelegate.key)
                         if (mouse.button === Qt.MiddleButton) {
                             if (root.trayService)
                                 root.trayService.secondaryActivate(itemDelegate.key,
                                     anchor.globalX, anchor.globalY)
                         } else if (mouse.button === Qt.RightButton) {
-                            if (hasUsableMenu && root.popupController)
+                            if (itemDelegate.hasMenu && root.popupController)
                                 root.popupController.toggleTrayMenu(anchor.localX, itemDelegate.key)
                             else if (root.trayService)
                                 root.trayService.contextMenu(itemDelegate.key,
                                     anchor.globalX, anchor.globalY)
                         } else if (mouse.button === Qt.LeftButton
-                                   && itemDelegate.onlyMenu && hasUsableMenu
+                                   && itemDelegate.onlyMenu && itemDelegate.hasMenu
                                    && root.popupController) {
                             root.popupController.toggleTrayMenu(anchor.localX, itemDelegate.key)
                         } else if (root.trayService) {

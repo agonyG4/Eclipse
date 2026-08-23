@@ -4,6 +4,7 @@ set(ASTREA_BAR_QML_FILES
     "${CMAKE_CURRENT_LIST_DIR}/../qml/StatusSurface.qml"
     "${CMAKE_CURRENT_LIST_DIR}/../qml/Tray.qml"
     "${CMAKE_CURRENT_LIST_DIR}/../qml/TrayContextMenu.qml"
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/TrayMenuCard.qml"
     "${CMAKE_CURRENT_LIST_DIR}/../qml/TrayTooltipSurface.qml"
     "${CMAKE_CURRENT_LIST_DIR}/../qml/PopupOverlaySurface.qml"
     "${CMAKE_CURRENT_LIST_DIR}/../qml/AstreaMenu.qml"
@@ -46,6 +47,9 @@ set_source_files_properties(
 set_source_files_properties(
     "${CMAKE_CURRENT_LIST_DIR}/../qml/TrayContextMenu.qml"
     PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/TrayContextMenu.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/TrayMenuCard.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/TrayMenuCard.qml")
 set_source_files_properties(
     "${CMAKE_CURRENT_LIST_DIR}/../qml/TrayTooltipSurface.qml"
     PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/TrayTooltipSurface.qml")

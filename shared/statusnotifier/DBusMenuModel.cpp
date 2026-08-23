@@ -8,8 +8,10 @@
 #include <QDBusPendingCallWatcher>
 #include <QDBusInterface>
 #include <QDBusVariant>
+#include <QBuffer>
 #include <QDateTime>
 #include <QImage>
+#include <QImageReader>
 #include <QVariantList>
 
 #include <algorithm>
@@ -40,13 +42,31 @@ bool parseWireVariant(const QVariant &value, DBusMenuLayoutNodeWire &node, QStri
 bool parseWireArgument(const QDBusArgument &argument, DBusMenuLayoutNodeWire &node,
                        QString *errorOut)
 {
+    Q_UNUSED(errorOut)
     const QDBusArgument copy = argument;
     copy >> node;
-    if (node.properties.isEmpty() && node.id == 0 && node.children.isEmpty()) {
+    return true;
+}
+
+bool isSafeIconData(const QByteArray &data, const DBusMenuLimits &limits, QString *errorOut)
+{
+    if (data.isEmpty())
+        return true;
+    QBuffer buffer;
+    buffer.setData(data);
+    buffer.open(QIODevice::ReadOnly);
+    QImageReader reader(&buffer);
+    const QSize size = reader.size();
+    constexpr int maxDimension = 4096;
+    constexpr qint64 maxPixels = 16 * 1024 * 1024;
+    if (!reader.canRead() || !size.isValid() || size.width() <= 0 || size.height() <= 0
+        || size.width() > maxDimension || size.height() > maxDimension
+        || qint64(size.width()) * qint64(size.height()) > maxPixels) {
         if (errorOut)
-            *errorOut = QStringLiteral("DBusMenu layout node is empty");
+            *errorOut = QStringLiteral("DBusMenu icon-data is not a safe PNG image");
         return false;
     }
+    Q_UNUSED(limits)
     return true;
 }
 
@@ -122,6 +142,8 @@ bool parseNodeWire(const DBusMenuLayoutNodeWire &wire, DBusMenuNode &node,
         *errorOut = QStringLiteral("DBusMenu icon data exceeds the safety limit");
         return false;
     }
+    if (!isSafeIconData(node.iconData, limits, errorOut))
+        return false;
     node.type = propertyString(properties, QStringLiteral("type"));
     node.toggleType = propertyString(properties, QStringLiteral("toggle-type"));
     node.childrenDisplay = propertyString(properties, QStringLiteral("children-display"));
@@ -162,7 +184,8 @@ void updateIconSource(StatusNotifierIconStore *store, const QString &key,
     if (!store)
         return;
     QImage image;
-    if (!iconData.isEmpty())
+    QString ignored;
+    if (!iconData.isEmpty() && isSafeIconData(iconData, DBusMenuLimits{}, &ignored))
         image = QImage::fromData(iconData);
     store->updateAuxiliaryImage(key, image);
 }
@@ -299,6 +322,40 @@ void DBusMenuModel::setNodes(const QList<DBusMenuNode> &nodes)
 void DBusMenuModel::setRoot(const DBusMenuNode &root)
 {
     setNodes(root.children);
+}
+
+bool DBusMenuModel::setIconSource(int nodeId, const QString &source)
+{
+    for (int row = 0; row < m_nodes.size(); ++row) {
+        if (m_nodes.at(row).id != nodeId)
+            continue;
+        if (m_nodes[row].iconSource == source)
+            return true;
+        m_nodes[row].iconSource = source;
+        emit dataChanged(index(row), index(row), {IconSourceRole});
+        return true;
+    }
+    for (auto *child : std::as_const(m_children)) {
+        if (child && child->setIconSource(nodeId, source))
+            return true;
+    }
+    return false;
+}
+
+DBusMenuNode DBusMenuModel::nodeById(int nodeId) const
+{
+    for (const DBusMenuNode &node : m_nodes) {
+        if (node.id == nodeId)
+            return node;
+    }
+    for (auto *child : std::as_const(m_children)) {
+        if (child) {
+            const DBusMenuNode node = child->nodeById(nodeId);
+            if (node.id == nodeId)
+                return node;
+        }
+    }
+    return {};
 }
 
 bool DBusMenuModel::replaceSubtree(int parentId, const DBusMenuNode &subtree)
@@ -460,42 +517,74 @@ DBusMenuClient::DBusMenuClient(const ItemAddress &address, const QString &menuPa
 
 void DBusMenuClient::load()
 {
-    if (m_menuPath.isEmpty() || !m_address.isValid())
-        return;
-    m_stopped = false;
-    connectSignals();
-    requestLayout();
+    prepareForPresentation();
 }
 
-void DBusMenuClient::aboutToShow(int nodeId)
+void DBusMenuClient::prepareForPresentation(int nodeId)
 {
     if (m_stopped || m_menuPath.isEmpty())
         return;
+    m_stopped = false;
+    connectSignals();
+    const bool initialRoot = nodeId == 0
+        && (m_state == DBusMenuLifecycleState::Unloaded
+            || m_state == DBusMenuLifecycleState::Error);
+    m_state = DBusMenuLifecycleState::Loading;
+    m_loading = true;
+    emit changed();
     QDBusInterface iface(m_address.service, m_menuPath, QStringLiteral("com.canonical.dbusmenu"),
                          QDBusConnection::sessionBus());
     QDBusPendingCall pending = iface.asyncCall(QStringLiteral("AboutToShow"), nodeId);
     const quint64 generation = m_generation;
     auto *watcher = new QDBusPendingCallWatcher(pending, this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, watcher, generation, nodeId] {
+            [this, watcher, generation, nodeId, initialRoot] {
         const QDBusMessage reply = watcher->reply();
         watcher->deleteLater();
-        if (generation != m_generation || m_stopped || reply.type() == QDBusMessage::ErrorMessage)
+        if (generation != m_generation || m_stopped)
             return;
+        const bool failed = reply.type() == QDBusMessage::ErrorMessage;
         const QVariantList args = reply.arguments();
-        if (!args.isEmpty() && unwrap(args.constFirst()).toBool())
+        const bool needUpdate = !failed && !args.isEmpty() && unwrap(args.constFirst()).toBool();
+        if (initialRoot || needUpdate)
             requestLayout(nodeId);
+        else {
+            m_loading = false;
+            m_state = m_rootModel->rowCount() == 0 ? DBusMenuLifecycleState::Empty
+                                                   : DBusMenuLifecycleState::Ready;
+            emit changed();
+        }
     });
+}
+
+void DBusMenuClient::aboutToShow(int nodeId)
+{
+    prepareForPresentation(nodeId);
 }
 
 void DBusMenuClient::activate(int nodeId)
 {
     if (m_stopped || m_menuPath.isEmpty())
         return;
-    QDBusInterface iface(m_address.service, m_menuPath, QStringLiteral("com.canonical.dbusmenu"),
-                         QDBusConnection::sessionBus());
-    iface.asyncCall(QStringLiteral("Event"), nodeId, QStringLiteral("clicked"), QVariant(),
-                    quint32(QDateTime::currentMSecsSinceEpoch() / 1000));
+    QVariant eventData;
+    eventData.setValue(QDBusVariant(QVariant(QString())));
+    QDBusMessage event = QDBusMessage::createMethodCall(
+        m_address.service, m_menuPath, QStringLiteral("com.canonical.dbusmenu"),
+        QStringLiteral("Event"));
+    event.setArguments({nodeId, QStringLiteral("clicked"), eventData,
+                        quint32(QDateTime::currentMSecsSinceEpoch() / 1000)});
+    auto *watcher = new QDBusPendingCallWatcher(
+        QDBusConnection::sessionBus().asyncCall(event), this);
+    const quint64 generation = m_generation;
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, watcher, generation] {
+        const QDBusMessage reply = watcher->reply();
+        watcher->deleteLater();
+        if (generation != m_generation || m_stopped)
+            return;
+        if (reply.type() == QDBusMessage::ErrorMessage)
+            emit failed(reply.errorMessage());
+    });
     emit actionRequested(nodeId, QStringLiteral("clicked"));
 }
 
@@ -508,6 +597,9 @@ void DBusMenuClient::stop()
     disconnectSignals();
     if (m_iconStore)
         m_iconStore->clearAuxiliaryImages(QStringLiteral("menu:%1:").arg(m_address.key()));
+    m_state = DBusMenuLifecycleState::Stopped;
+    m_loading = false;
+    emit changed();
 }
 
 void DBusMenuClient::requestLayout(int parentId)
@@ -515,6 +607,7 @@ void DBusMenuClient::requestLayout(int parentId)
     if (m_stopped || m_menuPath.isEmpty())
         return;
     m_loading = true;
+    m_state = DBusMenuLifecycleState::Loading;
     emit changed();
     const quint64 generation = m_generation;
     QDBusInterface iface(m_address.service, m_menuPath, QStringLiteral("com.canonical.dbusmenu"),
@@ -529,23 +622,35 @@ void DBusMenuClient::requestLayout(int parentId)
         if (generation != m_generation || m_stopped)
             return;
         m_loading = false;
-        if (reply.type() == QDBusMessage::ErrorMessage || reply.arguments().size() < 2) {
+        if (reply.type() == QDBusMessage::ErrorMessage || reply.arguments().isEmpty()) {
             const QString error = reply.errorMessage().isEmpty()
                 ? QStringLiteral("DBusMenu GetLayout returned no layout") : reply.errorMessage();
             emit failed(error);
+            m_state = DBusMenuLifecycleState::Error;
             emit changed();
             return;
         }
-        const QVariantList args = reply.arguments();
-        const quint32 revision = unwrap(args.at(0)).toUInt();
-        const QVariant layoutValue = args.at(1);
         DBusMenuParseResult result;
-        if (layoutValue.canConvert<QDBusArgument>())
-            result = parseMenuLayoutArgument(layoutValue.value<QDBusArgument>(), revision);
-        else
-            result = parseMenuLayout(layoutValue, DBusMenuLimits{});
+        const QVariantList args = reply.arguments();
+        if (args.size() == 1) {
+            const QVariant only = args.constFirst();
+            if (only.canConvert<DBusMenuLayoutReply>())
+                result = parseMenuLayout(only, DBusMenuLimits{});
+            else if (only.canConvert<QDBusArgument>())
+                result = parseMenuLayoutArgument(only.value<QDBusArgument>(), 0);
+            else
+                result = parseMenuLayout(only, DBusMenuLimits{});
+        } else {
+            const quint32 revision = unwrap(args.at(0)).toUInt();
+            const QVariant layoutValue = args.at(1);
+            if (layoutValue.canConvert<QDBusArgument>())
+                result = parseMenuLayoutArgument(layoutValue.value<QDBusArgument>(), revision);
+            else
+                result = parseMenuLayout(layoutValue, DBusMenuLimits{});
+        }
         if (!result.ok()) {
             emit failed(result.error);
+            m_state = DBusMenuLifecycleState::Error;
             emit changed();
             return;
         }
@@ -558,8 +663,6 @@ void DBusMenuClient::applyLayout(const DBusMenuParseResult &layout, int requeste
     if (layout.revision < m_revision)
         return;
     DBusMenuNode decorated = layout.root;
-    if (requestedParentId == 0 && m_iconStore)
-        m_iconStore->clearAuxiliaryImages(QStringLiteral("menu:%1:").arg(m_address.key()));
     decorateIcons(decorated);
     const bool applied = requestedParentId == 0
         ? (m_rootModel->setRoot(decorated), true)
@@ -567,6 +670,8 @@ void DBusMenuClient::applyLayout(const DBusMenuParseResult &layout, int requeste
     if (!applied && requestedParentId != 0)
         requestLayout();
     m_revision = qMax(m_revision, layout.revision);
+    m_state = m_rootModel->rowCount() == 0 ? DBusMenuLifecycleState::Empty
+                                           : DBusMenuLifecycleState::Ready;
     emit changed();
 }
 
@@ -578,7 +683,8 @@ void DBusMenuClient::connectSignals()
     bus.connect(m_address.service, m_menuPath, QStringLiteral("com.canonical.dbusmenu"),
                 QStringLiteral("LayoutUpdated"), this, SLOT(onLayoutUpdated(uint,int)));
     bus.connect(m_address.service, m_menuPath, QStringLiteral("com.canonical.dbusmenu"),
-                QStringLiteral("ItemsPropertiesUpdated"), this, SLOT(onItemsPropertiesUpdated(QList<Astrea::StatusNotifier::DBusMenuPropertyUpdate>,QList<int>)));
+                QStringLiteral("ItemsPropertiesUpdated"), this,
+                SLOT(onItemsPropertiesUpdated(QList<Astrea::StatusNotifier::DBusMenuPropertyUpdate>,QList<Astrea::StatusNotifier::DBusMenuRemovedProperties>)));
     m_signalsConnected = true;
 }
 
@@ -590,7 +696,8 @@ void DBusMenuClient::disconnectSignals()
     bus.disconnect(m_address.service, m_menuPath, QStringLiteral("com.canonical.dbusmenu"),
                    QStringLiteral("LayoutUpdated"), this, SLOT(onLayoutUpdated(uint,int)));
     bus.disconnect(m_address.service, m_menuPath, QStringLiteral("com.canonical.dbusmenu"),
-                   QStringLiteral("ItemsPropertiesUpdated"), this, SLOT(onItemsPropertiesUpdated(QList<Astrea::StatusNotifier::DBusMenuPropertyUpdate>,QList<int>)));
+                   QStringLiteral("ItemsPropertiesUpdated"), this,
+                   SLOT(onItemsPropertiesUpdated(QList<Astrea::StatusNotifier::DBusMenuPropertyUpdate>,QList<Astrea::StatusNotifier::DBusMenuRemovedProperties>)));
     m_signalsConnected = false;
 }
 
@@ -614,16 +721,14 @@ void DBusMenuClient::onItemsPropertiesUpdated(
     if (m_iconStore) {
         for (const auto &update : updated) {
             const QString key = QStringLiteral("menu:%1:%2").arg(m_address.key()).arg(update.id);
-            if (update.properties.contains(QStringLiteral("icon-data")))
-                updateIconSource(m_iconStore, key,
-                                 unwrap(update.properties.value(QStringLiteral("icon-data")))
-                                     .toByteArray());
+            DBusMenuNode node = m_rootModel->nodeById(update.id);
+            updateRemoteIcon(node);
+            m_rootModel->setIconSource(update.id, node.iconSource);
         }
         for (const auto &removedProperties : removed) {
-            if (removedProperties.properties.contains(QStringLiteral("icon-data")))
-                updateIconSource(m_iconStore,
-                                 QStringLiteral("menu:%1:%2").arg(m_address.key())
-                                     .arg(removedProperties.id), {});
+            DBusMenuNode node = m_rootModel->nodeById(removedProperties.id);
+            updateRemoteIcon(node);
+            m_rootModel->setIconSource(removedProperties.id, node.iconSource);
         }
     }
     emit changed();
@@ -631,13 +736,22 @@ void DBusMenuClient::onItemsPropertiesUpdated(
 
 void DBusMenuClient::decorateIcons(DBusMenuNode &node)
 {
-    if (m_iconStore) {
-        const QString key = QStringLiteral("menu:%1:%2").arg(m_address.key()).arg(node.id);
-        updateIconSource(m_iconStore, key, node.iconData);
-        node.iconSource = m_iconStore->hasIcon(key) ? m_iconStore->imageSource(key) : QString();
-    }
+    updateRemoteIcon(node);
     for (DBusMenuNode &child : node.children)
         decorateIcons(child);
+}
+
+void DBusMenuClient::updateRemoteIcon(DBusMenuNode &node)
+{
+    if (!m_iconStore)
+        return;
+    const QString key = QStringLiteral("menu:%1:%2").arg(m_address.key()).arg(node.id);
+    QString ignored;
+    if (!node.iconData.isEmpty() && isSafeIconData(node.iconData, DBusMenuLimits{}, &ignored))
+        updateIconSource(m_iconStore, key, node.iconData);
+    else
+        m_iconStore->updateAuxiliaryNamedImage(key, node.iconName);
+    node.iconSource = m_iconStore->hasIcon(key) ? m_iconStore->imageSource(key) : QString();
 }
 
 } // namespace Astrea::StatusNotifier

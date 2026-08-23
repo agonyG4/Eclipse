@@ -3,6 +3,7 @@
 #include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusInterface>
+#include <QDBusObjectPath>
 #include <QDBusPendingCallWatcher>
 #include <QDBusVariant>
 
@@ -16,6 +17,8 @@ QVariant unwrap(const QVariant &value)
 {
     if (value.canConvert<QDBusVariant>())
         return value.value<QDBusVariant>().variant();
+    if (value.canConvert<QDBusObjectPath>())
+        return value.value<QDBusObjectPath>().path();
     return value;
 }
 
@@ -140,9 +143,10 @@ void StatusNotifierItemProxy::refresh(const QString &interfaceName, bool allowFa
         }
         QVariant value = reply.arguments().constFirst();
         if (value.canConvert<QDBusArgument>()) {
-            // QDBusArgument conversion is handled by QDBus for a{sv}; a QVariantMap is
-            // available on all Qt 6 versions used by the shell.
-            value = value.value<QDBusArgument>().asVariant();
+            const QDBusArgument argument = value.value<QDBusArgument>();
+            QVariantMap decoded;
+            argument >> decoded;
+            value = decoded.isEmpty() ? argument.asVariant() : QVariant(decoded);
         }
         const QVariantMap properties = value.toMap();
         if (properties.isEmpty()) {

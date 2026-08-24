@@ -47,11 +47,12 @@ StatusNotifierService::StatusNotifierService(QObject *parent)
             &StatusNotifierService::itemRemoved);
     connect(m_iconStore.get(), &StatusNotifierIconStore::itemIconChanged, this,
             [this](const QString &key, quint64) {
-        if (!m_model->contains(key))
+        if (m_stopping || !m_model->contains(key))
             return;
         const ItemSnapshot snapshot = m_model->item(key);
         m_model->upsert(snapshot, m_iconStore->hasIcon(key) ? m_iconStore->imageSource(key)
                                                             : QString());
+        bumpPresentationRevision();
         emit itemChanged(key);
     });
 }
@@ -82,6 +83,7 @@ void StatusNotifierService::stop()
 {
     if (!m_started && !m_initialized)
         return;
+    m_stopping = true;
     m_started = false;
     for (auto *proxy : std::as_const(m_proxies)) {
         if (proxy) {
@@ -100,6 +102,8 @@ void StatusNotifierService::stop()
     m_model->clear();
     m_iconStore->clear();
     m_watcher->stop();
+    m_stopping = false;
+    bumpPresentationRevision();
     emit stateChanged();
 }
 
@@ -182,7 +186,14 @@ int StatusNotifierService::menuStateForItem(const QString &itemKey) const
 
 QString StatusNotifierService::displayTitleForItem(const QString &itemKey) const
 {
-    return m_model->item(itemKey).title;
+    const ItemSnapshot snapshot = m_model->item(itemKey);
+    if (!snapshot.tooltipTitle.isEmpty())
+        return snapshot.tooltipTitle;
+    if (!snapshot.title.isEmpty())
+        return snapshot.title;
+    if (!snapshot.id.isEmpty())
+        return snapshot.id;
+    return QStringLiteral("Tray item");
 }
 
 QString StatusNotifierService::iconSourceForItem(const QString &itemKey) const
@@ -308,6 +319,10 @@ void StatusNotifierService::ensureProxy(const ItemAddress &address)
 
 void StatusNotifierService::removeItem(const QString &key)
 {
+    const bool hadState = m_proxies.contains(key) || m_menus.contains(key)
+        || m_model->contains(key) || m_iconStore->hasIcon(key);
+    if (!hadState)
+        return;
     if (auto *proxy = m_proxies.take(key)) {
         proxy->stop();
         proxy->deleteLater();
@@ -317,6 +332,7 @@ void StatusNotifierService::removeItem(const QString &key)
         menu->deleteLater();
     }
     m_iconStore->clearItem(key);
+    bumpPresentationRevision();
     if (m_model->removeKey(key)) {
         emit stateChanged();
     }
@@ -330,6 +346,7 @@ void StatusNotifierService::updateSnapshot(const ItemSnapshot &snapshot)
     const QString source = m_iconStore->hasIcon(snapshot.address.key())
         ? m_iconStore->imageSource(snapshot.address.key()) : QString();
     m_model->upsert(snapshot, source);
+    bumpPresentationRevision();
     emit itemChanged(snapshot.address.key());
     emit stateChanged();
 }
@@ -348,6 +365,7 @@ void StatusNotifierService::updateMenu(const QString &key, const QString &menuPa
         if (auto *menu = m_menus.take(key)) {
             menu->stop();
             menu->deleteLater();
+            bumpPresentationRevision();
         }
         emit menuClientChanged(key);
         emit stateChanged();
@@ -361,11 +379,23 @@ void StatusNotifierService::updateMenu(const QString &key, const QString &menuPa
                                     snapshot.generation, this);
     m_menus.insert(key, menu);
     connect(menu, &DBusMenuClient::changed, this,
-            [this, key] { emit menuContentChanged(key); });
+            [this, key] {
+                if (m_stopping)
+                    return;
+                bumpPresentationRevision();
+                emit menuContentChanged(key);
+            });
     connect(menu, &DBusMenuClient::failed, this,
             [this](const QString &error) { emit healthWarning(error); });
+    bumpPresentationRevision();
     emit stateChanged();
     emit menuClientChanged(key);
+}
+
+void StatusNotifierService::bumpPresentationRevision()
+{
+    ++m_presentationRevision;
+    emit presentationRevisionChanged();
 }
 
 } // namespace Astrea::StatusNotifier

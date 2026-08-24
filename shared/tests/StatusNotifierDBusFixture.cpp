@@ -31,10 +31,11 @@ public:
     QString lastOrientation;
     bool itemIsMenuValue = false;
     QString titleValue = QStringLiteral("Integration tray item");
-    QString menuPathValue = QStringLiteral("/org/test/Menu");
+    QString menuPathValue = QStringLiteral("/org/test/MenuA");
 
 signals:
     void refreshRequested();
+    void iconRefreshRequested();
 };
 
 class FixtureItemAdaptor final : public QDBusAbstractAdaptor {
@@ -67,6 +68,7 @@ public:
         : QDBusAbstractAdaptor(item), m_item(item)
     {
         connect(m_item, &FixtureItem::refreshRequested, this, &FixtureItemAdaptor::NewTitle);
+        connect(m_item, &FixtureItem::iconRefreshRequested, this, &FixtureItemAdaptor::NewIcon);
     }
 
     QString category() const { return QStringLiteral("ApplicationStatus"); }
@@ -431,6 +433,16 @@ public slots:
         m_item->menuPathValue = path;
         emit m_item->refreshRequested();
     }
+    void SetIconColor(int red, int green, int blue)
+    {
+        QByteArray bytes;
+        bytes.append(char(0xff));
+        bytes.append(char(red));
+        bytes.append(char(green));
+        bytes.append(char(blue));
+        m_item->pixmaps = {{1, 1, bytes}};
+        emit m_item->iconRefreshRequested();
+    }
     bool ClaimWatcherAlias(const QString &name) { return m_watcher->claim(name); }
     bool ReleaseWatcherAlias(const QString &name) { return m_watcher->release(name); }
     void SetEmptyMenu(bool value)
@@ -537,6 +549,10 @@ int main(int argc, char **argv)
         || !bus.registerObject(QStringLiteral("/org/test/Tray"), &item,
                             QDBusConnection::ExportAdaptors)
         || !bus.registerObject(QStringLiteral("/org/test/Menu"), &menu,
+                               QDBusConnection::ExportAdaptors)
+        || !bus.registerObject(QStringLiteral("/org/test/MenuA"), &menu,
+                               QDBusConnection::ExportAdaptors)
+        || !bus.registerObject(QStringLiteral("/org/test/MenuB"), &menu,
                                QDBusConnection::ExportAdaptors)
         || !bus.registerObject(QStringLiteral("/org/test/Menu2"), &menu,
                                QDBusConnection::ExportAdaptors)

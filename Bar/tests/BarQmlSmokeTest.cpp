@@ -5,6 +5,7 @@
 #include "theme/ThemeController.hpp"
 #include "statusnotifier/StatusNotifierService.hpp"
 #include "statusnotifier/StatusNotifierIconProvider.hpp"
+#include "statusnotifier/StatusNotifierIconStore.hpp"
 #include "statusnotifier/StatusNotifierTypes.hpp"
 
 #include <QAbstractListModel>
@@ -284,6 +285,8 @@ private slots:
     void statusSurfaceUsesInjectedSystemServices();
     void traySurfaceUsesNativeModelAndTooltipBoundary();
     void trayMenuUsesStableContextKey();
+    void trayProjectionRebindsAndPreservesSameMenuIdentity();
+    void trayHeaderUsesExactProductionFallbacks();
     void traySubmenuPlacementChecksFullBoundsAtEveryDepth();
     void popupSurfaceUsesProductionClampAndClosingLifecycle();
     void popupEntersAndCompletesAnimation();
@@ -610,6 +613,26 @@ void BarQmlSmokeTest::traySurfaceUsesNativeModelAndTooltipBoundary()
     QVERIFY(tooltipCard != nullptr);
     QCOMPARE(tooltipCard->property("height").toInt(), 28);
     QVERIFY(tooltipCard->property("width").toInt() <= 260);
+
+    snapshot.tooltipTitle = QStringLiteral("Updated tooltip");
+    service.upsertTestItem(snapshot);
+    QTRY_COMPARE_WITH_TIMEOUT(tooltip->property("tooltipTitle").toString(),
+                              QStringLiteral("Updated tooltip"), 1000);
+    QCOMPARE(tooltip->property("itemKey").toString(), snapshot.address.key());
+
+    snapshot.tooltipTitle.clear();
+    snapshot.title.clear();
+    service.upsertTestItem(snapshot);
+    QTRY_VERIFY_WITH_TIMEOUT(!tooltipCard->property("visible").toBool(), 1000);
+    QCOMPARE(tooltip->property("itemKey").toString(), snapshot.address.key());
+
+    snapshot.title = QStringLiteral("Restored tooltip");
+    service.upsertTestItem(snapshot);
+    QTRY_VERIFY_WITH_TIMEOUT(tooltipCard->property("visible").toBool(), 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(tooltip->property("tooltipTitle").toString(),
+                              QStringLiteral("Restored tooltip"), 1000);
+    QCOMPARE(tooltip->property("itemKey").toString(), snapshot.address.key());
+
     service.removeTestItem(snapshot.address.key());
     QTRY_VERIFY_WITH_TIMEOUT(!tooltip->property("tooltipVisible").toBool(), 1000);
     QCOMPARE(tooltip->property("itemKey").toString(), QString());
@@ -651,6 +674,154 @@ void BarQmlSmokeTest::trayMenuUsesStableContextKey()
     service.removeTestItem(snapshot.address.key());
     QTRY_VERIFY_WITH_TIMEOUT(popup.closing() || !popup.isOpen(), 1000);
     delete overlay;
+}
+
+void BarQmlSmokeTest::trayProjectionRebindsAndPreservesSameMenuIdentity()
+{
+    QQmlEngine engine;
+    BarLayoutMetrics metrics;
+    BarPopupController popup;
+    Astrea::StatusNotifier::StatusNotifierService service;
+    engine.addImageProvider(QStringLiteral("astrea-tray"),
+        new Astrea::StatusNotifier::StatusNotifierIconProvider(service.iconStore()));
+
+    Astrea::StatusNotifier::ItemSnapshot snapshot;
+    snapshot.address = {QStringLiteral("org.example.ReactiveMenu"),
+                        QStringLiteral("/StatusNotifierItem"), QStringLiteral(":1.212")};
+    snapshot.id = QStringLiteral("reactive-menu");
+    snapshot.title = QStringLiteral("Initial menu");
+    snapshot.tooltipTitle = QStringLiteral("Initial tooltip");
+    snapshot.menuPath = QStringLiteral("/MenuA");
+    snapshot.generation = 12;
+    snapshot.ready = true;
+    service.upsertTestItem(snapshot);
+
+    QQmlComponent component(&engine,
+        QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Bar/qml/PopupOverlaySurface.qml")));
+    QObject *overlay = component.createWithInitialProperties({
+        {QStringLiteral("barGeometry"), QVariant::fromValue(&metrics)},
+        {QStringLiteral("popupController"), QVariant::fromValue(&popup)},
+        {QStringLiteral("statusNotifierService"), QVariant::fromValue(&service)},
+        {QStringLiteral("outputWidth"), 800},
+        {QStringLiteral("outputHeight"), 600},
+    });
+    QVERIFY(overlay != nullptr);
+    popup.toggleTrayMenu(420, snapshot.address.key());
+    QObject *trayMenu = overlay->findChild<QObject *>(QStringLiteral("trayMenu"));
+    QVERIFY(trayMenu != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(trayMenu->property("menuModel").value<QObject *>() != nullptr, 1000);
+    QObject *modelA = trayMenu->property("menuModel").value<QObject *>();
+    QObject *clientA = modelA->parent();
+    QVERIFY(clientA != nullptr);
+    QVERIFY(popup.isOpen());
+    QCOMPARE(popup.contextKey(), snapshot.address.key());
+
+    const quint64 beforeMenuState = service.presentationRevision();
+    service.prepareMenuForPresentation(snapshot.address.key());
+    QTRY_VERIFY_WITH_TIMEOUT(service.presentationRevision() > beforeMenuState, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(trayMenu->property("remoteMenuState").toInt(), 5, 1000);
+
+    snapshot.menuPath = QStringLiteral("/MenuB");
+    service.upsertTestItem(snapshot);
+    QTRY_VERIFY_WITH_TIMEOUT(trayMenu->property("menuModel").value<QObject *>() != nullptr,
+                             1000);
+    QObject *modelB = trayMenu->property("menuModel").value<QObject *>();
+    QVERIFY(modelB != nullptr);
+    QVERIFY(modelB != modelA);
+    QVERIFY(modelB->parent() != clientA);
+    QVERIFY(popup.isOpen());
+    QCOMPARE(popup.contextKey(), snapshot.address.key());
+
+    QObject *separator = trayMenu->findChild<QObject *>(QStringLiteral("trayMenuHeaderSeparator"));
+    QObject *noActions = trayMenu->findChild<QObject *>(QStringLiteral("trayMenuNoActions"));
+    QVERIFY(separator != nullptr);
+    QVERIFY(noActions != nullptr);
+    snapshot.menuPath.clear();
+    service.upsertTestItem(snapshot);
+    QTRY_VERIFY_WITH_TIMEOUT(!trayMenu->property("hasRemoteMenu").toBool(), 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(trayMenu->property("menuModel").value<QObject *>(), nullptr, 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(!separator->property("visible").toBool(), 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(noActions->property("visible").toBool(), 1000);
+    QVERIFY(popup.isOpen());
+
+    snapshot.menuPath = QStringLiteral("/MenuC");
+    service.upsertTestItem(snapshot);
+    QTRY_VERIFY_WITH_TIMEOUT(trayMenu->property("hasRemoteMenu").toBool(), 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(trayMenu->property("menuModel").value<QObject *>() != nullptr, 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(separator->property("visible").toBool(), 1000);
+    QVERIFY(popup.isOpen());
+
+    QObject *stableModel = trayMenu->property("menuModel").value<QObject *>();
+    QObject *stableClient = stableModel->parent();
+    trayMenu->setProperty("cascadeModel", QVariant::fromValue(stableModel));
+    QCOMPARE(trayMenu->property("cascadeModel").value<QObject *>(), stableModel);
+    QSignalSpy menuIdentityChanges(&service,
+                                   &Astrea::StatusNotifier::StatusNotifierService::menuClientChanged);
+    snapshot.title = QStringLiteral("Updated menu");
+    snapshot.tooltipTitle = QStringLiteral("Updated tooltip");
+    service.upsertTestItem(snapshot);
+    QTRY_COMPARE_WITH_TIMEOUT(
+        trayMenu->findChild<QObject *>(QStringLiteral("trayMenuHeaderTitle"))
+            ->property("text").toString(),
+        QStringLiteral("Updated tooltip"), 1000);
+    QCOMPARE(menuIdentityChanges.count(), 0);
+    QCOMPARE(trayMenu->property("menuModel").value<QObject *>(), stableModel);
+    QCOMPARE(stableModel->parent(), stableClient);
+    QCOMPARE(trayMenu->property("cascadeModel").value<QObject *>(), stableModel);
+    QVERIFY(popup.isOpen());
+
+    QImage icon(16, 16, QImage::Format_ARGB32);
+    icon.fill(Qt::red);
+    service.iconStore()->updateAuxiliaryImage(snapshot.address.key(), icon);
+    QObject *headerIcon = trayMenu->findChild<QObject *>(QStringLiteral("trayMenuHeaderIcon"));
+    QVERIFY(headerIcon != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(!headerIcon->property("source").toString().isEmpty(), 1000);
+    QCOMPARE(trayMenu->property("menuModel").value<QObject *>(), stableModel);
+    QCOMPARE(stableModel->parent(), stableClient);
+    QVERIFY(popup.isOpen());
+
+    delete overlay;
+}
+
+void BarQmlSmokeTest::trayHeaderUsesExactProductionFallbacks()
+{
+    QQmlEngine engine;
+    Astrea::StatusNotifier::StatusNotifierService service;
+    Astrea::StatusNotifier::ItemSnapshot snapshot;
+    snapshot.address = {QStringLiteral("org.example.Header"),
+                        QStringLiteral("/StatusNotifierItem"), QStringLiteral(":1.213")};
+    snapshot.id = QStringLiteral("Header id");
+    snapshot.title = QStringLiteral("Header title");
+    snapshot.tooltipTitle = QStringLiteral("Header tooltip");
+    snapshot.generation = 13;
+    snapshot.ready = true;
+    service.upsertTestItem(snapshot);
+
+    QQmlComponent component(&engine,
+        QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Bar/qml/TrayContextMenu.qml")));
+    QObject *menu = component.createWithInitialProperties({
+        {QStringLiteral("trayService"), QVariant::fromValue(&service)},
+        {QStringLiteral("contextKey"), snapshot.address.key()},
+    });
+    QVERIFY(menu != nullptr);
+    QObject *headerTitle = menu->findChild<QObject *>(QStringLiteral("trayMenuHeaderTitle"));
+    QVERIFY(headerTitle != nullptr);
+
+    const auto verifyTitle = [&](const QString &expected) {
+        QTRY_COMPARE_WITH_TIMEOUT(headerTitle->property("text").toString(), expected, 1000);
+    };
+    verifyTitle(QStringLiteral("Header tooltip"));
+    snapshot.tooltipTitle.clear();
+    service.upsertTestItem(snapshot);
+    verifyTitle(QStringLiteral("Header title"));
+    snapshot.title.clear();
+    service.upsertTestItem(snapshot);
+    verifyTitle(QStringLiteral("Header id"));
+    snapshot.id.clear();
+    service.upsertTestItem(snapshot);
+    verifyTitle(QStringLiteral("Tray item"));
+
+    delete menu;
 }
 
 void BarQmlSmokeTest::traySubmenuPlacementChecksFullBoundsAtEveryDepth()

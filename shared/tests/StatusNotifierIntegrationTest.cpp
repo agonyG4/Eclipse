@@ -194,7 +194,7 @@ void StatusNotifierIntegrationTest::realSessionBusRegistrationActionsAndMenuLife
     QCOMPARE(item.property("LastDelta").toInt(), 120);
     QCOMPARE(item.property("LastOrientation").toString(), QStringLiteral("vertical"));
 
-    QDBusInterface menu(snapshot.address.service, QStringLiteral("/org/test/Menu"),
+    QDBusInterface menu(snapshot.address.service, QStringLiteral("/org/test/MenuA"),
                         QStringLiteral("com.canonical.dbusmenu"), QDBusConnection::sessionBus());
     service.prepareMenuForPresentation(key);
     QTRY_VERIFY_WITH_TIMEOUT(service.menuModelForItem(key) != nullptr, 2000);
@@ -207,6 +207,13 @@ void StatusNotifierIntegrationTest::realSessionBusRegistrationActionsAndMenuLife
                 .type() != QDBusMessage::ErrorMessage);
     QTRY_COMPARE_WITH_TIMEOUT(service.typedItemModel()->item(key).title,
                               QStringLiteral("Presentation update"), 3000);
+    QCOMPARE(menuIdentityChanges.count(), 0);
+    QCOMPARE(service.menuModelForItem(key), model);
+    QCOMPARE(qobject_cast<DBusMenuClient *>(model->parent()), menuClient);
+    QVERIFY(control.call(QStringLiteral("SetIconColor"), 0xaa, 0xbb, 0xcc).type()
+                != QDBusMessage::ErrorMessage);
+    QTRY_COMPARE_WITH_TIMEOUT(service.iconStore()->image(key).pixel(0, 0),
+                              qRgba(0xaa, 0xbb, 0xcc, 0xff), 3000);
     QCOMPARE(menuIdentityChanges.count(), 0);
     QCOMPARE(service.menuModelForItem(key), model);
     QCOMPARE(qobject_cast<DBusMenuClient *>(model->parent()), menuClient);
@@ -267,16 +274,25 @@ void StatusNotifierIntegrationTest::realSessionBusRegistrationActionsAndMenuLife
                               static_cast<int>(DBusMenuLifecycleState::Empty), 3000);
     QVERIFY(menuClient->rootModel()->rowCount() == 0);
 
+    menuIdentityChanges.clear();
+    QVERIFY(control.call(QStringLiteral("SetMenuPath"), QStringLiteral("/org/test/MenuB"))
+                .type() != QDBusMessage::ErrorMessage);
+    QTRY_COMPARE_WITH_TIMEOUT(service.typedItemModel()->item(key).menuPath,
+                              QStringLiteral("/org/test/MenuB"), 3000);
+    QTRY_COMPARE_WITH_TIMEOUT(service.menuClientCount(), 1, 3000);
+    QCOMPARE(menuIdentityChanges.count(), 1);
+    QVERIFY(service.menuModelForItem(key) != model);
+
     QVERIFY(control.call(QStringLiteral("SetMenuPath"), QString()).type()
             != QDBusMessage::ErrorMessage);
     QTRY_COMPARE_WITH_TIMEOUT(service.typedItemModel()->item(key).menuPath,
                               QString(), 3000);
     QTRY_COMPARE_WITH_TIMEOUT(service.menuClientCount(), 0, 3000);
-    QCOMPARE(menuIdentityChanges.count(), 1);
-    QVERIFY(control.call(QStringLiteral("SetMenuPath"), QStringLiteral("/org/test/Menu"))
+    QCOMPARE(menuIdentityChanges.count(), 2);
+    QVERIFY(control.call(QStringLiteral("SetMenuPath"), QStringLiteral("/org/test/MenuA"))
                 .type() != QDBusMessage::ErrorMessage);
     QTRY_COMPARE_WITH_TIMEOUT(service.menuClientCount(), 1, 3000);
-    QCOMPARE(menuIdentityChanges.count(), 2);
+    QCOMPARE(menuIdentityChanges.count(), 3);
 
     QVERIFY2(control.call(QStringLiteral("UnregisterServiceOnly")).type()
                  != QDBusMessage::ErrorMessage,

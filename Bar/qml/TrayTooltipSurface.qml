@@ -11,8 +11,13 @@ Window {
     property string itemKey: ""
     property real anchorX: 0
     property bool tooltipVisible: false
-    readonly property string tooltipTitle: statusNotifierService
-        ? statusNotifierService.tooltipTitleForItem(itemKey) : ""
+    readonly property var serviceRevision: statusNotifierService
+        ? statusNotifierService.presentationRevision : 0
+    readonly property string tooltipTitle: {
+        window.serviceRevision
+        return window.statusNotifierService
+            ? window.statusNotifierService.tooltipTitleForItem(window.itemKey) : ""
+    }
 
     visible: tooltipVisible
     color: "transparent"

@@ -17,11 +17,14 @@ Window {
     opacity: 1.0
 
     property bool hadActiveFocus: false
+    property bool focusPending: false
+    property bool activationIssued: false
 
     onVisibleChanged: {
         if (visible) {
             hadActiveFocus = false
-            requestActivate()
+        } else {
+            focusPending = false
         }
     }
 
@@ -36,7 +39,23 @@ Window {
     Connections {
         target: AltTabController
         function onFocusRequested() {
-            window.requestActivate()
+            if (window.active) {
+                return
+            }
+            window.focusPending = true
+        }
+    }
+
+    Connections {
+        target: window
+        function onFrameSwapped() {
+            if (window.focusPending && window.visible && AltTabController.open) {
+                window.focusPending = false
+                if (!window.activationIssued) {
+                    window.activationIssued = true
+                    window.requestActivate()
+                }
+            }
         }
     }
 

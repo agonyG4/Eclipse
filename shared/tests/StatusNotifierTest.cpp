@@ -40,6 +40,8 @@ private slots:
     void cumulativeNodeLimitRejectsSubtree();
     void cumulativeDepthLimitRejectsSubtree();
     void acceptedSubtreeReplacementUpdatesLiveTree();
+    void displayTitleUsesProductionFallbackOrder();
+    void presentationRevisionTracksVisibleStateChanges();
 };
 
 void StatusNotifierTest::registrationFormsNormalize()
@@ -506,6 +508,110 @@ void StatusNotifierTest::acceptedSubtreeReplacementUpdatesLiveTree()
     QCOMPARE(model.replaceSubtreeResult(1, candidate), DBusMenuMutationResult::Applied);
     QCOMPARE(model.nodeById(1).children.constFirst().id, 10);
     QVERIFY(model.childModel(1) != nullptr);
+}
+
+void StatusNotifierTest::displayTitleUsesProductionFallbackOrder()
+{
+    StatusNotifierService service;
+    ItemSnapshot snapshot;
+    snapshot.address = {QStringLiteral("org.example.Title"),
+                        QStringLiteral("/StatusNotifierItem"), QStringLiteral(":1.210")};
+    snapshot.id = QStringLiteral("Fallback id");
+    snapshot.title = QStringLiteral("Fallback title");
+    snapshot.tooltipTitle = QStringLiteral("Fallback tooltip");
+    snapshot.generation = 7;
+
+    service.upsertTestItem(snapshot);
+    QCOMPARE(service.displayTitleForItem(snapshot.address.key()),
+             QStringLiteral("Fallback tooltip"));
+
+    snapshot.tooltipTitle.clear();
+    service.upsertTestItem(snapshot);
+    QCOMPARE(service.displayTitleForItem(snapshot.address.key()),
+             QStringLiteral("Fallback title"));
+
+    snapshot.title.clear();
+    service.upsertTestItem(snapshot);
+    QCOMPARE(service.displayTitleForItem(snapshot.address.key()), QStringLiteral("Fallback id"));
+
+    snapshot.id.clear();
+    service.upsertTestItem(snapshot);
+    QCOMPARE(service.displayTitleForItem(snapshot.address.key()), QStringLiteral("Tray item"));
+}
+
+void StatusNotifierTest::presentationRevisionTracksVisibleStateChanges()
+{
+    StatusNotifierService service;
+    ItemSnapshot snapshot;
+    snapshot.address = {QStringLiteral("org.example.Revision"),
+                        QStringLiteral("/StatusNotifierItem"), QStringLiteral(":1.211")};
+    snapshot.id = QStringLiteral("revision");
+    snapshot.title = QStringLiteral("Initial title");
+    snapshot.generation = 11;
+
+    const quint64 initialRevision = service.presentationRevision();
+    QCOMPARE(service.presentationRevision(), initialRevision);
+    QCOMPARE(service.itemCount(), 0);
+    QCOMPARE(service.presentationRevision(), initialRevision);
+
+    service.upsertTestItem(snapshot);
+    const quint64 afterSnapshot = service.presentationRevision();
+    QVERIFY(afterSnapshot > initialRevision);
+
+    service.hasMenuForItem(snapshot.address.key());
+    service.menuModelForItem(snapshot.address.key());
+    service.menuStateForItem(snapshot.address.key());
+    service.displayTitleForItem(snapshot.address.key());
+    service.iconSourceForItem(snapshot.address.key());
+    service.tooltipTitleForItem(snapshot.address.key());
+    service.tooltipDescriptionForItem(snapshot.address.key());
+    service.healthJson();
+    QCOMPARE(service.presentationRevision(), afterSnapshot);
+
+    snapshot.title = QStringLiteral("Updated title");
+    service.upsertTestItem(snapshot);
+    const quint64 afterTitle = service.presentationRevision();
+    QVERIFY(afterTitle > afterSnapshot);
+
+    snapshot.menuPath = QStringLiteral("/MenuA");
+    service.upsertTestItem(snapshot);
+    const quint64 afterMenuA = service.presentationRevision();
+    QVERIFY(afterMenuA > afterTitle);
+    QObject *menuA = service.menuModelForItem(snapshot.address.key());
+    QVERIFY(menuA != nullptr);
+
+    snapshot.menuPath = QStringLiteral("/MenuB");
+    service.upsertTestItem(snapshot);
+    const quint64 afterMenuB = service.presentationRevision();
+    QVERIFY(afterMenuB > afterMenuA);
+    QVERIFY(service.menuModelForItem(snapshot.address.key()) != nullptr);
+    QVERIFY(service.menuModelForItem(snapshot.address.key()) != menuA);
+
+    snapshot.menuPath.clear();
+    service.upsertTestItem(snapshot);
+    const quint64 afterMenuRemoval = service.presentationRevision();
+    QVERIFY(afterMenuRemoval > afterMenuB);
+    QVERIFY(!service.hasMenuForItem(snapshot.address.key()));
+    QCOMPARE(service.menuModelForItem(snapshot.address.key()), nullptr);
+
+    service.iconStore()->updateAuxiliaryImage(snapshot.address.key(), QImage(4, 4,
+                                                                              QImage::Format_ARGB32));
+    const quint64 afterIcon = service.presentationRevision();
+    QVERIFY(afterIcon > afterMenuRemoval);
+    QVERIFY(!service.iconSourceForItem(snapshot.address.key()).isEmpty());
+
+    service.removeTestItem(snapshot.address.key());
+    QVERIFY(service.presentationRevision() > afterIcon);
+    QCOMPARE(service.itemCount(), 0);
+
+    const quint64 beforeStop = service.presentationRevision();
+    service.start();
+    service.stop();
+    QVERIFY(service.presentationRevision() > beforeStop);
+    const quint64 afterStop = service.presentationRevision();
+    service.start();
+    QVERIFY(service.presentationRevision() >= afterStop);
+    service.stop();
 }
 
 QTEST_APPLESS_MAIN(StatusNotifierTest)

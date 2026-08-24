@@ -10,23 +10,32 @@ PopupCard {
     property var trayService: null
     property var popupController: null
     property string contextKey: ""
-    readonly property var menuModel: trayService ? trayService.menuModelForItem(contextKey) : null
+    readonly property var serviceRevision: trayService ? trayService.presentationRevision : 0
+    readonly property var menuModel: {
+        root.serviceRevision
+        return root.trayService ? root.trayService.menuModelForItem(root.contextKey) : null
+    }
+    readonly property int remoteMenuState: {
+        root.serviceRevision
+        return root.trayService
+            ? root.trayService.menuStateForItem(root.contextKey) : 0
+    }
     property var cascadeModel: null
     property int cascadeAnchorY: 0
     property var pendingCascadeOwner: null
     property int pendingCascadeNodeId: -1
     property int pendingCascadeAnchorY: 0
-    property int presentationSerial: 0
     property int outputWidth: 1
     property string emptyText: "No actions exposed"
-    readonly property bool hasRemoteMenu: trayService
-        ? trayService.hasMenuForItem(contextKey) : false
+    readonly property bool hasRemoteMenu: {
+        root.serviceRevision
+        return root.trayService ? root.trayService.hasMenuForItem(root.contextKey) : false
+    }
     implicitWidth: 220
     cardPadding: 12
     contentSpacing: 4
 
     function resetMenu() {
-        presentationSerial += 1
         cascadeModel = null
         cascadeAnchorY = 0
         pendingCascadeOwner = null
@@ -55,7 +64,7 @@ PopupCard {
     function resolvePendingCascade() {
         if (!pendingCascadeOwner || pendingCascadeNodeId < 0 || !trayService)
             return
-        if (trayService.menuStateForItem(contextKey) === 2)
+        if (root.remoteMenuState === 2)
             return
         const child = pendingCascadeOwner.childModel(pendingCascadeNodeId)
         if (!child)
@@ -100,10 +109,6 @@ PopupCard {
 
     Connections {
         target: trayService
-        function onItemChanged(key) {
-            if (key === root.contextKey)
-                root.presentationSerial += 1
-        }
         function onMenuClientChanged(key) {
             if (key === root.contextKey)
                 root.resetMenu()
@@ -122,13 +127,14 @@ PopupCard {
 
         Image {
             id: headerIcon
+            objectName: "trayMenuHeaderIcon"
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             width: 18
             height: 18
             sourceSize: Qt.size(18, 18)
             source: {
-                root.presentationSerial
+                root.serviceRevision
                 return root.trayService
                     ? root.trayService.iconSourceForItem(root.contextKey) : ""
             }
@@ -137,12 +143,13 @@ PopupCard {
         }
 
         Text {
+            objectName: "trayMenuHeaderTitle"
             anchors.left: parent.left
             anchors.leftMargin: 28
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             text: {
-                root.presentationSerial
+                root.serviceRevision
                 return root.trayService
                     ? root.trayService.displayTitleForItem(root.contextKey) : "System tray"
             }
@@ -160,9 +167,10 @@ PopupCard {
     }
 
     Text {
+        objectName: "trayMenuNoActions"
         visible: !root.hasRemoteMenu || !root.menuModel || !root.trayService
-                 || root.trayService.menuStateForItem(root.contextKey) === 4
-                 || root.trayService.menuStateForItem(root.contextKey) === 5
+                 || root.remoteMenuState === 4
+                 || root.remoteMenuState === 5
         text: root.emptyText
         width: parent.width
         height: 32

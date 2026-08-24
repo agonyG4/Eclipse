@@ -27,6 +27,7 @@ class StatusNotifierService final : public QObject {
     Q_PROPERTY(int itemCount READ itemCount NOTIFY stateChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY stateChanged)
     Q_PROPERTY(int menuClientCount READ menuClientCount NOTIFY stateChanged)
+    Q_PROPERTY(quint64 presentationRevision READ presentationRevision NOTIFY presentationRevisionChanged)
 
 public:
     explicit StatusNotifierService(QObject *parent = nullptr);
@@ -48,6 +49,7 @@ public:
     int itemCount() const;
     QString lastError() const;
     int menuClientCount() const;
+    quint64 presentationRevision() const { return m_presentationRevision; }
     QJsonObject healthJson() const;
 
     Q_INVOKABLE bool hasMenuForItem(const QString &itemKey) const;
@@ -74,6 +76,7 @@ signals:
     void itemRemoved(const QString &itemKey);
     void menuClientChanged(const QString &itemKey);
     void menuContentChanged(const QString &itemKey);
+    void presentationRevisionChanged();
     void healthWarning(const QString &warning);
 
 private slots:
@@ -89,6 +92,7 @@ private:
     void removeItem(const QString &key);
     void updateSnapshot(const ItemSnapshot &snapshot);
     void updateMenu(const QString &key, const QString &menuPath);
+    void bumpPresentationRevision();
 
     std::unique_ptr<StatusNotifierWatcherBridge> m_watcher;
     std::unique_ptr<StatusNotifierIconStore> m_iconStore;
@@ -97,8 +101,10 @@ private:
     QHash<QString, DBusMenuClient *> m_menus;
     QString m_lastHealthWarning;
     quint64 m_nextGeneration = 1;
+    quint64 m_presentationRevision = 0;
     bool m_initialized = false;
     bool m_started = false;
+    bool m_stopping = false;
 };
 
 } // namespace Astrea::StatusNotifier

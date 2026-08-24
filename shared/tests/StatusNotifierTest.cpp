@@ -42,6 +42,9 @@ private slots:
     void acceptedSubtreeReplacementUpdatesLiveTree();
     void displayTitleUsesProductionFallbackOrder();
     void presentationRevisionTracksVisibleStateChanges();
+    void serviceProjectsSnapshotsAtomically();
+    void metadataSnapshotsDoNotChurnIconProjection();
+    void removalPublishesOneEmptyProjection();
 };
 
 void StatusNotifierTest::registrationFormsNormalize()
@@ -612,6 +615,194 @@ void StatusNotifierTest::presentationRevisionTracksVisibleStateChanges()
     service.start();
     QVERIFY(service.presentationRevision() >= afterStop);
     service.stop();
+}
+
+void StatusNotifierTest::serviceProjectsSnapshotsAtomically()
+{
+    StatusNotifierService service;
+    ItemSnapshot snapshot;
+    snapshot.address = {QStringLiteral("org.example.Atomic"),
+                        QStringLiteral("/StatusNotifierItem"), QStringLiteral(":1.220")};
+    snapshot.id = QStringLiteral("atomic");
+    snapshot.title = QStringLiteral("Old title");
+    snapshot.status = ItemStatus::Active;
+    snapshot.pixmaps = {{1, 1, QByteArray::fromHex("ff3366cc")}};
+    snapshot.menuPath = QStringLiteral("/MenuA");
+    snapshot.generation = 22;
+    service.upsertTestItem(snapshot);
+
+    const QString key = snapshot.address.key();
+    auto *oldModel = qobject_cast<DBusMenuModel *>(service.menuModelForItem(key));
+    QVERIFY(oldModel);
+    auto *oldClient = qobject_cast<DBusMenuClient *>(oldModel->parent());
+    QVERIFY(oldClient);
+    QCOMPARE(oldClient->menuPath(), QStringLiteral("/MenuA"));
+    const quint64 oldIconRevision = service.iconStore()->revision(key);
+    const QString oldIconSource = service.iconSourceForItem(key);
+
+    struct Observation {
+        ItemSnapshot snapshot;
+        QString iconSource;
+        QImage image;
+        DBusMenuModel *menuModel = nullptr;
+        DBusMenuClient *menuClient = nullptr;
+    };
+    QVector<Observation> observations;
+    const auto revisionConnection = connect(
+        &service, &StatusNotifierService::presentationRevisionChanged, &service,
+        [&service, &key, &observations] {
+            Observation observation;
+            observation.snapshot = service.typedItemModel()->item(key);
+            observation.iconSource = service.iconSourceForItem(key);
+            observation.image = service.iconStore()->image(key);
+            observation.menuModel = qobject_cast<DBusMenuModel *>(service.menuModelForItem(key));
+            observation.menuClient = observation.menuModel
+                ? qobject_cast<DBusMenuClient *>(observation.menuModel->parent()) : nullptr;
+            observations.append(std::move(observation));
+        });
+
+    snapshot.title = QStringLiteral("New title");
+    snapshot.pixmaps = {{1, 1, QByteArray::fromHex("ffcc6633")}};
+    snapshot.menuPath = QStringLiteral("/MenuB");
+    service.upsertTestItem(snapshot);
+
+    QCOMPARE(observations.size(), 1);
+    const Observation &observation = observations.constFirst();
+    QCOMPARE(observation.snapshot.title, QStringLiteral("New title"));
+    QCOMPARE(observation.snapshot.menuPath, QStringLiteral("/MenuB"));
+    QCOMPARE(observation.iconSource, service.iconSourceForItem(key));
+    QVERIFY(observation.iconSource != oldIconSource);
+    QCOMPARE(observation.image.pixel(0, 0), qRgba(0xcc, 0x66, 0x33, 0xff));
+    QVERIFY(observation.menuModel);
+    QVERIFY(observation.menuClient);
+    QCOMPARE(observation.menuClient->menuPath(), QStringLiteral("/MenuB"));
+    QCOMPARE(observation.menuClient->itemGeneration(), snapshot.generation);
+    QVERIFY(observation.menuModel != oldModel);
+    QVERIFY(observation.menuClient != oldClient);
+    QCOMPARE(service.iconStore()->revision(key), oldIconRevision + 1);
+
+    observations.clear();
+    snapshot.status = ItemStatus::NeedsAttention;
+    snapshot.attentionPixmaps = {{1, 1, QByteArray::fromHex("ff00ff00")}};
+    service.upsertTestItem(snapshot);
+    QCOMPARE(observations.size(), 1);
+    QCOMPARE(observations.constFirst().image.pixel(0, 0), qRgba(0, 0xff, 0, 0xff));
+    QCOMPARE(service.iconStore()->revision(key), oldIconRevision + 2);
+
+    disconnect(revisionConnection);
+}
+
+void StatusNotifierTest::metadataSnapshotsDoNotChurnIconProjection()
+{
+    StatusNotifierService service;
+    ItemSnapshot snapshot;
+    snapshot.address = {QStringLiteral("org.example.StableIcon"),
+                        QStringLiteral("/StatusNotifierItem"), QStringLiteral(":1.221")};
+    snapshot.title = QStringLiteral("Title A");
+    snapshot.tooltipTitle = QStringLiteral("Tooltip A");
+    snapshot.tooltipDescription = QStringLiteral("Description A");
+    snapshot.status = ItemStatus::Active;
+    snapshot.pixmaps = {{1, 1, QByteArray::fromHex("ff112233")}};
+    snapshot.menuPath = QStringLiteral("/MenuA");
+    snapshot.itemIsMenu = false;
+    snapshot.generation = 23;
+    service.upsertTestItem(snapshot);
+
+    const QString key = snapshot.address.key();
+    const quint64 iconRevision = service.iconStore()->revision(key);
+    const QString iconSource = service.iconSourceForItem(key);
+    auto *stableModel = qobject_cast<DBusMenuModel *>(service.menuModelForItem(key));
+    QVERIFY(stableModel);
+    auto *stableClient = qobject_cast<DBusMenuClient *>(stableModel->parent());
+    QVERIFY(stableClient);
+
+    auto assertStableIcon = [&] {
+        QCOMPARE(service.iconStore()->revision(key), iconRevision);
+        QCOMPARE(service.iconSourceForItem(key), iconSource);
+        QCOMPARE(service.menuModelForItem(key), stableModel);
+        QCOMPARE(qobject_cast<DBusMenuClient *>(stableModel->parent()), stableClient);
+    };
+
+    QSignalSpy revisions(&service, &StatusNotifierService::presentationRevisionChanged);
+    snapshot.title = QStringLiteral("Title B");
+    service.upsertTestItem(snapshot);
+    QCOMPARE(revisions.count(), 1);
+    assertStableIcon();
+
+    revisions.clear();
+    snapshot.tooltipTitle = QStringLiteral("Tooltip B");
+    snapshot.tooltipDescription = QStringLiteral("Description B");
+    service.upsertTestItem(snapshot);
+    QCOMPARE(revisions.count(), 1);
+    assertStableIcon();
+
+    revisions.clear();
+    snapshot.itemIsMenu = true;
+    service.upsertTestItem(snapshot);
+    QCOMPARE(revisions.count(), 1);
+    assertStableIcon();
+
+    revisions.clear();
+    snapshot.menuPath = QStringLiteral("/MenuB");
+    service.upsertTestItem(snapshot);
+    QCOMPARE(revisions.count(), 1);
+    QCOMPARE(service.iconStore()->revision(key), iconRevision);
+    QCOMPARE(service.iconSourceForItem(key), iconSource);
+    QVERIFY(service.menuModelForItem(key) != stableModel);
+
+    revisions.clear();
+    snapshot.pixmaps = {{1, 1, QByteArray::fromHex("ff332211")}};
+    service.upsertTestItem(snapshot);
+    QCOMPARE(revisions.count(), 1);
+    QVERIFY(service.iconStore()->revision(key) > iconRevision);
+    QVERIFY(service.iconSourceForItem(key) != iconSource);
+    QCOMPARE(service.iconStore()->image(key).pixel(0, 0), qRgba(0x33, 0x22, 0x11, 0xff));
+
+    revisions.clear();
+    service.iconStore()->updateAuxiliaryImage(key, QImage(1, 1, QImage::Format_ARGB32));
+    QCOMPARE(revisions.count(), 1);
+    QVERIFY(service.iconStore()->revision(key) > iconRevision);
+    QVERIFY(!service.iconSourceForItem(key).isEmpty());
+    QCOMPARE(service.typedItemModel()->item(key).title, QStringLiteral("Title B"));
+}
+
+void StatusNotifierTest::removalPublishesOneEmptyProjection()
+{
+    StatusNotifierService service;
+    ItemSnapshot snapshot;
+    snapshot.address = {QStringLiteral("org.example.Remove"),
+                        QStringLiteral("/StatusNotifierItem"), QStringLiteral(":1.222")};
+    snapshot.title = QStringLiteral("To remove");
+    snapshot.pixmaps = {{1, 1, QByteArray::fromHex("ffabcdef")}};
+    snapshot.menuPath = QStringLiteral("/MenuA");
+    snapshot.generation = 24;
+    service.upsertTestItem(snapshot);
+    const QString key = snapshot.address.key();
+    QVERIFY(service.menuModelForItem(key));
+
+    struct RemovalObservation {
+        bool modelContains = true;
+        bool iconPresent = true;
+        bool menuPresent = true;
+    };
+    QVector<RemovalObservation> observations;
+    const auto revisionConnection = connect(
+        &service, &StatusNotifierService::presentationRevisionChanged, &service,
+        [&service, &key, &observations] {
+            observations.append({service.typedItemModel()->contains(key),
+                                 service.iconStore()->hasIcon(key),
+                                 service.menuModelForItem(key) != nullptr});
+        });
+
+    service.removeTestItem(key);
+
+    QCOMPARE(observations.size(), 1);
+    QCOMPARE(observations.constFirst().modelContains, false);
+    QCOMPARE(observations.constFirst().iconPresent, false);
+    QCOMPARE(observations.constFirst().menuPresent, false);
+    QCOMPARE(service.itemCount(), 0);
+    QCOMPARE(service.menuClientCount(), 0);
+    disconnect(revisionConnection);
 }
 
 QTEST_APPLESS_MAIN(StatusNotifierTest)

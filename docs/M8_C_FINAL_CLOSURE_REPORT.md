@@ -2,7 +2,7 @@
 
 Date: 2026-08-24
 
-Baseline: `21e0c73` (`M8-C.1.4: final native tray runtime closure`)
+Baseline: `fef649b` (`M8-C: final reactive tray projection closure`)
 
 Status: **M8-C COMPLETE**
 
@@ -26,6 +26,16 @@ tooltipTitle || title || id || "Tray item"
 
 The hover tooltip does not use the id or `Tray item` fallback.
 
+## Post-review atomic projection correction
+
+Baseline for this correction: `fef649b` (`M8-C: final reactive tray projection closure`).
+
+The service now treats each complete `ItemSnapshot` as one projection transaction. `applySnapshotProjection()` compares only the icon-affecting inputs, enters a private synchronous mutation guard, reconciles the icon store and DBusMenu client from the incoming snapshot, commits the model row, exits the guard, and then increments `presentationRevision` exactly once. The revision signal is the commit marker for a coherent StatusNotifier projection. Reentrant `itemIconChanged` callbacks cannot read the previous model row or publish a half-updated icon.
+
+Menu identity is reconciled from `(item key, generation, menu path)`, so same-generation title, tooltip, icon, and `ItemIsMenu` snapshots preserve the existing client while a path or generation change creates one replacement. The proxy no longer publishes a separate menu-path phase. Removal uses the same guard and clears proxy, menu, icon, and model state before its one final revision; the `itemRemoved` callback therefore observes an empty projection. Late callbacks from replaced menu clients are ignored.
+
+Direct callback tests now prove one coherent revision for an old-to-new title/icon/menu snapshot, one menu identity change for path replacement, coherent menu removal and appearance, no icon revision/source churn for title/tooltip/menu/`ItemIsMenu`-only snapshots, real icon and `NeedsAttention` changes, independent icon invalidation, and atomic removal. The isolated real session-bus fixture observes the committed state at the revision callback for title-only updates, icon refresh, `/org/test/MenuA` to `/org/test/MenuB`, menu removal, and menu reappearance. No QML changes were required.
+
 ## Regression coverage
 
 New and extended production-path coverage includes:
@@ -40,13 +50,13 @@ Feature-case counts exclude QTest `initTestCase` and `cleanupTestCase`:
 
 | Target | Feature cases | Result |
 |---|---:|---|
-| `statusnotifier-test` | 24 | 24 passed |
+| `statusnotifier-test` | 27 | 27 passed |
 | `statusnotifier-dbus-integration-test` | 2 | 2 passed |
 | `bar-core-test` | 23 | 23 passed |
 | `bar-qml-smoke-test` | 29 | 29 passed |
 | `bar-qml-legacy-guard` | 1 CTest scenario | passed |
 
-The four QTest targets therefore provide 78 feature cases, plus one legacy-production guard scenario.
+The four QTest targets therefore provide 81 feature cases, plus one legacy-production guard scenario.
 
 ## Qualification matrix
 
@@ -63,7 +73,7 @@ The required focused order was run as `statusnotifier-test`, `statusnotifier-dbu
 
 The broad Debug CTest suite had 66 entries: 62 passed, two stale missing executables were Not Run (`typhon-workspace-state-test` and `Paper/paper-surface-policy-test`), and two unrelated dirty-worktree tests failed with their pre-existing symptoms: `settings-navigation-model-test` (catalog count/route expectation) and `shell-unified-runtime-integration-test` (`QLocalServer::listen: Name error`). The StatusNotifier and Bar targets passed in that run.
 
-ASan executed all five feature scenarios and all feature assertions passed, including 26 StatusNotifier cases, 4 integration cases, 25 BarCore cases, 31 BarQML cases, and the legacy guard. CTest reported the four QTest processes failed only because LeakSanitizer detected the known 183-byte direct/indirect leak chain in external `/usr/lib/libnvidia-glcore.so.610.57.04`; no Eclipse-owned stack appeared. This is reported as an external sanitizer limitation, not as sanitizer success.
+ASan executed all five feature scenarios and all feature assertions passed, including 29 total StatusNotifier cases, 4 integration cases, 25 BarCore cases, 31 BarQML cases, and the legacy guard. The default ASan CTest run reported the four QTest processes as failed only because LeakSanitizer detected the known 183-byte direct/indirect leak chain in external `/usr/lib/libnvidia-glcore.so.610.57.04`; no Eclipse-owned stack appeared. Re-running the identical five-target ASan matrix with `ASAN_OPTIONS=detect_leaks=0` passed 5/5. This is reported as an external sanitizer limitation, not as sanitizer success.
 
 The legacy guard passed, and the production Bar QML tree contains no `QProcess`, `qdbus`, `gdbus`, `dbus-send`, `Process`, `quickshell`, `waybar`, or Python helper usage.
 

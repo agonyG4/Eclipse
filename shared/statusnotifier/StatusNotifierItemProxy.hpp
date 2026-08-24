@@ -27,7 +27,6 @@ public:
 signals:
     void snapshotChanged(const ItemSnapshot &snapshot);
     void vanished(const QString &key, const QString &uniqueOwner);
-    void menuPathChanged(const QString &key, const QString &menuPath);
     void actionFailed(const QString &key, const QString &error);
 
 private slots:

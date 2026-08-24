@@ -84,14 +84,27 @@ private slots:
     void onItemUnregistered(const QString &key);
     void onItemOwnerVanished(const QString &key, const QString &uniqueOwner);
     void onSnapshotChanged(const ItemSnapshot &snapshot);
-    void onProxyMenuPathChanged(const QString &key, const QString &menuPath);
     void onWatcherStateChanged();
 
 private:
+    enum class MenuIdentityChange {
+        Unchanged,
+        Changed,
+    };
+
+    class ProjectionMutationGuard {
+    public:
+        explicit ProjectionMutationGuard(StatusNotifierService *service);
+        ~ProjectionMutationGuard();
+
+    private:
+        StatusNotifierService *m_service = nullptr;
+    };
+
     void ensureProxy(const ItemAddress &address);
     void removeItem(const QString &key);
-    void updateSnapshot(const ItemSnapshot &snapshot);
-    void updateMenu(const QString &key, const QString &menuPath);
+    void applySnapshotProjection(const ItemSnapshot &snapshot);
+    MenuIdentityChange reconcileMenu(const ItemSnapshot &snapshot);
     void bumpPresentationRevision();
 
     std::unique_ptr<StatusNotifierWatcherBridge> m_watcher;
@@ -105,6 +118,7 @@ private:
     bool m_initialized = false;
     bool m_started = false;
     bool m_stopping = false;
+    int m_projectionMutationDepth = 0;
 };
 
 } // namespace Astrea::StatusNotifier

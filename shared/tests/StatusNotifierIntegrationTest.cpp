@@ -14,6 +14,7 @@
 #include <QSignalSpy>
 #include <QTest>
 #include <QThread>
+#include <QVector>
 
 using namespace Astrea::StatusNotifier;
 
@@ -202,18 +203,59 @@ void StatusNotifierIntegrationTest::realSessionBusRegistrationActionsAndMenuLife
     QVERIFY(model);
     auto *menuClient = qobject_cast<DBusMenuClient *>(model->parent());
     QVERIFY(menuClient);
+    QTRY_COMPARE_WITH_TIMEOUT(model->rowCount(), 2, 4000);
     QSignalSpy menuIdentityChanges(&service, &StatusNotifierService::menuClientChanged);
+
+    struct ProjectionObservation {
+        ItemSnapshot snapshot;
+        quint64 iconRevision = 0;
+        QString iconSource;
+        DBusMenuModel *menuModel = nullptr;
+        DBusMenuClient *menuClient = nullptr;
+    };
+    QVector<ProjectionObservation> projections;
+    const auto revisionConnection = connect(
+        &service, &StatusNotifierService::presentationRevisionChanged, &service,
+        [&service, &key, &projections] {
+            ProjectionObservation observation;
+            observation.snapshot = service.typedItemModel()->item(key);
+            observation.iconRevision = service.iconStore()->revision(key);
+            observation.iconSource = service.iconSourceForItem(key);
+            observation.menuModel = qobject_cast<DBusMenuModel *>(service.menuModelForItem(key));
+            observation.menuClient = observation.menuModel
+                ? qobject_cast<DBusMenuClient *>(observation.menuModel->parent()) : nullptr;
+            projections.append(std::move(observation));
+        });
+
+    const quint64 initialIconRevision = service.iconStore()->revision(key);
+    const QString initialIconSource = service.iconSourceForItem(key);
+    projections.clear();
     QVERIFY(control.call(QStringLiteral("SetTitle"), QStringLiteral("Presentation update"))
                 .type() != QDBusMessage::ErrorMessage);
     QTRY_COMPARE_WITH_TIMEOUT(service.typedItemModel()->item(key).title,
                               QStringLiteral("Presentation update"), 3000);
+    QCOMPARE(projections.size(), 1);
+    QCOMPARE(projections.constFirst().snapshot.title, QStringLiteral("Presentation update"));
+    QCOMPARE(projections.constFirst().snapshot.menuPath, QStringLiteral("/org/test/MenuA"));
+    QCOMPARE(projections.constFirst().iconRevision, initialIconRevision);
+    QCOMPARE(projections.constFirst().iconSource, initialIconSource);
+    QCOMPARE(projections.constFirst().menuModel, model);
+    QCOMPARE(projections.constFirst().menuClient, menuClient);
     QCOMPARE(menuIdentityChanges.count(), 0);
     QCOMPARE(service.menuModelForItem(key), model);
     QCOMPARE(qobject_cast<DBusMenuClient *>(model->parent()), menuClient);
+
+    projections.clear();
     QVERIFY(control.call(QStringLiteral("SetIconColor"), 0xaa, 0xbb, 0xcc).type()
                 != QDBusMessage::ErrorMessage);
     QTRY_COMPARE_WITH_TIMEOUT(service.iconStore()->image(key).pixel(0, 0),
                               qRgba(0xaa, 0xbb, 0xcc, 0xff), 3000);
+    QCOMPARE(projections.size(), 1);
+    QCOMPARE(projections.constFirst().snapshot.menuPath, QStringLiteral("/org/test/MenuA"));
+    QVERIFY(projections.constFirst().iconRevision > initialIconRevision);
+    QVERIFY(projections.constFirst().iconSource != initialIconSource);
+    QCOMPARE(projections.constFirst().menuModel, model);
+    QCOMPARE(projections.constFirst().menuClient, menuClient);
     QCOMPARE(menuIdentityChanges.count(), 0);
     QCOMPARE(service.menuModelForItem(key), model);
     QCOMPARE(qobject_cast<DBusMenuClient *>(model->parent()), menuClient);
@@ -275,24 +317,51 @@ void StatusNotifierIntegrationTest::realSessionBusRegistrationActionsAndMenuLife
     QVERIFY(menuClient->rootModel()->rowCount() == 0);
 
     menuIdentityChanges.clear();
+    projections.clear();
+    const quint64 iconRevisionBeforePathChange = service.iconStore()->revision(key);
+    const QString iconSourceBeforePathChange = service.iconSourceForItem(key);
     QVERIFY(control.call(QStringLiteral("SetMenuPath"), QStringLiteral("/org/test/MenuB"))
                 .type() != QDBusMessage::ErrorMessage);
     QTRY_COMPARE_WITH_TIMEOUT(service.typedItemModel()->item(key).menuPath,
                               QStringLiteral("/org/test/MenuB"), 3000);
     QTRY_COMPARE_WITH_TIMEOUT(service.menuClientCount(), 1, 3000);
+    QCOMPARE(projections.size(), 1);
+    QCOMPARE(projections.constFirst().snapshot.menuPath, QStringLiteral("/org/test/MenuB"));
+    QCOMPARE(projections.constFirst().iconRevision, iconRevisionBeforePathChange);
+    QCOMPARE(projections.constFirst().iconSource, iconSourceBeforePathChange);
+    QVERIFY(projections.constFirst().menuModel != model);
+    QVERIFY(projections.constFirst().menuClient);
+    QCOMPARE(projections.constFirst().menuClient->menuPath(), QStringLiteral("/org/test/MenuB"));
     QCOMPARE(menuIdentityChanges.count(), 1);
     QVERIFY(service.menuModelForItem(key) != model);
 
+    projections.clear();
     QVERIFY(control.call(QStringLiteral("SetMenuPath"), QString()).type()
             != QDBusMessage::ErrorMessage);
     QTRY_COMPARE_WITH_TIMEOUT(service.typedItemModel()->item(key).menuPath,
                               QString(), 3000);
     QTRY_COMPARE_WITH_TIMEOUT(service.menuClientCount(), 0, 3000);
+    QCOMPARE(projections.size(), 1);
+    QCOMPARE(projections.constFirst().snapshot.menuPath, QString());
+    QCOMPARE(projections.constFirst().iconRevision, iconRevisionBeforePathChange);
+    QCOMPARE(projections.constFirst().iconSource, iconSourceBeforePathChange);
+    QCOMPARE(projections.constFirst().menuModel, nullptr);
+    QCOMPARE(projections.constFirst().menuClient, nullptr);
     QCOMPARE(menuIdentityChanges.count(), 2);
+    projections.clear();
     QVERIFY(control.call(QStringLiteral("SetMenuPath"), QStringLiteral("/org/test/MenuA"))
                 .type() != QDBusMessage::ErrorMessage);
     QTRY_COMPARE_WITH_TIMEOUT(service.menuClientCount(), 1, 3000);
+    QCOMPARE(projections.size(), 1);
+    QCOMPARE(projections.constFirst().snapshot.menuPath, QStringLiteral("/org/test/MenuA"));
+    QCOMPARE(projections.constFirst().iconRevision, iconRevisionBeforePathChange);
+    QCOMPARE(projections.constFirst().iconSource, iconSourceBeforePathChange);
+    QVERIFY(projections.constFirst().menuModel);
+    QVERIFY(projections.constFirst().menuClient);
+    QCOMPARE(projections.constFirst().menuClient->menuPath(), QStringLiteral("/org/test/MenuA"));
     QCOMPARE(menuIdentityChanges.count(), 3);
+
+    disconnect(revisionConnection);
 
     QVERIFY2(control.call(QStringLiteral("UnregisterServiceOnly")).type()
                  != QDBusMessage::ErrorMessage,

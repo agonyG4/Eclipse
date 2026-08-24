@@ -181,7 +181,6 @@ void StatusNotifierItemProxy::applyProperties(const QString &interfaceName,
     m_snapshot.tooltipDescription.clear();
     parseTooltip(value(QStringLiteral("ToolTip")), &m_snapshot.tooltipTitle,
                  &m_snapshot.tooltipDescription);
-    const QString oldMenuPath = m_snapshot.menuPath;
     m_snapshot.menuPath = value(QStringLiteral("Menu")).toString();
     if (m_snapshot.menuPath == QStringLiteral("/"))
         m_snapshot.menuPath.clear();
@@ -189,8 +188,6 @@ void StatusNotifierItemProxy::applyProperties(const QString &interfaceName,
     m_snapshot.ready = true;
     m_snapshot.generation = m_generation;
     emitSnapshot();
-    if (oldMenuPath != m_snapshot.menuPath)
-        emit menuPathChanged(m_address.key(), m_snapshot.menuPath);
 }
 
 void StatusNotifierItemProxy::connectSignals(const QString &interfaceName)

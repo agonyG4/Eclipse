@@ -21,7 +21,46 @@ QString watcherModeName(WatcherMode mode)
     return QStringLiteral("Unavailable");
 }
 
+bool pixmapListsEqual(const QList<PixmapData> &left, const QList<PixmapData> &right)
+{
+    if (left.size() != right.size())
+        return false;
+    for (qsizetype index = 0; index < left.size(); ++index) {
+        const PixmapData &leftPixmap = left.at(index);
+        const PixmapData &rightPixmap = right.at(index);
+        if (leftPixmap.width != rightPixmap.width
+            || leftPixmap.height != rightPixmap.height
+            || leftPixmap.argb32Network != rightPixmap.argb32Network)
+            return false;
+    }
+    return true;
+}
+
+bool iconInputsEqual(const ItemSnapshot &left, const ItemSnapshot &right)
+{
+    return left.status == right.status
+        && left.iconName == right.iconName
+        && pixmapListsEqual(left.pixmaps, right.pixmaps)
+        && left.attentionIconName == right.attentionIconName
+        && pixmapListsEqual(left.attentionPixmaps, right.attentionPixmaps)
+        && left.overlayIconName == right.overlayIconName
+        && pixmapListsEqual(left.overlayPixmaps, right.overlayPixmaps)
+        && left.iconThemePath == right.iconThemePath;
+}
+
 } // namespace
+
+StatusNotifierService::ProjectionMutationGuard::ProjectionMutationGuard(
+    StatusNotifierService *service)
+    : m_service(service)
+{
+    ++m_service->m_projectionMutationDepth;
+}
+
+StatusNotifierService::ProjectionMutationGuard::~ProjectionMutationGuard()
+{
+    --m_service->m_projectionMutationDepth;
+}
 
 StatusNotifierService::StatusNotifierService(QObject *parent)
     : QObject(parent)
@@ -47,7 +86,7 @@ StatusNotifierService::StatusNotifierService(QObject *parent)
             &StatusNotifierService::itemRemoved);
     connect(m_iconStore.get(), &StatusNotifierIconStore::itemIconChanged, this,
             [this](const QString &key, quint64) {
-        if (m_stopping || !m_model->contains(key))
+        if (m_stopping || m_projectionMutationDepth > 0 || !m_model->contains(key))
             return;
         const ItemSnapshot snapshot = m_model->item(key);
         m_model->upsert(snapshot, m_iconStore->hasIcon(key) ? m_iconStore->imageSource(key)
@@ -85,23 +124,26 @@ void StatusNotifierService::stop()
         return;
     m_stopping = true;
     m_started = false;
-    for (auto *proxy : std::as_const(m_proxies)) {
-        if (proxy) {
-            proxy->stop();
-            proxy->deleteLater();
+    {
+        const ProjectionMutationGuard guard(this);
+        for (auto *proxy : std::as_const(m_proxies)) {
+            if (proxy) {
+                proxy->stop();
+                proxy->deleteLater();
+            }
         }
+        m_proxies.clear();
+        for (auto *menu : std::as_const(m_menus)) {
+            if (menu)
+                menu->stop();
+            if (menu)
+                menu->deleteLater();
+        }
+        m_menus.clear();
+        m_iconStore->clear();
+        m_model->clear();
+        m_watcher->stop();
     }
-    m_proxies.clear();
-    for (auto *menu : std::as_const(m_menus)) {
-        if (menu)
-            menu->stop();
-        if (menu)
-            menu->deleteLater();
-    }
-    m_menus.clear();
-    m_model->clear();
-    m_iconStore->clear();
-    m_watcher->stop();
     m_stopping = false;
     bumpPresentationRevision();
     emit stateChanged();
@@ -259,8 +301,7 @@ void StatusNotifierService::upsertTestItem(const ItemSnapshot &snapshot)
     ItemSnapshot copy = snapshot;
     copy.ready = true;
     copy.generation = copy.generation == 0 ? m_nextGeneration++ : copy.generation;
-    updateSnapshot(copy);
-    updateMenu(copy.address.key(), copy.menuPath);
+    applySnapshotProjection(copy);
 }
 
 void StatusNotifierService::removeTestItem(const QString &key)
@@ -285,12 +326,7 @@ void StatusNotifierService::onItemOwnerVanished(const QString &key, const QStrin
 
 void StatusNotifierService::onSnapshotChanged(const ItemSnapshot &snapshot)
 {
-    updateSnapshot(snapshot);
-}
-
-void StatusNotifierService::onProxyMenuPathChanged(const QString &key, const QString &menuPath)
-{
-    updateMenu(key, menuPath);
+    applySnapshotProjection(snapshot);
 }
 
 void StatusNotifierService::onWatcherStateChanged()
@@ -308,8 +344,6 @@ void StatusNotifierService::ensureProxy(const ItemAddress &address)
     m_proxies.insert(key, proxy);
     connect(proxy, &StatusNotifierItemProxy::snapshotChanged, this,
             &StatusNotifierService::onSnapshotChanged);
-    connect(proxy, &StatusNotifierItemProxy::menuPathChanged, this,
-            &StatusNotifierService::onProxyMenuPathChanged);
     connect(proxy, &StatusNotifierItemProxy::vanished, this,
             [this](const QString &vanishedKey, const QString &) { removeItem(vanishedKey); });
     connect(proxy, &StatusNotifierItemProxy::actionFailed, this,
@@ -323,73 +357,89 @@ void StatusNotifierService::removeItem(const QString &key)
         || m_model->contains(key) || m_iconStore->hasIcon(key);
     if (!hadState)
         return;
-    if (auto *proxy = m_proxies.take(key)) {
-        proxy->stop();
-        proxy->deleteLater();
-    }
-    if (auto *menu = m_menus.take(key)) {
-        menu->stop();
-        menu->deleteLater();
-    }
-    m_iconStore->clearItem(key);
-    bumpPresentationRevision();
-    if (m_model->removeKey(key)) {
-        emit stateChanged();
-    }
-}
-
-void StatusNotifierService::updateSnapshot(const ItemSnapshot &snapshot)
-{
-    if (!snapshot.address.isValid() || !snapshot.ready)
-        return;
-    m_iconStore->updateItem(snapshot);
-    const QString source = m_iconStore->hasIcon(snapshot.address.key())
-        ? m_iconStore->imageSource(snapshot.address.key()) : QString();
-    m_model->upsert(snapshot, source);
-    bumpPresentationRevision();
-    emit itemChanged(snapshot.address.key());
-    emit stateChanged();
-}
-
-void StatusNotifierService::updateMenu(const QString &key, const QString &menuPath)
-{
-    const ItemSnapshot snapshot = m_model->item(key);
-    if (!snapshot.address.isValid())
-        return;
-    if (auto *existing = m_menus.value(key)) {
-        if (existing->menuPath() == menuPath
-            && existing->itemGeneration() == snapshot.generation)
-            return;
-    }
-    if (menuPath.isEmpty()) {
+    bool modelRemoved = false;
+    {
+        const ProjectionMutationGuard guard(this);
+        if (auto *proxy = m_proxies.take(key)) {
+            proxy->stop();
+            proxy->deleteLater();
+        }
         if (auto *menu = m_menus.take(key)) {
             menu->stop();
             menu->deleteLater();
-            bumpPresentationRevision();
         }
-        emit menuClientChanged(key);
+        m_iconStore->clearItem(key);
+        modelRemoved = m_model->removeKey(key);
+    }
+    bumpPresentationRevision();
+    if (modelRemoved)
         emit stateChanged();
+}
+
+void StatusNotifierService::applySnapshotProjection(const ItemSnapshot &snapshot)
+{
+    if (!snapshot.address.isValid() || !snapshot.ready)
         return;
+
+    const QString key = snapshot.address.key();
+    const bool hasCommittedSnapshot = m_model->contains(key);
+    const ItemSnapshot previous = hasCommittedSnapshot ? m_model->item(key) : ItemSnapshot{};
+    const bool iconChanged = !hasCommittedSnapshot || !iconInputsEqual(previous, snapshot);
+    MenuIdentityChange menuChange = MenuIdentityChange::Unchanged;
+    {
+        const ProjectionMutationGuard guard(this);
+        if (iconChanged)
+            m_iconStore->updateItem(snapshot);
+        const QString source = m_iconStore->hasIcon(key) ? m_iconStore->imageSource(key)
+                                                          : QString();
+        menuChange = reconcileMenu(snapshot);
+        m_model->upsert(snapshot, source);
+    }
+
+    // A presentation revision is the commit marker for a coherent StatusNotifier projection.
+    bumpPresentationRevision();
+    if (menuChange == MenuIdentityChange::Changed)
+        emit menuClientChanged(key);
+    emit itemChanged(key);
+    emit stateChanged();
+}
+
+StatusNotifierService::MenuIdentityChange
+StatusNotifierService::reconcileMenu(const ItemSnapshot &snapshot)
+{
+    const QString key = snapshot.address.key();
+    if (!snapshot.address.isValid())
+        return MenuIdentityChange::Unchanged;
+    if (auto *existing = m_menus.value(key)) {
+        if (existing->menuPath() == snapshot.menuPath
+            && existing->itemGeneration() == snapshot.generation)
+            return MenuIdentityChange::Unchanged;
+    }
+    if (snapshot.menuPath.isEmpty()) {
+        if (auto *menu = m_menus.take(key)) {
+            menu->stop();
+            menu->deleteLater();
+            return MenuIdentityChange::Changed;
+        }
+        return MenuIdentityChange::Unchanged;
     }
     if (auto *old = m_menus.take(key)) {
         old->stop();
         old->deleteLater();
     }
-    auto *menu = new DBusMenuClient(snapshot.address, menuPath, m_iconStore.get(),
+    auto *menu = new DBusMenuClient(snapshot.address, snapshot.menuPath, m_iconStore.get(),
                                     snapshot.generation, this);
     m_menus.insert(key, menu);
     connect(menu, &DBusMenuClient::changed, this,
-            [this, key] {
-                if (m_stopping)
+            [this, key, menu] {
+                if (m_stopping || m_projectionMutationDepth > 0 || m_menus.value(key) != menu)
                     return;
                 bumpPresentationRevision();
                 emit menuContentChanged(key);
             });
     connect(menu, &DBusMenuClient::failed, this,
             [this](const QString &error) { emit healthWarning(error); });
-    bumpPresentationRevision();
-    emit stateChanged();
-    emit menuClientChanged(key);
+    return MenuIdentityChange::Changed;
 }
 
 void StatusNotifierService::bumpPresentationRevision()

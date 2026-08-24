@@ -17,12 +17,14 @@ Window {
     opacity: 1.0
 
     property bool hadActiveFocus: false
+    property bool focusPending: false
+    property bool activationIssued: false
 
     onVisibleChanged: {
         if (visible) {
             hadActiveFocus = false
-            requestActivate()
-            Qt.callLater(panel.focusSearch)
+        } else {
+            focusPending = false
         }
     }
 
@@ -37,11 +39,28 @@ Window {
     Connections {
         target: SpotlightController
         function onFocusRequested() {
-            window.requestActivate()
-            panel.focusSearch()
+            if (window.active) {
+                panel.focusSearch()
+            } else {
+                window.focusPending = true
+            }
         }
         function onLaunchFailed(error) {
             console.warn("Spotlight launch failed:", error)
+        }
+    }
+
+    Connections {
+        target: window
+        function onFrameSwapped() {
+            if (window.focusPending && window.visible && SpotlightController.open) {
+                window.focusPending = false
+                if (!window.activationIssued) {
+                    window.activationIssued = true
+                    window.requestActivate()
+                }
+                panel.focusSearch()
+            }
         }
     }
 

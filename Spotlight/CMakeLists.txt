@@ -77,6 +77,12 @@ if(BUILD_TESTING AND ASTREA_SPOTLIGHT_BUILD_TESTS)
     )
     astrea_enable_sanitizers(spotlight-tests)
     add_test(NAME spotlight-tests COMMAND spotlight-tests)
+    add_test(
+        NAME layer-shell-activation-structure
+        COMMAND ${CMAKE_COMMAND}
+            -DSPOTLIGHT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/static/LayerShellActivationStructureTest.cmake
+    )
     if(ASTREA_ENABLE_ASAN)
         set_tests_properties(spotlight-tests PROPERTIES
             ENVIRONMENT

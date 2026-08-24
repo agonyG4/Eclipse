@@ -7,12 +7,16 @@ function(add_settings_unit_test target source)
         "${CMAKE_CURRENT_SOURCE_DIR}/../../shared"
     )
     target_link_libraries(${target} PRIVATE astrea-settings-core Qt6::Test)
+    target_compile_definitions(${target} PRIVATE
+        ASTREA_ECLIPSE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    )
     settings_enable_warnings(${target})
     settings_enable_sanitizers(${target})
     add_test(NAME ${target} COMMAND ${target})
 endfunction()
 
 add_settings_unit_test(settings-controller-test unit/SettingsControllerTest.cpp)
+add_settings_unit_test(settings-wallpaper-controller-test unit/SettingsWallpaperControllerTest.cpp)
 add_settings_unit_test(settings-navigation-model-test unit/SettingsNavigationModelTest.cpp)
 add_settings_unit_test(settings-user-profile-provider-test unit/SettingsUserProfileProviderTest.cpp)
 add_settings_unit_test(admin-group-detector-test unit/AdminGroupDetectorTest.cpp)

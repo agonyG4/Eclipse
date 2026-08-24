@@ -1,0 +1,2902 @@
+{
+  "kit": "Astrea Eclipse TopBar Port Kit",
+  "date": "2026-08-18",
+  "immediate_milestone": "M8-A Native TopBar Foundation and Visual Shell Port",
+  "manifest_excludes": [
+    "meta/manifest.json"
+  ],
+  "file_count": 578,
+  "total_bytes": 2522668,
+  "files": [
+    {
+      "path": "AGENT_TASK.md",
+      "bytes": 10578,
+      "sha256": "bd5a79fb8f8e4e2c9a20655bee626dc5644272f8279f91c96bfafc91cb64b589"
+    },
+    {
+      "path": "README.md",
+      "bytes": 2277,
+      "sha256": "9ee0487109e7d78cb664e53639e21478788acf81cb6d98af453024f2851c2d70"
+    },
+    {
+      "path": "docs/00_SOURCE_BASELINE.md",
+      "bytes": 3290,
+      "sha256": "e06e236d327f5578b2a586e06eb582e1ca4a7e51c6ff646b11dc56fc4f9897d2"
+    },
+    {
+      "path": "docs/01_CURRENT_TOPBAR_AUDIT.md",
+      "bytes": 7009,
+      "sha256": "3f71f5a62ae40d958b9314203d6690e3aad4d010869db0e89a3b6e8dc0df736d"
+    },
+    {
+      "path": "docs/02_TARGET_ARCHITECTURE.md",
+      "bytes": 8103,
+      "sha256": "35acf5660fe600c19a95a44920afe84eba16062378dbd7cac1474e8a19ac16ec"
+    },
+    {
+      "path": "docs/03_PORT_MAP.md",
+      "bytes": 4874,
+      "sha256": "dd8306ae2585588fd80254aa6f19804d11b574ec1ab8f83d9f94ee6ee356ed33"
+    },
+    {
+      "path": "docs/04_BEHAVIORAL_CONTRACT.md",
+      "bytes": 3517,
+      "sha256": "c4c74105edfda7ba978d18643dbd3f5758c7fe3cbe74f62f769b8102bd577237"
+    },
+    {
+      "path": "docs/05_LEGACY_REPLACEMENT_MATRIX.md",
+      "bytes": 2541,
+      "sha256": "ca8fb746faa2c14e78c21574479d46bb709f747f913992a6b597f12f2f133663"
+    },
+    {
+      "path": "docs/06_TEST_AND_VALIDATION_PLAN.md",
+      "bytes": 4302,
+      "sha256": "1e1c5bae03eea8a61659255e9f1c11b539d55d1527eab1e7b30f6bafaf5f2282"
+    },
+    {
+      "path": "docs/07_RISKS_NON_GOALS_AND_DECISIONS.md",
+      "bytes": 3149,
+      "sha256": "fc23eed7f14f8be8ae2bf810da466e08e13f3d066d2675b3be62bebf53c0b2a7"
+    },
+    {
+      "path": "docs/08_FOLLOW_UP_ROADMAP.md",
+      "bytes": 2459,
+      "sha256": "0d68a34eef365b704ea204b7cfd3896b9a323318d18807dc850af3bed572a07a"
+    },
+    {
+      "path": "meta/astreaos_reference_files.txt",
+      "bytes": 8969,
+      "sha256": "98600fb1137eb40fd96e950835470982d9fa873543e943174ec8908c82717223"
+    },
+    {
+      "path": "meta/eclipse_target_files.txt",
+      "bytes": 16497,
+      "sha256": "44da76bd2c80e5a637ca846f7a11a2f8793d7846b32f7a958d1589e6fed9018b"
+    },
+    {
+      "path": "meta/input_sha256.txt",
+      "bytes": 317,
+      "sha256": "9bc648c9dbc14aee1e427a1c9910c21f0b896271e1ab6cb424ee79a802a1ad59"
+    },
+    {
+      "path": "reference/astreaos/src/Assets/ui/quickshell/bar/astrea.png",
+      "bytes": 6140,
+      "sha256": "f7846faab3907a0364221a44b673f59a0040ff01d4606abb02ea6fb0d1f42e66"
+    },
+    {
+      "path": "reference/astreaos/src/Assets/ui/quickshell/bar/topbar/control-center.png",
+      "bytes": 9357,
+      "sha256": "54d3b6728106f429d05d7b78b9c1a2b46ee1e4323570b2d1cf3e891b57865c04"
+    },
+    {
+      "path": "reference/astreaos/src/Core/bridge/state_json.py",
+      "bytes": 2559,
+      "sha256": "d27dbabcdfe3d79fbe5c430734ac168b70ebd130d73672e62d8260463880b816"
+    },
+    {
+      "path": "reference/astreaos/src/Core/bridge/system/region.py",
+      "bytes": 9002,
+      "sha256": "ee569deea372fd57d0c6e3e19003d6f168cce62be6353e67c990941272222f0d"
+    },
+    {
+      "path": "reference/astreaos/src/Core/components/Theme.qml",
+      "bytes": 71,
+      "sha256": "df4231c188e4c5bb45d9d618c46c91d0e18b92248ebcb45c41f9caabe7b403bb"
+    },
+    {
+      "path": "reference/astreaos/src/Core/components/theme/Borealis/Apps.qml",
+      "bytes": 3398,
+      "sha256": "02abeb9ad52b1685fafdb3d4cd7052778e8c59562d3cc53877a8dead52b245db"
+    },
+    {
+      "path": "reference/astreaos/src/Core/components/theme/Borealis/Shell.qml",
+      "bytes": 2916,
+      "sha256": "c659f2a57036c2abebf9e015112fdc1f843b2d0eb1756efe67b89d810c61f33d"
+    },
+    {
+      "path": "reference/astreaos/src/Core/components/theme/Borealis/State.qml",
+      "bytes": 4867,
+      "sha256": "448ee871db0713a19e03daead67bd70a64df4c21c86ec8b759355c885b8fb688"
+    },
+    {
+      "path": "reference/astreaos/src/Core/components/theme/Borealis/Theme.qml",
+      "bytes": 9541,
+      "sha256": "81b1c4f29e373784a3faf12f83b970597c78cbe9a8c79052165f86f43fb95cb8"
+    },
+    {
+      "path": "reference/astreaos/src/Core/components/theme/Borealis/Tokens.qml",
+      "bytes": 2142,
+      "sha256": "9d5fc3420876681294942acdf3228b32c9972abcce1f431ba4c29406d526765e"
+    },
+    {
+      "path": "reference/astreaos/src/Core/components/theme/Borealis/qmldir",
+      "bytes": 156,
+      "sha256": "b1ed4450a9f9a9524e1323b67d20f4534e2280dc6b3794ff5e0f2e655dbec0d2"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/AppIcon.qml",
+      "bytes": 6262,
+      "sha256": "4add0145e33f077a494e4bdbfa07d33b8e12dabd473ca305b37492d5cbac3b3a"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/AvatarImage.qml",
+      "bytes": 2753,
+      "sha256": "ebe40e45bbfba053d47356ca930ac782e4d031d3f165692cf1eca62810f65f60"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/Button.qml",
+      "bytes": 52,
+      "sha256": "fa88d647a6a5244ab3ae2cdcec90e0ca0db94927beb21f08bf563c89a5f9c86e"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/ButtonCapsule.qml",
+      "bytes": 59,
+      "sha256": "dd3ccba3656ea970a63c22effaa1780e24e0f459da716dda4a44246b513925c7"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/ContextMenu.qml",
+      "bytes": 45,
+      "sha256": "ca73905d5058f1fe08ff9554154bc4d727a6f3997fa415779c76fa21286ed673"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/ContextMenuAction.qml",
+      "bytes": 51,
+      "sha256": "53e813266c67a23a25be6fcc3649c6fd71a140dca5457c0edb80ec3361b34270"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/ContextMenuDivider.qml",
+      "bytes": 52,
+      "sha256": "333f3f42c1b710745e85d879fba79a3427e793f8b6a1507b91bd1c88be47275c"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/DisplayLabel.qml",
+      "bytes": 62,
+      "sha256": "3a5b976a2c167499a6ee12b751e601b7d5494bc18d6d19163929dad2abd60021"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/Divider.qml",
+      "bytes": 57,
+      "sha256": "5048e800805db1cc74e7c4bf725e5508f57c12c52c12fefd5e9106be69431032"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/DnsPresetChip.qml",
+      "bytes": 59,
+      "sha256": "d57fdb8fbdb834c75a0223f569e78660e642bdcf6539bdbff1ef2802d31122f4"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/DnsStatusCard.qml",
+      "bytes": 59,
+      "sha256": "e03954c59ab4491877cb94f525f3086ec16e5f8f54dbf14ad70281d19ee1b524"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/DualButton.qml",
+      "bytes": 56,
+      "sha256": "32fd59418364d19a0041ed86b87560793ecd4fcc7b7d2c7bd988bb40330c2146"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/FloatingButton.qml",
+      "bytes": 60,
+      "sha256": "f43f5dc9b8f92c9580cce83256e23d1dcc024d506291dbc789dcb04a87f65b7a"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/FormCard.qml",
+      "bytes": 42,
+      "sha256": "bd4feb65bf1b5c29efe832010dc2f96ee6c04647f412d5b49784191d927ca976"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/IconListRow.qml",
+      "bytes": 45,
+      "sha256": "07a30bb33e631e64d1c4debd2fa89868dca906aaa4243a16190ed3e5707a3ccc"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/NavItem.qml",
+      "bytes": 59,
+      "sha256": "63cf85c606c600a4c70836bc997d6e918b71bf2d42d612e0188b83a893a3b17e"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/NotificationClient.qml",
+      "bytes": 64,
+      "sha256": "ad7dfc48be8a1a6eb5a3225f60d5f24f4830ef3260def6487c4fd9c9657882f8"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/ProgressCard.qml",
+      "bytes": 58,
+      "sha256": "9fa703e1340e78be169380afc5459e66364ff634a129914076157ff018e5357b"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/ReorderableStack.qml",
+      "bytes": 7353,
+      "sha256": "c271ffc4ac411ced10503f0e3c4b22c327f3891cba3a7e63c7ab41c1a8541b07"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/ScrollPage.qml",
+      "bytes": 44,
+      "sha256": "3372384346e34d4859b8cc30daa72338a5a9a162f14682b65b49fd0c3b40cb45"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/SearchField.qml",
+      "bytes": 45,
+      "sha256": "7df4aff602e598a669a00b33d4064fcb706f81d1650b59da5248c3f09b3b2374"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/SectionHeader.qml",
+      "bytes": 47,
+      "sha256": "f3d9d7542005e327038cccf97429bb90ab5a2a400124267a02af3da114cf9dc2"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/SelectButton.qml",
+      "bytes": 46,
+      "sha256": "53273078bf04b241370b4b30266cb330d0f3037080132b4c29a071803b6887c9"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/SettingRow.qml",
+      "bytes": 44,
+      "sha256": "3b2b5596bcb9212bd668e0308c0928e1719790f1946aa71a08e0fefc5d4a5c7d"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/Sidebar.qml",
+      "bytes": 59,
+      "sha256": "510953ad203d7fac9326cecc4bcd2bcd3c9e1e93e57b30d06cfaf444be12721c"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/SidebarFrame.qml",
+      "bytes": 64,
+      "sha256": "c39917daab8bd1ea711258a993d2993eec2fcbe8b14965d89281dc9316170654"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/SpeedCard.qml",
+      "bytes": 55,
+      "sha256": "24d156f332c7da6a27070f5a27e6e64f8883030cd71b77734140382a4355bac5"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/StatusDot.qml",
+      "bytes": 55,
+      "sha256": "b2801bf6bd31f198ea8c06ae8bb0eb2318a537d55c8fc245ae12b88712562d25"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/TextLabel.qml",
+      "bytes": 59,
+      "sha256": "03aa0a682303da6400ce3abf10fb90fd65048d61ef0765adfc62d1c20940e59b"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/Theme.qml",
+      "bytes": 71,
+      "sha256": "df4231c188e4c5bb45d9d618c46c91d0e18b92248ebcb45c41f9caabe7b403bb"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/ToggleSwitch.qml",
+      "bytes": 46,
+      "sha256": "9871530a3b6de4b9f43d37fa9ba8cdfc1cbd1fefe7d64438e89aac0e02b39f36"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/controls/Button.qml",
+      "bytes": 4555,
+      "sha256": "dcc3680a55c67432eb38701674c9eefb4446089e38ecdc928d9a8582d1ca8003"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/controls/ButtonCapsule.qml",
+      "bytes": 3754,
+      "sha256": "e19987c6f73c267c695aaed0f1c86db792751323442fe7715f2dd95478dc0233"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/controls/DualButton.qml",
+      "bytes": 12003,
+      "sha256": "f68c1e69c383f573f0f6f03c8931a6ca997c882e83e054b0289c787fcf0a95cf"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/controls/FloatingButton.qml",
+      "bytes": 4315,
+      "sha256": "226c5308c013430f74a98af4f36cec5c201f67cf9403ef5812ff9dd3a9b1dd9d"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/feedback/DnsPresetChip.qml",
+      "bytes": 1627,
+      "sha256": "1cb2d05f1c8e81f9d2abb88ab6aee25d3c3c89568bdae648d10321b878368d32"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/feedback/DnsStatusCard.qml",
+      "bytes": 2614,
+      "sha256": "e1b3354b01e17d0523040e2dbf22078948995377509b0f63b7b09d5c25febbb1"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/feedback/NotificationClient.qml",
+      "bytes": 3923,
+      "sha256": "466fb68ffebad5d1054a7ec54b130423b0da820837ec7038a0dd5e774302d1aa"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/feedback/ProgressCard.qml",
+      "bytes": 3771,
+      "sha256": "02b6194158993a8cbcf503739b085d2be262c3e69aaa32d7bc2a22d98ebaf3fb"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/feedback/SpeedCard.qml",
+      "bytes": 3876,
+      "sha256": "13eba0048a95fb589acba512bdb4c4cdff7453bf3bddfaa2f9fea8e19a81feef"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/feedback/StatusDot.qml",
+      "bytes": 999,
+      "sha256": "bbfb5213bfbc52b3e57526b5b52a609d927c1112d242cbdaf4314a21226325f9"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/form/FormCard.qml",
+      "bytes": 630,
+      "sha256": "54cdd5b9e27fac28441e971b913ef29c96288a689bfc533ed0db9d0eabd08406"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/form/IconListRow.qml",
+      "bytes": 3368,
+      "sha256": "db23c8e3f8ceda63610301bf00a216d28d60449c5f6e01c013fcc3ee9bbb0a1a"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/form/ScrollPage.qml",
+      "bytes": 2011,
+      "sha256": "f227a840326ffc9e4d958c9efc82d6c911b9c5a171ea5a15fc0a0c891ac3fd66"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/form/SearchField.qml",
+      "bytes": 6156,
+      "sha256": "3e990e315c7c774d0ac2f468a739f8acb91bd04c3aaacd4334a3e9f8e14335f0"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/form/SectionHeader.qml",
+      "bytes": 1788,
+      "sha256": "6fc5203d9b1167ea9f8bc20bdac4f8ede17bb7323a8355f04767b0187b5c17fe"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/form/SelectButton.qml",
+      "bytes": 10403,
+      "sha256": "68034c846fce089d10d9c07855c21d3c0bd1460d111ef063e687bee977bd2bff"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/form/SettingRow.qml",
+      "bytes": 5059,
+      "sha256": "68fe8828e13f247e2728ca2b17b38442b7155408becfdd6c2d7135452ca5ef08"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/form/ToggleSwitch.qml",
+      "bytes": 1738,
+      "sha256": "b66d52a7ba78f5239475025dc0b786c671b9c42339b0fd93c82949720da2350e"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/menu/ContextMenu.qml",
+      "bytes": 2857,
+      "sha256": "8bad7e357ef2635a785d3da9ee7a6cceb3e3724228dbb83d1fcb0f6a4ed8b809"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/menu/ContextMenuAction.qml",
+      "bytes": 1865,
+      "sha256": "760231d25e134e02ebccf3c3e52bdd9b1735d8faba7f43375df8fc43ab3e7d3b"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/menu/ContextMenuDivider.qml",
+      "bytes": 455,
+      "sha256": "35b20f6546618aa400ed1ec6f011c9569dc14dc61e52a06af15b65b4f6a32338"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/navigation/NavItem.qml",
+      "bytes": 8268,
+      "sha256": "a561f1c0d090dfb6bccb170636b202ded50494af4d485e291c633e71eeb7f565"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/navigation/Sidebar.qml",
+      "bytes": 10213,
+      "sha256": "8a64fba6dbe1d099217a2d5f857602b076ca6068d208de4079f206704517c7e0"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/navigation/SidebarFrame.qml",
+      "bytes": 1815,
+      "sha256": "587cc71534082204fc0ce881f7f1bb0e7a4a648f2976ff9e93ece5609ef3bf22"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/qmldir",
+      "bytes": 1090,
+      "sha256": "3fb13378e9e37654ff1d59fa5a24bdd5fa78187a4e5c99c1350bd2c747ddde64"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/sidebar/SidebarCollapseButton.qml",
+      "bytes": 2219,
+      "sha256": "71c12c2ea11e3ee1752eda6cd447e2374a9226bbc009e96e85ce1815f5887268"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/test_notification_client.py",
+      "bytes": 1209,
+      "sha256": "c40268ddcb124022b7c5c3816846e0802aa8eb8fb3fe71c6844a69807c23a4ee"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/theme/Borealis/Apps.qml",
+      "bytes": 3398,
+      "sha256": "02abeb9ad52b1685fafdb3d4cd7052778e8c59562d3cc53877a8dead52b245db"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/theme/Borealis/Shell.qml",
+      "bytes": 2916,
+      "sha256": "c659f2a57036c2abebf9e015112fdc1f843b2d0eb1756efe67b89d810c61f33d"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/theme/Borealis/State.qml",
+      "bytes": 4867,
+      "sha256": "448ee871db0713a19e03daead67bd70a64df4c21c86ec8b759355c885b8fb688"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/theme/Borealis/Theme.qml",
+      "bytes": 9541,
+      "sha256": "81b1c4f29e373784a3faf12f83b970597c78cbe9a8c79052165f86f43fb95cb8"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/theme/Borealis/Tokens.qml",
+      "bytes": 2142,
+      "sha256": "9d5fc3420876681294942acdf3228b32c9972abcce1f431ba4c29406d526765e"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/theme/Borealis/qmldir",
+      "bytes": 156,
+      "sha256": "b1ed4450a9f9a9524e1323b67d20f4534e2280dc6b3794ff5e0f2e655dbec0d2"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/theme/Theme.qml",
+      "bytes": 68,
+      "sha256": "3d29dbd7d17e853dcbb76823982e39401d26437b0bb3d95475833f1f80765b9e"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/typography/DisplayLabel.qml",
+      "bytes": 469,
+      "sha256": "d93c3dff0e4b75507d1c8366e3f9a2b4574e532930da098b6042db3365c537d1"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/typography/Divider.qml",
+      "bytes": 329,
+      "sha256": "3a2796c1906051ca453c68242fba492c19294ced19d05775b1a492e785f3aebb"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaComponents/typography/TextLabel.qml",
+      "bytes": 469,
+      "sha256": "d93c3dff0e4b75507d1c8366e3f9a2b4574e532930da098b6042db3365c537d1"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaI18n/I18n.qml",
+      "bytes": 2786,
+      "sha256": "369a15c73128a75d99c9fc249983532035c686ce4b98020f04d94a3b02682410"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaI18n/en_US.json",
+      "bytes": 60152,
+      "sha256": "541209ab7f2043f1edf6416a0f4b96e512d3f0ba5c48a310424b6c3339528718"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/AstreaI18n/qmldir",
+      "bytes": 46,
+      "sha256": "7995ea27b978ac3449eabf7931f69f2b39e1f2b85305ff12f29a2979d3bb3b48"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/Bar.qml",
+      "bytes": 10375,
+      "sha256": "51e84b40afab665d38e5a412e3892bd8fe052f4e8c1a4ec716698080f8a04ec6"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/Theme.qml",
+      "bytes": 6344,
+      "sha256": "9af467cc925ac065e94444897ed9aeccadd5ed4ee18f1d0dcfdfcde27902ef96"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/modules/StatusFile.qml",
+      "bytes": 1819,
+      "sha256": "30f55422d5262088d8eb088bf3ffaff9298e3c314062daa444580661c5a95593"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/modules/audio/AudioProcess.qml",
+      "bytes": 1978,
+      "sha256": "682be116fcd3a1533c04f8676be5517557b9b0fec5d18c986654ed9e755d143f"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/modules/audio/qmldir",
+      "bytes": 34,
+      "sha256": "395d390e1742446c38ab2e43d7fd6c4a933695deb3f235684b12e19b246d87e4"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/modules/bluetooth/BluetoothProcess.qml",
+      "bytes": 7343,
+      "sha256": "17994f7a3bc4595169f4df42a1ed2e6a331493f4b330162e95e5032a58624641"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/modules/bluetooth/qmldir",
+      "bytes": 42,
+      "sha256": "a6c1ae29549d8111f35ad4edfec153decb7c698899101082af4585c6c22de977"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/modules/network/NetworkProcess.qml",
+      "bytes": 1141,
+      "sha256": "ee439106d7cd568418285d77d0dd05ce4041ef2ee8183cdbf3dfef8825a0f19f"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/modules/network/qmldir",
+      "bytes": 38,
+      "sha256": "aaa851c1fe874997ed4525f9176ffef0d0feece43de4f14f8da68ac626283c3a"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/qmldir",
+      "bytes": 42,
+      "sha256": "c0fa1c36bd1d36bc2285c833599e73476b6936844b00a5a157a4ea0815245c04"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/BarContent.qml",
+      "bytes": 3976,
+      "sha256": "bee91a7ae77b10ebd3e6be4959f34a070f52ce56ab2f9dc3290459756d4afdd7"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/astrea/AstreaPopup.qml",
+      "bytes": 2566,
+      "sha256": "0726bf22c87702379e86380d4ffead28b1cecde5add3f43c5a6629e77733fc65"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/astrea/MenuItem.qml",
+      "bytes": 2351,
+      "sha256": "0c88d28d8d4f1f10c3a4798f98e6fbf6385d64e68a9e9d5bf1c0c58011db4fa5"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/astrea/MenuSeparator.qml",
+      "bytes": 235,
+      "sha256": "2b77d678580139ec0b6c185bfa2dc8aad34a44f5bdb31c55e43689d352d9a748"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/astrea/qmldir",
+      "bytes": 104,
+      "sha256": "49f8f020e1b37c453b6dd75605177bc40e706ca630b6bc667bde2eda31f14227"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/bluetooth/BluetoothIndicator.qml",
+      "bytes": 2948,
+      "sha256": "b73b2e0dd3fec6d8e33cd328a4e66252cb76474c77733729575b778f8a31a2ad"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/bluetooth/BluetoothPopup.qml",
+      "bytes": 14855,
+      "sha256": "4ced4eb4093e09f14a74680e3f58c49312910266b264d8114f5a0efa8fe92a93"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/bluetooth/qmldir",
+      "bytes": 88,
+      "sha256": "c3ad8008bffff34ec08b506d01e28deda922bf34dbf238e4c81178f3dc594761"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/controlcenter/ControlCenterButton.qml",
+      "bytes": 796,
+      "sha256": "2f896ea94a1d7dea4d5ce3939cdc73f994c8606ebb7830293c00ba850e2dc8c5"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/controlcenter/ControlCenterPopup.qml",
+      "bytes": 21276,
+      "sha256": "d3aee417740424ee8a2f843b514fc88434950a83ec1b61e9496464085b5f3e95"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/controlcenter/ControlCenterRegistry.js",
+      "bytes": 8133,
+      "sha256": "759237abcdf2dba47f0e996b24d20370a8a8f7cfc60f347e139c04a5db0a80cf"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/controlcenter/ReorderableStack.qml",
+      "bytes": 20091,
+      "sha256": "9f602e868dc4e982749d2691a3d65b26f890f801d3ed565db03f20f0b9c85ef1"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/controlcenter/modules/ConnectivityModule.qml",
+      "bytes": 2862,
+      "sha256": "4227b55863c8cbcb95ee719c4beebdba6d59f683e6a41461dceb4268f7a98d90"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/controlcenter/modules/ConnectivityRow.qml",
+      "bytes": 2891,
+      "sha256": "d12053f58ce280c2cdda919533244f1733d072b77b9d369e0d1bdaa5b0cc560d"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/controlcenter/modules/ControlTile.qml",
+      "bytes": 4804,
+      "sha256": "1446ce2ac9d599051a91c70c5f623d9036c6d0250340430fa9d3cabd6d1abc73"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/controlcenter/modules/ControlToggleModule.qml",
+      "bytes": 3671,
+      "sha256": "3dfe40b7986866033a64ccc82c186a7aed42011a60fd3b7f25483d693b874f8a"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/controlcenter/modules/MainControlsModule.qml",
+      "bytes": 504,
+      "sha256": "58c3f274f541bf22478156deeba8e6c1bc2f8834d0e4ee9b51fdfc31ab28b342"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/controlcenter/modules/MediaButton.qml",
+      "bytes": 1333,
+      "sha256": "b043dd6d3557749e44d566dce48b42325148755bd71f014f798be56ca8a0c8be"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/controlcenter/modules/NowPlayingModule.qml",
+      "bytes": 3617,
+      "sha256": "9fb2b4a067755a55f6ed5a07fe25b13a8a8e1c1f5531966f9fda80566df7dfa8"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/controlcenter/modules/QuickTilesModule.qml",
+      "bytes": 2308,
+      "sha256": "e11fca463fde566fbb5b337388c3ad1e28ec47761a11050c5d26fbc9dc11bdaa"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/controlcenter/modules/SliderModule.qml",
+      "bytes": 7549,
+      "sha256": "26b389e22f13a69b0d472efcd5c57bf021376e15197cd54845aa4ef3d8a4d04d"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/controlcenter/modules/WidgetLibraryOverlay.qml",
+      "bytes": 1230,
+      "sha256": "62be7f055c473a28b11583da0ce1f0ea8c9e0c34de59d12635e7441edeb76caa"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/controlcenter/modules/WidgetLibraryPanel.qml",
+      "bytes": 5271,
+      "sha256": "78e7884385375a3fb57f3015ba83283230c175c202e1ecc8a4678f1f81c1bd09"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/controlcenter/modules/WidgetTemplate.qml",
+      "bytes": 2109,
+      "sha256": "08157752da28d4b411884456e3b284e48dbfb83b6f5543059f5117335a3865ae"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/controlcenter/modules/qmldir",
+      "bytes": 537,
+      "sha256": "30051b8903c7123c165c8a6a7d56255b95e0d42092f5c3092cd0d01e1e5c7aad"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/controlcenter/modules/test_now_playing_module.py",
+      "bytes": 644,
+      "sha256": "e5eb871de90a5f24ec0b00bea54b1a3c518f0f2779bd347249e27857e25712ed"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/controlcenter/qmldir",
+      "bytes": 140,
+      "sha256": "96659d294837d24659bce7e1f968257b170bdddd533a5381eeb00c3f95247dfe"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/network/NetworkIndicator.qml",
+      "bytes": 654,
+      "sha256": "6df809a21975347aace0d5998bb63d6acc5e900f65105b7049672f3a775cebe3"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/network/NetworkPopup.qml",
+      "bytes": 2020,
+      "sha256": "e4bcac0bc16e0db69c2e84357f4679c4c4384e1f147d6970054d34e89e6c2b59"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/network/qmldir",
+      "bytes": 80,
+      "sha256": "f21f43b2ea8574a1be5fea6a7cabacb8db3c91888dd882d5b547b5c58fa8b5e1"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/system/base/BarSegment.qml",
+      "bytes": 1115,
+      "sha256": "683968fa7c2c4966cac1bb0b9722f37d291abcf4c704c4e6598dc7fc605f58cd"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/system/base/Clock.qml",
+      "bytes": 8472,
+      "sha256": "5832a0d5faa1908b1b8438b1c73c2c7294ad517bfb2862044e46cbd774af4594"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/system/base/IndicatorButton.qml",
+      "bytes": 2648,
+      "sha256": "4b3323fdb3f765f190b56138834ad206e2bff62c8c6e6a3f59ee3e0706f79a6a"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/system/base/TopbarIndicator.qml",
+      "bytes": 385,
+      "sha256": "cdf331b664afcfc3a99a39f201cfe0a07015bd569107ebbea7fa8447dbaee62a"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/system/base/qmldir",
+      "bytes": 145,
+      "sha256": "cdaec5eadade769555dd2e0e22e9e1911322dda667c528899dbd11b25a754262"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/system/popups/PopupHeader.qml",
+      "bytes": 1691,
+      "sha256": "654732f3dfc2c91df88244eca754ec07dad9e329e37da1eb9d916ba666efd5b3"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/system/popups/PopupHost.qml",
+      "bytes": 1387,
+      "sha256": "0ca38b4e3a469a03a0800332bd46bbc67f69daecc6288e79a097e1c95d0cff78"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/system/popups/TopbarPopup.qml",
+      "bytes": 7528,
+      "sha256": "e7b1229e76fef8ed61562a62fa2f703d2493b326c3ca1ec2793960f602bc1140"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/system/popups/qmldir",
+      "bytes": 94,
+      "sha256": "5e80ff26eff7d9038b06e8baa1a02a4d3824fc1dd06c6a90dbfa33bb0b9476f3"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/system/qmldir",
+      "bytes": 417,
+      "sha256": "3c35e5d987749f6648cb3bc196a1133f66b842ddb072e7ba3ef09017cfdebb1b"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/system/tray/Tray.qml",
+      "bytes": 3228,
+      "sha256": "422803cf1d13f0cd3ad0431ece1d51cdd772710282bce81906e213ceeebd3ca1"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/system/tray/TrayContextMenu.qml",
+      "bytes": 5188,
+      "sha256": "09afd5e566f1ae4d2956d3a322e23ee93acdcadf772c6d8814de6d1d4bbe9690"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/system/tray/TrayIcon.js",
+      "bytes": 519,
+      "sha256": "17a6c9901c317e20ec07fdf9cc608c3e7f1ad227659d9a1826ad0739a0629d8e"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/system/tray/qmldir",
+      "bytes": 69,
+      "sha256": "bc324b5050eafe0240d1860eb04361149921968da0b30cb29a2798da3c7d2271"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/system/workspaces/Workspaces.qml",
+      "bytes": 2358,
+      "sha256": "b862b2c11dfc865105d6ca258bcf76562cb219d5b5c21f4a7812d8f46f8d7add"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/system/workspaces/qmldir",
+      "bytes": 30,
+      "sha256": "773ac5acc3876f3d2b03195d46b4b966c466c152539d72e7df1fecc290aa9b1b"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/volume/VolumeIndicator.qml",
+      "bytes": 814,
+      "sha256": "e1a5dccc1938a0e166e8836046531de7679ce55059d3db7bbd0fbd74f116ae5e"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/volume/VolumeOsd.qml",
+      "bytes": 11395,
+      "sha256": "4721b0f673a67641b751013c3ae9e3bda3f9d52f2e05fdd1d86fdf7361c51587"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/volume/VolumePopup.qml",
+      "bytes": 8784,
+      "sha256": "b80f1bd41c9f3fce2cb8fbda018994c9b0779b89a2b67c7faecbe854b60790de"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/components/volume/qmldir",
+      "bytes": 110,
+      "sha256": "224702e7227e0ed4621d8df8c2c48c1bb99afdf391072d76ff4d688c48a9ecf6"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/bar/ui/qmldir",
+      "bytes": 30,
+      "sha256": "8092835a65f764ce648783e3a2183d85cc0c486142de9a646cc7633c2a7aac88"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/island/modes/music/MusicArtwork.qml",
+      "bytes": 2573,
+      "sha256": "b095d6ed5e2ffc3840dbde8f96eba8d4860e97a731f3c0dc5fe6908cddd169d5"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/island/modes/music/MusicCompactBars.qml",
+      "bytes": 1411,
+      "sha256": "2ce65c78e3a7c42d45ac8bbf85e5340875215c4e932b686e9142a9692c6792b4"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/island/modes/music/MusicMode.qml",
+      "bytes": 1159,
+      "sha256": "a6e0a3b7cc54f0abf74618d50edd205138a1699a727aeaaa86127ec03865b2f2"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/island/modes/music/MusicMonitor.qml",
+      "bytes": 9434,
+      "sha256": "6bbf0bdbc17ebf25191f3b985f811cafe13ad264d67c13eb6b341d7b83e7f48a"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/island/modes/music/MusicView.qml",
+      "bytes": 10904,
+      "sha256": "3c0eb6e40af241d721ff34125ad2b62af5004b48416f96d30e5b56fcc50edf19"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/island/modes/music/qmldir",
+      "bytes": 188,
+      "sha256": "0cdd6a3e3d893e6147a2fd03df70d9d2884eaaeaf7029acd50ca5cce9fb0a7d3"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/island/services/ArtworkFetcher.qml",
+      "bytes": 807,
+      "sha256": "e8de3eba99872e940816b46f30546098dce47d767088a3d1212d1b4592317016"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/island/services/DominantColorProcess.qml",
+      "bytes": 1104,
+      "sha256": "837e7147beff0e6f2b5a9c13b742e694e406d643b0a234793fb9c6afbde05b42"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/island/services/PlayerCommands.qml",
+      "bytes": 1760,
+      "sha256": "1d6be8260ced9aaa88bfbba2d3bb39febd6e66c75f9199109aa355cfe655fb7e"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/notifications/Notifications.qml",
+      "bytes": 1554,
+      "sha256": "a37d46197b128ee37c510319a40e8ced2db853e23708c20552ffea2db06f8d44"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/notifications/core/NotificationStore.qml",
+      "bytes": 6402,
+      "sha256": "19154f3d8bc9746ca137e026ac2a6e4fdbc82bf6d31bf6345cde6592dd8d2d8b"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/notifications/core/qmldir",
+      "bytes": 44,
+      "sha256": "f262573c15762db5b408450adff0245dc70c5e7d083454876e60bd7bb1aef34e"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/notifications/notification_daemon.py",
+      "bytes": 20859,
+      "sha256": "4b7539ec92c63759b7c0f9b9820ae2cc43d160db99b710bffbc928e89daa2a44"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/notifications/qmldir",
+      "bytes": 36,
+      "sha256": "e725004250e5cbb36892d5145f38e96d6b96c6847430963b93fab5a635b7edbf"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/notifications/test_notification_daemon_contract.py",
+      "bytes": 4916,
+      "sha256": "406f8fd08620a7e5fa372b18cc2e7d45aa154549b86ac55cac838d1a72301c00"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/notifications/test_notification_history_panel.py",
+      "bytes": 4310,
+      "sha256": "34463c3c9b031ea904e572997a1fea02a57980c3e27775e1c0b5e9801c4ca657"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/notifications/ui/NotificationCard.qml",
+      "bytes": 6160,
+      "sha256": "2b8ede88019af4f2d7373943e43e78f6b0ea1df96aed82861076e2b2e56678de"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/notifications/ui/NotificationHistoryPanel.qml",
+      "bytes": 6483,
+      "sha256": "8d3552b6c71a61906416b26e30a118ebc161cdf6ac5c7f860170a3ef13f37da4"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/notifications/ui/qmldir",
+      "bytes": 100,
+      "sha256": "0d159401b5501dbc7accbf5cb094fd3de21b3aa8d8dacef6b0ec0e5fe109e23d"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/runtime/ComponentServiceManager.qml",
+      "bytes": 3672,
+      "sha256": "76e76957130e79ee4704b333b8a4b16ae586a4490e86bc6a7d4217baffc94ff5"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/runtime/ComponentSettings.qml",
+      "bytes": 2254,
+      "sha256": "277718f7ea19890f6a94ec01abd28e7f76ee8d84c292e12c3aee826c334c2a58"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/runtime/GameModeManager.qml",
+      "bytes": 2348,
+      "sha256": "24b39557f3841f76eb5694a69913b32d8a21eaf29d201e7e1f5f3d6e0ba087ae"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/runtime/ShellRuntime.qml",
+      "bytes": 2317,
+      "sha256": "aa067aa19adb1dae7870b7c933d279fe92dd94aafe8d4444e4e9acf13e6e5687"
+    },
+    {
+      "path": "reference/astreaos/src/Quickshell/shell.qml",
+      "bytes": 3002,
+      "sha256": "e0027388d7bc8e5676e7952c0bb8387a3112c33d570736bcae9a29b637965c17"
+    },
+    {
+      "path": "reference/astreaos/src/System/i18n/en_US.json",
+      "bytes": 60152,
+      "sha256": "541209ab7f2043f1edf6416a0f4b96e512d3f0ba5c48a310424b6c3339528718"
+    },
+    {
+      "path": "reference/astreaos/src/System/scripts/bluetooth_manager.py",
+      "bytes": 23055,
+      "sha256": "f942b1423fa71f7f837e0d99941749a533c78e9d6f960b61d4dfea8145fb0cbb"
+    },
+    {
+      "path": "reference/astreaos/src/System/services/astrea_statusd.py",
+      "bytes": 15795,
+      "sha256": "4b27604c19d622c661c974fd4bdd69e34dab9a42c908d3947aab8145f055e37d"
+    },
+    {
+      "path": "reference/typhon/TYPHON_VS_KWIN_VS_HYPRLAND_AUDIT_2026-08-10.md",
+      "bytes": 74098,
+      "sha256": "4246bad489ecc56f9567666092ae5dfecee816bcd3e089e212b92337e5f9defb"
+    },
+    {
+      "path": "target/Eclipse/.github/workflows/ci.yml",
+      "bytes": 7358,
+      "sha256": "c73cc1b6ad1b9ce66c68d9bc4ef40d85d8bd1a0ca4257a6db26c97d50a7576e8"
+    },
+    {
+      "path": "target/Eclipse/.gitignore",
+      "bytes": 338,
+      "sha256": "f860f18005f54d95ca1f8f4d312bf056b40021c74c8b539a329fea46cdbd405e"
+    },
+    {
+      "path": "target/Eclipse/AltTab/.gitignore",
+      "bytes": 52,
+      "sha256": "136458ba6c598ffdc3b9852bd5d547d64962240ccd00c175b9e7406b592b0983"
+    },
+    {
+      "path": "target/Eclipse/AltTab/CMakeLists.txt",
+      "bytes": 6300,
+      "sha256": "2e2527e3b47815a03bd1651604d9b7f8cfc640bea944253d27baaab78587590a"
+    },
+    {
+      "path": "target/Eclipse/AltTab/SUMMARY.md",
+      "bytes": 3969,
+      "sha256": "50a5149d69185a05709e3c490e09b457c70652820d00971b15ea0e6284430cd0"
+    },
+    {
+      "path": "target/Eclipse/AltTab/app/CommandLine.cpp",
+      "bytes": 2002,
+      "sha256": "73c665f16c5b189a6c65790d1c8aae71e122ca99b79926640350d5789d96cc3c"
+    },
+    {
+      "path": "target/Eclipse/AltTab/app/CommandLine.hpp",
+      "bytes": 508,
+      "sha256": "4c5476e708472aace6a73b351c6c4212afdec15ddbe9be567d19ed8f6a7495b1"
+    },
+    {
+      "path": "target/Eclipse/AltTab/app/main.cpp",
+      "bytes": 1849,
+      "sha256": "9621da9c240fabd6691495fe855605974e07121f4214881f785899706b72ee0a"
+    },
+    {
+      "path": "target/Eclipse/AltTab/cmake/AltTabSanitizers.cmake",
+      "bytes": 1041,
+      "sha256": "3e3d4fce4fba248b297432e42984ddb2e8cd3e3a66283e65c7465d9e980a8036"
+    },
+    {
+      "path": "target/Eclipse/AltTab/cmake/AltTabWarnings.cmake",
+      "bytes": 191,
+      "sha256": "9b49c951d97954ec4b15d1773b67b5149a7704f72d905b8d817376c555d7054b"
+    },
+    {
+      "path": "target/Eclipse/AltTab/core/AltTabController.cpp",
+      "bytes": 14786,
+      "sha256": "00d30a4972e87d19a83f3904c9217bc7a214bfb0b6952d150c0988491a6adff9"
+    },
+    {
+      "path": "target/Eclipse/AltTab/core/AltTabController.hpp",
+      "bytes": 3346,
+      "sha256": "06280f8f2fe8d91772169f02f03057e526bc3cb0e0b1e20dfed87a1bf53eedee"
+    },
+    {
+      "path": "target/Eclipse/AltTab/core/AltTabShortcutRouter.cpp",
+      "bytes": 1122,
+      "sha256": "89ca9deefe51d8def5d53e18fdc2ca1851e3f8d65b3eb1f6438a85658c532f89"
+    },
+    {
+      "path": "target/Eclipse/AltTab/core/AltTabShortcutRouter.hpp",
+      "bytes": 449,
+      "sha256": "d1f24070139187dd5c20a7e040439e924b10a669284be45b5af0742b0113165b"
+    },
+    {
+      "path": "target/Eclipse/AltTab/core/AltTabWindowModel.cpp",
+      "bytes": 10537,
+      "sha256": "cdb40e5581992a2bb77207cc581656a5830ef0932d38724f3b0d6715f50bba3d"
+    },
+    {
+      "path": "target/Eclipse/AltTab/core/AltTabWindowModel.hpp",
+      "bytes": 1461,
+      "sha256": "6b80e7fa5649e910470ab904d3cb3fe588623126f274f3cab681fee80ed04c8f"
+    },
+    {
+      "path": "target/Eclipse/AltTab/core/CompositorTypes.hpp",
+      "bytes": 1216,
+      "sha256": "02dfaf39baa62fc9c3e2122291c9f8ce587787f91df947f686ab2e41d49f1766"
+    },
+    {
+      "path": "target/Eclipse/AltTab/core/WindowInfo.cpp",
+      "bytes": 3499,
+      "sha256": "0c8d97d8a111f3ec9297764afbcb8b2bc925d35b6a68ae598a484e6fadf7beec"
+    },
+    {
+      "path": "target/Eclipse/AltTab/core/WindowInfo.hpp",
+      "bytes": 2248,
+      "sha256": "63c28cefa8ae00dcfdf8a251db1e9d4300b37ed52bc038e89208d30993ce9c89"
+    },
+    {
+      "path": "target/Eclipse/AltTab/docs/ARCHITECTURE.md",
+      "bytes": 3034,
+      "sha256": "f22c47d1a2fa56e2bc2d5e17395dca7678cde680a9a617e85275db15369e81a3"
+    },
+    {
+      "path": "target/Eclipse/AltTab/docs/IPC.md",
+      "bytes": 1379,
+      "sha256": "48802726615b73c278586dd2ebc6a2fc45680c4cfcbbb45691e4391ba8c0460a"
+    },
+    {
+      "path": "target/Eclipse/AltTab/docs/RUNTIME_FLOW.md",
+      "bytes": 3298,
+      "sha256": "ec6f97f197e3e362aa6442abefd62dda4daf661fb2afd95a33bc257f47920904"
+    },
+    {
+      "path": "target/Eclipse/AltTab/docs/TESTING.md",
+      "bytes": 1236,
+      "sha256": "9cacb55a4e9bb2488ff1018d1f3e781226456d8fd510bda24e08dc50b2d2c394"
+    },
+    {
+      "path": "target/Eclipse/AltTab/docs/TYPHON_BACKEND.md",
+      "bytes": 4051,
+      "sha256": "8edd72e95dfb5180b16ff7daa058dd0478b5a8f5a76c831a3d489240bfd3e184"
+    },
+    {
+      "path": "target/Eclipse/AltTab/lsan.supp",
+      "bytes": 478,
+      "sha256": "44118dbba49da7f24b0868d687da24aecdd800e806b0dae66eccb384a28811f4"
+    },
+    {
+      "path": "target/Eclipse/AltTab/packaging/hypr/astrea-alt-tab.conf",
+      "bytes": 983,
+      "sha256": "07c1e67de676e3c8fddeea1f62934c0b9cb134edfcdb2f7ef7211eb9bf65dbab"
+    },
+    {
+      "path": "target/Eclipse/AltTab/platform/compositor/AutoCompositorBackend.cpp",
+      "bytes": 9290,
+      "sha256": "86185dde82f0dc2be226d1c53d2a5194bfd68ebf1d079d5df45cebd9c5c80d15"
+    },
+    {
+      "path": "target/Eclipse/AltTab/platform/compositor/AutoCompositorBackend.hpp",
+      "bytes": 2085,
+      "sha256": "ea2739246af247035b769a85c29e3ef5c3cd3294fc1230f0700b325658a9be98"
+    },
+    {
+      "path": "target/Eclipse/AltTab/platform/compositor/CompositorBackend.cpp",
+      "bytes": 274,
+      "sha256": "8c9fab90fb9a2d15382327fb7839a3caacec3980d2a0e168dc14c6126726c985"
+    },
+    {
+      "path": "target/Eclipse/AltTab/platform/compositor/CompositorBackend.hpp",
+      "bytes": 2130,
+      "sha256": "6c6d76037479b5f8e7b63b1f67e3c893d05b453e6d4d21134b4dddd710aa2905"
+    },
+    {
+      "path": "target/Eclipse/AltTab/platform/compositor/CompositorBackendFactory.cpp",
+      "bytes": 689,
+      "sha256": "23eea4ed5be13db1fe88e907dab95dc411a7fe175409146cfd357c30e3dd013a"
+    },
+    {
+      "path": "target/Eclipse/AltTab/platform/compositor/CompositorBackendFactory.hpp",
+      "bytes": 228,
+      "sha256": "a46e03a419d9bdd90bd649e188b17fb6bace932a6dd1bdaa18d9b65eeae4c270"
+    },
+    {
+      "path": "target/Eclipse/AltTab/platform/compositor/FakeBackend.cpp",
+      "bytes": 262,
+      "sha256": "e4a48e00548447f8cd6c8b108020747a3eb1c489660039840f532be7324a90ec"
+    },
+    {
+      "path": "target/Eclipse/AltTab/platform/compositor/FakeBackend.hpp",
+      "bytes": 4350,
+      "sha256": "6ab717b9c8f3614b2f3daf20429d689b9696252bd3fd30c8e6b059c3a35e1635"
+    },
+    {
+      "path": "target/Eclipse/AltTab/platform/hyprland/HyprlandCommand.cpp",
+      "bytes": 3359,
+      "sha256": "5f7b61c136bc6580742dcc53b05aa3247f8926c86cf4bf0dc69888ae8fc0957f"
+    },
+    {
+      "path": "target/Eclipse/AltTab/platform/hyprland/HyprlandCommand.hpp",
+      "bytes": 829,
+      "sha256": "75f3bef203567d386669fc2f37d368f71ce936f1cbbee42040a344733e3bee3f"
+    },
+    {
+      "path": "target/Eclipse/AltTab/platform/hyprland/HyprlandSocket.cpp",
+      "bytes": 10427,
+      "sha256": "1662136463589400c667a7bcd102c94f408ed15e942d7caf2565813004db5b70"
+    },
+    {
+      "path": "target/Eclipse/AltTab/platform/hyprland/HyprlandSocket.hpp",
+      "bytes": 3709,
+      "sha256": "f45be4aa8dea132cc494b98ccc4d2568a6420c0e2c040ba3a2ed297d41a910a4"
+    },
+    {
+      "path": "target/Eclipse/AltTab/platform/hyprland/HyprlandWindowSource.cpp",
+      "bytes": 18538,
+      "sha256": "d998ada1e823a4005c936878dc6739e12bb3dd04f756f6ae6dc92cf995310079"
+    },
+    {
+      "path": "target/Eclipse/AltTab/platform/hyprland/HyprlandWindowSource.hpp",
+      "bytes": 1430,
+      "sha256": "62b949a43e3c5dd053c69732ea1eec512ba13aa2fb464230dae9c287e0b7a91b"
+    },
+    {
+      "path": "target/Eclipse/AltTab/platform/ipc/AltTabIpcServer.cpp",
+      "bytes": 7115,
+      "sha256": "ed9e47a2ec7e17259f25c61c8c0777a54debfd8e8c8aa8218351f211ec5c0528"
+    },
+    {
+      "path": "target/Eclipse/AltTab/platform/ipc/AltTabIpcServer.hpp",
+      "bytes": 1341,
+      "sha256": "24adb1a1ada1eafe3e87f754a7ec8b2ecb0203f874ca8df74a1fb07bd2eeee27"
+    },
+    {
+      "path": "target/Eclipse/AltTab/platform/runtime/AltTabRuntimePaths.cpp",
+      "bytes": 703,
+      "sha256": "670a28797abfb3191d53fcb1cb0ff2f7905e8f49de6d03f881705c4ba84b2995"
+    },
+    {
+      "path": "target/Eclipse/AltTab/platform/runtime/AltTabRuntimePaths.hpp",
+      "bytes": 387,
+      "sha256": "e0603c2889c67891253ddd60f4ca233408cc03faca8f384bcee1e1f6b1d836fb"
+    },
+    {
+      "path": "target/Eclipse/AltTab/platform/typhon/TyphonWindowSource.cpp",
+      "bytes": 11432,
+      "sha256": "63d455e9276e41b02a569dbbdd5707614b71b183a79d769cdf2c9cc02c6e38db"
+    },
+    {
+      "path": "target/Eclipse/AltTab/platform/typhon/TyphonWindowSource.hpp",
+      "bytes": 1772,
+      "sha256": "e6b8a9b02e336de56cd966a8a3c6adeb80e2bb7572beb4f8215a6c45507232ac"
+    },
+    {
+      "path": "target/Eclipse/AltTab/platform/wayland/LayerShellSurface.cpp",
+      "bytes": 833,
+      "sha256": "4fabc19c2564b6e1cfd3db41fb1a8f8ff60f4e36eaa29fc3675da1bac1e0898f"
+    },
+    {
+      "path": "target/Eclipse/AltTab/platform/wayland/LayerShellSurface.hpp",
+      "bytes": 176,
+      "sha256": "d4f08d4f661327d85549d1df46f2fb678f16cdf09fd387710d27a0267828857d"
+    },
+    {
+      "path": "target/Eclipse/AltTab/qml/Main.qml",
+      "bytes": 1402,
+      "sha256": "f87ee68f3178201ef637942f78e48988b96fed91daac1ea93ff79b67cf1cdc5d"
+    },
+    {
+      "path": "target/Eclipse/AltTab/qml/components/AltTabPanel.qml",
+      "bytes": 2953,
+      "sha256": "4a312ef00427af58d9b233bd527dab8fc277afd6b53f64e78bf8772242da546a"
+    },
+    {
+      "path": "target/Eclipse/AltTab/qml/components/AltTabWindowDelegate.qml",
+      "bytes": 2577,
+      "sha256": "2508bb9872356cae0fe58ef317686fa0151ac8329a80828f84bd589f864a9350"
+    },
+    {
+      "path": "target/Eclipse/AltTab/qml/components/AstreaAppIcon.qml",
+      "bytes": 57,
+      "sha256": "ac18461e5bbae84e1ad958f3d2540235ecd70a37bf94d790847d550c300679e4"
+    },
+    {
+      "path": "target/Eclipse/AltTab/qml/components/qmldir",
+      "bytes": 53,
+      "sha256": "ebef25db868e2c4c0e076654acddeff68e118a55631e2969a4e00610006b2dfe"
+    },
+    {
+      "path": "target/Eclipse/AltTab/services/AltTabConfigWatcher.cpp",
+      "bytes": 2657,
+      "sha256": "e1f1fbc4cb5dec6ef0d3f351000942dffa35b46a8e8e9380cb0fe1a6032aa7db"
+    },
+    {
+      "path": "target/Eclipse/AltTab/services/AltTabConfigWatcher.hpp",
+      "bytes": 936,
+      "sha256": "a922bfe3c35abbd0eca4eb67c3a6c3c278b10c20ef46afa9b853c689189f42b5"
+    },
+    {
+      "path": "target/Eclipse/AltTab/services/AppIdentityResolver.cpp",
+      "bytes": 16977,
+      "sha256": "55ce6d00f2c2c8f61bd3483bc79ee8172221acc06a17fd51f8c818cc32f197ad"
+    },
+    {
+      "path": "target/Eclipse/AltTab/services/AppIdentityResolver.hpp",
+      "bytes": 1968,
+      "sha256": "e2bf0367064f9cc3af8fe32d759ab756d7c15e4137ee0e1fbd588f1f012457ed"
+    },
+    {
+      "path": "target/Eclipse/AltTab/services/appidentity/DesktopEntryIndex.hpp",
+      "bytes": 102,
+      "sha256": "f7e80aac3a374e0b1e64d8193394eb125c5c91168f9323504c421df2bf9d5966"
+    },
+    {
+      "path": "target/Eclipse/AltTab/services/appidentity/IdentityCache.hpp",
+      "bytes": 992,
+      "sha256": "8ce027cc7f94533b7783e328cd41c0a4762ba26f91bfdcf895fee55e96afb44b"
+    },
+    {
+      "path": "target/Eclipse/AltTab/services/appidentity/ProcessInspector.cpp",
+      "bytes": 2790,
+      "sha256": "4a78405754f487a4a1eb3f3876274d95b199837a428506806555f9814afb6cbe"
+    },
+    {
+      "path": "target/Eclipse/AltTab/services/appidentity/ProcessInspector.hpp",
+      "bytes": 488,
+      "sha256": "5fa2d29b9df853ffa49a802fcd67cbe2719d16d3d8dcd2b37bf9ebd82dbabe29"
+    },
+    {
+      "path": "target/Eclipse/AltTab/services/appidentity/SteamMetadataIndex.cpp",
+      "bytes": 5874,
+      "sha256": "6a09dae30a2c0243c500751177bf7713a854f6fd8d4ec79fb85c7c4e9cf8e2c6"
+    },
+    {
+      "path": "target/Eclipse/AltTab/services/appidentity/SteamMetadataIndex.hpp",
+      "bytes": 1378,
+      "sha256": "e10b226f3ad53ff081bb13fc0670c2457bdf97cfddc4b6643f71011af1c5d7ec"
+    },
+    {
+      "path": "target/Eclipse/AltTab/services/appidentity/WineExecutableResolver.cpp",
+      "bytes": 1255,
+      "sha256": "7a14e8e9545ef72c50e9ea3758c173330ce847e517bbe12b2240ff8b6831df63"
+    },
+    {
+      "path": "target/Eclipse/AltTab/services/appidentity/WineExecutableResolver.hpp",
+      "bytes": 158,
+      "sha256": "9b7cbe4b8980259838687beaac3ce1754b309972aabf6ab5cb14b3fae12e6f29"
+    },
+    {
+      "path": "target/Eclipse/AltTab/tests/AltTabControllerTest.cpp",
+      "bytes": 29931,
+      "sha256": "31be42b9ad1a187c144ccfab7c17f3ce8bc059627ed77b1a47c05e5990413ab2"
+    },
+    {
+      "path": "target/Eclipse/AltTab/tests/AltTabIpcTest.cpp",
+      "bytes": 5958,
+      "sha256": "495fdca129f3511c6ce499685e0ae4b530f51f0e9944e6d6e550b5b55ca56c88"
+    },
+    {
+      "path": "target/Eclipse/AltTab/tests/AltTabQmlSelectionTest.cpp",
+      "bytes": 4797,
+      "sha256": "913f237f41c639ae581d9008db341a0722a766a0037550680d771e10bbff1fa9"
+    },
+    {
+      "path": "target/Eclipse/AltTab/tests/AltTabShortcutRoutingTest.cpp",
+      "bytes": 2622,
+      "sha256": "8bcc34a9665aa3f7cce3f271118ec02353691face7034be1d9044d85f2e5d989"
+    },
+    {
+      "path": "target/Eclipse/AltTab/tests/AltTabWindowModelTest.cpp",
+      "bytes": 12191,
+      "sha256": "75b9b2fc77a8fbc7913b5f44bf36e34efbce51c778f1bbd2c4e195235e4a9710"
+    },
+    {
+      "path": "target/Eclipse/AltTab/tests/AppIdentityResolverTest.cpp",
+      "bytes": 7049,
+      "sha256": "e7749b7c67d46bf00ed7f9041799ec64bd24e2872324b4dedd8bad59ff9c3a7a"
+    },
+    {
+      "path": "target/Eclipse/AltTab/tests/CompositorBackendFactoryTest.cpp",
+      "bytes": 19403,
+      "sha256": "7567485a49518faef5cc3235a2071eb956670f86b816636e579a845d57ac30ac"
+    },
+    {
+      "path": "target/Eclipse/AltTab/tests/HyprlandSocketTest.cpp",
+      "bytes": 19033,
+      "sha256": "ef9d4ade1c4e776ed2deb0e850cd8f2a95a408f4cd2eee94ea236699c2002895"
+    },
+    {
+      "path": "target/Eclipse/AltTab/tests/HyprlandWindowSourceTest.cpp",
+      "bytes": 8784,
+      "sha256": "6f1b0d0b380d003cb3b7eba7bf3e84bc5e2489adf71785633d2c7fc1148be514"
+    },
+    {
+      "path": "target/Eclipse/AltTab/tests/TyphonWindowSourceTest.cpp",
+      "bytes": 20060,
+      "sha256": "081d3aa4a0b16c22aad5793fdb5dd9a443a37d0bd95afe6fb4fb092cb958f822"
+    },
+    {
+      "path": "target/Eclipse/CMakeLists.txt",
+      "bytes": 2308,
+      "sha256": "9495e42fa471a49f71252ecad92c2f650652ed4269e12b8b3cff2577a76910e8"
+    },
+    {
+      "path": "target/Eclipse/CMakePresets.json",
+      "bytes": 4185,
+      "sha256": "eba29bcd1d0b599242ae8fca9901b7fc749617de79e8f3240a0fcd4f4ffa84d2"
+    },
+    {
+      "path": "target/Eclipse/Dock/CMakeLists.txt",
+      "bytes": 5072,
+      "sha256": "0ee134e36daca6f417f402ad72b5a7471716ac3d5515b076173d530f69c27d9b"
+    },
+    {
+      "path": "target/Eclipse/Dock/app/CommandLine.cpp",
+      "bytes": 927,
+      "sha256": "293e5a08f275cc0801dabca5b2debb715bf186bb7d082a49d54f56ab96d2718d"
+    },
+    {
+      "path": "target/Eclipse/Dock/app/CommandLine.hpp",
+      "bytes": 295,
+      "sha256": "8da89acf20b3c0baf97e98a5b92d0db8223af32fd758da0446307ebb284ac206"
+    },
+    {
+      "path": "target/Eclipse/Dock/app/main.cpp",
+      "bytes": 1506,
+      "sha256": "44a2464f0ba422272579c9843389e75353b0a6bceb641869c26f6902075ea96a"
+    },
+    {
+      "path": "target/Eclipse/Dock/cmake/DockSanitizers.cmake",
+      "bytes": 816,
+      "sha256": "92bd3562c8c7f83319338cae132bb22f895662f0de842c4f24c3434b31d6a32b"
+    },
+    {
+      "path": "target/Eclipse/Dock/cmake/DockWarnings.cmake",
+      "bytes": 229,
+      "sha256": "dcaca33b8a718a99fbed3b2777ec459cb31283633b0e3355733f880151016a5a"
+    },
+    {
+      "path": "target/Eclipse/Dock/core/DockAppInfo.cpp",
+      "bytes": 32,
+      "sha256": "321e76ce52fb8f67c1198143631f8f935008db333186b193a4c23bade4ee6009"
+    },
+    {
+      "path": "target/Eclipse/Dock/core/DockAppInfo.hpp",
+      "bytes": 1126,
+      "sha256": "5528edaa980e180203d4d610f78087dab3eb578ca1d43ccb99f68a01e61d4db4"
+    },
+    {
+      "path": "target/Eclipse/Dock/core/DockAppModel.cpp",
+      "bytes": 10137,
+      "sha256": "7f1eebffa1ee99d75209138f5cc7fe0a7d67b05b9a21738b7cbe9da133df78dc"
+    },
+    {
+      "path": "target/Eclipse/Dock/core/DockAppModel.hpp",
+      "bytes": 2117,
+      "sha256": "2897dc2ab4ad04ee6529490359f66e5bbf8953a4ba942d59797df4ee6d1070ef"
+    },
+    {
+      "path": "target/Eclipse/Dock/core/DockController.cpp",
+      "bytes": 11306,
+      "sha256": "f991fe5fee87a1a36d238f0ae8687cff5adbb78fb629416d84a3a90f336e4202"
+    },
+    {
+      "path": "target/Eclipse/Dock/core/DockController.hpp",
+      "bytes": 4383,
+      "sha256": "879ad1763a541308ad5bfb2208f6b3fbc99b1bf7cc94dbbe1440a9b78ee182e7"
+    },
+    {
+      "path": "target/Eclipse/Dock/docs/ARCHITECTURE.md",
+      "bytes": 2467,
+      "sha256": "e683dfcf38696ccdb3244d17cda7704b5edf8d9ff937a97a173f91875446ab73"
+    },
+    {
+      "path": "target/Eclipse/Dock/docs/CONFIGURATION.md",
+      "bytes": 1953,
+      "sha256": "43adee29847d066d99244329eefee3e381ed5287744438ed1bf3c41444cc85d7"
+    },
+    {
+      "path": "target/Eclipse/Dock/docs/RUNTIME_FLOW.md",
+      "bytes": 2366,
+      "sha256": "359825ae02df975d051d5e4ee94512946a7d38f9554a9c4bf9669ec883365c06"
+    },
+    {
+      "path": "target/Eclipse/Dock/docs/TESTING.md",
+      "bytes": 1969,
+      "sha256": "ad80a5d3ca0ded66fc33a170375b9c74cdd6d37c7c4e7b4cdfd1fdfd0150f0f6"
+    },
+    {
+      "path": "target/Eclipse/Dock/docs/TYPHON_RUNTIME_STATE.md",
+      "bytes": 2492,
+      "sha256": "c0b5527a1d850dc0a341ce60336a104e411d1cbd1a76d5ddf76dfd664662a07f"
+    },
+    {
+      "path": "target/Eclipse/Dock/platform/ipc/DockIpcServer.cpp",
+      "bytes": 5538,
+      "sha256": "2c586a5a79655e6a555dbbe681d05942d154e9f2f17a4713cc5c3f0c9b96fc16"
+    },
+    {
+      "path": "target/Eclipse/Dock/platform/ipc/DockIpcServer.hpp",
+      "bytes": 1371,
+      "sha256": "d1a5909779b174213903101b7e00a79ff754cab8d7716df235c8122287800a7e"
+    },
+    {
+      "path": "target/Eclipse/Dock/platform/runtime/DockRuntimePaths.cpp",
+      "bytes": 754,
+      "sha256": "b0e4f15089a17a02b534755f13871ba95c3fd76bebbd1871162a09b3a4123e09"
+    },
+    {
+      "path": "target/Eclipse/Dock/platform/runtime/DockRuntimePaths.hpp",
+      "bytes": 460,
+      "sha256": "5883b6b99777eeb05f7518736fe17fc7060c776ed6f9110a588f73c825ccb10f"
+    },
+    {
+      "path": "target/Eclipse/Dock/platform/wayland/DockLayerShellSurface.cpp",
+      "bytes": 2675,
+      "sha256": "4f3c32c8c9b28858ad46ad1d015e49a2c608b055229797d274324fbcd2d206c2"
+    },
+    {
+      "path": "target/Eclipse/Dock/platform/wayland/DockLayerShellSurface.hpp",
+      "bytes": 598,
+      "sha256": "1fbb603265dbf2faf896381d52b98616134b230f9cc0557d9bf33276f3f1a083"
+    },
+    {
+      "path": "target/Eclipse/Dock/qml/Main.qml",
+      "bytes": 352,
+      "sha256": "0caf41c85defb1c32beb7bd56e82d1da20584b6598e5ca1937edfa142cb74033"
+    },
+    {
+      "path": "target/Eclipse/Dock/qml/components/DockAppDelegate.qml",
+      "bytes": 2238,
+      "sha256": "607d6559c39fad95b85a4be1a3ae18c7e5cac7b4526775631f80ea91850a2fc5"
+    },
+    {
+      "path": "target/Eclipse/Dock/qml/components/DockPanel.qml",
+      "bytes": 953,
+      "sha256": "77b59d18ca9defa06de45d130a0a4efa52bd374b79731eaef772a42f1a66c18f"
+    },
+    {
+      "path": "target/Eclipse/Dock/qml/components/qmldir",
+      "bytes": 53,
+      "sha256": "ebef25db868e2c4c0e076654acddeff68e118a55631e2969a4e00610006b2dfe"
+    },
+    {
+      "path": "target/Eclipse/Dock/services/DockConfigWatcher.cpp",
+      "bytes": 6377,
+      "sha256": "b29d7da6f58037520f06f0bd8e049491b723a60424265fa050dd1bcc7fc329b6"
+    },
+    {
+      "path": "target/Eclipse/Dock/services/DockConfigWatcher.hpp",
+      "bytes": 1696,
+      "sha256": "bcd9f62e240c392c325362632e4ed324b1af0313d9ca2d6a28b22f0d5cc38065"
+    },
+    {
+      "path": "target/Eclipse/Dock/tests/CommandLineTest.cpp",
+      "bytes": 1104,
+      "sha256": "a3f47f50d54655a82ec04d680ca2dbdbf934234af7959aa8ba87716579abc0e5"
+    },
+    {
+      "path": "target/Eclipse/Dock/tests/DockAppModelTest.cpp",
+      "bytes": 17222,
+      "sha256": "e2fa12397b71146fde71b6d4606c810283350c81248fbc3aa8c906cb9c9f5df9"
+    },
+    {
+      "path": "target/Eclipse/Dock/tests/DockConfigWatcherTest.cpp",
+      "bytes": 6448,
+      "sha256": "b5bc76920ec9d3084816c4e8312e9797131358ef7be3ec996f2037725f7609aa"
+    },
+    {
+      "path": "target/Eclipse/Dock/tests/DockControllerTest.cpp",
+      "bytes": 12950,
+      "sha256": "72989c3ca98b91c4f8212e34e06ecf3929530473095e49876a5103281957a419"
+    },
+    {
+      "path": "target/Eclipse/Dock/tests/DockIpcTest.cpp",
+      "bytes": 3709,
+      "sha256": "073945c146c9e7b9d091c8da8f59501fc98e3c8e7542b517ccd43b7f155e98ab"
+    },
+    {
+      "path": "target/Eclipse/Dock/tests/DockRuntimePathsTest.cpp",
+      "bytes": 1009,
+      "sha256": "8d5b95212a56c79da1614542ba215b77afb7c21d53cf6084a782f57e562783d4"
+    },
+    {
+      "path": "target/Eclipse/Dock/tests/DockTyphonRuntimeIntegrationTest.cpp",
+      "bytes": 13847,
+      "sha256": "2440f724210635980c4b4690182d612a0f8361a55f652ba1d0b15f324b957bb1"
+    },
+    {
+      "path": "target/Eclipse/README.md",
+      "bytes": 1248,
+      "sha256": "31dfcd3899353e0370e813a70502449a64db95e83ead02d98e1c66ff2b642976"
+    },
+    {
+      "path": "target/Eclipse/Settings/AGENTS.md",
+      "bytes": 894,
+      "sha256": "29e80f8f2b8cb79c4d34a8f0eef0235f48b881030f1d1c34d275c1f964a2c1ff"
+    },
+    {
+      "path": "target/Eclipse/Settings/CMakeLists.txt",
+      "bytes": 857,
+      "sha256": "0b5e10df4b03bdbdf4b3a646eb002d24bf7542d82c8aa90e70983e5734cf9bd9"
+    },
+    {
+      "path": "target/Eclipse/Settings/README.md",
+      "bytes": 2556,
+      "sha256": "0e10ff8cfbc5c604f1be668f4ed524d9c823c81d0f7154b7087b51fe78cf3714"
+    },
+    {
+      "path": "target/Eclipse/Settings/app/CMakeLists.txt",
+      "bytes": 806,
+      "sha256": "4aaa62d4afdf47597933676cb48c5e07e3d0dd21951d583246dd589346b64f23"
+    },
+    {
+      "path": "target/Eclipse/Settings/app/SettingsApplication.cpp",
+      "bytes": 3837,
+      "sha256": "6788a8b64934bc032c6e481026be8c41a6aa57fe6a7865717418cad4b3c316c4"
+    },
+    {
+      "path": "target/Eclipse/Settings/app/SettingsApplication.hpp",
+      "bytes": 755,
+      "sha256": "1d5ae82600e945a2bf6bd1e9c89b0710a432093c43962e1aaaeed1baa93fd8c0"
+    },
+    {
+      "path": "target/Eclipse/Settings/app/main.cpp",
+      "bytes": 306,
+      "sha256": "cde20c07a3fca61a6d48cfe0ceaa7462cbf1796b4ded542c1391155f8193cb21"
+    },
+    {
+      "path": "target/Eclipse/Settings/assets/i18n/en_US.json",
+      "bytes": 63757,
+      "sha256": "ff8ce4322e6b59ff69cb68c753a5e4017a80056cc3fc4789915048cca60699e1"
+    },
+    {
+      "path": "target/Eclipse/Settings/assets/icons/settings/apps.svg",
+      "bytes": 344,
+      "sha256": "6945d5110ca061d017afe4af84a22dc26b61f121a46d4ef57515de03f4f71c42"
+    },
+    {
+      "path": "target/Eclipse/Settings/assets/icons/settings/audio.svg",
+      "bytes": 2378,
+      "sha256": "6df4acc1515027faddbdb59f5a8724e02d39e6958c1ab9e45266ac51c1784b57"
+    },
+    {
+      "path": "target/Eclipse/Settings/assets/icons/settings/bluetooth.svg",
+      "bytes": 1848,
+      "sha256": "f2f9c708359e85d86f4d77ac19732e529d4444fef8a12c3208198ad1716aaf87"
+    },
+    {
+      "path": "target/Eclipse/Settings/assets/icons/settings/display.svg",
+      "bytes": 2935,
+      "sha256": "a16e837687441fb75a1271392d5356e6007d65b7379b4dc9f46c1f8a8601e12f"
+    },
+    {
+      "path": "target/Eclipse/Settings/assets/icons/settings/network.svg",
+      "bytes": 2706,
+      "sha256": "0c99c0338369cfbbf234f72ae31fd91bd7713fa7abe0896156282ac8316d6752"
+    },
+    {
+      "path": "target/Eclipse/Settings/assets/icons/settings/performance.svg",
+      "bytes": 2997,
+      "sha256": "03becb4944e38ac899f07d689c0fea87bff0321e12ca54b97e703d11ae16431f"
+    },
+    {
+      "path": "target/Eclipse/Settings/assets/icons/settings/software-center.svg",
+      "bytes": 344,
+      "sha256": "6945d5110ca061d017afe4af84a22dc26b61f121a46d4ef57515de03f4f71c42"
+    },
+    {
+      "path": "target/Eclipse/Settings/assets/icons/settings/sound.svg",
+      "bytes": 2378,
+      "sha256": "6df4acc1515027faddbdb59f5a8724e02d39e6958c1ab9e45266ac51c1784b57"
+    },
+    {
+      "path": "target/Eclipse/Settings/assets/icons/settings/theme.svg",
+      "bytes": 4866,
+      "sha256": "88f26f6d59fc71971b340f87191a030895d0add2ebea61f993e5d2fb446f61b0"
+    },
+    {
+      "path": "target/Eclipse/Settings/assets/icons/settings/themes/bluetooth.svg",
+      "bytes": 820,
+      "sha256": "17f077752cd3f5b35284163fc0d23e5103dd39381a5b0b6b1fddba54397e1abb"
+    },
+    {
+      "path": "target/Eclipse/Settings/assets/icons/settings/themes/dark/apps.svg",
+      "bytes": 344,
+      "sha256": "6945d5110ca061d017afe4af84a22dc26b61f121a46d4ef57515de03f4f71c42"
+    },
+    {
+      "path": "target/Eclipse/Settings/assets/icons/settings/themes/dark/audio.svg",
+      "bytes": 1360,
+      "sha256": "46154dc0d30061d7c3961ba3d38b330b5653c4d04035122fa9a66335c2d7ce4c"
+    },
+    {
+      "path": "target/Eclipse/Settings/assets/icons/settings/themes/dark/bluetooth.svg",
+      "bytes": 820,
+      "sha256": "46cfef442993f11532c82258c2defc674350f3a43739de7d50a1b142310c489d"
+    },
+    {
+      "path": "target/Eclipse/Settings/assets/icons/settings/themes/dark/display.svg",
+      "bytes": 4441,
+      "sha256": "1e5c7b05032bbcaeeff5c011c3c7d043501dac8ee009415f5973059cc0cfe174"
+    },
+    {
+      "path": "target/Eclipse/Settings/assets/icons/settings/themes/dark/network.svg",
+      "bytes": 1309,
+      "sha256": "4100a3cc6c5bab14cd665051c229d09060ff89dbc16d88a70f9e28a96fddd983"
+    },
+    {
+      "path": "target/Eclipse/Settings/assets/icons/settings/themes/dark/performance.svg",
+      "bytes": 2997,
+      "sha256": "03becb4944e38ac899f07d689c0fea87bff0321e12ca54b97e703d11ae16431f"
+    },
+    {
+      "path": "target/Eclipse/Settings/assets/icons/settings/themes/dark/software-center.svg",
+      "bytes": 344,
+      "sha256": "6945d5110ca061d017afe4af84a22dc26b61f121a46d4ef57515de03f4f71c42"
+    },
+    {
+      "path": "target/Eclipse/Settings/assets/icons/settings/themes/dark/theme.svg",
+      "bytes": 4866,
+      "sha256": "88f26f6d59fc71971b340f87191a030895d0add2ebea61f993e5d2fb446f61b0"
+    },
+    {
+      "path": "target/Eclipse/Settings/assets/icons/settings/themes/dark/wallpaper.svg",
+      "bytes": 3629,
+      "sha256": "24079b99282f4c25470fbfb127b0586bc4036a0570134a1f8a225a393f96e288"
+    },
+    {
+      "path": "target/Eclipse/Settings/assets/icons/settings/wallpaper.svg",
+      "bytes": 3629,
+      "sha256": "24079b99282f4c25470fbfb127b0586bc4036a0570134a1f8a225a393f96e288"
+    },
+    {
+      "path": "target/Eclipse/Settings/cmake/SettingsSanitizers.cmake",
+      "bytes": 563,
+      "sha256": "3c911f133e25b87b9f2a1c3a00786154bbad3b7f91fea25b06c75fa65b224b5f"
+    },
+    {
+      "path": "target/Eclipse/Settings/cmake/SettingsWarnings.cmake",
+      "bytes": 334,
+      "sha256": "028ea81a3cad6ab2e741ba32d700bebf97072689631c9924f3bef7152d03409d"
+    },
+    {
+      "path": "target/Eclipse/Settings/core/CMakeLists.txt",
+      "bytes": 1213,
+      "sha256": "842a8da3985c26653ca2be29487868ad68416d81111715f815a502730d92a584"
+    },
+    {
+      "path": "target/Eclipse/Settings/core/SettingsController.cpp",
+      "bytes": 2603,
+      "sha256": "77179c14854e2442af6a249293690283fde580404e659525e4f94f46ec08ae6e"
+    },
+    {
+      "path": "target/Eclipse/Settings/core/SettingsController.hpp",
+      "bytes": 2075,
+      "sha256": "6792261f67466adba6d9cfac05a5803a046e21cf5b3ff0cbca68039913a2c4e9"
+    },
+    {
+      "path": "target/Eclipse/Settings/core/navigation/SettingsNavigationCatalog.cpp",
+      "bytes": 3691,
+      "sha256": "d3b193940fbb31bd8855130f88571deda93080451b2c2f3e55d7148e389376a8"
+    },
+    {
+      "path": "target/Eclipse/Settings/core/navigation/SettingsNavigationCatalog.hpp",
+      "bytes": 294,
+      "sha256": "ab86378b9c5661e7339ec1d9ea5efa1110a26ea112e8f5b3ad345937f6571b12"
+    },
+    {
+      "path": "target/Eclipse/Settings/core/navigation/SettingsNavigationEntry.hpp",
+      "bytes": 376,
+      "sha256": "e83b0f99b1a3e9fb3e982862b8abb96d64351c1c4ec14c29776592a709dd52e6"
+    },
+    {
+      "path": "target/Eclipse/Settings/core/navigation/SettingsNavigationModel.cpp",
+      "bytes": 6827,
+      "sha256": "81c2d271e5d506e98e0c6b99790b4c86277bf66643a3108acae588856109f535"
+    },
+    {
+      "path": "target/Eclipse/Settings/core/navigation/SettingsNavigationModel.hpp",
+      "bytes": 1880,
+      "sha256": "870bd38a7e40d886add86ddfab8b3bd35d6581f386e3592d7dbda9bb2a92f564"
+    },
+    {
+      "path": "target/Eclipse/Settings/docs/ARCHITECTURE.md",
+      "bytes": 3623,
+      "sha256": "497a3b46a5c6c601986f931d26470ad8101a5dfdb80b9c11fca272e42a05ae96"
+    },
+    {
+      "path": "target/Eclipse/Settings/docs/COMPONENT_CATALOG.md",
+      "bytes": 5458,
+      "sha256": "bf88a7e7b39fd127549b79974caf4adcf6f5d7db591c3028ec88df367cea5f9e"
+    },
+    {
+      "path": "target/Eclipse/Settings/docs/MIGRATION_NOTES.md",
+      "bytes": 2278,
+      "sha256": "1a65923e265340477363b22147330b57de2c8ca931fed347dcbe7d2576c39840"
+    },
+    {
+      "path": "target/Eclipse/Settings/docs/STRUCTURE.md",
+      "bytes": 3500,
+      "sha256": "9fb99cf77c845a68847c2509140c5cc74cfac355736859fc0dddbafb837def85"
+    },
+    {
+      "path": "target/Eclipse/Settings/docs/TESTING.md",
+      "bytes": 2518,
+      "sha256": "3cad652c8d3a28b55401ccd0e743065fc44905174bf9b10e99e614cc0ff2b6f9"
+    },
+    {
+      "path": "target/Eclipse/Settings/packaging/applications/astrea-settings.desktop",
+      "bytes": 219,
+      "sha256": "2992dd8007a25cedf944779f52bd75576d816fd79e656a9e6ab3b9c68c12642d"
+    },
+    {
+      "path": "target/Eclipse/Settings/platform/linux/AdminGroupDetector.cpp",
+      "bytes": 2806,
+      "sha256": "96a10fe14fa2fc7f10662114b23a7470a45991e6c4d8ffb08c9f1751d0fc7a73"
+    },
+    {
+      "path": "target/Eclipse/Settings/platform/linux/AdminGroupDetector.hpp",
+      "bytes": 678,
+      "sha256": "c99ed0f47480ea4ed61281c0e91b0fa8513f9d57b6d97717abc89eba9e69f5c0"
+    },
+    {
+      "path": "target/Eclipse/Settings/platform/linux/AdministrativeGroupPolicy.cpp",
+      "bytes": 363,
+      "sha256": "610f315c883dce5c5b67bc7b8e0aa540395c29cda1de3b34e23214df58ab940e"
+    },
+    {
+      "path": "target/Eclipse/Settings/platform/linux/AdministrativeGroupPolicy.hpp",
+      "bytes": 160,
+      "sha256": "2fbf5c271b920f59e1d05650f1568255eb4ef7f67e5b2c83f7a4780eb1e0cdd0"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/CMakeLists.txt",
+      "bytes": 4229,
+      "sha256": "e3ef2b96a0028740e6b1e4cfc2be1829fba5106bfabdd15804252ea6f61e1dbd"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/Main.qml",
+      "bytes": 3501,
+      "sha256": "7834c2655066d4c39089b734268b315dab2bc9e41fc72ee2dad93921db55b98f"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/AppIcon.qml",
+      "bytes": 6262,
+      "sha256": "4add0145e33f077a494e4bdbfa07d33b8e12dabd473ca305b37492d5cbac3b3a"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/AvatarImage.qml",
+      "bytes": 2804,
+      "sha256": "daed3a91d742b7af052ed6229836c462711fdc3c775db350068238a305e445c5"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/Theme.qml",
+      "bytes": 9201,
+      "sha256": "c7b97ae9e417241b75a5625c16f2caf368d3b98320dd3f33620dcbd6bce19430"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/controls/Button.qml",
+      "bytes": 4555,
+      "sha256": "dcc3680a55c67432eb38701674c9eefb4446089e38ecdc928d9a8582d1ca8003"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/controls/ButtonCapsule.qml",
+      "bytes": 3754,
+      "sha256": "e19987c6f73c267c695aaed0f1c86db792751323442fe7715f2dd95478dc0233"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/controls/DualButton.qml",
+      "bytes": 12003,
+      "sha256": "f68c1e69c383f573f0f6f03c8931a6ca997c882e83e054b0289c787fcf0a95cf"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/controls/FloatingButton.qml",
+      "bytes": 4315,
+      "sha256": "226c5308c013430f74a98af4f36cec5c201f67cf9403ef5812ff9dd3a9b1dd9d"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/feedback/DnsPresetChip.qml",
+      "bytes": 1627,
+      "sha256": "1cb2d05f1c8e81f9d2abb88ab6aee25d3c3c89568bdae648d10321b878368d32"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/feedback/DnsStatusCard.qml",
+      "bytes": 2891,
+      "sha256": "5cef4bd77ac0ef90f35ca62c9b62a2e183fcaafc888703c04b0b4d67e81e13b9"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/feedback/ProgressCard.qml",
+      "bytes": 4119,
+      "sha256": "61300c28487cdbdc5218fb01c2097a09d8486cc665ee2d381db2743cda132339"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/feedback/SpeedCard.qml",
+      "bytes": 3788,
+      "sha256": "46b51ed1b6a71f05f82bf0b6f021b686741938d3d3a67334635e5557b3200cac"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/feedback/StatusDot.qml",
+      "bytes": 999,
+      "sha256": "bbfb5213bfbc52b3e57526b5b52a609d927c1112d242cbdaf4314a21226325f9"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/form/FormCard.qml",
+      "bytes": 630,
+      "sha256": "54cdd5b9e27fac28441e971b913ef29c96288a689bfc533ed0db9d0eabd08406"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/form/IconListRow.qml",
+      "bytes": 3336,
+      "sha256": "ddfa6abcc1dcc9f0fb37eff4e754ae7de09b6e292a1fe14b2c57af57601dc21b"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/form/ScrollPage.qml",
+      "bytes": 1958,
+      "sha256": "014651bdb38314d2c15d1565c12e47b5c933495597dee6da65177a350ce0bb67"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/form/SearchField.qml",
+      "bytes": 6156,
+      "sha256": "3e990e315c7c774d0ac2f468a739f8acb91bd04c3aaacd4334a3e9f8e14335f0"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/form/SectionHeader.qml",
+      "bytes": 1772,
+      "sha256": "0b046e44d7be532ae7a56daacb56180fc3646d13f78f604ea0f262cb711fa212"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/form/SelectButton.qml",
+      "bytes": 10341,
+      "sha256": "ccd3767c4eca0d565f7e72dc876adc4cca314845944846cab645007d2316d40c"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/form/SettingRow.qml",
+      "bytes": 5034,
+      "sha256": "86fca3362e307b3198c01b6157077d2687580f590c69b551e4916b89ac2ba5c3"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/form/ToggleSwitch.qml",
+      "bytes": 1738,
+      "sha256": "b66d52a7ba78f5239475025dc0b786c671b9c42339b0fd93c82949720da2350e"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/menu/ContextMenu.qml",
+      "bytes": 2857,
+      "sha256": "8bad7e357ef2635a785d3da9ee7a6cceb3e3724228dbb83d1fcb0f6a4ed8b809"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/menu/ContextMenuAction.qml",
+      "bytes": 1865,
+      "sha256": "760231d25e134e02ebccf3c3e52bdd9b1735d8faba7f43375df8fc43ab3e7d3b"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/menu/ContextMenuDivider.qml",
+      "bytes": 455,
+      "sha256": "35b20f6546618aa400ed1ec6f011c9569dc14dc61e52a06af15b65b4f6a32338"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/navigation/NavItem.qml",
+      "bytes": 6724,
+      "sha256": "dcdecd4fad347e4bc5d45af2bfa5e9c024c714b52e6149a0a85b0e55dc59bb14"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/navigation/Sidebar.qml",
+      "bytes": 6011,
+      "sha256": "8d3a0891f7f6dd22a6feb0373a47bdd9a68518c3fa990e2b17462c6aae001fc8"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/navigation/SidebarFrame.qml",
+      "bytes": 1815,
+      "sha256": "587cc71534082204fc0ce881f7f1bb0e7a4a648f2976ff9e93ece5609ef3bf22"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/typography/DisplayLabel.qml",
+      "bytes": 469,
+      "sha256": "d93c3dff0e4b75507d1c8366e3f9a2b4574e532930da098b6042db3365c537d1"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/typography/Divider.qml",
+      "bytes": 329,
+      "sha256": "3a2796c1906051ca453c68242fba492c19294ced19d05775b1a492e785f3aebb"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/components/typography/TextLabel.qml",
+      "bytes": 469,
+      "sha256": "d93c3dff0e4b75507d1c8366e3f9a2b4574e532930da098b6042db3365c537d1"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/pages/system/Compositor.qml",
+      "bytes": 8990,
+      "sha256": "61d3b9bea2680b53f8f7a8bcffb1689f6077253fe318cdbcead408b0f75600c7"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/theme/Apps.qml",
+      "bytes": 3414,
+      "sha256": "01b280cc455325214f6b413a03b29a04da7776b6287d391768d0e4a116c5fb3a"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/theme/Shell.qml",
+      "bytes": 2932,
+      "sha256": "f3d5bd0e5ca5f64611e2e544693624c51e1b33de7031bb256ae20216ecfd9d1f"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/theme/State.qml",
+      "bytes": 1391,
+      "sha256": "ef01fea0ba95cdbefce445cb29bfb08f5f8a61a15b1fda512cdae7578f96d2ca"
+    },
+    {
+      "path": "target/Eclipse/Settings/qml/theme/Tokens.qml",
+      "bytes": 2142,
+      "sha256": "9d5fc3420876681294942acdf3228b32c9972abcce1f431ba4c29406d526765e"
+    },
+    {
+      "path": "target/Eclipse/Settings/services/assets/SettingsIconResolver.cpp",
+      "bytes": 535,
+      "sha256": "a9989ee8c3f5b28a721945510115ea9094f404d7ac24c49a2b73a5313056e3f0"
+    },
+    {
+      "path": "target/Eclipse/Settings/services/assets/SettingsIconResolver.hpp",
+      "bytes": 167,
+      "sha256": "8e9fa69b948319296d9ef3b941edbb34e9f6dced1d37c6a8a2a3524baf80d232"
+    },
+    {
+      "path": "target/Eclipse/Settings/services/i18n/SettingsTranslationController.cpp",
+      "bytes": 847,
+      "sha256": "b81a8ed99e23437f3f0dcf42ed3f4f2172c31b450c8573851047a0c527f534df"
+    },
+    {
+      "path": "target/Eclipse/Settings/services/i18n/SettingsTranslationController.hpp",
+      "bytes": 431,
+      "sha256": "b567640b48d139c5d1604722e363e6d0d569dd352975d755cd50384b91499326"
+    },
+    {
+      "path": "target/Eclipse/Settings/services/profile/SettingsUserProfile.hpp",
+      "bytes": 156,
+      "sha256": "7e0b0d51135cec570dd0da8d629c815f53eded08d8f0ce2f3569db461545a36d"
+    },
+    {
+      "path": "target/Eclipse/Settings/services/profile/SettingsUserProfileProvider.cpp",
+      "bytes": 1127,
+      "sha256": "30067bc09b2b22df17abc0c46f5cf6b37f8752391e645c501d7bf7328a1600ae"
+    },
+    {
+      "path": "target/Eclipse/Settings/services/profile/SettingsUserProfileProvider.hpp",
+      "bytes": 437,
+      "sha256": "1f24234c73ec4dd7689637e9fc910671596de03907de87178d2286d1032b881c"
+    },
+    {
+      "path": "target/Eclipse/Settings/services/theme/ThemeController.cpp",
+      "bytes": 4474,
+      "sha256": "5bd1d647e40151741265e43aa6dfbf0bff2ef4d0714924df0fabc0464b1b73ff"
+    },
+    {
+      "path": "target/Eclipse/Settings/services/theme/ThemeController.hpp",
+      "bytes": 1935,
+      "sha256": "51974a2c7c140c0dab1bb85b57633887cdbe0fedaf6baa0076a75b074424d381"
+    },
+    {
+      "path": "target/Eclipse/Settings/tests/CMakeLists.txt",
+      "bytes": 2872,
+      "sha256": "255468e8fbc9c5558401f0f5983a648ecb277da60d639f2ffbc49dabc9c38b28"
+    },
+    {
+      "path": "target/Eclipse/Settings/tests/integration/SettingsComponentSmokeTest.cpp",
+      "bytes": 2876,
+      "sha256": "42183222a6ae6af04e602286f0ea17d6134617c411852c7693670c9443b4f47f"
+    },
+    {
+      "path": "target/Eclipse/Settings/tests/integration/SettingsQmlSmokeTest.cpp",
+      "bytes": 2646,
+      "sha256": "fdf018115799cbc96c74e8bfcef23af7fdbbca27a6b09bbf989a352bca9c76e3"
+    },
+    {
+      "path": "target/Eclipse/Settings/tests/static/CompositorPageSourceTest.cmake",
+      "bytes": 4814,
+      "sha256": "eec6db446db59a54712069f7733be4225aca426eb3878c25219fe82ef2eb8348"
+    },
+    {
+      "path": "target/Eclipse/Settings/tests/static/SettingsStructureTest.cmake",
+      "bytes": 6077,
+      "sha256": "1976a3fe9b8db4e63db4c44c183b275935893c4e54626b90e876d26a6ee3b606"
+    },
+    {
+      "path": "target/Eclipse/Settings/tests/unit/AdminGroupDetectorTest.cpp",
+      "bytes": 4424,
+      "sha256": "d520455ea52236c1327749a769d0417db145f341d28dd5adf034ebb6f6c839bf"
+    },
+    {
+      "path": "target/Eclipse/Settings/tests/unit/AdministrativeGroupPolicyTest.cpp",
+      "bytes": 1094,
+      "sha256": "a27ca97bbbf6eca4ebc24db4a7c3f99ab68886908166bbd6a54e465cd552beb9"
+    },
+    {
+      "path": "target/Eclipse/Settings/tests/unit/SettingsControllerTest.cpp",
+      "bytes": 8578,
+      "sha256": "18f75bdef3f09e9978f51f51016ca39f2e6215ea111f72d76ce14adc9324562b"
+    },
+    {
+      "path": "target/Eclipse/Settings/tests/unit/SettingsNavigationModelTest.cpp",
+      "bytes": 2880,
+      "sha256": "f02041456f86863637d27de1823ad6fe6571a6e97e51e28c7234b6804c782eda"
+    },
+    {
+      "path": "target/Eclipse/Settings/tests/unit/SettingsUserProfileProviderTest.cpp",
+      "bytes": 1550,
+      "sha256": "9b7b34ce86437e3ce989207dab2ff59c696c2a0eb3156255b007bae5f3229da1"
+    },
+    {
+      "path": "target/Eclipse/Settings/tests/unit/ThemeControllerTest.cpp",
+      "bytes": 1694,
+      "sha256": "e99c2ad4a1205a759677dcf9f843eb5abbed50c7998e19fd0947c511322a49e2"
+    },
+    {
+      "path": "target/Eclipse/Shell/CMakeLists.txt",
+      "bytes": 10512,
+      "sha256": "45c5096c2ea0c45d3f1d46897ecafc9a508abf332e9a85d0ed978f83feadc620"
+    },
+    {
+      "path": "target/Eclipse/Shell/app/AstreaShellApplication.cpp",
+      "bytes": 14283,
+      "sha256": "3364bcdc508dfaf213f0dd76e64be7cb3a6c37402085b6bdaffac43fe948002c"
+    },
+    {
+      "path": "target/Eclipse/Shell/app/AstreaShellApplication.hpp",
+      "bytes": 1359,
+      "sha256": "9c2f0ebc77880cb7513a0c09d4dece812aac914f26b029f6daf359911bf5398a"
+    },
+    {
+      "path": "target/Eclipse/Shell/app/main.cpp",
+      "bytes": 223,
+      "sha256": "642510170949ca1486387fed5fbbe0a7c28ac9731ac280de7309b92f55f434aa"
+    },
+    {
+      "path": "target/Eclipse/Shell/docs/RESOURCE_MEASUREMENT.md",
+      "bytes": 1053,
+      "sha256": "1b5d4f184ea0ad8aaacc34952e9234d1ce04716d9cb36c97e87dec3750d70fc8"
+    },
+    {
+      "path": "target/Eclipse/Shell/packaging/systemd/astrea-shell.service",
+      "bytes": 423,
+      "sha256": "831cae4fc530242d5e66b6c48152c878707b4013cc919aacd2a0c44b51a61ebf"
+    },
+    {
+      "path": "target/Eclipse/Shell/platform/ipc/ShellIpcClient.cpp",
+      "bytes": 1779,
+      "sha256": "5fa5bcfb9ce61270550061178a2d8d8095310686cd7ec1125080920ef303c0ab"
+    },
+    {
+      "path": "target/Eclipse/Shell/platform/ipc/ShellIpcClient.hpp",
+      "bytes": 348,
+      "sha256": "7cb1b827669a4241b73da30409b70c12a214deeca60c33eb82394926d45fa737"
+    },
+    {
+      "path": "target/Eclipse/Shell/platform/ipc/ShellIpcServer.cpp",
+      "bytes": 5501,
+      "sha256": "35a1ce50cb96fd80f0c78f208677772c0d674d9140190ebaee1c38bd4c002d2d"
+    },
+    {
+      "path": "target/Eclipse/Shell/platform/ipc/ShellIpcServer.hpp",
+      "bytes": 1312,
+      "sha256": "05fa6d67e2dd794011c0da2d41611dfabc888003c6235412c14c82c74e6f4b04"
+    },
+    {
+      "path": "target/Eclipse/Shell/platform/shortcut/ShellShortcutDispatcher.cpp",
+      "bytes": 1307,
+      "sha256": "c3bf6d9bf9f6ea292dc37c2fb11b8b33b79d7d2dbc85c1db1ba0547cb83360f2"
+    },
+    {
+      "path": "target/Eclipse/Shell/platform/shortcut/ShellShortcutDispatcher.hpp",
+      "bytes": 899,
+      "sha256": "2da720a4a8c0f6aefc1e97871bd20f8ce36aa0ad9af010781b250b2104722864"
+    },
+    {
+      "path": "target/Eclipse/Shell/runtime/ShellRuntime.cpp",
+      "bytes": 8366,
+      "sha256": "07dccae3be508179d9d6985c4b6538504579d594cd9648bb3b7e453dfdcc1aee"
+    },
+    {
+      "path": "target/Eclipse/Shell/runtime/ShellRuntime.hpp",
+      "bytes": 3436,
+      "sha256": "8b3d73bb4ed901e68eae08bc62c322c7c15e8e0d31fb07f46d97da931c46d2e3"
+    },
+    {
+      "path": "target/Eclipse/Shell/tests/ShellIpcTest.cpp",
+      "bytes": 2285,
+      "sha256": "89693bcbb9f27f05913fd73d2c3b20bc0b3c11feb86ee3caf92d25ca5d2008c9"
+    },
+    {
+      "path": "target/Eclipse/Shell/tests/ShellRuntimeTest.cpp",
+      "bytes": 8594,
+      "sha256": "84dc07262f383d58b7b85ef5f843afc73e7828e29d8ba42e0cbd4c9624b1e263"
+    },
+    {
+      "path": "target/Eclipse/Shell/tests/ShellShortcutDispatcherTest.cpp",
+      "bytes": 2887,
+      "sha256": "97e19b9cb7f2a74f86d60779a5ec48eb4060d124aa6030b69047513bb6e3813b"
+    },
+    {
+      "path": "target/Eclipse/Shell/tests/ShellUnifiedRuntimeIntegrationTest.cpp",
+      "bytes": 8705,
+      "sha256": "5c07aa36e889be1645f70aff677d8c2879b6869fd3cce79cf7b5c490fb6e7f15"
+    },
+    {
+      "path": "target/Eclipse/Shell/tools/astrea-migrate-shell-systemd",
+      "bytes": 660,
+      "sha256": "86a0ebeccb0b294f5fd5a557c579d33c4c73f372dca5fe9cb525b7b7dd4e4b7c"
+    },
+    {
+      "path": "target/Eclipse/Shell/tools/measure-shell-resources.sh",
+      "bytes": 3357,
+      "sha256": "5fc3222d7e735d795f26a67b1b0abd59f8cce8da4b9505ce166bedd11d4d0fd2"
+    },
+    {
+      "path": "target/Eclipse/Shell/tools/test-resource-measurement.sh",
+      "bytes": 748,
+      "sha256": "eeb50afe017ccffcdc6e78b088efee4df299e195301c0177389d3c73dcb3f7f8"
+    },
+    {
+      "path": "target/Eclipse/Shell/tools/test-systemd-fake-systemctl",
+      "bytes": 130,
+      "sha256": "1d7a3261d64461d682a031b90fd90bf4a939a2efe0af7b376cc17cd609a0ead6"
+    },
+    {
+      "path": "target/Eclipse/Shell/tools/test-systemd-migration.sh",
+      "bytes": 1477,
+      "sha256": "ab1cbb79b291542a9e92623e7bb94097a2dea187a8a41a34052fa3acb6fee0e8"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/.gitignore",
+      "bytes": 114,
+      "sha256": "44f4e8b461c2608b7630ff403714f4f2754bee8f7d6cfd8a9d926018ec67a505"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/CMakeLists.txt",
+      "bytes": 2927,
+      "sha256": "f7e1bae2c1ee53bc6467eb96e07ed7249ef5a1474fb7d393f6b868d1f4264af2"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/README.md",
+      "bytes": 941,
+      "sha256": "5e3a9d4c7fa4d1ef6d979aaa43c1342205ee933601bd833185ad70f2670fdf13"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/app/CommandLine.cpp",
+      "bytes": 2156,
+      "sha256": "c31a7104bfa1dcc7f16a126b36e3598c0ad47e46971649457b6daa07481099b2"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/app/CommandLine.hpp",
+      "bytes": 453,
+      "sha256": "31341113467bb71054a1fd4c8828e0242f8278776458d9a460d563d330c2e58f"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/app/main.cpp",
+      "bytes": 3421,
+      "sha256": "d3aaca10ab67a2f4cbff7e668f8371e856fffc2d0f0d7c935c41be57c2b6f718"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/backend/Cargo.lock",
+      "bytes": 3374,
+      "sha256": "ad5516313a789ecde97bb2b6d236c6328c2585f685bccd10e7d4f1790cb54f4b"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/backend/Cargo.toml",
+      "bytes": 232,
+      "sha256": "7cc2ef003f49df8fa417e56ccaef1d4fad37beaedb10eeeae68994dc64266c84"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/backend/include/astrea_spotlight_backend.h",
+      "bytes": 1781,
+      "sha256": "d8362ad6139708d8e95d7aea03754ff41c8236153582411373d603fb07fc8d9e"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/backend/src/config/mod.rs",
+      "bytes": 34,
+      "sha256": "deca9cc93d952726654f889efeab1355623142341f42b6a4ddd5d708b2c0eb3c"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/backend/src/config/store.rs",
+      "bytes": 1445,
+      "sha256": "47f2681837a814f659dac9ee788d31c6938534088db62e6284d0dece7b02097f"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/backend/src/desktop/entries.rs",
+      "bytes": 17988,
+      "sha256": "296bb32f76a0e7c67787979411bd63882d9468965587a8f0b63ba064ede71207"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/backend/src/desktop/mod.rs",
+      "bytes": 38,
+      "sha256": "cae84b8814b56422eab33492d79acb6ddc0fea912975d189828414c33728d714"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/backend/src/ffi/conversion.rs",
+      "bytes": 585,
+      "sha256": "bbffab8762c885eac79e57692dde325941a8d9eeef7ab4e2c5843404d518cf2d"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/backend/src/ffi/exports.rs",
+      "bytes": 9326,
+      "sha256": "6adf4e123ecf7ee17a7cb8e65ad36516032f1f449daf639b78102a6c77e5cfa5"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/backend/src/ffi/mod.rs",
+      "bytes": 37,
+      "sha256": "3992a756072955aa36edf55f2a7f881d6f25f162a45608ced491dddb937cfcae"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/backend/src/lib.rs",
+      "bytes": 5155,
+      "sha256": "ff268f4ff8c3cacb73b94d233f85103a98dc896a98671d0a7ebc5643b59d104a"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/backend/src/search/mod.rs",
+      "bytes": 38,
+      "sha256": "f72e3525d1392fc5c9e66447998a06ba439030ebea5fb78e482238a471266f60"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/backend/src/search/ranking.rs",
+      "bytes": 7716,
+      "sha256": "b0b2c54f71648e5b757ac3226307f9c8ef1aa4820a30863c3639a7035c1cc636"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/backend/src/state/mod.rs",
+      "bytes": 34,
+      "sha256": "221aa66618e7985e395c4cb8b94d862fb1781abebe36f81baf8fbe35863020c9"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/backend/src/state/usage.rs",
+      "bytes": 1741,
+      "sha256": "1fb076f09bccb82ceba11af34e6a6ac3b520f30a44ab97502ce42380c5820cea"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/backend/src/tests.rs",
+      "bytes": 25263,
+      "sha256": "f00c59ff7c92d2899de6f30dca97b251ff3327716851aa4b7d66938444b8b2e1"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/cmake/RustBackend.cmake",
+      "bytes": 1859,
+      "sha256": "41c0e2421c8b596826d61131e380ff80fbbece833a612b0e19919c4e5f815ad1"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/cmake/SpotlightSanitizers.cmake",
+      "bytes": 640,
+      "sha256": "bdc53fbd4843f5e35cf0f204acaeac3285ecdedd2982acd7943f219f8e49eab8"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/cmake/SpotlightWarnings.cmake",
+      "bytes": 154,
+      "sha256": "3a36e6a590cd5aff9ac30f83c3eb096b07b4ef03d448c96f7753f64706ebca22"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/core/SpotlightController.cpp",
+      "bytes": 15186,
+      "sha256": "e5ad260db1dbdb0cb64e02ed1978909a4ffc6e8751fd6bf42e80f3969c7c8f3a"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/core/SpotlightController.hpp",
+      "bytes": 5605,
+      "sha256": "76960a80807d184a876909160a888c3b8248bb550b8128e80f30c999eaae8e00"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/core/SpotlightResultsModel.cpp",
+      "bytes": 3185,
+      "sha256": "72f74d4d0a82a4afd775ebde1e7e0d6a88f3e9d2b43ebdef60dd3eda63c185de"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/core/SpotlightResultsModel.hpp",
+      "bytes": 1350,
+      "sha256": "227bf34e5c46582999be268cdceca48785862b8f32d962b99ffb79e36b625194"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/docs/ARCHITECTURE.md",
+      "bytes": 1364,
+      "sha256": "713df248193448099f7dffb0a5628e4bf1f91c5ac6e75fbb484a6938e740e924"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/docs/IPC.md",
+      "bytes": 706,
+      "sha256": "53c1e5a2353ecdd1b04219595b873459740cc8b0a2bfc0c934e8ecc4a87ae4a1"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/docs/RUNTIME_FLOW.md",
+      "bytes": 1557,
+      "sha256": "5cd358f813aae285499608cb5a7d4f2493361d3423be7adf19b3832ac14c922b"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/docs/TESTING.md",
+      "bytes": 879,
+      "sha256": "65c83f3ab7fc0c5f256a2edc0fb6dcdb0356b24e1d403a820281f5af9af6544f"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/platform/ipc/SpotlightIpcServer.cpp",
+      "bytes": 6073,
+      "sha256": "ab1ecea52d53344068b6438861c4ae1b4f0e4db547cd36b9eaf3a9ba3309989f"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/platform/ipc/SpotlightIpcServer.hpp",
+      "bytes": 1333,
+      "sha256": "9e836f91b6aafc1e9d8a2bcb2f187e2fd29613aa20fda1ad2d9acf61160a0f5f"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/platform/runtime/SpotlightRuntimePaths.cpp",
+      "bytes": 997,
+      "sha256": "56c365da3d32837707114434801534ced1de6db01dbecda6ca87a26acea6b0b5"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/platform/runtime/SpotlightRuntimePaths.hpp",
+      "bytes": 646,
+      "sha256": "65f71e7c88395d809fa0c24dc25e50cde972180b673ad364eec07f73962f21bb"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/platform/rust/RustSpotlightBackend.cpp",
+      "bytes": 6255,
+      "sha256": "da20101a58370c0c3f157fd5d06739ba6cfca066050788eb7c2ea88152ea4e22"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/platform/rust/RustSpotlightBackend.hpp",
+      "bytes": 1044,
+      "sha256": "934b1324dd926778f75a49d49bfd06e2e70b94332fd794f9b30a080e4cf855b1"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/platform/wayland/LayerShellSurface.cpp",
+      "bytes": 957,
+      "sha256": "9034ae67ea7a7bf2e68efb7e198cb78396c0376fdc8d4870575ccc5eed9fafcb"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/platform/wayland/LayerShellSurface.hpp",
+      "bytes": 170,
+      "sha256": "4d3910d4612770576c86e1df6834c812a7aa96387cdab3934f279eb907241ed2"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/qml/Main.qml",
+      "bytes": 1698,
+      "sha256": "f07ef3e2409320bc7c7564f18ba11ec5be7a593ed54d1ee865fc28374b19cd84"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/qml/components/AstreaAppIcon.qml",
+      "bytes": 57,
+      "sha256": "ac18461e5bbae84e1ad958f3d2540235ecd70a37bf94d790847d550c300679e4"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/qml/components/SpotlightPanel.qml",
+      "bytes": 4746,
+      "sha256": "b9a6e8ea982d35c3d25931a74d6cb42738c33cb697c26d41be2f36337ccb4657"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/qml/components/SpotlightResultsList.qml",
+      "bytes": 2994,
+      "sha256": "bce1707fc5598429d9b537480fb03e9c155632f3ebd8d9c268dabbfe284a6573"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/qml/components/SpotlightWeatherChip.qml",
+      "bytes": 1340,
+      "sha256": "3cc01b65267c226082a05c30f19122d1a88e93ae51c035010a49b58c38396a53"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/qml/components/qmldir",
+      "bytes": 53,
+      "sha256": "ebef25db868e2c4c0e076654acddeff68e118a55631e2969a4e00610006b2dfe"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/services/ApplicationLauncher.hpp",
+      "bytes": 56,
+      "sha256": "7602876a83abecba05f21fd825b77a3e70a26d10bc9c6c48d1c9e6496a9bed96"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/services/AstreaI18n.cpp",
+      "bytes": 6119,
+      "sha256": "c81e91d138af43dea50d35400e0ec40d04383bd6a7fa87bda602011d14c996c8"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/services/AstreaI18n.hpp",
+      "bytes": 1236,
+      "sha256": "0f42434205eb7c8e9b8e8bad88b1798755a2277b17fbdebeb65b27aac11446f4"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/services/GameModeMonitor.cpp",
+      "bytes": 1989,
+      "sha256": "b77964dcad02e197dbc0fc249b24ec575001b5188717f4c4074dfe4eea447ed0"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/services/GameModeMonitor.hpp",
+      "bytes": 618,
+      "sha256": "ccf31e32c24d4ec2b43e38596640b78a2644b40438ceb16eec69aff68aa95e35"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/services/SpotlightConfigWatcher.cpp",
+      "bytes": 3073,
+      "sha256": "23296ef9ce500cbc339123ca99b8c548eb5a2a89481cecf0c7ef033819bdb198"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/services/SpotlightConfigWatcher.hpp",
+      "bytes": 981,
+      "sha256": "d1d5108a8aafbfb7f3bbfb0e711a17913cef0499fdb31e5b5d3727d2ae9dcd5d"
+    },
+    {
+      "path": "target/Eclipse/Spotlight/tests/SpotlightBackendTest.cpp",
+      "bytes": 42334,
+      "sha256": "7e3afbee0d714cb5d27ee11970fcf6850addd35d4a0d07192e4fa5cae39a3f11"
+    },
+    {
+      "path": "target/Eclipse/cmake/AstreaLayerShell.cmake",
+      "bytes": 1831,
+      "sha256": "34e7cf2b9d511ace0e08cc608e62d838e6740971aa9ac25bdaa5f2acde96e1d8"
+    },
+    {
+      "path": "target/Eclipse/docs/CI.md",
+      "bytes": 6827,
+      "sha256": "2d17ac96cc001808d34c472bd77b8fe62bf64de62682cae00415e0343323aba0"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/plans/2026-08-01-native-dock-foundation.md",
+      "bytes": 3076,
+      "sha256": "42a8a9315b4e833fc2388dffb0cc1100be7ded0a722fe1468023bb3295c40b6e"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/plans/2026-08-07-astrea-shell-capability-authentication.md",
+      "bytes": 11827,
+      "sha256": "80e0b1c64f5a4b123453eda42ed63035079265f7c003bc47593005aac703f202"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/plans/2026-08-07-m6-1-native-shell-integration.md",
+      "bytes": 17120,
+      "sha256": "eebf25130f45edeb05be9f9ce8ae6ada3fa3110ad03ed8968ab371d1c6ad17bb"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/plans/2026-08-09-m7-c-eclipse-typhon-actions.md",
+      "bytes": 8536,
+      "sha256": "60b511e4341b1fa3d8f7f2f15b2aa6e767427d54a454059b51532a8ae1e31655"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/plans/2026-08-09-m7-c-final-deterministic-closure.md",
+      "bytes": 6373,
+      "sha256": "5efb4578084db20350b4182feaf7ff1dc0dbf0c17880c171de24e09de3fd9ba3"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/plans/2026-08-09-m7-d-final-deterministic-closure.md",
+      "bytes": 9761,
+      "sha256": "dc9af7a0c9c330abe13da3b97050590c1722e486609db055f7286af0d98e6906"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/plans/2026-08-09-m7-d-unified-shell-runtime.md",
+      "bytes": 32426,
+      "sha256": "53473d90109b774e7439a77e02c6f24cd75f91e6f27db12722b921cff5351933"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/plans/2026-08-11-m7-e-desktop-entry-catalog-correctness.md",
+      "bytes": 11186,
+      "sha256": "320601467bb9cee0386c1ae2906aeffbac7c01e41c70be3beee24caf89ee3428"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/plans/2026-08-11-m7-f-deterministic-ci-quality-gate.md",
+      "bytes": 4945,
+      "sha256": "17e1c47de9a0f9fcca258941554554eaabeb54c2a05fa079125b157e3fe7bc39"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/plans/2026-08-13-m7-f1-hosted-ci-closure.md",
+      "bytes": 10008,
+      "sha256": "22c9330cd562054d44fe6053c510065462c0da9d4767925fa4f1fe2f7abe3335"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/plans/2026-08-14-dynamic-dock-runtime-projection.md",
+      "bytes": 5799,
+      "sha256": "059bda8ac94234bc715cd91f7f5cd7786e1961a44c26d5d6b5cf557f10722b45"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/plans/2026-08-14-layer-shell-contract.md",
+      "bytes": 6274,
+      "sha256": "d0c1a0627ab184e222d0ef278c1f3d8f192ddbe29bd18887c4e12a2eafc55c33"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/plans/2026-08-14-layer-shell-resize-causality.md",
+      "bytes": 10325,
+      "sha256": "c2319133b4921f33710750c3a998be86c103725b2ef88b0ffe6a9f365ab3437b"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/plans/2026-08-14-layer-shell-runtime-hardening.md",
+      "bytes": 1632,
+      "sha256": "e0e1be0daba7b46b441d0fd7c701fb946def4600585c5c234dced2d3c40ceaa4"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/qualifications/2026-08-09-m7-c-eclipse-typhon-actions.md",
+      "bytes": 4632,
+      "sha256": "30e28460b25dad270f7f11f6939b89e1e1f389f486c3cedfa14fd84383186744"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/qualifications/2026-08-09-m7-d-unified-shell-runtime.md",
+      "bytes": 4375,
+      "sha256": "6cb39df5ec80fc976c87fe2d57f0e35c824523a163036bad59671034704e748f"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/qualifications/2026-08-11-m7-e-desktop-entry-catalog-correctness.md",
+      "bytes": 6240,
+      "sha256": "b2d1a0d5f3baab98809dcd1f9acb5f7c10a4d51d65300dca5dbff011069ad747"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/qualifications/2026-08-11-m7-f-deterministic-ci-quality-gate.md",
+      "bytes": 8869,
+      "sha256": "00b880f3f80119afdac629d7f34063a9ae2cfaf12ea27010a6f502b08a6dc50e"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/qualifications/2026-08-13-m7-f1-hosted-ci-closure.md",
+      "bytes": 3454,
+      "sha256": "a896303d948a66af027f802a4b9d199f2ede8a4672a3386cb94781f61f2bf165"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/specs/2026-08-01-native-dock-foundation-design.md",
+      "bytes": 4170,
+      "sha256": "84ab7dadc586a1ffd86f8bc182968acee0caff6bd507d74cdfee364bacf46a32"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/specs/2026-08-02-settings-compositor-preview-design.md",
+      "bytes": 2828,
+      "sha256": "71ccb53851551539a63830a3c184313538dfe428191b4369fe62e903df2ac1ae"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/specs/2026-08-07-astrea-shell-capability-design.md",
+      "bytes": 3178,
+      "sha256": "031d4d137ef985b5ffade9790ab1f5786216f4444d9b4f8bec23e33cb0a40b72"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/specs/2026-08-09-m7-d-unified-shell-runtime-design.md",
+      "bytes": 10534,
+      "sha256": "ba8a4e1a1d340bcfbe9483ac630ca03072061048de4ad374eec2f2219f4bc81a"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/specs/2026-08-11-m7-e-desktop-entry-catalog-correctness-design.md",
+      "bytes": 6560,
+      "sha256": "79e2872724df5b8f559b1c0fb5c4a62183a51fdf5f21225c7241d324e2390121"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/specs/2026-08-11-m7-f-deterministic-ci-quality-gate-design.md",
+      "bytes": 5502,
+      "sha256": "e00de2c3051dfb8d41ddc56926fdf02cb30740ee5babbfb8ee11b82eec0eeb6f"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/specs/2026-08-13-m7-f1-hosted-ci-closure-design.md",
+      "bytes": 3802,
+      "sha256": "70062ea66478f5e263782f664cf6226dfcd1574f310e0eeef5189bcde1342462"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/specs/2026-08-14-layer-shell-contract-design.md",
+      "bytes": 2844,
+      "sha256": "f6391e31a65c5d684398324c557022122ca7bb13a82eb6a3e15cdfcf9eddda0d"
+    },
+    {
+      "path": "target/Eclipse/docs/superpowers/specs/2026-08-14-layer-shell-runtime-hardening-design.md",
+      "bytes": 1858,
+      "sha256": "871bb291173038862678242bb6fc3009c67375a2d4b63adab9babb583bccd353"
+    },
+    {
+      "path": "target/Eclipse/shared/CMakeLists.txt",
+      "bytes": 17308,
+      "sha256": "630d499b7e5012718b1fc17ee51842cc4f39186915171e81325c591a5edf4fb5"
+    },
+    {
+      "path": "target/Eclipse/shared/README.md",
+      "bytes": 824,
+      "sha256": "b0b9e22a9a7ec8778d35bb7f2a20f80aeacdac6657ca3fc3103f349e160118bc"
+    },
+    {
+      "path": "target/Eclipse/shared/apps/DesktopEntryCatalog.cpp",
+      "bytes": 10632,
+      "sha256": "48abc8f52a8af17f0811514ac863185db8898d0fd96453641aaa7b53a4f5c090"
+    },
+    {
+      "path": "target/Eclipse/shared/apps/DesktopEntryCatalog.hpp",
+      "bytes": 1663,
+      "sha256": "be81fe336aa65380a447433c38d83f67dc765a72547d6c8523d71032bc713267"
+    },
+    {
+      "path": "target/Eclipse/shared/apps/DesktopEntryParser.cpp",
+      "bytes": 8192,
+      "sha256": "b85edb71600b6847d15a203882f5ac35a59a436004e6c967385ccec27a1280ab"
+    },
+    {
+      "path": "target/Eclipse/shared/apps/DesktopEntryParser.hpp",
+      "bytes": 943,
+      "sha256": "6a15dc7be4a72300dcb52f101a617ffd231b590bd60f9f13029631e3f398ff74"
+    },
+    {
+      "path": "target/Eclipse/shared/docs/TYPHON_TOPLEVEL_CLIENT.md",
+      "bytes": 4915,
+      "sha256": "6e9160ea5dda244d562c29430877e72770651d6e4cbd109eefcec76c846aab72"
+    },
+    {
+      "path": "target/Eclipse/shared/icons/AstreaIconProvider.cpp",
+      "bytes": 11515,
+      "sha256": "a12d1c74cdac6b82a0d9dac9ebaac449d8cd2f8d18b5a5700f72d658c55d6677"
+    },
+    {
+      "path": "target/Eclipse/shared/icons/AstreaIconProvider.hpp",
+      "bytes": 1669,
+      "sha256": "6852f82a6b04124381779ba364801bb24d9aa433e0dba9d789543a6db8dcba36"
+    },
+    {
+      "path": "target/Eclipse/shared/icons/AstreaIconTheme.cpp",
+      "bytes": 4456,
+      "sha256": "d742af79ddb3c4224d787d22af9a3f610af0531f9c92f8e2ff4d55f050b062ae"
+    },
+    {
+      "path": "target/Eclipse/shared/icons/AstreaIconTheme.hpp",
+      "bytes": 412,
+      "sha256": "815f54e8c74e213837108842830c50b48ed00d4b8aa13852b14fa7dd4dc22fb1"
+    },
+    {
+      "path": "target/Eclipse/shared/launch/ApplicationLauncher.cpp",
+      "bytes": 8434,
+      "sha256": "224e621f343beb151beecc8c212a3a68463b7e84501fe29e0c6014d7ffc511de"
+    },
+    {
+      "path": "target/Eclipse/shared/launch/ApplicationLauncher.hpp",
+      "bytes": 1733,
+      "sha256": "07c36accfdd03acd1337f878c7da08edc35aa3d5ad8e54eb4bbe8be8e84bb18b"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/DockApplicationStateProjector.cpp",
+      "bytes": 1516,
+      "sha256": "2ab1611eb69fcf357e7921d03b840273d7cfd3fc8c845a20cd7f322bffae70d7"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/DockApplicationStateProjector.hpp",
+      "bytes": 908,
+      "sha256": "ae2efbeab99a8d149ec8d007a1168d2825dbaa8a498377216a20efa5595dcc18"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/TyphonActionState.cpp",
+      "bytes": 2686,
+      "sha256": "d1766ff9615830ed3ea33ec0a3024dcba124faa752f386fa2704898a961626c7"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/TyphonActionState.hpp",
+      "bytes": 1418,
+      "sha256": "af8e4efce875f72d65eecc4d36aa696f406d94d3d85ed38ad7ff128aa7e11a43"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/TyphonAppMatcher.cpp",
+      "bytes": 5233,
+      "sha256": "4ea4d27c6b54f0cfce63c1093a43fd9d93473995ac031c608de1aebd58ac77c0"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/TyphonAppMatcher.hpp",
+      "bytes": 1262,
+      "sha256": "4950feb3e176337bde370943317d3d06912ae88566a758d2b145fac795c0193e"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/TyphonProtocolAdapter.cpp",
+      "bytes": 23229,
+      "sha256": "2013f903076c7af1c1b75297fca4579ffc6f67346f03aa7e2919f0a8b471227b"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/TyphonProtocolAdapter.hpp",
+      "bytes": 2811,
+      "sha256": "07a90262c8ad53940a1b4121c4a4fd6d682031bed91ea3415677a79e0d550587"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/TyphonProtocolTypes.hpp",
+      "bytes": 2628,
+      "sha256": "1ed086a13198a4d5cc0fad36fbe6d45eb9dfc39ef3a084a819cf5e700bf6908e"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/TyphonSharedConnection.cpp",
+      "bytes": 4869,
+      "sha256": "e2a42c2274eaf633384007fcc68646b1e86df974ea60032b1a15f8f571a0d4f2"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/TyphonSharedConnection.hpp",
+      "bytes": 2239,
+      "sha256": "f30b020fa7bc52f697ca7a71b690ac151b82813e4ebd032c1197fed0bfef2855"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/TyphonShellAuthenticator.cpp",
+      "bytes": 6464,
+      "sha256": "11307682db5af479eb41d09f2cdb532e3e4dcb83e7258c72882fe56bcf643da6"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/TyphonShellAuthenticator.hpp",
+      "bytes": 240,
+      "sha256": "b029ff69166c730d832aeddf52f06526c43031a2993caa2f4518c9b92c0ae4e1"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/TyphonShortcutClient.cpp",
+      "bytes": 23683,
+      "sha256": "4dc0244d0ab88f78490bd814a0adcf1f6c768453521a52dd05b7949d7b651dbc"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/TyphonShortcutClient.hpp",
+      "bytes": 1817,
+      "sha256": "ab831e55127c6b606998206dbc21c29619cb890f77b3b919a3e77637061c0caf"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/TyphonToplevelConnection.cpp",
+      "bytes": 16379,
+      "sha256": "222231e6f6806c1cee54fcdde24520aa42bba407835a420cca2118aa67257287"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/TyphonToplevelConnection.hpp",
+      "bytes": 3454,
+      "sha256": "87b7ccaf43f621e84b0684d9091859f4d172bfd863379a2009365420ef990c87"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/TyphonToplevelModel.cpp",
+      "bytes": 13363,
+      "sha256": "c3418c6aa9a290e65aaaf26bbc6dfef3a29df2468f72fcbf152de71c3990edd5"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/TyphonToplevelModel.hpp",
+      "bytes": 3735,
+      "sha256": "ad7cce2c5aee40b8d538b02ccff39df6da91f61dd63eb710231baf5c1d0b23f0"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/TyphonWaylandDisplay.cpp",
+      "bytes": 5800,
+      "sha256": "a001fb150f533f09542342c699af043567bc21eb9c243ba9a4eb03c6a84ca2b0"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/TyphonWaylandDisplay.hpp",
+      "bytes": 880,
+      "sha256": "470690abad719fa8f61517744422d9e1bfd728001d88f543278c68c8ac03f459"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/protocols/astrea-shell-auth-v1.xml",
+      "bytes": 1115,
+      "sha256": "219c00763b01e48cb5f7e455aa64dfdbd358b93136e732748d801b06e11df4cb"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/protocols/astrea-shortcuts-v1.xml",
+      "bytes": 2550,
+      "sha256": "4c3999e91e088b3ef5cc57245e9fac544929a811b097f8964d05c0268265867e"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/typhon/protocols/astrea-toplevel-management-v1.xml",
+      "bytes": 5335,
+      "sha256": "0dd3449fda60b1ed183e330e1589093f3d4f8086be117d9ca4baa81bd6bd47e7"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/wayland/LayerShellHelper.cpp",
+      "bytes": 6982,
+      "sha256": "a739393a6c12f342420921c2e4c8cad8b22368e0c325f03ce70484c3f247ce02"
+    },
+    {
+      "path": "target/Eclipse/shared/platform/wayland/LayerShellHelper.hpp",
+      "bytes": 1002,
+      "sha256": "95590f170318744b6896d1fd888a205cf5f13d7d871a04497ae80c6923790a5d"
+    },
+    {
+      "path": "target/Eclipse/shared/qml/AstreaAppIcon.qml",
+      "bytes": 4619,
+      "sha256": "c3c566a50488e4810c67117d946bc728cf131c9090efb10e584363ffe2336501"
+    },
+    {
+      "path": "target/Eclipse/shared/tests/DesktopEntryCatalogTest.cpp",
+      "bytes": 21362,
+      "sha256": "2193bab78bfb6da5d129f870451ca8470c818d20e6da763ea9f8d65d8ede2b61"
+    },
+    {
+      "path": "target/Eclipse/shared/tests/DockApplicationStateProjectorTest.cpp",
+      "bytes": 7734,
+      "sha256": "94d63880eb80719ad1437ffbf52304ed64fae15c46a2cfc9be9bd1f7785d8108"
+    },
+    {
+      "path": "target/Eclipse/shared/tests/LayerShellHelperTest.cpp",
+      "bytes": 1602,
+      "sha256": "d7857e655ee48cea92d2529ada67ea4c548f7dcd441bf15f56d84b1dd2dab0e8"
+    },
+    {
+      "path": "target/Eclipse/shared/tests/TyphonActionStateTest.cpp",
+      "bytes": 5340,
+      "sha256": "1730b36d7e66fc502f739ea17a60ea3319eb8320b50252e0b0efa7c83d0df7d5"
+    },
+    {
+      "path": "target/Eclipse/shared/tests/TyphonAppMatcherTest.cpp",
+      "bytes": 6684,
+      "sha256": "3a5353771a88c1fee343b9745a8ecbcfd77fccca3aea423c578e45a4401b54a7"
+    },
+    {
+      "path": "target/Eclipse/shared/tests/TyphonProtocolClientTest.cpp",
+      "bytes": 13781,
+      "sha256": "8d5e4ae0d67ed948256c8d6c998907f4481f7c817449f4d7cd3299c5ad3c9cbf"
+    },
+    {
+      "path": "target/Eclipse/shared/tests/TyphonProtocolIntegrationTest.cpp",
+      "bytes": 43037,
+      "sha256": "dd0a40d789b63b034f8269ab7a154e873cf4e4d19bfad814cf9a2e3ed404db5e"
+    },
+    {
+      "path": "target/Eclipse/shared/tests/TyphonSharedConnectionTest.cpp",
+      "bytes": 2467,
+      "sha256": "62d8d091ed15097aa616cdc0d073c002f2cbc6df0845e30a5a85225e71d8ba55"
+    },
+    {
+      "path": "target/Eclipse/shared/tests/TyphonShortcutProtocolContractTest.cpp",
+      "bytes": 1135,
+      "sha256": "2a3cea220f0fb29f0dba73f32167d6b103618b41a18cbbac987396a323b6b5f8"
+    },
+    {
+      "path": "target/Eclipse/shared/tests/TyphonShortcutProtocolIntegrationTest.cpp",
+      "bytes": 17413,
+      "sha256": "b34cfde0fc03f6fab6e8ae00dc47f5981a75b15e4ed476739a4c9107487aa9c9"
+    },
+    {
+      "path": "target/Eclipse/shared/tests/TyphonShortcutProtocolServerCompat.hpp",
+      "bytes": 1776,
+      "sha256": "c8863c01b6a47698866258d88d895359745e7c8e98863ff82e8a1100055a2f96"
+    },
+    {
+      "path": "target/Eclipse/shared/tests/TyphonToplevelModelTest.cpp",
+      "bytes": 16619,
+      "sha256": "b5cfee492eab3faf6202179e1f51cd915ce7278f1546f9a055cc017c1ace0488"
+    },
+    {
+      "path": "target/Eclipse/shared/tests/TyphonToplevelProtocolContractTest.cpp",
+      "bytes": 1500,
+      "sha256": "e903cb68507acad16e25b6b8e6a3ddb51212bb4de7740c7aad200fac2e729a49"
+    },
+    {
+      "path": "target/Eclipse/tools/ci/check-ctest-junit.py",
+      "bytes": 3968,
+      "sha256": "3895ef6486182fc9b94682cc385e20a7938597f7fa668ec3326f333dc3f2b536"
+    },
+    {
+      "path": "target/Eclipse/tools/ci/check-git-whitespace.sh",
+      "bytes": 1079,
+      "sha256": "80d4e87af3dcd338081e536f2a592eb87b6ee3171ff0869c3959cbf3044e7338"
+    },
+    {
+      "path": "target/Eclipse/tools/ci/check-workflow-policy.py",
+      "bytes": 7781,
+      "sha256": "74efbff3e2e4afa386b93a93125ca9dc3bac6001e46dba89ad78729651eff415"
+    },
+    {
+      "path": "target/Eclipse/tools/ci/install-layer-shell-qt.sh",
+      "bytes": 2260,
+      "sha256": "27cc9ffb07a875ef80a512236652ffaa989dc666d02c2e2c534ebff8195188bd"
+    },
+    {
+      "path": "target/Eclipse/tools/ci/run-all-local.sh",
+      "bytes": 427,
+      "sha256": "86a64bd9627e4688402640d043dfc8bef8f2d325c240f8c45a40322415fc4e15"
+    },
+    {
+      "path": "target/Eclipse/tools/ci/run-cmake-gate.sh",
+      "bytes": 1453,
+      "sha256": "062f06f589b8961d4d109e15dcc2a79d5915676af55d2ccd74523f3c0134ce27"
+    },
+    {
+      "path": "target/Eclipse/tools/ci/run-qml-gate.sh",
+      "bytes": 418,
+      "sha256": "c35c750852827c1902462a8090487a796967b97d965e26896e730cca8fa0f6b3"
+    },
+    {
+      "path": "target/Eclipse/tools/ci/run-rust-gate.sh",
+      "bytes": 438,
+      "sha256": "44b1a4c1750638b9b919bc2fb2c231d9366785f8b8dbbaaa3f646d564da8ecf9"
+    },
+    {
+      "path": "target/Eclipse/tools/ci/tests/test_check_ctest_junit.py",
+      "bytes": 6160,
+      "sha256": "0e2e430891a6d13d1761e6a9aac434f45803ef418650d790d31181f0438286e4"
+    },
+    {
+      "path": "target/Eclipse/tools/ci/tests/test_check_git_whitespace.py",
+      "bytes": 4314,
+      "sha256": "87b2392e6a2f536f18cad5dae2259f9bf2e855b2c0f7daeebbde22ad011cf94f"
+    },
+    {
+      "path": "target/Eclipse/tools/ci/tests/test_check_workflow_policy.py",
+      "bytes": 5316,
+      "sha256": "f58fbd27d49e41d28dff2cb56c49fa60793ab502cacf9c836abbbd854bc428c9"
+    },
+    {
+      "path": "target/Eclipse/tools/ci/tests/test_layer_shell_contract.py",
+      "bytes": 7637,
+      "sha256": "c7f0010486ef7283a867425f39a00cd787cce0d75e1dbf494b233eba398824ea"
+    },
+    {
+      "path": "target/Eclipse/tools/create-source-archive",
+      "bytes": 2072,
+      "sha256": "2ea1b7fdfe76d53fb7f9ca82effd0c7b739d1603c74910c348efa27bd5203223"
+    },
+    {
+      "path": "target/Eclipse/tools/create-source-archive-test.sh",
+      "bytes": 1661,
+      "sha256": "b6818727a4be67e3698115349bf550f102cba45eca1b7f2621bbb8e80b3eac1c"
+    }
+  ]
+}

@@ -24,6 +24,11 @@
 #include "platform/typhon/TyphonShortcutClient.hpp"
 #include "platform/typhon/TyphonToplevelConnection.hpp"
 #include "platform/typhon/TyphonWorkspaceClient.hpp"
+#include "Paper/core/WallpaperPersistence.hpp"
+#include "Paper/core/WallpaperCatalog.hpp"
+#include "Paper/core/WallpaperResolver.hpp"
+#include "Paper/core/WallpaperService.hpp"
+#include "Paper/platform/ipc/WallpaperControlServer.hpp"
 #include "services/AppIdentityResolver.hpp"
 #include "theme/ThemeController.hpp"
 #include "system/audio/AudioService.hpp"
@@ -100,6 +105,21 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
     m_shortcutDispatcher = std::make_unique<ShellShortcutDispatcher>(m_altTabController.get(),
                                                                        m_spotlightController.get());
     m_ipcServer = std::make_unique<ShellIpcServer>();
+    const auto wallpaperResolver = Paper::WallpaperResolver();
+    auto wallpaperCatalog = std::make_shared<Paper::WallpaperCatalog>(wallpaperResolver);
+    m_wallpaperService = std::make_unique<Paper::WallpaperService>(
+        wallpaperResolver,
+        std::make_unique<Paper::XdgWallpaperPersistence>(),
+        std::move(wallpaperCatalog));
+    m_wallpaperService->initialize();
+    m_wallpaperControlServer = std::make_unique<Paper::WallpaperControlServer>(
+        m_wallpaperService.get());
+    QString wallpaperControlError;
+    if (!m_wallpaperControlServer->listen(&wallpaperControlError)) {
+        if (errorOut)
+            *errorOut = wallpaperControlError;
+        return false;
+    }
     m_gameMode = std::make_unique<GameModeMonitor>();
     m_audioService = std::make_unique<Astrea::System::AudioService>();
     m_networkService = std::make_unique<Astrea::System::NetworkService>();

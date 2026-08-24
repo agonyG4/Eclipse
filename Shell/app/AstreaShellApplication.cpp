@@ -11,6 +11,7 @@
 #include "Bar/core/BarController.hpp"
 #include "Bar/core/BarClockService.hpp"
 #include "Bar/core/WorkspaceModel.hpp"
+#include "Paper/platform/wayland/WallpaperSurfaceManager.hpp"
 #include "platform/ipc/ShellIpcServer.hpp"
 #include "runtime/ShellRuntime.hpp"
 #include "platform/wayland/LayerShellHelper.hpp"
@@ -223,6 +224,15 @@ bool AstreaShellApplication::initializeQml()
         m_runtime->statusNotifier());
     if (!m_barSurfaceManager->initialize(&barError)) {
         qCritical("Astrea shell Bar surface initialization failed: %s", qPrintable(barError));
+        return false;
+    }
+
+    QString wallpaperError;
+    m_wallpaperSurfaceManager = std::make_unique<Paper::WallpaperSurfaceManager>(
+        m_application, *m_engine, m_runtime->wallpaperService(), this);
+    if (!m_wallpaperSurfaceManager->initialize(&wallpaperError)) {
+        qCritical("Astrea shell Paper wallpaper surface initialization failed: %s",
+                  qPrintable(wallpaperError));
         return false;
     }
 

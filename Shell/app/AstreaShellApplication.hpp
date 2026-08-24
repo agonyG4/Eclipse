@@ -15,6 +15,10 @@ class QQuickWindow;
 class ShellRuntime;
 class BarSurfaceManager;
 
+namespace Paper {
+class WallpaperSurfaceManager;
+}
+
 class AstreaShellApplication final : public QObject {
     Q_OBJECT
 
@@ -43,6 +47,7 @@ private:
     QPointer<QQuickWindow> m_altTabWindow;
     QPointer<QQuickWindow> m_spotlightWindow;
     std::unique_ptr<BarSurfaceManager> m_barSurfaceManager;
+    std::unique_ptr<Paper::WallpaperSurfaceManager> m_wallpaperSurfaceManager;
     bool m_layerShellWaylandBackend = false;
     bool m_layerShellProtocolAdvertised = false;
     bool m_dockLayerConfigurationRequested = false;

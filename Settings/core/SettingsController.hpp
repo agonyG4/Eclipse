@@ -3,6 +3,7 @@
 #include "core/navigation/SettingsNavigationModel.hpp"
 #include "services/assets/SettingsIconResolver.hpp"
 #include "services/profile/SettingsUserProfile.hpp"
+#include "services/wallpaper/SettingsWallpaperController.hpp"
 
 #include <QObject>
 #include <QString>
@@ -20,6 +21,7 @@ class SettingsController final : public QObject {
     Q_PROPERTY(QString userName READ userName CONSTANT)
     Q_PROPERTY(QUrl avatarUrl READ avatarUrl CONSTANT)
     Q_PROPERTY(bool isSudo READ isSudo CONSTANT)
+    Q_PROPERTY(SettingsWallpaperController *wallpaper READ wallpaper CONSTANT)
 
 public:
     explicit SettingsController(QObject *parent = nullptr);
@@ -37,6 +39,7 @@ public:
     QString userName() const;
     QUrl avatarUrl() const;
     bool isSudo() const;
+    SettingsWallpaperController *wallpaper() const { return m_wallpaperController.get(); }
 
     Q_INVOKABLE bool selectSection(const QString &id);
     Q_INVOKABLE QUrl iconUrl(const QString &iconKey, const QString &iconTheme) const;
@@ -51,4 +54,5 @@ private:
     std::unique_ptr<SettingsNavigationModel> m_navigationModel;
     const SettingsUserProfile m_userProfile;
     const SettingsIconResolver m_iconResolver;
+    std::unique_ptr<SettingsWallpaperController> m_wallpaperController;
 };

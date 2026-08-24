@@ -1,5 +1,7 @@
 #include "core/SettingsController.hpp"
 
+#include "services/wallpaper/SettingsWallpaperController.hpp"
+
 #include <utility>
 
 SettingsController::SettingsController(QObject *parent)
@@ -29,6 +31,8 @@ SettingsController::SettingsController(std::unique_ptr<SettingsNavigationModel> 
             this, &SettingsController::selectionChanged);
     connect(m_navigationModel.get(), &SettingsNavigationModel::filterTextChanged,
             this, &SettingsController::filterTextChanged);
+
+    m_wallpaperController = std::make_unique<SettingsWallpaperController>(QString(), this);
 }
 
 SettingsNavigationModel *SettingsController::navigationModel()

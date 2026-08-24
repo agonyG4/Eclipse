@@ -37,6 +37,11 @@ class BluetoothService;
 class NetworkService;
 }
 
+namespace Paper {
+class WallpaperControlServer;
+class WallpaperService;
+}
+
 class ShellRuntime final : public QObject {
     Q_OBJECT
 
@@ -69,6 +74,9 @@ public:
     ShellShortcutDispatcher *shortcutDispatcher() const { return m_shortcutDispatcher.get(); }
     GameModeMonitor *gameModeMonitor() const { return m_gameMode.get(); }
     ShellIpcServer *ipcServer() const { return m_ipcServer.get(); }
+    Paper::WallpaperService *wallpaperService() const { return m_wallpaperService.get(); }
+    Paper::WallpaperControlServer *wallpaperControlServer() const
+    { return m_wallpaperControlServer.get(); }
     DockConfigWatcher *dockConfig() const { return m_dockConfig.get(); }
     AltTabConfigWatcher *altTabConfig() const { return m_altTabConfig.get(); }
     SpotlightConfigWatcher *spotlightConfig() const { return m_spotlightConfig.get(); }
@@ -110,6 +118,8 @@ private:
     std::unique_ptr<WorkspaceModel> m_workspaceModel;
     std::unique_ptr<ShellShortcutDispatcher> m_shortcutDispatcher;
     std::unique_ptr<ShellIpcServer> m_ipcServer;
+    std::unique_ptr<Paper::WallpaperService> m_wallpaperService;
+    std::unique_ptr<Paper::WallpaperControlServer> m_wallpaperControlServer;
     std::unique_ptr<DockConfigWatcher> m_dockConfig;
     std::unique_ptr<AltTabConfigWatcher> m_altTabConfig;
     std::unique_ptr<SpotlightConfigWatcher> m_spotlightConfig;

@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+include(GNUInstallDirs)
+
 option(ASTREA_BUILD_TESTS "Build Eclipse component tests" ON)
 option(ASTREA_ENABLE_LAYER_SHELL
     "Require LayerShellQt for the production unified shell"
@@ -53,6 +55,7 @@ include(CTest)
 if(NOT TARGET astrea-shared-core)
     add_subdirectory(shared)
 endif()
+add_subdirectory(Paper)
 add_subdirectory(Spotlight)
 add_subdirectory(AltTab)
 add_subdirectory(Dock)

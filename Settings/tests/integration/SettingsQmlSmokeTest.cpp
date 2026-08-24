@@ -14,6 +14,7 @@ class SettingsQmlSmokeTest final : public QObject {
 
 private slots:
     void loadsCompositorRouteOffscreen();
+    void loadsWallpaperRouteOffscreen();
 };
 
 void SettingsQmlSmokeTest::loadsCompositorRouteOffscreen()
@@ -53,6 +54,25 @@ void SettingsQmlSmokeTest::loadsCompositorRouteOffscreen()
     QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("compositorPage")) != nullptr, 1000);
     QCOMPARE(root->findChild<QObject *>(QStringLiteral("compositorPage"))->property("animationsEnabled").toBool(), true);
     QVERIFY2(qmlWarnings.isEmpty(), qPrintable(qmlWarnings.isEmpty() ? QString() : qmlWarnings.constFirst().toString()));
+}
+
+void SettingsQmlSmokeTest::loadsWallpaperRouteOffscreen()
+{
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.selectSection(QStringLiteral("wallpaper")));
+    QObject *root = engine.rootObjects().constFirst();
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("wallpaperPage")) != nullptr, 1000);
+    QVERIFY(root->findChild<QObject *>(QStringLiteral("wallpaperPage")) != nullptr);
 }
 
 QTEST_MAIN(SettingsQmlSmokeTest)

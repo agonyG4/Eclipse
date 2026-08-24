@@ -31,7 +31,7 @@ void SettingsControllerTest::startsWithSystemSelected()
 
     QCOMPARE(controller.selectedSectionId(), QStringLiteral("system"));
     QCOMPARE(controller.selectedSectionTitle(), QStringLiteral("System"));
-    QCOMPARE(controller.navigationModel()->rowCount(), 12);
+    QCOMPARE(controller.navigationModel()->rowCount(), 13);
 }
 
 void SettingsControllerTest::selectsKnownSection()
@@ -74,7 +74,7 @@ void SettingsControllerTest::clearingFilterRestoresCatalogue()
     controller.setFilterText(QStringLiteral("network"));
     QVERIFY(controller.navigationModel()->rowCount() < 12);
     controller.clearFilter();
-    QCOMPARE(controller.navigationModel()->rowCount(), 12);
+    QCOMPARE(controller.navigationModel()->rowCount(), 13);
     QCOMPARE(controller.filterText(), QString());
 }
 
@@ -135,6 +135,7 @@ void SettingsControllerTest::exposesExactCatalogueOrdering()
         QString(),
         QStringLiteral("performance"),
         QStringLiteral("appearance"),
+        QStringLiteral("wallpaper"),
         QStringLiteral("more-settings"),
     };
 
@@ -213,6 +214,7 @@ void SettingsControllerTest::keepsOneSelectedRowForEverySelection()
         QStringLiteral("compositor"),
         QStringLiteral("performance"),
         QStringLiteral("appearance"),
+        QStringLiteral("wallpaper"),
         QStringLiteral("more-settings"),
     };
 

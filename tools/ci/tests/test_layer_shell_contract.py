@@ -140,6 +140,25 @@ class LayerShellContractTests(unittest.TestCase):
         self.assertIn("AstreaLayerShellConfig::Layer::Overlay", spotlight)
         self.assertIn("AstreaLayerShellConfig::KeyboardInteractivity::Exclusive", spotlight)
 
+    def test_wallpaper_policy_requests_full_output_background(self) -> None:
+        policy = (
+            REPOSITORY_ROOT / "Paper" / "platform" / "wayland" / "WallpaperSurfacePolicy.cpp"
+        ).read_text(encoding="utf-8")
+        bundle = (
+            REPOSITORY_ROOT / "Paper" / "platform" / "wayland" / "WallpaperSurfaceBundle.cpp"
+        ).read_text(encoding="utf-8")
+        self.assertIn('QStringLiteral("astrea-paper-wallpaper")', policy)
+        self.assertIn("AstreaLayerShellConfig::Layer::Background", policy)
+        self.assertIn("AstreaLayerShellConfig::KeyboardInteractivity::None", policy)
+        self.assertIn("config.anchorTop = true", policy)
+        self.assertIn("config.anchorBottom = true", policy)
+        self.assertIn("config.anchorLeft = true", policy)
+        self.assertIn("config.anchorRight = true", policy)
+        self.assertIn("config.exclusiveZone = -1", policy)
+        self.assertIn("config.margins = QMargins()", policy)
+        self.assertIn("WallpaperSurfacePolicy::background", bundle)
+        self.assertNotIn("config.exclusiveZone = 0", bundle)
+
     def test_dock_physical_width_is_not_animated(self) -> None:
         dock_panel = (REPOSITORY_ROOT / "Dock" / "qml" / "components" / "DockPanel.qml").read_text(
             encoding="utf-8"

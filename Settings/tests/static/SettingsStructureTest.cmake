@@ -50,6 +50,7 @@ endif()
 
 set(core_production_cpp_files
     core/SettingsController.cpp
+    services/wallpaper/SettingsWallpaperController.cpp
     core/navigation/SettingsNavigationCatalog.cpp
     core/navigation/SettingsNavigationModel.cpp
     platform/linux/AdminGroupDetector.cpp
@@ -101,6 +102,7 @@ endforeach()
 set(production_source_files
     core/SettingsController.cpp
     core/SettingsController.hpp
+    services/wallpaper/SettingsWallpaperController.hpp
     core/navigation/SettingsNavigationCatalog.cpp
     core/navigation/SettingsNavigationCatalog.hpp
     core/navigation/SettingsNavigationEntry.hpp

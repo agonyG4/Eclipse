@@ -70,6 +70,7 @@ target_include_directories(astrea-shell-runtime PUBLIC
 
 target_link_libraries(astrea-shell-runtime PUBLIC
     astrea-alttab-core
+    astrea-paper-core
     astrea-shared-core
     astrea-shared-statusnotifier
     astrea-shared-system

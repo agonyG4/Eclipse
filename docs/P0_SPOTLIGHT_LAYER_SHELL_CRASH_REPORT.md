@@ -126,3 +126,87 @@ initial configure/ACK state, pending configures, and stale ACK state on
 NULL-buffer unmap. The live wire trace showed the required fresh configure,
 ACK, and buffer sequence on every fixed remap, with no compositor protocol
 error. Therefore the P0 is Eclipse-only and no Typhon commit is warranted.
+
+## Final compatibility follow-up and closure qualification
+
+Date: 2026-08-25
+
+This section records the final compatibility correction and live handoff
+qualification. It supersedes the provisional activation wording above where
+the current source is more restrictive.
+
+### LayerShellQt compatibility contract
+
+- LayerShellQt `6.4.5` remains the minimum supported package.
+- The `setActivateOnShow()` capability is enabled only at LayerShellQt
+  `6.4.90` and newer. KDE's 6.4.5-to-6.4.90 changelog records the addition of
+  request-activate-on-show support:
+  <https://kde.org/announcements/changelogs/plasma/6/6.4.5-6.4.90/>.
+- `ASTREA_LAYER_SHELL_HAS_ACTIVATE_ON_SHOW` is `OFF` for the `6.4.5` package
+  and `ON` for `6.4.90`/`6.5.0` contract fixtures. The unsafe helper call is
+  therefore not compiled for `6.4.5`; on newer packages it explicitly calls
+  `setActivateOnShow(false)`.
+- The final QML source has zero direct LayerShellQt `requestActivate()` calls
+  in both Spotlight and Alt+Tab. Remaps restore panel focus only; there is no
+  arbitrary popup delay, invisible mapped surface, or duplicate activation
+  route.
+
+### Verification matrix
+
+- Static activation structure test: **PASS**.
+- LayerShellQt capability contract tests: **11/11 PASS**.
+- GNU Release build with real LayerShellQt `6.7.4`, including the shell and
+  P0-relevant targets: **PASS**.
+- GNU Release focused compatibility suite: **21/21 PASS**, including
+  LayerShellHelper, Spotlight, LayerShell activation structure, Alt+Tab,
+  Bar, shell IPC, shortcut dispatch, unified runtime integration, and legacy
+  guards.
+- Clang/Clang Release build with real LayerShellQt `6.7.4`: **PASS** for the
+  built P0 targets (Spotlight, LayerShellHelper, Bar, shell IPC/shortcut/
+  unified integration, and Alt+Tab controller/routing).
+- AddressSanitizer and UndefinedBehaviorSanitizer smoke suites: **PASS** for
+  LayerShellHelper, Spotlight, and shell IPC.
+- Explicit no-LayerShell configuration: **PASS** for LayerShellHelper,
+  Spotlight, and shell IPC tests; production LayerShell remains required by
+  the shell runtime.
+- Real LayerShellQt `6.4.5` configure and focused compilation: **PASS**. The
+  configure log found the actual `6.4.5` library and reported
+  `setActivateOnShow()` unavailable. Its Debug runtime suite was **18/21
+  PASS**; the three failures were unrelated SIGSEGVs in
+  `DesktopEntryCatalog::rebuildIndex()` at `watchPaths.append(...)` during
+  Spotlight/Bar/unified-runtime catalog setup. No DesktopEntryCatalog change
+  was made, and the current/newer Release suite and sanitizer suites remain
+  green.
+- Repository-wide Release CTest: **66/67 PASS**. The only failure was the
+  unrelated `SettingsNavigationModelTest` catalogue-order/route expectation
+  mismatch; all P0, LayerShell, Spotlight, Bar, Alt+Tab, shell, and Typhon
+  contract tests passed.
+
+### Live native IPC qualification
+
+The current Eclipse Release shell was launched with the explicit Hyprland
+backend and real LayerShellQt `6.7.4`, then exercised through its native IPC
+clients. No synthetic pointer/keyboard input, `ydotool`, `wtype`, `xdotool`, or
+screenshot tooling was used.
+
+- Spotlight show/status/hide: **100/100 cycles PASS**.
+- Immediate hide-to-show reopen during the close transition: **100/100 cycles
+  PASS**.
+- Alt+Tab show/status/hide control: **PASS**.
+- The same shell PID remained alive throughout the qualification. No shell
+  restart, SIGSEGV, Qt fatal message, or Wayland protocol error was observed.
+- The process started for this qualification was stopped cleanly afterward.
+
+The exact Astrea-menu-popup-to-Search pointer handoff remains **Manual User
+Qualification Required**. The production-native seam is present, but this
+qualification did not synthesize the bar-menu click or use a test-only
+alternate handoff. A human should open the Astrea menu, click Search, and
+confirm that the normal Spotlight surface appears and receives focus.
+
+### Final status
+
+**P0 SPOTLIGHT LAYER-SHELL CRASH: CLOSED for the Eclipse compatibility and
+live IPC scope.** The LayerShellQt `6.4.5` safety boundary is explicit, newer
+automatic activation is disabled, the focused current/newer build and runtime
+qualification pass, the reopen regression is covered live, and Typhon remains
+unchanged.

@@ -1,5 +1,7 @@
 function(astrea_configure_layer_shell)
+    set(ASTREA_LAYER_SHELL_QT_ACTIVATE_ON_SHOW_MIN_VERSION "6.4.90")
     if(NOT ASTREA_ENABLE_LAYER_SHELL)
+        set(ASTREA_LAYER_SHELL_HAS_ACTIVATE_ON_SHOW OFF PARENT_SCOPE)
         message(STATUS
             "Eclipse Layer Shell: disabled explicitly; this mode is for non-production/test builds")
         return()
@@ -34,4 +36,17 @@ function(astrea_configure_layer_shell)
     message(STATUS
         "Eclipse Layer Shell: LayerShellQt ${LayerShellQt_VERSION} found; "
         "astrea-shell Layer Shell is required")
+
+    if(LayerShellQt_VERSION VERSION_GREATER_EQUAL
+       ASTREA_LAYER_SHELL_QT_ACTIVATE_ON_SHOW_MIN_VERSION)
+        set(ASTREA_LAYER_SHELL_HAS_ACTIVATE_ON_SHOW ON PARENT_SCOPE)
+        message(STATUS
+            "Eclipse Layer Shell: setActivateOnShow() API available in LayerShellQt "
+            "${LayerShellQt_VERSION}")
+    else()
+        set(ASTREA_LAYER_SHELL_HAS_ACTIVATE_ON_SHOW OFF PARENT_SCOPE)
+        message(STATUS
+            "Eclipse Layer Shell: setActivateOnShow() API unavailable in LayerShellQt "
+            "${LayerShellQt_VERSION}; using controller-owned focus")
+    endif()
 endfunction()

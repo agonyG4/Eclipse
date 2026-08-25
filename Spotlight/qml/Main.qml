@@ -18,7 +18,6 @@ Window {
 
     property bool hadActiveFocus: false
     property bool focusPending: false
-    property bool activationIssued: false
 
     onVisibleChanged: {
         if (visible) {
@@ -31,6 +30,10 @@ Window {
     onActiveChanged: {
         if (active) {
             hadActiveFocus = true
+            if (focusPending && visible && SpotlightController.open) {
+                focusPending = false
+                panel.focusSearch()
+            }
         } else if (hadActiveFocus && visible && SpotlightController.open) {
             SpotlightController.close()
         }
@@ -53,12 +56,9 @@ Window {
     Connections {
         target: window
         function onFrameSwapped() {
-            if (window.focusPending && window.visible && SpotlightController.open) {
+            if (window.focusPending && window.visible && window.active
+                    && SpotlightController.open) {
                 window.focusPending = false
-                if (!window.activationIssued) {
-                    window.activationIssued = true
-                    window.requestActivate()
-                }
                 panel.focusSearch()
             }
         }

@@ -18,7 +18,6 @@ Window {
 
     property bool hadActiveFocus: false
     property bool focusPending: false
-    property bool activationIssued: false
 
     onVisibleChanged: {
         if (visible) {
@@ -31,6 +30,10 @@ Window {
     onActiveChanged: {
         if (active) {
             hadActiveFocus = true
+            if (focusPending && visible && AltTabController.open) {
+                focusPending = false
+                altTabPanel.forceActiveFocus()
+            }
         } else if (hadActiveFocus && visible && AltTabController.open) {
             AltTabController.cancel()
         }
@@ -49,12 +52,10 @@ Window {
     Connections {
         target: window
         function onFrameSwapped() {
-            if (window.focusPending && window.visible && AltTabController.open) {
+            if (window.focusPending && window.visible && window.active
+                    && AltTabController.open) {
                 window.focusPending = false
-                if (!window.activationIssued) {
-                    window.activationIssued = true
-                    window.requestActivate()
-                }
+                altTabPanel.forceActiveFocus()
             }
         }
     }

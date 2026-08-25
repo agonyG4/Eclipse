@@ -167,10 +167,12 @@ bool AstreaLayerShellHelper::configure(QQuickWindow *window,
     layerWindow->setAnchors(anchors);
     layerWindow->setMargins(config.margins);
     layerWindow->setExclusiveZone(config.exclusiveZone);
+#if defined(ASTREA_LAYER_SHELL_HAS_ACTIVATE_ON_SHOW) && ASTREA_LAYER_SHELL_HAS_ACTIVATE_ON_SHOW
     // LayerShellQt's automatic activation runs from QWindow visibility. On a
     // remap that visibility transition precedes the fresh layer-surface
-    // configure, so activation is owned by the surface controller instead.
+    // configure, so the controller owns focus without another activation call.
     layerWindow->setActivateOnShow(false);
+#endif
     return true;
 #else
     Q_UNUSED(config);

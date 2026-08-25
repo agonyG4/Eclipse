@@ -9,9 +9,9 @@ function(check_controller_activation source_path controller_name)
 
     string(REGEX MATCHALL "requestActivate\\(\\)" activation_calls "${controller_source}")
     list(LENGTH activation_calls activation_call_count)
-    if(NOT activation_call_count EQUAL 1)
+    if(NOT activation_call_count EQUAL 0)
         message(FATAL_ERROR
-            "${controller_name} must have exactly one requestActivate() route; found ${activation_call_count}")
+            "${controller_name} must not call LayerShellQt requestActivate(); found ${activation_call_count}")
     endif()
 
     string(REGEX MATCH "onVisibleChanged:[^}]*requestActivate\\(\\)"
@@ -31,9 +31,9 @@ function(check_controller_activation source_path controller_name)
         message(FATAL_ERROR "${controller_name} activation must wait for the first rendered frame")
     endif()
 
-    string(FIND "${controller_source}" "property bool activationIssued: false" activation_lifetime_position)
-    if(activation_lifetime_position EQUAL -1)
-        message(FATAL_ERROR "${controller_name} must not re-request activation after remap")
+    string(FIND "${controller_source}" "window.focusPending = false" focus_pending_reset_position)
+    if(focus_pending_reset_position EQUAL -1)
+        message(FATAL_ERROR "${controller_name} must consume the pending focus request after readiness")
     endif()
 endfunction()
 
@@ -49,7 +49,7 @@ file(READ "${ECLIPSE_SOURCE_DIR}/shared/platform/wayland/LayerShellHelper.cpp"
 string(FIND "${layer_shell_helper_source}" "layerWindow->setActivateOnShow(false);"
     disabled_auto_activation_position)
 if(disabled_auto_activation_position EQUAL -1)
-    message(FATAL_ERROR "LayerShellQt automatic activation must be disabled for controller-owned activation")
+    message(FATAL_ERROR "LayerShellQt automatic activation must be disabled for controller-owned focus")
 endif()
 
 message(STATUS "Layer Shell activation structure invariants passed")

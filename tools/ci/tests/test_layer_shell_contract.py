@@ -14,7 +14,12 @@ CONTRACT_MODULE = REPOSITORY_ROOT / "cmake" / "AstreaLayerShell.cmake"
 
 class LayerShellContractTests(unittest.TestCase):
     def configure_fixture(
-        self, *, enabled: bool, package_available: bool, package_version: str = "6.4.5"
+        self,
+        *,
+        enabled: bool,
+        package_available: bool,
+        package_version: str = "6.4.5",
+        expected_activate_on_show: bool | None = None,
     ) -> subprocess.CompletedProcess[str]:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -43,13 +48,31 @@ class LayerShellContractTests(unittest.TestCase):
                     encoding="utf-8",
                 )
 
+            capability_assertion = ""
+            if expected_activate_on_show is not None:
+                expected = "ON" if expected_activate_on_show else "OFF"
+                capability_assertion = (
+                    "if(NOT DEFINED ASTREA_LAYER_SHELL_HAS_ACTIVATE_ON_SHOW)\n"
+                    "  message(FATAL_ERROR \"activation capability was not exported\")\n"
+                    "endif()\n"
+                    "if(ASTREA_LAYER_SHELL_HAS_ACTIVATE_ON_SHOW)\n"
+                    "  set(actual_activate_on_show ON)\n"
+                    "else()\n"
+                    "  set(actual_activate_on_show OFF)\n"
+                    "endif()\n"
+                    f'if(NOT actual_activate_on_show STREQUAL "{expected}")\n'
+                    f'  message(FATAL_ERROR "expected activate-on-show capability {expected}")\n'
+                    "endif()\n"
+                )
+
             (source / "CMakeLists.txt").write_text(
                 "cmake_minimum_required(VERSION 3.24)\n"
                 "project(layer-shell-contract NONE)\n"
                 f"set(ASTREA_ENABLE_LAYER_SHELL {'ON' if enabled else 'OFF'})\n"
                 f"include(\"{CONTRACT_MODULE}\")\n"
                 "astrea_configure_layer_shell()\n"
-                "if(ASTREA_ENABLE_LAYER_SHELL AND NOT TARGET LayerShellQt::Interface)\n"
+                + capability_assertion
+                + "if(ASTREA_ENABLE_LAYER_SHELL AND NOT TARGET LayerShellQt::Interface)\n"
                 "  message(FATAL_ERROR \"enabled contract did not expose LayerShellQt::Interface\")\n"
                 "endif()\n"
                 "if(NOT ASTREA_ENABLE_LAYER_SHELL AND TARGET LayerShellQt::Interface)\n"
@@ -63,8 +86,37 @@ class LayerShellContractTests(unittest.TestCase):
             return subprocess.run(command, check=False, capture_output=True, text=True)
 
     def test_enabled_contract_succeeds_with_interface_package(self) -> None:
-        result = self.configure_fixture(enabled=True, package_available=True)
+        result = self.configure_fixture(
+            enabled=True,
+            package_available=True,
+            expected_activate_on_show=False,
+        )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_activate_on_show_capability_starts_at_layer_shell_qt_6_4_90(self) -> None:
+        development_release = self.configure_fixture(
+            enabled=True,
+            package_available=True,
+            package_version="6.4.90",
+            expected_activate_on_show=True,
+        )
+        self.assertEqual(
+            development_release.returncode,
+            0,
+            development_release.stdout + development_release.stderr,
+        )
+
+        stable_release = self.configure_fixture(
+            enabled=True,
+            package_available=True,
+            package_version="6.5.0",
+            expected_activate_on_show=True,
+        )
+        self.assertEqual(
+            stable_release.returncode,
+            0,
+            stable_release.stdout + stable_release.stderr,
+        )
 
     def test_enabled_contract_fails_without_package(self) -> None:
         result = self.configure_fixture(enabled=True, package_available=False)
@@ -116,7 +168,8 @@ class LayerShellContractTests(unittest.TestCase):
         )
         self.assertIn("window->setScreen(config.screen)", helper)
         self.assertNotIn("layerWindow->setScreen", helper)
-        self.assertNotIn("setActivateOnShow", helper)
+        self.assertIn("ASTREA_LAYER_SHELL_HAS_ACTIVATE_ON_SHOW", helper)
+        self.assertIn("layerWindow->setActivateOnShow(false)", helper)
 
     def test_surface_policies_remain_layer_shell_specific(self) -> None:
         dock = (REPOSITORY_ROOT / "Dock" / "platform" / "wayland" / "DockLayerShellSurface.cpp").read_text(

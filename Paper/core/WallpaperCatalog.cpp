@@ -7,6 +7,9 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QImageReader>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QSaveFile>
 #include <QStandardPaths>
 #include <QUrl>
 
@@ -18,6 +21,8 @@ namespace {
 constexpr qint64 kMaxImportBytes = 64 * 1024 * 1024;
 constexpr qint64 kMaxImagePixels = 32 * 1024 * 1024;
 constexpr int kMaxImageDimension = 8192;
+constexpr int kMaxDisplayNameLength = 128;
+const auto kFallbackDisplayName = QStringLiteral("Wallpaper");
 
 void setError(QString *errorMessage, const QString &message)
 {
@@ -91,6 +96,7 @@ bool WallpaperCatalog::contains(const QString &logicalId) const
 }
 
 std::optional<WallpaperDescriptor> WallpaperCatalog::importWallpaper(const QString &source,
+                                                                       const QString &displayName,
                                                                        QString *errorMessage)
 {
     if (errorMessage) {
@@ -128,9 +134,34 @@ std::optional<WallpaperDescriptor> WallpaperCatalog::importWallpaper(const QStri
     const auto extension = suffix.isEmpty() ? QStringLiteral("png") : suffix;
     const auto finalPath = QDir(m_userDirectory).filePath(digest + QStringLiteral(".") + extension);
     const auto logicalId = QStringLiteral("astrea://wallpaper/user/") + digest;
+    const bool hasExplicitName = !displayName.trimmed().isEmpty();
+    QString normalizedName;
+    if (hasExplicitName && !normalizeDisplayName(displayName, &normalizedName, errorMessage)) {
+        return std::nullopt;
+    }
 
     if (const auto existing = resolve(logicalId)) {
-        return existing;
+        if (!hasExplicitName) {
+            return existing;
+        }
+        if (!writeDisplayName(metadataPathFor(m_userDirectory, digest), normalizedName, errorMessage)) {
+            return std::nullopt;
+        }
+        auto updated = *existing;
+        updated.setDisplayName(normalizedName);
+        addDescriptor(updated);
+        return updated;
+    }
+
+    if (!hasExplicitName) {
+        const auto sourceName = QFileInfo(canonical).completeBaseName();
+        normalizedName = sourceName;
+        if (!normalizeDisplayName(sourceName, &normalizedName)) {
+            normalizedName = kFallbackDisplayName;
+        }
+        if (normalizedName.isEmpty()) {
+            normalizedName = kFallbackDisplayName;
+        }
     }
 
     if (!QDir().mkpath(m_userDirectory)) {
@@ -160,15 +191,106 @@ std::optional<WallpaperDescriptor> WallpaperCatalog::importWallpaper(const QStri
         return std::nullopt;
     }
 
+    if (!writeDisplayName(metadataPathFor(m_userDirectory, digest), normalizedName, errorMessage)) {
+        QFile::remove(finalPath);
+        refresh();
+        return std::nullopt;
+    }
+
     QFile::setPermissions(finalPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
     WallpaperDescriptor descriptor = WallpaperDescriptor::externalFile(finalPath,
                                                                          WallpaperFit::Cover);
     descriptor.setLogicalId(logicalId);
     descriptor.setOrigin(WallpaperOrigin::User);
-    descriptor.setDisplayName(QFileInfo(canonical).completeBaseName());
+    descriptor.setDisplayName(normalizedName);
     descriptor.setResolvedSource(QFileInfo(finalPath).canonicalFilePath());
     addDescriptor(descriptor);
     return descriptor;
+}
+
+QString WallpaperCatalog::metadataPathFor(const QString &directory, const QString &digest)
+{
+    return QDir(directory).filePath(digest + QStringLiteral(".json"));
+}
+
+QString WallpaperCatalog::readDisplayName(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return {};
+    }
+    QJsonParseError parseError;
+    const auto document = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        return {};
+    }
+    const auto object = document.object();
+    if (object.value(QStringLiteral("version")).toInt() != 1
+        || !object.value(QStringLiteral("displayName")).isString()) {
+        return {};
+    }
+    QString normalized;
+    return normalizeDisplayName(object.value(QStringLiteral("displayName")).toString(), &normalized)
+        ? normalized
+        : QString();
+}
+
+bool WallpaperCatalog::writeDisplayName(const QString &path,
+                                        const QString &displayName,
+                                        QString *errorMessage)
+{
+    QString normalized;
+    if (!normalizeDisplayName(displayName, &normalized, errorMessage) || normalized.isEmpty()) {
+        if (normalized.isEmpty() && errorMessage && errorMessage->isEmpty()) {
+            *errorMessage = QStringLiteral("Wallpaper display name cannot be empty");
+        }
+        return false;
+    }
+
+    QSaveFile file(path);
+    file.setDirectWriteFallback(false);
+    if (!file.open(QIODevice::WriteOnly)) {
+        setError(errorMessage, QStringLiteral("Could not open wallpaper metadata for writing"));
+        return false;
+    }
+    const QJsonObject object{
+        {QStringLiteral("version"), 1},
+        {QStringLiteral("displayName"), normalized},
+    };
+    if (file.write(QJsonDocument(object).toJson(QJsonDocument::Compact)) < 0
+        || !file.commit()) {
+        setError(errorMessage, QStringLiteral("Could not atomically publish wallpaper metadata"));
+        return false;
+    }
+    QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    return true;
+}
+
+bool WallpaperCatalog::normalizeDisplayName(const QString &displayName,
+                                            QString *normalized,
+                                            QString *errorMessage)
+{
+    const auto value = displayName.trimmed();
+    if (value.isEmpty()) {
+        if (normalized) {
+            normalized->clear();
+        }
+        return true;
+    }
+    if (value.size() > kMaxDisplayNameLength) {
+        setError(errorMessage, QStringLiteral("Wallpaper display name is too long"));
+        return false;
+    }
+    for (const auto character : value) {
+        if (!character.isPrint()) {
+            setError(errorMessage, QStringLiteral("Wallpaper display name contains control characters"));
+            return false;
+        }
+    }
+    if (normalized) {
+        *normalized = value;
+    }
+    return true;
 }
 
 QString WallpaperCatalog::userDirectory() const
@@ -294,6 +416,11 @@ void WallpaperCatalog::scanDirectory(const QString &directory, const WallpaperOr
             descriptor.setSourceKind(WallpaperSourceKind::SystemResource);
         }
         descriptor.setDisplayName(info.completeBaseName());
+        if (origin == WallpaperOrigin::User) {
+            const auto metadataName = readDisplayName(metadataPathFor(m_userDirectory,
+                                                                       info.completeBaseName()));
+            descriptor.setDisplayName(metadataName.isEmpty() ? kFallbackDisplayName : metadataName);
+        }
         descriptor.setResolvedSource(canonical);
         addDescriptor(std::move(descriptor));
     }

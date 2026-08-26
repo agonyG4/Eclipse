@@ -26,6 +26,7 @@ private slots:
     void handlesGetSetDefaultAndReset();
     void listsCatalogAndSelectsStableId();
     void importsThroughPaperEndpoint();
+    void addsToCatalogWithoutChangingCurrentWallpaper();
     void failedSecondServerDoesNotRemoveLiveEndpoint();
     void boundsIdleClientsAndReclaimsCapacity();
     void rejectsMalformedUnknownAndOversizedRequests();
@@ -226,6 +227,68 @@ void WallpaperControlServerTest::importsThroughPaperEndpoint()
              id);
 }
 
+void WallpaperControlServerTest::addsToCatalogWithoutChangingCurrentWallpaper()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const auto factory = writeImage(temp.filePath(QStringLiteral("factory.png")));
+    const auto emergency = writeImage(temp.filePath(QStringLiteral("emergency.png")));
+    const auto active = writeImage(temp.filePath(QStringLiteral("active.png")));
+    const auto libraryEntry = writeImage(temp.filePath(QStringLiteral("library-entry.png")));
+    auto catalog = std::make_shared<WallpaperCatalog>(
+        WallpaperResolver(factory, emergency), temp.filePath(QStringLiteral("library")));
+    WallpaperService service(WallpaperResolver(factory, emergency),
+                             std::make_unique<XdgWallpaperPersistence>(
+                                 temp.filePath(QStringLiteral("paper.ini"))),
+                             catalog);
+    service.initialize();
+    const auto endpoint = temp.filePath(QStringLiteral("r/w.sock"));
+    WallpaperControlServer server(&service, endpoint);
+    QVERIFY(server.listen());
+
+    const auto activeReply = request(
+        endpoint,
+        QStringLiteral("wallpaper import {\"path\":\"%1\",\"fit\":\"contain\",\"displayName\":\"Active\"}")
+            .arg(active));
+    QVERIFY(activeReply.value(QStringLiteral("ok")).toBool());
+    const auto before = activeReply.value(QStringLiteral("snapshot")).toObject();
+    const auto beforeConfigured = before.value(QStringLiteral("configured")).toObject();
+    const auto beforeEffective = before.value(QStringLiteral("effective")).toObject();
+    const auto beforeGeneration = before.value(QStringLiteral("generation"));
+
+    const auto added = request(
+        endpoint,
+        QStringLiteral("wallpaper add {\"path\":\"%1\",\"displayName\":\"Library B\"}")
+            .arg(libraryEntry));
+    QCOMPARE(added.value(QStringLiteral("ok")).toBool(), true);
+    const auto after = added.value(QStringLiteral("snapshot")).toObject();
+    QCOMPARE(after.value(QStringLiteral("configured")).toObject()
+                 .value(QStringLiteral("logicalId")),
+             beforeConfigured.value(QStringLiteral("logicalId")));
+    QCOMPARE(after.value(QStringLiteral("effective")).toObject()
+                 .value(QStringLiteral("logicalId")),
+             beforeEffective.value(QStringLiteral("logicalId")));
+    QCOMPARE(after.value(QStringLiteral("generation")), beforeGeneration);
+
+    QString addedId;
+    for (const auto &entry : added.value(QStringLiteral("wallpapers")).toArray()) {
+        const auto object = entry.toObject();
+        if (object.value(QStringLiteral("displayName")).toString() == QStringLiteral("Library B")) {
+            addedId = object.value(QStringLiteral("logicalId")).toString();
+            break;
+        }
+    }
+    QVERIFY(!addedId.isEmpty());
+    const auto selected = request(
+        endpoint,
+        QStringLiteral("wallpaper set {\"id\":\"%1\",\"fit\":\"center\"}").arg(addedId));
+    QCOMPARE(selected.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(selected.value(QStringLiteral("snapshot")).toObject()
+                 .value(QStringLiteral("effective")).toObject()
+                 .value(QStringLiteral("logicalId")),
+             addedId);
+}
+
 void WallpaperControlServerTest::failedSecondServerDoesNotRemoveLiveEndpoint()
 {
     QTemporaryDir temp;
@@ -313,6 +376,13 @@ void WallpaperControlServerTest::rejectsMalformedUnknownAndOversizedRequests()
     QCOMPARE(unknown.value(QStringLiteral("ok")).toBool(), false);
     QCOMPARE(unknown.value(QStringLiteral("errorCode")).toString(),
              QStringLiteral("control-protocol-error"));
+
+    const auto invalidDisplayName = request(
+        endpoint,
+        QStringLiteral("wallpaper add {\"path\":\"%1\",\"displayName\":42}").arg(factory));
+    QCOMPARE(invalidDisplayName.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(invalidDisplayName.value(QStringLiteral("errorCode")).toString(),
+             QStringLiteral("invalid-descriptor"));
 
     const auto oversized = WallpaperControlServer::requestReply(
         endpoint, QStringLiteral("wallpaper get {") + QString(5000, QLatin1Char('a')) + '}');

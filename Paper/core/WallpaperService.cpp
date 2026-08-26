@@ -318,7 +318,8 @@ WallpaperOperationId WallpaperService::selectWallpaper(const QString &logicalId,
 }
 
 WallpaperOperationId WallpaperService::importWallpaper(const QString &source,
-                                                        const WallpaperFit fit)
+                                                        const WallpaperFit fit,
+                                                        const QString &displayName)
 {
     if (!m_catalog) {
         setFailure(WallpaperResolutionError::InvalidDescriptor,
@@ -326,7 +327,7 @@ WallpaperOperationId WallpaperService::importWallpaper(const QString &source,
         return 0;
     }
     QString error;
-    const auto imported = m_catalog->importWallpaper(source, &error);
+    const auto imported = m_catalog->importWallpaper(source, displayName, &error);
     if (!imported) {
         setFailure(WallpaperResolutionError::UnsupportedImage,
                    error.isEmpty() ? QStringLiteral("Wallpaper import failed") : error);
@@ -335,6 +336,32 @@ WallpaperOperationId WallpaperService::importWallpaper(const QString &source,
     auto selected = *imported;
     selected.setFit(fit);
     return setWallpaper(selected);
+}
+
+WallpaperOperationId WallpaperService::addWallpaper(const QString &source,
+                                                    const QString &displayName)
+{
+    if (!m_initialized) {
+        initialize();
+    }
+    if (!m_catalog) {
+        setFailure(WallpaperResolutionError::InvalidDescriptor,
+                   QStringLiteral("Wallpaper catalog is unavailable"));
+        return 0;
+    }
+
+    QString error;
+    const auto imported = m_catalog->importWallpaper(source, displayName, &error);
+    if (!imported) {
+        setFailure(WallpaperResolutionError::UnsupportedImage,
+                   error.isEmpty() ? QStringLiteral("Wallpaper import failed") : error);
+        return 0;
+    }
+
+    m_catalog->refresh();
+    const auto operationId = ++m_nextOperationId;
+    finishOperation(operationId, WallpaperOperationStatus::Succeeded, m_snapshot);
+    return operationId;
 }
 
 WallpaperOperationId WallpaperService::resetWallpaper()

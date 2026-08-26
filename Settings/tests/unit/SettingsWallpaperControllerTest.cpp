@@ -23,6 +23,7 @@ private slots:
     void rejectsIncompleteResponseAndSurfacesTypedFailure();
     void rejectsLoadingResponseWithoutCompletion();
     void projectsConfiguredAndEffectiveFitFromSnapshot();
+    void fallsBackToEffectiveFitWhenConfiguredFitIsAbsent();
     void roundTripsEverySupportedFit();
     void rejectsUnsupportedFitBeforeTransport();
     void waitsBeyondTransportForFinalCompletion();
@@ -30,6 +31,7 @@ private slots:
     void listsStableWallpaperIdsForSettings();
     void projectsNativePresentationMetadata();
     void selectsStableIdsAndImportsPaths();
+    void serializesImportAndCatalogAddWithDisplayNames();
 };
 
 namespace {
@@ -136,6 +138,7 @@ void SettingsWallpaperControllerTest::exposesFallbackAndConfiguredStateFromSnaps
     QCOMPARE(controller.fallbackReason(), QStringLiteral("source-missing"));
     QCOMPARE(controller.configuredSource(), QStringLiteral("/tmp/gone.png"));
     QCOMPARE(controller.effectiveSource(), QStringLiteral("/tmp/default.png"));
+    QCOMPARE(controller.currentDisplayName(), QString());
 }
 
 void SettingsWallpaperControllerTest::rejectsIncompleteResponseAndSurfacesTypedFailure()
@@ -230,6 +233,37 @@ void SettingsWallpaperControllerTest::projectsConfiguredAndEffectiveFitFromSnaps
     QTRY_VERIFY_WITH_TIMEOUT(!controller.busy(), 1000);
     QCOMPARE(controller.configuredFit(), QStringLiteral("contain"));
     QCOMPARE(controller.effectiveFit(), QStringLiteral("cover"));
+    QCOMPARE(controller.selectionFit(), QStringLiteral("contain"));
+}
+
+void SettingsWallpaperControllerTest::fallsBackToEffectiveFitWhenConfiguredFitIsAbsent()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const auto endpoint = temp.filePath(QStringLiteral("w.sock"));
+    QLocalServer server;
+    QVERIFY(server.listen(endpoint));
+    QObject::connect(&server, &QLocalServer::newConnection, this, [&] {
+        auto *socket = server.nextPendingConnection();
+        connect(socket, &QLocalSocket::readyRead, this, [socket] {
+            socket->readAll();
+            auto state = snapshot(QStringLiteral("/tmp/default.png"),
+                                  QStringLiteral("ready"),
+                                  QStringLiteral("none"));
+            auto effective = state.value(QStringLiteral("effective")).toObject();
+            effective.insert(QStringLiteral("fit"), QStringLiteral("center"));
+            state.insert(QStringLiteral("effective"), effective);
+            socket->write(response(state));
+            socket->flush();
+        });
+    });
+
+    SettingsWallpaperController controller(endpoint);
+    controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.busy(), 1000);
+    QCOMPARE(controller.configuredFit(), QString());
+    QCOMPARE(controller.effectiveFit(), QStringLiteral("center"));
+    QCOMPARE(controller.selectionFit(), QStringLiteral("center"));
 }
 
 void SettingsWallpaperControllerTest::roundTripsEverySupportedFit()
@@ -496,6 +530,53 @@ void SettingsWallpaperControllerTest::selectsStableIdsAndImportsPaths()
     QVERIFY(history.contains("\"path\":\"/tmp/source.png\""));
     QVERIFY(history.contains("wallpaper set"));
     QVERIFY(history.contains("\"id\":\"astrea://wallpaper/user/abc\""));
+}
+
+void SettingsWallpaperControllerTest::serializesImportAndCatalogAddWithDisplayNames()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const auto endpoint = temp.filePath(QStringLiteral("w.sock"));
+    QLocalServer server;
+    QVERIFY(server.listen(endpoint));
+    QByteArray history;
+    QObject::connect(&server, &QLocalServer::newConnection, this, [&] {
+        auto *socket = server.nextPendingConnection();
+        connect(socket, &QLocalSocket::readyRead, this, [&, socket] {
+            const auto line = socket->readAll();
+            history += line;
+            const auto text = QString::fromUtf8(line).trimmed();
+            auto state = snapshot(QStringLiteral("/tmp/managed.png"),
+                                  QStringLiteral("ready"),
+                                  QStringLiteral("none"));
+            if (text.startsWith(QStringLiteral("wallpaper import"))) {
+                state.insert(QStringLiteral("configured"),
+                             QJsonObject{{QStringLiteral("logicalId"),
+                                          QStringLiteral("astrea://wallpaper/user/imported")},
+                                         {QStringLiteral("displayName"), QStringLiteral("Snow Café")},
+                                         {QStringLiteral("source"), QStringLiteral("/tmp/managed.png")},
+                                         {QStringLiteral("fit"), QStringLiteral("contain")}});
+            }
+            socket->write(response(state));
+            socket->flush();
+        });
+    });
+
+    SettingsWallpaperController controller(endpoint);
+    controller.importAndSelectWallpaper(QStringLiteral("/tmp/snow.png"),
+                                         QStringLiteral("Snow Café"),
+                                         QStringLiteral("contain"));
+    QVERIFY(controller.busy());
+    controller.addUserWallpaper(QStringLiteral("/tmp/library.png"), QStringLiteral("Library B"));
+    QCOMPARE(controller.errorCode(), QStringLiteral("paper-request-busy"));
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.busy(), 1000);
+
+    controller.addUserWallpaper(QStringLiteral("/tmp/library.png"), QStringLiteral("Library B"));
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.busy(), 1000);
+    QVERIFY(history.contains("wallpaper import"));
+    QVERIFY(history.contains("wallpaper add"));
+    QVERIFY(history.contains("\"displayName\":\"Snow Café\""));
+    QVERIFY(history.contains("\"displayName\":\"Library B\""));
 }
 
 QTEST_GUILESS_MAIN(SettingsWallpaperControllerTest)

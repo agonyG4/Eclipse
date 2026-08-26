@@ -15,6 +15,7 @@ class SettingsWallpaperController final : public QObject
     Q_PROPERTY(QString effectiveSource READ effectiveSource NOTIFY snapshotChanged)
     Q_PROPERTY(QString effectiveId READ effectiveId NOTIFY snapshotChanged)
     Q_PROPERTY(QString effectiveFit READ effectiveFit NOTIFY snapshotChanged)
+    Q_PROPERTY(QString selectionFit READ selectionFit NOTIFY snapshotChanged)
     Q_PROPERTY(QString currentDisplayName READ currentDisplayName NOTIFY snapshotChanged)
     Q_PROPERTY(QString stateName READ stateName NOTIFY snapshotChanged)
     Q_PROPERTY(QString fallbackReason READ fallbackReason NOTIFY snapshotChanged)
@@ -38,6 +39,7 @@ public:
     QString effectiveSource() const { return m_effectiveSource; }
     QString effectiveId() const { return m_effectiveId; }
     QString effectiveFit() const { return m_effectiveFit; }
+    QString selectionFit() const;
     QString currentDisplayName() const { return m_currentDisplayName; }
     QString stateName() const { return m_stateName; }
     QString fallbackReason() const { return m_fallbackReason; }
@@ -59,6 +61,11 @@ public:
                                      const QString &fit = QStringLiteral("cover"));
     Q_INVOKABLE void importWallpaper(const QString &path,
                                      const QString &fit = QStringLiteral("cover"));
+    Q_INVOKABLE void importAndSelectWallpaper(const QString &path,
+                                              const QString &displayName,
+                                              const QString &fit = QStringLiteral("cover"));
+    Q_INVOKABLE void addUserWallpaper(const QString &path,
+                                      const QString &displayName);
     Q_INVOKABLE void reset();
     Q_INVOKABLE void loadDefault();
 

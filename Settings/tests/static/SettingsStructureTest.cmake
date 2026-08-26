@@ -13,6 +13,26 @@ foreach(relative_path IN LISTS registered_qml_files)
     endif()
 endforeach()
 
+file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/Wallpaper.qml" wallpaper_source)
+foreach(wallpaper_forbidden_token IN ITEMS
+    "Quickshell"
+    "Quickshell.Io"
+    "Process {"
+    "python3"
+    "zenity"
+    "wallpaper_manager.py"
+    "ASTREA_ROOT"
+    "XDG_DATA_HOME"
+    "XDG_CONFIG_HOME"
+    "Hyprland"
+    "Typhon"
+)
+    string(FIND "${wallpaper_source}" "${wallpaper_forbidden_token}" wallpaper_token_position)
+    if(NOT wallpaper_token_position EQUAL -1)
+        message(FATAL_ERROR "Forbidden token '${wallpaper_forbidden_token}' found in Wallpaper.qml")
+    endif()
+endforeach()
+
 set(deleted_legacy_paths
     qml/components/AppShell.qml
     qml/components/EmptyContent.qml

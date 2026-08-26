@@ -21,7 +21,13 @@ public:
     std::optional<WallpaperDescriptor> resolve(const QString &logicalId) const;
     bool contains(const QString &logicalId) const;
     std::optional<WallpaperDescriptor> importWallpaper(const QString &source,
+                                                       const QString &displayName,
                                                        QString *errorMessage = nullptr);
+    std::optional<WallpaperDescriptor> importWallpaper(const QString &source,
+                                                       QString *errorMessage = nullptr)
+    {
+        return importWallpaper(source, {}, errorMessage);
+    }
 
     QString userDirectory() const;
     QString systemDirectory() const;
@@ -34,6 +40,14 @@ private:
                                  QString *errorMessage,
                                  bool decode = true);
     static QString contentDigest(const QString &path, QString *errorMessage);
+    static QString metadataPathFor(const QString &directory, const QString &digest);
+    static QString readDisplayName(const QString &path);
+    static bool writeDisplayName(const QString &path,
+                                 const QString &displayName,
+                                 QString *errorMessage);
+    static bool normalizeDisplayName(const QString &displayName,
+                                     QString *normalized,
+                                     QString *errorMessage = nullptr);
     void addDescriptor(WallpaperDescriptor descriptor);
     void scanDirectory(const QString &directory, WallpaperOrigin origin);
 

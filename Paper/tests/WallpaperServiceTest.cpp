@@ -34,6 +34,7 @@ private slots:
     void sourceAtomicReplacementAndCorruptionReconcile();
     void symlinkRetargetReconcilesConfiguredEntryWithBoundedWatches();
     void catalogImportAndStableSelectionSurviveRestart();
+    void catalogOnlyAddPreservesActiveWallpaper();
     void pathConvenienceImportsBeforeSelecting();
     void migratesLegacySymlinkIntoManagedCatalog();
     void missingCatalogSelectionFallsBackWithoutErasingIntent();
@@ -510,6 +511,56 @@ void WallpaperServiceTest::catalogImportAndStableSelectionSurviveRestart()
     QVERIFY(restored.snapshot().configured.has_value());
     QCOMPARE(restored.snapshot().configured->logicalId(), selectedId);
     QCOMPARE(restored.snapshot().configured->fit(), WallpaperFit::Contain);
+}
+
+void WallpaperServiceTest::catalogOnlyAddPreservesActiveWallpaper()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const auto factory = writeImage(temp.filePath(QStringLiteral("factory.png")));
+    const auto emergency = writeImage(temp.filePath(QStringLiteral("emergency.png")));
+    const auto active = writeImage(temp.filePath(QStringLiteral("active.png")));
+    const auto added = writeImage(temp.filePath(QStringLiteral("added.png")));
+    const auto resolver = WallpaperResolver(factory, emergency);
+    auto catalog = std::make_shared<WallpaperCatalog>(resolver, temp.filePath(QStringLiteral("library")));
+    WallpaperService service(resolver,
+                             persistence(temp.filePath(QStringLiteral("paper.ini"))),
+                             catalog);
+    service.initialize();
+
+    QSignalSpy imported(&service, &WallpaperService::wallpaperOperationFinished);
+    const auto importId = service.importWallpaper(active,
+                                                  WallpaperFit::Contain,
+                                                  QStringLiteral("Active"));
+    QTRY_COMPARE_WITH_TIMEOUT(imported.count(), 1, 1500);
+    QCOMPARE(qvariant_cast<WallpaperOperationResult>(imported.at(0).at(1)).id, importId);
+    const auto beforeConfigured = service.snapshot().configured->logicalId();
+    const auto beforeEffective = service.snapshot().effective.logicalId();
+    const auto beforeGeneration = service.snapshot().generation;
+
+    imported.clear();
+    const auto addId = service.addWallpaper(added, QStringLiteral("Library B"));
+    QCOMPARE(imported.count(), 1);
+    const auto addResult = qvariant_cast<WallpaperOperationResult>(imported.at(0).at(1));
+    QCOMPARE(addResult.id, addId);
+    QCOMPARE(addResult.status, WallpaperOperationStatus::Succeeded);
+    QCOMPARE(service.snapshot().configured->logicalId(), beforeConfigured);
+    QCOMPARE(service.snapshot().effective.logicalId(), beforeEffective);
+    QCOMPARE(service.snapshot().generation, beforeGeneration);
+
+    QString addedId;
+    for (const auto &entry : service.listWallpapers()) {
+        if (entry.displayName() == QStringLiteral("Library B")) {
+            addedId = entry.logicalId();
+            break;
+        }
+    }
+    QVERIFY(!addedId.isEmpty());
+    imported.clear();
+    const auto selectId = service.selectWallpaper(addedId, WallpaperFit::Center);
+    QTRY_COMPARE_WITH_TIMEOUT(imported.count(), 1, 1500);
+    QCOMPARE(qvariant_cast<WallpaperOperationResult>(imported.at(0).at(1)).id, selectId);
+    QCOMPARE(service.snapshot().effective.logicalId(), addedId);
 }
 
 void WallpaperServiceTest::pathConvenienceImportsBeforeSelecting()

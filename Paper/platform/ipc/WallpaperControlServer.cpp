@@ -255,7 +255,8 @@ void WallpaperControlServer::handleLine(QLocalSocket *socket, const QByteArray &
                                .toLower();
     const QString argument = separator < 0 ? QStringLiteral("{}") : text.mid(separator + 1).trimmed();
     if (action != QStringLiteral("get") && action != QStringLiteral("list")
-        && action != QStringLiteral("import") && action != QStringLiteral("set")
+        && action != QStringLiteral("import") && action != QStringLiteral("add")
+        && action != QStringLiteral("set")
         && action != QStringLiteral("reset") && action != QStringLiteral("default")) {
         sendReply(socket,
                   errorReply(QStringLiteral("control-protocol-error"),
@@ -328,6 +329,13 @@ void WallpaperControlServer::handleLine(QLocalSocket *socket, const QByteArray &
                                  QStringLiteral("Wallpaper fit is not supported")));
             return;
         }
+        const auto displayName = object.value(QStringLiteral("displayName"));
+        if (!displayName.isUndefined() && !displayName.isString()) {
+            sendReply(socket,
+                      errorReply(QStringLiteral("invalid-descriptor"),
+                                 QStringLiteral("Wallpaper display name must be text")));
+            return;
+        }
         auto &client = m_clients[socket];
         if (client.operationId) {
             sendReply(socket,
@@ -335,7 +343,33 @@ void WallpaperControlServer::handleLine(QLocalSocket *socket, const QByteArray &
                                  QStringLiteral("A wallpaper operation is already pending")));
             return;
         }
-        queueOperation(m_service->importWallpaper(path.toString(), wallpaperFitFromString(fit)));
+        queueOperation(m_service->importWallpaper(path.toString(),
+                                                   wallpaperFitFromString(fit),
+                                                   displayName.toString()));
+        return;
+    } else if (action == QStringLiteral("add")) {
+        const auto path = object.value(QStringLiteral("path"));
+        if (!path.isString() || path.toString().isEmpty()) {
+            sendReply(socket,
+                      errorReply(QStringLiteral("invalid-descriptor"),
+                                 QStringLiteral("Wallpaper add requires a path")));
+            return;
+        }
+        const auto displayName = object.value(QStringLiteral("displayName"));
+        if (!displayName.isUndefined() && !displayName.isString()) {
+            sendReply(socket,
+                      errorReply(QStringLiteral("invalid-descriptor"),
+                                 QStringLiteral("Wallpaper display name must be text")));
+            return;
+        }
+        auto &client = m_clients[socket];
+        if (client.operationId) {
+            sendReply(socket,
+                      errorReply(QStringLiteral("control-protocol-error"),
+                                 QStringLiteral("A wallpaper operation is already pending")));
+            return;
+        }
+        queueOperation(m_service->addWallpaper(path.toString(), displayName.toString()));
         return;
     } else if (action == QStringLiteral("set")) {
         const auto fit = object.value(QStringLiteral("fit")).toString(QStringLiteral("cover"));
@@ -418,6 +452,11 @@ void WallpaperControlServer::sendOperationResult(QLocalSocket *socket,
         {QStringLiteral("status"), result.toJson().value(QStringLiteral("status"))},
         {QStringLiteral("snapshot"), result.snapshot.toJson()},
     };
+    QJsonArray wallpapers;
+    for (const auto &descriptor : m_service->listWallpapers()) {
+        wallpapers.append(descriptor.toJson());
+    }
+    response.insert(QStringLiteral("wallpapers"), wallpapers);
     if (!result.succeeded()) {
         response.insert(QStringLiteral("errorCode"), result.errorCode);
         response.insert(QStringLiteral("message"), result.message);

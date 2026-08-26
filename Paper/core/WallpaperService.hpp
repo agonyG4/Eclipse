@@ -113,7 +113,10 @@ public:
     WallpaperOperationId selectWallpaper(const QString &logicalId,
                                          WallpaperFit fit = WallpaperFit::Cover);
     WallpaperOperationId importWallpaper(const QString &source,
-                                         WallpaperFit fit = WallpaperFit::Cover);
+                                         WallpaperFit fit = WallpaperFit::Cover,
+                                         const QString &displayName = {});
+    WallpaperOperationId addWallpaper(const QString &source,
+                                      const QString &displayName = {});
     WallpaperOperationId resetWallpaper();
     void reload();
 

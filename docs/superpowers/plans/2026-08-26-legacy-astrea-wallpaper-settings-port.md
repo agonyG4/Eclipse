@@ -233,9 +233,9 @@ Expected: exit 0 with zero failed tests.
 
 - [ ] **Step 3: Run static source checks for forbidden legacy mechanisms**
 
-Run: `rtk rg -n 'Quickshell|Process|python3|zenity|wallpaper_manager|ASTREA_ROOT|XDG_|awww|Hyprland|Typhon' Settings/qml/pages/appearance/Wallpaper.qml`
+Run: `rtk rg -n 'Quickshell|Process|python3|zenity|wallpaper_manager|ASTREA_ROOT|XDG_|Hyprland|Typhon' Settings/qml/pages/appearance/Wallpaper.qml`
 
-Expected: no matches.
+Expected: no matches; the required visible copy `awww wallpaper animation` is intentionally allowed.
 
 - [ ] **Step 4: Inspect the scoped diff and staged file list**
 

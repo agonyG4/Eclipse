@@ -225,6 +225,7 @@ bool SettingsWallpaperController::applyResponse(const QByteArray &payload)
     m_effectiveSource = effective.value(QStringLiteral("resolvedSource"))
                             .toString(effective.value(QStringLiteral("source")).toString());
     m_effectiveFit = effectiveFit;
+    m_currentDisplayName = effective.value(QStringLiteral("displayName")).toString().trimmed();
     m_stateName = state.value(QStringLiteral("state")).toString();
     m_fallbackReason = state.value(QStringLiteral("fallback")).toString();
     m_generation = state.value(QStringLiteral("generation")).toVariant().toULongLong();
@@ -237,6 +238,35 @@ bool SettingsWallpaperController::applyResponse(const QByteArray &payload)
             }
         }
         m_wallpapers = std::move(wallpapers);
+
+        m_dynamicWallpapers.clear();
+        m_userWallpapers.clear();
+        m_landscapeWallpapers.clear();
+        for (const auto &wallpaper : m_wallpapers) {
+            const auto descriptor = wallpaper.toMap();
+            const auto origin = descriptor.value(QStringLiteral("origin")).toString().trimmed().toLower();
+            const auto kind = descriptor.value(QStringLiteral("kind")).toString().trimmed().toLower();
+            if (origin == QStringLiteral("user")) {
+                m_userWallpapers.append(descriptor);
+            } else if (kind == QStringLiteral("dynamic")) {
+                m_dynamicWallpapers.append(descriptor);
+            } else if (origin == QStringLiteral("system") && kind == QStringLiteral("image")) {
+                m_landscapeWallpapers.append(descriptor);
+            }
+        }
+    }
+
+    if (m_currentDisplayName.isEmpty() && !m_effectiveId.isEmpty()) {
+        for (const auto &wallpaper : m_wallpapers) {
+            const auto descriptor = wallpaper.toMap();
+            if (descriptor.value(QStringLiteral("logicalId")).toString() == m_effectiveId) {
+                m_currentDisplayName = descriptor.value(QStringLiteral("displayName")).toString().trimmed();
+                break;
+            }
+        }
+        if (m_currentDisplayName.isEmpty()) {
+            m_currentDisplayName = QStringLiteral("Wallpaper");
+        }
     }
 
     const auto oldCode = m_errorCode;

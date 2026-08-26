@@ -15,6 +15,7 @@ class SettingsWallpaperController final : public QObject
     Q_PROPERTY(QString effectiveSource READ effectiveSource NOTIFY snapshotChanged)
     Q_PROPERTY(QString effectiveId READ effectiveId NOTIFY snapshotChanged)
     Q_PROPERTY(QString effectiveFit READ effectiveFit NOTIFY snapshotChanged)
+    Q_PROPERTY(QString currentDisplayName READ currentDisplayName NOTIFY snapshotChanged)
     Q_PROPERTY(QString stateName READ stateName NOTIFY snapshotChanged)
     Q_PROPERTY(QString fallbackReason READ fallbackReason NOTIFY snapshotChanged)
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorChanged)
@@ -23,6 +24,9 @@ class SettingsWallpaperController final : public QObject
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(QString pendingAction READ pendingAction NOTIFY busyChanged)
     Q_PROPERTY(QVariantList wallpapers READ wallpapers NOTIFY snapshotChanged)
+    Q_PROPERTY(QVariantList dynamicWallpapers READ dynamicWallpapers NOTIFY snapshotChanged)
+    Q_PROPERTY(QVariantList userWallpapers READ userWallpapers NOTIFY snapshotChanged)
+    Q_PROPERTY(QVariantList landscapeWallpapers READ landscapeWallpapers NOTIFY snapshotChanged)
 
 public:
     explicit SettingsWallpaperController(QString endpoint = {}, QObject *parent = nullptr);
@@ -34,6 +38,7 @@ public:
     QString effectiveSource() const { return m_effectiveSource; }
     QString effectiveId() const { return m_effectiveId; }
     QString effectiveFit() const { return m_effectiveFit; }
+    QString currentDisplayName() const { return m_currentDisplayName; }
     QString stateName() const { return m_stateName; }
     QString fallbackReason() const { return m_fallbackReason; }
     QString errorMessage() const { return m_errorMessage; }
@@ -42,6 +47,9 @@ public:
     bool busy() const { return m_busy; }
     QString pendingAction() const { return m_pendingAction; }
     QVariantList wallpapers() const { return m_wallpapers; }
+    QVariantList dynamicWallpapers() const { return m_dynamicWallpapers; }
+    QVariantList userWallpapers() const { return m_userWallpapers; }
+    QVariantList landscapeWallpapers() const { return m_landscapeWallpapers; }
 
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void refreshLibrary();
@@ -77,6 +85,7 @@ private:
     QString m_effectiveSource;
     QString m_effectiveId;
     QString m_effectiveFit;
+    QString m_currentDisplayName;
     QString m_stateName;
     QString m_fallbackReason;
     QString m_errorCode;
@@ -88,5 +97,8 @@ private:
     quint64 m_requestId = 0;
     QString m_pendingAction;
     QVariantList m_wallpapers;
+    QVariantList m_dynamicWallpapers;
+    QVariantList m_userWallpapers;
+    QVariantList m_landscapeWallpapers;
     bool m_busy = false;
 };

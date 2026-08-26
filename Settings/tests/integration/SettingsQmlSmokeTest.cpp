@@ -72,7 +72,16 @@ void SettingsQmlSmokeTest::loadsWallpaperRouteOffscreen()
     QVERIFY(settingsController.selectSection(QStringLiteral("wallpaper")));
     QObject *root = engine.rootObjects().constFirst();
     QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("wallpaperPage")) != nullptr, 1000);
-    QVERIFY(root->findChild<QObject *>(QStringLiteral("wallpaperPage")) != nullptr);
+    QObject *page = root->findChild<QObject *>(QStringLiteral("wallpaperPage"));
+    QVERIFY(page != nullptr);
+    QObject *scroll = page->findChild<QObject *>(QStringLiteral("wallpaperScrollPage"));
+    QVERIFY(scroll != nullptr);
+    QCOMPARE(scroll->property("contentMargins").toInt(), 28);
+    for (const auto name : {"currentWallpaperCard", "wallpaperPreview", "transitionCard",
+                            "wallpaperLibraryCard", "dynamicWallpapersSection",
+                            "userWallpapersSection", "landscapesSection"}) {
+        QVERIFY2(page->findChild<QObject *>(QString::fromLatin1(name)) != nullptr, name);
+    }
 }
 
 QTEST_MAIN(SettingsQmlSmokeTest)

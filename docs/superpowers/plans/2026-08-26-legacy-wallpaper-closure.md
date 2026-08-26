@@ -116,3 +116,28 @@
 - [ ] Run `git diff --check` and verify unrelated Bar/status-notifier worktree edits remain unstaged and unchanged.
 - [ ] Compare the final QML against the canonical legacy source and re-check every approved geometry invariant.
 - [ ] Report any pre-existing unrelated full-suite failures separately from the focused closure results.
+
+### Task 7: Final fidelity and UX closure pass
+
+**Files:**
+- Modify: `Settings/assets/i18n/en_US.json`
+- Modify: `Settings/qml/pages/appearance/Wallpaper.qml`
+- Modify: `Settings/services/wallpaper/SettingsWallpaperController.cpp`
+- Modify: `Paper/core/WallpaperCatalog.cpp`
+- Test: `Settings/tests/unit/SettingsWallpaperControllerTest.cpp`
+- Test: `Settings/tests/integration/SettingsQmlSmokeTest.cpp`
+- Test: `Settings/tests/static/SettingsStructureTest.cmake`
+- Test: `Paper/tests/WallpaperCatalogTest.cpp`
+- Test: `Paper/tests/WallpaperControlServerTest.cpp`
+
+**Interfaces:**
+- `SettingsWallpaperController::startRequest()` clears a previous error only after accepting a new non-busy request; busy rejection keeps the active request and reports `paper-request-busy`.
+- `WallpaperCatalog::scanDirectory()` exposes an empty display name for missing or malformed digest-managed metadata; Settings supplies the localized `my_wallpaper` fallback.
+- `Wallpaper.qml` keeps all feedback outside the legacy layout and uses one mode-aware native name dialog for both import-and-select and catalog-only add.
+
+- [ ] Add failing tests for the shipped Wallpaper key contract, stale-error clearing, empty metadata fallback, IPC display-name boundaries, and the final dialog source contract; run each to confirm the expected failures.
+- [ ] Implement the minimal Paper and controller behavior that makes those tests pass without changing IDs, deduplication, import semantics, or active-wallpaper snapshots.
+- [ ] Replace the layout-participating QML feedback with an error-only transient overlay; remove routine refresh busy copy and preserve mutation control disabling.
+- [ ] Restore `Confirm`, mode-specific example placeholders, Enter/Return/Escape/outside-click behavior, empty-name confirmation, 128-character input assistance, and complete pending-state cleanup.
+- [ ] Add every Wallpaper-owned `apps.settings.pages.paper.wallpaper.*` key used by QML to `en_US.json`, including the canonical Lockscreen and placeholder keys, without restoring the old namespace.
+- [ ] Run the focused build, CTest selection, static gates, diff review, and legacy geometry/source scan; commit the closure pass directly on `main`.

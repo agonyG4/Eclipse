@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Effects
 import "../../components" as Components
 import "../../components/form" as Form
@@ -11,24 +12,31 @@ Item {
 
     readonly property var controller: SettingsController.wallpaper
     readonly property var transitions: [
-        I18n.tr("apps.settings.pages.appearance.wallpaper.transition.simple", "Simple"),
-        I18n.tr("apps.settings.pages.appearance.wallpaper.transition.fade", "Fade"),
-        I18n.tr("apps.settings.pages.appearance.wallpaper.transition.left", "Left"),
-        I18n.tr("apps.settings.pages.appearance.wallpaper.transition.right", "Right"),
-        I18n.tr("apps.settings.pages.appearance.wallpaper.transition.top", "Top"),
-        I18n.tr("apps.settings.pages.appearance.wallpaper.transition.bottom", "Bottom"),
-        I18n.tr("apps.settings.pages.appearance.wallpaper.transition.wipe", "Wipe"),
-        I18n.tr("apps.settings.pages.appearance.wallpaper.transition.wave", "Wave"),
-        I18n.tr("apps.settings.pages.appearance.wallpaper.transition.grow", "Grow"),
-        I18n.tr("apps.settings.pages.appearance.wallpaper.transition.center", "Center"),
-        I18n.tr("apps.settings.pages.appearance.wallpaper.transition.outer", "Outer"),
-        I18n.tr("apps.settings.pages.appearance.wallpaper.transition.any", "Any"),
-        I18n.tr("apps.settings.pages.appearance.wallpaper.transition.random", "Random")
+        I18n.tr("apps.settings.pages.paper.wallpaper.option.simple", "Simple"),
+        I18n.tr("apps.settings.pages.paper.wallpaper.option.fade", "Fade"),
+        I18n.tr("apps.settings.pages.paper.wallpaper.option.left", "Left"),
+        I18n.tr("apps.settings.pages.paper.wallpaper.option.right", "Right"),
+        I18n.tr("apps.settings.pages.paper.wallpaper.option.top", "Top"),
+        I18n.tr("apps.settings.pages.paper.wallpaper.option.bottom", "Bottom"),
+        I18n.tr("apps.settings.pages.paper.wallpaper.option.wipe", "Wipe"),
+        I18n.tr("apps.settings.pages.paper.wallpaper.option.wave", "Wave"),
+        I18n.tr("apps.settings.pages.paper.wallpaper.option.grow", "Grow"),
+        I18n.tr("apps.settings.pages.paper.wallpaper.option.center", "Center"),
+        I18n.tr("apps.settings.pages.paper.wallpaper.option.outer", "Outer"),
+        I18n.tr("apps.settings.pages.paper.wallpaper.option.any", "Any"),
+        I18n.tr("apps.settings.pages.paper.wallpaper.option.random", "Random")
     ]
     property int selectedTransition: 0
+    property string pendingWallpaperPath: ""
+    property bool pendingAddsToLibrary: false
 
-    signal wallpaperImportRequested()
-    signal futurePageRequested(string pageId)
+    function openWallpaperPicker(addOnly) {
+        if (root.controller.busy)
+            return
+        root.pendingAddsToLibrary = addOnly
+        root.pendingWallpaperPath = ""
+        wallpaperFileDialog.open()
+    }
 
     Component.onCompleted: root.controller.refreshLibrary()
 
@@ -39,7 +47,7 @@ Item {
         contentMargins: 28
 
         Form.SectionHeader {
-            text: I18n.tr("apps.settings.pages.appearance.wallpaper.current", "CURRENT")
+            text: I18n.tr("apps.settings.pages.paper.wallpaper.text.current", "CURRENT")
             Layout.bottomMargin: 12
         }
 
@@ -128,7 +136,7 @@ Item {
                             }
                             Text {
                                 Layout.alignment: Qt.AlignCenter
-                                text: I18n.tr("apps.settings.pages.appearance.wallpaper.preview_fail", "Preview Fail")
+                                text: I18n.tr("apps.settings.pages.paper.wallpaper.text.preview_fail", "Preview Fail")
                                 font.family: Components.Theme.fontFamily
                                 font.pixelSize: 10
                                 font.weight: Font.Medium
@@ -157,7 +165,7 @@ Item {
                             }
                             Text {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                text: I18n.tr("apps.settings.pages.appearance.wallpaper.change", "Change")
+                                text: I18n.tr("apps.settings.pages.paper.wallpaper.text.change", "Change")
                                 font.family: Components.Theme.fontFamily
                                 font.pixelSize: 11
                                 font.weight: Font.Medium
@@ -170,8 +178,9 @@ Item {
                         id: previewMouse
                         anchors.fill: parent
                         hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.wallpaperImportRequested()
+                        enabled: !root.controller.busy
+                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        onClicked: root.openWallpaperPicker(false)
                     }
                 }
 
@@ -184,7 +193,7 @@ Item {
                         Layout.fillWidth: true
                         text: root.controller.currentDisplayName !== ""
                               ? root.controller.currentDisplayName
-                              : I18n.tr("apps.settings.pages.appearance.wallpaper.my_wallpaper", "My Wallpaper")
+                              : I18n.tr("apps.settings.pages.paper.wallpaper.text.my_wallpaper", "My Wallpaper")
                         font.family: Components.Theme.fontFamily
                         font.pixelSize: 15
                         font.weight: Font.Medium
@@ -197,7 +206,7 @@ Item {
 
                         Text {
                             Layout.fillWidth: true
-                            text: I18n.tr("apps.settings.pages.appearance.wallpaper.show_on_all_workspaces", "Show on all workspaces")
+                            text: I18n.tr("apps.settings.pages.paper.wallpaper.text.show_on_all_workspaces", "Show on all workspaces")
                             font.family: Components.Theme.fontFamily
                             font.pixelSize: 13
                             color: Components.Theme.textPrimary
@@ -214,7 +223,7 @@ Item {
 
                         Text {
                             Layout.fillWidth: true
-                            text: I18n.tr("apps.settings.pages.appearance.wallpaper.use_blurred_wallpaper", "Use blurred wallpaper")
+                            text: I18n.tr("apps.settings.pages.paper.wallpaper.text.use_blurred_wallpaper", "Use blurred wallpaper")
                             font.family: Components.Theme.fontFamily
                             font.pixelSize: 13
                             color: Components.Theme.textPrimary
@@ -232,8 +241,8 @@ Item {
 
                         Repeater {
                             model: [
-                                { id: "screensaver", label: I18n.tr("apps.settings.pages.appearance.wallpaper.screensaver", "Screensaver") },
-                                { id: "lockscreen", label: I18n.tr("apps.settings.pages.appearance.wallpaper.lockscreen", "Lockscreen") }
+                                { id: "screensaver", label: I18n.tr("apps.settings.pages.paper.screensaver.text.screensaver", "Screensaver") },
+                                { id: "lockscreen", label: I18n.tr("apps.settings.pages.paper.lockscreen.text.lockscreen", "Lockscreen") }
                             ]
 
                             delegate: Rectangle {
@@ -241,9 +250,7 @@ Item {
                                 Layout.fillWidth: true
                                 height: 30
                                 radius: 8
-                                color: pageButtonMouse.containsMouse
-                                       ? Qt.rgba(1, 1, 1, 0.08)
-                                       : Qt.rgba(1, 1, 1, 0.04)
+                                color: Qt.rgba(1, 1, 1, 0.04)
                                 border.width: 1
                                 border.color: Components.Theme.cardBorder
                                 Behavior on color { ColorAnimation { duration: 120 } }
@@ -257,17 +264,44 @@ Item {
                                     color: Components.Theme.textPrimary
                                 }
 
-                                MouseArea {
-                                    id: pageButtonMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: root.futurePageRequested(modelData.id)
-                                }
                             }
                         }
                     }
                 }
+            }
+        }
+
+        Rectangle {
+            id: wallpaperFeedback
+            objectName: "wallpaperFeedback"
+            visible: root.controller.busy || root.controller.errorMessage !== ""
+            Layout.fillWidth: true
+            Layout.bottomMargin: 8
+            implicitHeight: feedbackText.implicitHeight + 16
+            radius: 8
+            color: root.controller.errorMessage !== ""
+                   ? Qt.rgba(0.85, 0.20, 0.20, 0.14)
+                   : Qt.rgba(1, 1, 1, 0.06)
+            border.width: 1
+            border.color: root.controller.errorMessage !== ""
+                          ? Qt.rgba(1, 0.35, 0.35, 0.32)
+                          : Components.Theme.cardBorder
+
+            Text {
+                id: feedbackText
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                    verticalCenter: parent.verticalCenter
+                    margins: 8
+                }
+                text: root.controller.errorMessage !== ""
+                      ? root.controller.errorMessage
+                      : I18n.tr("apps.settings.pages.paper.wallpaper.text.operation_in_progress", "Applying wallpaper…")
+                font.family: Components.Theme.fontFamily
+                font.pixelSize: 11
+                color: Components.Theme.textPrimary
+                elide: Text.ElideRight
             }
         }
 
@@ -286,8 +320,8 @@ Item {
                 id: transitionRow
                 anchors.left: parent.left
                 anchors.right: parent.right
-                label: I18n.tr("apps.settings.pages.appearance.wallpaper.transition", "Transition")
-                sublabel: I18n.tr("apps.settings.pages.appearance.wallpaper.transition_help", "awww wallpaper animation")
+                label: I18n.tr("apps.settings.pages.paper.wallpaper.label.transition", "Transition")
+                sublabel: I18n.tr("apps.settings.pages.paper.wallpaper.sublabel.awww_wallpaper_animation", "awww wallpaper animation")
                 isLast: true
 
                 Form.SelectButton {
@@ -308,7 +342,7 @@ Item {
         }
 
         Form.SectionHeader {
-            text: I18n.tr("apps.settings.pages.appearance.wallpaper.library", "WALLPAPER LIBRARY")
+            text: I18n.tr("apps.settings.pages.paper.wallpaper.text.wallpaper_library", "WALLPAPER LIBRARY")
             Layout.bottomMargin: 12
         }
 
@@ -330,7 +364,7 @@ Item {
 
                 WallpaperSection {
                     objectName: "dynamicWallpapersSection"
-                    title: I18n.tr("apps.settings.pages.appearance.wallpaper.dynamic_wallpapers", "Dynamic Wallpapers")
+                    title: I18n.tr("apps.settings.pages.paper.wallpaper.label.dynamic_wallpapers", "Dynamic Wallpapers")
                     wallpapers: root.controller.dynamicWallpapers
                 }
 
@@ -342,10 +376,10 @@ Item {
 
                 WallpaperSection {
                     objectName: "userWallpapersSection"
-                    title: I18n.tr("apps.settings.pages.appearance.wallpaper.user_wallpapers", "User Wallpapers")
+                    title: I18n.tr("apps.settings.pages.paper.wallpaper.text.user_wallpapers", "User Wallpapers")
                     wallpapers: root.controller.userWallpapers
                     showAddButton: true
-                    onAddRequested: root.wallpaperImportRequested()
+                    onAddRequested: root.openWallpaperPicker(true)
                 }
 
                 Rectangle {
@@ -356,13 +390,131 @@ Item {
 
                 WallpaperSection {
                     objectName: "landscapesSection"
-                    title: I18n.tr("apps.settings.pages.appearance.wallpaper.landscapes", "Landscapes")
+                    title: I18n.tr("apps.settings.pages.paper.wallpaper.label.landscapes", "Landscapes")
                     wallpapers: root.controller.landscapeWallpapers
                 }
             }
         }
 
         Item { Layout.preferredHeight: 28 }
+    }
+
+    FileDialog {
+        id: wallpaperFileDialog
+        objectName: "wallpaperFileDialog"
+        title: I18n.tr("apps.settings.pages.paper.wallpaper.text.choose_wallpaper", "Choose a wallpaper")
+        nameFilters: ["Images (*.png *.jpg *.jpeg *.webp *.bmp *.gif)"]
+
+        onAccepted: {
+            const selectedPath = selectedFile.toString()
+            if (selectedPath === "")
+                return
+            root.pendingWallpaperPath = selectedPath
+            wallpaperNameDialog.open()
+        }
+        onRejected: {
+            root.pendingWallpaperPath = ""
+            root.pendingAddsToLibrary = false
+        }
+    }
+
+    Dialog {
+        id: wallpaperNameDialog
+        objectName: "wallpaperNameDialog"
+        modal: true
+        width: 320
+        padding: 20
+        anchors.centerIn: Overlay.overlay
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.6) }
+
+        background: Rectangle {
+            radius: 14
+            color: Components.Theme.cardBg
+            border.width: 1
+            border.color: Components.Theme.cardBorder
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 16
+
+            Text {
+                Layout.fillWidth: true
+                text: I18n.tr("apps.settings.pages.paper.wallpaper.text.name_this_wallpaper", "Name this wallpaper")
+                font.family: Components.Theme.fontFamily
+                font.pixelSize: 15
+                font.weight: Font.Medium
+                color: Components.Theme.textPrimary
+            }
+
+            TextField {
+                id: wallpaperNameInput
+                objectName: "wallpaperNameInput"
+                Layout.fillWidth: true
+                height: 36
+                placeholderText: I18n.tr("apps.settings.pages.paper.wallpaper.text.name_this_wallpaper", "Name this wallpaper")
+                leftPadding: 12
+                rightPadding: 12
+                selectByMouse: true
+                background: Rectangle {
+                    radius: 8
+                    color: Components.Theme.popupBg
+                    border.width: 1
+                    border.color: wallpaperNameInput.activeFocus
+                                   ? Components.Theme.accent
+                                   : Components.Theme.cardBorder
+                }
+            }
+        }
+
+        footer: RowLayout {
+            spacing: 8
+
+            Button {
+                objectName: "wallpaperNameCancelButton"
+                Layout.fillWidth: true
+                implicitHeight: 34
+                text: I18n.tr("apps.wallpapers.action.cancel", "Cancel")
+                onClicked: wallpaperNameDialog.reject()
+                background: Rectangle {
+                    radius: 8
+                    color: Qt.rgba(1, 1, 1, 0.06)
+                    border.width: 1
+                    border.color: Components.Theme.cardBorder
+                }
+            }
+
+            Button {
+                objectName: "wallpaperNameAcceptButton"
+                Layout.fillWidth: true
+                implicitHeight: 34
+                enabled: wallpaperNameInput.text.trim() !== ""
+                text: I18n.tr("apps.settings.pages.paper.wallpaper.text.add", "Add")
+                onClicked: wallpaperNameDialog.accept()
+                background: Rectangle {
+                    radius: 8
+                    color: wallpaperNameInput.text.trim() !== ""
+                           ? Components.Theme.accent
+                           : Qt.rgba(1, 1, 1, 0.06)
+                    border.width: 1
+                    border.color: Components.Theme.accent
+                }
+            }
+        }
+
+        onOpened: wallpaperNameInput.forceActiveFocus()
+        onAccepted: {
+            const selectedPath = root.pendingWallpaperPath
+            const displayName = wallpaperNameInput.text.trim()
+            const addOnly = root.pendingAddsToLibrary
+            root.pendingWallpaperPath = ""
+            root.pendingAddsToLibrary = false
+            wallpaperNameInput.clear()
+            if (addOnly)
+                root.controller.addUserWallpaper(selectedPath, displayName)
+            else
+                root.controller.importAndSelectWallpaper(selectedPath, displayName, root.controller.selectionFit)
+        }
+        onRejected: wallpaperNameInput.clear()
     }
 
     component WallpaperSection: ColumnLayout {
@@ -392,7 +544,9 @@ Item {
             }
 
             Rectangle {
+                objectName: section.showAddButton ? "userWallpapersAddButton" : ""
                 visible: section.showAddButton
+                enabled: !root.controller.busy
                 Layout.preferredWidth: 26
                 Layout.preferredHeight: 26
                 radius: 8
@@ -416,7 +570,7 @@ Item {
                     id: addButtonMouse
                     anchors.fill: parent
                     hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
+                    cursorShape: parent.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                     onClicked: section.addRequested()
                 }
             }
@@ -452,7 +606,7 @@ Item {
             Text {
                 id: emptyLabel
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: I18n.tr("apps.settings.pages.appearance.wallpaper.no_wallpapers_found", "No wallpapers found")
+                text: I18n.tr("apps.settings.pages.paper.wallpaper.text.no_wallpapers_found", "No wallpapers found")
                 font.family: Components.Theme.fontFamily
                 font.pixelSize: 12
                 color: Components.Theme.textSecondary
@@ -518,7 +672,7 @@ Item {
 
                             Text {
                                 Layout.fillWidth: true
-                                text: modelData.displayName || modelData.logicalId || "Wallpaper"
+                                text: modelData.displayName || I18n.tr("apps.settings.pages.paper.wallpaper.text.my_wallpaper", "My Wallpaper")
                                 font.family: Components.Theme.fontFamily
                                 font.pixelSize: 11
                                 font.weight: Font.Medium
@@ -536,7 +690,7 @@ Item {
                             cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                             onClicked: root.controller.selectWallpaper(
                                            modelData.logicalId,
-                                           root.controller.effectiveFit !== "" ? root.controller.effectiveFit : "cover")
+                                           root.controller.selectionFit)
                         }
                     }
                 }

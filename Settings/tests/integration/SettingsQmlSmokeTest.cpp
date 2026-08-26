@@ -82,6 +82,13 @@ void SettingsQmlSmokeTest::loadsWallpaperRouteOffscreen()
                             "userWallpapersSection", "landscapesSection"}) {
         QVERIFY2(page->findChild<QObject *>(QString::fromLatin1(name)) != nullptr, name);
     }
+    QObject *preview = page->findChild<QObject *>(QStringLiteral("wallpaperPreview"));
+    QCOMPARE(preview->property("width").toInt(), 180);
+    QCOMPARE(preview->property("height").toInt(), 112);
+    for (const auto name : {"wallpaperFileDialog", "wallpaperNameDialog", "wallpaperNameInput",
+                            "userWallpapersAddButton"}) {
+        QVERIFY2(page->findChild<QObject *>(QString::fromLatin1(name)) != nullptr, name);
+    }
 }
 
 QTEST_MAIN(SettingsQmlSmokeTest)

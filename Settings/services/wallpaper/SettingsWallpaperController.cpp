@@ -42,8 +42,25 @@ bool SettingsWallpaperController::isSupportedFit(const QString &fit)
         || normalized == QStringLiteral("tile");
 }
 
+QString SettingsWallpaperController::selectionFit() const
+{
+    if (isSupportedFit(m_configuredFit)) {
+        return m_configuredFit.trimmed().toLower();
+    }
+    if (isSupportedFit(m_effectiveFit)) {
+        return m_effectiveFit.trimmed().toLower();
+    }
+    return QStringLiteral("cover");
+}
+
 void SettingsWallpaperController::startRequest(const QString &action, const QJsonObject &argument)
 {
+    if (m_busy) {
+        m_errorCode = QStringLiteral("paper-request-busy");
+        m_errorMessage = QStringLiteral("A wallpaper request is already in progress");
+        emit errorChanged();
+        return;
+    }
     ++m_requestId;
     const auto requestId = m_requestId;
     if (m_timeout)
@@ -264,9 +281,6 @@ bool SettingsWallpaperController::applyResponse(const QByteArray &payload)
                 break;
             }
         }
-        if (m_currentDisplayName.isEmpty()) {
-            m_currentDisplayName = QStringLiteral("Wallpaper");
-        }
     }
 
     const auto oldCode = m_errorCode;
@@ -337,6 +351,13 @@ void SettingsWallpaperController::selectWallpaper(const QString &logicalId, cons
 
 void SettingsWallpaperController::importWallpaper(const QString &path, const QString &fit)
 {
+    importAndSelectWallpaper(path, {}, fit);
+}
+
+void SettingsWallpaperController::importAndSelectWallpaper(const QString &path,
+                                                           const QString &displayName,
+                                                           const QString &fit)
+{
     if (path.trimmed().isEmpty()) {
         m_errorCode = QStringLiteral("invalid-descriptor");
         m_errorMessage = QStringLiteral("Wallpaper import path is required");
@@ -352,7 +373,24 @@ void SettingsWallpaperController::importWallpaper(const QString &path, const QSt
         return;
     }
     startRequest(QStringLiteral("import"),
-                 QJsonObject{{QStringLiteral("path"), path}, {QStringLiteral("fit"), fit}});
+                 QJsonObject{{QStringLiteral("path"), path},
+                             {QStringLiteral("fit"), fit},
+                             {QStringLiteral("displayName"), displayName}});
+}
+
+void SettingsWallpaperController::addUserWallpaper(const QString &path,
+                                                   const QString &displayName)
+{
+    if (path.trimmed().isEmpty()) {
+        m_errorCode = QStringLiteral("invalid-descriptor");
+        m_errorMessage = QStringLiteral("Wallpaper add path is required");
+        emit errorChanged();
+        setBusy(false);
+        return;
+    }
+    startRequest(QStringLiteral("add"),
+                 QJsonObject{{QStringLiteral("path"), path},
+                             {QStringLiteral("displayName"), displayName}});
 }
 
 void SettingsWallpaperController::reset()

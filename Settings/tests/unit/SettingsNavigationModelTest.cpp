@@ -10,7 +10,7 @@ private slots:
     void exposesExactCatalogueOrder();
     void selectableRowsHaveUniqueNonEmptyIds();
     void preservesSpacerBehavior();
-    void exposesOnlyCompositorRoute();
+    void exposesNativePageRoutes();
 };
 
 void SettingsNavigationModelTest::exposesExactCatalogueOrder()
@@ -20,7 +20,8 @@ void SettingsNavigationModelTest::exposesExactCatalogueOrder()
         QStringLiteral("system"), QStringLiteral("software-update"), QStringLiteral("internet"),
         QStringLiteral("bluetooth"), QStringLiteral("audio"), QStringLiteral("components"),
         QStringLiteral("services"), QStringLiteral("compositor"), QString(),
-        QStringLiteral("performance"), QStringLiteral("appearance"), QStringLiteral("more-settings"),
+        QStringLiteral("performance"), QStringLiteral("appearance"), QStringLiteral("wallpaper"),
+        QStringLiteral("more-settings"),
     };
 
     QCOMPARE(model.rowCount(), expected.size());
@@ -55,11 +56,13 @@ void SettingsNavigationModelTest::preservesSpacerBehavior()
     QCOMPARE(model.selectedId(), QStringLiteral("system"));
 }
 
-void SettingsNavigationModelTest::exposesOnlyCompositorRoute()
+void SettingsNavigationModelTest::exposesNativePageRoutes()
 {
     SettingsNavigationModel model;
     const QUrl compositorRoute(
         QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Compositor.qml"));
+    const QUrl wallpaperRoute(
+        QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Wallpaper.qml"));
 
     for (int row = 0; row < model.rowCount(); ++row) {
         const QVariantMap entry = model.get(row);
@@ -67,6 +70,8 @@ void SettingsNavigationModelTest::exposesOnlyCompositorRoute()
         const QUrl route = entry.value(QStringLiteral("pageSource")).toUrl();
         if (id == QStringLiteral("compositor"))
             QCOMPARE(route, compositorRoute);
+        else if (id == QStringLiteral("wallpaper"))
+            QCOMPARE(route, wallpaperRoute);
         else
             QVERIFY(route.isEmpty());
     }

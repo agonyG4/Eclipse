@@ -28,6 +28,7 @@ private slots:
     void waitsBeyondTransportForFinalCompletion();
     void loadsPhysicalFactoryPreviewSourceAcrossProcessBoundary();
     void listsStableWallpaperIdsForSettings();
+    void projectsNativePresentationMetadata();
     void selectsStableIdsAndImportsPaths();
 };
 
@@ -389,6 +390,65 @@ void SettingsWallpaperControllerTest::listsStableWallpaperIdsForSettings()
     QCOMPARE(controller.wallpapers().size(), 2);
     QCOMPARE(controller.wallpapers().at(1).toMap().value(QStringLiteral("logicalId")).toString(),
              QStringLiteral("astrea://wallpaper/user/abc"));
+}
+
+void SettingsWallpaperControllerTest::projectsNativePresentationMetadata()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const auto endpoint = temp.filePath(QStringLiteral("w.sock"));
+    QLocalServer server;
+    QVERIFY(server.listen(endpoint));
+    QObject::connect(&server, &QLocalServer::newConnection, this, [&] {
+        auto *socket = server.nextPendingConnection();
+        connect(socket, &QLocalSocket::readyRead, this, [socket] {
+            socket->readAll();
+            auto state = snapshot(QStringLiteral("/tmp/night-drive.png"),
+                                  QStringLiteral("ready"),
+                                  QStringLiteral("none"));
+            state.insert(QStringLiteral("effective"),
+                         QJsonObject{{QStringLiteral("logicalId"), QStringLiteral("astrea://wallpaper/system/night-drive")},
+                                     {QStringLiteral("displayName"), QStringLiteral("Night Drive")},
+                                     {QStringLiteral("source"), QStringLiteral("/tmp/night-drive.png")},
+                                     {QStringLiteral("resolvedSource"), QStringLiteral("/tmp/night-drive.png")},
+                                     {QStringLiteral("fit"), QStringLiteral("cover")}});
+            const QJsonArray entries{
+                QJsonObject{{QStringLiteral("logicalId"), QStringLiteral("astrea://wallpaper/system/dynamic")},
+                            {QStringLiteral("kind"), QStringLiteral("dynamic")},
+                            {QStringLiteral("origin"), QStringLiteral("system")},
+                            {QStringLiteral("displayName"), QStringLiteral("Dynamic")},
+                            {QStringLiteral("resolvedSource"), QStringLiteral("/tmp/dynamic.png")}},
+                QJsonObject{{QStringLiteral("logicalId"), QStringLiteral("astrea://wallpaper/user/blue")},
+                            {QStringLiteral("kind"), QStringLiteral("image")},
+                            {QStringLiteral("origin"), QStringLiteral("user")},
+                            {QStringLiteral("displayName"), QStringLiteral("Blue")},
+                            {QStringLiteral("resolvedSource"), QStringLiteral("/tmp/blue.png")}},
+                QJsonObject{{QStringLiteral("logicalId"), QStringLiteral("astrea://wallpaper/system/mountain")},
+                            {QStringLiteral("kind"), QStringLiteral("image")},
+                            {QStringLiteral("origin"), QStringLiteral("system")},
+                            {QStringLiteral("displayName"), QStringLiteral("Mountain")},
+                            {QStringLiteral("resolvedSource"), QStringLiteral("/tmp/mountain.png")}},
+            };
+            socket->write(QJsonDocument(QJsonObject{{QStringLiteral("ok"), true},
+                                                    {QStringLiteral("completed"), true},
+                                                    {QStringLiteral("snapshot"), state},
+                                                    {QStringLiteral("wallpapers"), entries}})
+                              .toJson(QJsonDocument::Compact)
+                          + '\n');
+            socket->flush();
+        });
+    });
+
+    SettingsWallpaperController controller(endpoint);
+    controller.refreshLibrary();
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.busy(), 1000);
+    QCOMPARE(controller.currentDisplayName(), QStringLiteral("Night Drive"));
+    QCOMPARE(controller.dynamicWallpapers().size(), 1);
+    QCOMPARE(controller.userWallpapers().size(), 1);
+    QCOMPARE(controller.landscapeWallpapers().size(), 1);
+    const auto user = controller.userWallpapers().constFirst().toMap();
+    QCOMPARE(user.value(QStringLiteral("logicalId")).toString(), QStringLiteral("astrea://wallpaper/user/blue"));
+    QCOMPARE(user.value(QStringLiteral("resolvedSource")).toString(), QStringLiteral("/tmp/blue.png"));
 }
 
 void SettingsWallpaperControllerTest::selectsStableIdsAndImportsPaths()

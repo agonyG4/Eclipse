@@ -21,6 +21,8 @@ private slots:
     void usesNativeBoundedJsonControlRequest();
     void exposesFallbackAndConfiguredStateFromSnapshot();
     void rejectsIncompleteResponseAndSurfacesTypedFailure();
+    void clearsStaleErrorWhenAcceptedRequestStarts();
+    void rejectsSecondRequestWhileBusyWithoutReplacingActiveRequest();
     void rejectsLoadingResponseWithoutCompletion();
     void projectsConfiguredAndEffectiveFitFromSnapshot();
     void fallsBackToEffectiveFitWhenConfiguredFitIsAbsent();
@@ -174,6 +176,97 @@ void SettingsWallpaperControllerTest::rejectsIncompleteResponseAndSurfacesTypedF
     QCOMPARE(controller.errorCode(), QStringLiteral("source-missing"));
     QCOMPARE(controller.errorMessage(), QStringLiteral("source vanished"));
     QCOMPARE(controller.stateName(), QStringLiteral("fallback"));
+}
+
+void SettingsWallpaperControllerTest::clearsStaleErrorWhenAcceptedRequestStarts()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const auto endpoint = temp.filePath(QStringLiteral("w.sock"));
+    QLocalServer server;
+    QVERIFY(server.listen(endpoint));
+    int requestCount = 0;
+    QLocalSocket *delayedSocket = nullptr;
+    QObject::connect(&server, &QLocalServer::newConnection, this, [&] {
+        auto *socket = server.nextPendingConnection();
+        connect(socket, &QLocalSocket::readyRead, this, [&, socket] {
+            socket->readAll();
+            ++requestCount;
+            if (requestCount == 1) {
+                const auto state = snapshot(QStringLiteral("/tmp/default.png"),
+                                             QStringLiteral("fallback"),
+                                             QStringLiteral("source-missing"));
+                socket->write(QJsonDocument(QJsonObject{
+                                                {QStringLiteral("ok"), false},
+                                                {QStringLiteral("completed"), true},
+                                                {QStringLiteral("errorCode"), QStringLiteral("source-missing")},
+                                                {QStringLiteral("message"), QStringLiteral("source vanished")},
+                                                {QStringLiteral("snapshot"), state},
+                                            })
+                                  .toJson(QJsonDocument::Compact)
+                              + '\n');
+                socket->flush();
+            } else {
+                delayedSocket = socket;
+            }
+        });
+    });
+
+    SettingsWallpaperController controller(endpoint);
+    controller.setSource(QStringLiteral("/tmp/gone.png"));
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.busy(), 1000);
+    QCOMPARE(controller.errorCode(), QStringLiteral("source-missing"));
+    QCOMPARE(controller.errorMessage(), QStringLiteral("source vanished"));
+
+    controller.refresh();
+    QVERIFY(controller.busy());
+    QCOMPARE(controller.errorCode(), QString());
+    QCOMPARE(controller.errorMessage(), QString());
+    QTRY_COMPARE_WITH_TIMEOUT(requestCount, 2, 1000);
+
+    QVERIFY(delayedSocket != nullptr);
+    delayedSocket->write(response(snapshot(QStringLiteral("/tmp/default.png"),
+                                           QStringLiteral("ready"),
+                                           QStringLiteral("none"))));
+    delayedSocket->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.busy(), 1000);
+}
+
+void SettingsWallpaperControllerTest::rejectsSecondRequestWhileBusyWithoutReplacingActiveRequest()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const auto endpoint = temp.filePath(QStringLiteral("w.sock"));
+    QLocalServer server;
+    QVERIFY(server.listen(endpoint));
+    int requestCount = 0;
+    QLocalSocket *activeSocket = nullptr;
+    QObject::connect(&server, &QLocalServer::newConnection, this, [&] {
+        auto *socket = server.nextPendingConnection();
+        connect(socket, &QLocalSocket::readyRead, this, [&, socket] {
+            socket->readAll();
+            ++requestCount;
+            activeSocket = socket;
+        });
+    });
+
+    SettingsWallpaperController controller(endpoint);
+    controller.refresh();
+    QTRY_COMPARE_WITH_TIMEOUT(requestCount, 1, 1000);
+    QVERIFY(controller.busy());
+
+    controller.refresh();
+    QVERIFY(controller.busy());
+    QCOMPARE(controller.errorCode(), QStringLiteral("paper-request-busy"));
+    QCOMPARE(controller.errorMessage(), QStringLiteral("A wallpaper request is already in progress"));
+    QCOMPARE(requestCount, 1);
+
+    QVERIFY(activeSocket != nullptr);
+    activeSocket->write(response(snapshot(QStringLiteral("/tmp/default.png"),
+                                           QStringLiteral("ready"),
+                                           QStringLiteral("none"))));
+    activeSocket->flush();
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.busy(), 1000);
 }
 
 void SettingsWallpaperControllerTest::rejectsLoadingResponseWithoutCompletion()

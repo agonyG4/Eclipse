@@ -61,6 +61,11 @@ void SettingsWallpaperController::startRequest(const QString &action, const QJso
         emit errorChanged();
         return;
     }
+    const bool hadError = !m_errorCode.isEmpty() || !m_errorMessage.isEmpty();
+    m_errorCode.clear();
+    m_errorMessage.clear();
+    if (hadError)
+        emit errorChanged();
     ++m_requestId;
     const auto requestId = m_requestId;
     if (m_timeout)

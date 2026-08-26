@@ -33,6 +33,35 @@ foreach(wallpaper_forbidden_token IN ITEMS
     endif()
 endforeach()
 
+foreach(wallpaper_required_token IN ITEMS
+    "visible: root.controller.errorMessage !== \"\""
+    "closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside"
+    "Keys.onReturnPressed"
+    "Keys.onEnterPressed"
+    "Keys.onEscapePressed"
+    "e.g. Tokyo Night"
+    "e.g. Mountain Sunset"
+    "maximumLength: 128"
+    "text: I18n.tr(\"apps.settings.pages.paper.wallpaper.text.confirm\", \"Confirm\")"
+    "root.clearPendingWallpaperState()"
+)
+    string(FIND "${wallpaper_source}" "${wallpaper_required_token}" wallpaper_required_position)
+    if(wallpaper_required_position EQUAL -1)
+        message(FATAL_ERROR "Wallpaper.qml is missing required closure contract '${wallpaper_required_token}'")
+    endif()
+endforeach()
+
+foreach(wallpaper_closure_forbidden_token IN ITEMS
+    "operation_in_progress"
+    "text: I18n.tr(\"apps.settings.pages.paper.wallpaper.text.add\", \"Add\")"
+    "enabled: wallpaperNameInput.text.trim() !== \"\""
+)
+    string(FIND "${wallpaper_source}" "${wallpaper_closure_forbidden_token}" wallpaper_forbidden_closure_position)
+    if(NOT wallpaper_forbidden_closure_position EQUAL -1)
+        message(FATAL_ERROR "Wallpaper.qml retains forbidden closure behavior '${wallpaper_closure_forbidden_token}'")
+    endif()
+endforeach()
+
 set(deleted_legacy_paths
     qml/components/AppShell.qml
     qml/components/EmptyContent.qml

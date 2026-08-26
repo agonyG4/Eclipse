@@ -3,6 +3,10 @@
 #include "theme/ThemeController.hpp"
 
 #include <QGuiApplication>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonParseError>
+#include <QDir>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlError>
@@ -15,6 +19,7 @@ class SettingsQmlSmokeTest final : public QObject {
 private slots:
     void loadsCompositorRouteOffscreen();
     void loadsWallpaperRouteOffscreen();
+    void wallpaperTranslationKeysExist();
 };
 
 void SettingsQmlSmokeTest::loadsCompositorRouteOffscreen()
@@ -89,6 +94,76 @@ void SettingsQmlSmokeTest::loadsWallpaperRouteOffscreen()
                             "userWallpapersAddButton"}) {
         QVERIFY2(page->findChild<QObject *>(QString::fromLatin1(name)) != nullptr, name);
     }
+    QObject *dialog = page->findChild<QObject *>(QStringLiteral("wallpaperNameDialog"));
+    QVERIFY(dialog != nullptr);
+    QCOMPARE(dialog->property("width").toInt(), 320);
+    QCOMPARE(dialog->property("padding").toInt(), 20);
+    QObject *input = page->findChild<QObject *>(QStringLiteral("wallpaperNameInput"));
+    QVERIFY(input != nullptr);
+    QCOMPARE(input->property("maximumLength").toInt(), 128);
+    QCOMPARE(input->property("placeholderText").toString(), QStringLiteral("e.g. Tokyo Night"));
+    page->setProperty("pendingAddsToLibrary", true);
+    QCOMPARE(input->property("placeholderText").toString(), QStringLiteral("e.g. Mountain Sunset"));
+    page->setProperty("pendingAddsToLibrary", false);
+    QVERIFY(input->property("enabled").toBool());
+    QObject *feedback = page->findChild<QObject *>(QStringLiteral("wallpaperFeedback"));
+    QVERIFY(feedback != nullptr);
+    QVERIFY(feedback->property("height").toInt() > 0);
+    QObject *confirm = page->findChild<QObject *>(QStringLiteral("wallpaperNameConfirmButton"));
+    QVERIFY(confirm != nullptr);
+    QCOMPARE(confirm->property("text").toString(), QStringLiteral("Confirm"));
+    QVERIFY(confirm->property("enabled").toBool());
+}
+
+void SettingsQmlSmokeTest::wallpaperTranslationKeysExist()
+{
+    QFile catalog(QDir(QStringLiteral(ASTREA_ECLIPSE_SOURCE_DIR))
+                      .filePath(QStringLiteral("Settings/assets/i18n/en_US.json")));
+    QVERIFY(catalog.open(QIODevice::ReadOnly));
+    QJsonParseError parseError;
+    const auto document = QJsonDocument::fromJson(catalog.readAll(), &parseError);
+    QCOMPARE(parseError.error, QJsonParseError::NoError);
+    QVERIFY(document.isObject());
+
+    const auto messages = document.object();
+    const QStringList requiredKeys{
+        QStringLiteral("apps.settings.pages.paper.wallpaper.option.simple"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.option.fade"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.option.left"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.option.right"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.option.top"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.option.bottom"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.option.wipe"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.option.wave"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.option.grow"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.option.center"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.option.outer"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.option.any"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.option.random"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.label.dynamic_wallpapers"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.label.landscapes"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.label.transition"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.sublabel.awww_wallpaper_animation"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.text.change"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.text.current"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.text.choose_wallpaper"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.text.name_this_wallpaper"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.text.no_wallpapers_found"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.text.my_wallpaper"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.text.preview_fail"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.text.cancel"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.text.confirm"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.text.placeholder_change"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.text.placeholder_add_user"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.text.show_on_all_workspaces"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.text.use_blurred_wallpaper"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.text.user_wallpapers"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.text.wallpaper_library"),
+        QStringLiteral("apps.settings.pages.paper.screensaver.text.screensaver"),
+        QStringLiteral("apps.settings.pages.paper.lockscreen.text.lockscreen"),
+    };
+    for (const auto &key : requiredKeys)
+        QVERIFY2(messages.contains(key), qPrintable(QStringLiteral("Missing key: ") + key));
 }
 
 QTEST_MAIN(SettingsQmlSmokeTest)

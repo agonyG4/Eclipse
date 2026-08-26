@@ -22,7 +22,7 @@ constexpr qint64 kMaxImportBytes = 64 * 1024 * 1024;
 constexpr qint64 kMaxImagePixels = 32 * 1024 * 1024;
 constexpr int kMaxImageDimension = 8192;
 constexpr int kMaxDisplayNameLength = 128;
-const auto kFallbackDisplayName = QStringLiteral("Wallpaper");
+const auto kDefaultImportedDisplayName = QStringLiteral("Wallpaper");
 
 void setError(QString *errorMessage, const QString &message)
 {
@@ -157,10 +157,10 @@ std::optional<WallpaperDescriptor> WallpaperCatalog::importWallpaper(const QStri
         const auto sourceName = QFileInfo(canonical).completeBaseName();
         normalizedName = sourceName;
         if (!normalizeDisplayName(sourceName, &normalizedName)) {
-            normalizedName = kFallbackDisplayName;
+            normalizedName = kDefaultImportedDisplayName;
         }
         if (normalizedName.isEmpty()) {
-            normalizedName = kFallbackDisplayName;
+            normalizedName = kDefaultImportedDisplayName;
         }
     }
 
@@ -417,9 +417,8 @@ void WallpaperCatalog::scanDirectory(const QString &directory, const WallpaperOr
         }
         descriptor.setDisplayName(info.completeBaseName());
         if (origin == WallpaperOrigin::User) {
-            const auto metadataName = readDisplayName(metadataPathFor(m_userDirectory,
-                                                                       info.completeBaseName()));
-            descriptor.setDisplayName(metadataName.isEmpty() ? kFallbackDisplayName : metadataName);
+            descriptor.setDisplayName(readDisplayName(metadataPathFor(m_userDirectory,
+                                                                       info.completeBaseName())));
         }
         descriptor.setResolvedSource(canonical);
         addDescriptor(std::move(descriptor));

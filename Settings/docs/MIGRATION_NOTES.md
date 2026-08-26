@@ -58,7 +58,9 @@ and Paper boundaries. Change imports and selects through Paper; User Wallpapers
 Stable content-addressed IDs remain authoritative, while user-facing names are
 persisted as Paper-owned metadata. Transition rendering, blur, per-workspace
 wallpapers, Screensaver, Lockscreen, dynamic execution, and full historical
-landscape asset migration remain deferred follow-up work.
+landscape asset migration remain deferred follow-up work. If a user metadata
+sidecar is missing or malformed, Paper leaves the display name empty so Settings
+can provide a localized generic label; digest IDs are never shown as names.
 
 ## Source Handoff Policy
 

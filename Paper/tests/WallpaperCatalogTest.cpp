@@ -23,7 +23,7 @@ private slots:
     void reusesDuplicateContent();
     void persistsDisplayNameAcrossRefreshAndReconstruction();
     void updatesDuplicateDisplayNameWithoutSecondImage();
-    void ignoresMalformedMetadataWithoutExposingDigest();
+    void ignoresMalformedOrMissingMetadataWithoutExposingDigest();
     void rejectsFailedMetadataPublicationWithoutCatalogEntry();
     void rejectsDirectoryAndUnsupportedImage();
 };
@@ -149,7 +149,7 @@ void WallpaperCatalogTest::updatesDuplicateDisplayNameWithoutSecondImage()
     QCOMPARE(preserved->displayName(), QStringLiteral("Second name"));
 }
 
-void WallpaperCatalogTest::ignoresMalformedMetadataWithoutExposingDigest()
+void WallpaperCatalogTest::ignoresMalformedOrMissingMetadataWithoutExposingDigest()
 {
     QTemporaryDir temp;
     QVERIFY(temp.isValid());
@@ -172,8 +172,14 @@ void WallpaperCatalogTest::ignoresMalformedMetadataWithoutExposingDigest()
     catalog.refresh();
     const auto restored = catalog.resolve(imported->logicalId());
     QVERIFY(restored.has_value());
-    QCOMPARE(restored->displayName(), QStringLiteral("Wallpaper"));
+    QCOMPARE(restored->displayName(), QString());
     QVERIFY(!restored->displayName().contains(imported->logicalId().section(QLatin1Char('/'), -1)));
+
+    QVERIFY(QFile::remove(metadata.fileName()));
+    catalog.refresh();
+    const auto missing = catalog.resolve(imported->logicalId());
+    QVERIFY(missing.has_value());
+    QCOMPARE(missing->displayName(), QString());
 }
 
 void WallpaperCatalogTest::rejectsFailedMetadataPublicationWithoutCatalogEntry()

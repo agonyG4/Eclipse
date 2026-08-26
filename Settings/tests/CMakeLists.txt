@@ -43,6 +43,9 @@ function(add_settings_qml_integration_test target source)
         Qt6::QuickControls2
         Qt6::Test
     )
+    target_compile_definitions(${target} PRIVATE
+        ASTREA_ECLIPSE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    )
     qt_import_qml_plugins(${target})
     settings_enable_warnings(${target})
     settings_enable_sanitizers(${target})

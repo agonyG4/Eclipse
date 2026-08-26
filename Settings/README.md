@@ -44,7 +44,9 @@ backend.
 The Wallpaper page is a native route backed by
 `SettingsWallpaperController` and the Paper wallpaper service. Paper owns
 catalog validation, managed files, metadata, persistence, and authoritative
-selection; QML owns only presentation and native file/name dialogs.
+selection; QML owns only presentation and native file/name dialogs. Missing or
+malformed Paper metadata stays empty at the backend boundary and receives a
+localized generic label in Settings, never a digest-derived name.
 
 The Compositor preview intentionally has no compositor integration. Settings
 does not use shell commands, Quickshell, LayerShellQt, Hyprland, or Typhon.

@@ -38,6 +38,12 @@ Item {
         wallpaperFileDialog.open()
     }
 
+    function clearPendingWallpaperState() {
+        root.pendingWallpaperPath = ""
+        root.pendingAddsToLibrary = false
+        wallpaperNameInput.clear()
+    }
+
     Component.onCompleted: root.controller.refreshLibrary()
 
     Form.ScrollPage {
@@ -272,40 +278,6 @@ Item {
         }
 
         Rectangle {
-            id: wallpaperFeedback
-            objectName: "wallpaperFeedback"
-            visible: root.controller.busy || root.controller.errorMessage !== ""
-            Layout.fillWidth: true
-            Layout.bottomMargin: 8
-            implicitHeight: feedbackText.implicitHeight + 16
-            radius: 8
-            color: root.controller.errorMessage !== ""
-                   ? Qt.rgba(0.85, 0.20, 0.20, 0.14)
-                   : Qt.rgba(1, 1, 1, 0.06)
-            border.width: 1
-            border.color: root.controller.errorMessage !== ""
-                          ? Qt.rgba(1, 0.35, 0.35, 0.32)
-                          : Components.Theme.cardBorder
-
-            Text {
-                id: feedbackText
-                anchors {
-                    left: parent.left
-                    right: parent.right
-                    verticalCenter: parent.verticalCenter
-                    margins: 8
-                }
-                text: root.controller.errorMessage !== ""
-                      ? root.controller.errorMessage
-                      : I18n.tr("apps.settings.pages.paper.wallpaper.text.operation_in_progress", "Applying wallpaper…")
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: 11
-                color: Components.Theme.textPrimary
-                elide: Text.ElideRight
-            }
-        }
-
-        Rectangle {
             id: transitionCard
             objectName: "transitionCard"
             Layout.fillWidth: true
@@ -399,6 +371,40 @@ Item {
         Item { Layout.preferredHeight: 28 }
     }
 
+    Rectangle {
+        id: wallpaperFeedback
+        objectName: "wallpaperFeedback"
+        visible: root.controller.errorMessage !== ""
+        z: 20
+        anchors {
+            top: parent.top
+            right: parent.right
+            margins: 12
+        }
+        width: Math.min(Math.max(parent.width - 24, 0), 360)
+        height: feedbackText.implicitHeight + 16
+        implicitHeight: feedbackText.implicitHeight + 16
+        radius: 8
+        color: Qt.rgba(0.85, 0.20, 0.20, 0.14)
+        border.width: 1
+        border.color: Qt.rgba(1, 0.35, 0.35, 0.32)
+
+        Text {
+            id: feedbackText
+            anchors {
+                left: parent.left
+                right: parent.right
+                verticalCenter: parent.verticalCenter
+                margins: 8
+            }
+            text: root.controller.errorMessage
+            font.family: Components.Theme.fontFamily
+            font.pixelSize: 11
+            color: Components.Theme.textPrimary
+            elide: Text.ElideRight
+        }
+    }
+
     FileDialog {
         id: wallpaperFileDialog
         objectName: "wallpaperFileDialog"
@@ -407,15 +413,14 @@ Item {
 
         onAccepted: {
             const selectedPath = selectedFile.toString()
-            if (selectedPath === "")
+            if (selectedPath === "") {
+                root.clearPendingWallpaperState()
                 return
+            }
             root.pendingWallpaperPath = selectedPath
             wallpaperNameDialog.open()
         }
-        onRejected: {
-            root.pendingWallpaperPath = ""
-            root.pendingAddsToLibrary = false
-        }
+        onRejected: root.clearPendingWallpaperState()
     }
 
     Dialog {
@@ -424,6 +429,7 @@ Item {
         modal: true
         width: 320
         padding: 20
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         anchors.centerIn: Overlay.overlay
         Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.6) }
 
@@ -451,10 +457,16 @@ Item {
                 objectName: "wallpaperNameInput"
                 Layout.fillWidth: true
                 height: 36
-                placeholderText: I18n.tr("apps.settings.pages.paper.wallpaper.text.name_this_wallpaper", "Name this wallpaper")
+                maximumLength: 128
+                placeholderText: root.pendingAddsToLibrary
+                                 ? I18n.tr("apps.settings.pages.paper.wallpaper.text.placeholder_add_user", "e.g. Mountain Sunset")
+                                 : I18n.tr("apps.settings.pages.paper.wallpaper.text.placeholder_change", "e.g. Tokyo Night")
                 leftPadding: 12
                 rightPadding: 12
                 selectByMouse: true
+                Keys.onReturnPressed: if (wallpaperNameConfirmButton.enabled) wallpaperNameDialog.accept()
+                Keys.onEnterPressed: if (wallpaperNameConfirmButton.enabled) wallpaperNameDialog.accept()
+                Keys.onEscapePressed: wallpaperNameDialog.reject()
                 background: Rectangle {
                     radius: 8
                     color: Components.Theme.popupBg
@@ -473,7 +485,7 @@ Item {
                 objectName: "wallpaperNameCancelButton"
                 Layout.fillWidth: true
                 implicitHeight: 34
-                text: I18n.tr("apps.wallpapers.action.cancel", "Cancel")
+                text: I18n.tr("apps.settings.pages.paper.wallpaper.text.cancel", "Cancel")
                 onClicked: wallpaperNameDialog.reject()
                 background: Rectangle {
                     radius: 8
@@ -484,15 +496,16 @@ Item {
             }
 
             Button {
-                objectName: "wallpaperNameAcceptButton"
+                id: wallpaperNameConfirmButton
+                objectName: "wallpaperNameConfirmButton"
                 Layout.fillWidth: true
                 implicitHeight: 34
-                enabled: wallpaperNameInput.text.trim() !== ""
-                text: I18n.tr("apps.settings.pages.paper.wallpaper.text.add", "Add")
+                enabled: !root.controller.busy
+                text: I18n.tr("apps.settings.pages.paper.wallpaper.text.confirm", "Confirm")
                 onClicked: wallpaperNameDialog.accept()
                 background: Rectangle {
                     radius: 8
-                    color: wallpaperNameInput.text.trim() !== ""
+                    color: wallpaperNameConfirmButton.enabled
                            ? Components.Theme.accent
                            : Qt.rgba(1, 1, 1, 0.06)
                     border.width: 1
@@ -506,15 +519,14 @@ Item {
             const selectedPath = root.pendingWallpaperPath
             const displayName = wallpaperNameInput.text.trim()
             const addOnly = root.pendingAddsToLibrary
-            root.pendingWallpaperPath = ""
-            root.pendingAddsToLibrary = false
-            wallpaperNameInput.clear()
+            root.clearPendingWallpaperState()
             if (addOnly)
                 root.controller.addUserWallpaper(selectedPath, displayName)
             else
                 root.controller.importAndSelectWallpaper(selectedPath, displayName, root.controller.selectionFit)
         }
-        onRejected: wallpaperNameInput.clear()
+        onRejected: root.clearPendingWallpaperState()
+        onClosed: root.clearPendingWallpaperState()
     }
 
     component WallpaperSection: ColumnLayout {

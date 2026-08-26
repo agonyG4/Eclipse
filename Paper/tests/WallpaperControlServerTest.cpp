@@ -26,6 +26,7 @@ private slots:
     void handlesGetSetDefaultAndReset();
     void listsCatalogAndSelectsStableId();
     void importsThroughPaperEndpoint();
+    void validatesImportDisplayNamesAtTransportBoundary();
     void addsToCatalogWithoutChangingCurrentWallpaper();
     void failedSecondServerDoesNotRemoveLiveEndpoint();
     void boundsIdleClientsAndReclaimsCapacity();
@@ -225,6 +226,69 @@ void WallpaperControlServerTest::importsThroughPaperEndpoint()
                  .value(QStringLiteral("logicalId"))
                  .toString(),
              id);
+}
+
+void WallpaperControlServerTest::validatesImportDisplayNamesAtTransportBoundary()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const auto factory = writeImage(temp.filePath(QStringLiteral("factory.png")));
+    const auto emergency = writeImage(temp.filePath(QStringLiteral("emergency.png")));
+    const auto source = writeImage(temp.filePath(QStringLiteral("source.png")));
+    const auto emptySource = temp.filePath(QStringLiteral("empty-name.png"));
+    QImage emptyImage(20, 20, QImage::Format_ARGB32);
+    emptyImage.fill(Qt::red);
+    QVERIFY(emptyImage.save(emptySource));
+    auto catalog = std::make_shared<WallpaperCatalog>(
+        WallpaperResolver(factory, emergency), temp.filePath(QStringLiteral("library")));
+    WallpaperService service(WallpaperResolver(factory, emergency),
+                             std::make_unique<XdgWallpaperPersistence>(
+                                 temp.filePath(QStringLiteral("paper.ini"))),
+                             catalog);
+    service.initialize();
+    const auto endpoint = temp.filePath(QStringLiteral("r/w.sock"));
+    WallpaperControlServer server(&service, endpoint);
+    QVERIFY(server.listen());
+
+    const auto import = [&](const QString &path, const QString &displayName) {
+        const QJsonObject body{{QStringLiteral("path"), path},
+                               {QStringLiteral("fit"), QStringLiteral("contain")},
+                               {QStringLiteral("displayName"), displayName}};
+        return request(endpoint,
+                       QStringLiteral("wallpaper import ")
+                           + QString::fromUtf8(QJsonDocument(body).toJson(QJsonDocument::Compact)));
+    };
+
+    const auto unicode = import(source, QStringLiteral("雪 Café"));
+    QCOMPARE(unicode.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(unicode.value(QStringLiteral("snapshot")).toObject()
+                 .value(QStringLiteral("configured")).toObject()
+                 .value(QStringLiteral("displayName")),
+             QStringLiteral("雪 Café"));
+
+    const auto empty = import(emptySource, QString());
+    QCOMPARE(empty.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(empty.value(QStringLiteral("snapshot")).toObject()
+                 .value(QStringLiteral("configured")).toObject()
+                 .value(QStringLiteral("displayName")),
+             QStringLiteral("empty-name"));
+
+    const auto maximum = import(source, QString(128, QLatin1Char('x')));
+    QCOMPARE(maximum.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(maximum.value(QStringLiteral("snapshot")).toObject()
+                 .value(QStringLiteral("configured")).toObject()
+                 .value(QStringLiteral("displayName")),
+             QString(128, QLatin1Char('x')));
+
+    const auto tooLong = import(source, QString(129, QLatin1Char('x')));
+    QCOMPARE(tooLong.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(tooLong.value(QStringLiteral("errorCode")).toString(),
+             QStringLiteral("unsupported-image"));
+
+    const auto control = import(source, QStringLiteral("bad\nname"));
+    QCOMPARE(control.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(control.value(QStringLiteral("errorCode")).toString(),
+             QStringLiteral("unsupported-image"));
 }
 
 void WallpaperControlServerTest::addsToCatalogWithoutChangingCurrentWallpaper()

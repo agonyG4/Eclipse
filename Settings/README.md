@@ -28,11 +28,12 @@ The native application includes:
 - a normal frameless Qt Wayland window with native window actions;
 - the source-preserved legacy glass shell, profile composition, and sidebar;
 - catalogue-owned navigation with filtering and stable selection;
-- twelve navigation rows including the non-selectable spacer;
+- thirteen navigation rows including the non-selectable spacer;
 - native theme configuration, translations, icon resolution, and user-profile
   services; Linux libc/NSS administrative-group detection recognizes only
   `wheel` and `sudo`;
-- one real page route, `Compositor`, immediately after `Services`;
+- two real page routes: `Compositor`, immediately after `Services`, and the
+  native `Wallpaper` route under Appearance;
 - reusable form controls and one reusable `Astrea.Settings` QML module.
 
 The Compositor page is a visual-only preview. Its toggles and selectors use
@@ -40,10 +41,15 @@ page-local QML properties. Those values are destroyed when the page is left or
 the application closes; they are never persisted, applied, or sent to a
 backend.
 
-The application intentionally has no compositor integration, IPC, private
-protocol, service backend, shell command, Quickshell, LayerShellQt, Hyprland,
-or Typhon runtime dependency. Existing ThemeController configuration is
-separate from the Compositor preview state.
+The Wallpaper page is a native route backed by
+`SettingsWallpaperController` and the Paper wallpaper service. Paper owns
+catalog validation, managed files, metadata, persistence, and authoritative
+selection; QML owns only presentation and native file/name dialogs.
+
+The Compositor preview intentionally has no compositor integration. Settings
+does not use shell commands, Quickshell, LayerShellQt, Hyprland, or Typhon.
+Existing ThemeController configuration is separate from the Compositor preview
+state.
 
 Settings links `astrea-shared-core` and its QML plugin only for
 compositor-independent shared utilities. Layer Shell code is isolated in

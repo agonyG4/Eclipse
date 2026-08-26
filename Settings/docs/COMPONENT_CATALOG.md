@@ -1,6 +1,6 @@
 # Registered QML Components
 
-The `astrea-settings-ui` module registers 35 QML files. The canonical legacy
+The `astrea-settings-ui` module registers 37 QML files. The canonical legacy
 source column points to the corresponding Astrea source where one exists.
 
 | Path | Public type | Category | Canonical legacy source | Current consumers | Classification |
@@ -36,6 +36,7 @@ source column points to the corresponding Astrea source where one exists.
 | `qml/components/typography/Divider.qml` | `Divider` | typography | `src/Core/components/typography/Divider.qml` | future pages | page primitive |
 | `qml/components/typography/TextLabel.qml` | `TextLabel` | typography | `src/Core/components/typography/TextLabel.qml` | future pages | page primitive |
 | `qml/pages/system/Compositor.qml` | `Compositor` | page | native Settings preview source | `Main` Loader | shell-critical |
+| `qml/pages/appearance/Wallpaper.qml` | `Wallpaper` | page | `src/Apps/Settings/pages/paper/Wallpaper.qml` | `Main` Loader | native Paper-backed route |
 | `qml/theme/Apps.qml` | `Apps` | singleton theme | `src/Core/components/theme/Borealis/Apps.qml` | `Theme` | shell-critical |
 | `qml/theme/Shell.qml` | `Shell` | singleton theme | `src/Core/components/theme/Borealis/Shell.qml` | `Theme` | shell-critical |
 | `qml/theme/State.qml` | `State` | singleton theme | `src/Core/components/theme/Borealis/State.qml` | `Theme`, `Apps`, `Shell` | shell-critical |

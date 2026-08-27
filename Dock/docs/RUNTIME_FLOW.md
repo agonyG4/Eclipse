@@ -54,15 +54,22 @@ running indicator stable. Reorder temporarily suspends hover visuals in all
 modes, then restores the configured effect after drop or cancellation.
 
 A drag handler is enabled only for the configured-pin prefix. Once the system
-drag threshold is crossed, QML records the stable desktop filename, raises that
-delegate, suspends magnification, and previews the target index by translating
-neighboring pins. An explicit drag state machine makes release and cancellation
-mutually exclusive; a click below threshold remains activation-only. The
-authoritative model and on-disk configuration remain unchanged during the
-preview. On a moved drop, QML emits one reorder request; the controller reads
-the current pin list, atomically persists it, then calls the normal model
-reconciliation path. Runtime-only rows remain after the pin section and retain
-their deterministic first-observed order.
+drag threshold is crossed, QML records the stable desktop filename, raises,
+lifts, and scales only that delegate, and previews the target index by
+translating neighboring pins on their resting vertical baseline. The drag
+origin, current center, and target-slot centers use panel-center-relative
+coordinates, so symmetric visual surface-width animation cannot introduce a
+synthetic drag movement. The handler's `GrabExclusive`, `UngrabExclusive`, and
+`CancelGrabExclusive` transitions make release and cancellation mutually
+exclusive; passive transitions do not finalize a reorder. A click below
+threshold remains activation-only. A precise panel-level interaction target
+tracks the transformed icon rectangle, including its bottom-origin headroom,
+without making unrelated transparent space actionable. The authoritative model
+and on-disk configuration remain unchanged during the preview. On a moved drop,
+QML emits one reorder request; the controller reads the current pin list,
+atomically persists it, then calls the normal model reconciliation path.
+Runtime-only rows remain after the pin section and retain their deterministic
+first-observed order.
 
 The Dock owns one Typhon toplevel connection. After the initial snapshot
 commits, `DockApplicationStateProjector` emits only resolved live applications

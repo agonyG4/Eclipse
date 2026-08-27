@@ -39,8 +39,10 @@ Item {
     property string draggedDesktopFileName: ""
     property int draggedSourceIndex: -1
     property int dragTargetIndex: -1
-    property real dragOriginCenterX: 0
-    property real dragCenterX: 0
+    // Both values are relative to the panel center. This keeps the drag
+    // coordinate invariant while a centered visual surface changes width.
+    property real dragOriginCenterRelativeX: 0
+    property real dragCenterRelativeX: 0
     property var magnificationScales: []
     property var extraWidths: []
     property var prefixExtraWidths: []
@@ -215,16 +217,16 @@ Item {
             var offset = (prefixExtraWidths[i] || 0) + extra / 2 - totalExtra / 2
             if (dragging) {
                 if (i === draggedSourceIndex) {
-                    var originalCenter = appRow.x + item.x + item.width / 2
-                    offset += dragCenterX - originalCenter
+                    var currentCenterRelative = appRow.x + item.x + item.width / 2 - width / 2
+                    offset += dragCenterRelativeX - currentCenterRelative
                 } else {
                     offset += (previewIndexFor(i) - i) * slotPitch
                 }
             }
             item.magnificationScale = dragging ? 1 : (magnificationScales[i] || 1)
             item.visualOffsetX = offset
-            item.visualOffsetY = dragging ? -reorderOffsetY
-                : (item.objectName === liftedKey ? -liftOffsetY : 0)
+            item.visualOffsetY = dragging && i === draggedSourceIndex ? -reorderOffsetY
+                : (!dragging && item.objectName === liftedKey ? -liftOffsetY : 0)
             item.dragScale = dragging && i === draggedSourceIndex ? reorderScale : 1
             item.dragging = i === draggedSourceIndex
         }
@@ -249,8 +251,8 @@ Item {
         draggedDesktopFileName = key
         draggedSourceIndex = source
         dragTargetIndex = source
-        dragOriginCenterX = appRow.x + sourceItem.x + sourceItem.width / 2
-        dragCenterX = dragOriginCenterX
+        dragOriginCenterRelativeX = appRow.x + sourceItem.x + sourceItem.width / 2 - width / 2
+        dragCenterRelativeX = dragOriginCenterRelativeX
         updateHoverEffect()
     }
 
@@ -258,14 +260,15 @@ Item {
         if (key !== draggedDesktopFileName)
             return
 
-        dragCenterX = dragOriginCenterX + translationX
+        dragCenterRelativeX = dragOriginCenterRelativeX + translationX
         var firstItem = appRepeater.itemAt(0)
         if (!firstItem)
             return
         var slotPitch = Math.max(1, root.slotPitch)
-        var firstCenter = appRow.x + firstItem.x + firstItem.width / 2
+        var firstCenterRelative = appRow.x + firstItem.x + firstItem.width / 2 - width / 2
         dragTargetIndex = Math.max(0, Math.min(DockController.pinCount - 1,
-                                               Math.round((dragCenterX - firstCenter) / slotPitch)))
+                                               Math.round((dragCenterRelativeX
+                                                           - firstCenterRelative) / slotPitch)))
         updateHoverEffect()
     }
 
@@ -277,8 +280,8 @@ Item {
         draggedDesktopFileName = ""
         draggedSourceIndex = -1
         dragTargetIndex = -1
-        dragOriginCenterX = 0
-        dragCenterX = 0
+        dragOriginCenterRelativeX = 0
+        dragCenterRelativeX = 0
         pointerTargetDesktopFileName = ""
         updateHoverEffect()
         if (source >= 0 && target >= 0 && source !== target)
@@ -291,12 +294,13 @@ Item {
         draggedDesktopFileName = ""
         draggedSourceIndex = -1
         dragTargetIndex = -1
-        dragOriginCenterX = 0
-        dragCenterX = 0
+        dragOriginCenterRelativeX = 0
+        dragCenterRelativeX = 0
         updateHoverEffect()
     }
 
     Component.onCompleted: updateHoverEffect()
-    onWidthChanged: if (pointerInside) updateHoverEffect()
+    onWidthChanged: updateHoverEffect()
+    onHeightChanged: updateHoverEffect()
     onConfiguredHoverEffectChanged: updateHoverEffect()
 }

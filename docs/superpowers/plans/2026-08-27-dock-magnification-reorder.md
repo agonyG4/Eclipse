@@ -97,7 +97,7 @@
 - [x] Add panel-level pointer tracking and one-pass raised-cosine scale/extra-width/prefix calculation.
 - [x] Keep the Row's resting slots stable, translate delegates by cumulative extra widths, center the complete strip, and expand/shrink only the transparent visual surface above fixed resting chrome.
 - [x] Scale only the icon from its bottom edge, keep running indicators unscaled, retain adequate source sampling, and keep tooltip targeting identity-based.
-- [x] Add TapHandler/DragHandler separation, pinned-only drag enablement, thresholded preview, neighbor animations, one-shot release/cancel finalization, one drop request, and no drag activation.
+- [x] Add TapHandler/DragHandler separation, pinned-only drag enablement, thresholded preview, neighbor animations, center-relative drag geometry, a precise transformed-icon interaction target, grab-transition release/cancel finalization, one drop request, and no drag activation.
 - [x] Run `qmllint` against all modified Dock QML and inspect for binding loops, index-based identity, and pointer feedback risks.
 
 ### Task 6: Update documentation
@@ -124,3 +124,4 @@
 - [x] Restore the centered delegate baseline and add transient lift/drag headroom, with bounds checked across icon sizes `32..64`.
 - [x] Keep the bottom chrome at the resting height while visual surface height changes.
 - [x] Make pointer release and cancellation terminal paths mutually exclusive, and cover click/drag/reset sequencing in the offscreen QML test.
+- [x] Make drag coordinates invariant under centered surface-width animation, lift only the dragged delegate, align pointer bounds to transformed icon geometry, and test exclusive grab transitions directly.

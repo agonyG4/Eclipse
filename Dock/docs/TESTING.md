@@ -8,7 +8,9 @@ cmake --build build -j"$(nproc)"
 ctest --test-dir build --output-on-failure
 ```
 
-The Dock-specific targets can be built and run independently:
+The resident Dock is hosted by `astrea-shell`; `astrea-dock` is retained only
+as a compatibility IPC client target. Dock-specific targets can be built and
+run independently:
 
 ```bash
 cmake --build build --target astrea-dock dock-app-model-test dock-controller-test \
@@ -56,10 +58,14 @@ and zero reservation while unmapped. `dock-hover-qml-test` exercises the real
 Dock panel and delegate for none/lift/magnification geometry, mode transitions,
 neighbor displacement, fixed chrome height, and reorder preview/drop signaling
 across all modes. It also checks the centered icon baseline and visual bounds
-for every integer icon size from 32 through 64, plus event-driven click and
-thresholded drag behavior. The cancellation case uses the panel cancellation
-reset path after a real pointer drag; the offscreen Qt backend does not provide
-a compositor pointer-cancel event.
+for every integer icon size from 32 through 64, center-relative drag stability
+while magnification collapses, dragged-only vertical lift, grab-transition
+terminal paths, and event-driven click/thresholded drag behavior. Its precise
+interaction-target cases cover the top of a maximum-size magnified icon,
+context-menu targeting, empty headroom, and overlapping target arbitration.
+The cancellation case retains the panel cancellation reset path after a real
+pointer drag; the offscreen Qt backend does not provide a compositor
+pointer-cancel event.
 
 The visual test checks the center/neighbor/distant raised-cosine ordering,
 left/right symmetry, continuity at an influence boundary, exact return to

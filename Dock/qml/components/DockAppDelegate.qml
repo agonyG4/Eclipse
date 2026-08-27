@@ -32,11 +32,8 @@ Item {
     property bool dragging: false
     property real dragScale: 1.0
     property bool dragWasActive: false
-    readonly property real interactionMargin:
-        root.iconSize * (root.magnificationScale - 1) / 2
-    // 0 = idle, 1 = active, 2 = release pending. A release is finalized only
-    // after the current pointer event, allowing canceled() to win when Qt
-    // reports activeChanged(false) before the cancellation notification.
+    readonly property real visualScale: root.magnificationScale * root.dragScale
+    // 0 = idle, 1 = exclusively grabbed and dragging.
     property int dragLifecycle: 0
 
     property int iconSize: 48
@@ -46,11 +43,47 @@ Item {
     signal dragFinished(string desktopFileName)
     signal dragCanceled(string desktopFileName)
 
-    function finalizeReleasedDrag() {
-        if (root.dragLifecycle !== 2)
-            return
-        root.dragLifecycle = 0
-        root.dragFinished(root.desktopFileName)
+    function handleGrabTransition(transition) {
+        if (transition === PointerDevice.GrabExclusive) {
+            if (root.dragLifecycle !== 0)
+                return
+            root.dragLifecycle = 1
+            root.dragWasActive = true
+            root.dragStarted(root.desktopFileName)
+        } else if (transition === PointerDevice.UngrabExclusive) {
+            if (root.dragLifecycle !== 1)
+                return
+            root.dragLifecycle = 0
+            root.dragFinished(root.desktopFileName)
+        } else if (transition === PointerDevice.CancelGrabExclusive) {
+            if (root.dragLifecycle !== 1)
+                return
+            root.dragLifecycle = 0
+            root.dragCanceled(root.desktopFileName)
+        }
+    }
+
+    function updateInteractionTargetGeometry() {
+        interactionTarget.updateGeometry()
+    }
+
+    function scheduleInteractionTargetGeometryUpdate() {
+        Qt.callLater(root.updateInteractionTargetGeometry)
+    }
+
+    function isPointerTarget() {
+        return !root.dockPanel
+            || root.dockPanel.pointerTargetDesktopFileName === root.desktopFileName
+    }
+
+    function isPointerTargetAt(eventPoint) {
+        if (!root.dockPanel)
+            return true
+        const panelPoint = root.dockPanel.mapFromItem(null,
+                                                        eventPoint.scenePosition.x,
+                                                        eventPoint.scenePosition.y)
+        root.dockPanel.updatePointer(panelPoint.x)
+        return root.isPointerTarget()
     }
 
     objectName: desktopFileName
@@ -98,74 +131,75 @@ Item {
         NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
     }
 
-    TapHandler {
-        id: tapHandler
-        acceptedButtons: Qt.LeftButton
-        gesturePolicy: TapHandler.DragThreshold
-        margin: root.interactionMargin
-        onPressedChanged: if (pressed) root.dragWasActive = false
-        onTapped: {
-            const wasDrag = root.dragWasActive
-            root.dragWasActive = false
-            if (!wasDrag)
-                root.activated(root.desktopFileName)
-        }
-    }
+    Item {
+        id: interactionTarget
+        objectName: "interactionTarget-" + root.desktopFileName
+        parent: root.dockPanel || root
+        width: root.iconSize * root.visualScale
+        height: root.iconSize * root.visualScale
+        // This target is reparented to the panel so its exact visual bounds
+        // remain interactive even when they extend beyond the delegate slot.
+        x: 0
+        y: 0
+        z: root.dragging ? 1000 : root.magnificationScale + 1
 
-    TapHandler {
-        id: contextTapHandler
-        acceptedButtons: Qt.RightButton
-        gesturePolicy: TapHandler.ReleaseWithinBounds
-        margin: root.interactionMargin
-        onTapped: {
-            if (!root.contextMenuController || !root.dockSurfaceGeometry || !root.dockPanel)
-                return
-            const topLeft = root.mapToItem(root.dockPanel, 0, 0)
-            const outputRect = root.dockSurfaceGeometry.outputLocalDelegateRect(
-                root.dockPanel.outputWidth, root.dockPanel.outputHeight,
-                Math.round(root.dockPanel.width), Math.round(root.dockPanel.height),
-                DockController.bottomMargin,
-                Qt.rect(topLeft.x, topLeft.y, root.width, root.height))
-            root.contextMenuController.presentDock(root.desktopFileName,
-                outputRect.x, outputRect.y, outputRect.width, outputRect.height,
-                root.outputKey)
+        function updateGeometry() {
+            const targetSize = root.iconSize * root.visualScale
+            width = targetSize
+            height = targetSize
+            if (root.dockPanel) {
+                const bottomCenter = appIcon.mapToItem(root.dockPanel,
+                                                        appIcon.width / 2, appIcon.height)
+                x = bottomCenter.x - targetSize / 2
+                y = bottomCenter.y - targetSize
+            } else {
+                x = appIcon.x + appIcon.width / 2 - targetSize / 2
+                y = appIcon.y + appIcon.height - targetSize
+            }
         }
-    }
 
-    DragHandler {
-        id: dragHandler
-        enabled: root.pinned && (!root.dockPanel || root.dockPanel.draggedDesktopFileName === ""
-                                  || root.dockPanel.draggedDesktopFileName === root.desktopFileName)
-        target: null
-        margin: root.interactionMargin
-        dragThreshold: 8
-        onActiveChanged: {
-            if (active) {
-                if (root.dragLifecycle !== 0)
+        TapHandler {
+            id: tapHandler
+            acceptedButtons: Qt.LeftButton
+            gesturePolicy: TapHandler.DragThreshold
+            onPressedChanged: if (pressed) root.dragWasActive = false
+            onTapped: function(eventPoint) {
+                const wasDrag = root.dragWasActive
+                root.dragWasActive = false
+                if (!wasDrag && root.isPointerTargetAt(eventPoint))
+                    root.activated(root.desktopFileName)
+            }
+        }
+
+        TapHandler {
+            id: contextTapHandler
+            acceptedButtons: Qt.RightButton
+            gesturePolicy: TapHandler.ReleaseWithinBounds
+            onTapped: function(eventPoint) {
+                if (!root.isPointerTargetAt(eventPoint) || !root.contextMenuController
+                        || !root.dockSurfaceGeometry || !root.dockPanel)
                     return
-                root.dragLifecycle = 1
-                root.dragWasActive = true
-                root.dragStarted(root.desktopFileName)
-            } else if (root.dragLifecycle === 1) {
-                root.dragLifecycle = 2
-                releaseFinalizer.start()
+                const topLeft = root.mapToItem(root.dockPanel, 0, 0)
+                const outputRect = root.dockSurfaceGeometry.outputLocalDelegateRect(
+                    root.dockPanel.outputWidth, root.dockPanel.outputHeight,
+                    Math.round(root.dockPanel.width), Math.round(root.dockPanel.height),
+                    DockController.bottomMargin,
+                    Qt.rect(topLeft.x, topLeft.y, root.width, root.height))
+                root.contextMenuController.presentDock(root.desktopFileName,
+                    outputRect.x, outputRect.y, outputRect.width, outputRect.height,
+                    root.outputKey)
             }
         }
-        onTranslationChanged: if (active) root.dragMoved(root.desktopFileName, translation.x)
-        onCanceled: {
-            if (root.dragLifecycle === 1 || root.dragLifecycle === 2) {
-                releaseFinalizer.stop()
-                root.dragLifecycle = 0
-                root.dragCanceled(root.desktopFileName)
-            }
-        }
-    }
 
-    Timer {
-        id: releaseFinalizer
-        interval: 0
-        repeat: false
-        onTriggered: root.finalizeReleasedDrag()
+        DragHandler {
+            id: dragHandler
+            enabled: root.pinned && (!root.dockPanel || root.dockPanel.draggedDesktopFileName === ""
+                                      || root.dockPanel.draggedDesktopFileName === root.desktopFileName)
+            target: null
+            dragThreshold: 8
+            onGrabChanged: function(transition) { root.handleGrabTransition(transition) }
+            onTranslationChanged: if (active) root.dragMoved(root.desktopFileName, translation.x)
+        }
     }
 
     ToolTip.visible: root.pointerTarget
@@ -174,7 +208,12 @@ Item {
         ? qsTr("%1 (%2 windows)").arg(root.displayName).arg(root.windowCount)
         : qsTr("%1").arg(root.displayName)
 
+    /*
+     * The feedback rectangle follows the transformed icon, but remains below
+     * the exact interaction target so transparent headroom is not clickable.
+     */
     Rectangle {
+        z: -1
         anchors.horizontalCenter: appIcon.horizontalCenter
         anchors.bottom: appIcon.bottom
         width: appIcon.width
@@ -186,6 +225,9 @@ Item {
         visible: tapHandler.pressed || dragHandler.active
     }
 
+    /*
+     * The running indicator intentionally stays outside the icon transform.
+     */
     Rectangle {
         anchors.horizontalCenter: appIcon.horizontalCenter
         anchors.top: appIcon.bottom
@@ -197,4 +239,14 @@ Item {
         visible: root.runtimeKnown && root.running
     }
 
+    onIconSizeChanged: scheduleInteractionTargetGeometryUpdate()
+    onVisualScaleChanged: scheduleInteractionTargetGeometryUpdate()
+    onVisualOffsetXChanged: scheduleInteractionTargetGeometryUpdate()
+    onVisualOffsetYChanged: scheduleInteractionTargetGeometryUpdate()
+    Connections {
+        target: root.dockPanel
+        function onWidthChanged() { root.scheduleInteractionTargetGeometryUpdate() }
+        function onHeightChanged() { root.scheduleInteractionTargetGeometryUpdate() }
+    }
+    Component.onCompleted: interactionTarget.updateGeometry()
 }

@@ -50,13 +50,18 @@ making the Dock background permanently taller. Hover exit and configuration
 changes animate all transforms and surface dimensions back to rest.
 
 Configured pins use a Qt Quick drag handler with a system-sized threshold. The
-dragged delegate is raised and lifted, while neighboring pinned delegates use
-an ephemeral index preview. Runtime-only delegates are not draggable. QML
-suspends magnification while reordering and uses a one-shot idle/active drag
-state machine: a successful release emits one identity-based reorder request,
-while cancellation emits no finish request. A click below the threshold still
-activates and a drag release never activates. QML never mutates the model or
-writes configuration during the drag.
+dragged delegate is raised, lifted, and scaled; neighboring pinned delegates
+stay on the resting vertical baseline while using an ephemeral index preview.
+Runtime-only delegates are not draggable. QML suspends magnification while
+reordering and uses the handler's exclusive grab transitions: normal exclusive
+ungrab emits one identity-based reorder request, while canceled exclusive grabs
+emit no finish request. Drag coordinates are center-relative to the panel, so
+centered surface-width animation cannot move the drag origin or target. A click
+below the threshold still activates and a drag release never activates. QML
+never mutates the model or writes configuration during the drag. Pointer
+handlers use a panel-level transparent target whose rectangle follows the
+transformed icon exactly; it does not expand the actionable area into unrelated
+headroom.
 
 Typhon is the authoritative source for task-relevant toplevels. The projector
 matches each published client `app_id` through the immutable desktop catalog,

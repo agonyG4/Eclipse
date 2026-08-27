@@ -40,9 +40,15 @@ Pinned delegates will use `DragHandler` with the existing Qt Quick pointer
 stack and a movement threshold, while `TapHandler` retains click activation.
 The panel records the dragged desktop filename and original pin index, moves
 neighbors through an ephemeral preview, and emits one identity-based reorder
-request on drop. A one-shot drag state machine defers release finalization long
-enough for Qt cancellation to win, so finish and cancel cannot both be emitted.
-Runtime-only rows have no drag handler and are never pinned implicitly.
+request on drop. Drag origin and target calculations use coordinates relative to
+the panel center, which remains invariant under symmetric surface-width
+animation. Only the dragged delegate receives the vertical reorder lift. A
+grab-transition state machine treats `UngrabExclusive` as successful completion
+and `CancelGrabExclusive` as cancellation, so finish and cancel cannot both be
+emitted and passive transitions do not finalize a drag. A precise panel-level
+interaction target follows the transformed icon bounds, including bottom-origin
+vertical growth, without making unrelated headroom clickable. Runtime-only rows
+have no drag handler and are never pinned implicitly.
 
 ## Error and lifecycle behavior
 

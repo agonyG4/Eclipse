@@ -8,6 +8,7 @@
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QPointingDevice>
 #include <QSignalSpy>
 #include <QTest>
 
@@ -73,6 +74,24 @@ QQuickItem *iconItem(QQuickItem *delegateItem)
     return result;
 }
 
+QQuickItem *childWithObjectName(QQuickItem *parent, const QString &objectName)
+{
+    QQuickItem *result = nullptr;
+    std::function<void(QQuickItem *)> visit = [&result, &objectName,
+                                               &visit](QQuickItem *item) {
+        if (result || !item)
+            return;
+        if (item->objectName() == objectName) {
+            result = item;
+            return;
+        }
+        for (QQuickItem *child : item->childItems())
+            visit(child);
+    };
+    visit(parent);
+    return result;
+}
+
 QPoint itemCenter(QQuickWindow &window, QQuickItem *item)
 {
     return item->mapToItem(window.contentItem(), item->width() / 2.0,
@@ -105,7 +124,12 @@ private slots:
     void reorderPreviewWorksForEveryHoverMode();
     void pointerHandlersActivateAndReorderExactlyOnce();
     void pointerHandlerCancellationRestoresWithoutReorder();
+    void pointerHandlerGrabTransitionsFinalizeExactlyOnce();
+    void dragGeometryRemainsStableDuringMagnificationCollapse();
+    void reorderLiftsOnlyTheDraggedDelegate();
     void magnifiedVisualRegionAcceptsContextMenu();
+    void magnifiedInteractionTargetMatchesVisualBounds();
+    void magnifiedInteractionRegionsResolveByVisualStacking();
 };
 
 void DockHoverQmlTest::initTestCase()
@@ -230,6 +254,7 @@ void DockHoverQmlTest::pointerHandlersActivateAndReorderExactlyOnce()
     QCOMPARE(finishSpy.count(), 1);
     QCOMPARE(cancelSpy.count(), 0);
 
+    QTest::mouseMove(&window, start);
     QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, start);
     QTRY_COMPARE_WITH_TIMEOUT(activationSpy.count(), 1, 1000);
     QCOMPARE(finishSpy.count(), 1);
@@ -287,10 +312,350 @@ void DockHoverQmlTest::pointerHandlerCancellationRestoresWithoutReorder()
 
     window.show();
     QTest::qWait(20);
+    QTest::mouseMove(&window, start);
     QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, start);
     QTRY_COMPARE_WITH_TIMEOUT(activationSpy.count(), 1, 1000);
     QCOMPARE(reorderSpy.count(), 0);
     QCOMPARE(cancelSpy.count(), 0);
+
+    delete panel;
+}
+
+void DockHoverQmlTest::pointerHandlerGrabTransitionsFinalizeExactlyOnce()
+{
+    DockController controller;
+    controller.applyConfig(configFor(QStringLiteral("none"),
+                                     {QStringLiteral("one.desktop")}));
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready,
+             qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+
+    QQuickItem *item = delegate(panel, QStringLiteral("one.desktop"));
+    QVERIFY(item);
+    QSignalSpy startedSpy(item, SIGNAL(dragStarted(QString)));
+    QSignalSpy finishSpy(item, SIGNAL(dragFinished(QString)));
+    QSignalSpy cancelSpy(item, SIGNAL(dragCanceled(QString)));
+    QSignalSpy reorderSpy(panel, SIGNAL(reorderRequested(QString,int)));
+    QVERIFY(startedSpy.isValid() && finishSpy.isValid() && cancelSpy.isValid()
+            && reorderSpy.isValid());
+
+    const auto transition = [](QPointingDevice::GrabTransition value) {
+        return QVariant::fromValue(static_cast<int>(value));
+    };
+    QVERIFY(QMetaObject::invokeMethod(item, "handleGrabTransition",
+                                      Q_ARG(QVariant, transition(
+                                          QPointingDevice::GrabPassive))));
+    QCOMPARE(startedSpy.count(), 0);
+    QCOMPARE(finishSpy.count(), 0);
+    QCOMPARE(cancelSpy.count(), 0);
+
+    QVERIFY(QMetaObject::invokeMethod(item, "handleGrabTransition",
+                                      Q_ARG(QVariant, transition(
+                                          QPointingDevice::GrabExclusive))));
+    QCOMPARE(startedSpy.count(), 1);
+    QVERIFY(item->property("dragging").toBool());
+    QVERIFY(QMetaObject::invokeMethod(item, "handleGrabTransition",
+                                      Q_ARG(QVariant, transition(
+                                          QPointingDevice::UngrabPassive))));
+    QCOMPARE(finishSpy.count(), 0);
+    QVERIFY(QMetaObject::invokeMethod(item, "handleGrabTransition",
+                                      Q_ARG(QVariant, transition(
+                                          QPointingDevice::UngrabExclusive))));
+    QCOMPARE(finishSpy.count(), 1);
+    QCOMPARE(cancelSpy.count(), 0);
+    QCOMPARE(reorderSpy.count(), 0);
+    QVERIFY(!item->property("dragging").toBool());
+    QVERIFY(QMetaObject::invokeMethod(item, "handleGrabTransition",
+                                      Q_ARG(QVariant, transition(
+                                          QPointingDevice::UngrabExclusive))));
+    QCOMPARE(finishSpy.count(), 1);
+
+    QVERIFY(QMetaObject::invokeMethod(item, "handleGrabTransition",
+                                      Q_ARG(QVariant, transition(
+                                          QPointingDevice::GrabExclusive))));
+    QCOMPARE(startedSpy.count(), 2);
+    QVERIFY(QMetaObject::invokeMethod(item, "handleGrabTransition",
+                                      Q_ARG(QVariant, transition(
+                                          QPointingDevice::CancelGrabExclusive))));
+    QCOMPARE(finishSpy.count(), 1);
+    QCOMPARE(cancelSpy.count(), 1);
+    QCOMPARE(reorderSpy.count(), 0);
+    QVERIFY(!item->property("dragging").toBool());
+    QVERIFY(QMetaObject::invokeMethod(item, "handleGrabTransition",
+                                      Q_ARG(QVariant, transition(
+                                          QPointingDevice::CancelGrabExclusive))));
+    QCOMPARE(cancelSpy.count(), 1);
+
+    delete panel;
+}
+
+void DockHoverQmlTest::dragGeometryRemainsStableDuringMagnificationCollapse()
+{
+    DockController controller;
+    const QStringList pins{
+        QStringLiteral("one.desktop"), QStringLiteral("two.desktop"),
+        QStringLiteral("three.desktop")};
+    controller.applyConfig(configFor(QStringLiteral("magnification"), pins));
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready,
+             qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    QQuickWindow window;
+    panel->setParentItem(window.contentItem());
+    panel->setY(20);
+    window.resize(600, 180);
+    const auto centerPanel = [panel, &window]() {
+        panel->setX((window.width() - panel->width()) / 2.0);
+    };
+    QObject::connect(panel, &QQuickItem::widthChanged, panel, centerPanel);
+    centerPanel();
+    window.show();
+    QTest::qWait(20);
+
+    QVERIFY(QMetaObject::invokeMethod(panel, "updatePointer",
+                                      Q_ARG(QVariant, QVariant(panel->width() / 2.0))));
+    const double restingWidth = panel->property("restingWidth").toDouble();
+    QTRY_VERIFY_WITH_TIMEOUT(panel->width() > restingWidth, 1000);
+
+    QQuickItem *source = delegate(panel, QStringLiteral("two.desktop"));
+    QQuickItem *icon = iconItem(source);
+    QVERIFY(source && icon);
+    const qreal initialCenterX = icon->mapToItem(window.contentItem(),
+                                                 icon->width() / 2.0,
+                                                 icon->height() / 2.0).x();
+    const QPoint start = itemCenter(window, source);
+    QTest::mouseMove(&window, start);
+    QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, start);
+    QTest::mouseMove(&window, start + QPoint(20, 0), 30);
+    QCoreApplication::processEvents();
+    QTRY_VERIFY_WITH_TIMEOUT(source->property("dragging").toBool(), 1000);
+    const int targetDuringCollapse = panel->property("dragTargetIndex").toInt();
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(panel->width() - restingWidth) < 0.1, 1000);
+    const qreal centerAfterCollapse = icon->mapToItem(window.contentItem(),
+                                                       icon->width() / 2.0,
+                                                       icon->height() / 2.0).x();
+    QCOMPARE(panel->property("dragTargetIndex").toInt(), targetDuringCollapse);
+    QVERIFY2(qAbs(centerAfterCollapse - initialCenterX) < 0.5,
+             qPrintable(QStringLiteral("initial=%1 after=%2")
+                            .arg(initialCenterX).arg(centerAfterCollapse)));
+
+    QTest::mouseMove(&window, start + QPoint(120, 0), 30);
+    QTRY_COMPARE_WITH_TIMEOUT(panel->property("dragTargetIndex").toInt(), 2, 1000);
+    QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, start + QPoint(120, 0));
+    QTRY_VERIFY_WITH_TIMEOUT(!source->property("dragging").toBool(), 1000);
+    delete panel;
+}
+
+void DockHoverQmlTest::reorderLiftsOnlyTheDraggedDelegate()
+{
+    const QStringList pins{
+        QStringLiteral("one.desktop"), QStringLiteral("two.desktop"),
+        QStringLiteral("three.desktop")};
+    for (const QString &effect : {QStringLiteral("none"), QStringLiteral("lift"),
+                                  QStringLiteral("magnification")}) {
+        DockController controller;
+        controller.applyConfig(configFor(effect, pins));
+
+        QQmlEngine engine;
+        engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+        engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+        QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+        QVERIFY2(component.status() == QQmlComponent::Ready,
+                 qPrintable(component.errorString()));
+        auto *panel = qobject_cast<QQuickItem *>(component.create());
+        QVERIFY2(panel, qPrintable(component.errorString()));
+        QCoreApplication::processEvents();
+
+        QVERIFY(QMetaObject::invokeMethod(panel, "beginReorder",
+                                          Q_ARG(QVariant, QVariant(QStringLiteral("one.desktop")))));
+        QVERIFY(QMetaObject::invokeMethod(panel, "updateReorder",
+                                          Q_ARG(QVariant, QVariant(QStringLiteral("one.desktop"))),
+                                          Q_ARG(QVariant, QVariant(80.0))));
+        QQuickItem *dragged = delegate(panel, QStringLiteral("one.desktop"));
+        QVERIFY(dragged);
+        QVERIFY(dragged->property("dragging").toBool());
+        QTRY_COMPARE_WITH_TIMEOUT(propertyReal(dragged, "visualOffsetY"), -8.0, 1000);
+        for (const QString &key : {QStringLiteral("two.desktop"), QStringLiteral("three.desktop")}) {
+            QQuickItem *neighbor = delegate(panel, key);
+            QVERIFY(neighbor);
+            QTRY_COMPARE_WITH_TIMEOUT(propertyReal(neighbor, "visualOffsetY"), 0.0, 1000);
+        }
+        QVERIFY(QMetaObject::invokeMethod(panel, "cancelReorder",
+                                          Q_ARG(QVariant, QVariant(QStringLiteral("one.desktop")))));
+        delete panel;
+    }
+}
+
+void DockHoverQmlTest::magnifiedInteractionTargetMatchesVisualBounds()
+{
+    DockController controller;
+    DockConfig config = configFor(QStringLiteral("magnification"),
+                                  {QStringLiteral("one.desktop")});
+    config.iconSize = 64;
+    config.magnificationScale = 2.0;
+    controller.applyConfig(config);
+    FakeContextMenuController contextMenuController;
+    DockSurfaceGeometry surfaceGeometry;
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready,
+             qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    panel->setProperty("contextMenuController", QVariant::fromValue(
+                                                    static_cast<QObject *>(&contextMenuController)));
+    panel->setProperty("dockSurfaceGeometry", QVariant::fromValue(
+                                                  static_cast<QObject *>(&surfaceGeometry)));
+    panel->setProperty("outputKey", QStringLiteral("output-1"));
+    panel->setProperty("outputWidth", 520);
+    panel->setProperty("outputHeight", 220);
+
+    QQuickWindow window;
+    window.resize(520, 220);
+    panel->setParentItem(window.contentItem());
+    panel->setY(20);
+    const auto centerPanel = [panel, &window]() {
+        panel->setX((window.width() - panel->width()) / 2.0);
+    };
+    QObject::connect(panel, &QQuickItem::widthChanged, panel, centerPanel);
+    centerPanel();
+    window.show();
+    QTest::qWait(20);
+
+    QQuickItem *delegateItem = delegate(panel, QStringLiteral("one.desktop"));
+    QQuickItem *icon = iconItem(delegateItem);
+    QQuickItem *interactionTarget = childWithObjectName(panel,
+                                                         QStringLiteral("interactionTarget-one.desktop"));
+    QVERIFY(delegateItem && icon && interactionTarget);
+    QVERIFY(QMetaObject::invokeMethod(panel, "updatePointer",
+                                      Q_ARG(QVariant, QVariant(panel->width() / 2.0))));
+    QTRY_VERIFY_WITH_TIMEOUT(icon->scale() > 1.99, 1000);
+
+    const QRectF visualRect = icon->mapRectToItem(window.contentItem(),
+                                                   QRectF(0, 0, icon->width(), icon->height()));
+    const QRectF interactionRect = interactionTarget->mapRectToItem(
+        window.contentItem(), QRectF(0, 0, interactionTarget->width(), interactionTarget->height()));
+    QVERIFY2(qAbs(visualRect.x() - interactionRect.x()) < 1.0,
+             qPrintable(QStringLiteral("visual x=%1 interaction x=%2")
+                            .arg(visualRect.x()).arg(interactionRect.x())));
+    QVERIFY2(qAbs(visualRect.y() - interactionRect.y()) < 1.0,
+             qPrintable(QStringLiteral("visual y=%1 interaction y=%2")
+                            .arg(visualRect.y()).arg(interactionRect.y())));
+    QVERIFY2(qAbs(visualRect.width() - interactionRect.width()) < 1.0,
+             qPrintable(QStringLiteral("visual width=%1 interaction width=%2")
+                            .arg(visualRect.width()).arg(interactionRect.width())));
+    QVERIFY2(qAbs(visualRect.height() - interactionRect.height()) < 1.0,
+             qPrintable(QStringLiteral("visual height=%1 interaction height=%2")
+                            .arg(visualRect.height()).arg(interactionRect.height())));
+
+    const QRectF panelRect = panel->mapRectToItem(window.contentItem(),
+                                                   QRectF(0, 0, panel->width(), panel->height()));
+    QVERIFY(panelRect.top() < visualRect.top());
+    const QPoint topPoint(qRound(visualRect.center().x()), qRound(visualRect.top() + 2.0));
+    QVERIFY(visualRect.contains(topPoint));
+    QSignalSpy activationSpy(delegateItem, SIGNAL(activated(QString)));
+    QVERIFY(activationSpy.isValid());
+    QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, topPoint);
+    QTRY_COMPARE_WITH_TIMEOUT(activationSpy.count(), 1, 1000);
+
+    QTest::mouseClick(&window, Qt::RightButton, Qt::NoModifier, topPoint);
+    QTRY_COMPARE_WITH_TIMEOUT(contextMenuController.presentCount, 1, 1000);
+
+    const QPoint emptyHeadroom(qRound(visualRect.center().x()),
+                               qRound(visualRect.top() - 2.0));
+    QVERIFY(panelRect.contains(emptyHeadroom));
+    QVERIFY(!interactionRect.contains(emptyHeadroom));
+    activationSpy.clear();
+    QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, emptyHeadroom);
+    QTest::qWait(50);
+    QCOMPARE(activationSpy.count(), 0);
+
+    delete panel;
+}
+
+void DockHoverQmlTest::magnifiedInteractionRegionsResolveByVisualStacking()
+{
+    DockController controller;
+    DockConfig config = configFor(QStringLiteral("magnification"),
+                                  {QStringLiteral("one.desktop"),
+                                   QStringLiteral("two.desktop"),
+                                   QStringLiteral("three.desktop")});
+    config.iconSize = 64;
+    config.magnificationScale = 2.0;
+    controller.applyConfig(config);
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready,
+             qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    QQuickWindow window;
+    panel->setParentItem(window.contentItem());
+    window.resize(600, 220);
+    const auto centerPanel = [panel, &window]() {
+        panel->setX((window.width() - panel->width()) / 2.0);
+    };
+    QObject::connect(panel, &QQuickItem::widthChanged, panel, centerPanel);
+    centerPanel();
+    window.show();
+    QTest::qWait(20);
+
+    QQuickItem *center = delegate(panel, QStringLiteral("two.desktop"));
+    QQuickItem *right = delegate(panel, QStringLiteral("three.desktop"));
+    QVERIFY(center && right);
+    const qreal centerX = center->mapToItem(panel, center->width() / 2.0,
+                                            center->height() / 2.0).x();
+    QVERIFY(QMetaObject::invokeMethod(panel, "updatePointer",
+                                      Q_ARG(QVariant, QVariant(centerX))));
+    QTRY_VERIFY_WITH_TIMEOUT(propertyReal(center, "magnificationScale")
+                                 > 1.99,
+                             1000);
+    // The normal spacing-preserving layout avoids accidental overlap. Force a
+    // transient visual overlap to exercise the z-order arbitration path.
+    right->setProperty("dragging", true);
+    right->setProperty("visualOffsetX", -30.0);
+    right->setProperty("dragging", false);
+    QCoreApplication::processEvents();
+    const QRectF centerRect = iconItem(center)->mapRectToItem(
+        window.contentItem(), QRectF(0, 0, iconItem(center)->width(), iconItem(center)->height()));
+    const QRectF rightRect = iconItem(right)->mapRectToItem(
+        window.contentItem(), QRectF(0, 0, iconItem(right)->width(), iconItem(right)->height()));
+    QQuickItem *centerTarget = childWithObjectName(panel,
+                                                    QStringLiteral("interactionTarget-two.desktop"));
+    QQuickItem *rightTarget = childWithObjectName(panel,
+                                                   QStringLiteral("interactionTarget-three.desktop"));
+    QVERIFY(centerTarget && rightTarget);
+    const QRectF overlap = centerRect.intersected(rightRect);
+    QVERIFY2(overlap.width() > 1.0 && overlap.height() > 1.0,
+             qPrintable(QStringLiteral("center=%1,%2 %3x%4 right=%5,%6 %7x%8")
+                            .arg(centerRect.x()).arg(centerRect.y()).arg(centerRect.width())
+                            .arg(centerRect.height()).arg(rightRect.x()).arg(rightRect.y())
+                            .arg(rightRect.width()).arg(rightRect.height())));
+
+    QSignalSpy centerActivation(center, SIGNAL(activated(QString)));
+    QSignalSpy rightActivation(right, SIGNAL(activated(QString)));
+    QVERIFY(centerActivation.isValid() && rightActivation.isValid());
+    const QPoint intendedPoint(qRound(overlap.left() + 2.0), qRound(overlap.center().y()));
+    QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, intendedPoint);
+    QTRY_COMPARE_WITH_TIMEOUT(centerActivation.count(), 1, 1000);
+    QCOMPARE(rightActivation.count(), 0);
 
     delete panel;
 }

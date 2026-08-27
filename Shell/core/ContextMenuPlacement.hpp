@@ -11,6 +11,7 @@ public:
     enum class Kind {
         Point,
         Rectangle,
+        CenteredRectangle,
         Dock,
         Submenu,
     };
@@ -20,6 +21,7 @@ public:
         QSize menuSize;
         QPoint anchor;
         QRect sourceRect;
+        int preferredTop = 0;
         QRect parentRect;
         Kind kind = Kind::Point;
         Qt::LayoutDirection direction = Qt::LeftToRight;

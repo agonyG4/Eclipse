@@ -48,6 +48,7 @@ private:
     bool addScreen(QScreen *screen, QString *errorOut = nullptr);
     void removeScreen(QScreen *screen);
     void handleScreenGeometryChanged(QScreen *screen);
+    void syncMappingNotification();
 
     QGuiApplication &m_application;
     QQmlApplicationEngine &m_engine;
@@ -57,4 +58,5 @@ private:
     BundleFactory m_bundleFactory;
     bool m_initialized = false;
     bool m_stopped = false;
+    bool m_lastOverlayMapped = false;
 };

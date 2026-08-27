@@ -35,6 +35,10 @@ ContextMenuPlacement::Result ContextMenuPlacement::place(const Request &request)
             result.flippedY = true;
         }
         break;
+    case Kind::CenteredRectangle:
+        x = request.sourceRect.left() + request.sourceRect.width() / 2 - width / 2;
+        y = request.preferredTop;
+        break;
     case Kind::Dock:
         x = request.sourceRect.center().x() - width / 2;
         y = request.sourceRect.top() - height;

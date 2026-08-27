@@ -138,6 +138,7 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
         tests/DockHoverQmlTest.cpp
         core/DockController.cpp
         core/DockAppModel.cpp
+        core/DockSurfaceGeometry.cpp
         services/DockConfigPersistence.cpp
         services/DockConfigValidation.cpp
         services/DockConfigWatcher.cpp

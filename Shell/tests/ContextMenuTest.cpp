@@ -1,9 +1,11 @@
 #include "core/ContextMenuController.hpp"
 #include "core/ContextMenuModel.hpp"
 #include "core/ContextMenuPlacement.hpp"
+#include "core/ContextMenuProviders.hpp"
 #include "core/ContextMenuSurfacePolicy.hpp"
 #include "core/ContextMenuSurfaceMapping.hpp"
 #include "statusnotifier/DBusMenuModel.hpp"
+#include "statusnotifier/StatusNotifierService.hpp"
 
 #include <QSignalSpy>
 #include <QtTest/QtTest>
@@ -21,6 +23,7 @@ private slots:
     void controllerOwnsGenerationAndLifecycle();
     void controllerRejectsStaleAndInvalidActions();
     void controllerDispatchesDynamicTrayAction();
+    void trayAdapterRejectsLazySubmenuActions();
     void controllerClosesWhenTargetValidatorRejects();
     void controllerSettlesWhenOutputIsRemoved();
     void overlayMappingIsOutputScoped();
@@ -129,6 +132,74 @@ void ContextMenuTest::controllerDispatchesDynamicTrayAction()
                                 QStringLiteral("tray.node.7")));
     QVERIFY(dispatched);
     QCOMPARE(menuActivations.size(), 1);
+}
+
+void ContextMenuTest::trayAdapterRejectsLazySubmenuActions()
+{
+    Astrea::StatusNotifier::StatusNotifierService service;
+    Astrea::StatusNotifier::ItemSnapshot snapshot;
+    snapshot.address = {QStringLiteral("org.example.Tray"),
+                        QStringLiteral("/StatusNotifierItem"), QStringLiteral(":1.42")};
+    snapshot.id = QStringLiteral("tray");
+    snapshot.menuPath = QStringLiteral("/Menu");
+    snapshot.generation = 1;
+    service.upsertTestItem(snapshot);
+
+    const QString key = snapshot.address.key();
+    auto *menu = qobject_cast<Astrea::StatusNotifier::DBusMenuModel *>(
+        service.menuModelForItem(key));
+    QVERIFY(menu);
+    Astrea::StatusNotifier::DBusMenuNode lazySubmenu;
+    lazySubmenu.id = 7;
+    lazySubmenu.label = QStringLiteral("Lazy submenu");
+    lazySubmenu.childrenDisplay = QStringLiteral("submenu");
+    menu->setNodes({lazySubmenu});
+
+    Astrea::Shell::ContextMenuController controller;
+    Astrea::Shell::TrayContextMenuAdapter adapter(&service);
+    Astrea::Shell::ContextMenuAnchor anchor;
+    anchor.kind = Astrea::Shell::ContextMenuAnchor::Kind::Rectangle;
+    anchor.rectangle = QRect(100, 20, 28, 28);
+    anchor.preferredTop = 54;
+    QVERIFY(adapter.present(&controller, key, anchor, QStringLiteral("output-1")));
+    const quint64 generation = controller.presentationGeneration();
+    QCOMPARE(controller.menuPosition(400, 300, 120, 80), QPoint(54, 54));
+    QSignalSpy activationSpy(menu, &Astrea::StatusNotifier::DBusMenuModel::activateRequested);
+
+    QVERIFY(!controller.activate(generation, QStringLiteral("tray.node.7")));
+    QCOMPARE(activationSpy.count(), 0);
+    QCOMPARE(controller.lifecycle(), Astrea::Shell::ContextMenuController::Lifecycle::Open);
+
+    Astrea::StatusNotifier::DBusMenuNode child;
+    child.id = 8;
+    child.label = QStringLiteral("Child action");
+    lazySubmenu.children = {child};
+    menu->setNodes({lazySubmenu});
+    QVERIFY(!controller.activate(generation, QStringLiteral("tray.node.7")));
+    QCOMPARE(activationSpy.count(), 0);
+
+    Astrea::StatusNotifier::DBusMenuNode disabledLeaf;
+    disabledLeaf.id = 9;
+    disabledLeaf.label = QStringLiteral("Disabled action");
+    disabledLeaf.enabled = false;
+    menu->setNodes({disabledLeaf});
+    QVERIFY(!controller.activate(generation, QStringLiteral("tray.node.9")));
+    QCOMPARE(activationSpy.count(), 0);
+
+    Astrea::StatusNotifier::DBusMenuNode leaf;
+    leaf.id = 10;
+    leaf.label = QStringLiteral("Leaf action");
+    menu->setNodes({leaf});
+    QVERIFY(!controller.activate(generation, QStringLiteral("tray.node.7")));
+    QCOMPARE(activationSpy.count(), 0);
+
+    QVERIFY(adapter.present(&controller, key, anchor, QStringLiteral("output-1")));
+    const quint64 currentGeneration = controller.presentationGeneration();
+    QVERIFY(currentGeneration > generation);
+    QVERIFY(!controller.activate(generation, QStringLiteral("tray.node.10")));
+    QVERIFY(controller.activate(currentGeneration, QStringLiteral("tray.node.10")));
+    QCOMPARE(activationSpy.count(), 1);
+    QCOMPARE(activationSpy.at(0).at(0).toInt(), 10);
 }
 
 void ContextMenuTest::controllerClosesWhenTargetValidatorRejects()
@@ -371,6 +442,31 @@ void ContextMenuTest::placementFlipsAndClampsInOutputLocalCoordinates()
     request.kind = ContextMenuPlacement::Kind::Point;
     const auto oversized = ContextMenuPlacement::place(request);
     QCOMPARE(oversized.position, QPoint(0, 0));
+
+    request.output = QRect(0, 0, 400, 300);
+    request.menuSize = QSize(120, 80);
+    request.kind = ContextMenuPlacement::Kind::CenteredRectangle;
+    request.sourceRect = QRect(0, 8, 28, 28);
+    request.preferredTop = 54;
+    QCOMPARE(ContextMenuPlacement::place(request).position, QPoint(0, 54));
+
+    request.sourceRect = QRect(186, 8, 28, 28);
+    QCOMPARE(ContextMenuPlacement::place(request).position, QPoint(140, 54));
+
+    request.sourceRect = QRect(372, 8, 28, 28);
+    QCOMPARE(ContextMenuPlacement::place(request).position, QPoint(280, 54));
+
+    request.output = QRect(0, 0, 96, 160);
+    request.menuSize = QSize(140, 70);
+    request.sourceRect = QRect(74, 8, 22, 22);
+    request.preferredTop = 48;
+    QCOMPARE(ContextMenuPlacement::place(request).position, QPoint(0, 48));
+
+    request.output = QRect(0, 0, 1920, 1080);
+    request.menuSize = QSize(160, 90);
+    request.sourceRect = QRect(1750, 8, 28, 28);
+    request.preferredTop = 54;
+    QCOMPARE(ContextMenuPlacement::place(request).position, QPoint(1750 - 66, 54));
 }
 
 void ContextMenuTest::surfacePoliciesKeepInputAndLayerContracts()

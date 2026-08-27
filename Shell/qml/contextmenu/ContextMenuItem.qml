@@ -1,10 +1,9 @@
 import QtQuick
-import "../../Bar/qml/components"
 
 Rectangle {
     id: root
 
-    ShellBarTheme { id: theme }
+    ShellMenuTheme { id: theme }
 
     property string token: ""
     property string label: ""

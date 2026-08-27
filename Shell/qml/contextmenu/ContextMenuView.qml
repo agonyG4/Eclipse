@@ -1,5 +1,4 @@
 import QtQuick
-import "../../Bar/qml/components"
 
 Item {
     id: root

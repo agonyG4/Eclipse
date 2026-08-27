@@ -145,6 +145,7 @@ private slots:
     void leftRestoresParentFocusAndSelection();
     void scrolledSubmenuUsesVisibleRowGeometry();
     void outsidePressClosesButInsideDisabledRowDoesNotHitShield();
+    void closingDisablesInputAndCompletesAfterAnimation();
     void globalOverlayKeepsTrayMenuLiveAndDispatchable();
 };
 
@@ -285,6 +286,37 @@ void ContextMenuQmlInteractionTest::outsidePressClosesButInsideDisabledRowDoesNo
                                                           window->height() - 1));
     QCOMPARE(controller.lifecycle(), ContextMenuController::Lifecycle::Closing);
     controller.completeClose();
+    delete window;
+}
+
+void ContextMenuQmlInteractionTest::closingDisablesInputAndCompletesAfterAnimation()
+{
+    ContextMenuController controller;
+    QVERIFY(controller.present(desktopTarget(), {
+        {.token = QStringLiteral("settings"), .label = QStringLiteral("Settings")},
+    }, [](const QString &) { return true; }));
+
+    QQmlEngine engine;
+    QQmlComponent component(&engine, QUrl(kOverlayUrl));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    auto *window = qobject_cast<QQuickWindow *>(component.createWithInitialProperties({
+        {QStringLiteral("contextMenuController"), QVariant::fromValue(&controller)},
+        {QStringLiteral("outputKey"), QStringLiteral("test-output")},
+        {QStringLiteral("outputWidth"), 280},
+        {QStringLiteral("outputHeight"), 180},
+    }));
+    QVERIFY(window);
+    window->setWidth(280);
+    window->setHeight(180);
+    window->show();
+    QObject *menu = window->findChild<QObject *>(QStringLiteral("contextMenuView"));
+    QVERIFY(menu);
+    QTRY_VERIFY_WITH_TIMEOUT(menu->property("opacity").toReal() > 0.99, 1000);
+
+    controller.close();
+    QCOMPARE(controller.lifecycle(), ContextMenuController::Lifecycle::Closing);
+    QVERIFY(!menu->property("enabled").toBool());
+    QTRY_COMPARE_WITH_TIMEOUT(controller.lifecycle(), ContextMenuController::Lifecycle::Closed, 1000);
     delete window;
 }
 

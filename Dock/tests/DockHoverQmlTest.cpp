@@ -1,5 +1,6 @@
 #include "core/DockController.hpp"
 #include "core/DockSurfaceGeometry.hpp"
+#include "services/DockConfigPersistence.hpp"
 
 #include <QCoreApplication>
 #include <QGuiApplication>
@@ -34,6 +35,23 @@ public:
     QString lastDesktopFileName;
     QRect lastRectangle;
     QString lastOutputKey;
+};
+
+class QmlCountingPersistence final : public DockConfigPersistence {
+public:
+    QmlCountingPersistence() : DockConfigPersistence(QStringLiteral("/unused/dock.json")) {}
+
+    bool writePins(const QStringList &pins, QString *errorOut = nullptr) override
+    {
+        ++calls;
+        lastPins = pins;
+        if (errorOut)
+            errorOut->clear();
+        return true;
+    }
+
+    int calls = 0;
+    QStringList lastPins;
 };
 
 const QString kDockPanelPath = QString::fromUtf8(
@@ -99,6 +117,12 @@ QPoint itemCenter(QQuickWindow &window, QQuickItem *item)
         .toPoint();
 }
 
+QPointF visualCenter(QQuickWindow &window, QQuickItem *item)
+{
+    return item->mapToItem(window.contentItem(), item->width() / 2.0,
+                           item->height() / 2.0);
+}
+
 double propertyReal(QQuickItem *item, const char *name)
 {
     return item->property(name).toDouble();
@@ -126,6 +150,8 @@ private slots:
     void pointerHandlerCancellationRestoresWithoutReorder();
     void pointerHandlerGrabTransitionsFinalizeExactlyOnce();
     void dragGeometryRemainsStableDuringMagnificationCollapse();
+    void modelMoveRefreshesHoverGeometryAndIdentity();
+    void releasePointerRestoresMagnificationTarget();
     void reorderLiftsOnlyTheDraggedDelegate();
     void magnifiedVisualRegionAcceptsContextMenu();
     void magnifiedInteractionTargetMatchesVisualBounds();
@@ -192,6 +218,8 @@ void DockHoverQmlTest::visualHeadroomKeepsIconsInBoundsForEveryIconSize()
                                           Q_ARG(QVariant, QVariant(QStringLiteral("one.desktop")))));
         QVERIFY(QMetaObject::invokeMethod(panel, "updateReorder",
                                           Q_ARG(QVariant, QVariant(QStringLiteral("one.desktop"))),
+                                          Q_ARG(QVariant, QVariant(0.0)),
+                                          Q_ARG(QVariant, QVariant(0.0)),
                                           Q_ARG(QVariant, QVariant(0.0))));
         QTRY_VERIFY_WITH_TIMEOUT(icon->mapToItem(panel, 0, 0).y() >= -0.01, 1000);
         QCOMPARE(chrome->height(), controller.restingHeight());
@@ -397,10 +425,87 @@ void DockHoverQmlTest::pointerHandlerGrabTransitionsFinalizeExactlyOnce()
 
 void DockHoverQmlTest::dragGeometryRemainsStableDuringMagnificationCollapse()
 {
-    DockController controller;
     const QStringList pins{
         QStringLiteral("one.desktop"), QStringLiteral("two.desktop"),
         QStringLiteral("three.desktop")};
+    for (int sourceIndex = 0; sourceIndex < pins.size(); ++sourceIndex) {
+        DockController controller;
+        controller.applyConfig(configFor(QStringLiteral("magnification"), pins));
+
+        QQmlEngine engine;
+        engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+        engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+        QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+        QVERIFY2(component.status() == QQmlComponent::Ready,
+                 qPrintable(component.errorString()));
+        auto *panel = qobject_cast<QQuickItem *>(component.create());
+        QVERIFY2(panel, qPrintable(component.errorString()));
+        QQuickWindow window;
+        panel->setParentItem(window.contentItem());
+        panel->setY(20);
+        window.resize(600, 180);
+        const auto centerPanel = [panel]() {
+            if (QQuickWindow *window = panel->window())
+                panel->setX((window->width() - panel->width()) / 2.0);
+        };
+        QObject::connect(panel, &QQuickItem::widthChanged, panel, centerPanel);
+        centerPanel();
+        window.show();
+        QTest::qWait(20);
+
+        QQuickItem *source = delegate(panel, pins.at(sourceIndex));
+        QQuickItem *icon = iconItem(source);
+        QVERIFY(source && icon);
+        const qreal sourceSlotCenter = source->mapToItem(
+            panel, source->width() / 2.0, source->height() / 2.0).x();
+        QVERIFY(QMetaObject::invokeMethod(panel, "updatePointer",
+                                          Q_ARG(QVariant, QVariant(sourceSlotCenter))));
+        const double restingWidth = panel->property("restingWidth").toDouble();
+        QTRY_VERIFY_WITH_TIMEOUT(panel->width() > restingWidth, 1000);
+
+        QTRY_VERIFY_WITH_TIMEOUT(propertyReal(source, "magnificationScale") > 1.1, 1000);
+        if (sourceIndex == 0 || sourceIndex == pins.size() - 1) {
+            QTRY_VERIFY_WITH_TIMEOUT(qAbs(propertyReal(source, "visualOffsetX")) > 1.0,
+                                     1000);
+        }
+        QTest::qWait(180);
+        const QPoint start = visualCenter(window, icon).toPoint();
+        const qreal initialCenterX = visualCenter(window, icon).x();
+        QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, start);
+        QTest::mouseMove(&window, start + QPoint(10, 0), 30);
+        QTRY_VERIFY_WITH_TIMEOUT(source->property("dragging").toBool(), 1000);
+        const qreal centerAfterGrab = visualCenter(window, icon).x();
+        const int targetDuringCollapse = panel->property("dragTargetIndex").toInt();
+        QVERIFY2(qAbs(centerAfterGrab - initialCenterX) < 1.0,
+                 qPrintable(QStringLiteral("source index=%1 initial=%2 after grab=%3")
+                                .arg(sourceIndex).arg(initialCenterX).arg(centerAfterGrab)));
+
+        QTRY_VERIFY_WITH_TIMEOUT(qAbs(panel->width() - restingWidth) < 0.1, 1000);
+        const qreal centerAfterCollapse = visualCenter(window, icon).x();
+        QCOMPARE(panel->property("dragTargetIndex").toInt(), targetDuringCollapse);
+        QVERIFY2(qAbs(centerAfterCollapse - centerAfterGrab) < 0.5,
+                 qPrintable(QStringLiteral("source index=%1 grab=%2 after collapse=%3")
+                                .arg(sourceIndex).arg(centerAfterGrab).arg(centerAfterCollapse)));
+
+        const int direction = sourceIndex == pins.size() - 1 ? -120 : 120;
+        const int expectedTarget = sourceIndex == pins.size() - 1 ? 0 : 2;
+        const QPoint dragEnd = start + QPoint(direction, 0);
+        QTest::mouseMove(&window, dragEnd, 30);
+        QTRY_COMPARE_WITH_TIMEOUT(panel->property("dragTargetIndex").toInt(), expectedTarget,
+                                  1000);
+        QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, dragEnd);
+        QTRY_VERIFY_WITH_TIMEOUT(!source->property("dragging").toBool(), 1000);
+        delete panel;
+    }
+}
+
+void DockHoverQmlTest::modelMoveRefreshesHoverGeometryAndIdentity()
+{
+    const QStringList pins{
+        QStringLiteral("one.desktop"), QStringLiteral("two.desktop"),
+        QStringLiteral("three.desktop")};
+    QmlCountingPersistence persistence;
+    DockController controller(nullptr, nullptr, &persistence);
     controller.applyConfig(configFor(QStringLiteral("magnification"), pins));
 
     QQmlEngine engine;
@@ -413,47 +518,113 @@ void DockHoverQmlTest::dragGeometryRemainsStableDuringMagnificationCollapse()
     QVERIFY2(panel, qPrintable(component.errorString()));
     QQuickWindow window;
     panel->setParentItem(window.contentItem());
-    panel->setY(20);
     window.resize(600, 180);
-    const auto centerPanel = [panel, &window]() {
-        panel->setX((window.width() - panel->width()) / 2.0);
+    const auto centerPanel = [panel]() {
+        if (QQuickWindow *window = panel->window())
+            panel->setX((window->width() - panel->width()) / 2.0);
     };
     QObject::connect(panel, &QQuickItem::widthChanged, panel, centerPanel);
     centerPanel();
     window.show();
     QTest::qWait(20);
 
+    QQuickItem *first = delegate(panel, QStringLiteral("one.desktop"));
+    QVERIFY(first);
+    const qreal firstSlotCenter = first->mapToItem(
+        panel, first->width() / 2.0, first->height() / 2.0).x();
     QVERIFY(QMetaObject::invokeMethod(panel, "updatePointer",
-                                      Q_ARG(QVariant, QVariant(panel->width() / 2.0))));
-    const double restingWidth = panel->property("restingWidth").toDouble();
-    QTRY_VERIFY_WITH_TIMEOUT(panel->width() > restingWidth, 1000);
+                                      Q_ARG(QVariant, QVariant(firstSlotCenter))));
+    QTRY_COMPARE_WITH_TIMEOUT(panel->property("pointerTargetDesktopFileName").toString(),
+                              QStringLiteral("one.desktop"), 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(propertyReal(first, "magnificationScale") > 1.1, 2000);
 
-    QQuickItem *source = delegate(panel, QStringLiteral("two.desktop"));
+    QSignalSpy rowsMovedSpy(controller.appModel(),
+                            SIGNAL(rowsMoved(QModelIndex,int,int,QModelIndex,int)));
+    QVERIFY(rowsMovedSpy.isValid());
+    QVERIFY(controller.movePinned(QStringLiteral("one.desktop"), 2));
+    QCOMPARE(persistence.calls, 1);
+    QTRY_VERIFY_WITH_TIMEOUT(rowsMovedSpy.count() > 0, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(panel->property("pointerTargetDesktopFileName").toString(),
+                              QStringLiteral("two.desktop"), 1000);
+
+    QQuickItem *newFirst = delegate(panel, QStringLiteral("two.desktop"));
+    QQuickItem *newLast = delegate(panel, QStringLiteral("one.desktop"));
+    QVERIFY(newFirst && newLast);
+    QTRY_VERIFY_WITH_TIMEOUT(propertyReal(newFirst, "magnificationScale")
+                                 > propertyReal(newLast, "magnificationScale"),
+                             1000);
+    QVERIFY(!panel->property("delegateKeys").isValid());
+
+    QVERIFY(QMetaObject::invokeMethod(panel, "beginReorder",
+                                      Q_ARG(QVariant, QVariant(QStringLiteral("two.desktop")))));
+    QCOMPARE(panel->property("draggedDesktopFileName").toString(),
+             QStringLiteral("two.desktop"));
+    QCOMPARE(panel->property("draggedSourceIndex").toInt(), 0);
+    QVERIFY(QMetaObject::invokeMethod(panel, "cancelReorder",
+                                      Q_ARG(QVariant, QVariant(QStringLiteral("two.desktop")))));
+
+    delete panel;
+}
+
+void DockHoverQmlTest::releasePointerRestoresMagnificationTarget()
+{
+    const QStringList pins{
+        QStringLiteral("one.desktop"), QStringLiteral("two.desktop"),
+        QStringLiteral("three.desktop")};
+    QmlCountingPersistence persistence;
+    DockController controller(nullptr, nullptr, &persistence);
+    controller.applyConfig(configFor(QStringLiteral("magnification"), pins));
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready,
+             qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    QQuickWindow window;
+    panel->setParentItem(window.contentItem());
+    window.resize(600, 180);
+    const auto centerPanel = [panel]() {
+        if (QQuickWindow *window = panel->window())
+            panel->setX((window->width() - panel->width()) / 2.0);
+    };
+    QObject::connect(panel, &QQuickItem::widthChanged, panel, centerPanel);
+    centerPanel();
+    window.show();
+    QTest::qWait(20);
+
+    QQuickItem *source = delegate(panel, QStringLiteral("one.desktop"));
     QQuickItem *icon = iconItem(source);
     QVERIFY(source && icon);
-    const qreal initialCenterX = icon->mapToItem(window.contentItem(),
-                                                 icon->width() / 2.0,
-                                                 icon->height() / 2.0).x();
-    const QPoint start = itemCenter(window, source);
+    const qreal firstSlotCenter = source->mapToItem(
+        panel, source->width() / 2.0, source->height() / 2.0).x();
+    QVERIFY(QMetaObject::invokeMethod(panel, "updatePointer",
+                                      Q_ARG(QVariant, QVariant(firstSlotCenter))));
+    QTRY_VERIFY_WITH_TIMEOUT(propertyReal(source, "magnificationScale") > 1.1, 2000);
+    const QPoint start = visualCenter(window, icon).toPoint();
     QTest::mouseMove(&window, start);
     QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, start);
     QTest::mouseMove(&window, start + QPoint(20, 0), 30);
-    QCoreApplication::processEvents();
     QTRY_VERIFY_WITH_TIMEOUT(source->property("dragging").toBool(), 1000);
-    const int targetDuringCollapse = panel->property("dragTargetIndex").toInt();
-    QTRY_VERIFY_WITH_TIMEOUT(qAbs(panel->width() - restingWidth) < 0.1, 1000);
-    const qreal centerAfterCollapse = icon->mapToItem(window.contentItem(),
-                                                       icon->width() / 2.0,
-                                                       icon->height() / 2.0).x();
-    QCOMPARE(panel->property("dragTargetIndex").toInt(), targetDuringCollapse);
-    QVERIFY2(qAbs(centerAfterCollapse - initialCenterX) < 0.5,
-             qPrintable(QStringLiteral("initial=%1 after=%2")
-                            .arg(initialCenterX).arg(centerAfterCollapse)));
 
-    QTest::mouseMove(&window, start + QPoint(120, 0), 30);
+    const QPoint releasePoint = start + QPoint(140, 0);
+    QTest::mouseMove(&window, releasePoint, 30);
     QTRY_COMPARE_WITH_TIMEOUT(panel->property("dragTargetIndex").toInt(), 2, 1000);
-    QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, start + QPoint(120, 0));
+    // Model the exclusive grab suppressing HoverHandler updates until the
+    // release transition. The DragHandler must supply the authoritative point.
+    QObject *hoverHandler = panel->findChild<QObject *>(QStringLiteral("dockHoverHandler"));
+    QVERIFY(hoverHandler);
+    hoverHandler->setProperty("enabled", false);
+    QVERIFY(QMetaObject::invokeMethod(panel, "setPointerInside",
+                                      Q_ARG(QVariant, QVariant(false))));
+    QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, releasePoint);
     QTRY_VERIFY_WITH_TIMEOUT(!source->property("dragging").toBool(), 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(panel->property("pointerTargetDesktopFileName").toString(),
+                              QStringLiteral("three.desktop"), 1000);
+    QVERIFY(panel->property("pointerInside").toBool());
+
     delete panel;
 }
 
@@ -481,7 +652,9 @@ void DockHoverQmlTest::reorderLiftsOnlyTheDraggedDelegate()
                                           Q_ARG(QVariant, QVariant(QStringLiteral("one.desktop")))));
         QVERIFY(QMetaObject::invokeMethod(panel, "updateReorder",
                                           Q_ARG(QVariant, QVariant(QStringLiteral("one.desktop"))),
-                                          Q_ARG(QVariant, QVariant(80.0))));
+                                          Q_ARG(QVariant, QVariant(80.0)),
+                                          Q_ARG(QVariant, QVariant(0.0)),
+                                          Q_ARG(QVariant, QVariant(0.0))));
         QQuickItem *dragged = delegate(panel, QStringLiteral("one.desktop"));
         QVERIFY(dragged);
         QVERIFY(dragged->property("dragging").toBool());
@@ -857,7 +1030,9 @@ void DockHoverQmlTest::reorderPreviewWorksForEveryHoverMode()
                                           Q_ARG(QVariant, QVariant(QStringLiteral("one.desktop")))));
         QVERIFY(QMetaObject::invokeMethod(panel, "updateReorder",
                                           Q_ARG(QVariant, QVariant(QStringLiteral("one.desktop"))),
-                                          Q_ARG(QVariant, QVariant(140.0))));
+                                          Q_ARG(QVariant, QVariant(140.0)),
+                                          Q_ARG(QVariant, QVariant(0.0)),
+                                          Q_ARG(QVariant, QVariant(0.0))));
         QQuickItem *dragged = delegate(panel, QStringLiteral("one.desktop"));
         QQuickItem *neighbor = delegate(panel, QStringLiteral("two.desktop"));
         QVERIFY(dragged && neighbor);

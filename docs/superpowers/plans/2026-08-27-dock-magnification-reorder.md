@@ -125,3 +125,10 @@
 - [x] Keep the bottom chrome at the resting height while visual surface height changes.
 - [x] Make pointer release and cancellation terminal paths mutually exclusive, and cover click/drag/reset sequencing in the offscreen QML test.
 - [x] Make drag coordinates invariant under centered surface-width animation, lift only the dragged delegate, align pointer bounds to transformed icon geometry, and test exclusive grab transitions directly.
+
+### Final reorder/model-move closure
+
+- [x] Add failing QML coverage for rendered-center drag origins on first, middle, and last pins, post-move geometry refresh, and release-pointer hover restoration.
+- [x] Capture the source's transformed center before suspending magnification, refresh hover arrays after `rowsMoved`, and remove the parallel `delegateKeys` cache.
+- [x] Feed `DragHandler.centroid.scenePosition` through the active drag signal, update pointer state during exclusive drags, and use `activeTranslation.x` for thresholded movement.
+- [x] Update Dock documentation/spec notes and run the focused Debug/Release Dock and unified Shell verification.

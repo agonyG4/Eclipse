@@ -46,7 +46,6 @@ Item {
     property var magnificationScales: []
     property var extraWidths: []
     property var prefixExtraWidths: []
-    property var delegateKeys: []
 
     signal reorderRequested(string desktopFileName, int targetPinIndex)
 
@@ -103,8 +102,8 @@ Item {
                     pointerTarget: dockPanel.pointerTargetDesktopFileName === desktopFileName
                     onActivated: function(key) { DockController.launchByDesktopFileName(key) }
                     onDragStarted: function(key) { root.beginReorder(key) }
-                    onDragMoved: function(key, translationX) {
-                        root.updateReorder(key, translationX)
+                    onDragMoved: function(key, translationX, sceneX, sceneY) {
+                        root.updateReorder(key, translationX, sceneX, sceneY)
                     }
                     onDragFinished: function(key) { root.finishReorder(key) }
                     onDragCanceled: function(key) { root.cancelReorder(key) }
@@ -113,8 +112,16 @@ Item {
         }
     }
 
+    Connections {
+        target: DockController.appModel
+        function onRowsMoved(sourceParent, sourceStart, sourceEnd, destinationParent, destinationRow) {
+            Qt.callLater(root.updateHoverEffect)
+        }
+    }
+
     HoverHandler {
         id: hoverHandler
+        objectName: "dockHoverHandler"
         onPointChanged: root.updatePointer(point.position.x)
         onHoveredChanged: root.setPointerInside(hovered)
     }
@@ -130,6 +137,15 @@ Item {
         pointerX = x - width / 2
         pointerInside = true
         updateHoverEffect()
+    }
+
+    function updatePointerFromScene(sceneX, sceneY) {
+        if (!isFinite(sceneX) || !isFinite(sceneY))
+            return
+        var panelPoint = mapFromItem(null, sceneX, sceneY)
+        pointerX = panelPoint.x - width / 2
+        pointerInside = panelPoint.x >= 0 && panelPoint.x <= width
+            && panelPoint.y >= 0 && panelPoint.y <= height
     }
 
     function isReordering() {
@@ -156,7 +172,6 @@ Item {
             if (!item)
                 continue
 
-            delegateKeys[i] = item.objectName
             var itemLeft = appRow.x + item.x
             var itemRight = itemLeft + item.width
             var slotHovered = pointerInside && localPointerX >= itemLeft
@@ -186,11 +201,13 @@ Item {
         }
 
         var targetIndex = magnificationActive ? closestIndex : hoveredIndex
-        pointerTargetDesktopFileName = targetIndex >= 0 ? delegateKeys[targetIndex] : ""
+        var targetItem = targetIndex >= 0 ? appRepeater.itemAt(targetIndex) : null
+        pointerTargetDesktopFileName = targetItem ? targetItem.objectName : ""
         magnificationWidth = magnificationActive ? totalExtra : 0
         magnificationHeight = magnificationActive ? maximumExtra : 0
+        var liftedItem = liftActive && hoveredIndex >= 0 ? appRepeater.itemAt(hoveredIndex) : null
         updateDelegateTransforms(totalExtra, slotPitch,
-                                 liftActive && hoveredIndex >= 0 ? delegateKeys[hoveredIndex] : "")
+                                 liftedItem ? liftedItem.objectName : "")
     }
 
     function previewIndexFor(originalIndex) {
@@ -239,7 +256,7 @@ Item {
         var source = -1
         for (var i = 0; i < Math.min(DockController.pinCount, appRepeater.count); ++i) {
             var item = appRepeater.itemAt(i)
-            if (item && delegateKeys[i] === key) {
+            if (item && item.objectName === key) {
                 source = i
                 break
             }
@@ -248,18 +265,21 @@ Item {
             return
 
         var sourceItem = appRepeater.itemAt(source)
+        var visualCenter = sourceItem.mapToItem(root, sourceItem.width / 2,
+                                               sourceItem.height / 2)
         draggedDesktopFileName = key
         draggedSourceIndex = source
         dragTargetIndex = source
-        dragOriginCenterRelativeX = appRow.x + sourceItem.x + sourceItem.width / 2 - width / 2
+        dragOriginCenterRelativeX = visualCenter.x - width / 2
         dragCenterRelativeX = dragOriginCenterRelativeX
         updateHoverEffect()
     }
 
-    function updateReorder(key, translationX) {
+    function updateReorder(key, translationX, sceneX, sceneY) {
         if (key !== draggedDesktopFileName)
             return
 
+        updatePointerFromScene(sceneX, sceneY)
         dragCenterRelativeX = dragOriginCenterRelativeX + translationX
         var firstItem = appRepeater.itemAt(0)
         if (!firstItem)

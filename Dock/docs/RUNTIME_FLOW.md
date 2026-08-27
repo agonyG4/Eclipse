@@ -54,20 +54,25 @@ running indicator stable. Reorder temporarily suspends hover visuals in all
 modes, then restores the configured effect after drop or cancellation.
 
 A drag handler is enabled only for the configured-pin prefix. Once the system
-drag threshold is crossed, QML records the stable desktop filename, raises,
-lifts, and scales only that delegate, and previews the target index by
-translating neighboring pins on their resting vertical baseline. The drag
-origin, current center, and target-slot centers use panel-center-relative
-coordinates, so symmetric visual surface-width animation cannot introduce a
-synthetic drag movement. The handler's `GrabExclusive`, `UngrabExclusive`, and
-`CancelGrabExclusive` transitions make release and cancellation mutually
-exclusive; passive transitions do not finalize a reorder. A click below
-threshold remains activation-only. A precise panel-level interaction target
-tracks the transformed icon rectangle, including its bottom-origin headroom,
-without making unrelated transparent space actionable. The authoritative model
-and on-disk configuration remain unchanged during the preview. On a moved drop,
-QML emits one reorder request; the controller reads the current pin list,
-atomically persists it, then calls the normal model reconciliation path.
+drag threshold is crossed, QML records the stable desktop filename, captures
+the delegate's current rendered/transformed center, raises, lifts, and scales
+only that delegate, and previews the target index by translating neighboring
+pins on their resting vertical baseline. The drag origin, current center, and
+target-slot centers use panel-center-relative coordinates, so symmetric
+visual-surface-width animation cannot introduce a synthetic drag movement. The
+handler passes its active centroid scene position through the drag update; the
+panel also restores the last valid centroid after Qt clears it at ungrab. The
+handler's `GrabExclusive`, `UngrabExclusive`, and `CancelGrabExclusive`
+transitions make release and cancellation mutually exclusive; passive
+transitions do not finalize a reorder. A click below threshold remains
+activation-only. A precise panel-level interaction target tracks the transformed
+icon rectangle, including its bottom-origin headroom, without making unrelated
+transparent space actionable. The authoritative model and on-disk
+configuration remain unchanged during the preview. On a moved drop, QML emits
+one reorder request; the controller reads the current pin list, atomically
+persists it, then calls the normal model reconciliation path. The existing
+`rowsMoved` signal schedules a deferred hover-geometry refresh so current
+delegate identity and magnification arrays remain aligned after a move.
 Runtime-only rows remain after the pin section and retain their deterministic
 first-observed order.
 

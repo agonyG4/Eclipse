@@ -54,7 +54,18 @@ launch-state preservation, persistence failure, and unchanged runtime-only
 order. `dock-layer-shell-surface-test` covers the explicit resting reservation
 and zero reservation while unmapped. `dock-hover-qml-test` exercises the real
 Dock panel and delegate for none/lift/magnification geometry, mode transitions,
-neighbor displacement, and reorder preview/drop signaling across all modes.
+neighbor displacement, fixed chrome height, and reorder preview/drop signaling
+across all modes. It also checks the centered icon baseline and visual bounds
+for every integer icon size from 32 through 64, plus event-driven click and
+thresholded drag behavior. The cancellation case uses the panel cancellation
+reset path after a real pointer drag; the offscreen Qt backend does not provide
+a compositor pointer-cancel event.
+
+The visual test checks the center/neighbor/distant raised-cosine ordering,
+left/right symmetry, continuity at an influence boundary, exact return to
+scale `1.0`, and outward prefix-width translations. The Layer Shell test keeps
+the exclusive zone at the normal resting height even when the visual surface
+height is larger.
 
 The QML lint check is a syntax/type check and the focused QML test runs offscreen;
 visual magnification and drag feel therefore still require live/manual

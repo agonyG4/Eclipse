@@ -23,20 +23,26 @@ after a successful write. `DockAppModel::setPins()` remains the existing
 structural reconciliation path, so delegate and launch/runtime state follow
 desktop filename identity through `beginMoveRows()`.
 
-`DockPanel` will retain a fixed resting `Row` geometry. A panel-level hover
-tracker will compute each slot's scale from a symmetric raised-cosine distance
-curve in O(n), then assign icon scale and cumulative visual translations to
-the existing delegates. Icons scale from their bottom edge; indicators stay
-outside that transform. The panel's visual width/height expand around the
-stable centered strip and return to the resting metrics after exit. The
-controller's resting Dock height is the sole exclusive-zone contract.
+`DockPanel` will retain a fixed resting `Row` geometry and a fixed-height
+bottom-anchored chrome rectangle. Its selectable hover modes are `none`, the
+lightweight Eclipse `lift` effect, and continuous `magnification`; reorder
+temporarily suspends either hover effect. A panel-level hover tracker computes
+each slot's magnification from a symmetric raised-cosine distance curve in
+O(n), then assigns icon scale and cumulative visual translations to the
+existing delegates. Icons scale from their bottom edge; indicators stay
+outside that transform. The transparent visual surface can add transient
+headroom above the resting chrome so the centered baseline, lift, magnification,
+and drag bounds remain inside the surface. It returns to resting dimensions
+after exit. The controller's resting Dock height is the sole exclusive-zone
+contract.
 
 Pinned delegates will use `DragHandler` with the existing Qt Quick pointer
 stack and a movement threshold, while `TapHandler` retains click activation.
 The panel records the dragged desktop filename and original pin index, moves
 neighbors through an ephemeral preview, and emits one identity-based reorder
-request on drop. Runtime-only rows have no drag handler and are never pinned
-implicitly.
+request on drop. A one-shot drag state machine defers release finalization long
+enough for Qt cancellation to win, so finish and cancel cannot both be emitted.
+Runtime-only rows have no drag handler and are never pinned implicitly.
 
 ## Error and lifecycle behavior
 

@@ -30,7 +30,14 @@ Item {
     property real visualOffsetX: 0
     property real visualOffsetY: 0
     property bool dragging: false
+    property real dragScale: 1.0
     property bool dragWasActive: false
+    readonly property real interactionMargin:
+        root.iconSize * (root.magnificationScale - 1) / 2
+    // 0 = idle, 1 = active, 2 = release pending. A release is finalized only
+    // after the current pointer event, allowing canceled() to win when Qt
+    // reports activeChanged(false) before the cancellation notification.
+    property int dragLifecycle: 0
 
     property int iconSize: 48
     signal activated(string desktopFileName)
@@ -38,6 +45,13 @@ Item {
     signal dragMoved(string desktopFileName, real translationX)
     signal dragFinished(string desktopFileName)
     signal dragCanceled(string desktopFileName)
+
+    function finalizeReleasedDrag() {
+        if (root.dragLifecycle !== 2)
+            return
+        root.dragLifecycle = 0
+        root.dragFinished(root.desktopFileName)
+    }
 
     objectName: desktopFileName
     width: slotWidth
@@ -48,10 +62,10 @@ Item {
     Shared.AstreaAppIcon {
         id: appIcon
         anchors.horizontalCenter: parent.horizontalCenter
-        y: 0
+        anchors.verticalCenter: parent.verticalCenter
         width: root.iconSize
         height: root.iconSize
-        scale: root.magnificationScale * (root.dragging ? 1.06 : 1)
+        scale: root.magnificationScale * root.dragScale
         transformOrigin: Item.Bottom
         iconName: root.iconName
         iconPath: root.iconPath
@@ -75,10 +89,12 @@ Item {
         NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
     }
     Behavior on visualOffsetY {
-        enabled: !root.dragging
         NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
     }
     Behavior on magnificationScale {
+        NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
+    }
+    Behavior on dragScale {
         NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
     }
 
@@ -86,11 +102,13 @@ Item {
         id: tapHandler
         acceptedButtons: Qt.LeftButton
         gesturePolicy: TapHandler.DragThreshold
-        margin: root.iconSize * (root.magnificationScale - 1) / 2
+        margin: root.interactionMargin
+        onPressedChanged: if (pressed) root.dragWasActive = false
         onTapped: {
-            if (!root.dragWasActive)
-                root.activated(root.desktopFileName)
+            const wasDrag = root.dragWasActive
             root.dragWasActive = false
+            if (!wasDrag)
+                root.activated(root.desktopFileName)
         }
     }
 
@@ -98,6 +116,7 @@ Item {
         id: contextTapHandler
         acceptedButtons: Qt.RightButton
         gesturePolicy: TapHandler.ReleaseWithinBounds
+        margin: root.interactionMargin
         onTapped: {
             if (!root.contextMenuController || !root.dockSurfaceGeometry || !root.dockPanel)
                 return
@@ -118,26 +137,35 @@ Item {
         enabled: root.pinned && (!root.dockPanel || root.dockPanel.draggedDesktopFileName === ""
                                   || root.dockPanel.draggedDesktopFileName === root.desktopFileName)
         target: null
-        margin: root.iconSize * (root.magnificationScale - 1) / 2
+        margin: root.interactionMargin
         dragThreshold: 8
         onActiveChanged: {
             if (active) {
+                if (root.dragLifecycle !== 0)
+                    return
+                root.dragLifecycle = 1
                 root.dragWasActive = true
                 root.dragStarted(root.desktopFileName)
-            } else if (root.dragWasActive) {
-                root.dragFinished(root.desktopFileName)
-                // Keep the release event from being interpreted as a tap, then
-                // allow the next physical click to activate normally.
-                Qt.callLater(function() { root.dragWasActive = false })
+            } else if (root.dragLifecycle === 1) {
+                root.dragLifecycle = 2
+                releaseFinalizer.start()
             }
         }
         onTranslationChanged: if (active) root.dragMoved(root.desktopFileName, translation.x)
         onCanceled: {
-            if (root.dragWasActive) {
+            if (root.dragLifecycle === 1 || root.dragLifecycle === 2) {
+                releaseFinalizer.stop()
+                root.dragLifecycle = 0
                 root.dragCanceled(root.desktopFileName)
-                Qt.callLater(function() { root.dragWasActive = false })
             }
         }
+    }
+
+    Timer {
+        id: releaseFinalizer
+        interval: 0
+        repeat: false
+        onTriggered: root.finalizeReleasedDrag()
     }
 
     ToolTip.visible: root.pointerTarget
@@ -147,7 +175,12 @@ Item {
         : qsTr("%1").arg(root.displayName)
 
     Rectangle {
-        anchors.fill: appIcon
+        anchors.horizontalCenter: appIcon.horizontalCenter
+        anchors.bottom: appIcon.bottom
+        width: appIcon.width
+        height: appIcon.height
+        scale: appIcon.scale
+        transformOrigin: Item.Bottom
         radius: appIcon.iconRadius
         color: "#18FFFFFF"
         visible: tapHandler.pressed || dragHandler.active

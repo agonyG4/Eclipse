@@ -25,11 +25,12 @@ receives the model through a context property.
 The application configures the Dock QQuickWindow through the required
 LayerShellQt integration using `DockController::restingHeight()` as an explicit
 exclusive-zone contract. The visual surface can grow taller while the pointer
-is over the Dock, but the exclusive zone remains at the resting height and
-returns to that visual height after magnification hover exit. `none` and `lift`
-use only the resting surface; switching modes clears stale scale and translate
-state. Configuration and component toggles are debounced and re-applied without
-restarting the process. A Layer
+is over the Dock or while a large icon needs lift/drag headroom, but the
+exclusive zone remains at the resting height. The visible chrome remains at
+that same resting height and the transparent surface shrinks after hover or
+drag completion. `none` and `lift` clear stale scale and translate state when
+switching modes. Configuration and component toggles are debounced and
+re-applied without restarting the process. A Layer
 Shell setup or mapping failure is reported as a shell failure; the Dock is
 never shown as an ordinary Qt window. A click calls
 `DockController::launchByDesktopFileName`. If authoritative Typhon
@@ -54,7 +55,9 @@ modes, then restores the configured effect after drop or cancellation.
 
 A drag handler is enabled only for the configured-pin prefix. Once the system
 drag threshold is crossed, QML records the stable desktop filename, raises that
-delegate, and previews the target index by translating neighboring pins. The
+delegate, suspends magnification, and previews the target index by translating
+neighboring pins. An explicit drag state machine makes release and cancellation
+mutually exclusive; a click below threshold remains activation-only. The
 authoritative model and on-disk configuration remain unchanged during the
 preview. On a moved drop, QML emits one reorder request; the controller reads
 the current pin list, atomically persists it, then calls the normal model

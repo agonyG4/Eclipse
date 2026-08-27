@@ -26,6 +26,8 @@ class DockController final : public QObject {
     Q_PROPERTY(bool runtimeKnown READ runtimeKnown NOTIFY modelChanged)
     Q_PROPERTY(int iconSize READ iconSize NOTIFY configChanged)
     Q_PROPERTY(int bottomMargin READ bottomMargin NOTIFY configChanged)
+    Q_PROPERTY(int chromeBottomMargin READ chromeBottomMargin CONSTANT)
+    Q_PROPERTY(int iconRestingTop READ iconRestingTop NOTIFY configChanged)
     Q_PROPERTY(int panelPadding READ panelPadding NOTIFY configChanged)
     Q_PROPERTY(int itemSpacing READ itemSpacing NOTIFY configChanged)
     Q_PROPERTY(int delegateWidth READ delegateWidth NOTIFY configChanged)
@@ -55,6 +57,8 @@ public:
     ApplicationLauncher *launcher() const { return m_launcher; }
     int iconSize() const { return m_config.iconSize; }
     int bottomMargin() const { return m_config.bottomMargin; }
+    int chromeBottomMargin() const { return DockMetrics::chromeBottomMargin; }
+    int iconRestingTop() const { return DockMetrics::iconRestingTop(m_config.iconSize); }
     int panelPadding() const { return m_config.panelPadding; }
     int itemSpacing() const { return m_config.itemSpacing; }
     int delegateWidth() const { return DockMetrics::delegateWidth(m_config.iconSize); }

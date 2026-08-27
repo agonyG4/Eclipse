@@ -210,7 +210,8 @@ bool DockContextMenuProvider::present(ContextMenuController *controller,
 }
 
 bool TrayContextMenuAdapter::present(ContextMenuController *controller, const QString &itemKey,
-                                     const QPoint &point, const QString &outputKey) const
+                                     const ContextMenuAnchor &anchor,
+                                     const QString &outputKey) const
 {
     if (!controller || !m_service || itemKey.isEmpty()
         || !m_service->hasUsableMenuForItem(itemKey))
@@ -219,7 +220,7 @@ bool TrayContextMenuAdapter::present(ContextMenuController *controller, const QS
     controller->setTrayService(m_service);
     m_service->prepareMenuForPresentation(itemKey);
     const ContextMenuTarget target{ContextMenuTarget::Kind::TrayItem, itemKey, outputKey};
-    return controller->present(target, pointAnchor(point), {},
+    return controller->present(target, anchor, {},
                                [this, itemKey](const QString &token) {
         if (!m_service || !token.startsWith(QStringLiteral("tray.node.")))
             return false;
@@ -233,7 +234,8 @@ bool TrayContextMenuAdapter::present(ContextMenuController *controller, const QS
             return false;
         const auto node = model->nodeById(nodeId);
         if (node.id != nodeId || !node.visible || !node.enabled || node.separator
-            || !node.children.isEmpty())
+            || !node.children.isEmpty()
+            || node.childrenDisplay == QStringLiteral("submenu"))
             return false;
         model->activate(nodeId);
         return true;
@@ -253,7 +255,8 @@ bool TrayContextMenuAdapter::present(ContextMenuController *controller, const QS
             return false;
         const auto node = model->nodeById(nodeId);
         return node.id == nodeId && node.visible && node.enabled && !node.separator
-            && node.children.isEmpty();
+            && node.children.isEmpty()
+            && node.childrenDisplay != QStringLiteral("submenu");
     });
 }
 

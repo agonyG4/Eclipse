@@ -13,7 +13,7 @@ namespace Astrea::StatusNotifier {
 class StatusNotifierService;
 }
 
-class ContextMenuSurfaceBundle final : public QObject {
+class ContextMenuSurfaceBundle : public QObject {
     Q_OBJECT
 
 public:
@@ -23,16 +23,19 @@ public:
                              Astrea::StatusNotifier::StatusNotifierService *statusNotifier = nullptr);
     ~ContextMenuSurfaceBundle() override;
 
-    bool initialize(QString *errorOut = nullptr);
-    void map();
-    void updateForScreen();
-    void destroySurfaces();
+    virtual bool initialize(QString *errorOut = nullptr);
+    virtual void map();
+    virtual void updateForScreen();
+    virtual void destroySurfaces();
 
     QScreen *screen() const { return m_screen.data(); }
-    QString outputKey() const;
+    virtual QString outputKey() const;
     int surfaceCount() const;
-    bool overlayMapped() const;
+    virtual bool overlayMapped() const;
     bool layerConfigurationRequested() const { return m_layerConfigurationRequested; }
+
+signals:
+    void mappingChanged();
 
 private:
     QQuickWindow *createSurface(const QUrl &sourceUrl, int width, int height,

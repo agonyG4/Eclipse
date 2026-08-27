@@ -35,6 +35,19 @@ Item {
                 globalY: root.outputOriginY + root.statusTop + y}
     }
 
+    function presentContextMenu(delegate) {
+        if (!root.contextMenuController || !delegate.hasMenu || !delegate.hasUsableMenu)
+            return false
+        const topLeft = delegate.mapToItem(root, 0, 0)
+        root.contextMenuController.presentTray(delegate.key,
+            Math.round(root.statusLeft + topLeft.x),
+            Math.round(root.statusTop + topLeft.y),
+            Math.round(delegate.width), Math.round(delegate.height),
+            root.barGeometry ? root.barGeometry.popupTop : 54,
+            root.outputKey)
+        return true
+    }
+
     Row {
         id: trayRow
         anchors.verticalCenter: parent.verticalCenter
@@ -130,21 +143,11 @@ Item {
                                 root.trayService.secondaryActivate(itemDelegate.key,
                                     anchor.globalX, anchor.globalY)
                         } else if (mouse.button === Qt.RightButton) {
-                            if (itemDelegate.hasMenu && itemDelegate.hasUsableMenu
-                                    && root.contextMenuController)
-                                root.contextMenuController.presentTray(itemDelegate.key,
-                                    Math.round(anchor.localX), Math.round(anchor.localY),
-                                    root.outputKey)
-                            else if (root.trayService)
+                            if (!root.presentContextMenu(itemDelegate) && root.trayService)
                                 root.trayService.contextMenu(itemDelegate.key,
                                     anchor.globalX, anchor.globalY)
                         } else if (mouse.button === Qt.LeftButton && itemDelegate.onlyMenu) {
-                            if (itemDelegate.hasMenu && itemDelegate.hasUsableMenu
-                                    && root.contextMenuController) {
-                                root.contextMenuController.presentTray(itemDelegate.key,
-                                    Math.round(anchor.localX), Math.round(anchor.localY),
-                                    root.outputKey)
-                            } else if (root.trayService) {
+                            if (!root.presentContextMenu(itemDelegate) && root.trayService) {
                                 root.trayService.contextMenu(itemDelegate.key,
                                     anchor.globalX, anchor.globalY)
                             }

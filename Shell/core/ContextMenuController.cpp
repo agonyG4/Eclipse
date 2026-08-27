@@ -25,7 +25,7 @@ bool ContextMenuController::present(const ContextMenuTarget &target,
 
 bool ContextMenuController::present(const ContextMenuTarget &target,
                                     const ContextMenuAnchor &anchor,
-    const QVector<ContextMenuModel::NodeSpec> &nodes,
+                                    const QVector<ContextMenuModel::NodeSpec> &nodes,
                                     ActivationHandler activation,
                                     TargetValidator targetValidator,
                                     ActionAuthorizer actionAuthorizer)
@@ -73,12 +73,16 @@ bool ContextMenuController::presentDock(const QString &desktopFileName, int x, i
     return m_dockProvider->present(this, desktopFileName, QRect(x, y, width, height), outputKey);
 }
 
-bool ContextMenuController::presentTray(const QString &itemKey, int x, int y,
-                                        const QString &outputKey)
+bool ContextMenuController::presentTray(const QString &itemKey, int x, int y, int width,
+                                        int height, int preferredTop, const QString &outputKey)
 {
     if (!m_trayProvider)
         return false;
-    return m_trayProvider->present(this, itemKey, QPoint(x, y), outputKey);
+    ContextMenuAnchor anchor;
+    anchor.kind = ContextMenuAnchor::Kind::Rectangle;
+    anchor.rectangle = QRect(x, y, qMax(0, width), qMax(0, height));
+    anchor.preferredTop = preferredTop;
+    return m_trayProvider->present(this, itemKey, anchor, outputKey);
 }
 
 QPoint ContextMenuController::menuPosition(int outputWidth, int outputHeight,
@@ -93,6 +97,10 @@ QPoint ContextMenuController::menuPosition(int outputWidth, int outputHeight,
         : ContextMenuPlacement::Kind::Point;
     request.anchor = m_anchor.point;
     request.sourceRect = m_anchor.rectangle;
+    request.preferredTop = m_anchor.preferredTop;
+    if (m_anchor.kind == ContextMenuAnchor::Kind::Rectangle
+        && m_target.kind == ContextMenuTarget::Kind::TrayItem)
+        request.kind = ContextMenuPlacement::Kind::CenteredRectangle;
     return ContextMenuPlacement::place(request).position;
 }
 

@@ -264,7 +264,7 @@ PopupCard {
         active: root.childModel !== null && root.depth < root.maxDepth
         source: active ? Qt.resolvedUrl("TrayMenuCard.qml") : ""
         property var childMenuModel: root.childModel
-        width: Math.min(220, Math.max(1, root.outputWidth))
+        width: item ? Math.min(item.implicitWidth, Math.max(1, root.outputWidth)) : 0
         height: item ? Math.min(item.implicitHeight, Math.max(1, root.outputHeight)) : 0
         onLoaded: {
             item.menuModel = childMenuModel
@@ -277,7 +277,6 @@ PopupCard {
             item.parentMenuCard = root
             item.outputWidth = root.outputWidth
             item.outputHeight = root.outputHeight
-            item.width = Math.min(220, Math.max(1, root.outputWidth))
             item.depth = root.depth + 1
             item.x = root.cascadeXFor(root.x, root.width, width, root.presentationParent.width)
             item.y = root.cascadeYFor(root.y, root.childAnchorY, height,

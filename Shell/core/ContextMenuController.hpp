@@ -38,6 +38,7 @@ struct ContextMenuAnchor {
     Kind kind = Kind::Point;
     QPoint point;
     QRect rectangle;
+    int preferredTop = 0;
 };
 
 class ContextMenuController final : public QObject {
@@ -100,6 +101,7 @@ public:
     Q_INVOKABLE bool presentDock(const QString &desktopFileName, int x, int y,
                                  int width, int height, const QString &outputKey);
     Q_INVOKABLE bool presentTray(const QString &itemKey, int x, int y,
+                                 int width, int height, int preferredTop,
                                  const QString &outputKey);
     Q_INVOKABLE QPoint menuPosition(int outputWidth, int outputHeight,
                                     int menuWidth, int menuHeight) const;

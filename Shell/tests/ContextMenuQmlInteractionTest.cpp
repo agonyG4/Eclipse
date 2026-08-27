@@ -147,6 +147,7 @@ private slots:
     void outsidePressClosesButInsideDisabledRowDoesNotHitShield();
     void closingDisablesInputAndCompletesAfterAnimation();
     void globalOverlayKeepsTrayMenuLiveAndDispatchable();
+    void trayPlacementUsesResolvedRenderedWidth();
 };
 
 void ContextMenuQmlInteractionTest::keyboardNavigationSkipsDisabledAndSeparators()
@@ -404,6 +405,56 @@ void ContextMenuQmlInteractionTest::globalOverlayKeepsTrayMenuLiveAndDispatchabl
     QTRY_COMPARE_WITH_TIMEOUT(activationSpy.count(), 1, 1000);
     QCOMPARE(activationSpy.at(0).at(0).toInt(), 7);
     QCOMPARE(controller.lifecycle(), ContextMenuController::Lifecycle::Closing);
+    controller.completeClose();
+    delete window;
+}
+
+void ContextMenuQmlInteractionTest::trayPlacementUsesResolvedRenderedWidth()
+{
+    FakeTrayMenuService service;
+    Astrea::StatusNotifier::DBusMenuNode action;
+    action.id = 7;
+    action.label = QStringLiteral("Remote action");
+    service.model()->setNodes({action});
+
+    ContextMenuController controller;
+    const ContextMenuTarget target{ContextMenuTarget::Kind::TrayItem,
+                                   QStringLiteral("tray-test"), QStringLiteral("test-output")};
+    QVERIFY(controller.present(target, {}, [](const QString &) { return true; }));
+
+    QQmlEngine engine;
+    QQmlComponent component(&engine, QUrl(kOverlayUrl));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    auto *window = qobject_cast<QQuickWindow *>(component.createWithInitialProperties({
+        {QStringLiteral("contextMenuController"), QVariant::fromValue(&controller)},
+        {QStringLiteral("trayService"), QVariant::fromValue(&service)},
+        {QStringLiteral("outputKey"), QStringLiteral("test-output")},
+        {QStringLiteral("outputWidth"), 280},
+        {QStringLiteral("outputHeight"), 180},
+    }));
+    QVERIFY(window);
+    window->setWidth(280);
+    window->setHeight(180);
+    window->show();
+
+    QObject *menu = nullptr;
+    QObject *loader = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((menu = window->findChild<QObject *>(
+                                  QStringLiteral("trayContextMenu"))) != nullptr, 1000);
+    QTRY_VERIFY_WITH_TIMEOUT((loader = window->findChild<QObject *>(
+                                  QStringLiteral("trayMenuLoader"))) != nullptr, 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(menu->property("width").toReal()
+                                      - loader->property("width").toReal()) < 0.01,
+                             1000);
+    QCOMPARE(qRound(menu->property("width").toReal()),
+             qRound(menu->property("implicitWidth").toReal()));
+    QCOMPARE(qRound(menu->property("width").toReal()),
+             qRound(loader->property("width").toReal()));
+    const QPoint expected = controller.menuPosition(
+        280, 180, qRound(loader->property("width").toReal()),
+        qRound(loader->property("height").toReal()));
+    QCOMPARE(QPoint(loader->property("x").toInt(), loader->property("y").toInt()), expected);
+
     controller.completeClose();
     delete window;
 }

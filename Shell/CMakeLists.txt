@@ -293,6 +293,25 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     shell_enable_sanitizers(context-menu-test)
     add_test(NAME context-menu-test COMMAND context-menu-test)
 
+    add_executable(context-menu-surface-manager-test
+        tests/ContextMenuSurfaceManagerTest.cpp
+        platform/wayland/ContextMenuSurfaceBundle.cpp
+        platform/wayland/ContextMenuSurfaceBundle.hpp
+        platform/wayland/ContextMenuSurfaceManager.cpp
+        platform/wayland/ContextMenuSurfaceManager.hpp
+    )
+    target_include_directories(context-menu-surface-manager-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/.."
+        "${CMAKE_CURRENT_SOURCE_DIR}/../Bar"
+    )
+    target_link_libraries(context-menu-surface-manager-test PRIVATE
+        astrea-shell-runtime
+        Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test
+    )
+    shell_enable_sanitizers(context-menu-surface-manager-test)
+    add_test(NAME context-menu-surface-manager-test COMMAND context-menu-surface-manager-test)
+
     add_executable(dock-surface-geometry-test
         ../Dock/tests/DockSurfaceGeometryTest.cpp
         ../Dock/core/DockSurfaceGeometry.cpp

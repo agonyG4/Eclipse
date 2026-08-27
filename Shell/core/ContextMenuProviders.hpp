@@ -55,7 +55,7 @@ public:
     }
 
     bool present(ContextMenuController *controller, const QString &itemKey,
-                 const QPoint &point, const QString &outputKey) const;
+                 const ContextMenuAnchor &anchor, const QString &outputKey) const;
 
 private:
     Astrea::StatusNotifier::StatusNotifierService *m_service = nullptr;

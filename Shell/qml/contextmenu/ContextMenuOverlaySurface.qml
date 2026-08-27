@@ -111,6 +111,7 @@ Window {
 
     Loader {
         id: trayMenuLoader
+        objectName: "trayMenuLoader"
         parent: root.contentItem
         z: 1
         active: root.contextMenuController
@@ -121,8 +122,7 @@ Window {
         scale: 0.96
         enabled: root.contextMenuController
             && root.contextMenuController.lifecycle === 1
-        width: item ? Math.min(item.implicitWidth, Math.max(1, root.outputWidth))
-                    : root.menuWidth
+        width: item ? Math.min(item.implicitWidth, Math.max(1, root.outputWidth)) : 0
         height: item ? Math.min(item.implicitHeight, Math.max(1, root.outputHeight)) : 0
         x: root.contextMenuController && item
            ? root.contextMenuController.menuPosition(root.outputWidth, root.outputHeight,
@@ -137,7 +137,6 @@ Window {
             item.contextKey = root.contextMenuController.targetIdentity
             item.outputWidth = root.outputWidth
             item.outputHeight = root.outputHeight
-            item.width = Math.min(root.menuWidth, Math.max(1, root.outputWidth))
             Qt.callLater(root.focusActiveMenu)
         }
     }

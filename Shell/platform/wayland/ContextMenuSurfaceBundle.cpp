@@ -193,10 +193,13 @@ void ContextMenuSurfaceBundle::syncOverlayMapping()
 {
     if (!m_overlayWindow || !m_layerConfigurationRequested)
         return;
+    const bool wasMapped = overlayMapped();
     const bool shouldMap = Astrea::Shell::ContextMenuSurfaceMapping::overlayShouldMap(
         outputKey(), m_mapped, m_controller && m_controller->hasActivePresentation(),
         m_controller ? m_controller->outputKey() : QString());
     m_overlayWindow->setVisible(shouldMap);
+    if (wasMapped != shouldMap)
+        emit mappingChanged();
 }
 
 void ContextMenuSurfaceBundle::destroyWindow(QPointer<QQuickWindow> &window)

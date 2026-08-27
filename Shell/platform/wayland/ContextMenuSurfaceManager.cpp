@@ -80,9 +80,9 @@ void ContextMenuSurfaceManager::shutdown()
     m_bundles.clear();
     for (ContextMenuSurfaceBundle *bundle : bundles)
         delete bundle;
+    syncMappingNotification();
     if (!bundles.isEmpty()) {
         emit bundleCountChanged();
-        emit mappingChanged();
         emit layerStateChanged();
     }
 }
@@ -121,14 +121,16 @@ bool ContextMenuSurfaceManager::addScreen(QScreen *screen, QString *errorOut)
         delete bundle;
         return false;
     }
+    connect(bundle, &ContextMenuSurfaceBundle::mappingChanged,
+            this, &ContextMenuSurfaceManager::syncMappingNotification);
     const QPointer<QScreen> trackedScreen(screen);
     connect(screen, &QScreen::geometryChanged, this, [this, trackedScreen](const QRect &) {
         handleScreenGeometryChanged(trackedScreen.data());
     });
     m_bundles.insert(screen, bundle);
     bundle->map();
+    syncMappingNotification();
     emit bundleCountChanged();
-    emit mappingChanged();
     emit layerStateChanged();
     return true;
 }
@@ -147,8 +149,8 @@ void ContextMenuSurfaceManager::removeScreen(QScreen *screen)
     auto *bundle = it.value();
     m_bundles.erase(it);
     delete bundle;
+    syncMappingNotification();
     emit bundleCountChanged();
-    emit mappingChanged();
     emit layerStateChanged();
 }
 
@@ -158,4 +160,13 @@ void ContextMenuSurfaceManager::handleScreenGeometryChanged(QScreen *screen)
         return;
     if (auto it = m_bundles.constFind(screen); it != m_bundles.constEnd() && it.value())
         it.value()->updateForScreen();
+}
+
+void ContextMenuSurfaceManager::syncMappingNotification()
+{
+    const bool mapped = overlayMapped();
+    if (mapped == m_lastOverlayMapped)
+        return;
+    m_lastOverlayMapped = mapped;
+    emit mappingChanged();
 }

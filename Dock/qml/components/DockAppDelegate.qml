@@ -95,14 +95,16 @@ Item {
                 root.dragStarted(root.desktopFileName)
             } else if (root.dragWasActive) {
                 root.dragFinished(root.desktopFileName)
-                root.dragWasActive = false
+                // Keep the release event from being interpreted as a tap, then
+                // allow the next physical click to activate normally.
+                Qt.callLater(function() { root.dragWasActive = false })
             }
         }
         onTranslationChanged: if (active) root.dragMoved(root.desktopFileName, translation.x)
         onCanceled: {
             if (root.dragWasActive) {
                 root.dragCanceled(root.desktopFileName)
-                root.dragWasActive = false
+                Qt.callLater(function() { root.dragWasActive = false })
             }
         }
     }

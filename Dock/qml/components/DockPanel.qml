@@ -63,6 +63,8 @@ Item {
                 id: appRepeater
                 model: DockController.appModel
                 onCountChanged: root.updateMagnification()
+                onItemAdded: root.updateMagnification()
+                onItemRemoved: root.updateMagnification()
 
                 delegate: DockAppDelegate {
                     dockPanel: root

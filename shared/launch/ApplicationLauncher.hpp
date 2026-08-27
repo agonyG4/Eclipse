@@ -26,6 +26,8 @@ public:
                                        const QProcessEnvironment &environment);
 
     virtual void launchDesktop(const ApplicationLaunchRequest &request);
+    static QStringList expandDesktopExec(const ApplicationLaunchRequest &request,
+                                         QString *errorOut = nullptr);
     void launchDesktop(const QString &desktopId, const QString &desktopFileName,
                        const QString &exec, const QString &appName = {},
                        const QString &iconName = {}, const QString &desktopFilePath = {});
@@ -52,5 +54,8 @@ private:
 
     QString m_launchPath;
     QHash<QProcess *, PendingLaunch> m_pending;
+    static constexpr int kMaximumExecLength = 4096;
+    static constexpr int kMaximumExecTokens = 128;
+    static constexpr int kMaximumExecTokenLength = 1024;
     static constexpr int kTimeoutMs = 10000;
 };

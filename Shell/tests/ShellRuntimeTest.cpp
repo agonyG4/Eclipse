@@ -70,6 +70,8 @@ private slots:
     void systemServicesRemainRestartableAcrossRuntimeLifecycle();
     void selectsTyphonShellControlBridgeForTyphonRuntime();
     void sharedLauncherUsesTyphonBridgeAndPreservesHelperEnvironment();
+    void desktopActionExecExpansionIsBoundedAndFieldAware();
+    void malformedDesktopActionExecIsRejected();
 };
 
 void ShellRuntimeTest::createsOneSharedOwnershipGraph()
@@ -232,6 +234,30 @@ void ShellRuntimeTest::sharedLauncherUsesTyphonBridgeAndPreservesHelperEnvironme
                             "XDG_RUNTIME_DIR=/run/user/1000 path\n"
                             "XDG_SESSION_TYPE=wayland\n"
                             "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus;guid=special value\n"));
+}
+
+void ShellRuntimeTest::desktopActionExecExpansionIsBoundedAndFieldAware()
+{
+    ApplicationLaunchRequest request;
+    request.exec = QStringLiteral("action \"file name\" %c %i %%");
+    request.appName = QStringLiteral("Example");
+    request.iconName = QStringLiteral("example-icon");
+
+    QString error;
+    QCOMPARE(ApplicationLauncher::expandDesktopExec(request, &error),
+             QStringList({QStringLiteral("action"), QStringLiteral("file name"),
+                          QStringLiteral("Example"), QStringLiteral("--icon"),
+                          QStringLiteral("example-icon"), QStringLiteral("%")}));
+    QVERIFY(error.isEmpty());
+}
+
+void ShellRuntimeTest::malformedDesktopActionExecIsRejected()
+{
+    ApplicationLaunchRequest request;
+    request.exec = QStringLiteral("action \"unterminated");
+    QString error;
+    QVERIFY(ApplicationLauncher::expandDesktopExec(request, &error).isEmpty());
+    QVERIFY(!error.isEmpty());
 }
 
 QTEST_GUILESS_MAIN(ShellRuntimeTest)

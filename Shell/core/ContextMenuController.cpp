@@ -13,6 +13,16 @@ bool ContextMenuController::present(const ContextMenuTarget &target,
                                     ActivationHandler activation,
                                     TargetValidator targetValidator)
 {
+    return present(target, ContextMenuAnchor{}, nodes, std::move(activation),
+                   std::move(targetValidator));
+}
+
+bool ContextMenuController::present(const ContextMenuTarget &target,
+                                    const ContextMenuAnchor &anchor,
+                                    const QVector<ContextMenuModel::NodeSpec> &nodes,
+                                    ActivationHandler activation,
+                                    TargetValidator targetValidator)
+{
     auto candidate = std::make_unique<ContextMenuModel>();
     if (!candidate->setRootNodes(nodes)) {
         return false;
@@ -20,6 +30,7 @@ bool ContextMenuController::present(const ContextMenuTarget &target,
 
     ++m_presentationGeneration;
     m_target = target;
+    m_anchor = anchor;
     m_targetValid = true;
     m_activation = std::move(activation);
     m_targetValidator = std::move(targetValidator);

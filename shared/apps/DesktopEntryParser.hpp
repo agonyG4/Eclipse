@@ -3,8 +3,17 @@
 #include <QHash>
 #include <QString>
 #include <QStringList>
+#include <QVector>
 
 #include <optional>
+
+struct DesktopEntryAction {
+    QString id;
+    QString name;
+    QHash<QString, QString> localizedNames;
+    QString icon;
+    QString exec;
+};
 
 struct DesktopEntryRecord {
     QString desktopFileName;
@@ -25,6 +34,7 @@ struct DesktopEntryRecord {
     QStringList categories;
     QStringList onlyShowIn;
     QStringList notShowIn;
+    QVector<DesktopEntryAction> actions;
     bool terminal = false;
     bool noDisplay = false;
     bool hidden = false;

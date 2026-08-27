@@ -3,6 +3,8 @@
 #include "ContextMenuModel.hpp"
 
 #include <QObject>
+#include <QPoint>
+#include <QRect>
 #include <QString>
 
 #include <functional>
@@ -21,6 +23,17 @@ struct ContextMenuTarget {
     QString outputKey;
 };
 
+struct ContextMenuAnchor {
+    enum class Kind {
+        Point,
+        Rectangle,
+    };
+
+    Kind kind = Kind::Point;
+    QPoint point;
+    QRect rectangle;
+};
+
 class ContextMenuController final : public QObject {
     Q_OBJECT
     Q_PROPERTY(Lifecycle lifecycle READ lifecycle NOTIFY lifecycleChanged)
@@ -28,6 +41,10 @@ class ContextMenuController final : public QObject {
     Q_PROPERTY(bool hasActivePresentation READ hasActivePresentation NOTIFY presentationChanged)
     Q_PROPERTY(ContextMenuModel *model READ model CONSTANT)
     Q_PROPERTY(QString targetIdentity READ targetIdentity NOTIFY presentationChanged)
+    Q_PROPERTY(QString outputKey READ outputKey NOTIFY presentationChanged)
+    Q_PROPERTY(int anchorKind READ anchorKind NOTIFY presentationChanged)
+    Q_PROPERTY(QPoint anchorPoint READ anchorPoint NOTIFY presentationChanged)
+    Q_PROPERTY(QRect anchorRectangle READ anchorRectangle NOTIFY presentationChanged)
 
 public:
     enum class Lifecycle {
@@ -47,12 +64,19 @@ public:
     bool hasActivePresentation() const { return m_lifecycle != Lifecycle::Closed; }
     ContextMenuModel *model() const { return m_model.get(); }
     QString targetIdentity() const { return m_target.identity; }
+    QString outputKey() const { return m_target.outputKey; }
+    int anchorKind() const { return static_cast<int>(m_anchor.kind); }
+    QPoint anchorPoint() const { return m_anchor.point; }
+    QRect anchorRectangle() const { return m_anchor.rectangle; }
     const ContextMenuTarget &target() const { return m_target; }
 
     bool present(const ContextMenuTarget &target,
                  const QVector<ContextMenuModel::NodeSpec> &nodes,
                  ActivationHandler activation,
                  TargetValidator targetValidator = {});
+    bool present(const ContextMenuTarget &target, const ContextMenuAnchor &anchor,
+                 const QVector<ContextMenuModel::NodeSpec> &nodes,
+                 ActivationHandler activation, TargetValidator targetValidator = {});
     Q_INVOKABLE bool activate(quint64 generation, const QString &token);
     Q_INVOKABLE void close();
     Q_INVOKABLE void completeClose();
@@ -70,6 +94,7 @@ private:
     Lifecycle m_lifecycle = Lifecycle::Closed;
     quint64 m_presentationGeneration = 0;
     ContextMenuTarget m_target;
+    ContextMenuAnchor m_anchor;
     bool m_targetValid = false;
     std::unique_ptr<ContextMenuModel> m_model;
     ActivationHandler m_activation;

@@ -240,6 +240,20 @@ bool TrayContextMenuAdapter::present(ContextMenuController *controller, const QS
     }, [this, itemKey] {
         return m_service && m_service->hasUsableMenuForItem(itemKey)
             && m_service->menuModelForItem(itemKey);
+    }, [this, itemKey](const QString &token) {
+        if (!m_service || !token.startsWith(QStringLiteral("tray.node.")))
+            return false;
+        bool ok = false;
+        const int nodeId = token.mid(QStringLiteral("tray.node.").size()).toInt(&ok);
+        if (!ok || nodeId <= 0)
+            return false;
+        auto *model = qobject_cast<Astrea::StatusNotifier::DBusMenuModel *>(
+            m_service->menuModelForItem(itemKey));
+        if (!model)
+            return false;
+        const auto node = model->nodeById(nodeId);
+        return node.id == nodeId && node.visible && node.enabled && !node.separator
+            && node.children.isEmpty();
     });
 }
 

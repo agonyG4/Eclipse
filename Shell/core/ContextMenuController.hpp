@@ -64,6 +64,7 @@ public:
 
     using ActivationHandler = std::function<bool(const QString &token)>;
     using TargetValidator = std::function<bool()>;
+    using ActionAuthorizer = std::function<bool(const QString &token)>;
 
     explicit ContextMenuController(QObject *parent = nullptr);
 
@@ -83,10 +84,12 @@ public:
     bool present(const ContextMenuTarget &target,
                  const QVector<ContextMenuModel::NodeSpec> &nodes,
                  ActivationHandler activation,
-                 TargetValidator targetValidator = {});
+                 TargetValidator targetValidator = {},
+                 ActionAuthorizer actionAuthorizer = {});
     bool present(const ContextMenuTarget &target, const ContextMenuAnchor &anchor,
                  const QVector<ContextMenuModel::NodeSpec> &nodes,
-                 ActivationHandler activation, TargetValidator targetValidator = {});
+                 ActivationHandler activation, TargetValidator targetValidator = {},
+                 ActionAuthorizer actionAuthorizer = {});
     void setDesktopProvider(DesktopContextMenuProvider *provider) { m_desktopProvider = provider; }
     void setDockProvider(DockContextMenuProvider *provider) { m_dockProvider = provider; }
     void setTrayProvider(TrayContextMenuAdapter *provider) { m_trayProvider = provider; }
@@ -127,6 +130,7 @@ private:
     std::unique_ptr<ContextMenuModel> m_model;
     ActivationHandler m_activation;
     TargetValidator m_targetValidator;
+    ActionAuthorizer m_actionAuthorizer;
     QPointer<QObject> m_trayService;
     DesktopContextMenuProvider *m_desktopProvider = nullptr;
     DockContextMenuProvider *m_dockProvider = nullptr;

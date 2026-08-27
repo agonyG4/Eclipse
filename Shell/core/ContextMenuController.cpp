@@ -16,17 +16,19 @@ ContextMenuController::ContextMenuController(QObject *parent)
 bool ContextMenuController::present(const ContextMenuTarget &target,
                                     const QVector<ContextMenuModel::NodeSpec> &nodes,
                                     ActivationHandler activation,
-                                    TargetValidator targetValidator)
+                                    TargetValidator targetValidator,
+                                    ActionAuthorizer actionAuthorizer)
 {
     return present(target, ContextMenuAnchor{}, nodes, std::move(activation),
-                   std::move(targetValidator));
+                   std::move(targetValidator), std::move(actionAuthorizer));
 }
 
 bool ContextMenuController::present(const ContextMenuTarget &target,
                                     const ContextMenuAnchor &anchor,
     const QVector<ContextMenuModel::NodeSpec> &nodes,
                                     ActivationHandler activation,
-                                    TargetValidator targetValidator)
+                                    TargetValidator targetValidator,
+                                    ActionAuthorizer actionAuthorizer)
 {
     auto candidate = std::make_unique<ContextMenuModel>();
     if (!candidate->setRootNodes(nodes)) {
@@ -44,6 +46,7 @@ bool ContextMenuController::present(const ContextMenuTarget &target,
     m_targetValid = true;
     m_activation = std::move(activation);
     m_targetValidator = std::move(targetValidator);
+    m_actionAuthorizer = std::move(actionAuthorizer);
     m_model->setRootNodes(nodes);
 
     const Lifecycle previous = m_lifecycle;
@@ -125,7 +128,9 @@ bool ContextMenuController::activate(quint64 generation, const QString &token)
         emit activationRejected(token);
         return false;
     }
-    if (!m_model->canActivate(token) || !m_activation) {
+    const bool authorized = m_actionAuthorizer ? m_actionAuthorizer(token)
+                                                : m_model->canActivate(token);
+    if (!authorized || !m_activation) {
         emit activationRejected(token);
         return false;
     }
@@ -157,6 +162,7 @@ void ContextMenuController::completeClose()
     m_targetValid = false;
     m_activation = {};
     m_targetValidator = {};
+    m_actionAuthorizer = {};
     m_trayService.clear();
     m_model->clear();
     m_target = {};

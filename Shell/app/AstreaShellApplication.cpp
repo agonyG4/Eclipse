@@ -289,7 +289,8 @@ bool AstreaShellApplication::configureDockSurface()
         return false;
     QString error;
     const bool configured = DockLayerShellSurface::configure(
-        m_dockWindow, m_runtime->dockConfig()->config(), qMax(0, m_dockWindow->height()),
+        m_dockWindow, m_runtime->dockConfig()->config(),
+        m_runtime->dockController()->restingHeight(),
         QGuiApplication::primaryScreen(), &error);
     if (!configured) {
         qCritical("Astrea shell Dock Layer Shell setup failed: %s", qPrintable(error));
@@ -311,7 +312,8 @@ void AstreaShellApplication::syncDockVisibility()
         return;
     }
     QString error;
-    if (!DockLayerShellSurface::setMapped(m_dockWindow, visible, &error)) {
+    if (!DockLayerShellSurface::setMapped(m_dockWindow, visible,
+                                          m_runtime->dockController()->restingHeight(), &error)) {
         qCritical("Astrea shell Dock Layer Shell mapping failed: %s", qPrintable(error));
         m_application.exit(1);
     }

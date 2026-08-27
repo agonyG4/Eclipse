@@ -12,12 +12,16 @@ The Dock-specific targets can be built and run independently:
 
 ```bash
 cmake --build build --target astrea-dock dock-app-model-test dock-controller-test \
-  dock-config-watcher-test dock-ipc-test dock-runtime-paths-test dock-command-line-test
+  dock-config-watcher-test dock-config-persistence-test dock-layer-shell-surface-test \
+  dock-ipc-test dock-runtime-paths-test dock-command-line-test
 cmake --build build --target astrea-dock dock-app-model-test dock-controller-test \
   dock-typhon-runtime-integration-test dock-application-state-projector-test \
   typhon-app-matcher-test
 ctest --test-dir build -R 'dock-|desktop-entry-catalog-test|typhon-app-matcher-test' \
   --output-on-failure
+
+qmllint Dock/qml/Main.qml Dock/qml/components/DockPanel.qml \
+  Dock/qml/components/DockAppDelegate.qml
 ```
 
 Sanitizer validation uses the project option:
@@ -40,6 +44,19 @@ test drives a fake Typhon protocol adapter and proves dynamic rows, exact
 activation, close removal, and authority loss. Explorer's source contract is
 covered by `python3 -m unittest src/System/tests/test_bin_launchers.py` in the
 current AstreaOS source tree.
+
+`dock-config-watcher-test` covers magnification defaults, type and finite-number
+fallbacks, and bounds. `dock-config-persistence-test` covers pins-only atomic
+replacement, preservation of known and unknown keys, malformed-file refusal,
+validation, write errors, and watcher recovery. `dock-controller-test` covers
+stable identity reorder, launch-state preservation, persistence failure, and
+unchanged runtime-only order. `dock-layer-shell-surface-test` covers the
+explicit resting reservation and zero reservation while unmapped.
+
+The QML lint check is a syntax/type check; the repository does not currently
+provide a focused Qt Quick interaction-test harness for Dock pointer geometry.
+Visual magnification and drag feel therefore still require live/manual
+verification on a Wayland session.
 
 Run the same focused and complete CTest commands in both `build/debug` and
 `build/release`. Normal shell validation must use the LayerShellQt-enabled

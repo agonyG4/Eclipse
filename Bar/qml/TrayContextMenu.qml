@@ -324,6 +324,7 @@ PopupCard {
         Item {
             id: row
             property var menuOwner: null
+            required property int index
             required property int nodeId
             required property string label
             required property string iconName
@@ -351,10 +352,10 @@ PopupCard {
                 text: row.label
                 icon: root.iconFor(row.iconSource, row.iconName, row.toggleType,
                                    row.state, row.hasChildren)
-                selected: root.activeIndex === index
-                onHovered: root.selectRow(index)
+                selected: root.activeIndex === row.index
+                onHovered: root.selectRow(row.index)
                 onClicked: {
-                    root.selectRow(index)
+                    root.selectRow(row.index)
                     if (row.hasChildren) {
                         root.openChild(row.menuOwner, row.nodeId, row.y)
                     } else if (row.menuOwner) {

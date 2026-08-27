@@ -1,15 +1,88 @@
 #include "core/ContextMenuController.hpp"
 #include "core/ContextMenuModel.hpp"
+#include "statusnotifier/DBusMenuModel.hpp"
 
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QSignalSpy>
 #include <QTest>
 
 using Astrea::Shell::ContextMenuController;
 using Astrea::Shell::ContextMenuModel;
 using Astrea::Shell::ContextMenuTarget;
+
+class FakeTrayMenuService final : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(quint64 presentationRevision READ presentationRevision
+                   NOTIFY presentationRevisionChanged)
+
+public:
+    FakeTrayMenuService()
+        : m_model(this)
+    {
+    }
+
+    Astrea::StatusNotifier::DBusMenuModel *model() { return &m_model; }
+    quint64 presentationRevision() const { return m_revision; }
+    int prepareCount() const { return m_prepareCount; }
+
+    Q_INVOKABLE bool hasMenuForItem(const QString &key) const
+    {
+        return key == QStringLiteral("tray-test");
+    }
+
+    Q_INVOKABLE bool hasUsableMenuForItem(const QString &key) const
+    {
+        return hasMenuForItem(key);
+    }
+
+    Q_INVOKABLE QObject *menuModelForItem(const QString &key) const
+    {
+        return hasMenuForItem(key) ? const_cast<Astrea::StatusNotifier::DBusMenuModel *>(&m_model)
+                                   : nullptr;
+    }
+
+    Q_INVOKABLE int menuStateForItem(const QString &key) const
+    {
+        return hasMenuForItem(key) ? 3 : 0;
+    }
+
+    Q_INVOKABLE QString displayTitleForItem(const QString &key) const
+    {
+        return hasMenuForItem(key) ? QStringLiteral("Test tray") : QString();
+    }
+
+    Q_INVOKABLE QString iconSourceForItem(const QString &) const { return {}; }
+
+    Q_INVOKABLE void prepareMenuForPresentation(const QString &key, int = 0)
+    {
+        if (!hasMenuForItem(key))
+            return;
+        ++m_prepareCount;
+        ++m_revision;
+        emit presentationRevisionChanged();
+        emit menuContentChanged(key);
+    }
+
+    Q_INVOKABLE void aboutToShowMenu(const QString &key, int nodeId)
+    {
+        prepareMenuForPresentation(key, nodeId);
+        emit aboutToShowRequested(nodeId);
+    }
+
+signals:
+    void presentationRevisionChanged();
+    void menuClientChanged(const QString &key);
+    void menuContentChanged(const QString &key);
+    void aboutToShowRequested(int nodeId);
+
+private:
+    Astrea::StatusNotifier::DBusMenuModel m_model;
+    quint64 m_revision = 0;
+    int m_prepareCount = 0;
+};
 
 namespace {
 
@@ -72,6 +145,7 @@ private slots:
     void leftRestoresParentFocusAndSelection();
     void scrolledSubmenuUsesVisibleRowGeometry();
     void outsidePressClosesButInsideDisabledRowDoesNotHitShield();
+    void globalOverlayKeepsTrayMenuLiveAndDispatchable();
 };
 
 void ContextMenuQmlInteractionTest::keyboardNavigationSkipsDisabledAndSeparators()
@@ -209,6 +283,69 @@ void ContextMenuQmlInteractionTest::outsidePressClosesButInsideDisabledRowDoesNo
     QCOMPARE(controller.lifecycle(), ContextMenuController::Lifecycle::Open);
     QTest::mouseClick(window, Qt::RightButton, {}, QPoint(window->width() - 1,
                                                           window->height() - 1));
+    QCOMPARE(controller.lifecycle(), ContextMenuController::Lifecycle::Closing);
+    controller.completeClose();
+    delete window;
+}
+
+void ContextMenuQmlInteractionTest::globalOverlayKeepsTrayMenuLiveAndDispatchable()
+{
+    FakeTrayMenuService service;
+    Astrea::StatusNotifier::DBusMenuNode root;
+    root.children = {
+        {.id = 7, .label = QStringLiteral("Remote action"), .enabled = true, .visible = true},
+        {.id = 8, .label = QStringLiteral("Remote submenu"), .childrenDisplay = QStringLiteral("submenu"),
+         .enabled = true, .visible = true},
+    };
+    service.model()->setRoot(root);
+
+    ContextMenuController controller;
+    controller.setTrayService(&service);
+    QSignalSpy activationSpy(service.model(),
+                             &Astrea::StatusNotifier::DBusMenuModel::activateRequested);
+    const ContextMenuTarget target{ContextMenuTarget::Kind::TrayItem,
+                                   QStringLiteral("tray-test"), QStringLiteral("test-output")};
+    QVERIFY(controller.present(target, {}, [&](const QString &token) {
+        bool ok = false;
+        const int nodeId = token.mid(QStringLiteral("tray.node.").size()).toInt(&ok);
+        if (!ok)
+            return false;
+        service.model()->activate(nodeId);
+        return true;
+    }, [] { return true; }, [&](const QString &token) {
+        bool ok = false;
+        const int nodeId = token.mid(QStringLiteral("tray.node.").size()).toInt(&ok);
+        const auto node = service.model()->nodeById(nodeId);
+        return token.startsWith(QStringLiteral("tray.node.")) && ok && node.id == nodeId
+            && node.visible && node.enabled && !node.separator && node.children.isEmpty();
+    }));
+
+    QQmlEngine engine;
+    QQmlComponent component(&engine, QUrl(kOverlayUrl));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    auto *window = qobject_cast<QQuickWindow *>(component.createWithInitialProperties({
+        {QStringLiteral("contextMenuController"), QVariant::fromValue(&controller)},
+        {QStringLiteral("trayService"), QVariant::fromValue(&service)},
+        {QStringLiteral("outputKey"), QStringLiteral("test-output")},
+        {QStringLiteral("outputWidth"), 280},
+        {QStringLiteral("outputHeight"), 180},
+    }));
+    QVERIFY(window);
+    window->setWidth(280);
+    window->setHeight(180);
+    window->show();
+    QObject *menu = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((menu = window->findChild<QObject *>(
+                                  QStringLiteral("trayContextMenu"))) != nullptr, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(menu->property("menuModel").value<QObject *>(),
+                              static_cast<QObject *>(service.model()), 1000);
+    QVERIFY(service.prepareCount() > 0);
+    QTRY_VERIFY_WITH_TIMEOUT(window->activeFocusItem() != nullptr, 1000);
+    QCOMPARE(window->activeFocusItem(), qobject_cast<QQuickItem *>(menu));
+
+    QTest::keyClick(window, Qt::Key_Return);
+    QTRY_COMPARE_WITH_TIMEOUT(activationSpy.count(), 1, 1000);
+    QCOMPARE(activationSpy.at(0).at(0).toInt(), 7);
     QCOMPARE(controller.lifecycle(), ContextMenuController::Lifecycle::Closing);
     controller.completeClose();
     delete window;

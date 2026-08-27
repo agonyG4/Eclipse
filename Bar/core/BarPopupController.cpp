@@ -12,7 +12,6 @@ bool BarPopupController::isSupported(PopupKind kind)
     case PopupKind::Network:
     case PopupKind::Bluetooth:
     case PopupKind::Volume:
-    case PopupKind::TrayMenu:
         return true;
     case PopupKind::None:
         return false;
@@ -73,15 +72,6 @@ void BarPopupController::toggleBluetooth(int anchorX)
 void BarPopupController::toggleVolume(int anchorX)
 {
     toggle(PopupKind::Volume, anchorX);
-}
-
-void BarPopupController::toggleTrayMenu(int anchorX, const QString &contextKey)
-{
-    if (m_kind == PopupKind::TrayMenu && m_contextKey == contextKey && m_open && !m_closing) {
-        close();
-        return;
-    }
-    openWithContext(PopupKind::TrayMenu, anchorX, contextKey);
 }
 
 void BarPopupController::close()

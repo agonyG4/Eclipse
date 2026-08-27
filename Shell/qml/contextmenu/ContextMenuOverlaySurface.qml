@@ -30,10 +30,53 @@ Window {
         menuView.y = position.y
     }
 
+    function resetPresentationVisuals() {
+        menuView.opacity = 0
+        menuView.scale = 0.96
+        trayMenuLoader.opacity = 0
+        trayMenuLoader.scale = 0.96
+    }
+
+    function focusActiveMenu() {
+        if (!root.visible)
+            return
+        if (trayMenuLoader.item)
+            trayMenuLoader.item.forceActiveFocus()
+        else if (menuView.visible)
+            menuView.forceActiveFocus()
+    }
+
+    function syncAnimationForLifecycle() {
+        const lifecycle = root.contextMenuController
+            ? root.contextMenuController.lifecycle : 0
+        if (lifecycle === 1) {
+            exitAnimation.stop()
+            menuView.enabled = true
+            trayMenuLoader.enabled = true
+            outsideShield.enabled = true
+            enterAnimation.restart()
+        } else if (lifecycle === 2) {
+            enterAnimation.stop()
+            menuView.enabled = false
+            trayMenuLoader.enabled = false
+            outsideShield.enabled = false
+            exitAnimation.restart()
+        } else {
+            enterAnimation.stop()
+            exitAnimation.stop()
+            menuView.enabled = false
+            trayMenuLoader.enabled = false
+            outsideShield.enabled = false
+            resetPresentationVisuals()
+        }
+    }
+
     MouseArea {
         id: outsideShield
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
+        enabled: root.contextMenuController
+            && root.contextMenuController.lifecycle === 1
         z: 0
         onPressed: function(mouse) {
             if (root.contextMenuController)
@@ -57,11 +100,13 @@ Window {
             ? root.contextMenuController.presentationGeneration : 0
         outputWidth: root.outputWidth
         outputHeight: root.outputHeight
+        transformOrigin: Item.TopLeft
+        opacity: 0
+        scale: 0.96
+        enabled: root.contextMenuController
+            && root.contextMenuController.lifecycle === 1
         onImplicitHeightChanged: root.syncMenuGeometry()
-        Component.onCompleted: {
-            forceActiveFocus()
-            root.syncMenuGeometry()
-        }
+        Component.onCompleted: root.syncMenuGeometry()
     }
 
     Loader {
@@ -71,6 +116,11 @@ Window {
         active: root.contextMenuController
             && root.contextMenuController.targetKind === 2
         source: active ? "qrc:/qt/qml/Astrea/Shell/Bar/qml/TrayContextMenu.qml" : ""
+        transformOrigin: Item.TopLeft
+        opacity: 0
+        scale: 0.96
+        enabled: root.contextMenuController
+            && root.contextMenuController.lifecycle === 1
         width: item ? Math.min(item.implicitWidth, Math.max(1, root.outputWidth))
                     : root.menuWidth
         height: item ? Math.min(item.implicitHeight, Math.max(1, root.outputHeight)) : 0
@@ -88,15 +138,49 @@ Window {
             item.outputWidth = root.outputWidth
             item.outputHeight = root.outputHeight
             item.width = Math.min(root.menuWidth, Math.max(1, root.outputWidth))
-            item.forceActiveFocus()
+            Qt.callLater(root.focusActiveMenu)
         }
     }
 
-    Timer {
-        id: finishCloseTimer
-        interval: 140
-        repeat: false
-        onTriggered: {
+    ParallelAnimation {
+        id: enterAnimation
+        NumberAnimation {
+            targets: [menuView, trayMenuLoader]
+            property: "opacity"
+            from: 0
+            to: 1
+            duration: 120
+            easing.type: Easing.OutCubic
+        }
+        NumberAnimation {
+            targets: [menuView, trayMenuLoader]
+            property: "scale"
+            from: 0.96
+            to: 1
+            duration: 140
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    ParallelAnimation {
+        id: exitAnimation
+        NumberAnimation {
+            targets: [menuView, trayMenuLoader]
+            property: "opacity"
+            from: 1
+            to: 0
+            duration: 100
+            easing.type: Easing.InCubic
+        }
+        NumberAnimation {
+            targets: [menuView, trayMenuLoader]
+            property: "scale"
+            from: 1
+            to: 0.96
+            duration: 100
+            easing.type: Easing.InCubic
+        }
+        onFinished: {
             if (root.contextMenuController
                 && root.contextMenuController.lifecycle === 2)
                 root.contextMenuController.completeClose()
@@ -107,22 +191,19 @@ Window {
         target: root.contextMenuController
         function onPresentationChanged() {
             root.syncMenuGeometry()
-            if (root.visible) {
-                if (root.contextMenuController
-                    && root.contextMenuController.targetKind === 2
-                    && trayMenuLoader.item)
-                    trayMenuLoader.item.forceActiveFocus()
-                else
-                    menuView.forceActiveFocus()
-            }
+            root.focusActiveMenu()
         }
         function onLifecycleChanged() {
-            if (root.contextMenuController
-                && root.contextMenuController.lifecycle === 2)
-                finishCloseTimer.restart()
-            else
-                finishCloseTimer.stop()
+            root.syncAnimationForLifecycle()
         }
     }
+
+    Component.onCompleted: {
+        resetPresentationVisuals()
+        syncAnimationForLifecycle()
+    }
+
+    onVisibleChanged: if (visible) Qt.callLater(focusActiveMenu)
+    onActiveChanged: if (active) Qt.callLater(focusActiveMenu)
 
 }

@@ -1,6 +1,7 @@
 #include "ContextMenuSurfaceBundle.hpp"
 
 #include "core/ContextMenuController.hpp"
+#include "core/ContextMenuSurfaceMapping.hpp"
 #include "core/ContextMenuSurfacePolicy.hpp"
 #include "platform/wayland/LayerShellHelper.hpp"
 #include "statusnotifier/StatusNotifierService.hpp"
@@ -192,7 +193,10 @@ void ContextMenuSurfaceBundle::syncOverlayMapping()
 {
     if (!m_overlayWindow || !m_layerConfigurationRequested)
         return;
-    m_overlayWindow->setVisible(m_mapped && m_controller && m_controller->hasActivePresentation());
+    const bool shouldMap = Astrea::Shell::ContextMenuSurfaceMapping::overlayShouldMap(
+        outputKey(), m_mapped, m_controller && m_controller->hasActivePresentation(),
+        m_controller ? m_controller->outputKey() : QString());
+    m_overlayWindow->setVisible(shouldMap);
 }
 
 void ContextMenuSurfaceBundle::destroyWindow(QPointer<QQuickWindow> &window)

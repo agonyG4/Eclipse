@@ -10,6 +10,7 @@ Window {
     property var audioService: null
     property var networkService: null
     property var bluetoothService: null
+    property var statusNotifierService: null
     property var popupController: null
     property var barGeometry: null
     property int outputWidth: 1

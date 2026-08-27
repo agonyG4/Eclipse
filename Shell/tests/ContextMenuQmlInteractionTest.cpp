@@ -327,7 +327,9 @@ void ContextMenuQmlInteractionTest::globalOverlayKeepsTrayMenuLiveAndDispatchabl
     root.children = {
         {.id = 7, .label = QStringLiteral("Remote action"), .enabled = true, .visible = true},
         {.id = 8, .label = QStringLiteral("Remote submenu"), .childrenDisplay = QStringLiteral("submenu"),
-         .enabled = true, .visible = true},
+         .enabled = true, .visible = true,
+         .children = {{.id = 9, .label = QStringLiteral("Nested submenu"),
+                       .children = {{.id = 10, .label = QStringLiteral("Deep action")}}}}},
     };
     service.model()->setRoot(root);
 
@@ -375,6 +377,29 @@ void ContextMenuQmlInteractionTest::globalOverlayKeepsTrayMenuLiveAndDispatchabl
     QTRY_VERIFY_WITH_TIMEOUT(window->activeFocusItem() != nullptr, 1000);
     QCOMPARE(window->activeFocusItem(), qobject_cast<QQuickItem *>(menu));
 
+    QTest::keyClick(window, Qt::Key_Down);
+    QTest::keyClick(window, Qt::Key_Right);
+    QObject *childMenu = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((childMenu = window->findChild<QObject *>(
+                                  QStringLiteral("trayCascadeMenu"))) != nullptr, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(window->activeFocusItem(),
+                              qobject_cast<QQuickItem *>(childMenu), 1000);
+    QTest::keyClick(window, Qt::Key_Right);
+    QTRY_VERIFY_WITH_TIMEOUT(window->findChildren<QObject *>(
+                                 QStringLiteral("trayCascadeMenu")).size() == 2, 1000);
+    const auto cascades = window->findChildren<QObject *>(QStringLiteral("trayCascadeMenu"));
+    QObject *deepMenu = cascades.constLast();
+    QTRY_COMPARE_WITH_TIMEOUT(window->activeFocusItem(),
+                              qobject_cast<QQuickItem *>(deepMenu), 1000);
+    QTest::keyClick(window, Qt::Key_Left);
+    QTRY_COMPARE_WITH_TIMEOUT(window->activeFocusItem(),
+                              qobject_cast<QQuickItem *>(childMenu), 1000);
+    QTest::keyClick(window, Qt::Key_Left);
+    QTRY_COMPARE_WITH_TIMEOUT(window->activeFocusItem(),
+                              qobject_cast<QQuickItem *>(menu), 1000);
+    QCOMPARE(menu->property("activeIndex").toInt(), 1);
+
+    QTest::keyClick(window, Qt::Key_Down);
     QTest::keyClick(window, Qt::Key_Return);
     QTRY_COMPARE_WITH_TIMEOUT(activationSpy.count(), 1, 1000);
     QCOMPARE(activationSpy.at(0).at(0).toInt(), 7);

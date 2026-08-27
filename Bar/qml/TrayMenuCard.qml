@@ -107,6 +107,14 @@ PopupCard {
         pendingChildNodeId = -1
     }
 
+    function restoreParentFocus() {
+        if (parentMenuCard) {
+            const parent = parentMenuCard
+            parent.closeChild()
+            parent.forceActiveFocus()
+        }
+    }
+
     function cascadeXFor(parentX, parentWidth, childWidth, outputWidth) {
         const rightX = parentX + parentWidth - 4
         const leftX = parentX - childWidth + 4
@@ -171,10 +179,7 @@ PopupCard {
             activateSelection()
             event.accepted = true
         } else if (event.key === Qt.Key_Left) {
-            if (parentMenuCard)
-                parentMenuCard.closeChild()
-            else
-                closeChild()
+            restoreParentFocus()
             event.accepted = true
         } else if (event.key === Qt.Key_Escape && contextMenuController) {
             contextMenuController.close()
@@ -200,6 +205,7 @@ PopupCard {
         delegate: Item {
             id: row
             property var menuOwner: root.menuModel
+            required property int index
             required property int nodeId
             required property string label
             required property string iconSource
@@ -225,10 +231,10 @@ PopupCard {
                 enabled: row.itemEnabled
                 text: row.label
                 icon: root.iconFor(row.iconSource, row.toggleType, row.state, row.hasChildren)
-                selected: root.activeIndex === index
-                onHovered: root.activeIndex = index
-                onClicked: {
-                    root.activeIndex = index
+                    selected: root.activeIndex === row.index
+                    onHovered: root.activeIndex = row.index
+                    onClicked: {
+                        root.activeIndex = row.index
                     if (row.hasChildren) {
                         root.childModel = null
                         root.pendingChildOwner = row.menuOwner
@@ -276,6 +282,7 @@ PopupCard {
             item.x = root.cascadeXFor(root.x, root.width, width, root.presentationParent.width)
             item.y = root.cascadeYFor(root.y, root.childAnchorY, height,
                                       root.presentationParent.height)
+            Qt.callLater(item.forceActiveFocus)
         }
         onChildMenuModelChanged: if (item) item.menuModel = childMenuModel
     }

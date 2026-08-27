@@ -1,6 +1,8 @@
 #include "platform/wayland/BarSurfaceManager.hpp"
 
 #include "core/BarController.hpp"
+#include "core/BarPopupController.hpp"
+#include "../../../Shell/core/ContextMenuController.hpp"
 #include "platform/wayland/BarSurfaceBundle.hpp"
 
 #include <QGuiApplication>
@@ -19,7 +21,8 @@ BarSurfaceManager::BarSurfaceManager(QGuiApplication &application, QQmlApplicati
                                      Astrea::System::BluetoothService *bluetoothService,
                                      QObject *parent,
                                      BundleFactory bundleFactory,
-                                     Astrea::StatusNotifier::StatusNotifierService *statusNotifier)
+                                     Astrea::StatusNotifier::StatusNotifierService *statusNotifier,
+                                     Astrea::Shell::ContextMenuController *contextMenuController)
     : QObject(parent)
     , m_application(application)
     , m_engine(engine)
@@ -30,13 +33,15 @@ BarSurfaceManager::BarSurfaceManager(QGuiApplication &application, QQmlApplicati
     , m_networkService(networkService)
     , m_bluetoothService(bluetoothService)
     , m_statusNotifier(statusNotifier)
+    , m_contextMenuController(contextMenuController)
     , m_bundleFactory(std::move(bundleFactory))
 {
     if (!m_bundleFactory) {
         m_bundleFactory = [this](QScreen *screen, QObject *parent) {
             return new BarSurfaceBundle(screen, &m_engine, m_barController, m_clockService,
                                         m_workspaceModel, m_audioService, m_networkService,
-                                        m_bluetoothService, parent, m_statusNotifier);
+                                        m_bluetoothService, parent, m_statusNotifier,
+                                        m_contextMenuController);
         };
     }
     connect(&m_application, &QGuiApplication::screenAdded,
@@ -105,6 +110,20 @@ void BarSurfaceManager::shutdown()
         emit popupStateChanged();
         emit layerStateChanged();
     }
+}
+
+void BarSurfaceManager::closePopups()
+{
+    bool changed = false;
+    for (BarSurfaceBundle *bundle : m_bundles) {
+        if (!bundle || !bundle->popupController() || !bundle->popupController()->isOpen())
+            continue;
+        bundle->popupController()->close();
+        bundle->popupController()->completeClose();
+        changed = true;
+    }
+    if (changed)
+        emit popupStateChanged();
 }
 
 bool BarSurfaceManager::popupOpen() const

@@ -11,6 +11,8 @@
 #include "Bar/core/BarController.hpp"
 #include "Bar/core/BarClockService.hpp"
 #include "Bar/core/WorkspaceModel.hpp"
+#include "core/ContextMenuController.hpp"
+#include "platform/wayland/ContextMenuSurfaceManager.hpp"
 #include "Paper/platform/wayland/WallpaperSurfaceManager.hpp"
 #include "platform/ipc/ShellIpcServer.hpp"
 #include "runtime/ShellRuntime.hpp"
@@ -190,6 +192,8 @@ bool AstreaShellApplication::initializeQml()
                                 static_cast<QObject *>(m_runtime->bluetoothService()));
     context->setContextProperty(QStringLiteral("StatusNotifierService"),
                                 static_cast<QObject *>(m_runtime->statusNotifier()));
+    context->setContextProperty(QStringLiteral("ContextMenuController"),
+                                static_cast<QObject *>(m_runtime->contextMenuController()));
 
     QQuickWindow *window = nullptr;
     if (!loadSurface(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Dock/qml/Main.qml")),
@@ -221,9 +225,23 @@ bool AstreaShellApplication::initializeQml()
         m_application, *m_engine, m_runtime->barController(), m_runtime->barClock(),
         m_runtime->workspaceModel(), m_runtime->audioService(), m_runtime->networkService(),
         m_runtime->bluetoothService(), this, BarSurfaceManager::BundleFactory{},
-        m_runtime->statusNotifier());
+        m_runtime->statusNotifier(), m_runtime->contextMenuController());
     if (!m_barSurfaceManager->initialize(&barError)) {
         qCritical("Astrea shell Bar surface initialization failed: %s", qPrintable(barError));
+        return false;
+    }
+    m_runtime->contextMenuController()->setBarPopupCloser([this] {
+        if (m_barSurfaceManager)
+            m_barSurfaceManager->closePopups();
+    });
+
+    QString contextMenuError;
+    m_contextMenuSurfaceManager = std::make_unique<ContextMenuSurfaceManager>(
+        m_application, *m_engine, m_runtime->contextMenuController(), this,
+        ContextMenuSurfaceManager::BundleFactory{}, m_runtime->statusNotifier());
+    if (!m_contextMenuSurfaceManager->initialize(&contextMenuError)) {
+        qCritical("Astrea shell Context Menu surface initialization failed: %s",
+                  qPrintable(contextMenuError));
         return false;
     }
 

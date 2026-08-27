@@ -217,8 +217,13 @@ bool DockController::requestExactWindowAction(const QString &desktopFileName,
                                               Astrea::Typhon::ToplevelAction action)
 {
     const auto state = m_runtimeStates.constFind(desktopFileName);
+    const auto windows = windowsForDesktopFileName(desktopFileName);
+    const bool exactWindowIsLive = std::any_of(windows.cbegin(), windows.cend(),
+                                               [&windowId](const auto &window) {
+        return window.id == windowId;
+    });
     if (state == m_runtimeStates.constEnd() || !state->windowIds.contains(windowId)
-        || windowsForDesktopFileName(desktopFileName).isEmpty()) {
+        || !exactWindowIsLive) {
         setLastError(QStringLiteral("The selected window is no longer available"));
         return false;
     }

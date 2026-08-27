@@ -17,6 +17,10 @@ Item {
     property real pointerX: 0
     property bool pointerInside: false
     property string pointerTargetDesktopFileName: ""
+    property var contextMenuController: null
+    property string outputKey: ""
+    property int outputOriginX: 0
+    property int outputOriginY: 0
     property string draggedDesktopFileName: ""
     property int draggedSourceIndex: -1
     property int dragTargetIndex: -1
@@ -71,6 +75,10 @@ Item {
                     iconSize: DockController.iconSize
                     slotWidth: DockController.delegateWidth
                     slotHeight: DockController.delegateHeight
+                    contextMenuController: root.contextMenuController
+                    outputKey: root.outputKey
+                    outputOriginX: root.outputOriginX
+                    outputOriginY: root.outputOriginY
                     pinned: model.pinned
                     pointerTarget: dockPanel.pointerTargetDesktopFileName === desktopFileName
                     onActivated: DockController.launchByDesktopFileName(desktopFileName)

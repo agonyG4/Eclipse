@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <QtAlgorithms>
 
 namespace Astrea::Shell {
 
@@ -99,11 +100,11 @@ QHash<int, QByteArray> ContextMenuModel::roleNames() const
 {
     return {
         {TokenRole, "token"},
-        {KindRole, "kind"},
+        {KindRole, "nodeKind"},
         {LabelRole, "label"},
         {IconRole, "icon"},
-        {EnabledRole, "enabled"},
-        {VisibleRole, "visible"},
+        {EnabledRole, "nodeEnabled"},
+        {VisibleRole, "nodeVisible"},
         {ShortcutRole, "shortcut"},
         {CheckStateRole, "checkState"},
         {CheckTypeRole, "checkType"},
@@ -130,6 +131,8 @@ bool ContextMenuModel::setRootNodes(const QVector<NodeSpec> &nodes)
     normalizeSeparators(candidate->children);
 
     beginResetModel();
+    qDeleteAll(m_childModels);
+    m_childModels.clear();
     m_root = std::move(candidate);
     endResetModel();
     return true;
@@ -141,6 +144,8 @@ void ContextMenuModel::clear()
         return;
     }
     beginResetModel();
+    qDeleteAll(m_childModels);
+    m_childModels.clear();
     m_root->children.clear();
     endResetModel();
 }
@@ -150,18 +155,70 @@ bool ContextMenuModel::canActivate(const QString &token) const
     if (token.isEmpty()) {
         return false;
     }
-    std::function<bool(const Node *)> visit = [&](const Node *node) {
+    std::function<bool(const Node *, bool, bool)> visit =
+        [&](const Node *node, bool parentVisible, bool parentEnabled) {
+        const bool visible = parentVisible && node->spec.visible;
+        const bool enabled = parentEnabled && node->spec.enabled;
         if (node->spec.kind == NodeKind::Action && node->spec.token == token) {
-            return node->spec.visible && node->spec.enabled;
+            return visible && enabled;
         }
         for (const auto &child : node->children) {
-            if (visit(child.get())) {
+            if (visit(child.get(), visible, enabled)) {
                 return true;
             }
         }
         return false;
     };
-    return visit(m_root.get());
+    return visit(m_root.get(), true, true);
+}
+
+QObject *ContextMenuModel::childModelAt(int row) const
+{
+    if (row < 0 || row >= static_cast<int>(m_root->children.size()))
+        return nullptr;
+    const Node *node = m_root->children.at(static_cast<size_t>(row)).get();
+    if (node->children.empty())
+        return nullptr;
+    if (const auto it = m_childModels.constFind(node); it != m_childModels.constEnd())
+        return it.value();
+
+    auto *childModel = new ContextMenuModel(const_cast<ContextMenuModel *>(this));
+    QVector<NodeSpec> children;
+    children.reserve(static_cast<int>(node->children.size()));
+    for (const auto &child : node->children)
+        children.append(child->spec);
+    if (!childModel->setRootNodes(children)) {
+        childModel->deleteLater();
+        return nullptr;
+    }
+    m_childModels.insert(node, childModel);
+    return childModel;
+}
+
+int ContextMenuModel::firstNavigable() const
+{
+    return nextNavigable(-1, 1);
+}
+
+int ContextMenuModel::nextNavigable(int currentRow, int delta) const
+{
+    const int count = static_cast<int>(m_root->children.size());
+    if (count == 0 || delta == 0)
+        return -1;
+    const int direction = delta > 0 ? 1 : -1;
+    // A negative row is the sentinel used by QML for Home/End.  Seed it on
+    // the appropriate edge so End does not accidentally wrap from row 0 to
+    // the penultimate item.
+    int row = currentRow < 0 ? (direction > 0 ? -1 : 0) : currentRow;
+    for (int step = 0; step < count; ++step) {
+        row = (row + direction + count) % count;
+        const NodeSpec &spec = m_root->children.at(static_cast<size_t>(row))->spec;
+        const bool navigable = spec.kind == NodeKind::Action
+            || spec.kind == NodeKind::Submenu;
+        if (navigable && spec.visible && spec.enabled)
+            return row;
+    }
+    return -1;
 }
 
 bool ContextMenuModel::appendNode(Node *parent, const NodeSpec &spec, int depth,
@@ -211,22 +268,33 @@ bool ContextMenuModel::appendNode(Node *parent, const NodeSpec &spec, int depth,
 
 void ContextMenuModel::normalizeSeparators(std::vector<std::unique_ptr<Node>> &nodes)
 {
-    while (!nodes.empty() && nodes.front()->spec.kind == NodeKind::Separator) {
-        nodes.erase(nodes.begin());
-    }
-    while (!nodes.empty() && nodes.back()->spec.kind == NodeKind::Separator) {
-        nodes.pop_back();
-    }
-    auto it = nodes.begin();
-    while (it != nodes.end()) {
-        if ((*it)->spec.kind == NodeKind::Separator) {
-            auto next = std::next(it);
-            while (next != nodes.end() && (*next)->spec.kind == NodeKind::Separator) {
-                next = nodes.erase(next);
-            }
+    std::vector<std::unique_ptr<Node>> normalized;
+    normalized.reserve(nodes.size());
+    std::unique_ptr<Node> pendingSeparator;
+    bool hasVisibleContent = false;
+
+    for (auto &node : nodes) {
+        if (node->spec.kind == NodeKind::Separator) {
+            if (node->spec.visible && !pendingSeparator)
+                pendingSeparator = std::move(node);
+            continue;
         }
-        ++it;
+
+        // Keep hidden nodes in the model for role/state fidelity, but do not
+        // let them make a separator appear at the visible leading/trailing
+        // edge of a menu.
+        if (!node->spec.visible) {
+            normalized.push_back(std::move(node));
+            continue;
+        }
+
+        if (pendingSeparator && hasVisibleContent)
+            normalized.push_back(std::move(pendingSeparator));
+        pendingSeparator.reset();
+        normalized.push_back(std::move(node));
+        hasVisibleContent = true;
     }
+    nodes = std::move(normalized);
 }
 
 ContextMenuModel::Node *ContextMenuModel::nodeForIndex(const QModelIndex &index) const

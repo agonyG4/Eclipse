@@ -3,6 +3,8 @@
 #include "apps/DesktopEntryCatalog.hpp"
 #include "core/DockController.hpp"
 #include "launch/ApplicationLauncher.hpp"
+#include "statusnotifier/DBusMenuModel.hpp"
+#include "statusnotifier/StatusNotifierService.hpp"
 
 #include <QDir>
 #include <QLocale>
@@ -107,7 +109,7 @@ bool DockContextMenuProvider::present(ContextMenuController *controller,
         openWindows.icon = item->iconName;
         for (int index = 0; index < windows.size(); ++index) {
             const auto &window = windows.at(index);
-            const QString token = QStringLiteral("dock.window.%1").arg(index);
+            const QString token = QStringLiteral("dock.window.") + window.id;
             windowActions.insert(token, window.id);
             openWindows.children.append(ContextMenuModel::NodeSpec{
                 .token = token,
@@ -125,7 +127,7 @@ bool DockContextMenuProvider::present(ContextMenuController *controller,
         if (record) {
             for (int index = 0; index < record->actions.size(); ++index) {
                 const DesktopEntryAction &action = record->actions.at(index);
-                const QString token = QStringLiteral("dock.desktop-action.%1").arg(index);
+                const QString token = QStringLiteral("dock.desktop-action.") + action.id;
                 desktopActions.insert(token, action);
                 nodes.append(ContextMenuModel::NodeSpec{
                     .token = token,
@@ -205,6 +207,40 @@ bool DockContextMenuProvider::present(ContextMenuController *controller,
             return m_dock->setPinned(desktopFileName, !pinned);
         return false;
     }, validator);
+}
+
+bool TrayContextMenuAdapter::present(ContextMenuController *controller, const QString &itemKey,
+                                     const QPoint &point, const QString &outputKey) const
+{
+    if (!controller || !m_service || itemKey.isEmpty()
+        || !m_service->hasUsableMenuForItem(itemKey))
+        return false;
+
+    controller->setTrayService(m_service);
+    m_service->prepareMenuForPresentation(itemKey);
+    const ContextMenuTarget target{ContextMenuTarget::Kind::TrayItem, itemKey, outputKey};
+    return controller->present(target, pointAnchor(point), {},
+                               [this, itemKey](const QString &token) {
+        if (!m_service || !token.startsWith(QStringLiteral("tray.node.")))
+            return false;
+        bool ok = false;
+        const int nodeId = token.mid(QStringLiteral("tray.node.").size()).toInt(&ok);
+        if (!ok || nodeId <= 0)
+            return false;
+        auto *model = qobject_cast<Astrea::StatusNotifier::DBusMenuModel *>(
+            m_service->menuModelForItem(itemKey));
+        if (!model)
+            return false;
+        const auto node = model->nodeById(nodeId);
+        if (node.id != nodeId || !node.visible || !node.enabled || node.separator
+            || !node.children.isEmpty())
+            return false;
+        model->activate(nodeId);
+        return true;
+    }, [this, itemKey] {
+        return m_service && m_service->hasUsableMenuForItem(itemKey)
+            && m_service->menuModelForItem(itemKey);
+    });
 }
 
 } // namespace Astrea::Shell

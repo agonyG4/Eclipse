@@ -11,6 +11,9 @@ class BarClockService;
 class BarController;
 class BarLayoutMetrics;
 class BarPopupController;
+namespace Astrea::Shell {
+class ContextMenuController;
+}
 class QQuickWindow;
 class QQmlApplicationEngine;
 class WorkspaceModel;
@@ -33,7 +36,8 @@ public:
                      Astrea::System::NetworkService *networkService,
                      Astrea::System::BluetoothService *bluetoothService,
                      QObject *parent = nullptr,
-                     Astrea::StatusNotifier::StatusNotifierService *statusNotifier = nullptr);
+                     Astrea::StatusNotifier::StatusNotifierService *statusNotifier = nullptr,
+                     Astrea::Shell::ContextMenuController *contextMenuController = nullptr);
     ~BarSurfaceBundle() override;
 
     virtual bool initialize(QString *errorOut = nullptr);
@@ -72,6 +76,7 @@ private:
     Astrea::System::NetworkService *m_networkService = nullptr;
     Astrea::System::BluetoothService *m_bluetoothService = nullptr;
     Astrea::StatusNotifier::StatusNotifierService *m_statusNotifier = nullptr;
+    Astrea::Shell::ContextMenuController *m_contextMenuController = nullptr;
     BarPopupController *m_popupController = nullptr;
     BarLayoutMetrics *m_layoutMetrics = nullptr;
     QPointer<QQuickWindow> m_reserveWindow;

@@ -3,13 +3,19 @@
 #include "ContextMenuModel.hpp"
 
 #include <QObject>
+#include <QPointer>
 #include <QPoint>
 #include <QRect>
 #include <QString>
 
 #include <functional>
+#include <utility>
 
 namespace Astrea::Shell {
+
+class DesktopContextMenuProvider;
+class DockContextMenuProvider;
+class TrayContextMenuAdapter;
 
 struct ContextMenuTarget {
     enum class Kind {
@@ -41,6 +47,8 @@ class ContextMenuController final : public QObject {
     Q_PROPERTY(bool hasActivePresentation READ hasActivePresentation NOTIFY presentationChanged)
     Q_PROPERTY(ContextMenuModel *model READ model CONSTANT)
     Q_PROPERTY(QString targetIdentity READ targetIdentity NOTIFY presentationChanged)
+    Q_PROPERTY(int targetKind READ targetKind NOTIFY presentationChanged)
+    Q_PROPERTY(QObject *trayService READ trayService NOTIFY presentationChanged)
     Q_PROPERTY(QString outputKey READ outputKey NOTIFY presentationChanged)
     Q_PROPERTY(int anchorKind READ anchorKind NOTIFY presentationChanged)
     Q_PROPERTY(QPoint anchorPoint READ anchorPoint NOTIFY presentationChanged)
@@ -64,6 +72,8 @@ public:
     bool hasActivePresentation() const { return m_lifecycle != Lifecycle::Closed; }
     ContextMenuModel *model() const { return m_model.get(); }
     QString targetIdentity() const { return m_target.identity; }
+    int targetKind() const { return static_cast<int>(m_target.kind); }
+    QObject *trayService() const { return m_trayService.data(); }
     QString outputKey() const { return m_target.outputKey; }
     int anchorKind() const { return static_cast<int>(m_anchor.kind); }
     QPoint anchorPoint() const { return m_anchor.point; }
@@ -77,6 +87,24 @@ public:
     bool present(const ContextMenuTarget &target, const ContextMenuAnchor &anchor,
                  const QVector<ContextMenuModel::NodeSpec> &nodes,
                  ActivationHandler activation, TargetValidator targetValidator = {});
+    void setDesktopProvider(DesktopContextMenuProvider *provider) { m_desktopProvider = provider; }
+    void setDockProvider(DockContextMenuProvider *provider) { m_dockProvider = provider; }
+    void setTrayProvider(TrayContextMenuAdapter *provider) { m_trayProvider = provider; }
+    void setTrayService(QObject *service) { m_trayService = service; }
+    void setBarPopupCloser(std::function<void()> closer) { m_barPopupCloser = std::move(closer); }
+
+    Q_INVOKABLE bool presentDesktop(int x, int y, const QString &outputKey);
+    Q_INVOKABLE bool presentDock(const QString &desktopFileName, int x, int y,
+                                 int width, int height, const QString &outputKey);
+    Q_INVOKABLE bool presentTray(const QString &itemKey, int x, int y,
+                                 const QString &outputKey);
+    Q_INVOKABLE QPoint menuPosition(int outputWidth, int outputHeight,
+                                    int menuWidth, int menuHeight) const;
+    Q_INVOKABLE QPoint submenuPosition(int outputWidth, int outputHeight,
+                                        int menuWidth, int menuHeight,
+                                        const QRect &parentRectangle,
+                                        bool rightToLeft = false) const;
+    Q_INVOKABLE void invalidateOutput(const QString &outputKey);
     Q_INVOKABLE bool activate(quint64 generation, const QString &token);
     Q_INVOKABLE void close();
     Q_INVOKABLE void completeClose();
@@ -99,6 +127,11 @@ private:
     std::unique_ptr<ContextMenuModel> m_model;
     ActivationHandler m_activation;
     TargetValidator m_targetValidator;
+    QPointer<QObject> m_trayService;
+    DesktopContextMenuProvider *m_desktopProvider = nullptr;
+    DockContextMenuProvider *m_dockProvider = nullptr;
+    TrayContextMenuAdapter *m_trayProvider = nullptr;
+    std::function<void()> m_barPopupCloser;
 };
 
 } // namespace Astrea::Shell

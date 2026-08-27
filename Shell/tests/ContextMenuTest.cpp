@@ -2,6 +2,7 @@
 #include "core/ContextMenuModel.hpp"
 #include "core/ContextMenuPlacement.hpp"
 #include "core/ContextMenuSurfacePolicy.hpp"
+#include "statusnotifier/DBusMenuModel.hpp"
 
 #include <QSignalSpy>
 #include <QtTest/QtTest>
@@ -18,6 +19,7 @@ private slots:
     void controllerStartsClosed();
     void controllerOwnsGenerationAndLifecycle();
     void controllerRejectsStaleAndInvalidActions();
+    void controllerDispatchesDynamicTrayAction();
     void controllerClosesWhenTargetValidatorRejects();
     void controllerShutdownCleansUpActivePresentation();
     void modelNormalizesSeparatorsAndExposesRoles();
@@ -91,6 +93,39 @@ void ContextMenuTest::controllerRejectsStaleAndInvalidActions()
     controller.invalidateTarget();
     QCOMPARE(controller.lifecycle(), ContextMenuController::Lifecycle::Closing);
     QVERIFY(!controller.activate(controller.presentationGeneration(), QStringLiteral("enabled")));
+}
+
+void ContextMenuTest::controllerDispatchesDynamicTrayAction()
+{
+    ContextMenuController controller;
+    bool dispatched = false;
+    Astrea::StatusNotifier::DBusMenuModel menu;
+    Astrea::StatusNotifier::DBusMenuNode node;
+    node.id = 7;
+    node.label = QStringLiteral("Open");
+    menu.setNodes({node});
+    QSignalSpy menuActivations(&menu, &Astrea::StatusNotifier::DBusMenuModel::activateRequested);
+    const ContextMenuTarget target{ContextMenuTarget::Kind::TrayItem,
+                                   QStringLiteral("tray-item"), QStringLiteral("output-1")};
+
+    QVERIFY(controller.present(target, {}, [&](const QString &token) {
+        if (token != QStringLiteral("tray.node.7"))
+            return false;
+        menu.activate(7);
+        dispatched = true;
+        return true;
+    }, [] { return true; }, [&](const QString &token) {
+        if (token != QStringLiteral("tray.node.7"))
+            return false;
+        const auto current = menu.nodeById(7);
+        return current.id == 7 && current.visible && current.enabled
+            && !current.separator && current.children.isEmpty();
+    }));
+
+    QVERIFY(controller.activate(controller.presentationGeneration(),
+                                QStringLiteral("tray.node.7")));
+    QVERIFY(dispatched);
+    QCOMPARE(menuActivations.size(), 1);
 }
 
 void ContextMenuTest::controllerClosesWhenTargetValidatorRejects()

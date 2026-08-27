@@ -10,6 +10,7 @@
 #include "Bar/core/BarController.hpp"
 #include "Bar/core/WorkspaceModel.hpp"
 #include "Dock/core/DockController.hpp"
+#include "Dock/core/DockSurfaceGeometry.hpp"
 #include "Dock/platform/runtime/DockRuntimePaths.hpp"
 #include "Dock/services/DockConfigWatcher.hpp"
 #include "Dock/services/DockConfigPersistence.hpp"
@@ -87,6 +88,7 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
     m_dockPersistence = std::make_unique<DockConfigPersistence>(dockPaths.dockConfigPath());
     m_dockController = std::make_unique<DockController>(m_launcher.get(), m_catalog.get(),
                                                          m_dockPersistence.get());
+    m_dockSurfaceGeometry = std::make_unique<DockSurfaceGeometry>();
     m_altTabController = std::make_unique<AltTabController>(m_windowBackend.get(),
                                                               m_identityResolver.get());
     m_spotlightController = std::make_unique<SpotlightController>(

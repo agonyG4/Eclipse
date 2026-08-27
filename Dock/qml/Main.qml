@@ -16,9 +16,10 @@ Window {
         id: panel
         anchors.centerIn: parent
         contextMenuController: ContextMenuController
+        dockSurfaceGeometry: DockSurfaceGeometry
         outputKey: window.screen ? window.screen.name : ""
-        outputOriginX: window.screen ? window.screen.geometry.x : 0
-        outputOriginY: window.screen ? window.screen.geometry.y : 0
+        outputWidth: window.screen ? window.screen.geometry.width : width
+        outputHeight: window.screen ? window.screen.geometry.height : height
         onReorderRequested: function(desktopFileName, targetPinIndex) {
             DockController.movePinned(desktopFileName, targetPinIndex)
         }

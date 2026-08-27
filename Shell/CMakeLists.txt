@@ -58,6 +58,7 @@ add_library(astrea-shell-runtime STATIC
     ../Dock/core/DockAppInfo.cpp
     ../Dock/core/DockAppModel.cpp
     ../Dock/core/DockController.cpp
+    ../Dock/core/DockSurfaceGeometry.cpp
     ../Dock/platform/runtime/DockRuntimePaths.cpp
     ../Dock/platform/wayland/DockLayerShellSurface.cpp
     ../Dock/services/DockConfigPersistence.cpp

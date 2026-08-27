@@ -3,6 +3,7 @@
 #include "AltTab/core/AltTabController.hpp"
 #include "AltTab/platform/wayland/LayerShellSurface.hpp"
 #include "Dock/core/DockController.hpp"
+#include "Dock/core/DockSurfaceGeometry.hpp"
 #include "Dock/platform/wayland/DockLayerShellSurface.hpp"
 #include "Spotlight/core/SpotlightController.hpp"
 #include "Spotlight/platform/wayland/LayerShellSurface.hpp"
@@ -169,6 +170,8 @@ bool AstreaShellApplication::initializeQml()
         m_runtime->statusNotifier()->iconStore());
     m_engine->addImageProvider(QStringLiteral("astrea-tray"), trayIconProvider);
     context->setContextProperty(QStringLiteral("DockController"), m_runtime->dockController());
+    context->setContextProperty(QStringLiteral("DockSurfaceGeometry"),
+                                static_cast<QObject *>(m_runtime->dockSurfaceGeometry()));
     context->setContextProperty(QStringLiteral("AltTabController"),
                                 m_runtime->altTabController());
     context->setContextProperty(QStringLiteral("AltTabWindowModel"),

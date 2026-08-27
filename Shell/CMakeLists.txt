@@ -37,6 +37,12 @@ add_library(astrea-shell-runtime STATIC
     ../Bar/core/BarSurfacePolicy.hpp
     ../Bar/core/WorkspaceModel.cpp
     ../Bar/core/WorkspaceModel.hpp
+    core/ContextMenuController.cpp
+    core/ContextMenuController.hpp
+    core/ContextMenuModel.cpp
+    core/ContextMenuModel.hpp
+    core/ContextMenuPlacement.cpp
+    core/ContextMenuPlacement.hpp
     runtime/ShellRuntime.cpp
     runtime/ShellRuntime.hpp
     platform/shortcut/ShellShortcutDispatcher.cpp
@@ -48,6 +54,8 @@ add_library(astrea-shell-runtime STATIC
     ../Dock/core/DockController.cpp
     ../Dock/platform/runtime/DockRuntimePaths.cpp
     ../Dock/platform/wayland/DockLayerShellSurface.cpp
+    ../Dock/services/DockConfigPersistence.cpp
+    ../Dock/services/DockConfigValidation.cpp
     ../Dock/services/DockConfigWatcher.cpp
     ../Spotlight/core/SpotlightController.cpp
     ../Spotlight/core/SpotlightResultsModel.cpp
@@ -172,6 +180,20 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     )
     shell_enable_sanitizers(shell-runtime-test)
     add_test(NAME shell-runtime-test COMMAND shell-runtime-test)
+
+    add_executable(context-menu-test
+        tests/ContextMenuTest.cpp
+    )
+    target_include_directories(context-menu-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/.."
+    )
+    target_link_libraries(context-menu-test PRIVATE
+        astrea-shell-runtime
+        Qt6::Test
+    )
+    shell_enable_sanitizers(context-menu-test)
+    add_test(NAME context-menu-test COMMAND context-menu-test)
 
     add_executable(bar-core-test
         ../Bar/tests/BarCoreTest.cpp

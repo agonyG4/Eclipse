@@ -40,7 +40,10 @@ per-icon extra widths provide visual translations that make room for the
 enlarged icons while keeping the strip centered. Magnification icons scale from
 their bottom edge; running indicators remain outside that transform. A
 panel-level hover handler drives the magnification calculation, so it is
-continuous rather than a per-icon contains-mouse switch.
+continuous rather than a per-icon contains-mouse switch. After a structural
+model move, the panel defers one geometry refresh so its hover target and
+per-icon arrays are rebuilt from the current delegates rather than a parallel
+row-identity cache.
 
 The panel has a stable resting chrome rectangle anchored to its bottom. The
 transparent visual surface may temporarily add headroom for magnification or
@@ -52,16 +55,20 @@ changes animate all transforms and surface dimensions back to rest.
 Configured pins use a Qt Quick drag handler with a system-sized threshold. The
 dragged delegate is raised, lifted, and scaled; neighboring pinned delegates
 stay on the resting vertical baseline while using an ephemeral index preview.
-Runtime-only delegates are not draggable. QML suspends magnification while
-reordering and uses the handler's exclusive grab transitions: normal exclusive
-ungrab emits one identity-based reorder request, while canceled exclusive grabs
-emit no finish request. Drag coordinates are center-relative to the panel, so
-centered surface-width animation cannot move the drag origin or target. A click
-below the threshold still activates and a drag release never activates. QML
-never mutates the model or writes configuration during the drag. Pointer
-handlers use a panel-level transparent target whose rectangle follows the
-transformed icon exactly; it does not expand the actionable area into unrelated
-headroom.
+Runtime-only delegates are not draggable. At the threshold, `DockPanel` captures
+the source delegate's rendered/transformed center before suspending
+magnification, then keeps the drag center relative to the panel center so
+centered surface-width animation cannot move the drag origin or target. QML
+suspends magnification while reordering and uses the handler's exclusive grab
+transitions: normal exclusive ungrab emits one identity-based reorder request,
+while canceled exclusive grabs emit no finish request. Active drag updates pass
+the handler centroid's scene position to the panel; the last valid active point
+is restored when Qt resets the centroid during ungrab so hover remains under the
+release pointer or becomes inactive when that point is outside. A click below
+the threshold still activates and a drag release never activates. QML never
+mutates the model or writes configuration during the drag. Pointer handlers use
+a panel-level transparent target whose rectangle follows the transformed icon
+exactly; it does not expand the actionable area into unrelated headroom.
 
 Typhon is the authoritative source for task-relevant toplevels. The projector
 matches each published client `app_id` through the immutable desktop catalog,

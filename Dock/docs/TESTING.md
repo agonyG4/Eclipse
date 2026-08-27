@@ -71,7 +71,12 @@ The visual test checks the center/neighbor/distant raised-cosine ordering,
 left/right symmetry, continuity at an influence boundary, exact return to
 scale `1.0`, and outward prefix-width translations. The Layer Shell test keeps
 the exclusive zone at the normal resting height even when the visual surface
-height is larger.
+height is larger. Its reorder cases cover off-center rendered drag origins for
+first, middle, and last pins, stable geometry while magnification collapses,
+deferred hover refresh after a `rowsMoved` reorder, identity lookup from live
+delegates, and restoration of the release pointer when the exclusive grab
+suppresses the panel hover handler. They also verify one drop request and no
+activation from a drag.
 
 The QML lint check is a syntax/type check and the focused QML test runs offscreen;
 visual magnification and drag feel therefore still require live/manual

@@ -50,6 +50,15 @@ interaction target follows the transformed icon bounds, including bottom-origin
 vertical growth, without making unrelated headroom clickable. Runtime-only rows
 have no drag handler and are never pinned implicitly.
 
+During an active drag, the panel captures the source delegate's current
+rendered center before suspending magnification and uses the current
+`desktopFileName` on each delegate as identity. The drag handler forwards its
+active scene centroid with translation updates; because Qt may reset the
+centroid before an exclusive ungrab callback, the delegate retains the last
+valid active point and restores it to the panel before hover is resumed. A
+deferred `rowsMoved` callback refreshes hover geometry after the model's
+`beginMoveRows()` reconciliation, and no separate QML identity cache is kept.
+
 ## Error and lifecycle behavior
 
 Persistence errors are bounded and exposed through `DockController::lastError`;

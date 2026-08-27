@@ -32,6 +32,9 @@ Item {
     property bool dragging: false
     property real dragScale: 1.0
     property bool dragWasActive: false
+    property bool hasLastDragScenePosition: false
+    property real lastDragSceneX: 0
+    property real lastDragSceneY: 0
     readonly property real visualScale: root.magnificationScale * root.dragScale
     // 0 = idle, 1 = exclusively grabbed and dragging.
     property int dragLifecycle: 0
@@ -39,9 +42,26 @@ Item {
     property int iconSize: 48
     signal activated(string desktopFileName)
     signal dragStarted(string desktopFileName)
-    signal dragMoved(string desktopFileName, real translationX)
+    signal dragMoved(string desktopFileName, real translationX, real sceneX, real sceneY)
     signal dragFinished(string desktopFileName)
     signal dragCanceled(string desktopFileName)
+
+    function recordDragPointer(sceneX, sceneY) {
+        if (!isFinite(sceneX) || !isFinite(sceneY))
+            return false
+        root.hasLastDragScenePosition = true
+        root.lastDragSceneX = sceneX
+        root.lastDragSceneY = sceneY
+        if (root.dockPanel)
+            root.dockPanel.updatePointerFromScene(sceneX, sceneY)
+        return true
+    }
+
+    function restoreLastDragPointer() {
+        if (root.dockPanel && root.hasLastDragScenePosition)
+            root.dockPanel.updatePointerFromScene(root.lastDragSceneX,
+                                                  root.lastDragSceneY)
+    }
 
     function handleGrabTransition(transition) {
         if (transition === PointerDevice.GrabExclusive) {
@@ -197,8 +217,28 @@ Item {
                                       || root.dockPanel.draggedDesktopFileName === root.desktopFileName)
             target: null
             dragThreshold: 8
-            onGrabChanged: function(transition) { root.handleGrabTransition(transition) }
-            onTranslationChanged: if (active) root.dragMoved(root.desktopFileName, translation.x)
+            onGrabChanged: function(transition) {
+                if (transition === PointerDevice.GrabExclusive) {
+                    root.hasLastDragScenePosition = false
+                    const scenePosition = centroid.scenePosition
+                    root.recordDragPointer(scenePosition.x, scenePosition.y)
+                } else if (transition === PointerDevice.UngrabExclusive
+                           || transition === PointerDevice.CancelGrabExclusive) {
+                    // Once the handler loses its exclusive grab, centroid can
+                    // already be reset. The last active centroid is the
+                    // release pointer and remains authoritative for hover.
+                    root.restoreLastDragPointer()
+                }
+                root.handleGrabTransition(transition)
+            }
+            onTranslationChanged: {
+                if (!active)
+                    return
+                const scenePosition = centroid.scenePosition
+                root.recordDragPointer(scenePosition.x, scenePosition.y)
+                root.dragMoved(root.desktopFileName, activeTranslation.x,
+                               scenePosition.x, scenePosition.y)
+            }
         }
     }
 

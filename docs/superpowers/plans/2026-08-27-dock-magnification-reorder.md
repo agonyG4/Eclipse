@@ -33,9 +33,9 @@
 
 **Interfaces:** `DockConfigWatcher` reuses shared desktop filename/JSON size validation; `DockConfigPersistence::writePins(const QStringList &, QString *)` is the C++ mutation boundary.
 
-- [ ] Add tests for magnification defaults, valid values, wrong types, non-finite values, and lower/upper clamps.
-- [ ] Add tests for preserving known/unknown keys, creating a missing file, refusing malformed/oversized files, rejecting duplicate/invalid replacement pins, atomic replacement, bounded write failure, and watcher reload after replacement.
-- [ ] Build and run the new focused tests before implementing production behavior; confirm failures are due to missing fields/boundary.
+- [x] Add tests for magnification defaults, valid values, wrong types, non-finite values, and lower/upper clamps.
+- [x] Add tests for preserving known/unknown keys, creating a missing file, refusing malformed/oversized files, rejecting duplicate/invalid replacement pins, atomic replacement, bounded write failure, and watcher reload after replacement.
+- [x] Build and run the new focused tests before implementing production behavior; confirm failures are due to missing fields/boundary.
 
 ### Task 2: Implement shared Dock validation and configuration fields
 
@@ -47,10 +47,10 @@
 - Modify: `Dock/tests/DockConfigWatcherTest.cpp`
 - Modify: `Dock/CMakeLists.txt`
 
-- [ ] Extract the existing maximum-size and desktop filename validation contract for reuse.
-- [ ] Add `magnificationEnabled`, `magnificationScale`, and `magnificationRadius` defaults and field-local numeric/bool validation with finite-number checks and bounded ranges.
-- [ ] Implement latest-object read, minimal missing-file creation, pins-only mutation, output-size validation, QSaveFile commit, bounded errors, and no replacement on malformed existing JSON.
-- [ ] Run the focused config/persistence tests to green and preserve the existing watcher debounce/re-add recovery.
+- [x] Extract the existing maximum-size and desktop filename validation contract for reuse.
+- [x] Add `magnificationEnabled`, `magnificationScale`, and `magnificationRadius` defaults and field-local numeric/bool validation with finite-number checks and bounded ranges.
+- [x] Implement latest-object read, minimal missing-file creation, pins-only mutation, output-size validation, QSaveFile commit, bounded errors, and no replacement on malformed existing JSON.
+- [x] Run the focused config/persistence tests to green and preserve the existing watcher debounce/re-add recovery.
 
 ### Task 3: Add failing controller/model reorder and reservation tests
 
@@ -61,10 +61,10 @@
 - Modify: `Dock/platform/wayland/DockLayerShellSurface.hpp`
 - Modify: `Dock/CMakeLists.txt`
 
-- [ ] Add controller tests for first-to-end, last-to-first, same-index no-op, invalid/non-pinned rejection, persistence failure atomicity, and launch/runtime state preservation.
-- [ ] Add runtime-only ordering and identity/state assertions around pinned reorder, including grouped/minimized rows through existing model/integration coverage.
-- [ ] Add a pure reservation-policy test proving visual height changes do not alter mapped reservation and unmapped reservation is zero.
-- [ ] Run the focused tests before implementation and confirm the expected missing-operation failures.
+- [x] Add controller tests for first-to-end, last-to-first, same-index no-op, invalid/non-pinned rejection, persistence failure atomicity, and launch/runtime state preservation.
+- [x] Add runtime-only ordering and identity/state assertions around pinned reorder, including grouped/minimized rows through existing model/integration coverage.
+- [x] Add a pure reservation-policy test proving visual height changes do not alter mapped reservation and unmapped reservation is zero.
+- [x] Run the focused tests before implementation and confirm the expected missing-operation failures.
 
 ### Task 4: Implement controller persistence and explicit Layer Shell reservation
 
@@ -79,11 +79,11 @@
 - Modify: `Dock/CMakeLists.txt`
 - Modify: `Shell/CMakeLists.txt`
 
-- [ ] Inject one `DockConfigPersistence` into the unified Shell runtime and expose validated magnification/resting-height controller properties.
-- [ ] Implement stable-identity `movePinned`, clamping final target indices and updating model/config only after persistence succeeds.
-- [ ] Change `configure`/`updateExclusiveZone`/`setMapped` to receive explicit resting reservation height; never derive mapped exclusive zone from `QQuickWindow::height()`.
-- [ ] Keep empty/disabled mapping at zero and remapping at the resting height.
-- [ ] Run focused controller, Layer Shell, Shell runtime, and existing Typhon tests.
+- [x] Inject one `DockConfigPersistence` into the unified Shell runtime and expose validated magnification/resting-height controller properties.
+- [x] Implement stable-identity `movePinned`, clamping final target indices and updating model/config only after persistence succeeds.
+- [x] Change `configure`/`updateExclusiveZone`/`setMapped` to receive explicit resting reservation height; never derive mapped exclusive zone from `QQuickWindow::height()`.
+- [x] Keep empty/disabled mapping at zero and remapping at the resting height.
+- [x] Run focused controller, Layer Shell, Shell runtime, and existing Typhon tests.
 
 ### Task 5: Implement QML magnification and pinned drag preview
 
@@ -92,11 +92,11 @@
 - Modify: `Dock/qml/components/DockPanel.qml`
 - Modify: `Dock/qml/components/DockAppDelegate.qml`
 
-- [ ] Add panel-level pointer tracking and one-pass raised-cosine scale/extra-width/prefix calculation.
-- [ ] Keep the Row's resting slots stable, translate delegates by cumulative extra widths, center the complete strip, and expand/shrink only the visual surface.
-- [ ] Scale only the icon from its bottom edge, keep running indicators unscaled, retain adequate source sampling, and keep tooltip targeting identity-based.
-- [ ] Add TapHandler/DragHandler separation, pinned-only drag enablement, thresholded preview, neighbor animations, one drop request, and no drag activation.
-- [ ] Run `qmllint` against all modified Dock QML and inspect for binding loops, index-based identity, and pointer feedback risks.
+- [x] Add panel-level pointer tracking and one-pass raised-cosine scale/extra-width/prefix calculation.
+- [x] Keep the Row's resting slots stable, translate delegates by cumulative extra widths, center the complete strip, and expand/shrink only the visual surface.
+- [x] Scale only the icon from its bottom edge, keep running indicators unscaled, retain adequate source sampling, and keep tooltip targeting identity-based.
+- [x] Add TapHandler/DragHandler separation, pinned-only drag enablement, thresholded preview, neighbor animations, one drop request, and no drag activation.
+- [x] Run `qmllint` against all modified Dock QML and inspect for binding loops, index-based identity, and pointer feedback risks.
 
 ### Task 6: Update documentation
 
@@ -106,13 +106,13 @@
 - Modify: `Dock/docs/RUNTIME_FLOW.md`
 - Modify: `Dock/docs/TESTING.md`
 
-- [ ] Document magnification settings/formula/layout, visual versus reserved height, pinned-only reorder lifecycle, atomic pins persistence, watcher behavior, controller/model/persistence ownership, and unchanged runtime-only ordering.
-- [ ] Correct stale claims that `astrea-dock` is the resident process; identify unified `astrea-shell` as the host and `astrea-dock` as compatibility IPC client.
+- [x] Document magnification settings/formula/layout, visual versus reserved height, pinned-only reorder lifecycle, atomic pins persistence, watcher behavior, controller/model/persistence ownership, and unchanged runtime-only ordering.
+- [x] Correct stale claims that `astrea-dock` is the resident process; identify unified `astrea-shell` as the host and `astrea-dock` as compatibility IPC client.
 
 ### Task 7: Complete verification and branch assessment
 
-- [ ] Run `cmake` configure/build for available Debug and Release configurations, focused Dock/Shell tests, affected CTest, QML lint, and `git diff --check`.
-- [ ] Run existing Dock Typhon runtime integration and Shell unified runtime integration tests without changing Typhon.
-- [ ] Inspect the entire diff and worktree, confirming unrelated pre-existing changes remain untouched.
-- [ ] Check local branch divergence and integrate only branches that can be safely unified into `main` without overwriting unrelated user work; report any branch not safely merged.
-- [ ] Report exact commands/results, manual live checks, unverified cases, and future runtime-only drag features.
+- [x] Run the available Debug builds, focused Dock tests, QML lint, QML cache compilation, and `git diff --check`.
+- [x] Run existing Dock Typhon runtime integration without changing Typhon; the unified Shell test remains blocked by unrelated in-progress context-menu edits.
+- [x] Inspect the entire feature diff and worktree, confirming unrelated pre-existing changes remain untouched.
+- [x] Unify the sole divergent local branch into `main` with a merge commit while preserving unrelated working-tree changes in a recoverable stash.
+- [x] Report exact commands/results, manual live checks, unverified cases, and future runtime-only drag features.

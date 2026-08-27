@@ -55,6 +55,15 @@ Hidden and `NoDisplay=true` desktop entries remain valid explicit pins, but are
 not selected by normal catalog identity resolution. Unresolved explicit pins
 remain visible and use their normalized filename as fallback display text.
 
+Magnification is a continuous neighborhood effect, not a discrete hovered-item
+switch. The configured radius is converted from slot radii to pixels; icons
+inside it receive a raised-cosine influence and icons outside it remain at
+scale `1.0`. The Dock computes translations from cumulative extra widths while
+leaving the resting Row unchanged. The panel's transparent surface can grow
+above the fixed resting chrome while the pointer is over the Dock, then shrinks
+back after exit. This visual headroom is never included in the Layer Shell
+exclusive zone.
+
 Set the shared component key to disable or re-enable the Dock without
 restarting:
 
@@ -70,10 +79,12 @@ the same reload path.
 
 Dock presentation QML never writes `dock.json`. A successful configured-pin
 reorder, or an explicit Dock pin/unpin action, is committed by `DockController`
-through `DockConfigPersistence`, which reads the latest
-object, changes only `pins`, preserves known and unknown keys, validates the
-complete new list, and atomically replaces the file with `QSaveFile`. A
-malformed existing file is left untouched; a missing file is created as the
-minimal valid object containing `pins`. Runtime-only application order remains
-in-memory and is never persisted. Changing `hoverEffect` through the watcher
-updates the existing Dock surface without restarting the unified Shell.
+through `DockConfigPersistence`, which reads the latest object, changes only
+`pins`, preserves known and unknown keys, validates the complete new list, and
+atomically replaces the file with `QSaveFile`. A malformed existing file is
+left untouched; a missing file is created as the minimal valid object
+containing `pins`. Runtime-only application order remains in-memory and is
+never persisted. Reordering is pinned-only, uses `desktopFileName` identity,
+and applies to the model only after persistence succeeds. Changing
+`hoverEffect` through the watcher updates the existing Dock surface without
+restarting the unified Shell.

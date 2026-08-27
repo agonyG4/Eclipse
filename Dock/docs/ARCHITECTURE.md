@@ -40,15 +40,23 @@ per-icon extra widths provide visual translations that make room for the
 enlarged icons while keeping the strip centered. Magnification icons scale from
 their bottom edge; running indicators remain outside that transform. A
 panel-level hover handler drives the magnification calculation, so it is
-continuous rather than a per-icon contains-mouse switch. Only magnification
-grows the panel as a visual surface, and every mode returns to resting geometry
-when the pointer leaves or the configuration changes.
+continuous rather than a per-icon contains-mouse switch.
+
+The panel has a stable resting chrome rectangle anchored to its bottom. The
+transparent visual surface may temporarily add headroom for magnification or
+for the lift/drag bounds at larger icon sizes, but the chrome and Row retain
+their resting height. This keeps the visual top inside the surface without
+making the Dock background permanently taller. Hover exit and configuration
+changes animate all transforms and surface dimensions back to rest.
 
 Configured pins use a Qt Quick drag handler with a system-sized threshold. The
 dragged delegate is raised and lifted, while neighboring pinned delegates use
 an ephemeral index preview. Runtime-only delegates are not draggable. QML
-emits one identity-based reorder request on a moved drop; it never mutates the
-model or writes configuration during the drag.
+suspends magnification while reordering and uses a one-shot idle/active drag
+state machine: a successful release emits one identity-based reorder request,
+while cancellation emits no finish request. A click below the threshold still
+activates and a drag release never activates. QML never mutates the model or
+writes configuration during the drag.
 
 Typhon is the authoritative source for task-relevant toplevels. The projector
 matches each published client `app_id` through the immutable desktop catalog,

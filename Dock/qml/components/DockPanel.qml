@@ -11,6 +11,19 @@ Item {
     readonly property int contentHeight: restingHeight
     readonly property int slotPitch: DockController.delegateWidth + DockController.itemSpacing
     readonly property string configuredHoverEffect: DockController.hoverEffect
+    readonly property real iconRestingTop: DockController.iconRestingTop
+    readonly property real liftScale: 1.1
+    readonly property real liftOffsetY: 5
+    readonly property real reorderScale: 1.06
+    readonly property real reorderOffsetY: 8
+    readonly property real liftHeadroom: Math.max(0,
+        DockController.iconSize * (liftScale - 1) + liftOffsetY - iconRestingTop)
+    readonly property real dragHeadroom: Math.max(0,
+        DockController.iconSize * (reorderScale - 1) + reorderOffsetY - iconRestingTop)
+    readonly property real visualHeadroom: Math.max(magnificationHeight,
+        pointerInside && configuredHoverEffect === "lift" && !isReordering()
+            ? liftHeadroom : 0,
+        isReordering() ? dragHeadroom : 0)
     property real magnificationWidth: 0
     property real magnificationHeight: 0
     // Keep the pointer in the panel's centered coordinate system. The window
@@ -36,17 +49,21 @@ Item {
     signal reorderRequested(string desktopFileName, int targetPinIndex)
 
     width: restingWidth + magnificationWidth
-    height: restingHeight + magnificationHeight
+    height: restingHeight + visualHeadroom
 
     Behavior on width {
         NumberAnimation { duration: 90; easing.type: Easing.OutCubic }
     }
     Behavior on height {
-        NumberAnimation { duration: 90; easing.type: Easing.OutCubic }
+        NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
     }
 
     Rectangle {
-        anchors.fill: parent
+        id: dockChrome
+        objectName: "dockChrome"
+        anchors.bottom: parent.bottom
+        width: parent.width
+        height: root.restingHeight
         radius: 23
         color: "#80343434"
         border.color: "#33FFFFFF"
@@ -60,9 +77,9 @@ Item {
 
         Row {
             id: appRow
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 3
+            anchors.horizontalCenter: dockChrome.horizontalCenter
+            anchors.bottom: dockChrome.bottom
+            anchors.bottomMargin: DockController.chromeBottomMargin
             spacing: DockController.itemSpacing
 
             Repeater {
@@ -82,7 +99,7 @@ Item {
                     outputKey: root.outputKey
                     pinned: model.pinned
                     pointerTarget: dockPanel.pointerTargetDesktopFileName === desktopFileName
-                    onActivated: DockController.launchByDesktopFileName(desktopFileName)
+                    onActivated: function(key) { DockController.launchByDesktopFileName(key) }
                     onDragStarted: function(key) { root.beginReorder(key) }
                     onDragMoved: function(key, translationX) {
                         root.updateReorder(key, translationX)
@@ -206,7 +223,9 @@ Item {
             }
             item.magnificationScale = dragging ? 1 : (magnificationScales[i] || 1)
             item.visualOffsetX = offset
-            item.visualOffsetY = dragging ? -8 : (item.objectName === liftedKey ? -5 : 0)
+            item.visualOffsetY = dragging ? -reorderOffsetY
+                : (item.objectName === liftedKey ? -liftOffsetY : 0)
+            item.dragScale = dragging && i === draggedSourceIndex ? reorderScale : 1
             item.dragging = i === draggedSourceIndex
         }
     }

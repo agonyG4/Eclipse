@@ -16,7 +16,9 @@
 - `DockAppModel::reconcileRows()` continues to use structural insert/remove/move operations and `beginMoveRows()`.
 - QML remains presentation/interaction UI only and never parses or writes JSON.
 - Typhon remains authoritative for runtime application/window state and is not modified.
-- The Layer Shell exclusive zone remains the normal resting Dock height while the visual surface may grow.
+- The Layer Shell exclusive zone remains the normal resting Dock height while a transparent visual surface may grow with transient headroom.
+- `none`, `lift`, and `magnification` remain distinct selectable interaction modes; lift preserves the lightweight Eclipse hover, while magnification is suspended during reorder.
+- The visible bottom-anchored chrome remains exactly the resting height in every mode; only transparent headroom grows.
 - Runtime-only rows are not draggable; drag-out-to-unpin and drag-to-pin are out of scope.
 - Preserve existing defaults, field-local fallback semantics, activation, launch suppression, and authority-loss behavior.
 
@@ -93,9 +95,9 @@
 - Modify: `Dock/qml/components/DockAppDelegate.qml`
 
 - [x] Add panel-level pointer tracking and one-pass raised-cosine scale/extra-width/prefix calculation.
-- [x] Keep the Row's resting slots stable, translate delegates by cumulative extra widths, center the complete strip, and expand/shrink only the visual surface.
+- [x] Keep the Row's resting slots stable, translate delegates by cumulative extra widths, center the complete strip, and expand/shrink only the transparent visual surface above fixed resting chrome.
 - [x] Scale only the icon from its bottom edge, keep running indicators unscaled, retain adequate source sampling, and keep tooltip targeting identity-based.
-- [x] Add TapHandler/DragHandler separation, pinned-only drag enablement, thresholded preview, neighbor animations, one drop request, and no drag activation.
+- [x] Add TapHandler/DragHandler separation, pinned-only drag enablement, thresholded preview, neighbor animations, one-shot release/cancel finalization, one drop request, and no drag activation.
 - [x] Run `qmllint` against all modified Dock QML and inspect for binding loops, index-based identity, and pointer feedback risks.
 
 ### Task 6: Update documentation
@@ -116,3 +118,9 @@
 - [x] Inspect the entire feature diff and worktree, confirming unrelated pre-existing changes remain untouched.
 - [x] Unify the sole divergent local branch into `main` with a merge commit while preserving unrelated working-tree changes in a recoverable stash.
 - [x] Report exact commands/results, manual live checks, unverified cases, and future runtime-only drag features.
+
+### Post-review correction coverage
+
+- [x] Restore the centered delegate baseline and add transient lift/drag headroom, with bounds checked across icon sizes `32..64`.
+- [x] Keep the bottom chrome at the resting height while visual surface height changes.
+- [x] Make pointer release and cancellation terminal paths mutually exclusive, and cover click/drag/reset sequencing in the offscreen QML test.

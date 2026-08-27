@@ -382,17 +382,6 @@ void BarCoreTest::popupSupportsNativeIndicatorKinds()
     QCOMPARE(controller.kind(), BarPopupController::PopupKind::Volume);
     QCOMPARE(controller.anchorX(), 320);
 
-    controller.toggleTrayMenu(420, QStringLiteral("org.example.Tray|/StatusNotifierItem"));
-    QCOMPARE(controller.kind(), BarPopupController::PopupKind::TrayMenu);
-    QCOMPARE(controller.contextKey(), QStringLiteral("org.example.Tray|/StatusNotifierItem"));
-
-    controller.close();
-    QVERIFY(controller.closing());
-    QVERIFY(controller.surfaceRequired());
-    QCOMPARE(controller.kind(), BarPopupController::PopupKind::TrayMenu);
-    controller.completeClose();
-    QVERIFY(!controller.surfaceRequired());
-    QCOMPARE(controller.kind(), BarPopupController::PopupKind::None);
 }
 
 void BarCoreTest::spotlightComponentEnablementIsAuthoritative()

@@ -135,9 +135,6 @@ Item {
                                 root.contextMenuController.presentTray(itemDelegate.key,
                                     Math.round(anchor.localX), Math.round(anchor.localY),
                                     root.outputKey)
-                            else if (itemDelegate.hasMenu && itemDelegate.hasUsableMenu
-                                     && root.popupController)
-                                root.popupController.toggleTrayMenu(anchor.localX, itemDelegate.key)
                             else if (root.trayService)
                                 root.trayService.contextMenu(itemDelegate.key,
                                     anchor.globalX, anchor.globalY)
@@ -147,9 +144,6 @@ Item {
                                 root.contextMenuController.presentTray(itemDelegate.key,
                                     Math.round(anchor.localX), Math.round(anchor.localY),
                                     root.outputKey)
-                            } else if (itemDelegate.hasMenu && itemDelegate.hasUsableMenu
-                                       && root.popupController) {
-                                root.popupController.toggleTrayMenu(anchor.localX, itemDelegate.key)
                             } else if (root.trayService) {
                                 root.trayService.contextMenu(itemDelegate.key,
                                     anchor.globalX, anchor.globalY)

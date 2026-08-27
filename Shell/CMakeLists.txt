@@ -226,6 +226,31 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     )
     shell_enable_sanitizers(context-menu-qml-smoke-test)
     add_test(NAME context-menu-qml-smoke-test COMMAND context-menu-qml-smoke-test)
+
+    add_executable(context-menu-qml-interaction-test
+        tests/ContextMenuQmlInteractionTest.cpp
+    )
+    qt_add_resources(context-menu-qml-interaction-test astrea_context_menu_interaction_resources
+        PREFIX "/qt/qml/Astrea/Shell"
+        FILES
+            ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuCard.qml
+            ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuItem.qml
+            ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuSeparator.qml
+            ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextSubmenu.qml
+            ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuView.qml
+            ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuOverlaySurface.qml
+            ${ASTREA_BAR_QML_FILES}
+    )
+    target_include_directories(context-menu-qml-interaction-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/.."
+    )
+    target_link_libraries(context-menu-qml-interaction-test PRIVATE
+        astrea-shell-runtime
+        Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test
+    )
+    shell_enable_sanitizers(context-menu-qml-interaction-test)
+    add_test(NAME context-menu-qml-interaction-test COMMAND context-menu-qml-interaction-test)
 endif()
 
 install(TARGETS astrea-shell RUNTIME DESTINATION bin)
@@ -261,6 +286,17 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     )
     shell_enable_sanitizers(context-menu-test)
     add_test(NAME context-menu-test COMMAND context-menu-test)
+
+    add_executable(dock-surface-geometry-test
+        ../Dock/tests/DockSurfaceGeometryTest.cpp
+        ../Dock/core/DockSurfaceGeometry.cpp
+    )
+    target_include_directories(dock-surface-geometry-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../Dock"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
+    target_link_libraries(dock-surface-geometry-test PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
+    shell_enable_sanitizers(dock-surface-geometry-test)
+    add_test(NAME dock-surface-geometry-test COMMAND dock-surface-geometry-test)
 
     add_executable(bar-core-test
         ../Bar/tests/BarCoreTest.cpp

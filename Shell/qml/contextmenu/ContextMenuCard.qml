@@ -16,11 +16,12 @@ Rectangle {
     border.color: theme.border
     border.width: 1
 
-    Column {
+    Item {
         id: content
         anchors.fill: parent
         anchors.margins: root.cardPadding
-        spacing: root.contentSpacing
+        implicitWidth: childrenRect.width
+        implicitHeight: childrenRect.height
     }
 
     MouseArea {

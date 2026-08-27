@@ -26,8 +26,13 @@ QString launchIdentity(const ApplicationLaunchRequest &request)
     return request.exec;
 }
 
-QStringList tokenizeDesktopExec(const QString &exec)
+QStringList tokenizeDesktopExec(const QString &exec, QString *errorOut)
 {
+    if (exec.size() > 4096) {
+        if (errorOut)
+            *errorOut = QStringLiteral("Desktop Exec command is too long");
+        return {};
+    }
     QStringList tokens;
     QString current;
     bool inSingle = false;
@@ -55,22 +60,43 @@ QStringList tokenizeDesktopExec(const QString &exec)
         if (ch.isSpace() && !inSingle && !inDouble) {
             if (!current.isEmpty()) {
                 tokens.append(current);
+                if (tokens.size() > 128) {
+                    if (errorOut)
+                        *errorOut = QStringLiteral("Desktop Exec command has too many arguments");
+                    return {};
+                }
                 current.clear();
             }
             continue;
         }
         current.append(ch);
+        if (current.size() > 1024) {
+            if (errorOut)
+                *errorOut = QStringLiteral("Desktop Exec argument is too long");
+            return {};
+        }
     }
 
-    if (!current.isEmpty())
+    if (escaping || inSingle || inDouble) {
+        if (errorOut)
+            *errorOut = QStringLiteral("Malformed quoting in Desktop Exec command");
+        return {};
+    }
+    if (!current.isEmpty()) {
         tokens.append(current);
+        if (tokens.size() > 128) {
+            if (errorOut)
+                *errorOut = QStringLiteral("Desktop Exec command has too many arguments");
+            return {};
+        }
+    }
     return tokens;
 }
 
-QStringList expandDesktopExec(const ApplicationLaunchRequest &request)
+QStringList expandDesktopExecInternal(const ApplicationLaunchRequest &request, QString *errorOut)
 {
     QStringList argv;
-    for (const QString &token : tokenizeDesktopExec(request.exec)) {
+    for (const QString &token : tokenizeDesktopExec(request.exec, errorOut)) {
         QString expanded;
         for (int i = 0; i < token.size(); ++i) {
             const QChar ch = token.at(i);
@@ -111,6 +137,14 @@ ApplicationLauncher::ApplicationLauncher(const QString &astreaLaunchPath, QObjec
     , m_launchPath(resolveLauncherPath(astreaLaunchPath,
                                        QProcessEnvironment::systemEnvironment()))
 {
+}
+
+QStringList ApplicationLauncher::expandDesktopExec(const ApplicationLaunchRequest &request,
+                                                    QString *errorOut)
+{
+    if (errorOut)
+        errorOut->clear();
+    return expandDesktopExecInternal(request, errorOut);
 }
 
 QString ApplicationLauncher::resolveLauncherPath(const QString &fallbackPath,
@@ -155,9 +189,12 @@ void ApplicationLauncher::launchDesktop(const ApplicationLaunchRequest &request)
         return;
     }
     if (!request.exec.isEmpty()) {
-        const QStringList argv = expandDesktopExec(request);
+        QString expansionError;
+        const QStringList argv = expandDesktopExec(request, &expansionError);
         if (argv.isEmpty()) {
-            emit launchFailed(request.exec, QStringLiteral("Empty desktop Exec command"));
+            emit launchFailed(request.exec, expansionError.isEmpty()
+                                           ? QStringLiteral("Empty desktop Exec command")
+                                           : expansionError);
             emit launchCompleted(request.exec, false);
             return;
         }

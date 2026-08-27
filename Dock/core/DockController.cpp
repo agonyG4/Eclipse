@@ -1,8 +1,11 @@
 #include "core/DockController.hpp"
 
 #include "platform/typhon/TyphonToplevelConnection.hpp"
+#include "services/DockConfigValidation.hpp"
 
 #include <QDebug>
+
+#include <algorithm>
 
 namespace {
 
@@ -12,14 +15,18 @@ bool sameConfig(const DockConfig &left, const DockConfig &right)
         && left.bottomMargin == right.bottomMargin
         && left.panelPadding == right.panelPadding
         && left.itemSpacing == right.itemSpacing
+        && left.magnificationEnabled == right.magnificationEnabled
+        && qFuzzyCompare(left.magnificationScale, right.magnificationScale)
+        && qFuzzyCompare(left.magnificationRadius, right.magnificationRadius)
         && left.pins == right.pins;
 }
 
 } // namespace
 
 DockController::DockController(ApplicationLauncher *launcher, DesktopEntryCatalog *catalog,
+                               DockConfigPersistence *persistence,
                                QObject *parent)
-    : QObject(parent), m_launcher(launcher), m_catalog(catalog),
+    : QObject(parent), m_launcher(launcher), m_persistence(persistence), m_catalog(catalog),
       m_catalogSnapshot(std::make_shared<const DesktopEntrySnapshot>())
 {
     if (m_launcher) {
@@ -106,6 +113,7 @@ void DockController::attachTyphonConnection(TyphonToplevelConnection *connection
     if (!connection) {
         m_typhonConnection = nullptr;
         m_pendingActivations.clear();
+        m_pendingWindowActions.clear();
         clearTyphonRuntime();
         return;
     }
@@ -162,8 +170,160 @@ void DockController::launch(int row)
     if (!item || !m_enabled)
         return;
 
-    const QString key = item->desktopFileName;
-    if (item->runtimeKnown && item->running) {
+    launchItem(*item);
+}
+
+void DockController::launchByDesktopFileName(const QString &desktopFileName)
+{
+    const int row = m_model.rowForDesktopFileName(desktopFileName);
+    const DockAppInfo *item = m_model.itemAt(row);
+    if (!item || !m_enabled)
+        return;
+    launchItem(*item);
+}
+
+bool DockController::launchNewWindow(const QString &desktopFileName)
+{
+    const int row = m_model.rowForDesktopFileName(desktopFileName);
+    const DockAppInfo *item = m_model.itemAt(row);
+    if (!item || !m_enabled || !m_launcher)
+        return false;
+    launchItem(*item, false);
+    return true;
+}
+
+QVector<Astrea::Typhon::Toplevel> DockController::windowsForDesktopFileName(
+    const QString &desktopFileName) const
+{
+    QVector<Astrea::Typhon::Toplevel> result;
+    const auto state = m_runtimeStates.constFind(desktopFileName);
+    if (state == m_runtimeStates.constEnd() || !m_runtimeSnapshot.has_value())
+        return result;
+
+    for (const QString &windowId : state->windowIds) {
+        const auto it = std::find_if(m_runtimeSnapshot->windows.cbegin(),
+                                     m_runtimeSnapshot->windows.cend(),
+                                     [&windowId](const auto &window) {
+                                         return window.id == windowId;
+                                     });
+        if (it != m_runtimeSnapshot->windows.cend())
+            result.append(*it);
+    }
+    return result;
+}
+
+bool DockController::requestExactWindowAction(const QString &desktopFileName,
+                                              const QString &windowId,
+                                              Astrea::Typhon::ToplevelAction action)
+{
+    const auto state = m_runtimeStates.constFind(desktopFileName);
+    if (state == m_runtimeStates.constEnd() || !state->windowIds.contains(windowId)
+        || windowsForDesktopFileName(desktopFileName).isEmpty()) {
+        setLastError(QStringLiteral("The selected window is no longer available"));
+        return false;
+    }
+    if (!m_typhonConnection) {
+        setLastError(QStringLiteral("Typhon window actions are unavailable"));
+        return false;
+    }
+
+    const quint64 token = ++m_nextActivationToken;
+    m_pendingWindowActions.insert(token, PendingWindowAction{desktopFileName, windowId, action});
+    const auto error = m_typhonConnection->requestAction(windowId, action, token);
+    if (error.has_value()) {
+        m_pendingWindowActions.remove(token);
+        setLastError(QStringLiteral("The selected window action was rejected"));
+        return false;
+    }
+    return true;
+}
+
+bool DockController::activateWindow(const QString &desktopFileName, const QString &windowId)
+{
+    return requestExactWindowAction(desktopFileName, windowId,
+                                    Astrea::Typhon::ToplevelAction::Activate);
+}
+
+bool DockController::closeWindow(const QString &desktopFileName, const QString &windowId)
+{
+    return requestExactWindowAction(desktopFileName, windowId,
+                                    Astrea::Typhon::ToplevelAction::Close);
+}
+
+bool DockController::setPinned(const QString &desktopFileName, bool pinned)
+{
+    if (!DockConfigValidation::validDesktopFileName(desktopFileName)) {
+        setLastError(QStringLiteral("Invalid Dock desktop filename"));
+        return false;
+    }
+    if (!m_persistence) {
+        setLastError(QStringLiteral("Dock pin persistence is unavailable"));
+        return false;
+    }
+
+    QStringList pins = m_config.pins;
+    if (pinned) {
+        if (!pins.contains(desktopFileName))
+            pins.append(desktopFileName);
+    } else {
+        pins.removeAll(desktopFileName);
+    }
+    if (pins == m_config.pins)
+        return true;
+
+    QString error;
+    if (!m_persistence->writePins(pins, &error)) {
+        setLastError(error.left(512).isEmpty()
+                         ? QStringLiteral("Could not persist Dock pins") : error.left(512));
+        return false;
+    }
+    m_config.pins = pins;
+    m_model.setPins(m_config.pins);
+    emit configChanged();
+    emit modelChanged();
+    updateVisibility();
+    return true;
+}
+
+bool DockController::movePinned(const QString &desktopFileName, int targetPinIndex)
+{
+    const int sourcePinIndex = m_config.pins.indexOf(desktopFileName);
+    if (sourcePinIndex < 0 || m_config.pins.isEmpty())
+        return false;
+    if (!m_persistence) {
+        setLastError(QStringLiteral("Dock pin persistence is unavailable"));
+        return false;
+    }
+
+    const int boundedTarget = qBound(0, targetPinIndex, m_config.pins.size() - 1);
+    if (sourcePinIndex == boundedTarget)
+        return false;
+
+    QStringList reordered = m_config.pins;
+    const QString moved = reordered.takeAt(sourcePinIndex);
+    reordered.insert(boundedTarget, moved);
+    QString error;
+    if (!m_persistence->writePins(reordered, &error)) {
+        setLastError(error.left(512).isEmpty()
+                         ? QStringLiteral("Could not persist Dock pin order") : error.left(512));
+        return false;
+    }
+
+    m_config.pins = reordered;
+    m_model.setPins(m_config.pins);
+    emit configChanged();
+    emit modelChanged();
+    updateVisibility();
+    return true;
+}
+
+void DockController::launchItem(const DockAppInfo &item, bool activateRunning)
+{
+    if (!m_enabled)
+        return;
+
+    const QString key = item.desktopFileName;
+    if (activateRunning && item.runtimeKnown && item.running) {
         const auto state = m_runtimeStates.constFind(key);
         if (state == m_runtimeStates.constEnd() || state->windowIds.isEmpty()) {
             qInfo("Dock activation suppressed for running application '%s' without a live target",
@@ -194,10 +354,10 @@ void DockController::launch(int row)
         return;
 
     ApplicationLaunchRequest request;
-    request.desktopFileName = item->desktopFileName;
-    request.desktopId = item->desktopId;
+    request.desktopFileName = item.desktopFileName;
+    request.desktopId = item.desktopId;
     if (m_catalog) {
-        const auto record = m_catalog->findByDesktopFileName(item->desktopFileName);
+        const auto record = m_catalog->findByDesktopFileName(item.desktopFileName);
         if (record) {
             request.desktopId = record->id;
             request.exec = record->exec;
@@ -256,6 +416,15 @@ void DockController::onTyphonActionFinished(
     quint64 token, Astrea::Typhon::ToplevelAction action,
     Astrea::Typhon::ToplevelActionResult result)
 {
+    const auto pendingWindow = m_pendingWindowActions.find(token);
+    if (pendingWindow != m_pendingWindowActions.end()) {
+        const PendingWindowAction operation = pendingWindow.value();
+        m_pendingWindowActions.erase(pendingWindow);
+        if (result == Astrea::Typhon::ToplevelActionResult::Unavailable)
+            setLastError(QStringLiteral("The selected window is no longer available"));
+        Q_UNUSED(operation);
+        return;
+    }
     if (action != Astrea::Typhon::ToplevelAction::Activate
         || !m_pendingActivations.contains(token))
         return;
@@ -271,6 +440,11 @@ void DockController::onTyphonActionFailed(
     quint64 token, Astrea::Typhon::ToplevelAction action,
     Astrea::Typhon::ToplevelActionError error)
 {
+    if (m_pendingWindowActions.contains(token)) {
+        m_pendingWindowActions.remove(token);
+        setLastError(QStringLiteral("The selected window action failed"));
+        return;
+    }
     if (action != Astrea::Typhon::ToplevelAction::Activate
         || !m_pendingActivations.contains(token))
         return;

@@ -3,8 +3,13 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
+#include <QSet>
 
 namespace {
+
+constexpr int kMaximumActionCount = 64;
+constexpr int kMaximumActionFieldLength = 4096;
 
 bool parseBoolean(const QString &value)
 {
@@ -120,6 +125,18 @@ void assignStringField(DesktopEntryRecord &record, const QString &key, const QSt
     }
 }
 
+void assignActionField(DesktopEntryAction &action, const QString &key, const QString &value)
+{
+    if (key == QStringLiteral("Name"))
+        action.name = value;
+    else if (key == QStringLiteral("Icon"))
+        action.icon = value;
+    else if (key == QStringLiteral("Exec"))
+        action.exec = value;
+    else if (const QString locale = localeForKey(key, QStringLiteral("Name")); !locale.isNull())
+        action.localizedNames.insert(locale, value);
+}
+
 } // namespace
 
 namespace DesktopEntryParser {
@@ -149,15 +166,30 @@ std::optional<DesktopEntryRecord> parse(const QString &sourceFilePath,
     record.id = record.desktopFileName.left(record.desktopFileName.size() - desktopSuffix.size());
 
     bool inDesktopEntry = false;
+    QString actionGroup;
+    QStringList declaredActions;
+    QHash<QString, DesktopEntryAction> actionGroups;
     bool typeSeen = false;
     const QString text = QString::fromUtf8(file.readAll());
     for (const QString &rawLine : text.split(QLatin1Char('\n'))) {
         const QString line = rawLine.trimmed();
         if (line.startsWith(QLatin1Char('[')) && line.endsWith(QLatin1Char(']'))) {
             inDesktopEntry = line == QStringLiteral("[Desktop Entry]");
+            actionGroup.clear();
+            const QString prefix = QStringLiteral("[Desktop Action ");
+            if (line.startsWith(prefix)) {
+                const QString id = line.mid(prefix.size(), line.size() - prefix.size() - 1).trimmed();
+                if (!id.isEmpty() && id.size() <= kMaximumActionFieldLength) {
+                    actionGroup = id;
+                    DesktopEntryAction action;
+                    action.id = id;
+                    actionGroups.insert(id, action);
+                }
+            }
             continue;
         }
-        if (!inDesktopEntry || line.isEmpty() || line.startsWith(QLatin1Char('#')))
+        if ((!inDesktopEntry && actionGroup.isEmpty()) || line.isEmpty()
+            || line.startsWith(QLatin1Char('#')))
             continue;
 
         const int separator = line.indexOf(QLatin1Char('='));
@@ -166,10 +198,21 @@ std::optional<DesktopEntryRecord> parse(const QString &sourceFilePath,
 
         const QString key = line.left(separator).trimmed();
         const QString rawValue = line.mid(separator + 1).trimmed();
+        if (!actionGroup.isEmpty()) {
+            const QString value = decodeString(rawValue);
+            if (value.size() <= kMaximumActionFieldLength)
+                assignActionField(actionGroups[actionGroup], key, value);
+            continue;
+        }
         if (key == QStringLiteral("Type")) {
             typeSeen = true;
             if (decodeString(rawValue) != QStringLiteral("Application"))
                 return std::nullopt;
+            continue;
+        }
+
+        if (key == QStringLiteral("Actions")) {
+            declaredActions = decodeList(rawValue);
             continue;
         }
 
@@ -210,6 +253,19 @@ std::optional<DesktopEntryRecord> parse(const QString &sourceFilePath,
 
     if (!typeSeen || record.name.isEmpty())
         return std::nullopt;
+
+    QSet<QString> seenActions;
+    for (const QString &actionId : declaredActions) {
+        if (seenActions.contains(actionId))
+            continue;
+        seenActions.insert(actionId);
+        const auto it = actionGroups.constFind(actionId);
+        if (it == actionGroups.constEnd() || it->name.isEmpty() || it->exec.isEmpty())
+            continue;
+        record.actions.append(*it);
+        if (record.actions.size() >= kMaximumActionCount)
+            break;
+    }
     return record;
 }
 

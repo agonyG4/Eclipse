@@ -1,7 +1,9 @@
 #pragma once
 
 #include "core/DockAppModel.hpp"
+#include "core/DockMetrics.hpp"
 #include "services/DockConfigWatcher.hpp"
+#include "services/DockConfigPersistence.hpp"
 #include "apps/DesktopEntryCatalog.hpp"
 #include "launch/ApplicationLauncher.hpp"
 
@@ -26,11 +28,16 @@ class DockController final : public QObject {
     Q_PROPERTY(int bottomMargin READ bottomMargin NOTIFY configChanged)
     Q_PROPERTY(int panelPadding READ panelPadding NOTIFY configChanged)
     Q_PROPERTY(int itemSpacing READ itemSpacing NOTIFY configChanged)
+    Q_PROPERTY(bool magnificationEnabled READ magnificationEnabled NOTIFY configChanged)
+    Q_PROPERTY(double magnificationScale READ magnificationScale NOTIFY configChanged)
+    Q_PROPERTY(double magnificationRadius READ magnificationRadius NOTIFY configChanged)
+    Q_PROPERTY(int restingHeight READ restingHeight NOTIFY configChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
 
 public:
     explicit DockController(ApplicationLauncher *launcher = nullptr,
                             DesktopEntryCatalog *catalog = nullptr,
+                            DockConfigPersistence *persistence = nullptr,
                             QObject *parent = nullptr);
 
     DockAppModel *appModel() { return &m_model; }
@@ -46,6 +53,10 @@ public:
     int bottomMargin() const { return m_config.bottomMargin; }
     int panelPadding() const { return m_config.panelPadding; }
     int itemSpacing() const { return m_config.itemSpacing; }
+    bool magnificationEnabled() const { return m_config.magnificationEnabled; }
+    double magnificationScale() const { return m_config.magnificationScale; }
+    double magnificationRadius() const { return m_config.magnificationRadius; }
+    int restingHeight() const { return DockMetrics::restingHeight(m_config.iconSize); }
     QString lastError() const { return m_lastError; }
 
     void applyConfig(const DockConfig &config);
@@ -56,6 +67,14 @@ public:
     void clearTyphonRuntime();
 
     Q_INVOKABLE void launch(int row);
+    Q_INVOKABLE void launchByDesktopFileName(const QString &desktopFileName);
+    Q_INVOKABLE bool launchNewWindow(const QString &desktopFileName);
+    QVector<Astrea::Typhon::Toplevel> windowsForDesktopFileName(
+        const QString &desktopFileName) const;
+    Q_INVOKABLE bool activateWindow(const QString &desktopFileName, const QString &windowId);
+    Q_INVOKABLE bool closeWindow(const QString &desktopFileName, const QString &windowId);
+    Q_INVOKABLE bool setPinned(const QString &desktopFileName, bool pinned);
+    Q_INVOKABLE bool movePinned(const QString &desktopFileName, int targetPinIndex);
     Q_INVOKABLE void show();
     Q_INVOKABLE void hide();
 
@@ -82,10 +101,14 @@ private:
     void updateVisibility();
     void projectRuntime();
     void reconcileTyphonActionFailure(Astrea::Typhon::ToplevelActionError error);
+    void launchItem(const DockAppInfo &item, bool activateRunning = true);
+    bool requestExactWindowAction(const QString &desktopFileName, const QString &windowId,
+                                  Astrea::Typhon::ToplevelAction action);
 
     DockAppModel m_model;
     DockConfig m_config;
     ApplicationLauncher *m_launcher = nullptr;
+    DockConfigPersistence *m_persistence = nullptr;
     DesktopEntryCatalog *m_catalog = nullptr;
     std::shared_ptr<const DesktopEntrySnapshot> m_catalogSnapshot;
     QHash<QString, QString> m_pendingLaunches;
@@ -96,6 +119,12 @@ private:
     std::optional<Astrea::Typhon::Snapshot> m_runtimeSnapshot;
     QHash<QString, Astrea::Typhon::DockApplicationRuntimeState> m_runtimeStates;
     QHash<quint64, QString> m_pendingActivations;
+    struct PendingWindowAction {
+        QString desktopFileName;
+        QString windowId;
+        Astrea::Typhon::ToplevelAction action = Astrea::Typhon::ToplevelAction::Activate;
+    };
+    QHash<quint64, PendingWindowAction> m_pendingWindowActions;
     quint64 m_nextActivationToken = 0;
     TyphonToplevelConnection *m_typhonConnection = nullptr;
     QVector<QMetaObject::Connection> m_typhonConnections;

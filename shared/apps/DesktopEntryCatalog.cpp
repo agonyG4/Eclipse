@@ -164,6 +164,22 @@ QJsonArray DesktopEntryCatalog::snapshotJson() const
         }
         return object;
     };
+    const auto actionsToJson = [](const QVector<DesktopEntryAction> &actions) {
+        QJsonArray array;
+        for (const DesktopEntryAction &action : actions) {
+            QJsonObject localized;
+            for (auto it = action.localizedNames.constBegin(); it != action.localizedNames.constEnd(); ++it)
+                localized.insert(it.key(), it.value());
+            array.append(QJsonObject{
+                {QStringLiteral("id"), action.id},
+                {QStringLiteral("name"), action.name},
+                {QStringLiteral("localized_names"), localized},
+                {QStringLiteral("icon"), action.icon},
+                {QStringLiteral("exec"), action.exec}
+            });
+        }
+        return array;
+    };
 
     for (const DesktopEntryRecord &entry : current->entries) {
         result.append(QJsonObject{
@@ -187,7 +203,8 @@ QJsonArray DesktopEntryCatalog::snapshotJson() const
             {QStringLiteral("hidden"), entry.hidden},
             {QStringLiteral("no_display"), entry.noDisplay},
             {QStringLiteral("only_show_in"), listToJson(entry.onlyShowIn)},
-            {QStringLiteral("not_show_in"), listToJson(entry.notShowIn)}
+            {QStringLiteral("not_show_in"), listToJson(entry.notShowIn)},
+            {QStringLiteral("actions"), actionsToJson(entry.actions)}
         });
     }
     return result;

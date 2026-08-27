@@ -17,6 +17,7 @@ private slots:
     void deletedApplicationsDirectoryRecreatesWatches();
     void higherPriorityEntryOverridesLowerPriorityEntry();
     void parsesDesktopEntrySemantics();
+    void parsesDeclaredDesktopActionsInOrder();
     void rejectsNonApplicationAndIncompleteEntries();
     void computesNestedDesktopFileIds();
     void discoversEntriesAtMaximumDepth();
@@ -195,6 +196,46 @@ void DesktopEntryCatalogTest::parsesDesktopEntrySemantics()
     QVERIFY(record->noDisplay);
     QCOMPARE(record->onlyShowIn, QStringList({QStringLiteral("Astrea"), QStringLiteral("Hyprland")}));
     QCOMPARE(record->notShowIn, QStringList({QStringLiteral("GNOME")}));
+}
+
+void DesktopEntryCatalogTest::parsesDeclaredDesktopActionsInOrder()
+{
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+    const QString applications = home.path() + QStringLiteral("/.local/share/applications");
+    QVERIFY(QDir().mkpath(applications));
+    writeDesktopText(applications + QStringLiteral("/actions.desktop"),
+                     "[Desktop Entry]\n"
+                     "Type=Application\n"
+                     "Name=Actions\n"
+                     "Icon=actions\n"
+                     "Exec=actions\n"
+                     "Actions=First;Missing;Second;First;\n"
+                     "[Desktop Action First]\n"
+                     "Name=First Action\n"
+                     "Name[pt_BR]=Primeira Ação\n"
+                     "Icon=first\n"
+                     "Exec=actions --first %U\n"
+                     "[Desktop Action Unlisted]\n"
+                     "Name=Unlisted\n"
+                     "Exec=actions --unlisted\n"
+                     "[Desktop Action Missing]\n"
+                     "Name=Missing Exec\n"
+                     "[Desktop Action Second]\n"
+                     "Name=Second Action\n"
+                     "Exec=actions --second\n");
+
+    DesktopEntryCatalog catalog;
+    catalog.initialize(home.path());
+    const auto record = catalog.findByDesktopId(QStringLiteral("actions"));
+    QVERIFY(record.has_value());
+    QCOMPARE(record->actions.size(), 2);
+    QCOMPARE(record->actions.at(0).id, QStringLiteral("First"));
+    QCOMPARE(record->actions.at(0).name, QStringLiteral("First Action"));
+    QCOMPARE(record->actions.at(0).localizedNames.value(QStringLiteral("pt_BR")),
+             QStringLiteral("Primeira Ação"));
+    QCOMPARE(record->actions.at(1).id, QStringLiteral("Second"));
+    QCOMPARE(record->actions.at(1).exec, QStringLiteral("actions --second"));
 }
 
 void DesktopEntryCatalogTest::rejectsNonApplicationAndIncompleteEntries()

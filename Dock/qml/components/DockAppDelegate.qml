@@ -23,9 +23,8 @@ Item {
     required property int slotHeight
     property var dockPanel
     property var contextMenuController: null
+    property var dockSurfaceGeometry: null
     property string outputKey: ""
-    property int outputOriginX: 0
-    property int outputOriginY: 0
     property bool pointerTarget: false
     property real magnificationScale: 1.0
     property real visualOffsetX: 0
@@ -92,13 +91,17 @@ Item {
         acceptedButtons: Qt.RightButton
         gesturePolicy: TapHandler.ReleaseWithinBounds
         onTapped: {
-            if (!root.contextMenuController)
+            if (!root.contextMenuController || !root.dockSurfaceGeometry || !root.dockPanel)
                 return
-            const topLeft = root.mapToItem(null, 0, 0)
+            const topLeft = root.mapToItem(root.dockPanel, 0, 0)
+            const outputRect = root.dockSurfaceGeometry.outputLocalDelegateRect(
+                root.dockPanel.outputWidth, root.dockPanel.outputHeight,
+                Math.round(root.dockPanel.width), Math.round(root.dockPanel.height),
+                DockController.bottomMargin,
+                Qt.rect(topLeft.x, topLeft.y, root.width, root.height))
             root.contextMenuController.presentDock(root.desktopFileName,
-                Math.round(topLeft.x - root.outputOriginX),
-                Math.round(topLeft.y - root.outputOriginY),
-                Math.round(root.width), Math.round(root.height), root.outputKey)
+                outputRect.x, outputRect.y, outputRect.width, outputRect.height,
+                root.outputKey)
         }
     }
 

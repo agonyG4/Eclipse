@@ -22,6 +22,7 @@ class DesktopEntryCatalog;
 class DockConfigWatcher;
 class DockConfigPersistence;
 class DockController;
+class DockSurfaceGeometry;
 class GameModeMonitor;
 class SpotlightConfigWatcher;
 class SpotlightController;
@@ -72,6 +73,7 @@ public:
     TyphonWorkspaceController *workspaceController() const { return m_workspaceController.get(); }
     CompositorBackend *windowBackend() const { return m_windowBackend.get(); }
     DockController *dockController() const { return m_dockController.get(); }
+    DockSurfaceGeometry *dockSurfaceGeometry() const { return m_dockSurfaceGeometry.get(); }
     AltTabController *altTabController() const { return m_altTabController.get(); }
     SpotlightController *spotlightController() const { return m_spotlightController.get(); }
     BarController *barController() const { return m_barController.get(); }
@@ -119,6 +121,7 @@ private:
     std::unique_ptr<TyphonWorkspaceController> m_workspaceController;
     std::unique_ptr<CompositorBackend> m_windowBackend;
     std::unique_ptr<DockController> m_dockController;
+    std::unique_ptr<DockSurfaceGeometry> m_dockSurfaceGeometry;
     std::unique_ptr<AltTabController> m_altTabController;
     std::unique_ptr<SpotlightController> m_spotlightController;
     std::unique_ptr<BarController> m_barController;

@@ -112,8 +112,12 @@ QPoint ContextMenuController::submenuPosition(int outputWidth, int outputHeight,
 
 void ContextMenuController::invalidateOutput(const QString &outputKey)
 {
-    if (hasActivePresentation() && m_target.outputKey == outputKey)
-        invalidateTarget();
+    if (!hasActivePresentation() || m_target.outputKey != outputKey)
+        return;
+    invalidateTarget();
+    // An output being destroyed cannot host the exit animation. Settle the
+    // lifecycle before its surface bundle is deleted.
+    completeClose();
 }
 
 bool ContextMenuController::activate(quint64 generation, const QString &token)

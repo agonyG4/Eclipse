@@ -2,6 +2,7 @@
 #include "core/ContextMenuModel.hpp"
 #include "core/ContextMenuPlacement.hpp"
 #include "core/ContextMenuSurfacePolicy.hpp"
+#include "core/ContextMenuSurfaceMapping.hpp"
 #include "statusnotifier/DBusMenuModel.hpp"
 
 #include <QSignalSpy>
@@ -21,6 +22,8 @@ private slots:
     void controllerRejectsStaleAndInvalidActions();
     void controllerDispatchesDynamicTrayAction();
     void controllerClosesWhenTargetValidatorRejects();
+    void controllerSettlesWhenOutputIsRemoved();
+    void overlayMappingIsOutputScoped();
     void controllerShutdownCleansUpActivePresentation();
     void modelNormalizesSeparatorsAndExposesRoles();
     void modelRejectsDepthAndNodeBounds();
@@ -142,6 +145,74 @@ void ContextMenuTest::controllerClosesWhenTargetValidatorRejects()
     targetLive = false;
     QVERIFY(!controller.activate(controller.presentationGeneration(), QStringLiteral("action")));
     QCOMPARE(controller.lifecycle(), ContextMenuController::Lifecycle::Closing);
+}
+
+void ContextMenuTest::controllerSettlesWhenOutputIsRemoved()
+{
+    ContextMenuController controller;
+    QVERIFY(controller.present(
+        ContextMenuTarget{ContextMenuTarget::Kind::Desktop, QStringLiteral("desktop"),
+                          QStringLiteral("output-A")},
+        {ContextMenuModel::NodeSpec{.token = QStringLiteral("settings"),
+                                    .label = QStringLiteral("Settings")}},
+        [](const QString &) { return true; }));
+
+    controller.invalidateOutput(QStringLiteral("output-A"));
+    QCOMPARE(controller.lifecycle(), ContextMenuController::Lifecycle::Closed);
+    QVERIFY(controller.targetIdentity().isEmpty());
+    QVERIFY(controller.model()->rowCount() == 0);
+}
+
+void ContextMenuTest::overlayMappingIsOutputScoped()
+{
+    struct FakeBundle {
+        QString outputKey;
+        bool mapped = true;
+        bool overlayMapped = false;
+
+        void sync(const ContextMenuController &controller)
+        {
+            overlayMapped = Astrea::Shell::ContextMenuSurfaceMapping::overlayShouldMap(
+                outputKey, mapped, controller.hasActivePresentation(), controller.outputKey());
+        }
+    } outputA{QStringLiteral("output-A")}, outputB{QStringLiteral("output-B")};
+
+    ContextMenuController controller;
+    const auto nodes = QVector<ContextMenuModel::NodeSpec>{
+        {.token = QStringLiteral("action"), .label = QStringLiteral("Action")}};
+    QVERIFY(controller.present(
+        ContextMenuTarget{ContextMenuTarget::Kind::Desktop, QStringLiteral("desktop"),
+                          QStringLiteral("output-A")}, nodes,
+        [](const QString &) { return true; }));
+    outputA.sync(controller);
+    outputB.sync(controller);
+    QVERIFY(outputA.overlayMapped);
+    QVERIFY(!outputB.overlayMapped);
+
+    QVERIFY(controller.present(
+        ContextMenuTarget{ContextMenuTarget::Kind::Desktop, QStringLiteral("desktop"),
+                          QStringLiteral("output-B")}, nodes,
+        [](const QString &) { return true; }));
+    outputA.sync(controller);
+    outputB.sync(controller);
+    QVERIFY(!outputA.overlayMapped);
+    QVERIFY(outputB.overlayMapped);
+
+    controller.close();
+    controller.completeClose();
+    outputA.sync(controller);
+    outputB.sync(controller);
+    QVERIFY(!outputA.overlayMapped);
+    QVERIFY(!outputB.overlayMapped);
+
+    QVERIFY(controller.present(
+        ContextMenuTarget{ContextMenuTarget::Kind::Desktop, QStringLiteral("desktop"),
+                          QStringLiteral("output-A")}, nodes,
+        [](const QString &) { return true; }));
+    controller.invalidateOutput(QStringLiteral("output-B"));
+    QCOMPARE(controller.lifecycle(), ContextMenuController::Lifecycle::Open);
+    controller.invalidateOutput(QStringLiteral("output-A"));
+    QCOMPARE(controller.lifecycle(), ContextMenuController::Lifecycle::Closed);
 }
 
 void ContextMenuTest::controllerShutdownCleansUpActivePresentation()

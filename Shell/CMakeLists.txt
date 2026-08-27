@@ -45,6 +45,8 @@ add_library(astrea-shell-runtime STATIC
     core/ContextMenuPlacement.hpp
     core/ContextMenuProviders.cpp
     core/ContextMenuProviders.hpp
+    core/ContextMenuSurfaceMapping.cpp
+    core/ContextMenuSurfaceMapping.hpp
     core/ContextMenuSurfacePolicy.cpp
     core/ContextMenuSurfacePolicy.hpp
     runtime/ShellRuntime.cpp

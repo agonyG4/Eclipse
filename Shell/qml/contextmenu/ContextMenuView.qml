@@ -14,7 +14,7 @@ Item {
     property int activeIndex: -1
     property int submenuIndex: -1
     property int rowHeight: 36
-    property real activeRowY: list.currentItem ? list.currentItem.y : 0
+    property rect activeRowRectangle: Qt.rect(root.x, root.y, root.width, root.rowHeight)
     property var submenuModel: submenuIndex >= 0 && menuModel
         ? menuModel.childModelAt(submenuIndex) : null
     implicitWidth: card.implicitWidth
@@ -31,8 +31,22 @@ Item {
     function selectRow(row) {
         activeIndex = row
         list.currentIndex = row
-        if (row >= 0)
+        if (row >= 0) {
             list.positionViewAtIndex(row, ListView.Contain)
+            updateActiveRowRectangle()
+            Qt.callLater(updateActiveRowRectangle)
+        }
+    }
+
+    function updateActiveRowRectangle() {
+        if (!list.currentItem) {
+            activeRowRectangle = Qt.rect(root.x, root.y, root.width, root.rowHeight)
+            return
+        }
+        const listOrigin = list.mapToItem(root.parent, 0, 0)
+        const point = list.currentItem.mapToItem(list, 0, 0)
+        activeRowRectangle = Qt.rect(listOrigin.x + point.x, listOrigin.y + point.y,
+                                     list.currentItem.width, list.currentItem.height)
     }
 
     function moveSelection(delta) {
@@ -69,8 +83,16 @@ Item {
         submenuIndex = -1
     }
 
+    function restoreFocus() {
+        forceActiveFocus()
+        if (activeIndex >= 0)
+            selectRow(activeIndex)
+    }
+
     Component.onCompleted: initializeSelection()
     onMenuModelChanged: initializeSelection()
+
+    focus: visible
 
     Keys.onPressed: function(event) {
         if (event.key === Qt.Key_Up) {
@@ -98,8 +120,15 @@ Item {
                 openSubmenu(activeIndex)
             event.accepted = true
         } else if (event.key === Qt.Key_Left) {
-            if (!rootView)
-                parentMenuView ? parentMenuView.closeSubmenu() : closeSubmenu()
+            if (!rootView) {
+                if (parentMenuView) {
+                    const parent = parentMenuView
+                    parent.closeSubmenu()
+                    parent.restoreFocus()
+                } else {
+                    closeSubmenu()
+                }
+            }
             event.accepted = true
         } else if (event.key === Qt.Key_Escape && contextMenuController) {
             contextMenuController.close()
@@ -124,6 +153,7 @@ Item {
             clip: true
             delegate: Item {
                 id: row
+                required property int index
                 required property int nodeKind
                 required property string token
                 required property string label
@@ -157,14 +187,14 @@ Item {
                         ? row.icon : "image://astrea-icon/" + row.icon
                     shortcut: row.shortcut
                     nodeEnabled: row.nodeEnabled
-                    selected: root.activeIndex === index || menuItem.mouseHovered
+                    selected: root.activeIndex === row.index || menuItem.mouseHovered
                     hasChildren: row.hasChildren
                     checkType: row.checkType
                     checkState: row.checkState
                     destructive: row.destructive
-                    onHovered: root.selectRow(index)
+                    onHovered: root.selectRow(row.index)
                     onTriggered: {
-                        root.selectRow(index)
+                        root.selectRow(row.index)
                         root.activateSelection()
                     }
 
@@ -186,14 +216,12 @@ Item {
         x: root.contextMenuController && root.submenuModel
            ? root.contextMenuController.submenuPosition(root.outputWidth, root.outputHeight,
                                                         width, height,
-                                                        Qt.rect(root.x, root.y + root.activeRowY,
-                                                                root.width, root.rowHeight),
+                                                        root.activeRowRectangle,
                                                         LayoutMirroring.enabled).x : 0
         y: root.contextMenuController && root.submenuModel
            ? root.contextMenuController.submenuPosition(root.outputWidth, root.outputHeight,
                                                         width, height,
-                                                        Qt.rect(root.x, root.y + root.activeRowY,
-                                                                root.width, root.rowHeight),
+                                                        root.activeRowRectangle,
                                                         LayoutMirroring.enabled).y : 0
         onLoaded: {
             item.menuModel = childMenuModel

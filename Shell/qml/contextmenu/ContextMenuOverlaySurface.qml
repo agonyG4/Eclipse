@@ -44,6 +44,7 @@ Window {
 
     ContextMenuView {
         id: menuView
+        objectName: "contextMenuView"
         parent: root.contentItem
         z: 1
         visible: !root.contextMenuController
@@ -124,10 +125,4 @@ Window {
         }
     }
 
-    Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Escape && root.contextMenuController) {
-            root.contextMenuController.close()
-            event.accepted = true
-        }
-    }
 }

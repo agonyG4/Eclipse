@@ -3,6 +3,7 @@
 #include <QSignalSpy>
 #include <QTest>
 #include <QTemporaryDir>
+#include <QPersistentModelIndex>
 
 #include "core/DockController.hpp"
 #include "services/DockConfigPersistence.hpp"
@@ -46,6 +47,7 @@ private slots:
     void pinMutationRequiresSuccessfulPersistence();
     void pinCountersExcludeRuntimeOnlyRows();
     void movingFirstPinToEndPersistsAndPreservesState();
+    void movingRuntimePinnedItemsPreservesTyphonState();
     void movingLastPinToBeginningPersists();
     void movingToSameIndexIsNoOp();
     void invalidOrRuntimeOnlySourceIsRejected();
@@ -408,12 +410,14 @@ void DockControllerTest::pinCountersExcludeRuntimeOnlyRows()
 
 void DockControllerTest::movingFirstPinToEndPersistsAndPreservesState()
 {
+    FakeLauncher launcher;
     CountingPersistence persistence;
-    DockController controller(nullptr, nullptr, &persistence);
+    DockController controller(&launcher, nullptr, &persistence);
     controller.applyConfig(configWithPins({QStringLiteral("one.desktop"),
                                            QStringLiteral("two.desktop"),
                                            QStringLiteral("three.desktop")}));
     QVERIFY(controller.appModel()->setLaunching(QStringLiteral("one.desktop"), true));
+    const QPersistentModelIndex movedIndex = controller.appModel()->index(0, 0);
 
     QVERIFY(controller.movePinned(QStringLiteral("one.desktop"), 2));
 
@@ -424,6 +428,50 @@ void DockControllerTest::movingFirstPinToEndPersistsAndPreservesState()
     QCOMPARE(controller.appModel()->desktopFileNameAt(0), QStringLiteral("two.desktop"));
     QCOMPARE(controller.appModel()->desktopFileNameAt(2), QStringLiteral("one.desktop"));
     QVERIFY(controller.appModel()->index(2, 0).data(DockAppModel::LaunchingRole).toBool());
+    QVERIFY(movedIndex.isValid());
+    QCOMPARE(movedIndex.row(), 2);
+    QCOMPARE(movedIndex.data(DockAppModel::DesktopFileNameRole).toString(),
+             QStringLiteral("one.desktop"));
+
+    controller.launchByDesktopFileName(QStringLiteral("one.desktop"));
+    QCOMPARE(launcher.requests.size(), 1);
+    QCOMPARE(launcher.requests.first().desktopFileName, QStringLiteral("one.desktop"));
+}
+
+void DockControllerTest::movingRuntimePinnedItemsPreservesTyphonState()
+{
+    CountingPersistence persistence;
+    DockController controller(nullptr, nullptr, &persistence);
+    controller.setCatalogSnapshot(makeCatalog());
+    controller.applyConfig(configWithPins({QStringLiteral("one.desktop"),
+                                           QStringLiteral("two.desktop")}));
+
+    Astrea::Typhon::Snapshot snapshot;
+    snapshot.connectionGeneration = 3;
+    snapshot.revision = 2;
+    Astrea::Typhon::Toplevel running;
+    running.id = QStringLiteral("running-window");
+    running.appId = QStringLiteral("one");
+    running.states = Astrea::Typhon::ToplevelStates{Astrea::Typhon::ToplevelStateFlag::Active};
+    Astrea::Typhon::Toplevel minimized;
+    minimized.id = QStringLiteral("minimized-window");
+    minimized.appId = QStringLiteral("two");
+    minimized.states = Astrea::Typhon::ToplevelStates{
+        Astrea::Typhon::ToplevelStateFlag::Minimized};
+    snapshot.windows = {running, minimized};
+    controller.applyTyphonSnapshot(snapshot);
+
+    QVERIFY(controller.movePinned(QStringLiteral("one.desktop"), 1));
+    QCOMPARE(controller.appModel()->desktopFileNameAt(0), QStringLiteral("two.desktop"));
+    QCOMPARE(controller.appModel()->desktopFileNameAt(1), QStringLiteral("one.desktop"));
+    const QModelIndex minimizedIndex = controller.appModel()->index(0, 0);
+    const QModelIndex runningIndex = controller.appModel()->index(1, 0);
+    QVERIFY(minimizedIndex.data(DockAppModel::RunningRole).toBool());
+    QVERIFY(!minimizedIndex.data(DockAppModel::ActiveRole).toBool());
+    QCOMPARE(minimizedIndex.data(DockAppModel::WindowCountRole).toInt(), 1);
+    QVERIFY(runningIndex.data(DockAppModel::RunningRole).toBool());
+    QVERIFY(runningIndex.data(DockAppModel::ActiveRole).toBool());
+    QCOMPARE(runningIndex.data(DockAppModel::WindowCountRole).toInt(), 1);
 }
 
 void DockControllerTest::movingLastPinToBeginningPersists()

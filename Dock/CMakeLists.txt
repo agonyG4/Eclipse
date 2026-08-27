@@ -46,11 +46,25 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     add_executable(dock-config-watcher-test
         tests/DockConfigWatcherTest.cpp
         services/DockConfigWatcher.cpp
+        services/DockConfigValidation.cpp
     )
     target_include_directories(dock-config-watcher-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
     target_link_libraries(dock-config-watcher-test PRIVATE astrea-shared-core Qt6::Core Qt6::Gui Qt6::Test)
     dock_enable_sanitizers(dock-config-watcher-test)
     add_test(NAME dock-config-watcher-test COMMAND dock-config-watcher-test)
+
+    add_executable(dock-config-persistence-test
+        tests/DockConfigPersistenceTest.cpp
+        services/DockConfigPersistence.cpp
+        services/DockConfigValidation.cpp
+        services/DockConfigWatcher.cpp
+    )
+    target_include_directories(dock-config-persistence-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
+    target_link_libraries(dock-config-persistence-test PRIVATE
+        astrea-shared-core Qt6::Core Qt6::Gui Qt6::Test)
+    dock_enable_sanitizers(dock-config-persistence-test)
+    add_test(NAME dock-config-persistence-test COMMAND dock-config-persistence-test)
 
     add_executable(dock-runtime-paths-test
         tests/DockRuntimePathsTest.cpp
@@ -65,6 +79,8 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
         tests/DockControllerTest.cpp
         core/DockController.cpp
         core/DockAppModel.cpp
+        services/DockConfigPersistence.cpp
+        services/DockConfigValidation.cpp
         services/DockConfigWatcher.cpp
     )
     target_include_directories(dock-controller-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
@@ -77,6 +93,8 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
         tests/DockTyphonRuntimeIntegrationTest.cpp
         core/DockController.cpp
         core/DockAppModel.cpp
+        services/DockConfigPersistence.cpp
+        services/DockConfigValidation.cpp
         services/DockConfigWatcher.cpp
     )
     target_include_directories(dock-typhon-runtime-integration-test PRIVATE
@@ -105,10 +123,22 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     dock_enable_sanitizers(dock-command-line-test)
     add_test(NAME dock-command-line-test COMMAND dock-command-line-test)
 
+    add_executable(dock-layer-shell-surface-test
+        tests/DockLayerShellSurfaceTest.cpp
+        platform/wayland/DockLayerShellSurface.cpp
+    )
+    target_include_directories(dock-layer-shell-surface-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
+    target_link_libraries(dock-layer-shell-surface-test PRIVATE
+        astrea-shared-layer-shell Qt6::Core Qt6::Gui Qt6::Quick Qt6::Test)
+    dock_enable_sanitizers(dock-layer-shell-surface-test)
+    add_test(NAME dock-layer-shell-surface-test COMMAND dock-layer-shell-surface-test)
+
     if(ASTREA_ENABLE_ASAN)
         set_tests_properties(
             dock-app-model-test dock-config-watcher-test dock-runtime-paths-test
-            dock-controller-test dock-typhon-runtime-integration-test
+            dock-config-persistence-test dock-controller-test dock-typhon-runtime-integration-test
+            dock-layer-shell-surface-test
             dock-ipc-test dock-command-line-test
             PROPERTIES ENVIRONMENT
                 "LSAN_OPTIONS=suppressions=${CMAKE_SOURCE_DIR}/AltTab/lsan.supp:print_suppressions=0;ASAN_OPTIONS=detect_leaks=1:halt_on_error=1;UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1"

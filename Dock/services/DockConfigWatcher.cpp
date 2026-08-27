@@ -1,19 +1,14 @@
 #include "services/DockConfigWatcher.hpp"
 
+#include "services/DockConfigValidation.hpp"
+
 #include <QDir>
-#include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonValue>
 #include <QDebug>
 #include <QtMath>
-
-namespace {
-constexpr qint64 kMaximumConfigBytes = 1024LL * 1024LL;
-constexpr int kMaximumPins = 256;
-constexpr int kMaximumPinLength = 255;
-}
 
 DockConfig DockConfig::defaults()
 {
@@ -75,19 +70,8 @@ void DockConfigWatcher::refresh()
 
 DockConfigWatcher::JsonResult DockConfigWatcher::loadJsonFile(const QString &path) const
 {
-    QFile file(path);
-    if (!file.exists())
-        return {};
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-        return {{}, QStringLiteral("Cannot read %1").arg(path)};
-    if (file.size() > kMaximumConfigBytes)
-        return {{}, QStringLiteral("Configuration file is too large: %1").arg(path)};
-
-    QJsonParseError parseError;
-    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
-    if (!document.isObject())
-        return {{}, QStringLiteral("Invalid JSON in %1: %2").arg(path, parseError.errorString())};
-    return {document.object(), {}};
+    const DockConfigValidation::JsonResult result = DockConfigValidation::readJsonObject(path);
+    return {result.object, result.error};
 }
 
 DockConfig DockConfigWatcher::parseConfig(const QJsonObject &object, QStringList *errors) const
@@ -97,6 +81,12 @@ DockConfig DockConfigWatcher::parseConfig(const QJsonObject &object, QStringList
     result.bottomMargin = integerField(object, QStringLiteral("bottomMargin"), result.bottomMargin, 0, 48, errors);
     result.panelPadding = integerField(object, QStringLiteral("panelPadding"), result.panelPadding, 8, 32, errors);
     result.itemSpacing = integerField(object, QStringLiteral("itemSpacing"), result.itemSpacing, 4, 24, errors);
+    result.magnificationEnabled = booleanField(object, QStringLiteral("magnificationEnabled"),
+                                               result.magnificationEnabled, errors);
+    result.magnificationScale = doubleField(object, QStringLiteral("magnificationScale"),
+                                             result.magnificationScale, 1.0, 2.0, errors);
+    result.magnificationRadius = doubleField(object, QStringLiteral("magnificationRadius"),
+                                              result.magnificationRadius, 1.0, 4.0, errors);
 
     if (!object.contains(QStringLiteral("pins")))
         return result;
@@ -107,7 +97,7 @@ DockConfig DockConfigWatcher::parseConfig(const QJsonObject &object, QStringList
     }
 
     const QJsonArray pins = pinsValue.toArray();
-    if (pins.size() > kMaximumPins) {
+    if (pins.size() > DockConfigValidation::kMaximumPins) {
         errors->append(QStringLiteral("pins contains too many entries"));
         return result;
     }
@@ -117,7 +107,7 @@ DockConfig DockConfigWatcher::parseConfig(const QJsonObject &object, QStringList
             continue;
         }
         const QString pin = value.toString();
-        if (!validDesktopFileName(pin)) {
+        if (!DockConfigValidation::validDesktopFileName(pin)) {
             errors->append(QStringLiteral("invalid desktop filename in pins: %1").arg(pin));
             continue;
         }
@@ -141,16 +131,6 @@ void DockConfigWatcher::addPathWithParents(const QString &path)
         m_watcher.addPath(directory.absolutePath());
 }
 
-bool DockConfigWatcher::validDesktopFileName(const QString &fileName)
-{
-    return !fileName.isEmpty() && fileName.size() <= kMaximumPinLength
-        && fileName.endsWith(QStringLiteral(".desktop"), Qt::CaseInsensitive)
-        && !fileName.contains(QLatin1Char('/'))
-        && !fileName.contains(QLatin1Char('\\'))
-        && !fileName.contains(QChar::Null)
-        && !fileName.contains(QStringLiteral(".."));
-}
-
 int DockConfigWatcher::integerField(const QJsonObject &object, const QString &key, int fallback,
                                     int minimum, int maximum, QStringList *errors)
 {
@@ -170,4 +150,35 @@ int DockConfigWatcher::integerField(const QJsonObject &object, const QString &ke
     const double bounded = qBound(static_cast<double>(minimum), number,
                                   static_cast<double>(maximum));
     return qRound(bounded);
+}
+
+bool DockConfigWatcher::booleanField(const QJsonObject &object, const QString &key, bool fallback,
+                                     QStringList *errors)
+{
+    if (!object.contains(key))
+        return fallback;
+    const QJsonValue value = object.value(key);
+    if (!value.isBool()) {
+        errors->append(QStringLiteral("%1 must be boolean").arg(key));
+        return fallback;
+    }
+    return value.toBool();
+}
+
+double DockConfigWatcher::doubleField(const QJsonObject &object, const QString &key, double fallback,
+                                      double minimum, double maximum, QStringList *errors)
+{
+    if (!object.contains(key))
+        return fallback;
+    const QJsonValue value = object.value(key);
+    if (!value.isDouble()) {
+        errors->append(QStringLiteral("%1 must be numeric").arg(key));
+        return fallback;
+    }
+    const double number = value.toDouble();
+    if (!qIsFinite(number)) {
+        errors->append(QStringLiteral("%1 must be finite").arg(key));
+        return fallback;
+    }
+    return qBound(minimum, number, maximum);
 }

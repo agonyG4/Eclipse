@@ -290,14 +290,18 @@ bool DockController::movePinned(const QString &desktopFileName, int targetPinInd
     const int sourcePinIndex = m_config.pins.indexOf(desktopFileName);
     if (sourcePinIndex < 0 || m_config.pins.isEmpty())
         return false;
-    if (!m_persistence) {
-        setLastError(QStringLiteral("Dock pin persistence is unavailable"));
+    const DockAppInfo *sourceItem =
+        m_model.itemAt(m_model.rowForDesktopFileName(desktopFileName));
+    if (!sourceItem || !sourceItem->pinned)
         return false;
-    }
 
     const int boundedTarget = qBound(0, targetPinIndex, m_config.pins.size() - 1);
     if (sourcePinIndex == boundedTarget)
         return false;
+    if (!m_persistence) {
+        setLastError(QStringLiteral("Dock pin persistence is unavailable"));
+        return false;
+    }
 
     QStringList reordered = m_config.pins;
     const QString moved = reordered.takeAt(sourcePinIndex);

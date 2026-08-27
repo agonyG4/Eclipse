@@ -9,20 +9,21 @@
 #endif
 
 bool DockLayerShellSurface::configure(QQuickWindow *window, const DockConfig &config,
-                                      int surfaceHeight, QScreen *screen, QString *errorOut)
+                                      int exclusiveZoneHeight, QScreen *screen,
+                                      QString *errorOut)
 {
     AstreaLayerShellConfig layerConfig;
     layerConfig.scope = QStringLiteral("astrea-dock");
     layerConfig.layer = AstreaLayerShellConfig::Layer::Top;
     layerConfig.keyboardInteractivity = AstreaLayerShellConfig::KeyboardInteractivity::None;
     layerConfig.anchorBottom = true;
-    layerConfig.exclusiveZone = qMax(0, surfaceHeight);
+    layerConfig.exclusiveZone = qMax(0, exclusiveZoneHeight);
     layerConfig.margins.setBottom(config.bottomMargin);
     layerConfig.screen = screen;
     return AstreaLayerShellHelper::configure(window, layerConfig, errorOut);
 }
 
-bool DockLayerShellSurface::updateExclusiveZone(QQuickWindow *window, int surfaceHeight,
+bool DockLayerShellSurface::updateExclusiveZone(QQuickWindow *window, int exclusiveZoneHeight,
                                                 QString *errorOut)
 {
     if (!window) {
@@ -37,10 +38,10 @@ bool DockLayerShellSurface::updateExclusiveZone(QQuickWindow *window, int surfac
             *errorOut = QStringLiteral("Failed to create LayerShellQt::Window");
         return false;
     }
-    layerWindow->setExclusiveZone(qMax(0, surfaceHeight));
+    layerWindow->setExclusiveZone(qMax(0, exclusiveZoneHeight));
     return true;
 #else
-    Q_UNUSED(surfaceHeight);
+    Q_UNUSED(exclusiveZoneHeight);
     if (errorOut)
         *errorOut = QStringLiteral(
             "LayerShellQt is disabled; Dock Layer Shell cannot update its exclusive zone");
@@ -48,7 +49,8 @@ bool DockLayerShellSurface::updateExclusiveZone(QQuickWindow *window, int surfac
 #endif
 }
 
-bool DockLayerShellSurface::setMapped(QQuickWindow *window, bool mapped, QString *errorOut)
+bool DockLayerShellSurface::setMapped(QQuickWindow *window, bool mapped, int exclusiveZoneHeight,
+                                      QString *errorOut)
 {
     if (!window) {
         if (errorOut)
@@ -62,10 +64,11 @@ bool DockLayerShellSurface::setMapped(QQuickWindow *window, bool mapped, QString
             *errorOut = QStringLiteral("Failed to create LayerShellQt::Window");
         return false;
     }
-    layerWindow->setExclusiveZone(mapped ? qMax(0, window->height()) : 0);
+    layerWindow->setExclusiveZone(exclusiveZoneForMapping(mapped, exclusiveZoneHeight));
     window->setVisible(mapped);
     return true;
 #else
+    Q_UNUSED(exclusiveZoneHeight);
     if (errorOut)
         *errorOut = QStringLiteral(
             "LayerShellQt is disabled; Dock Layer Shell cannot change its mapped state");

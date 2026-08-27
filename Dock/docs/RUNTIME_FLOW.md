@@ -9,8 +9,9 @@ startup
   -> one Typhon toplevel connection
   -> authoritative runtime projection (pins + live resolved apps)
   -> QML
-  -> Layer Shell mapping
-  -> click
+  -> Layer Shell mapping at resting reservation
+  -> pointer-driven visual magnification or pinned drag preview
+  -> click or one identity-based reorder request
   -> exact Typhon activation or shared launcher
   -> Typhon shell-control launch path
 ```
@@ -21,12 +22,15 @@ file, while `DesktopEntryCatalog` publishes an immutable XDG-priority
 snapshot. The controller gives the model the configured pin order and QML
 receives the model through a context property.
 
-The application configures the content-sized QQuickWindow through the required
-LayerShellQt integration and updates its exclusive zone when the panel height
-changes. Configuration and component toggles are debounced and re-applied
-without restarting the process. A Layer Shell setup or mapping failure is
-reported as a shell failure; the Dock is never shown as an ordinary Qt window.
-A click calls `DockController::launch`. If authoritative Typhon
+The application configures the Dock QQuickWindow through the required
+LayerShellQt integration using `DockController::restingHeight()` as an explicit
+exclusive-zone contract. The visual surface can grow taller while the pointer
+is over the Dock, but the exclusive zone remains at the resting height and
+returns to that visual height after hover exit. Configuration and component
+toggles are debounced and re-applied without restarting the process. A Layer
+Shell setup or mapping failure is reported as a shell failure; the Dock is
+never shown as an ordinary Qt window. A click calls
+`DockController::launchByDesktopFileName`. If authoritative Typhon
 runtime state identifies a live window, the controller submits one exact
 `activate` action for the most recent focus-serial candidate, including
 minimized windows. The shared Typhon connection owns authentication, pending
@@ -34,6 +38,23 @@ state, completion, and generation cleanup. If no live window is known, the
 existing controller and shared supervised launcher path is used. An
 unavailable or failed action is reconciled without launching on that same
 click.
+
+Magnification is a panel-level continuous distance calculation. Each resting
+icon center receives the raised-cosine influence
+`0.5 * (1 + cos(pi * distance / radius))` inside the configured radius and zero
+outside it. The panel derives prefix extra widths from those scales and applies
+visual translations; it does not rebuild the model or relayout a Row for each
+pointer sample. Only the icon is scaled from its bottom edge, leaving its
+running indicator stable.
+
+A drag handler is enabled only for the configured-pin prefix. Once the system
+drag threshold is crossed, QML records the stable desktop filename, raises that
+delegate, and previews the target index by translating neighboring pins. The
+authoritative model and on-disk configuration remain unchanged during the
+preview. On a moved drop, QML emits one reorder request; the controller reads
+the current pin list, atomically persists it, then calls the normal model
+reconciliation path. Runtime-only rows remain after the pin section and retain
+their deterministic first-observed order.
 
 The Dock owns one Typhon toplevel connection. After the initial snapshot
 commits, `DockApplicationStateProjector` emits only resolved live applications

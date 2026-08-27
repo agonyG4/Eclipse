@@ -11,6 +11,9 @@ struct DockConfig {
     int bottomMargin = 12;
     int panelPadding = 14;
     int itemSpacing = 10;
+    bool magnificationEnabled = true;
+    double magnificationScale = 1.6;
+    double magnificationRadius = 2.5;
     QStringList pins;
 
     static DockConfig defaults();
@@ -46,9 +49,12 @@ private:
     JsonResult loadJsonFile(const QString &path) const;
     DockConfig parseConfig(const QJsonObject &object, QStringList *errors) const;
     void addPathWithParents(const QString &path);
-    static bool validDesktopFileName(const QString &fileName);
     static int integerField(const QJsonObject &object, const QString &key, int fallback,
                             int minimum, int maximum, QStringList *errors);
+    static bool booleanField(const QJsonObject &object, const QString &key, bool fallback,
+                             QStringList *errors);
+    static double doubleField(const QJsonObject &object, const QString &key, double fallback,
+                              double minimum, double maximum, QStringList *errors);
 
     QString m_configPath;
     QString m_componentsPath;

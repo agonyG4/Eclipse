@@ -15,5 +15,8 @@ Window {
     DockPanel {
         id: panel
         anchors.centerIn: parent
+        onReorderRequested: function(desktopFileName, targetPinIndex) {
+            DockController.movePinned(desktopFileName, targetPinIndex)
+        }
     }
 }

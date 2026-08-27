@@ -1,9 +1,11 @@
 # Astrea Dock Architecture
 
-`astrea-dock` is an independent resident Qt 6 process. `app/` performs
-bootstrap and dependency wiring; `core/` owns the stable Dock model and launch
-policy; `services/` owns validated configuration; `platform/` owns runtime
-paths, IPC, and Layer Shell; `qml/` only presents state and forwards clicks.
+The resident Dock is hosted by the unified `astrea-shell` Qt 6 process.
+`astrea-dock` is a compatibility IPC client and is not a second resident Dock.
+`app/` performs compatibility-client bootstrap; `core/` owns the stable Dock
+model and launch/reorder policy; `services/` owns validated configuration and
+the narrow pins persistence boundary; `platform/` owns runtime paths, IPC, and
+Layer Shell; `qml/` presents state and emits interaction requests.
 
 `DockAppModel` uses the full desktop filename as its stable row key. Its visible
 rows are the ordered union of configured pins and resolved applications with
@@ -14,16 +16,35 @@ is removed when its last live window disappears. Structural insert, remove, and
 move signals preserve stable QML delegates.
 
 `DockController` applies config, coordinates the model, tracks pending launches
-independently per row, and retains the runtime state needed for exact-window
-activation. `pinCount` describes configured pins, not the total visible row
-count; `resolvedPinCount` counts only configured pins that resolve in the
-desktop catalog.
+independently per identity, and retains the runtime state needed for
+exact-window activation. It is also the only owner of a completed pinned reorder:
+it validates the stable `desktopFileName`, asks `DockConfigPersistence` to write
+the new pins, and updates the model only after that write succeeds. `pinCount`
+describes configured pins, not the total visible row count; `resolvedPinCount`
+counts only configured pins that resolve in the desktop catalog.
 `ApplicationLauncher` is shared with Spotlight and invokes `astrea-launch`
 without a shell or GUI-thread blocking.
 
-QML is presentation-only. It does not parse JSON, read files, inspect
+QML is presentation-only. It does not parse or write JSON, read files, inspect
 processes, launch applications, invoke shell commands, or speak Wayland. The
-controller supplies all display data and owns interaction decisions.
+controller supplies all display data and owns application activation and
+persistence decisions.
+
+`DockPanel` keeps a stable resting `Row`. On each pointer update it performs one
+linear pass over the materialized delegates and applies a symmetric raised
+cosine (Hann) scale based on distance from each resting icon center. Prefix sums
+of the per-icon extra widths provide visual translations that make room for the
+enlarged icons while keeping the strip centered. Icons scale from their bottom
+edge; running indicators remain outside that transform. A panel-level hover
+handler drives the calculation, so the interaction is continuous rather than a
+per-icon contains-mouse switch. The panel grows only as a visual surface and
+returns to its resting geometry when the pointer leaves.
+
+Configured pins use a Qt Quick drag handler with a system-sized threshold. The
+dragged delegate is raised and lifted, while neighboring pinned delegates use
+an ephemeral index preview. Runtime-only delegates are not draggable. QML
+emits one identity-based reorder request on a moved drop; it never mutates the
+model or writes configuration during the drag.
 
 Typhon is the authoritative source for task-relevant toplevels. The projector
 matches each published client `app_id` through the immutable desktop catalog,
@@ -37,6 +58,8 @@ known stopped (`runtimeKnown=true`, `running=false`). When authority is lost,
 pinned rows become neutral unknown rows and runtime-only rows are removed.
 
 The Dock Layer Shell policy is explicit: scope `astrea-dock`, top layer,
-bottom-only anchor, no keyboard interactivity, configured bottom margin, and
-exclusive zone equal to the panel surface height. An empty or disabled Dock is
-unmapped and reserves no positive zone.
+bottom-only anchor, no keyboard interactivity, configured bottom margin, and an
+exclusive zone equal to the normal resting Dock height. The visual QQuickWindow
+may become taller for magnification, but that height is never used as the
+exclusive zone, so maximized or tiled windows do not move. An empty or disabled
+Dock is unmapped and reserves no positive zone.

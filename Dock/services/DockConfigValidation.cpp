@@ -1,5 +1,6 @@
 #include "services/DockConfigValidation.hpp"
 
+#include <QChar>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>

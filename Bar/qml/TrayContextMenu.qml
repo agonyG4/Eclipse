@@ -398,6 +398,7 @@ PopupCard {
             item.depth = 1
             item.x = root.cascadeXFor(root.x, root.width, width, root.parent.width)
             item.y = root.cascadeYFor(root.y, root.cascadeAnchorY, height, root.parent.height)
+            Qt.callLater(item.forceActiveFocus)
         }
         onCascadeMenuModelChanged: if (item) item.menuModel = cascadeMenuModel
     }

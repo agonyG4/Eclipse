@@ -143,6 +143,7 @@ set(_shell_qml_files
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuItem.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuSeparator.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextSubmenu.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ShellMenuTheme.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuView.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/DesktopInteractionSurface.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuOverlaySurface.qml"
@@ -184,6 +185,9 @@ set_source_files_properties(
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextSubmenu.qml"
     PROPERTIES QT_RESOURCE_ALIAS "ContextMenu/qml/ContextSubmenu.qml")
 set_source_files_properties(
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ShellMenuTheme.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "ContextMenu/qml/ShellMenuTheme.qml")
+set_source_files_properties(
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuView.qml"
     PROPERTIES QT_RESOURCE_ALIAS "ContextMenu/qml/ContextMenuView.qml")
 set_source_files_properties(
@@ -212,6 +216,7 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
             ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuItem.qml
             ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuSeparator.qml
             ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextSubmenu.qml
+            ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ShellMenuTheme.qml
             ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuView.qml
             ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuOverlaySurface.qml
             ${ASTREA_BAR_QML_FILES}
@@ -237,6 +242,7 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
             ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuItem.qml
             ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuSeparator.qml
             ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextSubmenu.qml
+            ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ShellMenuTheme.qml
             ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuView.qml
             ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuOverlaySurface.qml
             ${ASTREA_BAR_QML_FILES}

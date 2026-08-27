@@ -1,10 +1,9 @@
 import QtQuick
-import "../../Bar/qml/components"
 
 Rectangle {
     id: root
 
-    ShellBarTheme { id: theme }
+    ShellMenuTheme { id: theme }
 
     default property alias contentData: content.data
     property int cardPadding: 10

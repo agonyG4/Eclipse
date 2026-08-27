@@ -10,6 +10,7 @@ Item {
     readonly property int contentWidth: restingWidth
     readonly property int contentHeight: restingHeight
     readonly property int slotPitch: DockController.delegateWidth + DockController.itemSpacing
+    readonly property string configuredHoverEffect: DockController.hoverEffect
     property real magnificationWidth: 0
     property real magnificationHeight: 0
     // Keep the pointer in the panel's centered coordinate system. The window
@@ -67,9 +68,9 @@ Item {
             Repeater {
                 id: appRepeater
                 model: DockController.appModel
-                onCountChanged: root.updateMagnification()
-                onItemAdded: root.updateMagnification()
-                onItemRemoved: root.updateMagnification()
+                onCountChanged: root.updateHoverEffect()
+                onItemAdded: root.updateHoverEffect()
+                onItemRemoved: root.updateHoverEffect()
 
                 delegate: DockAppDelegate {
                     dockPanel: root
@@ -103,29 +104,33 @@ Item {
         pointerInside = inside
         if (!inside)
             pointerX = 0
-        updateMagnification()
+        updateHoverEffect()
     }
 
     function updatePointer(x) {
         pointerX = x - width / 2
         pointerInside = true
-        updateMagnification()
+        updateHoverEffect()
     }
 
     function isReordering() {
         return draggedDesktopFileName.length > 0
     }
 
-    function updateMagnification() {
+    function updateHoverEffect() {
         var count = appRepeater.count
-        var active = pointerInside && DockController.magnificationEnabled && !isReordering()
+        var magnificationActive = pointerInside && configuredHoverEffect === "magnification"
+            && !isReordering()
+        var liftActive = pointerInside && configuredHoverEffect === "lift" && !isReordering()
         var slotPitch = Math.max(1, root.slotPitch)
         var radius = Math.max(1, DockController.magnificationRadius) * slotPitch
         var maximumScale = Math.max(1, DockController.magnificationScale)
         var totalExtra = 0
         var maximumExtra = 0
+        var hoveredIndex = -1
         var closestIndex = -1
         var closestDistance = Number.POSITIVE_INFINITY
+        var localPointerX = pointerX + width / 2
 
         for (var i = 0; i < count; ++i) {
             var item = appRepeater.itemAt(i)
@@ -133,28 +138,40 @@ Item {
                 continue
 
             delegateKeys[i] = item.objectName
-            var center = appRow.x + item.x + item.width / 2 - width / 2
-            var distance = Math.abs(pointerX - center)
-            var t = active ? Math.min(distance / radius, 1) : 1
-            var influence = t < 1 ? 0.5 * (1 + Math.cos(Math.PI * t)) : 0
-            var scale = 1 + (maximumScale - 1) * influence * (active ? 1 : 0)
-            var extra = DockController.iconSize * (scale - 1)
+            var itemLeft = appRow.x + item.x
+            var itemRight = itemLeft + item.width
+            var slotHovered = pointerInside && localPointerX >= itemLeft
+                && localPointerX < itemRight
+            if (slotHovered)
+                hoveredIndex = i
+
+            var scale = liftActive && slotHovered ? 1.1 : 1
+            if (magnificationActive) {
+                var center = itemLeft + item.width / 2 - width / 2
+                var distance = Math.abs(pointerX - center)
+                var t = Math.min(distance / radius, 1)
+                var influence = t < 1 ? 0.5 * (1 + Math.cos(Math.PI * t)) : 0
+                scale = 1 + (maximumScale - 1) * influence
+                if (distance < closestDistance) {
+                    closestDistance = distance
+                    closestIndex = i
+                }
+            }
+            var extra = magnificationActive ? DockController.iconSize * (scale - 1) : 0
             magnificationScales[i] = scale
             extraWidths[i] = extra
             prefixExtraWidths[i] = totalExtra
             totalExtra += extra
             maximumExtra = Math.max(maximumExtra, extra)
 
-            if (active && distance < closestDistance) {
-                closestDistance = distance
-                closestIndex = i
-            }
         }
 
-        pointerTargetDesktopFileName = closestIndex >= 0 ? delegateKeys[closestIndex] : ""
-        magnificationWidth = active ? totalExtra : 0
-        magnificationHeight = active ? maximumExtra : 0
-        updateDelegateTransforms(totalExtra, slotPitch)
+        var targetIndex = magnificationActive ? closestIndex : hoveredIndex
+        pointerTargetDesktopFileName = targetIndex >= 0 ? delegateKeys[targetIndex] : ""
+        magnificationWidth = magnificationActive ? totalExtra : 0
+        magnificationHeight = magnificationActive ? maximumExtra : 0
+        updateDelegateTransforms(totalExtra, slotPitch,
+                                 liftActive && hoveredIndex >= 0 ? delegateKeys[hoveredIndex] : "")
     }
 
     function previewIndexFor(originalIndex) {
@@ -169,7 +186,7 @@ Item {
         return originalIndex
     }
 
-    function updateDelegateTransforms(totalExtra, slotPitch) {
+    function updateDelegateTransforms(totalExtra, slotPitch, liftedKey) {
         var count = appRepeater.count
         var dragging = isReordering()
         for (var i = 0; i < count; ++i) {
@@ -189,6 +206,7 @@ Item {
             }
             item.magnificationScale = dragging ? 1 : (magnificationScales[i] || 1)
             item.visualOffsetX = offset
+            item.visualOffsetY = dragging ? -8 : (item.objectName === liftedKey ? -5 : 0)
             item.dragging = i === draggedSourceIndex
         }
     }
@@ -214,7 +232,7 @@ Item {
         dragTargetIndex = source
         dragOriginCenterX = appRow.x + sourceItem.x + sourceItem.width / 2
         dragCenterX = dragOriginCenterX
-        updateMagnification()
+        updateHoverEffect()
     }
 
     function updateReorder(key, translationX) {
@@ -229,7 +247,7 @@ Item {
         var firstCenter = appRow.x + firstItem.x + firstItem.width / 2
         dragTargetIndex = Math.max(0, Math.min(DockController.pinCount - 1,
                                                Math.round((dragCenterX - firstCenter) / slotPitch)))
-        updateMagnification()
+        updateHoverEffect()
     }
 
     function finishReorder(key) {
@@ -243,7 +261,7 @@ Item {
         dragOriginCenterX = 0
         dragCenterX = 0
         pointerTargetDesktopFileName = ""
-        updateMagnification()
+        updateHoverEffect()
         if (source >= 0 && target >= 0 && source !== target)
             reorderRequested(key, target)
     }
@@ -256,9 +274,10 @@ Item {
         dragTargetIndex = -1
         dragOriginCenterX = 0
         dragCenterX = 0
-        updateMagnification()
+        updateHoverEffect()
     }
 
-    Component.onCompleted: updateMagnification()
-    onWidthChanged: if (pointerInside) updateMagnification()
+    Component.onCompleted: updateHoverEffect()
+    onWidthChanged: if (pointerInside) updateHoverEffect()
+    onConfiguredHoverEffectChanged: updateHoverEffect()
 }

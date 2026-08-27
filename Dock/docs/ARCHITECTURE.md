@@ -30,15 +30,19 @@ processes, launch applications, invoke shell commands, or speak Wayland. The
 controller supplies all display data and owns application activation and
 persistence decisions.
 
-`DockPanel` keeps a stable resting `Row`. On each pointer update it performs one
-linear pass over the materialized delegates and applies a symmetric raised
-cosine (Hann) scale based on distance from each resting icon center. Prefix sums
-of the per-icon extra widths provide visual translations that make room for the
-enlarged icons while keeping the strip centered. Icons scale from their bottom
-edge; running indicators remain outside that transform. A panel-level hover
-handler drives the calculation, so the interaction is continuous rather than a
-per-icon contains-mouse switch. The panel grows only as a visual surface and
-returns to its resting geometry when the pointer leaves.
+`DockPanel` keeps a stable resting `Row` and selects one configured hover effect.
+`none` leaves resting geometry unchanged. `lift` keeps the lightweight Eclipse
+behavior: only the directly hovered delegate scales to about `1.1` and moves
+upward. `magnification` performs one linear pass over the materialized
+delegates on each pointer update and applies a symmetric raised-cosine (Hann)
+scale based on distance from each resting icon center. Prefix sums of the
+per-icon extra widths provide visual translations that make room for the
+enlarged icons while keeping the strip centered. Magnification icons scale from
+their bottom edge; running indicators remain outside that transform. A
+panel-level hover handler drives the magnification calculation, so it is
+continuous rather than a per-icon contains-mouse switch. Only magnification
+grows the panel as a visual surface, and every mode returns to resting geometry
+when the pointer leaves or the configuration changes.
 
 Configured pins use a Qt Quick drag handler with a system-sized threshold. The
 dragged delegate is raised and lifted, while neighboring pinned delegates use

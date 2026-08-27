@@ -62,7 +62,7 @@ void DockConfigPersistenceTest::updatesOnlyPinsAndPreservesKnownFields()
         {QStringLiteral("bottomMargin"), 20},
         {QStringLiteral("panelPadding"), 18},
         {QStringLiteral("itemSpacing"), 12},
-        {QStringLiteral("magnificationEnabled"), false},
+        {QStringLiteral("hoverEffect"), QStringLiteral("lift")},
         {QStringLiteral("magnificationScale"), 1.25},
         {QStringLiteral("magnificationRadius"), 3.5},
         {QStringLiteral("pins"), QJsonArray{QStringLiteral("one.desktop")}}
@@ -77,7 +77,7 @@ void DockConfigPersistenceTest::updatesOnlyPinsAndPreservesKnownFields()
     QCOMPARE(object.value(QStringLiteral("bottomMargin")).toInt(), 20);
     QCOMPARE(object.value(QStringLiteral("panelPadding")).toInt(), 18);
     QCOMPARE(object.value(QStringLiteral("itemSpacing")).toInt(), 12);
-    QCOMPARE(object.value(QStringLiteral("magnificationEnabled")).toBool(), false);
+    QCOMPARE(object.value(QStringLiteral("hoverEffect")).toString(), QStringLiteral("lift"));
     QCOMPARE(object.value(QStringLiteral("magnificationScale")).toDouble(), 1.25);
     QCOMPARE(object.value(QStringLiteral("magnificationRadius")).toDouble(), 3.5);
     QCOMPARE(object.value(QStringLiteral("pins")).toArray(),

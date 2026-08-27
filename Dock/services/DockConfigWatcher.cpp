@@ -15,6 +15,36 @@ DockConfig DockConfig::defaults()
     return {};
 }
 
+namespace {
+
+const QString kDefaultHoverEffect = QStringLiteral("magnification");
+
+bool validHoverEffect(const QString &effect)
+{
+    return effect == QStringLiteral("none") || effect == QStringLiteral("lift")
+        || effect == QStringLiteral("magnification");
+}
+
+QString hoverEffectField(const QJsonObject &object, const QString &key,
+                        const QString &fallback, QStringList *errors)
+{
+    if (!object.contains(key))
+        return fallback;
+    const QJsonValue value = object.value(key);
+    if (!value.isString()) {
+        errors->append(QStringLiteral("%1 must be one of none, lift, or magnification").arg(key));
+        return fallback;
+    }
+    const QString effect = value.toString();
+    if (!validHoverEffect(effect)) {
+        errors->append(QStringLiteral("%1 has an unsupported value: %2").arg(key, effect));
+        return fallback;
+    }
+    return effect;
+}
+
+} // namespace
+
 DockConfigWatcher::DockConfigWatcher(const QString &configPath, const QString &componentsPath,
                                      QObject *parent)
     : QObject(parent), m_configPath(QFileInfo(configPath).absoluteFilePath()),
@@ -81,8 +111,16 @@ DockConfig DockConfigWatcher::parseConfig(const QJsonObject &object, QStringList
     result.bottomMargin = integerField(object, QStringLiteral("bottomMargin"), result.bottomMargin, 0, 48, errors);
     result.panelPadding = integerField(object, QStringLiteral("panelPadding"), result.panelPadding, 8, 32, errors);
     result.itemSpacing = integerField(object, QStringLiteral("itemSpacing"), result.itemSpacing, 4, 24, errors);
-    result.magnificationEnabled = booleanField(object, QStringLiteral("magnificationEnabled"),
-                                               result.magnificationEnabled, errors);
+    if (object.contains(QStringLiteral("hoverEffect"))) {
+        result.hoverEffect = hoverEffectField(object, QStringLiteral("hoverEffect"),
+                                              kDefaultHoverEffect, errors);
+    } else if (object.contains(QStringLiteral("magnificationEnabled"))) {
+        // Keep the previous boolean setting readable while new configurations use
+        // the explicit three-state hoverEffect field.
+        const bool enabled = booleanField(object, QStringLiteral("magnificationEnabled"),
+                                          result.hoverEffect == kDefaultHoverEffect, errors);
+        result.hoverEffect = enabled ? kDefaultHoverEffect : QStringLiteral("none");
+    }
     result.magnificationScale = doubleField(object, QStringLiteral("magnificationScale"),
                                              result.magnificationScale, 1.0, 2.0, errors);
     result.magnificationRadius = doubleField(object, QStringLiteral("magnificationRadius"),

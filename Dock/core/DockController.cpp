@@ -15,7 +15,7 @@ bool sameConfig(const DockConfig &left, const DockConfig &right)
         && left.bottomMargin == right.bottomMargin
         && left.panelPadding == right.panelPadding
         && left.itemSpacing == right.itemSpacing
-        && left.magnificationEnabled == right.magnificationEnabled
+        && left.hoverEffect == right.hoverEffect
         && qFuzzyCompare(left.magnificationScale, right.magnificationScale)
         && qFuzzyCompare(left.magnificationRadius, right.magnificationRadius)
         && left.pins == right.pins;

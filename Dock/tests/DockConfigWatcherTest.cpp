@@ -17,7 +17,10 @@ class DockConfigWatcherTest final : public QObject {
 private slots:
     void missingConfigUsesDefaults();
     void validConfigIsParsed();
+    void validHoverEffectsAreParsed();
     void invalidFieldsFallbackIndependently();
+    void invalidHoverEffectFallsBack();
+    void legacyMagnificationFlagMapsToHoverEffect();
     void valuesAreClamped();
     void extremeNumbersAreClampedSafely();
     void nonFiniteMagnificationFallsBack();
@@ -56,7 +59,7 @@ void DockConfigWatcherTest::missingConfigUsesDefaults()
     QCOMPARE(config.bottomMargin, 12);
     QCOMPARE(config.panelPadding, 14);
     QCOMPARE(config.itemSpacing, 10);
-    QVERIFY(config.magnificationEnabled);
+    QCOMPARE(config.hoverEffect, QStringLiteral("magnification"));
     QCOMPARE(config.magnificationScale, 1.6);
     QCOMPARE(config.magnificationRadius, 2.5);
     QVERIFY(config.pins.isEmpty());
@@ -72,17 +75,31 @@ void DockConfigWatcherTest::validConfigIsParsed()
         {QStringLiteral("bottomMargin"), 20},
         {QStringLiteral("panelPadding"), 18},
         {QStringLiteral("itemSpacing"), 12},
-        {QStringLiteral("magnificationEnabled"), false},
+        {QStringLiteral("hoverEffect"), QStringLiteral("lift")},
         {QStringLiteral("magnificationScale"), 1.8},
         {QStringLiteral("magnificationRadius"), 3.25},
         {QStringLiteral("pins"), QJsonArray{QStringLiteral("firefox.desktop")}}
     });
     DockConfigWatcher watcher(configPath(dir), componentsPath(dir));
     QCOMPARE(watcher.config().iconSize, 56);
-    QVERIFY(!watcher.config().magnificationEnabled);
+    QCOMPARE(watcher.config().hoverEffect, QStringLiteral("lift"));
     QCOMPARE(watcher.config().magnificationScale, 1.8);
     QCOMPARE(watcher.config().magnificationRadius, 3.25);
     QCOMPARE(watcher.config().pins, QStringList{QStringLiteral("firefox.desktop")});
+}
+
+void DockConfigWatcherTest::validHoverEffectsAreParsed()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    DockConfigWatcher watcher(configPath(dir), componentsPath(dir));
+
+    for (const QString &effect : {QStringLiteral("none"), QStringLiteral("lift"),
+                                  QStringLiteral("magnification")}) {
+        writeJson(configPath(dir), QJsonObject{{QStringLiteral("hoverEffect"), effect}});
+        watcher.refresh();
+        QCOMPARE(watcher.config().hoverEffect, effect);
+    }
 }
 
 void DockConfigWatcherTest::invalidFieldsFallbackIndependently()
@@ -93,7 +110,7 @@ void DockConfigWatcherTest::invalidFieldsFallbackIndependently()
         {QStringLiteral("iconSize"), 60},
         {QStringLiteral("bottomMargin"), QStringLiteral("bad")},
         {QStringLiteral("panelPadding"), QJsonObject{}},
-        {QStringLiteral("magnificationEnabled"), QStringLiteral("bad")},
+        {QStringLiteral("hoverEffect"), 42},
         {QStringLiteral("magnificationScale"), QStringLiteral("bad")},
         {QStringLiteral("magnificationRadius"), QJsonObject{}},
         {QStringLiteral("pins"), QJsonArray{QStringLiteral("ok.desktop"), 4}}
@@ -102,10 +119,34 @@ void DockConfigWatcherTest::invalidFieldsFallbackIndependently()
     QCOMPARE(watcher.config().iconSize, 60);
     QCOMPARE(watcher.config().bottomMargin, 12);
     QCOMPARE(watcher.config().panelPadding, 14);
-    QVERIFY(watcher.config().magnificationEnabled);
+    QCOMPARE(watcher.config().hoverEffect, QStringLiteral("magnification"));
     QCOMPARE(watcher.config().magnificationScale, 1.6);
     QCOMPARE(watcher.config().magnificationRadius, 2.5);
     QCOMPARE(watcher.config().pins, QStringList{QStringLiteral("ok.desktop")});
+}
+
+void DockConfigWatcherTest::invalidHoverEffectFallsBack()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    writeJson(configPath(dir), QJsonObject{{QStringLiteral("hoverEffect"), QStringLiteral("spring")}});
+    DockConfigWatcher watcher(configPath(dir), componentsPath(dir));
+
+    QCOMPARE(watcher.config().hoverEffect, QStringLiteral("magnification"));
+    QVERIFY(watcher.lastError().contains(QStringLiteral("hoverEffect")));
+}
+
+void DockConfigWatcherTest::legacyMagnificationFlagMapsToHoverEffect()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    writeJson(configPath(dir), QJsonObject{{QStringLiteral("magnificationEnabled"), false}});
+    DockConfigWatcher watcher(configPath(dir), componentsPath(dir));
+    QCOMPARE(watcher.config().hoverEffect, QStringLiteral("none"));
+
+    writeJson(configPath(dir), QJsonObject{{QStringLiteral("magnificationEnabled"), true}});
+    watcher.refresh();
+    QCOMPARE(watcher.config().hoverEffect, QStringLiteral("magnification"));
 }
 
 void DockConfigWatcherTest::valuesAreClamped()

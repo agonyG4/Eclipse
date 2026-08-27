@@ -134,11 +134,30 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     dock_enable_sanitizers(dock-layer-shell-surface-test)
     add_test(NAME dock-layer-shell-surface-test COMMAND dock-layer-shell-surface-test)
 
+    add_executable(dock-hover-qml-test
+        tests/DockHoverQmlTest.cpp
+        core/DockController.cpp
+        core/DockAppModel.cpp
+        services/DockConfigPersistence.cpp
+        services/DockConfigValidation.cpp
+        services/DockConfigWatcher.cpp
+    )
+    target_compile_definitions(dock-hover-qml-test PRIVATE
+        DOCK_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        DOCK_BUILD_DIR="${CMAKE_BINARY_DIR}")
+    target_include_directories(dock-hover-qml-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
+    target_link_libraries(dock-hover-qml-test PRIVATE
+        astrea-shared-core astrea-shared-coreplugin astrea-shared-typhon
+        Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
+    dock_enable_sanitizers(dock-hover-qml-test)
+    add_test(NAME dock-hover-qml-test COMMAND dock-hover-qml-test)
+
     if(ASTREA_ENABLE_ASAN)
         set_tests_properties(
             dock-app-model-test dock-config-watcher-test dock-runtime-paths-test
             dock-config-persistence-test dock-controller-test dock-typhon-runtime-integration-test
-            dock-layer-shell-surface-test
+            dock-layer-shell-surface-test dock-hover-qml-test
             dock-ipc-test dock-command-line-test
             PROPERTIES ENVIRONMENT
                 "LSAN_OPTIONS=suppressions=${CMAKE_SOURCE_DIR}/AltTab/lsan.supp:print_suppressions=0;ASAN_OPTIONS=detect_leaks=1:halt_on_error=1;UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1"

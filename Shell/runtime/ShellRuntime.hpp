@@ -12,8 +12,15 @@ class ApplicationLauncher;
 class BarClockService;
 class BarController;
 class CompositorBackend;
+namespace Astrea::Shell {
+class ContextMenuController;
+class DesktopContextMenuProvider;
+class DockContextMenuProvider;
+class TrayContextMenuAdapter;
+}
 class DesktopEntryCatalog;
 class DockConfigWatcher;
+class DockConfigPersistence;
 class DockController;
 class GameModeMonitor;
 class SpotlightConfigWatcher;
@@ -86,6 +93,8 @@ public:
     { return m_bluetoothService.get(); }
     Astrea::StatusNotifier::StatusNotifierService *statusNotifier() const
     { return m_statusNotifier.get(); }
+    Astrea::Shell::ContextMenuController *contextMenuController() const
+    { return m_contextMenuController.get(); }
 
     void reloadCatalog();
     void reloadDockConfig();
@@ -121,6 +130,7 @@ private:
     std::unique_ptr<Paper::WallpaperService> m_wallpaperService;
     std::unique_ptr<Paper::WallpaperControlServer> m_wallpaperControlServer;
     std::unique_ptr<DockConfigWatcher> m_dockConfig;
+    std::unique_ptr<DockConfigPersistence> m_dockPersistence;
     std::unique_ptr<AltTabConfigWatcher> m_altTabConfig;
     std::unique_ptr<SpotlightConfigWatcher> m_spotlightConfig;
     std::unique_ptr<GameModeMonitor> m_gameMode;
@@ -128,6 +138,10 @@ private:
     std::unique_ptr<Astrea::System::NetworkService> m_networkService;
     std::unique_ptr<Astrea::System::BluetoothService> m_bluetoothService;
     std::unique_ptr<Astrea::StatusNotifier::StatusNotifierService> m_statusNotifier;
+    std::unique_ptr<Astrea::Shell::ContextMenuController> m_contextMenuController;
+    std::unique_ptr<Astrea::Shell::DesktopContextMenuProvider> m_desktopContextMenuProvider;
+    std::unique_ptr<Astrea::Shell::DockContextMenuProvider> m_dockContextMenuProvider;
+    std::unique_ptr<Astrea::Shell::TrayContextMenuAdapter> m_trayContextMenuAdapter;
     bool m_initialized = false;
     bool m_started = false;
 };

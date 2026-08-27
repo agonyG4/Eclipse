@@ -7,6 +7,10 @@
 class ApplicationLauncher;
 class DesktopEntryCatalog;
 class DockController;
+namespace Astrea::StatusNotifier {
+class StatusNotifierService;
+class DBusMenuModel;
+}
 
 namespace Astrea::Shell {
 
@@ -41,6 +45,20 @@ private:
     DockController *m_dock = nullptr;
     DesktopEntryCatalog *m_catalog = nullptr;
     ApplicationLauncher *m_launcher = nullptr;
+};
+
+class TrayContextMenuAdapter final {
+public:
+    explicit TrayContextMenuAdapter(Astrea::StatusNotifier::StatusNotifierService *service)
+        : m_service(service)
+    {
+    }
+
+    bool present(ContextMenuController *controller, const QString &itemKey,
+                 const QPoint &point, const QString &outputKey) const;
+
+private:
+    Astrea::StatusNotifier::StatusNotifierService *m_service = nullptr;
 };
 
 } // namespace Astrea::Shell

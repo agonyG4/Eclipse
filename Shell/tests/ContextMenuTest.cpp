@@ -1,6 +1,7 @@
 #include "core/ContextMenuController.hpp"
 #include "core/ContextMenuModel.hpp"
 #include "core/ContextMenuPlacement.hpp"
+#include "core/ContextMenuSurfacePolicy.hpp"
 
 #include <QSignalSpy>
 #include <QtTest/QtTest>
@@ -17,9 +18,12 @@ private slots:
     void controllerStartsClosed();
     void controllerOwnsGenerationAndLifecycle();
     void controllerRejectsStaleAndInvalidActions();
+    void controllerClosesWhenTargetValidatorRejects();
+    void controllerShutdownCleansUpActivePresentation();
     void modelNormalizesSeparatorsAndExposesRoles();
     void modelRejectsDepthAndNodeBounds();
     void placementFlipsAndClampsInOutputLocalCoordinates();
+    void surfacePoliciesKeepInputAndLayerContracts();
 };
 
 void ContextMenuTest::controllerStartsClosed()
@@ -89,6 +93,40 @@ void ContextMenuTest::controllerRejectsStaleAndInvalidActions()
     QVERIFY(!controller.activate(controller.presentationGeneration(), QStringLiteral("enabled")));
 }
 
+void ContextMenuTest::controllerClosesWhenTargetValidatorRejects()
+{
+    ContextMenuController controller;
+    bool targetLive = true;
+    const ContextMenuTarget target{ContextMenuTarget::Kind::DockApplication,
+                                   QStringLiteral("app.desktop"), QStringLiteral("output-1")};
+    const QVector<ContextMenuModel::NodeSpec> nodes{
+        {.token = QStringLiteral("action"), .label = QStringLiteral("Action")}};
+
+    QVERIFY(controller.present(target, nodes, [](const QString &) { return true; },
+                               [&targetLive] { return targetLive; }));
+    targetLive = false;
+    QVERIFY(!controller.activate(controller.presentationGeneration(), QStringLiteral("action")));
+    QCOMPARE(controller.lifecycle(), ContextMenuController::Lifecycle::Closing);
+}
+
+void ContextMenuTest::controllerShutdownCleansUpActivePresentation()
+{
+    ContextMenuController controller;
+    QVERIFY(controller.present(
+        ContextMenuTarget{ContextMenuTarget::Kind::Desktop, QStringLiteral("desktop"),
+                          QStringLiteral("output-1")},
+        {ContextMenuModel::NodeSpec{.token = QStringLiteral("settings"),
+                                    .label = QStringLiteral("Settings")}},
+        [](const QString &) { return true; }));
+    controller.shutdown();
+    QCOMPARE(controller.lifecycle(), ContextMenuController::Lifecycle::Closed);
+    QVERIFY(!controller.hasActivePresentation());
+    QVERIFY(controller.targetIdentity().isEmpty());
+    controller.close();
+    controller.completeClose();
+    QCOMPARE(controller.lifecycle(), ContextMenuController::Lifecycle::Closed);
+}
+
 void ContextMenuTest::modelNormalizesSeparatorsAndExposesRoles()
 {
     ContextMenuModel model;
@@ -122,6 +160,24 @@ void ContextMenuTest::modelNormalizesSeparatorsAndExposesRoles()
     QCOMPARE(child.data(ContextMenuModel::CheckTypeRole).toInt(),
              int(ContextMenuModel::CheckType::Radio));
     QCOMPARE(child.data(ContextMenuModel::CheckStateRole).toInt(), int(Qt::Checked));
+    QCOMPARE(model.firstNavigable(), 0);
+    QCOMPARE(model.nextNavigable(0, 1), 2);
+    QCOMPARE(model.nextNavigable(-1, -1), 2);
+
+    ContextMenuModel hiddenSeparatorModel;
+    QVERIFY(hiddenSeparatorModel.setRootNodes({
+        {.kind = ContextMenuModel::NodeKind::Separator},
+        {.token = QStringLiteral("hidden"), .label = QStringLiteral("Hidden"),
+         .visible = false},
+        {.kind = ContextMenuModel::NodeKind::Separator},
+        {.token = QStringLiteral("visible"), .label = QStringLiteral("Visible")},
+        {.kind = ContextMenuModel::NodeKind::Separator},
+    }));
+    QCOMPARE(hiddenSeparatorModel.rowCount(), 2);
+    QCOMPARE(hiddenSeparatorModel.index(0, 0).data(ContextMenuModel::KindRole).toInt(),
+             int(ContextMenuModel::NodeKind::Action));
+    QCOMPARE(hiddenSeparatorModel.index(1, 0).data(ContextMenuModel::KindRole).toInt(),
+             int(ContextMenuModel::NodeKind::Action));
 }
 
 void ContextMenuTest::modelRejectsDepthAndNodeBounds()
@@ -158,6 +214,24 @@ void ContextMenuTest::placementFlipsAndClampsInOutputLocalCoordinates()
     QVERIFY(desktop.flippedX);
     QVERIFY(desktop.flippedY);
 
+    request.anchor = QPoint(5, 5);
+    const auto topLeft = ContextMenuPlacement::place(request);
+    QCOMPARE(topLeft.position, QPoint(5, 5));
+    QVERIFY(!topLeft.flippedX);
+    QVERIFY(!topLeft.flippedY);
+
+    request.anchor = QPoint(95, 5);
+    const auto topRight = ContextMenuPlacement::place(request);
+    QCOMPARE(topRight.position, QPoint(55, 5));
+    QVERIFY(topRight.flippedX);
+    QVERIFY(!topRight.flippedY);
+
+    request.anchor = QPoint(5, 75);
+    const auto bottomLeft = ContextMenuPlacement::place(request);
+    QCOMPARE(bottomLeft.position, QPoint(5, 45));
+    QVERIFY(!bottomLeft.flippedX);
+    QVERIFY(bottomLeft.flippedY);
+
     request.kind = ContextMenuPlacement::Kind::Dock;
     request.sourceRect = QRect(35, 65, 30, 15);
     request.anchor = {};
@@ -172,6 +246,40 @@ void ContextMenuTest::placementFlipsAndClampsInOutputLocalCoordinates()
     const auto submenu = ContextMenuPlacement::place(request);
     QCOMPARE(submenu.position, QPoint(20, 20));
     QVERIFY(submenu.flippedX);
+
+    request.direction = Qt::RightToLeft;
+    request.parentRect = QRect(5, 20, 10, 25);
+    const auto rtlFallback = ContextMenuPlacement::place(request);
+    QCOMPARE(rtlFallback.position, QPoint(15, 20));
+    QVERIFY(rtlFallback.flippedX);
+
+    request.direction = Qt::LeftToRight;
+    request.parentRect = QRect(20, 70, 10, 5);
+    const auto verticallyClamped = ContextMenuPlacement::place(request);
+    QCOMPARE(verticallyClamped.position, QPoint(30, 50));
+
+    request.output = QRect(0, 0, 20, 20);
+    request.menuSize = QSize(40, 30);
+    request.parentRect = {};
+    request.anchor = QPoint(10, 10);
+    request.kind = ContextMenuPlacement::Kind::Point;
+    const auto oversized = ContextMenuPlacement::place(request);
+    QCOMPARE(oversized.position, QPoint(0, 0));
+}
+
+void ContextMenuTest::surfacePoliciesKeepInputAndLayerContracts()
+{
+    const auto desktop = Astrea::Shell::ContextMenuSurfacePolicy::desktopInteraction();
+    QCOMPARE(desktop.layer, AstreaLayerShellConfig::Layer::Bottom);
+    QCOMPARE(desktop.keyboardInteractivity, AstreaLayerShellConfig::KeyboardInteractivity::None);
+    QCOMPARE(desktop.exclusiveZone, -1);
+    QVERIFY(desktop.anchorTop && desktop.anchorBottom && desktop.anchorLeft && desktop.anchorRight);
+
+    const auto overlay = Astrea::Shell::ContextMenuSurfacePolicy::overlay();
+    QCOMPARE(overlay.layer, AstreaLayerShellConfig::Layer::Overlay);
+    QCOMPARE(overlay.keyboardInteractivity,
+             AstreaLayerShellConfig::KeyboardInteractivity::Exclusive);
+    QCOMPARE(overlay.exclusiveZone, -1);
 }
 
 QTEST_MAIN(ContextMenuTest)

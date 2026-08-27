@@ -18,6 +18,9 @@ public:
         Network = 3,
         Bluetooth = 4,
         Volume = 5,
+        // Kept for compatibility with the existing Bar popup contract and
+        // tests. Production Tray presentation is owned by the global
+        // ContextMenuController.
         TrayMenu = 6,
     };
     Q_ENUM(PopupKind)

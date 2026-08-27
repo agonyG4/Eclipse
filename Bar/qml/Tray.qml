@@ -8,6 +8,8 @@ Item {
 
     property var trayService: null
     property var popupController: null
+    property var contextMenuController: null
+    property string outputKey: ""
     property var tooltipSurface: null
     property var barGeometry: null
     property int outputWidth: 1
@@ -51,6 +53,12 @@ Item {
                 required property bool hasMenu
                 required property bool onlyMenu
                 required property bool ready
+                readonly property bool hasUsableMenu: {
+                    if (!root.trayService)
+                        return false
+                    root.trayService.presentationRevision
+                    return root.trayService.hasUsableMenuForItem(itemDelegate.key)
+                }
 
                 width: ready ? 28 : 0
                 height: 28
@@ -122,15 +130,30 @@ Item {
                                 root.trayService.secondaryActivate(itemDelegate.key,
                                     anchor.globalX, anchor.globalY)
                         } else if (mouse.button === Qt.RightButton) {
-                            if (itemDelegate.hasMenu && root.popupController)
+                            if (itemDelegate.hasMenu && itemDelegate.hasUsableMenu
+                                    && root.contextMenuController)
+                                root.contextMenuController.presentTray(itemDelegate.key,
+                                    Math.round(anchor.localX), Math.round(anchor.localY),
+                                    root.outputKey)
+                            else if (itemDelegate.hasMenu && itemDelegate.hasUsableMenu
+                                     && root.popupController)
                                 root.popupController.toggleTrayMenu(anchor.localX, itemDelegate.key)
                             else if (root.trayService)
                                 root.trayService.contextMenu(itemDelegate.key,
                                     anchor.globalX, anchor.globalY)
-                        } else if (mouse.button === Qt.LeftButton
-                                   && itemDelegate.onlyMenu && itemDelegate.hasMenu
-                                   && root.popupController) {
-                            root.popupController.toggleTrayMenu(anchor.localX, itemDelegate.key)
+                        } else if (mouse.button === Qt.LeftButton && itemDelegate.onlyMenu) {
+                            if (itemDelegate.hasMenu && itemDelegate.hasUsableMenu
+                                    && root.contextMenuController) {
+                                root.contextMenuController.presentTray(itemDelegate.key,
+                                    Math.round(anchor.localX), Math.round(anchor.localY),
+                                    root.outputKey)
+                            } else if (itemDelegate.hasMenu && itemDelegate.hasUsableMenu
+                                       && root.popupController) {
+                                root.popupController.toggleTrayMenu(anchor.localX, itemDelegate.key)
+                            } else if (root.trayService) {
+                                root.trayService.contextMenu(itemDelegate.key,
+                                    anchor.globalX, anchor.globalY)
+                            }
                         } else if (root.trayService) {
                             root.trayService.activate(itemDelegate.key,
                                 anchor.globalX, anchor.globalY)

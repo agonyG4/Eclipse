@@ -43,6 +43,10 @@ add_library(astrea-shell-runtime STATIC
     core/ContextMenuModel.hpp
     core/ContextMenuPlacement.cpp
     core/ContextMenuPlacement.hpp
+    core/ContextMenuProviders.cpp
+    core/ContextMenuProviders.hpp
+    core/ContextMenuSurfacePolicy.cpp
+    core/ContextMenuSurfacePolicy.hpp
     runtime/ShellRuntime.cpp
     runtime/ShellRuntime.hpp
     platform/shortcut/ShellShortcutDispatcher.cpp
@@ -96,6 +100,10 @@ qt_add_executable(astrea-shell
     ../Bar/platform/wayland/BarSurfaceBundle.hpp
     ../Bar/platform/wayland/BarSurfaceManager.cpp
     ../Bar/platform/wayland/BarSurfaceManager.hpp
+    platform/wayland/ContextMenuSurfaceBundle.cpp
+    platform/wayland/ContextMenuSurfaceBundle.hpp
+    platform/wayland/ContextMenuSurfaceManager.cpp
+    platform/wayland/ContextMenuSurfaceManager.hpp
 )
 target_include_directories(astrea-shell PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -128,6 +136,13 @@ set(_shell_qml_files
     "${CMAKE_CURRENT_SOURCE_DIR}/../Spotlight/qml/components/SpotlightResultsList.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Spotlight/qml/components/SpotlightWeatherChip.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Spotlight/qml/components/AstreaAppIcon.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuCard.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuItem.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuSeparator.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextSubmenu.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuView.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/DesktopInteractionSurface.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuOverlaySurface.qml"
 )
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/Main.qml"
     PROPERTIES QT_RESOURCE_ALIAS "Dock/qml/Main.qml")
@@ -153,6 +168,27 @@ set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../Spotlight/qml/compon
     PROPERTIES QT_RESOURCE_ALIAS "Spotlight/qml/components/SpotlightWeatherChip.qml")
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../Spotlight/qml/components/AstreaAppIcon.qml"
     PROPERTIES QT_RESOURCE_ALIAS "Spotlight/qml/components/AstreaAppIcon.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuCard.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "ContextMenu/qml/ContextMenuCard.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuItem.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "ContextMenu/qml/ContextMenuItem.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuSeparator.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "ContextMenu/qml/ContextMenuSeparator.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextSubmenu.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "ContextMenu/qml/ContextSubmenu.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuView.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "ContextMenu/qml/ContextMenuView.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/DesktopInteractionSurface.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "ContextMenu/qml/DesktopInteractionSurface.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuOverlaySurface.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "ContextMenu/qml/ContextMenuOverlaySurface.qml")
 qt_add_qml_module(astrea-shell
     URI Astrea.Shell
     VERSION 1.0
@@ -160,6 +196,34 @@ qt_add_qml_module(astrea-shell
 )
 astrea_add_bar_qml_resources(astrea-shell)
 qt_import_qml_plugins(astrea-shell)
+
+if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
+    find_package(Qt6 6.6 REQUIRED COMPONENTS Test)
+    add_executable(context-menu-qml-smoke-test
+        tests/ContextMenuQmlSmokeTest.cpp
+    )
+    qt_add_resources(context-menu-qml-smoke-test astrea_context_menu_test_resources
+        PREFIX "/qt/qml/Astrea/Shell"
+        FILES
+            ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuCard.qml
+            ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuItem.qml
+            ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuSeparator.qml
+            ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextSubmenu.qml
+            ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuView.qml
+            ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuOverlaySurface.qml
+            ${ASTREA_BAR_QML_FILES}
+    )
+    target_include_directories(context-menu-qml-smoke-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/.."
+    )
+    target_link_libraries(context-menu-qml-smoke-test PRIVATE
+        astrea-shell-runtime
+        Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test
+    )
+    shell_enable_sanitizers(context-menu-qml-smoke-test)
+    add_test(NAME context-menu-qml-smoke-test COMMAND context-menu-qml-smoke-test)
+endif()
 
 install(TARGETS astrea-shell RUNTIME DESTINATION bin)
 install(FILES packaging/systemd/astrea-shell.service DESTINATION share/systemd/user)

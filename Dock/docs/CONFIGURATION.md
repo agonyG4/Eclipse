@@ -62,8 +62,9 @@ The watcher monitors both files and their parent directories, so atomic
 replacement and file recreation are supported. `astrea-dock --reload` forces
 the same reload path.
 
-QML never writes `dock.json`. A successful configured-pin reorder is committed
-by `DockController` through `DockConfigPersistence`, which reads the latest
+Dock presentation QML never writes `dock.json`. A successful configured-pin
+reorder, or an explicit Dock pin/unpin action, is committed by `DockController`
+through `DockConfigPersistence`, which reads the latest
 object, changes only `pins`, preserves known and unknown keys, validates the
 complete new list, and atomically replaces the file with `QSaveFile`. A
 malformed existing file is left untouched; a missing file is created as the

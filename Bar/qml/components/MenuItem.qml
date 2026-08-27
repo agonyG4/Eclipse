@@ -8,16 +8,19 @@ Rectangle {
 
     property string icon: ""
     property string text: ""
+    property bool selected: false
     property bool iconIsImage: icon.indexOf("image://") === 0
         || icon.indexOf("file://") === 0
         || icon.indexOf("qrc:/") === 0
         || icon.indexOf("/") === 0
     signal clicked()
+    signal hovered()
 
     width: parent ? parent.width : 0
     height: 36
     radius: theme.shellRadiusMedium
-    color: mouse.containsMouse && root.enabled ? theme.shellSeparator : "transparent"
+    color: root.selected && root.enabled ? theme.shellHover
+        : mouse.containsMouse && root.enabled ? theme.shellSeparator : "transparent"
     opacity: root.enabled ? 1 : theme.opacityMuted
 
     Behavior on color { ColorAnimation { duration: theme.animationFast } }
@@ -75,6 +78,7 @@ Rectangle {
         enabled: root.enabled
         hoverEnabled: root.enabled
         cursorShape: root.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+        onEntered: root.hovered()
         onClicked: root.clicked()
     }
 }

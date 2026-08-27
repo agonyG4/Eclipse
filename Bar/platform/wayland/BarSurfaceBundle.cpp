@@ -6,6 +6,7 @@
 #include "core/BarPopupController.hpp"
 #include "core/BarSurfacePolicy.hpp"
 #include "core/WorkspaceModel.hpp"
+#include "../../../Shell/core/ContextMenuController.hpp"
 #include "platform/wayland/LayerShellHelper.hpp"
 #include "system/audio/AudioService.hpp"
 #include "system/network/NetworkService.hpp"
@@ -39,7 +40,8 @@ BarSurfaceBundle::BarSurfaceBundle(QScreen *screen, QQmlApplicationEngine *engin
                                    Astrea::System::NetworkService *networkService,
                                    Astrea::System::BluetoothService *bluetoothService,
                                    QObject *parent,
-                                   Astrea::StatusNotifier::StatusNotifierService *statusNotifier)
+                                   Astrea::StatusNotifier::StatusNotifierService *statusNotifier,
+                                   Astrea::Shell::ContextMenuController *contextMenuController)
     : QObject(parent)
     , m_screen(screen)
     , m_engine(engine)
@@ -50,6 +52,7 @@ BarSurfaceBundle::BarSurfaceBundle(QScreen *screen, QQmlApplicationEngine *engin
     , m_networkService(networkService)
     , m_bluetoothService(bluetoothService)
     , m_statusNotifier(statusNotifier)
+    , m_contextMenuController(contextMenuController)
     , m_popupController(new BarPopupController(this))
     , m_layoutMetrics(new BarLayoutMetrics(this))
 {
@@ -57,6 +60,17 @@ BarSurfaceBundle::BarSurfaceBundle(QScreen *screen, QQmlApplicationEngine *engin
             this, &BarSurfaceBundle::syncPopupMapping);
     connect(m_popupController, &BarPopupController::changed,
             this, &BarSurfaceBundle::popupStateChanged);
+    connect(m_popupController, &BarPopupController::changed, this, [this] {
+        if (!m_popupController || !m_popupController->isOpen()
+            || !m_contextMenuController
+            || !m_contextMenuController->hasActivePresentation())
+            return;
+        // Bar popups and Context Menus are both shell-owned modal surfaces;
+        // complete this coordination close synchronously so two input
+        // shields are never active at once.
+        m_contextMenuController->close();
+        m_contextMenuController->completeClose();
+    });
 }
 
 BarSurfaceBundle::~BarSurfaceBundle()
@@ -251,12 +265,14 @@ QQuickWindow *BarSurfaceBundle::createSurface(const QUrl &sourceUrl, int width, 
         {QStringLiteral("networkService"), objectVariant(m_networkService)},
         {QStringLiteral("bluetoothService"), objectVariant(m_bluetoothService)},
         {QStringLiteral("statusNotifierService"), objectVariant(m_statusNotifier)},
+        {QStringLiteral("contextMenuController"), objectVariant(m_contextMenuController)},
         {QStringLiteral("popupController"), objectVariant(m_popupController)},
         {QStringLiteral("barGeometry"), objectVariant(m_layoutMetrics)},
         {QStringLiteral("outputWidth"), width},
         {QStringLiteral("outputHeight"), height},
         {QStringLiteral("outputOriginX"), m_screen ? m_screen->geometry().x() : 0},
         {QStringLiteral("outputOriginY"), m_screen ? m_screen->geometry().y() : 0},
+        {QStringLiteral("outputKey"), m_screen ? m_screen->name() : QString()},
     };
     QObject *object = component.createWithInitialProperties(properties, m_engine->rootContext());
     auto *window = qobject_cast<QQuickWindow *>(object);

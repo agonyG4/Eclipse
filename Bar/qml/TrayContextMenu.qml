@@ -9,6 +9,8 @@ PopupCard {
 
     property var trayService: null
     property var popupController: null
+    property var contextMenuController: null
+    property var contextMenuGeneration: 0
     property string contextKey: ""
     readonly property var serviceRevision: trayService ? trayService.presentationRevision : 0
     readonly property var menuModel: {
@@ -25,24 +27,92 @@ PopupCard {
     property var pendingCascadeOwner: null
     property int pendingCascadeNodeId: -1
     property int pendingCascadeAnchorY: 0
+    property string presentedContextKey: ""
     property int outputWidth: 1
+    property int outputHeight: 1
+    property int activeIndex: -1
     property string emptyText: "No actions exposed"
     readonly property bool hasRemoteMenu: {
         root.serviceRevision
         return root.trayService ? root.trayService.hasMenuForItem(root.contextKey) : false
     }
     implicitWidth: 220
+    height: Math.min(implicitHeight, Math.max(1, outputHeight))
+    focus: visible
     cardPadding: 12
     contentSpacing: 4
+    clip: true
 
-    function resetMenu() {
+    function rowAt(index) {
+        return menuRepeater.itemAt(index)
+    }
+
+    function isNavigable(index) {
+        const row = rowAt(index)
+        return row && row.itemVisible && row.itemEnabled && !row.separator
+    }
+
+    function selectRow(index) {
+        if (index >= 0 && isNavigable(index))
+            activeIndex = index
+    }
+
+    function initializeSelection() {
+        activeIndex = -1
+        for (let index = 0; index < menuRepeater.count; ++index) {
+            if (isNavigable(index)) {
+                activeIndex = index
+                break
+            }
+        }
+    }
+
+    function moveSelection(delta) {
+        const count = menuRepeater.count
+        if (count === 0)
+            return
+        let index = activeIndex < 0 ? (delta > 0 ? -1 : 0) : activeIndex
+        for (let step = 0; step < count; ++step) {
+            index = (index + (delta > 0 ? 1 : -1) + count) % count
+            if (isNavigable(index)) {
+                activeIndex = index
+                break
+            }
+        }
+    }
+
+    function activateSelection() {
+        const row = rowAt(activeIndex)
+        if (!row || !isNavigable(activeIndex))
+            return
+        if (row.hasChildren)
+            openChild(row.menuOwner, row.nodeId, row.y)
+        else {
+            activateNode(row.menuOwner, row.nodeId)
+            if (root.contextMenuController || root.popupController)
+                (root.contextMenuController || root.popupController).close()
+        }
+    }
+
+    function resetMenuState() {
         cascadeModel = null
         cascadeAnchorY = 0
         pendingCascadeOwner = null
         pendingCascadeNodeId = -1
         pendingCascadeAnchorY = 0
-        if (trayService)
-            trayService.prepareMenuForPresentation(contextKey)
+        activeIndex = -1
+    }
+
+    function requestRootPresentation() {
+        if (!trayService || contextKey === "" || presentedContextKey === contextKey)
+            return
+        presentedContextKey = contextKey
+        trayService.prepareMenuForPresentation(contextKey)
+    }
+
+    function beginPresentation() {
+        resetMenuState()
+        requestRootPresentation()
     }
 
     function cascadeXFor(parentX, parentWidth, childWidth, outputWidth) {
@@ -93,6 +163,10 @@ PopupCard {
         pendingCascadeAnchorY = 0
     }
 
+    function closeChild() {
+        closeCascades()
+    }
+
     function iconFor(iconSource, iconName, toggleType, state, hasChildren) {
         if (hasChildren)
             return "󰅂"
@@ -103,15 +177,78 @@ PopupCard {
         return iconSource || ""
     }
 
-    Component.onCompleted: resetMenu()
-    onContextKeyChanged: resetMenu()
-    onVisibleChanged: if (visible) resetMenu(); else closeCascades()
+    function activateNode(ownerModel, nodeId) {
+        if (root.contextMenuController) {
+            root.contextMenuController.activate(root.contextMenuGeneration,
+                                                 "tray.node." + nodeId)
+        } else if (ownerModel) {
+            ownerModel.activate(nodeId)
+        }
+    }
+
+    Component.onCompleted: {
+        resetMenuState()
+        if (visible)
+            requestRootPresentation()
+        Qt.callLater(initializeSelection)
+    }
+    onContextKeyChanged: {
+        presentedContextKey = ""
+        if (visible)
+            beginPresentation()
+        else
+            resetMenuState()
+    }
+    onVisibleChanged: {
+        if (visible) {
+            presentedContextKey = ""
+            beginPresentation()
+            forceActiveFocus()
+            Qt.callLater(initializeSelection)
+        } else {
+            presentedContextKey = ""
+            closeCascades()
+        }
+    }
+
+    Keys.onPressed: function(event) {
+        if (event.key === Qt.Key_Up) {
+            moveSelection(-1)
+            event.accepted = true
+        } else if (event.key === Qt.Key_Down) {
+            moveSelection(1)
+            event.accepted = true
+        } else if (event.key === Qt.Key_Home) {
+            initializeSelection()
+            event.accepted = true
+        } else if (event.key === Qt.Key_End) {
+            for (let index = menuRepeater.count - 1; index >= 0; --index) {
+                if (isNavigable(index)) {
+                    activeIndex = index
+                    break
+                }
+            }
+            event.accepted = true
+        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                   || event.key === Qt.Key_Space || event.key === Qt.Key_Right) {
+            activateSelection()
+            event.accepted = true
+        } else if (event.key === Qt.Key_Escape && root.contextMenuController) {
+            root.contextMenuController.close()
+            event.accepted = true
+        }
+    }
 
     Connections {
         target: trayService
         function onMenuClientChanged(key) {
-            if (key === root.contextKey)
-                root.resetMenu()
+            if (key === root.contextKey) {
+                root.presentedContextKey = ""
+                if (root.visible)
+                    root.beginPresentation()
+                else
+                    root.resetMenuState()
+            }
         }
         function onMenuContentChanged(key) {
             if (key === root.contextKey)
@@ -195,8 +332,10 @@ PopupCard {
             required property int state
             required property bool separator
             required property bool hasChildren
-            property bool itemEnabled: model.enabled
-            property bool itemVisible: model.visible
+            required property bool nodeEnabled
+            required property bool nodeVisible
+            property bool itemEnabled: nodeEnabled
+            property bool itemVisible: nodeVisible
 
             width: parent ? parent.width : root.width
             height: !itemVisible ? 0 : separator ? 1 : 36
@@ -212,13 +351,16 @@ PopupCard {
                 text: row.label
                 icon: root.iconFor(row.iconSource, row.iconName, row.toggleType,
                                    row.state, row.hasChildren)
+                selected: root.activeIndex === index
+                onHovered: root.selectRow(index)
                 onClicked: {
+                    root.selectRow(index)
                     if (row.hasChildren) {
                         root.openChild(row.menuOwner, row.nodeId, row.y)
                     } else if (row.menuOwner) {
-                        row.menuOwner.activate(row.nodeId)
-                        if (root.popupController)
-                            root.popupController.close()
+                        root.activateNode(row.menuOwner, row.nodeId)
+                        if (root.contextMenuController || root.popupController)
+                            (root.contextMenuController || root.popupController).close()
                     }
                 }
             }
@@ -226,6 +368,7 @@ PopupCard {
     }
 
     Repeater {
+        id: menuRepeater
         model: root.menuModel
         delegate: menuRow
         onItemAdded: function(index, item) { item.menuOwner = root.menuModel }
@@ -237,12 +380,20 @@ PopupCard {
         active: root.cascadeModel !== null
         source: root.cascadeModel !== null ? Qt.resolvedUrl("TrayMenuCard.qml") : ""
         property var cascadeMenuModel: root.cascadeModel
+        width: Math.min(220, Math.max(1, root.outputWidth))
+        height: item ? Math.min(item.implicitHeight, Math.max(1, root.outputHeight)) : 0
         onLoaded: {
             item.menuModel = cascadeMenuModel
             item.trayService = root.trayService
             item.popupController = root.popupController
+            item.contextMenuController = root.contextMenuController
+            item.contextMenuGeneration = root.contextMenuGeneration
             item.contextKey = root.contextKey
             item.presentationParent = root.parent
+            item.outputWidth = root.outputWidth
+            item.outputHeight = root.outputHeight
+            item.parentMenuCard = root
+            item.width = Math.min(220, Math.max(1, root.outputWidth))
             item.depth = 1
             item.x = root.cascadeXFor(root.x, root.width, width, root.parent.width)
             item.y = root.cascadeYFor(root.y, root.cascadeAnchorY, height, root.parent.height)

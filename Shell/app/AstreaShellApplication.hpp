@@ -14,6 +14,7 @@ class QQmlApplicationEngine;
 class QQuickWindow;
 class ShellRuntime;
 class BarSurfaceManager;
+class ContextMenuSurfaceManager;
 
 namespace Paper {
 class WallpaperSurfaceManager;
@@ -47,6 +48,7 @@ private:
     QPointer<QQuickWindow> m_altTabWindow;
     QPointer<QQuickWindow> m_spotlightWindow;
     std::unique_ptr<BarSurfaceManager> m_barSurfaceManager;
+    std::unique_ptr<ContextMenuSurfaceManager> m_contextMenuSurfaceManager;
     std::unique_ptr<Paper::WallpaperSurfaceManager> m_wallpaperSurfaceManager;
     bool m_layerShellWaylandBackend = false;
     bool m_layerShellProtocolAdvertised = false;

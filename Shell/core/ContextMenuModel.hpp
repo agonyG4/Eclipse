@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QAbstractItemModel>
+#include <QHash>
 #include <QVector>
 
 #include <memory>
@@ -68,6 +69,9 @@ public:
     void clear();
     QString lastError() const { return m_lastError; }
     bool canActivate(const QString &token) const;
+    Q_INVOKABLE QObject *childModelAt(int row) const;
+    Q_INVOKABLE int firstNavigable() const;
+    Q_INVOKABLE int nextNavigable(int currentRow, int delta) const;
 
     static constexpr int MaximumDepth = 8;
     static constexpr int MaximumNodes = 256;
@@ -87,6 +91,7 @@ private:
     Node *nodeForIndex(const QModelIndex &index) const;
 
     std::unique_ptr<Node> m_root;
+    mutable QHash<const Node *, ContextMenuModel *> m_childModels;
     QString m_lastError;
 };
 

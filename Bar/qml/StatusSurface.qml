@@ -12,6 +12,8 @@ Window {
     property var networkService: null
     property var bluetoothService: null
     property var statusNotifierService: null
+    property var contextMenuController: null
+    property string outputKey: ""
     property var trayTooltipSurface: null
     property var popupController: null
     property var barGeometry: null
@@ -50,6 +52,8 @@ Window {
             objectName: "tray"
             trayService: window.statusNotifierService
             popupController: window.popupController
+            contextMenuController: window.contextMenuController
+            outputKey: window.outputKey
             tooltipSurface: window.trayTooltipSurface
             barGeometry: window.barGeometry
             outputWidth: window.outputWidth

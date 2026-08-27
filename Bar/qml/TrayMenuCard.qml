@@ -10,8 +10,11 @@ PopupCard {
     property var menuModel: null
     property var trayService: null
     property var popupController: null
+    property var contextMenuController: null
+    property var contextMenuGeneration: 0
     property string contextKey: ""
     property Item presentationParent: parent
+    property var parentMenuCard: null
     property int depth: 1
     property int maxDepth: 8
     property var childModel: null
@@ -19,6 +22,9 @@ PopupCard {
     property var pendingChildOwner: null
     property int pendingChildNodeId: -1
     property int pendingChildAnchorY: 0
+    property int outputWidth: 1
+    property int outputHeight: 1
+    property int activeIndex: -1
     property string emptyText: "No actions exposed"
 
     function iconFor(iconSource, toggleType, state, hasChildren) {
@@ -32,8 +38,74 @@ PopupCard {
     }
 
     implicitWidth: 220
+    height: Math.min(implicitHeight, Math.max(1, outputHeight))
+    focus: visible
     cardPadding: 12
     contentSpacing: 4
+    clip: true
+
+    function rowAt(index) {
+        return menuRepeater.itemAt(index)
+    }
+
+    function isNavigable(index) {
+        const row = rowAt(index)
+        return row && row.itemVisible && row.itemEnabled && !row.separator
+    }
+
+    function initializeSelection() {
+        activeIndex = -1
+        for (let index = 0; index < menuRepeater.count; ++index) {
+            if (isNavigable(index)) {
+                activeIndex = index
+                break
+            }
+        }
+    }
+
+    function moveSelection(delta) {
+        const count = menuRepeater.count
+        if (count === 0)
+            return
+        let index = activeIndex < 0 ? (delta > 0 ? -1 : 0) : activeIndex
+        for (let step = 0; step < count; ++step) {
+            index = (index + (delta > 0 ? 1 : -1) + count) % count
+            if (isNavigable(index)) {
+                activeIndex = index
+                break
+            }
+        }
+    }
+
+    function activateSelection() {
+        const row = rowAt(activeIndex)
+        if (!row || !isNavigable(activeIndex))
+            return
+        if (row.hasChildren) {
+            childModel = null
+            pendingChildOwner = row.menuOwner
+            pendingChildNodeId = row.nodeId
+            pendingChildAnchorY = row.y
+            if (trayService) {
+                trayService.aboutToShowMenu(contextKey, row.nodeId)
+                resolvePendingChild()
+            }
+        } else if (row.menuOwner) {
+            if (contextMenuController)
+                contextMenuController.activate(contextMenuGeneration,
+                                                "tray.node." + row.nodeId)
+            else
+                row.menuOwner.activate(row.nodeId)
+            if (contextMenuController || popupController)
+                (contextMenuController || popupController).close()
+        }
+    }
+
+    function closeChild() {
+        childModel = null
+        pendingChildOwner = null
+        pendingChildNodeId = -1
+    }
 
     function cascadeXFor(parentX, parentWidth, childWidth, outputWidth) {
         const rightX = parentX + parentWidth - 4
@@ -73,6 +145,43 @@ PopupCard {
         }
     }
 
+    Component.onCompleted: Qt.callLater(initializeSelection)
+    onMenuModelChanged: Qt.callLater(initializeSelection)
+
+    Keys.onPressed: function(event) {
+        if (event.key === Qt.Key_Up) {
+            moveSelection(-1)
+            event.accepted = true
+        } else if (event.key === Qt.Key_Down) {
+            moveSelection(1)
+            event.accepted = true
+        } else if (event.key === Qt.Key_Home) {
+            initializeSelection()
+            event.accepted = true
+        } else if (event.key === Qt.Key_End) {
+            for (let index = menuRepeater.count - 1; index >= 0; --index) {
+                if (isNavigable(index)) {
+                    activeIndex = index
+                    break
+                }
+            }
+            event.accepted = true
+        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                   || event.key === Qt.Key_Space || event.key === Qt.Key_Right) {
+            activateSelection()
+            event.accepted = true
+        } else if (event.key === Qt.Key_Left) {
+            if (parentMenuCard)
+                parentMenuCard.closeChild()
+            else
+                closeChild()
+            event.accepted = true
+        } else if (event.key === Qt.Key_Escape && contextMenuController) {
+            contextMenuController.close()
+            event.accepted = true
+        }
+    }
+
     Text {
         visible: root.menuModel && root.menuModel.rowCount() === 0
         text: root.emptyText
@@ -86,6 +195,7 @@ PopupCard {
     }
 
     Repeater {
+        id: menuRepeater
         model: root.menuModel
         delegate: Item {
             id: row
@@ -97,8 +207,10 @@ PopupCard {
             required property int state
             required property bool separator
             required property bool hasChildren
-            property bool itemEnabled: model.enabled
-            property bool itemVisible: model.visible
+            required property bool nodeEnabled
+            required property bool nodeVisible
+            property bool itemEnabled: nodeEnabled
+            property bool itemVisible: nodeVisible
 
             width: parent ? parent.width : root.width
             height: !itemVisible ? 0 : separator ? 1 : 36
@@ -113,7 +225,10 @@ PopupCard {
                 enabled: row.itemEnabled
                 text: row.label
                 icon: root.iconFor(row.iconSource, row.toggleType, row.state, row.hasChildren)
+                selected: root.activeIndex === index
+                onHovered: root.activeIndex = index
                 onClicked: {
+                    root.activeIndex = index
                     if (row.hasChildren) {
                         root.childModel = null
                         root.pendingChildOwner = row.menuOwner
@@ -124,9 +239,13 @@ PopupCard {
                             root.resolvePendingChild()
                         }
                     } else if (row.menuOwner) {
-                        row.menuOwner.activate(row.nodeId)
-                        if (root.popupController)
-                            root.popupController.close()
+                        if (root.contextMenuController)
+                            root.contextMenuController.activate(root.contextMenuGeneration,
+                                                                 "tray.node." + row.nodeId)
+                        else
+                            row.menuOwner.activate(row.nodeId)
+                        if (root.contextMenuController || root.popupController)
+                            (root.contextMenuController || root.popupController).close()
                     }
                 }
             }
@@ -139,12 +258,20 @@ PopupCard {
         active: root.childModel !== null && root.depth < root.maxDepth
         source: active ? Qt.resolvedUrl("TrayMenuCard.qml") : ""
         property var childMenuModel: root.childModel
+        width: Math.min(220, Math.max(1, root.outputWidth))
+        height: item ? Math.min(item.implicitHeight, Math.max(1, root.outputHeight)) : 0
         onLoaded: {
             item.menuModel = childMenuModel
             item.trayService = root.trayService
             item.popupController = root.popupController
+            item.contextMenuController = root.contextMenuController
+            item.contextMenuGeneration = root.contextMenuGeneration
             item.contextKey = root.contextKey
             item.presentationParent = root.presentationParent
+            item.parentMenuCard = root
+            item.outputWidth = root.outputWidth
+            item.outputHeight = root.outputHeight
+            item.width = Math.min(220, Math.max(1, root.outputWidth))
             item.depth = root.depth + 1
             item.x = root.cascadeXFor(root.x, root.width, width, root.presentationParent.width)
             item.y = root.cascadeYFor(root.y, root.childAnchorY, height,

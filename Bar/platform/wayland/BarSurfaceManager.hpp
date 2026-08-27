@@ -10,6 +10,9 @@
 class BarClockService;
 class BarController;
 class BarSurfaceBundle;
+namespace Astrea::Shell {
+class ContextMenuController;
+}
 class QQmlApplicationEngine;
 class QGuiApplication;
 class QScreen;
@@ -39,11 +42,13 @@ public:
                       Astrea::System::BluetoothService *bluetoothService,
                       QObject *parent = nullptr,
                       BundleFactory bundleFactory = {},
-                      Astrea::StatusNotifier::StatusNotifierService *statusNotifier = nullptr);
+                      Astrea::StatusNotifier::StatusNotifierService *statusNotifier = nullptr,
+                      Astrea::Shell::ContextMenuController *contextMenuController = nullptr);
     ~BarSurfaceManager() override;
 
     bool initialize(QString *errorOut = nullptr);
     void shutdown();
+    void closePopups();
 
     int bundleCount() const { return m_bundles.size(); }
     bool popupOpen() const;
@@ -69,6 +74,7 @@ private:
     Astrea::System::NetworkService *m_networkService = nullptr;
     Astrea::System::BluetoothService *m_bluetoothService = nullptr;
     Astrea::StatusNotifier::StatusNotifierService *m_statusNotifier = nullptr;
+    Astrea::Shell::ContextMenuController *m_contextMenuController = nullptr;
     QHash<QScreen *, BarSurfaceBundle *> m_bundles;
     BundleFactory m_bundleFactory;
     bool m_initialized = false;

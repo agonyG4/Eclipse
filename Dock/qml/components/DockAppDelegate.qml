@@ -22,6 +22,10 @@ Item {
     required property int slotWidth
     required property int slotHeight
     property var dockPanel
+    property var contextMenuController: null
+    property string outputKey: ""
+    property int outputOriginX: 0
+    property int outputOriginY: 0
     property bool pointerTarget: false
     property real magnificationScale: 1.0
     property real visualOffsetX: 0
@@ -73,12 +77,28 @@ Item {
 
     TapHandler {
         id: tapHandler
+        acceptedButtons: Qt.LeftButton
         gesturePolicy: TapHandler.DragThreshold
         margin: root.iconSize * (root.magnificationScale - 1) / 2
         onTapped: {
             if (!root.dragWasActive)
                 root.activated(root.desktopFileName)
             root.dragWasActive = false
+        }
+    }
+
+    TapHandler {
+        id: contextTapHandler
+        acceptedButtons: Qt.RightButton
+        gesturePolicy: TapHandler.ReleaseWithinBounds
+        onTapped: {
+            if (!root.contextMenuController)
+                return
+            const topLeft = root.mapToItem(null, 0, 0)
+            root.contextMenuController.presentDock(root.desktopFileName,
+                Math.round(topLeft.x - root.outputOriginX),
+                Math.round(topLeft.y - root.outputOriginY),
+                Math.round(root.width), Math.round(root.height), root.outputKey)
         }
     }
 

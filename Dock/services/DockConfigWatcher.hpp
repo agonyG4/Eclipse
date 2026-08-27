@@ -11,7 +11,7 @@ struct DockConfig {
     int bottomMargin = 12;
     int panelPadding = 14;
     int itemSpacing = 10;
-    bool magnificationEnabled = true;
+    QString hoverEffect = QStringLiteral("magnification");
     double magnificationScale = 1.6;
     double magnificationRadius = 2.5;
     QStringList pins;

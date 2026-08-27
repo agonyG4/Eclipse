@@ -28,6 +28,7 @@ Item {
     property bool pointerTarget: false
     property real magnificationScale: 1.0
     property real visualOffsetX: 0
+    property real visualOffsetY: 0
     property bool dragging: false
     property bool dragWasActive: false
 
@@ -50,7 +51,7 @@ Item {
         y: 0
         width: root.iconSize
         height: root.iconSize
-        scale: root.magnificationScale
+        scale: root.magnificationScale * (root.dragging ? 1.06 : 1)
         transformOrigin: Item.Bottom
         iconName: root.iconName
         iconPath: root.iconPath
@@ -62,11 +63,18 @@ Item {
         fallbackRadius: 10
     }
 
-    transform: Translate { x: root.visualOffsetX }
+    transform: Translate {
+        x: root.visualOffsetX
+        y: root.visualOffsetY
+    }
     // The visual topmost icon should also win pointer targeting where scaled
     // icon bounds overlap neighboring resting slots.
     z: root.dragging ? 100 : root.magnificationScale
     Behavior on visualOffsetX {
+        enabled: !root.dragging
+        NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
+    }
+    Behavior on visualOffsetY {
         enabled: !root.dragging
         NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
     }

@@ -13,10 +13,10 @@ The Dock-specific targets can be built and run independently:
 ```bash
 cmake --build build --target astrea-dock dock-app-model-test dock-controller-test \
   dock-config-watcher-test dock-config-persistence-test dock-layer-shell-surface-test \
-  dock-ipc-test dock-runtime-paths-test dock-command-line-test
+  dock-hover-qml-test dock-ipc-test dock-runtime-paths-test dock-command-line-test
 cmake --build build --target astrea-dock dock-app-model-test dock-controller-test \
   dock-typhon-runtime-integration-test dock-application-state-projector-test \
-  typhon-app-matcher-test
+  dock-hover-qml-test typhon-app-matcher-test
 ctest --test-dir build -R 'dock-|desktop-entry-catalog-test|typhon-app-matcher-test' \
   --output-on-failure
 
@@ -45,17 +45,19 @@ activation, close removal, and authority loss. Explorer's source contract is
 covered by `python3 -m unittest src/System/tests/test_bin_launchers.py` in the
 current AstreaOS source tree.
 
-`dock-config-watcher-test` covers magnification defaults, type and finite-number
-fallbacks, and bounds. `dock-config-persistence-test` covers pins-only atomic
-replacement, preservation of known and unknown keys, malformed-file refusal,
-validation, write errors, and watcher recovery. `dock-controller-test` covers
-stable identity reorder, launch-state preservation, persistence failure, and
-unchanged runtime-only order. `dock-layer-shell-surface-test` covers the
-explicit resting reservation and zero reservation while unmapped.
+`dock-config-watcher-test` covers hover-effect modes, legacy compatibility,
+magnification defaults, type and finite-number fallbacks, and bounds.
+`dock-config-persistence-test` covers pins-only atomic replacement, preservation
+of known and unknown keys, malformed-file refusal, validation, write errors, and
+watcher recovery. `dock-controller-test` covers stable identity reorder,
+launch-state preservation, persistence failure, and unchanged runtime-only
+order. `dock-layer-shell-surface-test` covers the explicit resting reservation
+and zero reservation while unmapped. `dock-hover-qml-test` exercises the real
+Dock panel and delegate for none/lift/magnification geometry, mode transitions,
+neighbor displacement, and reorder preview/drop signaling across all modes.
 
-The QML lint check is a syntax/type check; the repository does not currently
-provide a focused Qt Quick interaction-test harness for Dock pointer geometry.
-Visual magnification and drag feel therefore still require live/manual
+The QML lint check is a syntax/type check and the focused QML test runs offscreen;
+visual magnification and drag feel therefore still require live/manual
 verification on a Wayland session.
 
 Run the same focused and complete CTest commands in both `build/debug` and

@@ -30,6 +30,8 @@ class DockController final : public QObject {
     Q_PROPERTY(int itemSpacing READ itemSpacing NOTIFY configChanged)
     Q_PROPERTY(int delegateWidth READ delegateWidth NOTIFY configChanged)
     Q_PROPERTY(int delegateHeight READ delegateHeight NOTIFY configChanged)
+    Q_PROPERTY(QString hoverEffect READ hoverEffect NOTIFY configChanged)
+    // Kept as a derived compatibility property for older QML consumers.
     Q_PROPERTY(bool magnificationEnabled READ magnificationEnabled NOTIFY configChanged)
     Q_PROPERTY(double magnificationScale READ magnificationScale NOTIFY configChanged)
     Q_PROPERTY(double magnificationRadius READ magnificationRadius NOTIFY configChanged)
@@ -57,7 +59,9 @@ public:
     int itemSpacing() const { return m_config.itemSpacing; }
     int delegateWidth() const { return DockMetrics::delegateWidth(m_config.iconSize); }
     int delegateHeight() const { return DockMetrics::delegateHeight(m_config.iconSize); }
-    bool magnificationEnabled() const { return m_config.magnificationEnabled; }
+    QString hoverEffect() const { return m_config.hoverEffect; }
+    bool magnificationEnabled() const
+    { return m_config.hoverEffect == QStringLiteral("magnification"); }
     double magnificationScale() const { return m_config.magnificationScale; }
     double magnificationRadius() const { return m_config.magnificationRadius; }
     int restingHeight() const { return DockMetrics::restingHeight(m_config.iconSize); }

@@ -46,6 +46,19 @@ Window {
             menuView.forceActiveFocus()
     }
 
+    function syncTrayPresentation() {
+        if (!trayMenuLoader.item || !root.contextMenuController
+                || root.contextMenuController.targetKind !== 2)
+            return
+        trayMenuLoader.item.trayService = root.trayService
+        trayMenuLoader.item.contextMenuController = root.contextMenuController
+        trayMenuLoader.item.contextKey = root.contextMenuController.targetIdentity
+        trayMenuLoader.item.contextMenuGeneration =
+            root.contextMenuController.presentationGeneration
+        trayMenuLoader.item.outputWidth = root.outputWidth
+        trayMenuLoader.item.outputHeight = root.outputHeight
+    }
+
     function syncAnimationForLifecycle() {
         const lifecycle = root.contextMenuController
             ? root.contextMenuController.lifecycle : 0
@@ -131,12 +144,7 @@ Window {
            ? root.contextMenuController.menuPosition(root.outputWidth, root.outputHeight,
                                                       width, height).y : 0
         onLoaded: {
-            item.trayService = root.trayService
-            item.contextMenuController = root.contextMenuController
-            item.contextMenuGeneration = root.contextMenuController.presentationGeneration
-            item.contextKey = root.contextMenuController.targetIdentity
-            item.outputWidth = root.outputWidth
-            item.outputHeight = root.outputHeight
+            root.syncTrayPresentation()
             Qt.callLater(root.focusActiveMenu)
         }
     }
@@ -189,6 +197,7 @@ Window {
     Connections {
         target: root.contextMenuController
         function onPresentationChanged() {
+            root.syncTrayPresentation()
             root.syncMenuGeometry()
             root.focusActiveMenu()
         }

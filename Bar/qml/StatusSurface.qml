@@ -53,6 +53,7 @@ Window {
             trayService: window.statusNotifierService
             popupController: window.popupController
             contextMenuController: window.contextMenuController
+            surfaceContentItem: window.contentItem
             outputKey: window.outputKey
             tooltipSurface: window.trayTooltipSurface
             barGeometry: window.barGeometry

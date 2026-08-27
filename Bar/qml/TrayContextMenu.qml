@@ -192,13 +192,15 @@ PopupCard {
             requestRootPresentation()
         Qt.callLater(initializeSelection)
     }
-    onContextKeyChanged: {
+    function syncPresentation() {
         presentedContextKey = ""
         if (visible)
             beginPresentation()
         else
             resetMenuState()
     }
+    onContextKeyChanged: syncPresentation()
+    onContextMenuGenerationChanged: syncPresentation()
     onVisibleChanged: {
         if (visible) {
             presentedContextKey = ""
@@ -229,8 +231,13 @@ PopupCard {
                 }
             }
             event.accepted = true
+        } else if (event.key === Qt.Key_Right) {
+            const row = rowAt(activeIndex)
+            if (row && isNavigable(activeIndex) && row.hasChildren)
+                activateSelection()
+            event.accepted = true
         } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                   || event.key === Qt.Key_Space || event.key === Qt.Key_Right) {
+                   || event.key === Qt.Key_Space) {
             activateSelection()
             event.accepted = true
         } else if (event.key === Qt.Key_Escape && root.contextMenuController) {

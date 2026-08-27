@@ -9,6 +9,7 @@ Item {
     property var trayService: null
     property var popupController: null
     property var contextMenuController: null
+    property Item surfaceContentItem: null
     property string outputKey: ""
     property var tooltipSurface: null
     property var barGeometry: null
@@ -26,26 +27,31 @@ Item {
     height: 36
 
     function anchorFor(delegate, x, y) {
+        const surfacePoint = root.surfaceContentItem
+            ? delegate.mapToItem(root.surfaceContentItem, x, y)
+            : delegate.mapToItem(root, x, y)
         if (root.barGeometry)
             return root.barGeometry.trayAnchor(root.outputOriginX, root.outputOriginY,
                                                root.statusLeft, root.statusTop,
-                                               Math.round(x), Math.round(y))
-        return {localX: root.statusLeft + x, localY: root.statusTop + y,
-                globalX: root.outputOriginX + root.statusLeft + x,
-                globalY: root.outputOriginY + root.statusTop + y}
+                                               Math.round(surfacePoint.x), Math.round(surfacePoint.y))
+        return {localX: root.statusLeft + surfacePoint.x,
+                localY: root.statusTop + surfacePoint.y,
+                globalX: root.outputOriginX + root.statusLeft + surfacePoint.x,
+                globalY: root.outputOriginY + root.statusTop + surfacePoint.y}
     }
 
     function presentContextMenu(delegate) {
         if (!root.contextMenuController || !delegate.hasMenu || !delegate.hasUsableMenu)
             return false
-        const topLeft = delegate.mapToItem(root, 0, 0)
-        root.contextMenuController.presentTray(delegate.key,
+        const topLeft = root.surfaceContentItem
+            ? delegate.mapToItem(root.surfaceContentItem, 0, 0)
+            : delegate.mapToItem(root, 0, 0)
+        return root.contextMenuController.presentTray(delegate.key,
             Math.round(root.statusLeft + topLeft.x),
             Math.round(root.statusTop + topLeft.y),
             Math.round(delegate.width), Math.round(delegate.height),
             root.barGeometry ? root.barGeometry.popupTop : 54,
             root.outputKey)
-        return true
     }
 
     Row {
@@ -117,9 +123,8 @@ Item {
                     onEntered: {
                         if (root.tooltipSurface && root.trayService
                                 && root.trayService.tooltipTitleForItem(itemDelegate.key) !== "") {
-                            const point = itemDelegate.mapToItem(root,
+                            const anchor = root.anchorFor(itemDelegate,
                                 itemDelegate.width / 2, itemDelegate.height / 2)
-                            const anchor = root.anchorFor(itemDelegate, point.x, point.y)
                             root.tooltipSurface.showTooltip(itemDelegate.key, anchor.localX)
                         }
                     }
@@ -135,9 +140,8 @@ Item {
                         }
                     }
                     onClicked: mouse => {
-                        const point = itemDelegate.mapToItem(root,
+                        const anchor = root.anchorFor(itemDelegate,
                             itemDelegate.width / 2, itemDelegate.height / 2)
-                        const anchor = root.anchorFor(itemDelegate, point.x, point.y)
                         if (mouse.button === Qt.MiddleButton) {
                             if (root.trayService)
                                 root.trayService.secondaryActivate(itemDelegate.key,

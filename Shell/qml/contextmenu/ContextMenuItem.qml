@@ -23,7 +23,7 @@ Rectangle {
     Accessible.name: root.label
     Accessible.description: root.shortcut
 
-    height: 36
+    height: theme.contextMenuNormalRowHeight
     radius: theme.shellRadiusMedium
     color: root.selected && root.nodeEnabled ? theme.shellHover
         : mouse.pressed && root.nodeEnabled ? theme.shellPressed : "transparent"
@@ -31,12 +31,13 @@ Rectangle {
 
     Row {
         anchors.fill: parent
-        anchors.leftMargin: 10
-        anchors.rightMargin: 10
-        spacing: theme.spacingLarge
+        anchors.leftMargin: theme.contextMenuRowHorizontalMargin
+        anchors.rightMargin: theme.contextMenuRowHorizontalMargin
+        spacing: theme.contextMenuRowSpacing
 
         Item {
-            width: 20
+            id: iconSlot
+            width: theme.contextMenuIconSlotWidth
             height: parent.height
 
             Image {
@@ -73,8 +74,10 @@ Rectangle {
         }
 
         Text {
+            id: labelText
             LayoutMirroring.enabled: false
-            width: Math.max(0, parent.width - x - shortcutText.width - 8)
+            width: Math.max(0, parent.width - iconSlot.width - shortcutText.width
+                                - arrowText.width - parent.spacing * 3)
             anchors.verticalCenter: parent.verticalCenter
             text: root.label
             color: root.destructive ? theme.shellIconWarning : theme.shellTextActive
@@ -84,18 +87,20 @@ Rectangle {
 
         Text {
             id: shortcutText
+            width: root.shortcut === "" ? 0 : implicitWidth
             anchors.verticalCenter: parent.verticalCenter
             text: root.shortcut
             color: theme.shellTextSecondary
             font { family: theme.fontFamily; pixelSize: theme.fontSizeSmall }
-            visible: text !== ""
         }
 
         Text {
+            id: arrowText
+            width: root.hasChildren ? implicitWidth : 0
             anchors.verticalCenter: parent.verticalCenter
             text: root.hasChildren ? "›" : ""
             color: theme.shellTextSecondary
-            font.pixelSize: theme.fontSizeBody
+            font { family: theme.fontFamily; pixelSize: theme.fontSizeBody; weight: Font.Medium }
         }
     }
 

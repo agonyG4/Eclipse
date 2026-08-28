@@ -18,6 +18,7 @@ private slots:
     void sharedViewCanBeCreatedOffscreen();
     void overlayCanBeCreatedOffscreen();
     void overlayOwnsFullscreenOutputGeometryAndIntrinsicMenuSize();
+    void genericMenuSizingIsContentAwareAndScrollable();
 };
 
 void ContextMenuQmlSmokeTest::sharedViewCanBeCreatedOffscreen()
@@ -114,16 +115,27 @@ void ContextMenuQmlSmokeTest::overlayOwnsFullscreenOutputGeometryAndIntrinsicMen
     QTRY_COMPARE_WITH_TIMEOUT(window->height(), 1080, 1000);
     QTRY_COMPARE_WITH_TIMEOUT(window->contentItem()->width(), 1920.0, 1000);
     QTRY_COMPARE_WITH_TIMEOUT(window->contentItem()->height(), 1080.0, 1000);
-    QTRY_COMPARE_WITH_TIMEOUT(view->width(), 280.0, 1000);
-    QTRY_VERIFY_WITH_TIMEOUT(view->property("listContentHeight").toReal()
-                                 >= 3 * 36 + 10,
-                             1000);
-    QTRY_VERIFY_WITH_TIMEOUT(view->property("implicitHeight").toReal()
-                                 >= 3 * 36 + 10 + 20,
-                             1000);
-    QTRY_COMPARE_WITH_TIMEOUT(view->property("cardWidth").toReal(), 280.0, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(view->property("exactContentHeight").toInt(),
+                              3 * 36 + 10,
+                              1000);
+    QTRY_COMPARE_WITH_TIMEOUT(view->property("desiredHeight").toInt(),
+                              3 * 36 + 10 + 20,
+                              1000);
+    QTRY_COMPARE_WITH_TIMEOUT(view->property("resolvedHeight").toInt(),
+                              3 * 36 + 10 + 20,
+                              1000);
+    QTRY_COMPARE_WITH_TIMEOUT(view->property("listContentHeight").toReal(),
+                              3 * 36 + 10,
+                              1000);
+    QTRY_COMPARE_WITH_TIMEOUT(view->property("cardWidth").toReal(),
+                              view->property("resolvedWidth").toReal(),
+                              1000);
     QTRY_COMPARE_WITH_TIMEOUT(view->property("cardHeight").toReal(),
-                              view->property("implicitHeight").toReal(), 1000);
+                              view->property("resolvedHeight").toReal(),
+                              1000);
+    QVERIFY(view->property("resolvedWidth").toReal() >= 200.0);
+    QVERIFY(view->property("resolvedWidth").toReal() <= 260.0);
+    QVERIFY(!view->property("scrollable").toBool());
 
     QVERIFY(controller.present(
         ContextMenuTarget{ContextMenuTarget::Kind::Desktop, QStringLiteral("desktop"),
@@ -132,8 +144,11 @@ void ContextMenuQmlSmokeTest::overlayOwnsFullscreenOutputGeometryAndIntrinsicMen
                                     .label = QStringLiteral("Replacement")}},
         [](const QString &) { return true; }));
     QTRY_COMPARE_WITH_TIMEOUT(view->property("modelRowCount").toInt(), 1, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(view->property("exactContentHeight").toInt(), 36, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(view->property("desiredHeight").toInt(), 56, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(view->property("resolvedHeight").toInt(), 56, 1000);
     QTRY_COMPARE_WITH_TIMEOUT(view->property("listContentHeight").toReal(), 36.0, 1000);
-    QTRY_COMPARE_WITH_TIMEOUT(view->property("implicitHeight").toReal(), 56.0, 1000);
+    QVERIFY(!view->property("scrollable").toBool());
 
     window->setProperty("outputWidth", 1280);
     window->setProperty("outputHeight", 720);
@@ -142,6 +157,68 @@ void ContextMenuQmlSmokeTest::overlayOwnsFullscreenOutputGeometryAndIntrinsicMen
     QTRY_COMPARE_WITH_TIMEOUT(window->contentItem()->width(), 1280.0, 1000);
     QTRY_COMPARE_WITH_TIMEOUT(window->contentItem()->height(), 720.0, 1000);
     QTest::qWait(32);
+
+    delete window;
+}
+
+void ContextMenuQmlSmokeTest::genericMenuSizingIsContentAwareAndScrollable()
+{
+    QQmlApplicationEngine engine;
+    ContextMenuController controller;
+    const QString longLabel = QStringLiteral(
+        "A deliberately long context menu label that must be measured and clamped to the maximum width");
+
+    QVERIFY(controller.present(
+        ContextMenuTarget{ContextMenuTarget::Kind::Desktop, QStringLiteral("desktop"),
+                          QStringLiteral("test-output")},
+        {ContextMenuModel::NodeSpec{.token = QStringLiteral("long"), .label = longLabel}},
+        [](const QString &) { return true; }));
+
+    QQmlComponent component(&engine,
+                            QUrl(QStringLiteral(
+                                "qrc:/qt/qml/Astrea/Shell/ContextMenu/qml/ContextMenuOverlaySurface.qml")));
+    QVERIFY2(component.status() == QQmlComponent::Ready,
+             qPrintable(component.errorString()));
+    auto *window = qobject_cast<QQuickWindow *>(component.createWithInitialProperties({
+        {QStringLiteral("contextMenuController"), QVariant::fromValue(&controller)},
+        {QStringLiteral("outputKey"), QStringLiteral("test-output")},
+        {QStringLiteral("outputWidth"), 800},
+        {QStringLiteral("outputHeight"), 600},
+    }));
+    QVERIFY(window);
+
+    auto *view = window->findChild<QQuickItem *>(QStringLiteral("contextMenuView"));
+    QVERIFY(view);
+    window->show();
+    QTRY_COMPARE_WITH_TIMEOUT(view->property("naturalWidth").toInt() > 260, true, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(view->property("resolvedWidth").toInt(), 260, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(view->property("exactContentHeight").toInt(), 36, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(view->property("resolvedHeight").toInt(), 56, 1000);
+
+    window->setProperty("outputHeight", 160);
+    QTRY_COMPARE_WITH_TIMEOUT(window->height(), 160, 1000);
+
+    QVector<ContextMenuModel::NodeSpec> tallRows;
+    for (int index = 0; index < 12; ++index) {
+        tallRows.append(ContextMenuModel::NodeSpec{
+            .token = QStringLiteral("row-%1").arg(index),
+            .label = QStringLiteral("Row %1").arg(index),
+        });
+    }
+    QVERIFY(controller.present(
+        ContextMenuTarget{ContextMenuTarget::Kind::Desktop, QStringLiteral("desktop"),
+                          QStringLiteral("test-output")},
+        tallRows,
+        [](const QString &) { return true; }));
+
+    QTRY_COMPARE_WITH_TIMEOUT(view->property("modelRowCount").toInt(), 12, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(view->property("exactContentHeight").toInt(), 12 * 36, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(view->property("desiredHeight").toInt(), 12 * 36 + 20, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(view->property("resolvedHeight").toInt(), 160 - 2 * 8, 1000);
+    QVERIFY(view->property("scrollable").toBool());
+    QTRY_COMPARE_WITH_TIMEOUT(view->property("cardHeight").toReal(),
+                              view->property("resolvedHeight").toReal(),
+                              1000);
 
     delete window;
 }

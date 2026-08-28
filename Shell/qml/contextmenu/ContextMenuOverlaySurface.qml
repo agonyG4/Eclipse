@@ -10,7 +10,6 @@ Window {
     property int outputHeight: height
     property int outputOriginX: 0
     property int outputOriginY: 0
-    property int menuWidth: 280
     property var trayService: null
     property bool debugEnabled: contextMenuController
         ? contextMenuController.debugEnabled : false
@@ -116,8 +115,6 @@ Window {
     function syncMenuGeometry() {
         if (!menuView || !root.contextMenuController)
             return
-        menuView.width = Math.min(root.menuWidth, Math.max(1, root.outputWidth))
-        menuView.height = Math.min(menuView.implicitHeight, Math.max(1, root.outputHeight))
         const position = root.contextMenuController.menuPosition(root.outputWidth,
                                                                   root.outputHeight,
                                                                   menuView.width,
@@ -202,8 +199,6 @@ Window {
         z: 1
         visible: !root.contextMenuController
             || root.contextMenuController.targetKind !== 2
-        width: Math.min(root.menuWidth, Math.max(1, root.outputWidth))
-        height: Math.min(implicitHeight, Math.max(1, root.outputHeight))
         menuModel: root.contextMenuController ? root.contextMenuController.model : null
         contextMenuController: root.contextMenuController
         presentationGeneration: root.contextMenuController
@@ -215,6 +210,8 @@ Window {
         scale: 0.96
         enabled: root.contextMenuController
             && root.contextMenuController.lifecycle === 1
+        onWidthChanged: root.syncMenuGeometry()
+        onHeightChanged: root.syncMenuGeometry()
         onImplicitHeightChanged: root.syncMenuGeometry()
         Component.onCompleted: root.syncMenuGeometry()
     }

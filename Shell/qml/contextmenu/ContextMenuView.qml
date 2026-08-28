@@ -3,6 +3,8 @@ import QtQuick
 Item {
     id: root
 
+    ShellMenuTheme { id: theme }
+
     property var menuModel: null
     property var contextMenuController: null
     property int presentationGeneration: 0
@@ -12,8 +14,33 @@ Item {
     property var parentMenuView: null
     property int activeIndex: -1
     property int submenuIndex: -1
-    property int rowHeight: 36
+    property int rowHeight: theme.contextMenuNormalRowHeight
     property rect activeRowRectangle: Qt.rect(root.x, root.y, root.width, root.rowHeight)
+    readonly property var modelRevision: menuModel ? menuModel.presentationRevision : 0
+    readonly property int exactContentHeight: menuModel && modelRevision >= 0
+        ? menuModel.presentationContentHeight(theme.contextMenuNormalRowHeight,
+                                              theme.contextMenuSeparatorHeight) : 0
+    readonly property int desiredHeight: exactContentHeight
+        + theme.contextMenuCardPadding * 2
+    readonly property int naturalWidth: menuModel && modelRevision >= 0
+        ? menuModel.presentationNaturalWidth(
+              theme.fontFamily,
+              theme.fontSizeBody,
+              theme.fontSizeSmall,
+              theme.contextMenuRowHorizontalMargin,
+              theme.contextMenuIconSlotWidth,
+              theme.contextMenuRowSpacing,
+              theme.contextMenuCardPadding,
+              theme.contextMenuBorderWidth) : 0
+    readonly property int edgeMargin: theme.contextMenuEdgeMargin
+    readonly property int resolvedWidth: Math.min(
+        theme.contextMenuMaximumWidth,
+        Math.max(naturalWidth, theme.contextMenuMinimumWidth),
+        Math.max(1, outputWidth - edgeMargin * 2))
+    readonly property int resolvedHeight: Math.min(
+        desiredHeight,
+        Math.max(1, outputHeight - edgeMargin * 2))
+    readonly property bool scrollable: desiredHeight > resolvedHeight
     readonly property real cardWidth: card.width
     readonly property real cardHeight: card.height
     readonly property real listContentWidth: list.contentWidth >= 0
@@ -22,9 +49,10 @@ Item {
     readonly property int modelRowCount: list.count
     property var submenuModel: submenuIndex >= 0 && menuModel
         ? menuModel.childModelAt(submenuIndex) : null
-    implicitWidth: card.implicitWidth
-    implicitHeight: card.implicitHeight
-    height: Math.min(implicitHeight, Math.max(1, outputHeight))
+    implicitWidth: resolvedWidth
+    implicitHeight: desiredHeight
+    width: resolvedWidth
+    height: resolvedHeight
 
     function initializeSelection() {
         if (!menuModel)
@@ -151,8 +179,8 @@ Item {
     ContextMenuCard {
         id: card
         anchors.fill: parent
-        implicitWidth: 280
-        implicitHeight: list.contentHeight + card.cardPadding * 2
+        implicitWidth: root.resolvedWidth
+        implicitHeight: root.desiredHeight
         width: root.width
         height: root.height
 
@@ -162,7 +190,7 @@ Item {
             anchors.fill: parent
             anchors.margins: card.cardPadding
             model: root.menuModel
-            interactive: false
+            interactive: root.scrollable
             clip: true
             delegate: Item {
                 id: row
@@ -180,7 +208,8 @@ Item {
                 required property bool hasChildren
 
                 width: list.width
-                height: !nodeVisible ? 0 : nodeKind === 1 ? 10 : root.rowHeight
+                height: !nodeVisible ? 0 : nodeKind === 1
+                    ? theme.contextMenuSeparatorHeight : root.rowHeight
                 visible: nodeVisible
 
                 ContextMenuSeparator {
@@ -223,9 +252,8 @@ Item {
         source: active ? Qt.resolvedUrl("ContextMenuView.qml") : ""
         property var childMenuModel: root.submenuModel
         z: 2
-        width: root.contextMenuController && root.submenuModel
-            ? Math.min(280, Math.max(1, root.outputWidth)) : 0
-        height: item ? Math.min(item.implicitHeight, Math.max(1, root.outputHeight)) : 0
+        width: item ? item.resolvedWidth : 0
+        height: item ? item.resolvedHeight : 0
         x: root.contextMenuController && root.submenuModel
            ? root.contextMenuController.submenuPosition(root.outputWidth, root.outputHeight,
                                                         width, height,
@@ -244,7 +272,6 @@ Item {
             item.outputHeight = root.outputHeight
             item.rootView = false
             item.parentMenuView = root
-            item.width = Math.min(280, Math.max(1, root.outputWidth))
             item.forceActiveFocus()
         }
         onChildMenuModelChanged: if (item) item.menuModel = childMenuModel

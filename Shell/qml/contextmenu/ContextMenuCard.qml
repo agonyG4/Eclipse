@@ -7,9 +7,9 @@ Rectangle {
     ShellMenuTheme { id: theme }
 
     default property alias contentData: content.data
-    property int cardPadding: 10
-    property int contentSpacing: 3
-    implicitWidth: 280
+    property int cardPadding: theme.contextMenuCardPadding
+    property int contentSpacing: theme.contextMenuRowSpacing
+    implicitWidth: content.implicitWidth + cardPadding * 2
     implicitHeight: content.implicitHeight + cardPadding * 2
     radius: theme.shellRadiusLarge
     color: theme.background

@@ -16,5 +16,7 @@ public:
     static ResolveResult resolveWithSource();
 
     static QStringList searchPaths();
+    static QStringList searchPathsFor(const QStringList &dataLocations,
+                                      const QString &homePath);
     static bool themeExists(const QString &themeName);
 };

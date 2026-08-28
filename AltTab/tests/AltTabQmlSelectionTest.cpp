@@ -9,6 +9,7 @@
 #include <memory>
 
 #include "core/AltTabWindowModel.hpp"
+#include "icons/AstreaIconProvider.hpp"
 
 Q_IMPORT_QML_PLUGIN(Astrea_SharedPlugin)
 
@@ -44,6 +45,7 @@ class AltTabQmlSelectionTest final : public QObject {
 
 private slots:
     void realPanelKeepsSelectionIndependentFromActiveAndHover();
+    void selectionChangesPresentationWithoutChangingIconQuality();
 };
 
 static void collectDelegates(QQuickItem *item, QVector<QQuickItem *> &delegates)
@@ -59,6 +61,19 @@ static QVector<QQuickItem *> delegatesFor(QQuickItem *root)
     QVector<QQuickItem *> delegates;
     collectDelegates(root, delegates);
     return delegates;
+}
+
+static QQuickItem *iconFor(QQuickItem *delegate)
+{
+    if (!delegate)
+        return nullptr;
+    for (QQuickItem *child : delegate->childItems()) {
+        if (child->property("effectiveSourcePixelSize").isValid())
+            return child;
+        if (QQuickItem *nested = iconFor(child))
+            return nested;
+    }
+    return nullptr;
 }
 
 void AltTabQmlSelectionTest::realPanelKeepsSelectionIndependentFromActiveAndHover()
@@ -82,6 +97,7 @@ void AltTabQmlSelectionTest::realPanelKeepsSelectionIndependentFromActiveAndHove
     FakeAltTabQmlController controller;
     QQmlEngine engine;
     engine.addImportPath(QStringLiteral(ASTREA_QML_IMPORT_PATH));
+    engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
     engine.rootContext()->setContextProperty(QStringLiteral("AltTabController"), &controller);
     engine.rootContext()->setContextProperty(QStringLiteral("AltTabWindowModel"), &model);
 
@@ -137,6 +153,66 @@ void AltTabQmlSelectionTest::realPanelKeepsSelectionIndependentFromActiveAndHove
         QCoreApplication::processEvents();
         assertSelection(selected);
     }
+}
+
+void AltTabQmlSelectionTest::selectionChangesPresentationWithoutChangingIconQuality()
+{
+    AltTabWindowModel model;
+    QVector<WindowInfo> windows;
+    for (const QString &name : {QStringLiteral("A"), QStringLiteral("B")}) {
+        WindowInfo window;
+        window.windowId = WindowId{name};
+        window.displayName = name;
+        window.appId = name;
+        window.title = name;
+        windows.append(window);
+    }
+    model.setWindows(windows);
+    model.setSelectedIndex(0);
+
+    FakeAltTabQmlController controller;
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(ASTREA_QML_IMPORT_PATH));
+    engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+    engine.rootContext()->setContextProperty(QStringLiteral("AltTabController"), &controller);
+    engine.rootContext()->setContextProperty(QStringLiteral("AltTabWindowModel"), &model);
+    QQmlComponent component(&engine,
+                            QUrl::fromLocalFile(QStringLiteral(ASTREA_ALTTAB_PANEL_QML)));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    std::unique_ptr<QObject> panel(component.create());
+    QVERIFY(panel);
+    auto *panelItem = qobject_cast<QQuickItem *>(panel.get());
+    QVERIFY(panelItem);
+    QCoreApplication::processEvents();
+
+    const QVector<QQuickItem *> delegates = delegatesFor(panelItem);
+    QCOMPARE(delegates.size(), 2);
+    QQuickItem *selectedDelegate = nullptr;
+    QQuickItem *unselectedDelegate = nullptr;
+    for (QQuickItem *delegate : delegates) {
+        if (delegate->property("windowSelected").toBool())
+            selectedDelegate = delegate;
+        else
+            unselectedDelegate = delegate;
+    }
+    QVERIFY(selectedDelegate && unselectedDelegate);
+    QQuickItem *selectedIcon = iconFor(selectedDelegate);
+    QQuickItem *unselectedIcon = iconFor(unselectedDelegate);
+    QVERIFY(selectedIcon && unselectedIcon);
+    QCOMPARE(selectedIcon->property("effectiveMaximumLogicalSize").toInt(), 84);
+    QCOMPARE(unselectedIcon->property("effectiveMaximumLogicalSize").toInt(), 84);
+    const int sourcePixels = selectedIcon->property("effectiveSourcePixelSize").toInt();
+    const QString source = selectedIcon->property("resolvedSource").toString();
+    QCOMPARE(sourcePixels, unselectedIcon->property("effectiveSourcePixelSize").toInt());
+
+    model.setSelectedIndex(1);
+    QTest::qWait(180);
+    QCOMPARE(selectedIcon->property("resolvedSource").toString(), source);
+    QCOMPARE(selectedIcon->property("effectiveSourcePixelSize").toInt(), sourcePixels);
+    QCOMPARE(selectedIcon->property("effectiveMaximumLogicalSize").toInt(), 84);
+    QVERIFY(selectedDelegate->property("windowSelected").toBool() == false);
+    QVERIFY(unselectedDelegate->property("windowSelected").toBool() == true);
+    QVERIFY(unselectedIcon->width() > selectedIcon->width());
 }
 
 int main(int argc, char **argv)

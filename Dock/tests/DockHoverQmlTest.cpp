@@ -2,6 +2,7 @@
 #include "core/DockSurfaceGeometry.hpp"
 #include "platform/wayland/DockInputRegionBridge.hpp"
 #include "services/DockConfigPersistence.hpp"
+#include "icons/AstreaIconProvider.hpp"
 
 #include <QCoreApplication>
 #include <QGuiApplication>
@@ -93,7 +94,7 @@ QQuickItem *iconItem(QQuickItem *delegateItem)
     std::function<void(QQuickItem *)> visit = [&result, &visit](QQuickItem *item) {
         if (result || !item)
             return;
-        if (item->property("sourcePixelSize").isValid()) {
+        if (item->property("effectiveSourcePixelSize").isValid()) {
             result = item;
             return;
         }
@@ -155,6 +156,7 @@ class DockHoverQmlTest final : public QObject {
 
 private slots:
     void initTestCase();
+    void iconSourceQualityRemainsStableDuringHover();
     void surfaceEnvelopeRemainsStableDuringMagnification();
     void pointerCenterRemainsStableForPracticalMagnificationTargets();
     void inputMaskTracksCenteredChromeAndMagnifiedIcon();
@@ -178,6 +180,51 @@ private slots:
 void DockHoverQmlTest::initTestCase()
 {
     qputenv("QT_QPA_PLATFORM", "offscreen");
+}
+
+void DockHoverQmlTest::iconSourceQualityRemainsStableDuringHover()
+{
+    const QStringList pins{
+        QStringLiteral("one.desktop"), QStringLiteral("two.desktop"),
+        QStringLiteral("three.desktop")};
+    DockController controller;
+    controller.applyConfig(configFor(QStringLiteral("magnification"), pins));
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready,
+             qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    QQuickWindow window;
+    panel->setParentItem(window.contentItem());
+    window.resize(600, 180);
+    window.show();
+    QTest::qWait(40);
+
+    QQuickItem *source = delegate(panel, QStringLiteral("two.desktop"));
+    QQuickItem *icon = iconItem(source);
+    QVERIFY(source && icon);
+    icon->setProperty("iconName", QStringLiteral("quality-test-icon"));
+    icon->setProperty("devicePixelRatioOverride", 2.0);
+    QCoreApplication::processEvents();
+    const QString initialSource = icon->property("resolvedSource").toString();
+    const int initialSourcePixels = icon->property("effectiveSourcePixelSize").toInt();
+    const int logicalSourceSize = icon->property("effectiveMaximumLogicalSize").toInt();
+    QVERIFY(initialSource.contains(QStringLiteral("logicalSize=%1").arg(logicalSourceSize)));
+    QCOMPARE(initialSourcePixels, logicalSourceSize * 2);
+
+    const qreal initialVisualScale = icon->scale();
+    icon->setProperty("scale", 1.6);
+    QTest::qWait(180);
+
+    QCOMPARE(icon->property("resolvedSource").toString(), initialSource);
+    QCOMPARE(icon->property("effectiveSourcePixelSize").toInt(), initialSourcePixels);
+    QVERIFY(icon->property("scale").toReal() > initialVisualScale);
+    delete panel;
 }
 
 void DockHoverQmlTest::surfaceEnvelopeRemainsStableDuringMagnification()

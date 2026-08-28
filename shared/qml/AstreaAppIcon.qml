@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import Qt5Compat.GraphicalEffects
 
 Item {
@@ -19,7 +20,9 @@ Item {
     property bool showFallbackText: true
 
     property int iconSize: 40
-    property int sourcePixelSize: 80
+    property real maximumPresentationScale: 1.0
+    property real maximumPresentationLogicalSize: 0
+    property real devicePixelRatioOverride: 0
     property int iconRadius: 7
     property int iconPadding: 0
     property int fallbackRadius: 7
@@ -29,6 +32,27 @@ Item {
     property int fallbackBorderWidth: 0
     property int fallbackFontSize: 20
     property bool ready: iconImage.status === Image.Ready
+
+    readonly property real effectiveDevicePixelRatio: {
+        var value = devicePixelRatioOverride > 0
+            ? devicePixelRatioOverride : Screen.devicePixelRatio
+        if (!isFinite(value) || value <= 0)
+            value = 1
+        value = Math.max(0.25, Math.min(4.0, value))
+        return Math.round(value * 1000) / 1000
+    }
+
+    readonly property int effectiveMaximumLogicalSize: {
+        var value = maximumPresentationLogicalSize > 0
+            ? maximumPresentationLogicalSize : iconSize * maximumPresentationScale
+        if (!isFinite(value) || value <= 0)
+            value = 1
+        return Math.max(1, Math.min(256, Math.ceil(value)))
+    }
+
+    readonly property int effectiveSourcePixelSize: Math.max(
+        1, Math.min(1024, Math.ceil(effectiveMaximumLogicalSize
+                                    * effectiveDevicePixelRatio)))
 
     readonly property string effectiveIconName: {
         if (iconSource) return iconSource
@@ -81,7 +105,9 @@ Item {
         if (name.indexOf("/") >= 0)
             return name.startsWith("file://") ? name : Qt.resolvedUrl(name)
         return "image://astrea-icon/" + encodeURIComponent(name)
-            + "?size=" + root.sourcePixelSize
+            + "?logicalSize=" + root.effectiveMaximumLogicalSize
+            + "&dpr=" + root.effectiveDevicePixelRatio.toFixed(3)
+            + "&pixelSize=" + root.effectiveSourcePixelSize
             + "&revision=" + revision + "&retry=" + root.retryNonce
     }
 
@@ -92,8 +118,8 @@ Item {
         anchors.fill: parent
         anchors.margins: root.iconPadding
         source: root.resolvedSource
-        sourceSize.width: root.sourcePixelSize
-        sourceSize.height: root.sourcePixelSize
+        sourceSize.width: root.effectiveSourcePixelSize
+        sourceSize.height: root.effectiveSourcePixelSize
         fillMode: Image.PreserveAspectFit
         smooth: true
         mipmap: true

@@ -76,7 +76,7 @@ ColumnLayout {
                     className: resultDelegate.startupWmClass
                     title: resultDelegate.name
                     iconRadius: 7
-                    sourcePixelSize: 80
+                    maximumPresentationLogicalSize: root.resultIconSize
                 }
 
                 Text {

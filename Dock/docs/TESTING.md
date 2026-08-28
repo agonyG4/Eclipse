@@ -68,6 +68,9 @@ terminal paths, and event-driven click/thresholded drag behavior. Its precise
 interaction-target cases cover the top of a maximum-size magnified icon,
 context-menu targeting, empty headroom, overlapping target arbitration, and
 the real QWindow mask's actual chrome/icon union.
+The icon-quality regression also checks the shared logical-size/DPR formula and
+proves that changing the visual scale leaves the resolved icon URL and physical
+source target unchanged.
 The cancellation case retains the panel cancellation reset path after a real
 pointer drag; the offscreen Qt backend does not provide a compositor
 pointer-cancel event.

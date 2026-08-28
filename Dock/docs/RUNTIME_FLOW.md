@@ -17,6 +17,13 @@ startup
   -> Typhon shell-control launch path
 ```
 
+Icon source quality is resolved independently of the hover frame. The shared
+`AstreaAppIcon` computes a maximum logical presentation extent, reads the
+effective screen DPR, and requests `ceil(logicalExtent * DPR)` physical pixels
+from `AstreaIconProvider`. Dock magnification changes only the delegate
+transform; a configuration change can change the maximum source target once,
+but a hover animation does not reload the source texture.
+
 At startup, `DockRuntimePaths` resolves `ASTREA_ROOT` and the two AstreaOS
 configuration paths. `DockConfigWatcher` loads validated defaults or the user
 file, while `DesktopEntryCatalog` publishes an immutable XDG-priority

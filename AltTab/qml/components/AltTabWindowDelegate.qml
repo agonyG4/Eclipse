@@ -55,7 +55,7 @@ Item {
             showFallbackText: windowShowFallbackText
             appName: windowDisplayName
             iconSize: width
-            sourcePixelSize: windowSelected ? 168 : 144
+            maximumPresentationLogicalSize: 84
             iconRadius: windowSelected ? 18 : 15
             fallbackRadius: iconRadius
             fallbackColor: "#22FFFFFF"

@@ -636,9 +636,12 @@ static QString createFakeTheme(const QString &baseDir, const QString &themeName,
     if (index.open(QIODevice::WriteOnly)) {
         QTextStream out(&index);
         out << "[Icon Theme]\n";
+        out << "Name=" << themeName << "\n";
         if (!inherits.isEmpty())
             out << "Inherits=" << inherits.join(QStringLiteral(",")) << "\n";
-        out << "Directories=scalable/apps\n";
+        out << "Directories=scalable/apps\n\n";
+        out << "[scalable/apps]\nSize=48\nMinSize=1\nMaxSize=256\n"
+                "Context=Applications\nType=Scalable\n";
         index.close();
     }
     return themeDir;

@@ -30,6 +30,15 @@ processes, launch applications, invoke shell commands, or speak Wayland. The
 controller supplies all display data and owns application activation and
 persistence decisions.
 
+Application icons follow the shared resolution-aware pipeline. Desktop-entry
+identity is passed to `AstreaIconProvider`, which uses the active Qt/Freedesktop
+theme engine and returns a physical-pixel source selected from the logical
+presentation extent and effective device-pixel ratio. `AstreaAppIcon` owns that
+source-quality policy; the Dock supplies the configured maximum presentation
+scale while `DockAppDelegate` applies the animated magnification as a visual
+transform. Hover frames therefore change presentation scale and translation
+without changing the icon URL, source size, or provider cache key.
+
 `DockPanel` keeps a stable resting `Row` and selects one configured hover effect.
 `none` leaves resting geometry unchanged. `lift` keeps the lightweight Eclipse
 behavior: only the directly hovered delegate scales to about `1.1` and moves

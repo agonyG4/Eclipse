@@ -34,7 +34,12 @@ The controller starts weather refreshes when visible and weather is enabled, and
 
 ## Icon Resolution
 
-`AstreaIconTheme` resolves the active theme and `AstreaIconProvider` resolves individual icons with cache invalidation.
+`AstreaIconTheme` configures the active Qt theme and merged XDG/Flatpak search
+paths. `AstreaIconProvider` resolves individual icons through `QIcon`, keeps
+bounded positive and negative caches, and includes logical extent, effective
+DPR, physical source extent, and theme revision in its request/cache contract.
+Spotlight requests a 40 logical-pixel maximum and lets the shared QML policy
+convert it to physical pixels for the current display.
 
 ## Theme Change
 

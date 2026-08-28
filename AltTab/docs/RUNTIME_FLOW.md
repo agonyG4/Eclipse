@@ -74,3 +74,11 @@ The CLI remains available for scripted and compatibility callers:
 | hide | `hide()` |
 | reload-windows | `reloadWindows()` |
 | status | callback → JSON |
+
+## Icon quality
+
+During QML initialization, the shared icon provider uses the configured Qt
+Freedesktop theme and returns a source at the requested physical extent. The
+AltTab delegate requests one maximum logical extent of 84 pixels multiplied by
+the effective DPR. Its selected-state width and radius animations are visual
+presentation changes and do not alter the provider URL or source target.

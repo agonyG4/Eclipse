@@ -59,3 +59,9 @@ AltTab/
 
 The production unified shell requires LayerShellQt and the Qt Wayland platform;
 there is no ordinary-window fallback when the overlay cannot be configured.
+
+Window icons use the shared `AstreaAppIcon` and `AstreaIconProvider` pipeline.
+The delegate keeps a maximum logical source extent of 84 pixels for both
+selected and unselected states. Selection changes the visible 72-to-84 pixel
+presentation animation, while the provider request remains based on the
+effective DPR and does not reload just because selection changed.

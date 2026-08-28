@@ -23,6 +23,7 @@ add_library(astrea-shared-core STATIC
     theme/ThemeController.hpp
     icons/AstreaIconTheme.cpp
     icons/AstreaIconTheme.hpp
+    icons/IconRenderRequest.hpp
     icons/AstreaIconProvider.cpp
     icons/AstreaIconProvider.hpp
 )
@@ -390,6 +391,37 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     target_link_libraries(desktop-entry-catalog-test PRIVATE astrea-shared-core Qt6::Test)
     astrea_shared_enable_sanitizers(desktop-entry-catalog-test)
     add_test(NAME desktop-entry-catalog-test COMMAND desktop-entry-catalog-test)
+
+    add_executable(astrea-icon-provider-test
+        tests/AstreaIconProviderTest.cpp
+    )
+    target_include_directories(astrea-icon-provider-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_link_libraries(astrea-icon-provider-test PRIVATE
+        astrea-shared-core
+        Qt6::Test
+    )
+    astrea_shared_enable_sanitizers(astrea-icon-provider-test)
+    add_test(NAME astrea-icon-provider-test COMMAND astrea-icon-provider-test)
+
+    add_executable(astrea-app-icon-qml-test
+        tests/AstreaAppIconQmlTest.cpp
+    )
+    target_include_directories(astrea-app-icon-qml-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_link_libraries(astrea-app-icon-qml-test PRIVATE
+        astrea-shared-core
+        astrea-shared-coreplugin
+        Qt6::Test
+    )
+    target_compile_definitions(astrea-app-icon-qml-test PRIVATE
+        ASTREA_SHARED_ICON_QML="${CMAKE_CURRENT_SOURCE_DIR}/qml/AstreaAppIcon.qml"
+        ASTREA_QML_IMPORT_PATH="${CMAKE_BINARY_DIR}"
+    )
+    astrea_shared_enable_sanitizers(astrea-app-icon-qml-test)
+    add_test(NAME astrea-app-icon-qml-test COMMAND astrea-app-icon-qml-test)
 
     add_executable(system-services-test
         system/tests/SystemServicesTest.cpp

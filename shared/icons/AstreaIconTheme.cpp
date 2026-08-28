@@ -7,12 +7,37 @@
 #include <QStandardPaths>
 #include <QSet>
 
+namespace {
+
+QStringList mergePaths(const QStringList &preferred, const QStringList &existing)
+{
+    QSet<QString> seen;
+    QStringList merged;
+    for (const QStringList &paths : {preferred, existing}) {
+        for (const QString &path : paths) {
+            if (path.isEmpty() || seen.contains(path))
+                continue;
+            seen.insert(path);
+            merged.append(path);
+        }
+    }
+    return merged;
+}
+
+} // namespace
+
 QStringList AstreaIconTheme::searchPaths() {
+    return searchPathsFor(
+        QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation),
+        QDir::homePath());
+}
+
+QStringList AstreaIconTheme::searchPathsFor(const QStringList &dataLocations,
+                                            const QString &homePath) {
     QSet<QString> seen;
     QStringList ordered;
 
-    const QStringList dataHome = QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation);
-    for (const auto &d : dataHome) {
+    for (const auto &d : dataLocations) {
         const QString iconsDir = d + QStringLiteral("/icons");
         const QString clean = QDir::cleanPath(iconsDir);
         if (!QDir(clean).exists() || seen.contains(clean))
@@ -21,7 +46,7 @@ QStringList AstreaIconTheme::searchPaths() {
         ordered.append(clean);
     }
 
-    const QString dotIcons = QDir::homePath() + QStringLiteral("/.icons");
+    const QString dotIcons = QDir::cleanPath(homePath + QStringLiteral("/.icons"));
     if (QDir(dotIcons).exists()) {
         const QString clean = QDir::cleanPath(dotIcons);
         if (!seen.contains(clean)) {
@@ -31,7 +56,8 @@ QStringList AstreaIconTheme::searchPaths() {
     }
 
     QStringList flatpakDirs = {
-        QDir::homePath() + QStringLiteral("/.local/share/flatpak/exports/share/icons"),
+        QDir::cleanPath(homePath + QStringLiteral(
+            "/.local/share/flatpak/exports/share/icons")),
         QStringLiteral("/var/lib/flatpak/exports/share/icons")
     };
     for (const auto &d : flatpakDirs) {
@@ -47,8 +73,7 @@ QStringList AstreaIconTheme::searchPaths() {
 
 bool AstreaIconTheme::themeExists(const QString &themeName) {
     if (themeName.isEmpty()) return false;
-    const QStringList dirs = searchPaths();
-    for (const auto &dir : dirs) {
+    for (const auto &dir : searchPaths()) {
         if (QFileInfo::exists(dir + QStringLiteral("/") + themeName + QStringLiteral("/index.theme")))
             return true;
     }
@@ -129,6 +154,11 @@ QString AstreaIconTheme::apply() {
 
     QIcon::setThemeName(theme);
     QIcon::setFallbackThemeName(QStringLiteral("hicolor"));
+    // Install paths after selecting the name. Qt resets its default resource
+    // path when a theme name is selected, so merging before this call loses
+    // the discovered XDG roots.
+    QIcon::setThemeSearchPaths(mergePaths(searchPaths(), QIcon::themeSearchPaths()));
+    QIcon::setFallbackSearchPaths(mergePaths(searchPaths(), QIcon::fallbackSearchPaths()));
 
     return theme;
 }

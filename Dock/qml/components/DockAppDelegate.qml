@@ -135,8 +135,7 @@ Item {
         iconPath: root.iconPath
         iconUrl: root.iconUrl
         appName: root.displayName
-        // 2x source sampling remains sharp at the configured 2.0 maximum.
-        sourcePixelSize: root.iconSize * 2
+        maximumPresentationScale: Math.max(1, DockController.magnificationScale)
         iconRadius: 10
         fallbackRadius: 10
     }

@@ -2,7 +2,7 @@
 Type=Application
 Name=Astrea Settings
 Comment=Configure AstreaOS
-Exec=astrea-settings
+Exec=astrea-settings-open
 Icon=preferences-system
 Terminal=false
 Categories=Settings;System;

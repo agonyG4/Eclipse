@@ -39,6 +39,16 @@ PopupCard {
 
     implicitWidth: 220
     height: Math.min(implicitHeight, Math.max(1, outputHeight))
+    readonly property real cardWidth: root.width
+    readonly property real cardHeight: root.height
+    readonly property real listContentWidth: Math.max(0, root.width - 2 * root.cardPadding)
+    readonly property real listContentHeight: Math.max(0,
+        root.implicitHeight - 2 * root.cardPadding)
+    readonly property int modelRowCount: menuRepeater.count
+    readonly property real cascadeWidth: cascadeLoader.width
+    readonly property real cascadeHeight: cascadeLoader.height
+    readonly property real cascadeX: cascadeLoader.x
+    readonly property real cascadeY: cascadeLoader.y
     focus: visible
     cardPadding: 12
     contentSpacing: 4
@@ -61,6 +71,37 @@ PopupCard {
                 break
             }
         }
+    }
+
+    function scheduleSelectionInitialization() {
+        selectionInitializationTimer.restart()
+    }
+
+    function focusActiveMenu() {
+        if (childLoader.item) {
+            childLoader.item.initializeSelection()
+            childLoader.item.forceActiveFocus()
+        } else {
+            forceActiveFocus()
+        }
+    }
+
+    function scheduleChildFocus() {
+        childFocusTimer.restart()
+    }
+
+    Timer {
+        id: selectionInitializationTimer
+        interval: 0
+        repeat: false
+        onTriggered: root.initializeSelection()
+    }
+
+    Timer {
+        id: childFocusTimer
+        interval: 0
+        repeat: false
+        onTriggered: root.focusActiveMenu()
     }
 
     function moveSelection(delta) {
@@ -153,8 +194,8 @@ PopupCard {
         }
     }
 
-    Component.onCompleted: Qt.callLater(initializeSelection)
-    onMenuModelChanged: Qt.callLater(initializeSelection)
+    Component.onCompleted: scheduleSelectionInitialization()
+    onMenuModelChanged: scheduleSelectionInitialization()
 
     Keys.onPressed: function(event) {
         if (event.key === Qt.Key_Up) {
@@ -286,7 +327,7 @@ PopupCard {
             item.x = root.cascadeXFor(root.x, root.width, width, root.presentationParent.width)
             item.y = root.cascadeYFor(root.y, root.childAnchorY, height,
                                       root.presentationParent.height)
-            Qt.callLater(item.forceActiveFocus)
+            root.scheduleChildFocus()
         }
         onChildMenuModelChanged: if (item) item.menuModel = childMenuModel
     }

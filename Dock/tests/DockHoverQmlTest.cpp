@@ -37,6 +37,16 @@ public:
     QString lastOutputKey;
 };
 
+class FakeInputRegionBridge final : public QObject {
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE void update(const QRectF &, const QVariantList &, int) {}
+
+signals:
+    void windowReady();
+};
+
 class QmlCountingPersistence final : public DockConfigPersistence {
 public:
     QmlCountingPersistence() : DockConfigPersistence(QStringLiteral("/unused/dock.json")) {}
@@ -56,6 +66,7 @@ public:
 
 const QString kDockPanelPath = QString::fromUtf8(
     DOCK_SOURCE_DIR "/qml/components/DockPanel.qml");
+const QString kDockMainPath = QString::fromUtf8(DOCK_SOURCE_DIR "/qml/Main.qml");
 
 QQuickItem *delegate(QQuickItem *panel, const QString &desktopFileName)
 {
@@ -154,6 +165,7 @@ private slots:
     void releasePointerRestoresMagnificationTarget();
     void reorderLiftsOnlyTheDraggedDelegate();
     void magnifiedVisualRegionAcceptsContextMenu();
+    void mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen();
     void magnifiedInteractionTargetMatchesVisualBounds();
     void magnifiedInteractionRegionsResolveByVisualStacking();
     void exclusiveDragReleaseInEmptyHeadroomStaysOutsideDock();
@@ -983,6 +995,62 @@ void DockHoverQmlTest::magnifiedVisualRegionAcceptsContextMenu()
     QVERIFY(contextMenuController.lastRectangle.height() > 0);
 
     delete panel;
+}
+
+void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen()
+{
+    DockController dockController;
+    dockController.applyConfig(configFor(QStringLiteral("none"),
+                                         {QStringLiteral("one.desktop")}));
+    FakeContextMenuController contextMenuController;
+    FakeInputRegionBridge inputRegionBridge;
+    DockSurfaceGeometry surfaceGeometry;
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &dockController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ContextMenuController"),
+                                              &contextMenuController);
+    engine.rootContext()->setContextProperty(QStringLiteral("DockSurfaceGeometry"),
+                                              &surfaceGeometry);
+    engine.rootContext()->setContextProperty(QStringLiteral("DockInputRegion"),
+                                              &inputRegionBridge);
+
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockMainPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready,
+             qPrintable(component.errorString()));
+    auto *window = qobject_cast<QQuickWindow *>(component.create());
+    QVERIFY2(window, qPrintable(component.errorString()));
+    auto *panel = window->findChild<QQuickItem *>(QStringLiteral("dockPanel"));
+    QVERIFY(panel);
+    QVERIFY(window->metaObject()->indexOfProperty("outputWidth") >= 0);
+    QVERIFY(window->metaObject()->indexOfProperty("outputHeight") >= 0);
+
+    // This is the same explicit property publication performed by the
+    // layer-shell surface. No QML window.screen geometry is involved.
+    window->setProperty("outputKey", QStringLiteral("output-1"));
+    window->setProperty("outputWidth", 1920);
+    window->setProperty("outputHeight", 1080);
+    QTRY_COMPARE_WITH_TIMEOUT(panel->property("outputWidth").toInt(), 1920, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(panel->property("outputHeight").toInt(), 1080, 1000);
+
+    window->show();
+    QTRY_VERIFY_WITH_TIMEOUT(delegate(panel, QStringLiteral("one.desktop")) != nullptr, 1000);
+    auto *delegateItem = delegate(panel, QStringLiteral("one.desktop"));
+    QVERIFY(delegateItem);
+    const QPoint clickPoint = delegateItem->mapToItem(window->contentItem(),
+                                                       QPointF(delegateItem->width() / 2,
+                                                               delegateItem->height() / 2))
+                                  .toPoint();
+    QTest::mouseMove(window, clickPoint);
+    QCoreApplication::processEvents();
+    QTest::mouseClick(window, Qt::RightButton, Qt::NoModifier, clickPoint);
+    QTRY_COMPARE_WITH_TIMEOUT(contextMenuController.presentCount, 1, 1000);
+    QCOMPARE(contextMenuController.lastOutputKey, QStringLiteral("output-1"));
+    QVERIFY(contextMenuController.lastRectangle.center().x() > 800);
+    QVERIFY(contextMenuController.lastRectangle.center().x() < 1120);
+
+    delete window;
 }
 
 void DockHoverQmlTest::hoverModesAndTransitions()

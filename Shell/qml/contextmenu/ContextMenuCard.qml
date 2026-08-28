@@ -2,6 +2,7 @@ import QtQuick
 
 Rectangle {
     id: root
+    objectName: "contextMenuCard"
 
     ShellMenuTheme { id: theme }
 

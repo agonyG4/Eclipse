@@ -3,12 +3,14 @@
 #include <QObject>
 #include <QPointer>
 #include <QScreen>
+#include <QVariantMap>
 
 namespace Astrea::Shell {
 class ContextMenuController;
 }
 class QQuickWindow;
 class QQmlApplicationEngine;
+class QUrl;
 namespace Astrea::StatusNotifier {
 class StatusNotifierService;
 }
@@ -38,7 +40,7 @@ signals:
     void mappingChanged();
 
 private:
-    QQuickWindow *createSurface(const QUrl &sourceUrl, int width, int height,
+    QQuickWindow *createSurface(const QUrl &sourceUrl, const QVariantMap &properties,
                                 QString *errorOut);
     bool configureSurface(QQuickWindow *window, bool overlay, QString *errorOut);
     void syncOverlayMapping();

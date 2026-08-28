@@ -29,6 +29,7 @@ private slots:
     void overlayMappingIsOutputScoped();
     void controllerShutdownCleansUpActivePresentation();
     void modelNormalizesSeparatorsAndExposesRoles();
+    void modelPresentationMetricsAreExactAndContentAware();
     void modelRejectsDepthAndNodeBounds();
     void placementFlipsAndClampsInOutputLocalCoordinates();
     void surfacePoliciesKeepInputAndLayerContracts();
@@ -355,6 +356,87 @@ void ContextMenuTest::modelNormalizesSeparatorsAndExposesRoles()
              int(ContextMenuModel::NodeKind::Action));
     QCOMPARE(hiddenSeparatorModel.index(1, 0).data(ContextMenuModel::KindRole).toInt(),
              int(ContextMenuModel::NodeKind::Action));
+}
+
+void ContextMenuTest::modelPresentationMetricsAreExactAndContentAware()
+{
+    const auto action = [](const QString &token, const QString &label) {
+        return ContextMenuModel::NodeSpec{.token = token, .label = label};
+    };
+
+    ContextMenuModel one;
+    QVERIFY(one.setRootNodes({action(QStringLiteral("one"), QStringLiteral("One"))}));
+    QCOMPARE(one.presentationContentHeight(36, 10), 36);
+
+    ContextMenuModel three;
+    QVERIFY(three.setRootNodes({
+        action(QStringLiteral("one"), QStringLiteral("One")),
+        action(QStringLiteral("two"), QStringLiteral("Two")),
+        action(QStringLiteral("three"), QStringLiteral("Three")),
+    }));
+    QCOMPARE(three.presentationContentHeight(36, 10), 108);
+
+    ContextMenuModel mixed;
+    QVERIFY(mixed.setRootNodes({
+        action(QStringLiteral("one"), QStringLiteral("One")),
+        action(QStringLiteral("two"), QStringLiteral("Two")),
+        ContextMenuModel::NodeSpec{.kind = ContextMenuModel::NodeKind::Separator},
+        action(QStringLiteral("three"), QStringLiteral("Three")),
+    }));
+    QCOMPARE(mixed.presentationContentHeight(36, 10), 118);
+
+    ContextMenuModel hidden;
+    QVERIFY(hidden.setRootNodes({
+        action(QStringLiteral("visible"), QStringLiteral("Visible")),
+        {.token = QStringLiteral("hidden"), .label = QStringLiteral("Hidden"), .visible = false},
+    }));
+    QCOMPARE(hidden.presentationContentHeight(36, 10), 36);
+
+    ContextMenuModel submenu;
+    QVERIFY(submenu.setRootNodes({ContextMenuModel::NodeSpec{
+        .kind = ContextMenuModel::NodeKind::Submenu,
+        .label = QStringLiteral("More"),
+        .children = {action(QStringLiteral("child"), QStringLiteral("Child"))},
+    }}));
+    QCOMPARE(submenu.presentationContentHeight(36, 10), 36);
+
+    const auto naturalWidth = [](ContextMenuModel &model) {
+        return model.presentationNaturalWidth(QStringLiteral("Inter Variable"), 12, 12,
+                                              10, 20, 12, 10, 1);
+    };
+    ContextMenuModel shortLabel;
+    QVERIFY(shortLabel.setRootNodes({action(QStringLiteral("short"), QStringLiteral("Short"))}));
+    const int shortWidth = naturalWidth(shortLabel);
+
+    ContextMenuModel shortcut;
+    auto shortcutNode = action(QStringLiteral("shortcut"), QStringLiteral("Short"));
+    shortcutNode.shortcut = QStringLiteral("Ctrl+Shift+P");
+    QVERIFY(shortcut.setRootNodes({shortcutNode}));
+    QVERIFY(naturalWidth(shortcut) > shortWidth);
+
+    ContextMenuModel submenuWidth;
+    QVERIFY(submenuWidth.setRootNodes({ContextMenuModel::NodeSpec{
+        .kind = ContextMenuModel::NodeKind::Submenu,
+        .label = QStringLiteral("Short"),
+        .children = {action(QStringLiteral("child"), QStringLiteral("Child"))},
+    }}));
+    QVERIFY(naturalWidth(submenuWidth) > shortWidth);
+
+    ContextMenuModel longLabel;
+    QVERIFY(longLabel.setRootNodes({action(
+        QStringLiteral("long"),
+        QStringLiteral("A deliberately long context menu label that needs to be bounded"))}));
+    QVERIFY(naturalWidth(longLabel) > naturalWidth(shortLabel));
+
+    ContextMenuModel hiddenWidth;
+    QVERIFY(hiddenWidth.setRootNodes({
+        action(QStringLiteral("short"), QStringLiteral("Short")),
+        {.token = QStringLiteral("hidden"),
+         .label = QStringLiteral("A hidden label that must not affect width"),
+         .visible = false},
+        {.kind = ContextMenuModel::NodeKind::Separator},
+    }));
+    QCOMPARE(naturalWidth(hiddenWidth), shortWidth);
 }
 
 void ContextMenuTest::modelRejectsDepthAndNodeBounds()

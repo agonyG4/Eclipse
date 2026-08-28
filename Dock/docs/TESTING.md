@@ -58,24 +58,29 @@ order. `dock-layer-shell-surface-test` covers the explicit resting reservation
 and zero reservation while unmapped. `dock-hover-qml-test` exercises the real
 Dock panel and delegate for none/lift/magnification geometry, mode transitions,
 neighbor displacement, fixed chrome height, and reorder preview/drop signaling
-across all modes. It also checks the centered icon baseline and visual bounds
+across all modes. It asserts that the maximum transparent surface envelope is
+larger than the resting chrome but invariant through pointer entry,
+magnification, hover exit, and reorder. It checks first/middle/last pointer
+center stability with seven pins, the centered icon baseline and visual bounds
 for every integer icon size from 32 through 64, center-relative drag stability
 while magnification collapses, dragged-only vertical lift, grab-transition
 terminal paths, and event-driven click/thresholded drag behavior. Its precise
 interaction-target cases cover the top of a maximum-size magnified icon,
-context-menu targeting, empty headroom, and overlapping target arbitration.
+context-menu targeting, empty headroom, overlapping target arbitration, and
+the real QWindow mask's actual chrome/icon union.
 The cancellation case retains the panel cancellation reset path after a real
 pointer drag; the offscreen Qt backend does not provide a compositor
 pointer-cancel event.
 
 `dock-input-region-test` is a pure Qt policy test for resting chrome, magnified
 headroom, multiple delegate rectangles, finite/invalid geometry, clipping, and
-the bounded interaction-rectangle count. The QML tests assert that a real
-transformed icon head is semantically inside the Dock while empty transparent
-headroom is outside, including after an exclusive drag release. These offscreen
-tests verify Dock-side arbitration and mask geometry, not compositor delivery;
-only a live Wayland test can prove that a click outside the mask reaches the
-underlying application rather than merely being ignored by the Dock.
+the bounded interaction-rectangle count. The QML tests assert that the actual
+centered chrome and a transformed icon head are in the mask while transparent
+envelope space is outside, including after an exclusive drag release. These
+offscreen tests verify Dock-side arbitration and mask geometry, not compositor
+delivery; only a live Wayland test can prove that a click outside the mask
+reaches the underlying application rather than merely being ignored by the
+Dock.
 
 The visual test checks the center/neighbor/distant raised-cosine ordering,
 left/right symmetry, continuity at an influence boundary, exact return to
@@ -90,7 +95,9 @@ activation from a drag.
 
 The QML lint check is a syntax/type check and the focused QML test runs offscreen;
 visual magnification and drag feel therefore still require live/manual
-verification on a Wayland session.
+verification on a Wayland session. Live validation must additionally confirm
+that the requested Layer Shell surface dimensions stay constant while the
+chrome width and icon transforms change independently.
 
 Run the same focused and complete CTest commands in both `build/debug` and
 `build/release`. Normal shell validation must use the LayerShellQt-enabled

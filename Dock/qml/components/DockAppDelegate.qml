@@ -32,9 +32,9 @@ Item {
     property bool dragging: false
     property real dragScale: 1.0
     property bool dragWasActive: false
-    property bool hasLastDragScenePosition: false
-    property real lastDragSceneX: 0
-    property real lastDragSceneY: 0
+    property bool hasLastDragPanelPosition: false
+    property real lastDragPanelX: 0
+    property real lastDragPanelY: 0
     readonly property real visualScale: root.magnificationScale * root.dragScale
     readonly property rect interactionRegion: Qt.rect(interactionTarget.x,
                                                        interactionTarget.y,
@@ -53,18 +53,22 @@ Item {
     function recordDragPointer(sceneX, sceneY) {
         if (!isFinite(sceneX) || !isFinite(sceneY))
             return false
-        root.hasLastDragScenePosition = true
-        root.lastDragSceneX = sceneX
-        root.lastDragSceneY = sceneY
-        if (root.dockPanel)
-            root.dockPanel.updatePointerFromScene(sceneX, sceneY)
+        if (!root.dockPanel)
+            return false
+        const panelPoint = root.dockPanel.mapFromItem(null, sceneX, sceneY)
+        if (!isFinite(panelPoint.x) || !isFinite(panelPoint.y))
+            return false
+        root.hasLastDragPanelPosition = true
+        root.lastDragPanelX = panelPoint.x
+        root.lastDragPanelY = panelPoint.y
+        root.dockPanel.updatePointerAtPoint(panelPoint.x, panelPoint.y)
         return true
     }
 
     function restoreLastDragPointer() {
-        if (root.dockPanel && root.hasLastDragScenePosition)
-            root.dockPanel.updatePointerFromScene(root.lastDragSceneX,
-                                                  root.lastDragSceneY)
+        if (root.dockPanel && root.hasLastDragPanelPosition)
+            root.dockPanel.updatePointerAtPoint(root.lastDragPanelX,
+                                                root.lastDragPanelY)
     }
 
     function handleGrabTransition(transition) {
@@ -91,7 +95,6 @@ Item {
         interactionTarget.updateGeometry()
         if (root.dockPanel) {
             root.dockPanel.scheduleInputRegionUpdate()
-            root.dockPanel.schedulePointerSemanticRefresh()
         }
     }
 
@@ -246,7 +249,7 @@ Item {
             dragThreshold: 8
             onGrabChanged: function(transition) {
                 if (transition === PointerDevice.GrabExclusive) {
-                    root.hasLastDragScenePosition = false
+                    root.hasLastDragPanelPosition = false
                     const scenePosition = centroid.scenePosition
                     root.recordDragPointer(scenePosition.x, scenePosition.y)
                 } else if (transition === PointerDevice.UngrabExclusive

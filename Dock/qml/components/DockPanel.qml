@@ -20,19 +20,28 @@ Item {
         DockController.iconSize * (liftScale - 1) + liftOffsetY - iconRestingTop)
     readonly property real dragHeadroom: Math.max(0,
         DockController.iconSize * (reorderScale - 1) + reorderOffsetY - iconRestingTop)
-    readonly property real visualHeadroom: Math.max(magnificationHeight,
-        pointerInside && configuredHoverEffect === "lift" && !isReordering()
-            ? liftHeadroom : 0,
-        isReordering() ? dragHeadroom : 0)
+    readonly property real maxMagnificationHeadroom: Math.max(0,
+        DockController.iconSize * (Math.max(1, DockController.magnificationScale) - 1))
+    readonly property real surfaceHeadroom: Math.max(maxMagnificationHeadroom,
+        liftHeadroom, dragHeadroom)
+    readonly property int maximumMagnifiedDelegateCount: Math.min(appRepeater.count,
+        2 * Math.ceil(Math.max(1, DockController.magnificationRadius)) + 1)
+    readonly property real maximumMagnificationExtraWidth:
+        maximumMagnifiedDelegateCount * DockController.iconSize
+        * (Math.max(1, DockController.magnificationScale) - 1)
+    readonly property int surfaceWidth: Math.max(restingWidth,
+        Math.ceil(restingWidth + maximumMagnificationExtraWidth))
+    readonly property int surfaceHeight: Math.max(restingHeight,
+        Math.ceil(restingHeight + surfaceHeadroom))
+    // Kept as a read-only compatibility property. The envelope reserves this
+    // headroom structurally instead of resizing as the pointer moves.
+    readonly property real visualHeadroom: surfaceHeadroom
     property real magnificationWidth: 0
     property real magnificationHeight: 0
-    // Keep the pointer in the panel's centered coordinate system. The window
-    // may resize around this center while magnification is active.
+    // Keep the pointer in the panel's centered coordinate system. The panel
+    // and its QQuickWindow remain fixed during hover.
     property real pointerX: 0
     property bool pointerInside: false
-    property bool hasPointerScenePosition: false
-    property real pointerSceneX: 0
-    property real pointerSceneY: 0
     property string pointerTargetDesktopFileName: ""
     property var contextMenuController: null
     property var dockSurfaceGeometry: null
@@ -54,26 +63,26 @@ Item {
 
     signal reorderRequested(string desktopFileName, int targetPinIndex)
 
-    width: restingWidth + magnificationWidth
-    height: restingHeight + visualHeadroom
-
-    Behavior on width {
-        NumberAnimation { duration: 90; easing.type: Easing.OutCubic }
-    }
-    Behavior on height {
-        NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
-    }
+    width: surfaceWidth
+    height: surfaceHeight
 
     Rectangle {
         id: dockChrome
         objectName: "dockChrome"
         anchors.bottom: parent.bottom
-        width: parent.width
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: root.restingWidth + root.magnificationWidth
         height: root.restingHeight
         radius: 23
         color: "#80343434"
         border.color: "#33FFFFFF"
         border.width: 1
+
+        Behavior on width {
+            NumberAnimation { duration: 90; easing.type: Easing.OutCubic }
+        }
+        onWidthChanged: root.scheduleInputRegionUpdate()
+        onXChanged: root.scheduleInputRegionUpdate()
 
         Rectangle {
             anchors.fill: parent
@@ -120,8 +129,15 @@ Item {
     Connections {
         target: DockController.appModel
         function onRowsMoved(sourceParent, sourceStart, sourceEnd, destinationParent, destinationRow) {
-            Qt.callLater(root.updateHoverEffect)
-            Qt.callLater(root.updateInputRegion)
+            Qt.callLater(function() {
+                // Repeater applies a rowsMoved reconciliation after the model
+                // signal. A second event-loop turn reads the live delegate
+                // order rather than the pre-move itemAt order.
+                Qt.callLater(function() {
+                    root.updateHoverEffect()
+                    root.updateInputRegion()
+                })
+            })
         }
     }
 
@@ -129,7 +145,6 @@ Item {
         target: root.inputRegionBridge
         function onWindowReady() {
             root.scheduleInputRegionUpdate()
-            root.schedulePointerSemanticRefresh()
         }
     }
 
@@ -149,7 +164,6 @@ Item {
         pointerInside = inside
         if (!inside) {
             pointerX = 0
-            hasPointerScenePosition = false
         }
         updateHoverEffect()
     }
@@ -170,12 +184,6 @@ Item {
         if (!isFinite(x) || !isFinite(y))
             return
         pointerX = x - width / 2
-        const scenePoint = root.mapToItem(null, x, y)
-        if (isFinite(scenePoint.x) && isFinite(scenePoint.y)) {
-            pointerSceneX = scenePoint.x
-            pointerSceneY = scenePoint.y
-            hasPointerScenePosition = true
-        }
         pointerInside = isInteractivePoint(Qt.point(x, y))
         updateHoverEffect()
     }
@@ -184,20 +192,17 @@ Item {
         if (!isFinite(sceneX) || !isFinite(sceneY))
             return
         var panelPoint = mapFromItem(null, sceneX, sceneY)
-        pointerSceneX = sceneX
-        pointerSceneY = sceneY
-        hasPointerScenePosition = true
-        pointerX = panelPoint.x - width / 2
-        pointerInside = isInteractivePoint(panelPoint)
+        updatePointerAtPoint(panelPoint.x, panelPoint.y)
     }
 
     function isInteractivePoint(point) {
         if (!point || !isFinite(point.x) || !isFinite(point.y))
             return false
 
-        const chromeTop = height - restingHeight
-        if (point.x >= 0 && point.x < width
-            && point.y >= chromeTop && point.y < height)
+        const chromeLeft = dockChrome.x
+        const chromeTop = dockChrome.y
+        if (point.x >= chromeLeft && point.x < chromeLeft + dockChrome.width
+            && point.y >= chromeTop && point.y < chromeTop + dockChrome.height)
             return true
 
         for (var i = 0; i < appRepeater.count; ++i) {
@@ -219,20 +224,6 @@ Item {
     function scheduleInputRegionUpdate() {
         if (inputRegionBridge)
             Qt.callLater(root.updateInputRegion)
-    }
-
-    function schedulePointerSemanticRefresh() {
-        if (hasPointerScenePosition)
-            Qt.callLater(root.refreshPointerSemantics)
-    }
-
-    function refreshPointerSemantics() {
-        if (!hasPointerScenePosition)
-            return
-        const oldInside = pointerInside
-        updatePointerFromScene(pointerSceneX, pointerSceneY)
-        if (oldInside !== pointerInside)
-            updateHoverEffect()
     }
 
     function windowRect(panelRect) {
@@ -257,9 +248,18 @@ Item {
                 && isFinite(region.width) && isFinite(region.height))
                 inputInteractionRects.push(windowRect(region))
         }
-        const chromeRect = windowRect(Qt.rect(0, height - restingHeight,
-                                              width, restingHeight))
+        const chromeRect = windowRect(Qt.rect(dockChrome.x, dockChrome.y,
+                                              dockChrome.width, dockChrome.height))
         inputRegionBridge.update(chromeRect, inputInteractionRects, appRepeater.count)
+    }
+
+    function delegateRestingCenterInPanel(item) {
+        if (!item || !item.parent)
+            return NaN
+        const center = item.parent.mapToItem(root,
+                                            item.x + item.width / 2,
+                                            item.y + item.height / 2)
+        return center.x
     }
 
     function isReordering() {
@@ -286,7 +286,8 @@ Item {
             if (!item)
                 continue
 
-            var itemLeft = appRow.x + item.x
+            var itemCenter = delegateRestingCenterInPanel(item)
+            var itemLeft = itemCenter - item.width / 2
             var itemRight = itemLeft + item.width
             var slotHovered = pointerInside && localPointerX >= itemLeft
                 && localPointerX < itemRight
@@ -295,7 +296,7 @@ Item {
 
             var scale = liftActive && slotHovered ? 1.1 : 1
             if (magnificationActive) {
-                var center = itemLeft + item.width / 2 - width / 2
+                var center = itemCenter - width / 2
                 var distance = Math.abs(pointerX - center)
                 var t = Math.min(distance / radius, 1)
                 var influence = t < 1 ? 0.5 * (1 + Math.cos(Math.PI * t)) : 0
@@ -323,7 +324,6 @@ Item {
         updateDelegateTransforms(totalExtra, slotPitch,
                                  liftedItem ? liftedItem.objectName : "")
         scheduleInputRegionUpdate()
-        schedulePointerSemanticRefresh()
     }
 
     function previewIndexFor(originalIndex) {
@@ -350,7 +350,7 @@ Item {
             var offset = (prefixExtraWidths[i] || 0) + extra / 2 - totalExtra / 2
             if (dragging) {
                 if (i === draggedSourceIndex) {
-                    var currentCenterRelative = appRow.x + item.x + item.width / 2 - width / 2
+                    var currentCenterRelative = delegateRestingCenterInPanel(item) - width / 2
                     offset += dragCenterRelativeX - currentCenterRelative
                 } else {
                     offset += (previewIndexFor(i) - i) * slotPitch
@@ -401,7 +401,7 @@ Item {
         if (!firstItem)
             return
         var slotPitch = Math.max(1, root.slotPitch)
-        var firstCenterRelative = appRow.x + firstItem.x + firstItem.width / 2 - width / 2
+        var firstCenterRelative = delegateRestingCenterInPanel(firstItem) - width / 2
         dragTargetIndex = Math.max(0, Math.min(DockController.pinCount - 1,
                                                Math.round((dragCenterRelativeX
                                                            - firstCenterRelative) / slotPitch)))

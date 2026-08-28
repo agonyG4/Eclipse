@@ -151,6 +151,8 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
         core/DockController.cpp
         core/DockAppModel.cpp
         core/DockSurfaceGeometry.cpp
+        platform/wayland/DockInputRegionBridge.cpp
+        platform/wayland/DockInputRegionPolicy.cpp
         services/DockConfigPersistence.cpp
         services/DockConfigValidation.cpp
         services/DockConfigWatcher.cpp

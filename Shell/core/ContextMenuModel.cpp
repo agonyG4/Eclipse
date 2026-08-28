@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <QFontMetrics>
 #include <QtAlgorithms>
 
 namespace Astrea::Shell {
@@ -135,6 +136,8 @@ bool ContextMenuModel::setRootNodes(const QVector<NodeSpec> &nodes)
     m_childModels.clear();
     m_root = std::move(candidate);
     endResetModel();
+    ++m_presentationRevision;
+    emit presentationChanged();
     return true;
 }
 
@@ -148,6 +151,8 @@ void ContextMenuModel::clear()
     m_childModels.clear();
     m_root->children.clear();
     endResetModel();
+    ++m_presentationRevision;
+    emit presentationChanged();
 }
 
 bool ContextMenuModel::canActivate(const QString &token) const
@@ -170,6 +175,55 @@ bool ContextMenuModel::canActivate(const QString &token) const
         return false;
     };
     return visit(m_root.get(), true, true);
+}
+
+int ContextMenuModel::presentationContentHeight(int normalRowHeight, int separatorHeight) const
+{
+    const int normalHeight = qMax(0, normalRowHeight);
+    const int separatorRowHeight = qMax(0, separatorHeight);
+    int total = 0;
+    for (const auto &node : m_root->children) {
+        if (!node->spec.visible)
+            continue;
+        total += node->spec.kind == NodeKind::Separator
+            ? separatorRowHeight : normalHeight;
+    }
+    return total;
+}
+
+int ContextMenuModel::presentationNaturalWidth(const QString &fontFamily, int bodyFontSize,
+                                               int smallFontSize, int rowHorizontalMargin,
+                                               int iconSlotWidth, int spacing, int cardPadding,
+                                               int borderWidth) const
+{
+    QFont bodyFont;
+    bodyFont.setFamily(fontFamily);
+    bodyFont.setPixelSize(qMax(1, bodyFontSize));
+    bodyFont.setWeight(QFont::Medium);
+    QFont shortcutFont;
+    shortcutFont.setFamily(fontFamily);
+    shortcutFont.setPixelSize(qMax(1, smallFontSize));
+    const QFontMetrics bodyMetrics(bodyFont);
+    const QFontMetrics shortcutMetrics(shortcutFont);
+    const int horizontalMargin = qMax(0, rowHorizontalMargin);
+    const int iconWidth = qMax(0, iconSlotWidth);
+    const int rowSpacing = qMax(0, spacing);
+    int widestRow = 0;
+
+    for (const auto &node : m_root->children) {
+        if (!node->spec.visible || node->spec.kind == NodeKind::Separator)
+            continue;
+        const int labelWidth = bodyMetrics.horizontalAdvance(node->spec.label);
+        const int shortcutWidth = node->spec.shortcut.isEmpty()
+            ? 0 : shortcutMetrics.horizontalAdvance(node->spec.shortcut);
+        const int arrowWidth = node->children.empty()
+            ? 0 : bodyMetrics.horizontalAdvance(QStringLiteral("›"));
+        const int rowWidth = horizontalMargin * 2 + iconWidth + labelWidth
+            + shortcutWidth + arrowWidth + rowSpacing * 3;
+        widestRow = qMax(widestRow, rowWidth);
+    }
+
+    return widestRow + qMax(0, cardPadding) * 2 + qMax(0, borderWidth) * 2;
 }
 
 QObject *ContextMenuModel::childModelAt(int row) const

@@ -9,6 +9,7 @@ startup
   -> one Typhon toplevel connection
   -> authoritative runtime projection (pins + live resolved apps)
   -> QML
+  -> QWindow input region (chrome + transformed interaction targets)
   -> Layer Shell mapping at resting reservation
   -> configured none/lift/magnification hover effect or pinned drag preview
   -> click or one identity-based reorder request
@@ -41,6 +42,17 @@ state, completion, and generation cleanup. If no live window is known, the
 existing controller and shared supervised launcher path is used. An
 unavailable or failed action is reconciled without launching on that same
 click.
+
+Each QML geometry update also reports the visible chrome and the exact current
+transformed interaction-target rectangles to `DockInputRegionBridge`. The bridge
+clips them through the pure `DockInputRegionPolicy`, caches the last integer
+`QRegion`, and calls `QQuickWindow::setMask()` only when that region changes. The
+mask follows animated magnification, lift, and drag geometry; it is not the full
+visual surface, and a mapped Dock with no rows still has its chrome region. The
+semantic QML pointer boundary uses the same chrome/interaction union. Therefore
+“the Dock ignored this click” describes Dock event arbitration; only a live
+compositor test can establish that the underlying application actually received
+the event.
 
 The configured `hoverEffect` selects the pointer interaction. `none` leaves all
 delegates at rest. `lift` scales only the directly hovered delegate to about

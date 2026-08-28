@@ -36,6 +36,10 @@ Item {
     property real lastDragSceneX: 0
     property real lastDragSceneY: 0
     readonly property real visualScale: root.magnificationScale * root.dragScale
+    readonly property rect interactionRegion: Qt.rect(interactionTarget.x,
+                                                       interactionTarget.y,
+                                                       interactionTarget.width,
+                                                       interactionTarget.height)
     // 0 = idle, 1 = exclusively grabbed and dragging.
     property int dragLifecycle: 0
 
@@ -85,6 +89,10 @@ Item {
 
     function updateInteractionTargetGeometry() {
         interactionTarget.updateGeometry()
+        if (root.dockPanel) {
+            root.dockPanel.scheduleInputRegionUpdate()
+            root.dockPanel.schedulePointerSemanticRefresh()
+        }
     }
 
     function scheduleInteractionTargetGeometryUpdate() {
@@ -102,7 +110,7 @@ Item {
         const panelPoint = root.dockPanel.mapFromItem(null,
                                                         eventPoint.scenePosition.x,
                                                         eventPoint.scenePosition.y)
-        root.dockPanel.updatePointer(panelPoint.x)
+        root.dockPanel.updatePointerAtPoint(panelPoint.x, panelPoint.y)
         return root.isPointerTarget()
     }
 
@@ -288,5 +296,5 @@ Item {
         function onWidthChanged() { root.scheduleInteractionTargetGeometryUpdate() }
         function onHeightChanged() { root.scheduleInteractionTargetGeometryUpdate() }
     }
-    Component.onCompleted: interactionTarget.updateGeometry()
+    Component.onCompleted: root.updateInteractionTargetGeometry()
 }

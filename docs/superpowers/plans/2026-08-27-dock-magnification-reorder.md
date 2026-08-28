@@ -132,3 +132,14 @@
 - [x] Capture the source's transformed center before suspending magnification, refresh hover arrays after `rowsMoved`, and remove the parallel `delegateKeys` cache.
 - [x] Feed `DragHandler.centroid.scenePosition` through the active drag signal, update pointer state during exclusive drags, and use `activeTranslation.x` for thresholded movement.
 - [x] Update Dock documentation/spec notes and run the focused Debug/Release Dock and unified Shell verification.
+
+### Wayland input-region closure
+
+- [x] Add the pure Qt input-region policy and cached QQuickWindow bridge.
+- [x] Report exact transformed QML interaction targets and use the semantic
+      chrome/target pointer boundary.
+- [x] Cover invalid/clipped geometry, transformed headroom, and exclusive
+      release behavior in focused tests.
+- [x] Document and verify visual surface, QWindow input region, and Layer Shell
+      exclusive-zone separation; live compositor pass-through remains separately
+      unverified in the offscreen test environment.

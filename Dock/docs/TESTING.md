@@ -15,7 +15,8 @@ run independently:
 ```bash
 cmake --build build --target astrea-dock dock-app-model-test dock-controller-test \
   dock-config-watcher-test dock-config-persistence-test dock-layer-shell-surface-test \
-  dock-hover-qml-test dock-ipc-test dock-runtime-paths-test dock-command-line-test
+  dock-input-region-test dock-hover-qml-test dock-ipc-test dock-runtime-paths-test \
+  dock-command-line-test
 cmake --build build --target astrea-dock dock-app-model-test dock-controller-test \
   dock-typhon-runtime-integration-test dock-application-state-projector-test \
   dock-hover-qml-test typhon-app-matcher-test
@@ -66,6 +67,15 @@ context-menu targeting, empty headroom, and overlapping target arbitration.
 The cancellation case retains the panel cancellation reset path after a real
 pointer drag; the offscreen Qt backend does not provide a compositor
 pointer-cancel event.
+
+`dock-input-region-test` is a pure Qt policy test for resting chrome, magnified
+headroom, multiple delegate rectangles, finite/invalid geometry, clipping, and
+the bounded interaction-rectangle count. The QML tests assert that a real
+transformed icon head is semantically inside the Dock while empty transparent
+headroom is outside, including after an exclusive drag release. These offscreen
+tests verify Dock-side arbitration and mask geometry, not compositor delivery;
+only a live Wayland test can prove that a click outside the mask reaches the
+underlying application rather than merely being ignored by the Dock.
 
 The visual test checks the center/neighbor/distant raised-cosine ordering,
 left/right symmetry, continuity at an influence boundary, exact return to

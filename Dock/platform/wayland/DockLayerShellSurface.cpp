@@ -2,7 +2,10 @@
 
 #include "platform/wayland/LayerShellHelper.hpp"
 
+#include <QRect>
 #include <QQuickWindow>
+#include <QScreen>
+#include <QVariant>
 
 #if defined(ASTREA_HAVE_LAYER_SHELL_QT) && ASTREA_HAVE_LAYER_SHELL_QT
 #include <LayerShellQt/Window>
@@ -12,6 +15,9 @@ bool DockLayerShellSurface::configure(QQuickWindow *window, const DockConfig &co
                                       int exclusiveZoneHeight, QScreen *screen,
                                       QString *errorOut)
 {
+    if (!setOutputGeometry(window, screen, errorOut))
+        return false;
+
     AstreaLayerShellConfig layerConfig;
     layerConfig.scope = QStringLiteral("astrea-dock");
     layerConfig.layer = AstreaLayerShellConfig::Layer::Top;
@@ -21,6 +27,47 @@ bool DockLayerShellSurface::configure(QQuickWindow *window, const DockConfig &co
     layerConfig.margins.setBottom(config.bottomMargin);
     layerConfig.screen = screen;
     return AstreaLayerShellHelper::configure(window, layerConfig, errorOut);
+}
+
+bool DockLayerShellSurface::setOutputGeometry(QQuickWindow *window, QScreen *screen,
+                                              QString *errorOut)
+{
+    if (!window) {
+        if (errorOut)
+            *errorOut = QStringLiteral("Null window");
+        return false;
+    }
+    if (!screen) {
+        if (errorOut)
+            *errorOut = QStringLiteral("Dock output screen is unavailable");
+        return false;
+    }
+
+    const QRect geometry = screen->geometry();
+    const int width = qMax(1, geometry.width());
+    const int height = qMax(1, geometry.height());
+    const auto setProperty = [window, errorOut](const char *name, const QVariant &value) {
+        if (window->metaObject()->indexOfProperty(name) < 0) {
+            if (errorOut)
+                *errorOut = QStringLiteral("Dock surface is missing property '%1'")
+                    .arg(QString::fromLatin1(name));
+            return false;
+        }
+        if (!window->setProperty(name, value)) {
+            if (errorOut)
+                *errorOut = QStringLiteral("Dock surface property '%1' could not be set")
+                    .arg(QString::fromLatin1(name));
+            return false;
+        }
+        return true;
+    };
+
+    window->setScreen(screen);
+    return setProperty("outputKey", screen->name())
+        && setProperty("outputWidth", width)
+        && setProperty("outputHeight", height)
+        && setProperty("outputOriginX", geometry.x())
+        && setProperty("outputOriginY", geometry.y());
 }
 
 bool DockLayerShellSurface::updateExclusiveZone(QQuickWindow *window, int exclusiveZoneHeight,

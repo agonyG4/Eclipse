@@ -134,6 +134,18 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     dock_enable_sanitizers(dock-layer-shell-surface-test)
     add_test(NAME dock-layer-shell-surface-test COMMAND dock-layer-shell-surface-test)
 
+    add_executable(dock-input-region-test
+        tests/DockInputRegionTest.cpp
+        platform/wayland/DockInputRegionBridge.cpp
+        platform/wayland/DockInputRegionPolicy.cpp
+    )
+    target_include_directories(dock-input-region-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
+    target_link_libraries(dock-input-region-test PRIVATE
+        Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
+    dock_enable_sanitizers(dock-input-region-test)
+    add_test(NAME dock-input-region-test COMMAND dock-input-region-test)
+
     add_executable(dock-hover-qml-test
         tests/DockHoverQmlTest.cpp
         core/DockController.cpp

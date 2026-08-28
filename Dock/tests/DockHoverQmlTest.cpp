@@ -156,6 +156,7 @@ private slots:
     void magnifiedVisualRegionAcceptsContextMenu();
     void magnifiedInteractionTargetMatchesVisualBounds();
     void magnifiedInteractionRegionsResolveByVisualStacking();
+    void exclusiveDragReleaseInEmptyHeadroomStaysOutsideDock();
 };
 
 void DockHoverQmlTest::initTestCase()
@@ -740,6 +741,12 @@ void DockHoverQmlTest::magnifiedInteractionTargetMatchesVisualBounds()
     QVERIFY(panelRect.top() < visualRect.top());
     const QPoint topPoint(qRound(visualRect.center().x()), qRound(visualRect.top() + 2.0));
     QVERIFY(visualRect.contains(topPoint));
+    const QPointF topPanelPoint = panel->mapFromItem(window.contentItem(), topPoint.x(),
+                                                      topPoint.y());
+    QVERIFY(QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
+                                      Q_ARG(QVariant, QVariant(topPanelPoint.x())),
+                                      Q_ARG(QVariant, QVariant(topPanelPoint.y()))));
+    QVERIFY(panel->property("pointerInside").toBool());
     QSignalSpy activationSpy(delegateItem, SIGNAL(activated(QString)));
     QVERIFY(activationSpy.isValid());
     QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, topPoint);
@@ -752,10 +759,81 @@ void DockHoverQmlTest::magnifiedInteractionTargetMatchesVisualBounds()
                                qRound(visualRect.top() - 2.0));
     QVERIFY(panelRect.contains(emptyHeadroom));
     QVERIFY(!interactionRect.contains(emptyHeadroom));
+    const QPointF emptyPanelPoint = panel->mapFromItem(window.contentItem(),
+                                                        emptyHeadroom.x(), emptyHeadroom.y());
+    QVERIFY(QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
+                                      Q_ARG(QVariant, QVariant(emptyPanelPoint.x())),
+                                      Q_ARG(QVariant, QVariant(emptyPanelPoint.y()))));
+    QVERIFY(!panel->property("pointerInside").toBool());
+    QCOMPARE(panel->property("pointerTargetDesktopFileName").toString(), QString());
     activationSpy.clear();
     QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, emptyHeadroom);
     QTest::qWait(50);
     QCOMPARE(activationSpy.count(), 0);
+
+    delete panel;
+}
+
+void DockHoverQmlTest::exclusiveDragReleaseInEmptyHeadroomStaysOutsideDock()
+{
+    DockController controller;
+    controller.applyConfig(configFor(QStringLiteral("magnification"),
+                                     {QStringLiteral("one.desktop"),
+                                      QStringLiteral("two.desktop"),
+                                      QStringLiteral("three.desktop")}));
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready,
+             qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    QQuickWindow window;
+    panel->setParentItem(window.contentItem());
+    window.resize(600, 220);
+    const auto centerPanel = [panel, &window]() {
+        panel->setX((window.width() - panel->width()) / 2.0);
+    };
+    QObject::connect(panel, &QQuickItem::widthChanged, panel, centerPanel);
+    centerPanel();
+    window.show();
+    QTest::qWait(20);
+
+    QQuickItem *source = delegate(panel, QStringLiteral("one.desktop"));
+    QQuickItem *icon = iconItem(source);
+    QVERIFY(source && icon);
+    QSignalSpy activationSpy(source, SIGNAL(activated(QString)));
+    QSignalSpy reorderSpy(panel, SIGNAL(reorderRequested(QString,int)));
+    QVERIFY(activationSpy.isValid() && reorderSpy.isValid());
+
+    const QPoint start = visualCenter(window, icon).toPoint();
+    QTest::mouseMove(&window, start);
+    QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, start);
+    QTest::mouseMove(&window, start + QPoint(20, 0), 30);
+    QTRY_VERIFY_WITH_TIMEOUT(source->property("dragging").toBool(), 1000);
+
+    const QRectF panelRect = panel->mapRectToItem(window.contentItem(),
+                                                   QRectF(0, 0, panel->width(), panel->height()));
+    const QPoint emptyHeadroom(qRound(panelRect.left() + 1.0),
+                               qRound(panelRect.top() + 1.0));
+    const QQuickItem *interactionTarget = childWithObjectName(
+        panel, QStringLiteral("interactionTarget-one.desktop"));
+    QVERIFY(interactionTarget);
+    const QRectF interactionRect = interactionTarget->mapRectToItem(
+        window.contentItem(), QRectF(0, 0, interactionTarget->width(),
+                                     interactionTarget->height()));
+    QVERIFY(panelRect.contains(emptyHeadroom));
+    QVERIFY(!interactionRect.contains(emptyHeadroom));
+
+    QTest::mouseMove(&window, emptyHeadroom, 30);
+    QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, emptyHeadroom);
+    QTRY_VERIFY_WITH_TIMEOUT(!source->property("dragging").toBool(), 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(!panel->property("pointerInside").toBool(), 1000);
+    QCOMPARE(panel->property("pointerTargetDesktopFileName").toString(), QString());
+    QCOMPARE(activationSpy.count(), 0);
+    QCOMPARE(reorderSpy.count(), 0);
 
     delete panel;
 }

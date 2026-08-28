@@ -70,6 +70,20 @@ mutates the model or writes configuration during the drag. Pointer handlers use
 a panel-level transparent target whose rectangle follows the transformed icon
 exactly; it does not expand the actionable area into unrelated headroom.
 
+The Dock deliberately has three separate geometries. The visual `QQuickWindow`
+surface includes temporary magnification or drag headroom. The Qt `QWindow`
+input region is a cached union of the visible chrome rectangle and every current
+transformed delegate interaction rectangle reported by QML; it excludes empty
+transparent headroom and is refreshed as the transforms animate. The Layer Shell
+exclusive zone is the fixed resting reservation. `DockInputRegionPolicy` owns
+bounded, finite, normalized integer clipping, while `DockInputRegionBridge`
+applies the cached region to the QQuickWindow. QML remains responsible for
+rendered geometry and its semantic pointer boundary; C++ does not duplicate the
+magnification formula. A pointer ignored by the Dock's semantic boundary is
+eligible to reach the underlying application surface only when the compositor's
+input routing also places it there; an ignored Dock activation alone is not proof
+that the application received the click.
+
 Typhon is the authoritative source for task-relevant toplevels. The projector
 matches each published client `app_id` through the immutable desktop catalog,
 groups multiple windows into one application state, and retains exact stable

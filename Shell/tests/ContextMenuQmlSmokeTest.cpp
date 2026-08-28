@@ -8,6 +8,7 @@
 #include <QtTest/QtTest>
 
 using Astrea::Shell::ContextMenuController;
+using Astrea::Shell::ContextMenuAnchor;
 using Astrea::Shell::ContextMenuModel;
 using Astrea::Shell::ContextMenuTarget;
 
@@ -19,6 +20,7 @@ private slots:
     void overlayCanBeCreatedOffscreen();
     void overlayOwnsFullscreenOutputGeometryAndIntrinsicMenuSize();
     void genericMenuSizingIsContentAwareAndScrollable();
+    void desktopPlacementFlipsAndClampsToOutputEdges();
 };
 
 void ContextMenuQmlSmokeTest::sharedViewCanBeCreatedOffscreen()
@@ -219,6 +221,49 @@ void ContextMenuQmlSmokeTest::genericMenuSizingIsContentAwareAndScrollable()
     QTRY_COMPARE_WITH_TIMEOUT(view->property("cardHeight").toReal(),
                               view->property("resolvedHeight").toReal(),
                               1000);
+
+    delete window;
+}
+
+void ContextMenuQmlSmokeTest::desktopPlacementFlipsAndClampsToOutputEdges()
+{
+    QQmlApplicationEngine engine;
+    ContextMenuController controller;
+    const ContextMenuTarget target{ContextMenuTarget::Kind::Desktop,
+                                   QStringLiteral("desktop"), QStringLiteral("test-output")};
+    const QVector<ContextMenuModel::NodeSpec> nodes{
+        {.token = QStringLiteral("settings"), .label = QStringLiteral("Settings")},
+    };
+    ContextMenuAnchor anchor;
+    anchor.kind = ContextMenuAnchor::Kind::Point;
+    anchor.point = QPoint(0, 0);
+    QVERIFY(controller.present(target, anchor, nodes, [](const QString &) { return true; }));
+
+    QQmlComponent component(&engine,
+                            QUrl(QStringLiteral(
+                                "qrc:/qt/qml/Astrea/Shell/ContextMenu/qml/ContextMenuOverlaySurface.qml")));
+    QVERIFY2(component.status() == QQmlComponent::Ready,
+             qPrintable(component.errorString()));
+    auto *window = qobject_cast<QQuickWindow *>(component.createWithInitialProperties({
+        {QStringLiteral("contextMenuController"), QVariant::fromValue(&controller)},
+        {QStringLiteral("outputKey"), QStringLiteral("test-output")},
+        {QStringLiteral("outputWidth"), 800},
+        {QStringLiteral("outputHeight"), 600},
+    }));
+    QVERIFY(window);
+    auto *view = window->findChild<QQuickItem *>(QStringLiteral("contextMenuView"));
+    QVERIFY(view);
+    window->show();
+    QTRY_COMPARE_WITH_TIMEOUT(view->property("resolvedWidth").toInt(), 200, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(view->x(), 8.0, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(view->y(), 8.0, 1000);
+
+    anchor.point = QPoint(799, 599);
+    QVERIFY(controller.present(target, anchor, nodes, [](const QString &) { return true; }));
+    QTRY_COMPARE_WITH_TIMEOUT(view->property("resolvedWidth").toInt(), 200, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(view->property("resolvedHeight").toInt(), 56, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(view->x(), 800 - 200 - 8, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(view->y(), 600 - 56 - 8, 1000);
 
     delete window;
 }

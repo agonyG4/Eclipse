@@ -549,6 +549,37 @@ void ContextMenuTest::placementFlipsAndClampsInOutputLocalCoordinates()
     request.sourceRect = QRect(1750, 8, 28, 28);
     request.preferredTop = 54;
     QCOMPARE(ContextMenuPlacement::place(request).position, QPoint(1750 - 66, 54));
+
+    request.output = QRect(0, 0, 100, 80);
+    request.menuSize = QSize(40, 30);
+    request.anchor = QPoint(8, 8);
+    request.sourceRect = {};
+    request.kind = ContextMenuPlacement::Kind::Point;
+    request.edgeMargin = 8;
+    const auto edgeTopLeft = ContextMenuPlacement::place(request);
+    QCOMPARE(edgeTopLeft.position, QPoint(8, 8));
+    QVERIFY(!edgeTopLeft.flippedX);
+    QVERIFY(!edgeTopLeft.flippedY);
+
+    request.anchor = QPoint(95, 75);
+    const auto edgeBottomRight = ContextMenuPlacement::place(request);
+    QCOMPARE(edgeBottomRight.position, QPoint(52, 42));
+    QVERIFY(edgeBottomRight.flippedX);
+    QVERIFY(edgeBottomRight.flippedY);
+
+    request.output = QRect(0, 0, 400, 300);
+    request.menuSize = QSize(120, 80);
+    request.sourceRect = QRect(180, 270, 40, 20);
+    request.anchor = {};
+    request.kind = ContextMenuPlacement::Kind::Dock;
+    const auto dockWithEdgeMargin = ContextMenuPlacement::place(request);
+    QCOMPARE(dockWithEdgeMargin.position, QPoint(139, 190));
+    QVERIFY(dockWithEdgeMargin.position.x() >= request.output.left() + request.edgeMargin);
+    QVERIFY(dockWithEdgeMargin.position.y() >= request.output.top() + request.edgeMargin);
+    QVERIFY(dockWithEdgeMargin.position.x() + request.menuSize.width()
+            <= request.output.right() + 1 - request.edgeMargin);
+    QVERIFY(dockWithEdgeMargin.position.y() + request.menuSize.height()
+            <= request.output.bottom() + 1 - request.edgeMargin);
 }
 
 void ContextMenuTest::surfacePoliciesKeepInputAndLayerContracts()

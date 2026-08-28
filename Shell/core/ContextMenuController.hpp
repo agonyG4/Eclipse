@@ -106,11 +106,13 @@ public:
                                  int width, int height, int preferredTop,
                                  const QString &outputKey);
     Q_INVOKABLE QPoint menuPosition(int outputWidth, int outputHeight,
-                                    int menuWidth, int menuHeight) const;
+                                    int menuWidth, int menuHeight,
+                                    int edgeMargin = 8) const;
     Q_INVOKABLE QPoint submenuPosition(int outputWidth, int outputHeight,
                                         int menuWidth, int menuHeight,
                                         const QRect &parentRectangle,
-                                        bool rightToLeft = false) const;
+                                        bool rightToLeft = false,
+                                        int edgeMargin = 8) const;
     Q_INVOKABLE void invalidateOutput(const QString &outputKey);
     Q_INVOKABLE bool activate(quint64 generation, const QString &token);
     Q_INVOKABLE void close();

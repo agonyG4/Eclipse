@@ -9,8 +9,15 @@ ContextMenuPlacement::Result ContextMenuPlacement::place(const Request &request)
     const QRect output = request.output.normalized();
     const int width = std::max(0, request.menuSize.width());
     const int height = std::max(0, request.menuSize.height());
-    const int right = output.left() + std::max(0, output.width() - width);
-    const int bottom = output.top() + std::max(0, output.height() - height);
+    const int requestedMargin = std::max(0, request.edgeMargin);
+    const int horizontalMargin = width + requestedMargin * 2 <= output.width()
+        ? requestedMargin : 0;
+    const int verticalMargin = height + requestedMargin * 2 <= output.height()
+        ? requestedMargin : 0;
+    const int left = output.left() + horizontalMargin;
+    const int top = output.top() + verticalMargin;
+    const int right = output.left() + std::max(0, output.width() - width - horizontalMargin);
+    const int bottom = output.top() + std::max(0, output.height() - height - verticalMargin);
 
     Result result;
     int x = request.anchor.x();
@@ -18,11 +25,11 @@ ContextMenuPlacement::Result ContextMenuPlacement::place(const Request &request)
 
     switch (request.kind) {
     case Kind::Point:
-        if (x + width > output.right() + 1) {
+        if (x > right) {
             x -= width;
             result.flippedX = true;
         }
-        if (y + height > output.bottom() + 1) {
+        if (y > bottom) {
             y -= height;
             result.flippedY = true;
         }
@@ -30,7 +37,7 @@ ContextMenuPlacement::Result ContextMenuPlacement::place(const Request &request)
     case Kind::Rectangle:
         x = request.sourceRect.left();
         y = request.sourceRect.bottom() + 1;
-        if (y + height > output.bottom() + 1) {
+        if (y > bottom) {
             y = request.sourceRect.top() - height;
             result.flippedY = true;
         }
@@ -42,7 +49,7 @@ ContextMenuPlacement::Result ContextMenuPlacement::place(const Request &request)
     case Kind::Dock:
         x = request.sourceRect.center().x() - width / 2;
         y = request.sourceRect.top() - height;
-        if (y < output.top()) {
+        if (y < top) {
             y = request.sourceRect.bottom() + 1;
             result.flippedY = true;
         }
@@ -51,13 +58,13 @@ ContextMenuPlacement::Result ContextMenuPlacement::place(const Request &request)
         y = request.parentRect.top();
         if (request.direction == Qt::RightToLeft) {
             x = request.parentRect.left() - width;
-            if (x < output.left()) {
+            if (x < left) {
                 x = request.parentRect.right() + 1;
                 result.flippedX = true;
             }
         } else {
             x = request.parentRect.right() + 1;
-            if (x + width > output.right() + 1) {
+            if (x > right) {
                 x = request.parentRect.left() - width;
                 result.flippedX = true;
             }
@@ -65,8 +72,8 @@ ContextMenuPlacement::Result ContextMenuPlacement::place(const Request &request)
         break;
     }
 
-    result.position = QPoint(clampCoordinate(x, output.left(), right),
-                             clampCoordinate(y, output.top(), bottom));
+    result.position = QPoint(clampCoordinate(x, left, right),
+                             clampCoordinate(y, top, bottom));
     return result;
 }
 

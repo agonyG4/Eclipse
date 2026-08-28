@@ -213,6 +213,25 @@ Item {
                     Math.round(root.dockPanel.width), Math.round(root.dockPanel.height),
                     DockController.bottomMargin,
                     Qt.rect(topLeft.x, topLeft.y, root.width, root.height))
+                if (root.contextMenuController.debugEnabled) {
+                    console.log("astrea.context-menu " + JSON.stringify({
+                        stage: "dock-anchor-resolved",
+                        targetIdentity: root.desktopFileName,
+                        outputKey: root.outputKey,
+                        outputWidth: root.dockPanel.outputWidth,
+                        outputHeight: root.dockPanel.outputHeight,
+                        dockWindowWidth: root.dockPanel.width,
+                        dockWindowHeight: root.dockPanel.height,
+                        delegateX: topLeft.x,
+                        delegateY: topLeft.y,
+                        delegateWidth: root.width,
+                        delegateHeight: root.height,
+                        outputX: outputRect.x,
+                        outputY: outputRect.y,
+                        outputRectWidth: outputRect.width,
+                        outputRectHeight: outputRect.height
+                    }))
+                }
                 root.contextMenuController.presentDock(root.desktopFileName,
                     outputRect.x, outputRect.y, outputRect.width, outputRect.height,
                     root.outputKey)

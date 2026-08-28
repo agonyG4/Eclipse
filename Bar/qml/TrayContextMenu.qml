@@ -38,6 +38,16 @@ PopupCard {
     }
     implicitWidth: 220
     height: Math.min(implicitHeight, Math.max(1, outputHeight))
+    readonly property real cardWidth: root.width
+    readonly property real cardHeight: root.height
+    readonly property real listContentWidth: Math.max(0, root.width - 2 * root.cardPadding)
+    readonly property real listContentHeight: Math.max(0,
+        root.implicitHeight - 2 * root.cardPadding)
+    readonly property int modelRowCount: menuRepeater.count
+    readonly property real cascadeWidth: cascadeLoader.width
+    readonly property real cascadeHeight: cascadeLoader.height
+    readonly property real cascadeX: cascadeLoader.x
+    readonly property real cascadeY: cascadeLoader.y
     focus: visible
     cardPadding: 12
     contentSpacing: 4
@@ -65,6 +75,37 @@ PopupCard {
                 break
             }
         }
+    }
+
+    function scheduleSelectionInitialization() {
+        selectionInitializationTimer.restart()
+    }
+
+    function focusActiveMenu() {
+        if (cascadeLoader.item) {
+            cascadeLoader.item.initializeSelection()
+            cascadeLoader.item.forceActiveFocus()
+        } else {
+            forceActiveFocus()
+        }
+    }
+
+    function scheduleCascadeFocus() {
+        cascadeFocusTimer.restart()
+    }
+
+    Timer {
+        id: selectionInitializationTimer
+        interval: 0
+        repeat: false
+        onTriggered: root.initializeSelection()
+    }
+
+    Timer {
+        id: cascadeFocusTimer
+        interval: 0
+        repeat: false
+        onTriggered: root.focusActiveMenu()
     }
 
     function moveSelection(delta) {
@@ -113,6 +154,7 @@ PopupCard {
     function beginPresentation() {
         resetMenuState()
         requestRootPresentation()
+        scheduleSelectionInitialization()
     }
 
     function cascadeXFor(parentX, parentWidth, childWidth, outputWidth) {
@@ -190,7 +232,7 @@ PopupCard {
         resetMenuState()
         if (visible)
             requestRootPresentation()
-        Qt.callLater(initializeSelection)
+        scheduleSelectionInitialization()
     }
     function syncPresentation() {
         presentedContextKey = ""
@@ -201,12 +243,13 @@ PopupCard {
     }
     onContextKeyChanged: syncPresentation()
     onContextMenuGenerationChanged: syncPresentation()
+    onMenuModelChanged: scheduleSelectionInitialization()
     onVisibleChanged: {
         if (visible) {
             presentedContextKey = ""
             beginPresentation()
             forceActiveFocus()
-            Qt.callLater(initializeSelection)
+            scheduleSelectionInitialization()
         } else {
             presentedContextKey = ""
             closeCascades()
@@ -405,7 +448,7 @@ PopupCard {
             item.depth = 1
             item.x = root.cascadeXFor(root.x, root.width, width, root.parent.width)
             item.y = root.cascadeYFor(root.y, root.cascadeAnchorY, height, root.parent.height)
-            Qt.callLater(item.forceActiveFocus)
+            root.scheduleCascadeFocus()
         }
         onCascadeMenuModelChanged: if (item) item.menuModel = cascadeMenuModel
     }

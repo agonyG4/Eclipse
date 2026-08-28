@@ -67,12 +67,22 @@ bool ContextMenuSurfaceBundle::initialize(QString *errorOut)
     const QRect geometry = m_screen->geometry();
     const int width = qMax(1, geometry.width());
     const int height = qMax(1, geometry.height());
+    const QVariantMap commonProperties{
+        {QStringLiteral("contextMenuController"), objectVariant(m_controller)},
+        {QStringLiteral("outputKey"), outputKey()},
+        {QStringLiteral("outputWidth"), width},
+        {QStringLiteral("outputHeight"), height},
+        {QStringLiteral("outputOriginX"), geometry.x()},
+        {QStringLiteral("outputOriginY"), geometry.y()},
+    };
     m_desktopInteractionWindow = createSurface(
         QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/ContextMenu/qml/DesktopInteractionSurface.qml")),
-        width, height, errorOut);
+        commonProperties, errorOut);
+    QVariantMap overlayProperties = commonProperties;
+    overlayProperties.insert(QStringLiteral("trayService"), objectVariant(m_statusNotifier));
     m_overlayWindow = createSurface(
         QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/ContextMenu/qml/ContextMenuOverlaySurface.qml")),
-        width, height, errorOut);
+        overlayProperties, errorOut);
     if (!m_desktopInteractionWindow || !m_overlayWindow) {
         destroySurfaces();
         return false;
@@ -136,7 +146,8 @@ bool ContextMenuSurfaceBundle::overlayMapped() const
     return m_overlayWindow && m_overlayWindow->isVisible();
 }
 
-QQuickWindow *ContextMenuSurfaceBundle::createSurface(const QUrl &sourceUrl, int width, int height,
+QQuickWindow *ContextMenuSurfaceBundle::createSurface(const QUrl &sourceUrl,
+                                                       const QVariantMap &properties,
                                                        QString *errorOut)
 {
     QQmlComponent component(m_engine, sourceUrl, this);
@@ -147,15 +158,6 @@ QQuickWindow *ContextMenuSurfaceBundle::createSurface(const QUrl &sourceUrl, int
                 : component.errors().constFirst().toString();
         return nullptr;
     }
-    QVariantMap properties{
-        {QStringLiteral("contextMenuController"), objectVariant(m_controller)},
-        {QStringLiteral("trayService"), objectVariant(m_statusNotifier)},
-        {QStringLiteral("outputKey"), outputKey()},
-        {QStringLiteral("outputWidth"), width},
-        {QStringLiteral("outputHeight"), height},
-        {QStringLiteral("outputOriginX"), m_screen ? m_screen->geometry().x() : 0},
-        {QStringLiteral("outputOriginY"), m_screen ? m_screen->geometry().y() : 0},
-    };
     QObject *object = component.createWithInitialProperties(properties, m_engine->rootContext());
     auto *window = qobject_cast<QQuickWindow *>(object);
     if (!window) {
@@ -168,7 +170,8 @@ QQuickWindow *ContextMenuSurfaceBundle::createSurface(const QUrl &sourceUrl, int
     QQmlEngine::setObjectOwnership(window, QQmlEngine::CppOwnership);
     window->setScreen(m_screen.data());
     window->setVisible(false);
-    window->resize(width, height);
+    window->resize(properties.value(QStringLiteral("outputWidth")).toInt(),
+                   properties.value(QStringLiteral("outputHeight")).toInt());
     return window;
 }
 

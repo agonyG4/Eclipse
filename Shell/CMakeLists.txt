@@ -261,6 +261,10 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     )
     shell_enable_sanitizers(context-menu-qml-interaction-test)
     add_test(NAME context-menu-qml-interaction-test COMMAND context-menu-qml-interaction-test)
+    set_tests_properties(
+        context-menu-qml-smoke-test context-menu-qml-interaction-test
+        PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    )
 endif()
 
 install(TARGETS astrea-shell RUNTIME DESTINATION bin)

@@ -12,10 +12,106 @@ Window {
     property int outputOriginY: 0
     property int menuWidth: 280
     property var trayService: null
+    property bool debugEnabled: contextMenuController
+        ? contextMenuController.debugEnabled : false
+    property bool debugScheduled: false
+    property string pendingDebugStage: "settled"
+    property string lastDebugSignature: ""
 
     visible: false
     color: "transparent"
     flags: Qt.FramelessWindowHint
+    // This is a fullscreen output-local layer-shell surface. Keep the Qt
+    // logical window/content geometry bound to the same output contract that
+    // is sent to the compositor by ContextMenuSurfaceBundle.
+    width: outputWidth
+    height: outputHeight
+
+    function debugGeometry(stage) {
+        if (!root.debugEnabled || !root.contextMenuController
+                || !root.contextMenuController.hasActivePresentation)
+            return
+
+        const view = root.contextMenuController.targetKind === 2 && trayMenuLoader.item
+            ? trayMenuLoader.item : menuView
+        const value = function(item, name, fallback) {
+            if (!item)
+                return fallback
+            const result = item[name]
+            return result === undefined ? fallback : result
+        }
+        const fields = {
+            stage: stage,
+            targetKind: root.contextMenuController.targetKind,
+            targetIdentity: root.contextMenuController.targetIdentity,
+            outputKey: root.contextMenuController.outputKey,
+            generation: root.contextMenuController.presentationGeneration,
+            anchorKind: root.contextMenuController.anchorKind,
+            anchorPointX: root.contextMenuController.anchorPoint.x,
+            anchorPointY: root.contextMenuController.anchorPoint.y,
+            anchorX: root.contextMenuController.anchorRectangle.x,
+            anchorY: root.contextMenuController.anchorRectangle.y,
+            anchorWidth: root.contextMenuController.anchorRectangle.width,
+            anchorHeight: root.contextMenuController.anchorRectangle.height,
+            outputWidth: root.outputWidth,
+            outputHeight: root.outputHeight,
+            outputOriginX: root.outputOriginX,
+            outputOriginY: root.outputOriginY,
+            windowWidth: root.width,
+            windowHeight: root.height,
+            contentWidth: root.contentItem.width,
+            contentHeight: root.contentItem.height,
+            viewWidth: value(view, "width", 0),
+            viewHeight: value(view, "height", 0),
+            viewImplicitWidth: value(view, "implicitWidth", 0),
+            viewImplicitHeight: value(view, "implicitHeight", 0),
+            cardWidth: value(view, "cardWidth", 0),
+            cardHeight: value(view, "cardHeight", 0),
+            listContentWidth: value(view, "listContentWidth", 0),
+            listContentHeight: value(view, "listContentHeight", 0),
+            modelRows: value(view, "modelRowCount", 0),
+            resolvedWidth: value(view, "width", 0),
+            resolvedHeight: value(view, "height", 0),
+            resolvedX: value(view, "x", 0),
+            resolvedY: value(view, "y", 0),
+            loaderWidth: trayMenuLoader.width,
+            loaderHeight: trayMenuLoader.height,
+            loaderItemWidth: value(trayMenuLoader.item, "width", 0),
+            loaderItemHeight: value(trayMenuLoader.item, "height", 0),
+            cascadeWidth: value(view, "cascadeWidth", 0),
+            cascadeHeight: value(view, "cascadeHeight", 0),
+            cascadeX: value(view, "cascadeX", 0),
+            cascadeY: value(view, "cascadeY", 0),
+            dpr: root.devicePixelRatio,
+            effectiveDpr: root.screen ? root.screen.devicePixelRatio : root.devicePixelRatio
+        }
+        const signature = JSON.stringify(fields)
+        if (stage !== "presentation" && signature === root.lastDebugSignature)
+            return
+        root.lastDebugSignature = signature
+        console.log("astrea.context-menu " + signature)
+    }
+
+    function scheduleDebugGeometry(stage) {
+        if (!root.debugEnabled)
+            return
+        root.pendingDebugStage = stage
+        root.debugScheduled = true
+        debugSettlementTimer.restart()
+    }
+
+    Timer {
+        id: debugSettlementTimer
+        // Give QQuickWindow one polish/render turn after output or model
+        // changes; the diagnostic must describe settled content geometry,
+        // not the transient value observed during binding propagation.
+        interval: 16
+        repeat: false
+        onTriggered: {
+            root.debugScheduled = false
+            root.debugGeometry(root.pendingDebugStage)
+        }
+    }
 
     function syncMenuGeometry() {
         if (!menuView || !root.contextMenuController)
@@ -28,6 +124,7 @@ Window {
                                                                   menuView.height)
         menuView.x = position.x
         menuView.y = position.y
+        root.scheduleDebugGeometry("settled")
     }
 
     function resetPresentationVisuals() {
@@ -41,7 +138,7 @@ Window {
         if (!root.visible)
             return
         if (trayMenuLoader.item)
-            trayMenuLoader.item.forceActiveFocus()
+            trayMenuLoader.item.focusActiveMenu()
         else if (menuView.visible)
             menuView.forceActiveFocus()
     }
@@ -145,8 +242,16 @@ Window {
                                                       width, height).y : 0
         onLoaded: {
             root.syncTrayPresentation()
-            Qt.callLater(root.focusActiveMenu)
+            root.scheduleDebugGeometry("presentation")
+            root.scheduleFocusActiveMenu()
         }
+    }
+
+    Timer {
+        id: focusActiveMenuTimer
+        interval: 0
+        repeat: false
+        onTriggered: root.focusActiveMenu()
     }
 
     ParallelAnimation {
@@ -200,10 +305,23 @@ Window {
             root.syncTrayPresentation()
             root.syncMenuGeometry()
             root.focusActiveMenu()
+            root.debugGeometry("presentation")
         }
         function onLifecycleChanged() {
             root.syncAnimationForLifecycle()
+            if (root.contextMenuController
+                    && root.contextMenuController.lifecycle === 1)
+                root.scheduleDebugGeometry("presentation")
         }
+    }
+
+    Connections {
+        // QQuickWindow contentItem geometry can settle one event turn after
+        // the Window width/height binding. Reschedule the gated diagnostic at
+        // that boundary so its settled record describes the full Qt scene.
+        target: root.contentItem
+        function onWidthChanged() { root.scheduleDebugGeometry("settled") }
+        function onHeightChanged() { root.scheduleDebugGeometry("settled") }
     }
 
     Component.onCompleted: {
@@ -211,7 +329,19 @@ Window {
         syncAnimationForLifecycle()
     }
 
-    onVisibleChanged: if (visible) Qt.callLater(focusActiveMenu)
-    onActiveChanged: if (active) Qt.callLater(focusActiveMenu)
+    function scheduleFocusActiveMenu() {
+        focusActiveMenuTimer.restart()
+    }
+
+    onVisibleChanged: if (visible) scheduleFocusActiveMenu()
+    onActiveChanged: if (active) scheduleFocusActiveMenu()
+    onOutputWidthChanged: {
+        root.syncMenuGeometry()
+        root.scheduleDebugGeometry("settled")
+    }
+    onOutputHeightChanged: {
+        root.syncMenuGeometry()
+        root.scheduleDebugGeometry("settled")
+    }
 
 }

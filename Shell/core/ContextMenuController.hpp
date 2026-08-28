@@ -54,6 +54,7 @@ class ContextMenuController final : public QObject {
     Q_PROPERTY(int anchorKind READ anchorKind NOTIFY presentationChanged)
     Q_PROPERTY(QPoint anchorPoint READ anchorPoint NOTIFY presentationChanged)
     Q_PROPERTY(QRect anchorRectangle READ anchorRectangle NOTIFY presentationChanged)
+    Q_PROPERTY(bool debugEnabled READ debugEnabled CONSTANT)
 
 public:
     enum class Lifecycle {
@@ -80,6 +81,7 @@ public:
     int anchorKind() const { return static_cast<int>(m_anchor.kind); }
     QPoint anchorPoint() const { return m_anchor.point; }
     QRect anchorRectangle() const { return m_anchor.rectangle; }
+    bool debugEnabled() const;
     const ContextMenuTarget &target() const { return m_target; }
 
     bool present(const ContextMenuTarget &target,

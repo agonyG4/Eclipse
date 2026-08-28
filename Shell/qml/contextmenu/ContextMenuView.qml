@@ -14,6 +14,12 @@ Item {
     property int submenuIndex: -1
     property int rowHeight: 36
     property rect activeRowRectangle: Qt.rect(root.x, root.y, root.width, root.rowHeight)
+    readonly property real cardWidth: card.width
+    readonly property real cardHeight: card.height
+    readonly property real listContentWidth: list.contentWidth >= 0
+        ? list.contentWidth : list.width
+    readonly property real listContentHeight: list.contentHeight
+    readonly property int modelRowCount: list.count
     property var submenuModel: submenuIndex >= 0 && menuModel
         ? menuModel.childModelAt(submenuIndex) : null
     implicitWidth: card.implicitWidth
@@ -33,8 +39,15 @@ Item {
         if (row >= 0) {
             list.positionViewAtIndex(row, ListView.Contain)
             updateActiveRowRectangle()
-            Qt.callLater(updateActiveRowRectangle)
+            activeRowUpdateTimer.restart()
         }
+    }
+
+    Timer {
+        id: activeRowUpdateTimer
+        interval: 0
+        repeat: false
+        onTriggered: root.updateActiveRowRectangle()
     }
 
     function updateActiveRowRectangle() {
@@ -145,6 +158,7 @@ Item {
 
         ListView {
             id: list
+            objectName: "contextMenuList"
             anchors.fill: parent
             anchors.margins: card.cardPadding
             model: root.menuModel

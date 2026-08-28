@@ -259,6 +259,7 @@ QQuickItem *createView(QQmlEngine &engine, QQuickWindow &window,
     window.setHeight(180);
     view->forceActiveFocus();
     window.show();
+    window.requestActivate();
     QCoreApplication::processEvents();
     return view;
 }
@@ -539,6 +540,7 @@ void ContextMenuQmlInteractionTest::globalOverlayKeepsTrayMenuLiveAndDispatchabl
     window->setWidth(280);
     window->setHeight(180);
     window->show();
+    window->requestActivate();
     QObject *menu = nullptr;
     QTRY_VERIFY_WITH_TIMEOUT((menu = window->findChild<QObject *>(
                                   QStringLiteral("trayContextMenu"))) != nullptr, 1000);
@@ -683,6 +685,7 @@ void ContextMenuQmlInteractionTest::trayPresentationUpdatesReusedRenderer()
     window->setWidth(320);
     window->setHeight(200);
     window->show();
+    window->requestActivate();
 
     QObject *menu = nullptr;
     QTRY_VERIFY_WITH_TIMEOUT((menu = window->findChild<QObject *>(
@@ -793,7 +796,10 @@ void ContextMenuQmlInteractionTest::trayRightArrowOnlyOpensSubmenus()
     QTRY_VERIFY_WITH_TIMEOUT((child = window->findChild<QObject *>(
                                   QStringLiteral("trayCascadeMenu"))) != nullptr, 1000);
     QTRY_COMPARE_WITH_TIMEOUT(window->activeFocusItem(), qobject_cast<QQuickItem *>(child), 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(child->property("activeIndex").toInt(), 0, 1000);
     QTest::keyClick(window, Qt::Key_Right);
+    QCOMPARE(window->activeFocusItem(), qobject_cast<QQuickItem *>(child));
+    QCOMPARE(child->property("activeIndex").toInt(), 0);
     QCOMPARE(activations, 0);
     QCOMPARE(controller.lifecycle(), ContextMenuController::Lifecycle::Open);
     QTest::keyClick(window, Qt::Key_Enter);

@@ -3,7 +3,31 @@
 #include "ContextMenuProviders.hpp"
 #include "ContextMenuPlacement.hpp"
 
+#include <QDebug>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QVariantMap>
+
 #include <utility>
+
+namespace {
+
+bool contextMenuDebugEnabled()
+{
+    return qgetenv("ASTREA_CONTEXT_MENU_DEBUG") == QByteArrayLiteral("1");
+}
+
+void logContextMenuDebug(const QString &event, const QVariantMap &fields)
+{
+    if (!contextMenuDebugEnabled())
+        return;
+    qInfo().noquote() << QStringLiteral("ASTREA_CONTEXT_MENU_DEBUG event=%1 data=%2")
+                             .arg(event,
+                                  QString::fromUtf8(QJsonDocument(QJsonObject::fromVariantMap(fields))
+                                                       .toJson(QJsonDocument::Compact)));
+}
+
+} // namespace
 
 namespace Astrea::Shell {
 
@@ -11,6 +35,11 @@ ContextMenuController::ContextMenuController(QObject *parent)
     : QObject(parent)
     , m_model(std::make_unique<ContextMenuModel>(this))
 {
+}
+
+bool ContextMenuController::debugEnabled() const
+{
+    return qgetenv("ASTREA_CONTEXT_MENU_DEBUG") == QByteArrayLiteral("1");
 }
 
 bool ContextMenuController::present(const ContextMenuTarget &target,
@@ -49,6 +78,20 @@ bool ContextMenuController::present(const ContextMenuTarget &target,
     m_actionAuthorizer = std::move(actionAuthorizer);
     m_model->setRootNodes(nodes);
 
+    logContextMenuDebug(QStringLiteral("presentation"), {
+        {QStringLiteral("targetKind"), static_cast<int>(target.kind)},
+        {QStringLiteral("targetIdentity"), target.identity},
+        {QStringLiteral("outputKey"), target.outputKey},
+        {QStringLiteral("generation"), QVariant::fromValue(m_presentationGeneration)},
+        {QStringLiteral("anchorKind"), static_cast<int>(anchor.kind)},
+        {QStringLiteral("anchorPointX"), anchor.point.x()},
+        {QStringLiteral("anchorPointY"), anchor.point.y()},
+        {QStringLiteral("anchorX"), anchor.rectangle.x()},
+        {QStringLiteral("anchorY"), anchor.rectangle.y()},
+        {QStringLiteral("anchorWidth"), anchor.rectangle.width()},
+        {QStringLiteral("anchorHeight"), anchor.rectangle.height()},
+    });
+
     const Lifecycle previous = m_lifecycle;
     m_lifecycle = Lifecycle::Open;
     if (previous != m_lifecycle) {
@@ -60,6 +103,11 @@ bool ContextMenuController::present(const ContextMenuTarget &target,
 
 bool ContextMenuController::presentDesktop(int x, int y, const QString &outputKey)
 {
+    logContextMenuDebug(QStringLiteral("desktop-anchor-input"), {
+        {QStringLiteral("outputKey"), outputKey},
+        {QStringLiteral("anchorPointX"), x},
+        {QStringLiteral("anchorPointY"), y},
+    });
     if (!m_desktopProvider)
         return false;
     return m_desktopProvider->present(this, QPoint(x, y), outputKey);
@@ -68,6 +116,14 @@ bool ContextMenuController::presentDesktop(int x, int y, const QString &outputKe
 bool ContextMenuController::presentDock(const QString &desktopFileName, int x, int y,
                                         int width, int height, const QString &outputKey)
 {
+    logContextMenuDebug(QStringLiteral("dock-anchor-input"), {
+        {QStringLiteral("targetIdentity"), desktopFileName},
+        {QStringLiteral("outputKey"), outputKey},
+        {QStringLiteral("anchorX"), x},
+        {QStringLiteral("anchorY"), y},
+        {QStringLiteral("anchorWidth"), width},
+        {QStringLiteral("anchorHeight"), height},
+    });
     if (!m_dockProvider)
         return false;
     return m_dockProvider->present(this, desktopFileName, QRect(x, y, width, height), outputKey);

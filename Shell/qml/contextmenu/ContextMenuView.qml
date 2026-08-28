@@ -45,6 +45,7 @@ Item {
     readonly property real cardHeight: card.height
     readonly property real listContentWidth: list.contentWidth >= 0
         ? list.contentWidth : list.width
+    readonly property real listViewportHeight: list.height
     readonly property real listContentHeight: list.contentHeight
     readonly property int modelRowCount: list.count
     property var submenuModel: submenuIndex >= 0 && menuModel
@@ -188,12 +189,12 @@ Item {
             id: list
             objectName: "contextMenuList"
             anchors.fill: parent
-            anchors.margins: card.cardPadding
             model: root.menuModel
             interactive: root.scrollable
             clip: true
             delegate: Item {
                 id: row
+                objectName: "contextMenuRow"
                 required property int index
                 required property int nodeKind
                 required property string token

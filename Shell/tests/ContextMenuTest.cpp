@@ -7,6 +7,8 @@
 #include "statusnotifier/DBusMenuModel.hpp"
 #include "statusnotifier/StatusNotifierService.hpp"
 
+#include <QFont>
+#include <QFontMetrics>
 #include <QSignalSpy>
 #include <QtTest/QtTest>
 
@@ -402,17 +404,37 @@ void ContextMenuTest::modelPresentationMetricsAreExactAndContentAware()
 
     const auto naturalWidth = [](ContextMenuModel &model) {
         return model.presentationNaturalWidth(QStringLiteral("Inter Variable"), 12, 12,
-                                              10, 20, 12, 10, 1);
+                                              8, 18, 8, 5, 1);
+    };
+    QFont bodyFont;
+    bodyFont.setFamily(QStringLiteral("Inter Variable"));
+    bodyFont.setPixelSize(12);
+    bodyFont.setWeight(QFont::Medium);
+    QFont shortcutFont;
+    shortcutFont.setFamily(QStringLiteral("Inter Variable"));
+    shortcutFont.setPixelSize(12);
+    const QFontMetrics bodyMetrics(bodyFont);
+    const QFontMetrics shortcutMetrics(shortcutFont);
+    const auto expectedWidth = [&](const QString &label, const QString &shortcut,
+                                   bool hasChildren) {
+        const int slotCount = 2 + (!shortcut.isEmpty() ? 1 : 0) + (hasChildren ? 1 : 0);
+        return 8 * 2 + 18 + bodyMetrics.horizontalAdvance(label)
+            + shortcutMetrics.horizontalAdvance(shortcut)
+            + (hasChildren ? bodyMetrics.horizontalAdvance(QStringLiteral("›")) : 0)
+            + (slotCount - 1) * 8 + 5 * 2 + 1 * 2;
     };
     ContextMenuModel shortLabel;
     QVERIFY(shortLabel.setRootNodes({action(QStringLiteral("short"), QStringLiteral("Short"))}));
     const int shortWidth = naturalWidth(shortLabel);
+    QCOMPARE(shortWidth, expectedWidth(QStringLiteral("Short"), {}, false));
 
     ContextMenuModel shortcut;
     auto shortcutNode = action(QStringLiteral("shortcut"), QStringLiteral("Short"));
     shortcutNode.shortcut = QStringLiteral("Ctrl+Shift+P");
     QVERIFY(shortcut.setRootNodes({shortcutNode}));
     QVERIFY(naturalWidth(shortcut) > shortWidth);
+    QCOMPARE(naturalWidth(shortcut),
+             expectedWidth(QStringLiteral("Short"), QStringLiteral("Ctrl+Shift+P"), false));
 
     ContextMenuModel submenuWidth;
     QVERIFY(submenuWidth.setRootNodes({ContextMenuModel::NodeSpec{
@@ -421,6 +443,7 @@ void ContextMenuTest::modelPresentationMetricsAreExactAndContentAware()
         .children = {action(QStringLiteral("child"), QStringLiteral("Child"))},
     }}));
     QVERIFY(naturalWidth(submenuWidth) > shortWidth);
+    QCOMPARE(naturalWidth(submenuWidth), expectedWidth(QStringLiteral("Short"), {}, true));
 
     ContextMenuModel longLabel;
     QVERIFY(longLabel.setRootNodes({action(

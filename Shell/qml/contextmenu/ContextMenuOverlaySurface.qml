@@ -67,6 +67,7 @@ Window {
             cardWidth: value(view, "cardWidth", 0),
             cardHeight: value(view, "cardHeight", 0),
             listContentWidth: value(view, "listContentWidth", 0),
+            listViewportHeight: value(view, "listViewportHeight", 0),
             listContentHeight: value(view, "listContentHeight", 0),
             modelRows: value(view, "modelRowCount", 0),
             naturalWidth: value(view, "naturalWidth", 0),

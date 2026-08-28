@@ -258,12 +258,14 @@ Item {
            ? root.contextMenuController.submenuPosition(root.outputWidth, root.outputHeight,
                                                         width, height,
                                                         root.activeRowRectangle,
-                                                        LayoutMirroring.enabled).x : 0
+                                                        LayoutMirroring.enabled,
+                                                        root.edgeMargin).x : 0
         y: root.contextMenuController && root.submenuModel
            ? root.contextMenuController.submenuPosition(root.outputWidth, root.outputHeight,
                                                         width, height,
                                                         root.activeRowRectangle,
-                                                        LayoutMirroring.enabled).y : 0
+                                                        LayoutMirroring.enabled,
+                                                        root.edgeMargin).y : 0
         onLoaded: {
             item.menuModel = childMenuModel
             item.contextMenuController = root.contextMenuController

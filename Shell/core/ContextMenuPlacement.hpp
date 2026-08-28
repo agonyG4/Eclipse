@@ -25,6 +25,7 @@ public:
         QRect parentRect;
         Kind kind = Kind::Point;
         Qt::LayoutDirection direction = Qt::LeftToRight;
+        int edgeMargin = 0;
     };
 
     struct Result {

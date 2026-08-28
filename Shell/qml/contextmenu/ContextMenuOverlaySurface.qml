@@ -69,10 +69,22 @@ Window {
             listContentWidth: value(view, "listContentWidth", 0),
             listContentHeight: value(view, "listContentHeight", 0),
             modelRows: value(view, "modelRowCount", 0),
+            naturalWidth: value(view, "naturalWidth", 0),
+            exactContentHeight: value(view, "exactContentHeight", 0),
+            desiredHeight: value(view, "desiredHeight", 0),
+            scrollable: value(view, "scrollable", false),
+            placementInputX: root.contextMenuController.anchorKind === 0
+                ? root.contextMenuController.anchorPoint.x
+                : root.contextMenuController.anchorRectangle.x,
+            placementInputY: root.contextMenuController.anchorKind === 0
+                ? root.contextMenuController.anchorPoint.y
+                : root.contextMenuController.anchorRectangle.y,
             resolvedWidth: value(view, "width", 0),
             resolvedHeight: value(view, "height", 0),
             resolvedX: value(view, "x", 0),
             resolvedY: value(view, "y", 0),
+            placementFinalX: value(view, "x", 0),
+            placementFinalY: value(view, "y", 0),
             loaderWidth: trayMenuLoader.width,
             loaderHeight: trayMenuLoader.height,
             loaderItemWidth: value(trayMenuLoader.item, "width", 0),
@@ -118,7 +130,8 @@ Window {
         const position = root.contextMenuController.menuPosition(root.outputWidth,
                                                                   root.outputHeight,
                                                                   menuView.width,
-                                                                  menuView.height)
+                                                                  menuView.height,
+                                                                  menuView.edgeMargin)
         menuView.x = position.x
         menuView.y = position.y
         root.scheduleDebugGeometry("settled")

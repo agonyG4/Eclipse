@@ -17,14 +17,34 @@ Window {
     width: outputWidth
     height: outputHeight
 
+    function debugDesktopInput(x, y) {
+        if (!root.contextMenuController || !root.contextMenuController.debugEnabled)
+            return
+        console.log("astrea.context-menu " + JSON.stringify({
+            stage: "desktop-input",
+            outputKey: root.outputKey,
+            outputOriginX: root.outputOriginX,
+            outputOriginY: root.outputOriginY,
+            windowWidth: root.width,
+            windowHeight: root.height,
+            mouseX: x,
+            mouseY: y,
+            forwardedX: x,
+            forwardedY: y,
+            outputLocal: true
+        }))
+    }
+
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.RightButton
         onPressed: function(mouse) {
             if (mouse.button !== Qt.RightButton || !root.contextMenuController)
                 return
-            root.contextMenuController.presentDesktop(Math.round(mouse.x), Math.round(mouse.y),
-                                                      root.outputKey)
+            const x = Math.round(mouse.x)
+            const y = Math.round(mouse.y)
+            root.debugDesktopInput(x, y)
+            root.contextMenuController.presentDesktop(x, y, root.outputKey)
             mouse.accepted = true
         }
     }

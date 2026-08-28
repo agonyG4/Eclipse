@@ -142,7 +142,8 @@ bool ContextMenuController::presentTray(const QString &itemKey, int x, int y, in
 }
 
 QPoint ContextMenuController::menuPosition(int outputWidth, int outputHeight,
-                                            int menuWidth, int menuHeight) const
+                                            int menuWidth, int menuHeight,
+                                            int edgeMargin) const
 {
     ContextMenuPlacement::Request request;
     request.output = QRect(0, 0, qMax(1, outputWidth), qMax(1, outputHeight));
@@ -154,16 +155,36 @@ QPoint ContextMenuController::menuPosition(int outputWidth, int outputHeight,
     request.anchor = m_anchor.point;
     request.sourceRect = m_anchor.rectangle;
     request.preferredTop = m_anchor.preferredTop;
+    request.edgeMargin = edgeMargin;
     if (m_anchor.kind == ContextMenuAnchor::Kind::Rectangle
         && m_target.kind == ContextMenuTarget::Kind::TrayItem)
         request.kind = ContextMenuPlacement::Kind::CenteredRectangle;
-    return ContextMenuPlacement::place(request).position;
+    const auto result = ContextMenuPlacement::place(request);
+    logContextMenuDebug(QStringLiteral("placement"), {
+        {QStringLiteral("targetKind"), static_cast<int>(m_target.kind)},
+        {QStringLiteral("outputWidth"), outputWidth},
+        {QStringLiteral("outputHeight"), outputHeight},
+        {QStringLiteral("menuWidth"), menuWidth},
+        {QStringLiteral("menuHeight"), menuHeight},
+        {QStringLiteral("edgeMargin"), edgeMargin},
+        {QStringLiteral("anchorKind"), static_cast<int>(m_anchor.kind)},
+        {QStringLiteral("anchorPointX"), m_anchor.point.x()},
+        {QStringLiteral("anchorPointY"), m_anchor.point.y()},
+        {QStringLiteral("anchorX"), m_anchor.rectangle.x()},
+        {QStringLiteral("anchorY"), m_anchor.rectangle.y()},
+        {QStringLiteral("placementX"), result.position.x()},
+        {QStringLiteral("placementY"), result.position.y()},
+        {QStringLiteral("flippedX"), result.flippedX},
+        {QStringLiteral("flippedY"), result.flippedY},
+    });
+    return result.position;
 }
 
 QPoint ContextMenuController::submenuPosition(int outputWidth, int outputHeight,
                                                int menuWidth, int menuHeight,
                                                const QRect &parentRectangle,
-                                               bool rightToLeft) const
+                                               bool rightToLeft,
+                                               int edgeMargin) const
 {
     ContextMenuPlacement::Request request;
     request.output = QRect(0, 0, qMax(1, outputWidth), qMax(1, outputHeight));
@@ -171,7 +192,25 @@ QPoint ContextMenuController::submenuPosition(int outputWidth, int outputHeight,
     request.kind = ContextMenuPlacement::Kind::Submenu;
     request.parentRect = parentRectangle;
     request.direction = rightToLeft ? Qt::RightToLeft : Qt::LeftToRight;
-    return ContextMenuPlacement::place(request).position;
+    request.edgeMargin = edgeMargin;
+    const auto result = ContextMenuPlacement::place(request);
+    logContextMenuDebug(QStringLiteral("submenu-placement"), {
+        {QStringLiteral("outputWidth"), outputWidth},
+        {QStringLiteral("outputHeight"), outputHeight},
+        {QStringLiteral("menuWidth"), menuWidth},
+        {QStringLiteral("menuHeight"), menuHeight},
+        {QStringLiteral("edgeMargin"), edgeMargin},
+        {QStringLiteral("parentX"), parentRectangle.x()},
+        {QStringLiteral("parentY"), parentRectangle.y()},
+        {QStringLiteral("parentWidth"), parentRectangle.width()},
+        {QStringLiteral("parentHeight"), parentRectangle.height()},
+        {QStringLiteral("rightToLeft"), rightToLeft},
+        {QStringLiteral("placementX"), result.position.x()},
+        {QStringLiteral("placementY"), result.position.y()},
+        {QStringLiteral("flippedX"), result.flippedX},
+        {QStringLiteral("flippedY"), result.flippedY},
+    });
+    return result.position;
 }
 
 void ContextMenuController::invalidateOutput(const QString &outputKey)

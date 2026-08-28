@@ -1,3 +1,7 @@
+#include <QGuiApplication>
+#include <QQmlComponent>
+#include <QQmlEngine>
+#include <QQuickWindow>
 #include <QTest>
 
 #include "core/DockMetrics.hpp"
@@ -9,6 +13,7 @@ class DockLayerShellSurfaceTest final : public QObject {
 private slots:
     void mappedReservationUsesRestingHeightNotVisualHeight();
     void unmappedReservationIsZero();
+    void explicitOutputGeometryDoesNotDependOnWindowScreen();
 };
 
 void DockLayerShellSurfaceTest::mappedReservationUsesRestingHeightNotVisualHeight()
@@ -31,5 +36,46 @@ void DockLayerShellSurfaceTest::unmappedReservationIsZero()
     QCOMPARE(DockLayerShellSurface::exclusiveZoneForMapping(false, 96), 0);
 }
 
-QTEST_GUILESS_MAIN(DockLayerShellSurfaceTest)
+void DockLayerShellSurfaceTest::explicitOutputGeometryDoesNotDependOnWindowScreen()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"qml(
+        import QtQuick
+        import QtQuick.Window
+
+        Window {
+            property string outputKey: ""
+            property int outputWidth: 1
+            property int outputHeight: 1
+            property int outputOriginX: 0
+            property int outputOriginY: 0
+        }
+    )qml", QUrl(QStringLiteral("DockOutputGeometryTest.qml")));
+    QVERIFY2(component.status() == QQmlComponent::Ready,
+             qPrintable(component.errorString()));
+    auto *window = qobject_cast<QQuickWindow *>(component.create());
+    QVERIFY2(window, qPrintable(component.errorString()));
+
+    QScreen *screen = QGuiApplication::primaryScreen();
+    QVERIFY(screen);
+    const QRect geometry = screen->geometry();
+    QVERIFY(DockLayerShellSurface::setOutputGeometry(window, screen));
+    QCOMPARE(window->property("outputKey").toString(), screen->name());
+    QCOMPARE(window->property("outputWidth").toInt(), geometry.width());
+    QCOMPARE(window->property("outputHeight").toInt(), geometry.height());
+    QCOMPARE(window->property("outputOriginX").toInt(), geometry.x());
+    QCOMPARE(window->property("outputOriginY").toInt(), geometry.y());
+
+    delete window;
+}
+
+int main(int argc, char **argv)
+{
+    qputenv("QT_QPA_PLATFORM", "offscreen");
+    QGuiApplication application(argc, argv);
+    DockLayerShellSurfaceTest test;
+    return QTest::qExec(&test, argc, argv);
+}
+
 #include "DockLayerShellSurfaceTest.moc"

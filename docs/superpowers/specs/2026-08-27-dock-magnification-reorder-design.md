@@ -59,6 +59,17 @@ valid active point and restores it to the panel before hover is resumed. A
 deferred `rowsMoved` callback refreshes hover geometry after the model's
 `beginMoveRows()` reconciliation, and no separate QML identity cache is kept.
 
+The Dock surface has three intentionally separate geometry contracts. The visual
+QQuickWindow may grow above the resting chrome for magnification and drag
+headroom. QML reports the exact transformed delegate interaction targets and the
+chrome rectangle to a C++ `DockInputRegionBridge`; its pure
+`DockInputRegionPolicy` validates, clips, unions, and bounds those rectangles,
+and the bridge caches and applies the resulting `QRegion` with
+`QQuickWindow::setMask()`. The Layer Shell exclusive zone remains the explicit
+resting height. The QML semantic pointer boundary mirrors the same chrome/target
+union, but a Dock-side ignored event must not be described as proof that the
+compositor delivered it to the underlying application.
+
 ## Error and lifecycle behavior
 
 Persistence errors are bounded and exposed through `DockController::lastError`;

@@ -4,6 +4,7 @@
 #include "AltTab/platform/wayland/LayerShellSurface.hpp"
 #include "Dock/core/DockController.hpp"
 #include "Dock/core/DockSurfaceGeometry.hpp"
+#include "Dock/platform/wayland/DockInputRegionBridge.hpp"
 #include "Dock/platform/wayland/DockLayerShellSurface.hpp"
 #include "Spotlight/core/SpotlightController.hpp"
 #include "Spotlight/platform/wayland/LayerShellSurface.hpp"
@@ -172,6 +173,9 @@ bool AstreaShellApplication::initializeQml()
     context->setContextProperty(QStringLiteral("DockController"), m_runtime->dockController());
     context->setContextProperty(QStringLiteral("DockSurfaceGeometry"),
                                 static_cast<QObject *>(m_runtime->dockSurfaceGeometry()));
+    m_dockInputRegion = std::make_unique<DockInputRegionBridge>();
+    context->setContextProperty(QStringLiteral("DockInputRegion"),
+                                static_cast<QObject *>(m_dockInputRegion.get()));
     context->setContextProperty(QStringLiteral("AltTabController"),
                                 m_runtime->altTabController());
     context->setContextProperty(QStringLiteral("AltTabWindowModel"),
@@ -203,6 +207,7 @@ bool AstreaShellApplication::initializeQml()
                      &window))
         return false;
     m_dockWindow = window;
+    m_dockInputRegion->setWindow(m_dockWindow);
 
     if (!loadSurface(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/AltTab/qml/Main.qml")),
                      &window)) {
@@ -308,18 +313,41 @@ bool AstreaShellApplication::configureDockSurface()
 {
     if (!m_dockWindow || !m_runtime || !m_runtime->dockConfig())
         return false;
+    QScreen *screen = QGuiApplication::primaryScreen();
+    if (!screen) {
+        qCritical("Astrea shell Dock has no output screen");
+        return false;
+    }
     QString error;
     const bool configured = DockLayerShellSurface::configure(
         m_dockWindow, m_runtime->dockConfig()->config(),
         m_runtime->dockController()->restingHeight(),
-        QGuiApplication::primaryScreen(), &error);
+        screen, &error);
     if (!configured) {
         qCritical("Astrea shell Dock Layer Shell setup failed: %s", qPrintable(error));
         m_application.exit(1);
     } else {
+        if (m_dockScreen != screen) {
+            QObject::disconnect(m_dockGeometryConnection);
+            m_dockScreen = screen;
+            m_dockGeometryConnection = connect(
+                screen, &QScreen::geometryChanged, this,
+                [this](const QRect &) { updateDockOutputGeometry(); });
+        }
         m_dockLayerConfigurationRequested = true;
     }
     return configured;
+}
+
+void AstreaShellApplication::updateDockOutputGeometry()
+{
+    if (!m_dockWindow || !m_dockScreen)
+        return;
+    QString error;
+    if (!DockLayerShellSurface::setOutputGeometry(m_dockWindow, m_dockScreen, &error)) {
+        qCritical("Astrea shell Dock output geometry update failed: %s", qPrintable(error));
+        m_application.exit(1);
+    }
 }
 
 void AstreaShellApplication::syncDockVisibility()

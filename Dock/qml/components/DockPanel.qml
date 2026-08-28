@@ -30,9 +30,13 @@ Item {
     // may resize around this center while magnification is active.
     property real pointerX: 0
     property bool pointerInside: false
+    property bool hasPointerScenePosition: false
+    property real pointerSceneX: 0
+    property real pointerSceneY: 0
     property string pointerTargetDesktopFileName: ""
     property var contextMenuController: null
     property var dockSurfaceGeometry: null
+    property var inputRegionBridge: null
     property string outputKey: ""
     property int outputWidth: 1
     property int outputHeight: 1
@@ -46,6 +50,7 @@ Item {
     property var magnificationScales: []
     property var extraWidths: []
     property var prefixExtraWidths: []
+    property var inputInteractionRects: []
 
     signal reorderRequested(string desktopFileName, int targetPinIndex)
 
@@ -116,26 +121,62 @@ Item {
         target: DockController.appModel
         function onRowsMoved(sourceParent, sourceStart, sourceEnd, destinationParent, destinationRow) {
             Qt.callLater(root.updateHoverEffect)
+            Qt.callLater(root.updateInputRegion)
+        }
+    }
+
+    Connections {
+        target: root.inputRegionBridge
+        function onWindowReady() {
+            root.scheduleInputRegionUpdate()
+            root.schedulePointerSemanticRefresh()
         }
     }
 
     HoverHandler {
         id: hoverHandler
         objectName: "dockHoverHandler"
-        onPointChanged: root.updatePointer(point.position.x)
-        onHoveredChanged: root.setPointerInside(hovered)
+        onPointChanged: root.updatePointerAtPoint(point.position.x, point.position.y)
+        onHoveredChanged: {
+            if (hovered)
+                root.updatePointerAtPoint(point.position.x, point.position.y)
+            else
+                root.setPointerInside(false)
+        }
     }
 
     function setPointerInside(inside) {
         pointerInside = inside
-        if (!inside)
+        if (!inside) {
             pointerX = 0
+            hasPointerScenePosition = false
+        }
         updateHoverEffect()
     }
 
+    // Keep the one-argument helper as a small compatibility surface for tests
+    // and non-pointer callers. Real pointer events use the semantic
+    // two-coordinate helper below so transparent visual headroom remains
+    // outside the Dock boundary.
     function updatePointer(x) {
+        if (!isFinite(x))
+            return
         pointerX = x - width / 2
         pointerInside = true
+        updateHoverEffect()
+    }
+
+    function updatePointerAtPoint(x, y) {
+        if (!isFinite(x) || !isFinite(y))
+            return
+        pointerX = x - width / 2
+        const scenePoint = root.mapToItem(null, x, y)
+        if (isFinite(scenePoint.x) && isFinite(scenePoint.y)) {
+            pointerSceneX = scenePoint.x
+            pointerSceneY = scenePoint.y
+            hasPointerScenePosition = true
+        }
+        pointerInside = isInteractivePoint(Qt.point(x, y))
         updateHoverEffect()
     }
 
@@ -143,9 +184,82 @@ Item {
         if (!isFinite(sceneX) || !isFinite(sceneY))
             return
         var panelPoint = mapFromItem(null, sceneX, sceneY)
+        pointerSceneX = sceneX
+        pointerSceneY = sceneY
+        hasPointerScenePosition = true
         pointerX = panelPoint.x - width / 2
-        pointerInside = panelPoint.x >= 0 && panelPoint.x <= width
-            && panelPoint.y >= 0 && panelPoint.y <= height
+        pointerInside = isInteractivePoint(panelPoint)
+    }
+
+    function isInteractivePoint(point) {
+        if (!point || !isFinite(point.x) || !isFinite(point.y))
+            return false
+
+        const chromeTop = height - restingHeight
+        if (point.x >= 0 && point.x < width
+            && point.y >= chromeTop && point.y < height)
+            return true
+
+        for (var i = 0; i < appRepeater.count; ++i) {
+            var item = appRepeater.itemAt(i)
+            if (!item)
+                continue
+            // Repeater::itemAt is typed as QQuickItem; the delegate's
+            // interactionRegion is intentionally read dynamically here.
+            var region = item["interaction" + "Region"]
+            if (region && isFinite(region.x) && isFinite(region.y)
+                && isFinite(region.width) && isFinite(region.height)
+                && point.x >= region.x && point.x < region.x + region.width
+                && point.y >= region.y && point.y < region.y + region.height)
+                return true
+        }
+        return false
+    }
+
+    function scheduleInputRegionUpdate() {
+        if (inputRegionBridge)
+            Qt.callLater(root.updateInputRegion)
+    }
+
+    function schedulePointerSemanticRefresh() {
+        if (hasPointerScenePosition)
+            Qt.callLater(root.refreshPointerSemantics)
+    }
+
+    function refreshPointerSemantics() {
+        if (!hasPointerScenePosition)
+            return
+        const oldInside = pointerInside
+        updatePointerFromScene(pointerSceneX, pointerSceneY)
+        if (oldInside !== pointerInside)
+            updateHoverEffect()
+    }
+
+    function windowRect(panelRect) {
+        const topLeft = root.mapToItem(null, panelRect.x, panelRect.y)
+        const bottomRight = root.mapToItem(null, panelRect.x + panelRect.width,
+                                           panelRect.y + panelRect.height)
+        return Qt.rect(topLeft.x, topLeft.y, bottomRight.x - topLeft.x,
+                       bottomRight.y - topLeft.y)
+    }
+
+    function updateInputRegion() {
+        if (!inputRegionBridge)
+            return
+
+        inputInteractionRects.length = 0
+        for (var i = 0; i < appRepeater.count; ++i) {
+            var item = appRepeater.itemAt(i)
+            if (!item)
+                continue
+            var region = item["interaction" + "Region"]
+            if (region && isFinite(region.x) && isFinite(region.y)
+                && isFinite(region.width) && isFinite(region.height))
+                inputInteractionRects.push(windowRect(region))
+        }
+        const chromeRect = windowRect(Qt.rect(0, height - restingHeight,
+                                              width, restingHeight))
+        inputRegionBridge.update(chromeRect, inputInteractionRects, appRepeater.count)
     }
 
     function isReordering() {
@@ -208,6 +322,8 @@ Item {
         var liftedItem = liftActive && hoveredIndex >= 0 ? appRepeater.itemAt(hoveredIndex) : null
         updateDelegateTransforms(totalExtra, slotPitch,
                                  liftedItem ? liftedItem.objectName : "")
+        scheduleInputRegionUpdate()
+        schedulePointerSemanticRefresh()
     }
 
     function previewIndexFor(originalIndex) {
@@ -319,7 +435,10 @@ Item {
         updateHoverEffect()
     }
 
-    Component.onCompleted: updateHoverEffect()
+    Component.onCompleted: {
+        updateHoverEffect()
+        scheduleInputRegionUpdate()
+    }
     onWidthChanged: updateHoverEffect()
     onHeightChanged: updateHoverEffect()
     onConfiguredHoverEffectChanged: updateHoverEffect()

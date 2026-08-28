@@ -99,6 +99,10 @@ qt_add_executable(astrea-shell
     app/main.cpp
     app/AstreaShellApplication.cpp
     app/AstreaShellApplication.hpp
+    ../Dock/platform/wayland/DockInputRegionBridge.cpp
+    ../Dock/platform/wayland/DockInputRegionBridge.hpp
+    ../Dock/platform/wayland/DockInputRegionPolicy.cpp
+    ../Dock/platform/wayland/DockInputRegionPolicy.hpp
     ../Bar/platform/wayland/BarSurfaceBundle.cpp
     ../Bar/platform/wayland/BarSurfaceBundle.hpp
     ../Bar/platform/wayland/BarSurfaceManager.cpp

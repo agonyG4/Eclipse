@@ -12,9 +12,11 @@ class AstreaI18n;
 class QGuiApplication;
 class QQmlApplicationEngine;
 class QQuickWindow;
+class QScreen;
 class ShellRuntime;
 class BarSurfaceManager;
 class ContextMenuSurfaceManager;
+class DockInputRegionBridge;
 
 namespace Paper {
 class WallpaperSurfaceManager;
@@ -36,6 +38,7 @@ private:
     bool loadSurface(const QUrl &url, QQuickWindow **windowOut);
     bool configureSurfaces();
     bool configureDockSurface();
+    void updateDockOutputGeometry();
     void syncDockVisibility();
     void handleCommand(const ShellIpcServer::Command &command);
     QString statusJson() const;
@@ -44,7 +47,10 @@ private:
     std::unique_ptr<ShellRuntime> m_runtime;
     std::unique_ptr<AstreaI18n> m_i18n;
     std::unique_ptr<QQmlApplicationEngine> m_engine;
+    std::unique_ptr<DockInputRegionBridge> m_dockInputRegion;
     QPointer<QQuickWindow> m_dockWindow;
+    QPointer<QScreen> m_dockScreen;
+    QMetaObject::Connection m_dockGeometryConnection;
     QPointer<QQuickWindow> m_altTabWindow;
     QPointer<QQuickWindow> m_spotlightWindow;
     std::unique_ptr<BarSurfaceManager> m_barSurfaceManager;

@@ -62,7 +62,9 @@ scale `1.0`. The Dock computes translations from cumulative extra widths while
 leaving the resting Row unchanged. The panel's transparent surface can grow
 above the fixed resting chrome while the pointer is over the Dock, then shrinks
 back after exit. This visual headroom is never included in the Layer Shell
-exclusive zone.
+exclusive zone. Its Qt input region includes only the resting chrome and current
+transformed icon interaction rectangles, so unused transparent headroom does
+not remain an input surface.
 
 Set the shared component key to disable or re-enable the Dock without
 restarting:

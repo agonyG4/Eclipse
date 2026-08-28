@@ -13,6 +13,11 @@ public:
     static bool configure(QQuickWindow *window, const DockConfig &config,
                           int exclusiveZoneHeight,
                           QScreen *screen = nullptr, QString *errorOut = nullptr);
+    // Publish the compositor's logical output geometry to the Dock root. The
+    // Dock window itself remains content-sized; its context-menu anchor math
+    // consumes these output-local dimensions.
+    static bool setOutputGeometry(QQuickWindow *window, QScreen *screen,
+                                  QString *errorOut = nullptr);
     static bool updateExclusiveZone(QQuickWindow *window, int exclusiveZoneHeight,
                                     QString *errorOut = nullptr);
     static bool setMapped(QQuickWindow *window, bool mapped, int exclusiveZoneHeight,

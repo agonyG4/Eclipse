@@ -76,8 +76,11 @@ Rectangle {
         Text {
             id: labelText
             LayoutMirroring.enabled: false
-            width: Math.max(0, parent.width - iconSlot.width - shortcutText.width
-                                - arrowText.width - parent.spacing * 3)
+            width: Math.max(0, parent.width - iconSlot.width
+                                - (shortcutText.visible ? shortcutText.implicitWidth : 0)
+                                - (arrowText.visible ? arrowText.implicitWidth : 0)
+                                - parent.spacing * (1 + (shortcutText.visible ? 1 : 0)
+                                                     + (arrowText.visible ? 1 : 0)))
             anchors.verticalCenter: parent.verticalCenter
             text: root.label
             color: root.destructive ? theme.shellIconWarning : theme.shellTextActive
@@ -87,20 +90,20 @@ Rectangle {
 
         Text {
             id: shortcutText
-            width: root.shortcut === "" ? 0 : implicitWidth
             anchors.verticalCenter: parent.verticalCenter
             text: root.shortcut
             color: theme.shellTextSecondary
             font { family: theme.fontFamily; pixelSize: theme.fontSizeSmall }
+            visible: root.shortcut !== ""
         }
 
         Text {
             id: arrowText
-            width: root.hasChildren ? implicitWidth : 0
             anchors.verticalCenter: parent.verticalCenter
             text: root.hasChildren ? "›" : ""
             color: theme.shellTextSecondary
             font { family: theme.fontFamily; pixelSize: theme.fontSizeBody; weight: Font.Medium }
+            visible: root.hasChildren
         }
     }
 

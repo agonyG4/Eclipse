@@ -11,7 +11,7 @@ Rectangle {
     property int contentSpacing: theme.contextMenuRowSpacing
     implicitWidth: content.implicitWidth + cardPadding * 2
     implicitHeight: content.implicitHeight + cardPadding * 2
-    radius: theme.shellRadiusLarge
+    radius: theme.contextMenuRadius
     color: theme.background
     border.color: theme.border
     border.width: 1

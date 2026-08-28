@@ -218,8 +218,10 @@ int ContextMenuModel::presentationNaturalWidth(const QString &fontFamily, int bo
             ? 0 : shortcutMetrics.horizontalAdvance(node->spec.shortcut);
         const int arrowWidth = node->children.empty()
             ? 0 : bodyMetrics.horizontalAdvance(QStringLiteral("›"));
+        const int visibleSlotCount = 2 + (!node->spec.shortcut.isEmpty() ? 1 : 0)
+            + (!node->children.empty() ? 1 : 0);
         const int rowWidth = horizontalMargin * 2 + iconWidth + labelWidth
-            + shortcutWidth + arrowWidth + rowSpacing * 3;
+            + shortcutWidth + arrowWidth + rowSpacing * (visibleSlotCount - 1);
         widestRow = qMax(widestRow, rowWidth);
     }
 

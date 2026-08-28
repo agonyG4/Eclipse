@@ -410,13 +410,21 @@ void ContextMenuQmlInteractionTest::scrolledSubmenuUsesVisibleRowGeometry()
     nodes.append({.kind = ContextMenuModel::NodeKind::Submenu, .label = QStringLiteral("More"),
                   .children = {{.token = QStringLiteral("child"), .label = QStringLiteral("Child")}}});
     QVERIFY(controller.present(desktopTarget(), nodes, [](const QString &) { return true; }));
+    QCOMPARE(controller.model()->rowCount(), 21);
+    QCOMPARE(controller.model()->nextNavigable(-1, -1), 20);
 
     QQmlEngine engine;
     QQuickWindow window;
     auto *view = createView(engine, window, controller);
     QVERIFY(view);
+    auto *list = findVisualItem(view, QStringLiteral("contextMenuList"));
+    QVERIFY(list);
+    QCOMPARE(list->property("count").toInt(), 21);
+    QTest::mouseMove(&window, QPoint(window.width() - 1, window.height() - 1));
+    QCoreApplication::processEvents();
+    QTRY_COMPARE_WITH_TIMEOUT(view->property("activeIndex").toInt(), 0, 1000);
     QTest::keyClick(&window, Qt::Key_End);
-    QCOMPARE(view->property("activeIndex").toInt(), 20);
+    QTRY_COMPARE_WITH_TIMEOUT(view->property("activeIndex").toInt(), 20, 1000);
     const QRectF row = view->property("activeRowRectangle").toRectF();
     QVERIFY(row.height() > 0);
     QVERIFY(row.y() >= 0);

@@ -45,12 +45,15 @@ model move, the panel defers one geometry refresh so its hover target and
 per-icon arrays are rebuilt from the current delegates rather than a parallel
 row-identity cache.
 
-The panel has a stable resting chrome rectangle anchored to its bottom. The
-transparent visual surface may temporarily add headroom for magnification or
-for the lift/drag bounds at larger icon sizes, but the chrome and Row retain
-their resting height. This keeps the visual top inside the surface without
-making the Dock background permanently taller. Hover exit and configuration
-changes animate all transforms and surface dimensions back to rest.
+The panel derives a fixed transparent surface envelope from the resting Dock
+width, the bounded magnification neighborhood, and the maximum magnification,
+lift, and drag headroom. Its width and height depend only on structural state
+(the materialized row and configuration), never on the current pointer frame.
+The bottom-anchored `dockChrome` remains exactly the resting height and is
+centered inside that envelope; only its explicit visual width animates from the
+resting width to the current magnification width. The Row's resting centers
+remain panel-center-relative, so changing chrome width cannot move the output
+baseline or invalidate pointer coordinates.
 
 Configured pins use a Qt Quick drag handler with a system-sized threshold. The
 dragged delegate is raised, lifted, and scaled; neighboring pinned delegates
@@ -61,28 +64,30 @@ magnification, then keeps the drag center relative to the panel center so
 centered surface-width animation cannot move the drag origin or target. QML
 suspends magnification while reordering and uses the handler's exclusive grab
 transitions: normal exclusive ungrab emits one identity-based reorder request,
-while canceled exclusive grabs emit no finish request. Active drag updates pass
-the handler centroid's scene position to the panel; the last valid active point
-is restored when Qt resets the centroid during ungrab so hover remains under the
-release pointer or becomes inactive when that point is outside. A click below
+while canceled exclusive grabs emit no finish request. Active drag updates map
+the handler centroid into the stable panel-local coordinate system; the last
+valid panel point is restored when Qt resets the centroid during ungrab so hover
+remains under the release pointer or becomes inactive when that point is
+outside. A click below
 the threshold still activates and a drag release never activates. QML never
 mutates the model or writes configuration during the drag. Pointer handlers use
 a panel-level transparent target whose rectangle follows the transformed icon
 exactly; it does not expand the actionable area into unrelated headroom.
 
 The Dock deliberately has three separate geometries. The visual `QQuickWindow`
-surface includes temporary magnification or drag headroom. The Qt `QWindow`
-input region is a cached union of the visible chrome rectangle and every current
-transformed delegate interaction rectangle reported by QML; it excludes empty
-transparent headroom and is refreshed as the transforms animate. The Layer Shell
-exclusive zone is the fixed resting reservation. `DockInputRegionPolicy` owns
-bounded, finite, normalized integer clipping, while `DockInputRegionBridge`
-applies the cached region to the QQuickWindow. QML remains responsible for
-rendered geometry and its semantic pointer boundary; C++ does not duplicate the
-magnification formula. A pointer ignored by the Dock's semantic boundary is
-eligible to reach the underlying application surface only when the compositor's
-input routing also places it there; an ignored Dock activation alone is not proof
-that the application received the click.
+surface is a fixed maximum envelope containing possible magnification or drag
+headroom. The Qt `QWindow` input region is a cached union of the actual mapped
+`dockChrome` rectangle and every current transformed delegate interaction
+rectangle reported by QML; it excludes empty transparent envelope space and is
+refreshed as the transforms animate. The Layer Shell exclusive zone is the
+fixed resting reservation. `DockInputRegionPolicy` owns bounded, finite,
+normalized integer clipping, while `DockInputRegionBridge` applies the cached
+region to the QQuickWindow. QML remains responsible for rendered geometry and
+its semantic pointer boundary; C++ does not duplicate the magnification formula.
+A pointer ignored by the Dock's semantic boundary is eligible to reach the
+underlying application surface only when the compositor's input routing also
+places it there; an ignored Dock activation alone is not proof that the
+application received the click.
 
 Typhon is the authoritative source for task-relevant toplevels. The projector
 matches each published client `app_id` through the immutable desktop catalog,
@@ -97,7 +102,8 @@ pinned rows become neutral unknown rows and runtime-only rows are removed.
 
 The Dock Layer Shell policy is explicit: scope `astrea-dock`, top layer,
 bottom-only anchor, no keyboard interactivity, configured bottom margin, and an
-exclusive zone equal to the normal resting Dock height. The visual QQuickWindow
-may become taller for magnification, but that height is never used as the
-exclusive zone, so maximized or tiled windows do not move. An empty or disabled
-Dock is unmapped and reserves no positive zone.
+exclusive zone equal to the normal resting Dock height. The requested surface
+width and height remain constant through pointer entry, magnification, hover
+exit, and reorder; neither is used as a transient clearance signal. Maximized
+or tiled windows therefore do not move. An empty or disabled Dock is unmapped
+and reserves no positive zone.

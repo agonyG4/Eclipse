@@ -59,12 +59,13 @@ Magnification is a continuous neighborhood effect, not a discrete hovered-item
 switch. The configured radius is converted from slot radii to pixels; icons
 inside it receive a raised-cosine influence and icons outside it remain at
 scale `1.0`. The Dock computes translations from cumulative extra widths while
-leaving the resting Row unchanged. The panel's transparent surface can grow
-above the fixed resting chrome while the pointer is over the Dock, then shrinks
-back after exit. This visual headroom is never included in the Layer Shell
-exclusive zone. Its Qt input region includes only the resting chrome and current
-transformed icon interaction rectangles, so unused transparent headroom does
-not remain an input surface.
+leaving the resting Row unchanged. The transparent Layer Shell surface reserves
+a conservative maximum horizontal neighborhood and maximum vertical
+magnification/lift/drag headroom when structural state changes; it does not
+resize per pointer frame. The centered visual chrome remains at resting height
+and animates only its explicit width. Its Qt input region includes the actual
+chrome rectangle and current transformed icon interaction rectangles, so unused
+transparent envelope space does not remain an input surface.
 
 Set the shared component key to disable or re-enable the Dock without
 restarting:

@@ -7,7 +7,7 @@ Window {
 
     title: qsTr("Astrea Dock")
     // Output geometry is supplied by the C++ layer-shell surface. The Dock
-    // window is intentionally content-sized; these properties describe the
+    // window is a fixed transparent envelope; these properties describe the
     // output-local coordinate space used by its context-menu anchors.
     property string outputKey: ""
     property int outputWidth: 1
@@ -17,8 +17,8 @@ Window {
     visible: false
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint
-    width: panel.width
-    height: panel.height
+    width: panel.surfaceWidth
+    height: panel.surfaceHeight
 
     DockPanel {
         id: panel

@@ -25,13 +25,14 @@ receives the model through a context property.
 
 The application configures the Dock QQuickWindow through the required
 LayerShellQt integration using `DockController::restingHeight()` as an explicit
-exclusive-zone contract. The visual surface can grow taller while the pointer
-is over the Dock or while a large icon needs lift/drag headroom, but the
-exclusive zone remains at the resting height. The visible chrome remains at
-that same resting height and the transparent surface shrinks after hover or
-drag completion. `none` and `lift` clear stale scale and translate state when
-switching modes. Configuration and component toggles are debounced and
-re-applied without restarting the process. A Layer
+exclusive-zone contract. QML reserves a fixed maximum transparent envelope for
+the configured row and possible magnification/lift/drag bounds before pointer
+interaction begins. The requested surface width and height therefore stay
+constant during hover and reorder; only the centered visual chrome width and
+icon transforms animate. The exclusive zone remains the resting height. `none`
+and `lift` clear stale scale and translate state when switching modes.
+Configuration and component toggles are debounced and re-applied without
+restarting the process. A Layer
 Shell setup or mapping failure is reported as a shell failure; the Dock is
 never shown as an ordinary Qt window. A click calls
 `DockController::launchByDesktopFileName`. If authoritative Typhon
@@ -43,16 +44,17 @@ existing controller and shared supervised launcher path is used. An
 unavailable or failed action is reconciled without launching on that same
 click.
 
-Each QML geometry update also reports the visible chrome and the exact current
-transformed interaction-target rectangles to `DockInputRegionBridge`. The bridge
-clips them through the pure `DockInputRegionPolicy`, caches the last integer
-`QRegion`, and calls `QQuickWindow::setMask()` only when that region changes. The
-mask follows animated magnification, lift, and drag geometry; it is not the full
-visual surface, and a mapped Dock with no rows still has its chrome region. The
-semantic QML pointer boundary uses the same chrome/interaction union. Therefore
-“the Dock ignored this click” describes Dock event arbitration; only a live
-compositor test can establish that the underlying application actually received
-the event.
+Each QML geometry update also reports the actual mapped `dockChrome` rectangle
+and the exact current transformed interaction-target rectangles to
+`DockInputRegionBridge`. The bridge clips them through the pure
+`DockInputRegionPolicy`, caches the last integer `QRegion`, and calls
+`QQuickWindow::setMask()` only when that region changes. The mask follows
+animated magnification, lift, and drag geometry; it is not the full fixed
+visual envelope, and a mapped Dock with no rows still has its chrome region.
+The semantic QML pointer boundary uses the same chrome/interaction union.
+Therefore “the Dock ignored this click” describes Dock event arbitration; only a
+live compositor test can establish that the underlying application actually
+received the event.
 
 The configured `hoverEffect` selects the pointer interaction. `none` leaves all
 delegates at rest. `lift` scales only the directly hovered delegate to about
@@ -72,9 +74,10 @@ only that delegate, and previews the target index by translating neighboring
 pins on their resting vertical baseline. The drag origin, current center, and
 target-slot centers use panel-center-relative coordinates, so symmetric
 visual-surface-width animation cannot introduce a synthetic drag movement. The
-handler passes its active centroid scene position through the drag update; the
-panel also restores the last valid centroid after Qt clears it at ungrab. The
-handler's `GrabExclusive`, `UngrabExclusive`, and `CancelGrabExclusive`
+handler maps its active centroid into panel coordinates through the drag update;
+the panel restores the last valid panel point after Qt clears the centroid at
+ungrab. The handler's `GrabExclusive`, `UngrabExclusive`, and
+`CancelGrabExclusive`
 transitions make release and cancellation mutually exclusive; passive
 transitions do not finalize a reorder. A click below threshold remains
 activation-only. A precise panel-level interaction target tracks the transformed

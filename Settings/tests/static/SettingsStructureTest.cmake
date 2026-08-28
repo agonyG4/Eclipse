@@ -7,6 +7,16 @@ endif()
 
 string(REPLACE "|" ";" registered_qml_files "${SETTINGS_QML_FILES}")
 
+set(settings_desktop_file "${SETTINGS_SOURCE_DIR}/packaging/applications/astrea-settings.desktop")
+if(NOT EXISTS "${settings_desktop_file}")
+    message(FATAL_ERROR "Settings desktop entry is missing: ${settings_desktop_file}")
+endif()
+file(READ "${settings_desktop_file}" settings_desktop_source)
+string(FIND "${settings_desktop_source}" "Exec=astrea-settings-open" settings_exec_position)
+if(settings_exec_position EQUAL -1)
+    message(FATAL_ERROR "Settings desktop entry must launch astrea-settings-open")
+endif()
+
 foreach(relative_path IN LISTS registered_qml_files)
     if(NOT EXISTS "${SETTINGS_SOURCE_DIR}/qml/${relative_path}")
         message(FATAL_ERROR "Registered QML file is missing: ${relative_path}")

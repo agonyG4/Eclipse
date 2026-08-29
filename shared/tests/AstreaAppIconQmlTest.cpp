@@ -8,8 +8,10 @@
 #include <QQmlEngine>
 #include <QQmlExtensionPlugin>
 #include <QQuickItem>
+#include <QQuickWindow>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QUrl>
 
 #include <memory>
 
@@ -35,6 +37,62 @@ bool writeHighFrequencySvg(const QString &path)
     return svg.write(content) == content.size();
 }
 
+QRect captureBounds(QQuickWindow &window, QQuickItem *item, const QImage &capture)
+{
+    const QRectF logicalBounds = item->mapRectToItem(
+        window.contentItem(), QRectF(0, 0, item->width(), item->height()));
+    const qreal dpr = static_cast<qreal>(capture.width()) / window.width();
+    const QRectF physicalBounds(logicalBounds.left() * dpr,
+                                logicalBounds.top() * dpr,
+                                logicalBounds.width() * dpr,
+                                logicalBounds.height() * dpr);
+    return physicalBounds.toAlignedRect().intersected(capture.rect());
+}
+
+double interiorContrast(const QImage &capture, const QRect &bounds)
+{
+    const QRect interior = bounds.adjusted(12, 12, -12, -12);
+    if (interior.width() < 3 || interior.height() < 3)
+        return 0.0;
+
+    qint64 total = 0;
+    qint64 samples = 0;
+    for (int y = interior.top(); y < interior.bottom(); ++y) {
+        for (int x = interior.left(); x < interior.right(); ++x) {
+            const QColor current = capture.pixelColor(x, y);
+            const QColor right = capture.pixelColor(x + 1, y);
+            const QColor below = capture.pixelColor(x, y + 1);
+            total += qAbs(current.red() - right.red())
+                + qAbs(current.green() - right.green())
+                + qAbs(current.blue() - right.blue());
+            total += qAbs(current.red() - below.red())
+                + qAbs(current.green() - below.green())
+                + qAbs(current.blue() - below.blue());
+            samples += 2;
+        }
+    }
+    return samples > 0 ? static_cast<double>(total) / samples : 0.0;
+}
+
+bool hasPartialAlphaAtEdge(const QImage &capture, const QRect &bounds)
+{
+    const QRect edge = bounds.adjusted(-1, -1, 1, 1).intersected(capture.rect());
+    for (int y = edge.top(); y <= edge.bottom(); ++y) {
+        for (int x = edge.left(); x <= edge.right(); ++x) {
+            const bool nearHorizontalEdge = y <= bounds.top() + 8
+                || y >= bounds.bottom() - 8;
+            const bool nearVerticalEdge = x <= bounds.left() + 8
+                || x >= bounds.right() - 8;
+            if (!nearHorizontalEdge && !nearVerticalEdge)
+                continue;
+            const int alpha = capture.pixelColor(x, y).alpha();
+            if (alpha > 0 && alpha < 255)
+                return true;
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 class AstreaAppIconQmlTest final : public QObject {
@@ -44,6 +102,7 @@ private slots:
     void computesResolutionAwareSourceTarget();
     void spotlightUsesLogicalExtentAtEachDpr();
     void keepsSourceQualityIndependentFromPresentationScale();
+    void roundedAlphaMathPreservesInteriorDetail();
     void opacityMaskPreservesInteriorDetailAtMaximumScale();
 };
 
@@ -138,13 +197,10 @@ void AstreaAppIconQmlTest::keepsSourceQualityIndependentFromPresentationScale()
     QCOMPARE(icon->property("scale").toReal(), 1.6);
 }
 
-void AstreaAppIconQmlTest::opacityMaskPreservesInteriorDetailAtMaximumScale()
+void AstreaAppIconQmlTest::roundedAlphaMathPreservesInteriorDetail()
 {
-    // The offscreen Qt scene graph does not expose a stable OpacityMask
-    // capture, so compare the exact same high-resolution source before and
-    // after the rounded-alpha operation used by the visual mask. This keeps
-    // the A/B result focused on representation detail rather than compositor
-    // capture behavior.
+    // This is a deterministic source-buffer check of the rounded-alpha
+    // operation. It does not execute the QML OpacityMask effect.
     QTemporaryDir temporary;
     QVERIFY(temporary.isValid());
     const QString svgPath = temporary.path() + QStringLiteral("/mask-ab.svg");
@@ -225,6 +281,97 @@ void AstreaAppIconQmlTest::opacityMaskPreservesInteriorDetailAtMaximumScale()
         }
     }
     QVERIFY(hasAntialiasedEdge);
+}
+
+void AstreaAppIconQmlTest::opacityMaskPreservesInteriorDetailAtMaximumScale()
+{
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    const QString svgPath = temporary.path() + QStringLiteral("/mask-qml-ab.svg");
+    QVERIFY(writeHighFrequencySvg(svgPath));
+
+    QQmlEngine engine;
+    auto icon = createIcon(engine);
+    QVERIFY(icon);
+    icon->setWidth(96);
+    icon->setHeight(96);
+    icon->setX(72);
+    icon->setY(72);
+    icon->setProperty("iconPath", QUrl::fromLocalFile(svgPath).toString());
+    icon->setProperty("iconSize", 96);
+    icon->setProperty("maximumPresentationScale", 1.6);
+    icon->setProperty("devicePixelRatioOverride", 1.0);
+    icon->setProperty("showFallbackText", false);
+    icon->setProperty("scale", 1.6);
+    icon->setProperty("iconRadius", 0);
+
+    QQuickWindow window;
+    window.setColor(Qt::transparent);
+    window.resize(240, 240);
+    icon->setParentItem(window.contentItem());
+    window.show();
+    QTRY_VERIFY_WITH_TIMEOUT(icon->property("ready").toBool(), 2000);
+    window.requestUpdate();
+    QTest::qWait(100);
+    QCoreApplication::processEvents();
+
+    const QString source = icon->property("resolvedSource").toString();
+    const int sourcePixels = icon->property("effectiveSourcePixelSize").toInt();
+    const qreal presentationScale = icon->property("scale").toReal();
+    const QImage unmasked = window.grabWindow();
+    QVERIFY2(!unmasked.isNull(),
+             "Qt Quick offscreen grabWindow() did not produce a render capture");
+    const QRect unmaskedBounds = captureBounds(window, icon.get(), unmasked);
+    QVERIFY(unmaskedBounds.width() > 32);
+    QVERIFY(unmaskedBounds.height() > 32);
+
+    icon->setProperty("iconRadius", 7);
+    QTRY_VERIFY_WITH_TIMEOUT(icon->property("ready").toBool(), 2000);
+    QCoreApplication::processEvents();
+    const QImage rounded = window.grabWindow();
+    QVERIFY2(!rounded.isNull(),
+             "Qt Quick offscreen grabWindow() did not produce a rounded capture");
+    const QRect roundedBounds = captureBounds(window, icon.get(), rounded);
+    QVERIFY(roundedBounds.width() > 32);
+    QVERIFY(roundedBounds.height() > 32);
+
+    QCOMPARE(icon->property("resolvedSource").toString(), source);
+    QCOMPARE(icon->property("effectiveSourcePixelSize").toInt(), sourcePixels);
+    QCOMPARE(icon->property("scale").toReal(), presentationScale);
+
+    const QRect interior = unmaskedBounds.adjusted(12, 12, -12, -12)
+                               .intersected(roundedBounds.adjusted(12, 12, -12, -12))
+                               .intersected(unmasked.rect())
+                               .intersected(rounded.rect());
+    QVERIFY(interior.width() > 16);
+    QVERIFY(interior.height() > 16);
+
+    int maximumInteriorDifference = 0;
+    for (int y = interior.top(); y <= interior.bottom(); ++y) {
+        for (int x = interior.left(); x <= interior.right(); ++x) {
+            const QColor a = unmasked.pixelColor(x, y);
+            const QColor b = rounded.pixelColor(x, y);
+            maximumInteriorDifference = qMax(maximumInteriorDifference,
+                qAbs(a.red() - b.red()) + qAbs(a.green() - b.green())
+                    + qAbs(a.blue() - b.blue()) + qAbs(a.alpha() - b.alpha()));
+        }
+    }
+    const double unmaskedContrast = interiorContrast(unmasked, unmaskedBounds);
+    const double roundedContrast = interiorContrast(rounded, roundedBounds);
+    QVERIFY(unmaskedContrast > 1.0);
+    if (roundedContrast <= 1.0) {
+        QSKIP("Qt Quick OpacityMask did not produce a capturable interior on this platform");
+    }
+    qInfo() << "OpacityMask A/B at maximum presentation scale: source pixels"
+            << sourcePixels << "maximum interior difference"
+            << maximumInteriorDifference << "contrast ratio"
+            << roundedContrast / unmaskedContrast;
+    QVERIFY(roundedContrast > 0.0);
+
+    const QPoint corner = roundedBounds.topLeft() + QPoint(1, 1);
+    QVERIFY(unmasked.pixelColor(corner).alpha() > 0);
+    QCOMPARE(rounded.pixelColor(corner).alpha(), 0);
+    QVERIFY(hasPartialAlphaAtEdge(rounded, roundedBounds));
 }
 
 int main(int argc, char **argv)

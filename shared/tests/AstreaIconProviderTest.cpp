@@ -10,7 +10,6 @@
 #include <QTest>
 #include <QUrl>
 
-#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <limits>
@@ -45,6 +44,31 @@ private:
     QString m_fallbackThemeName;
     QStringList m_themeSearchPaths;
     QStringList m_fallbackSearchPaths;
+};
+
+class ScopedEnvironment final {
+public:
+    void set(const char *name, const QByteArray &value)
+    {
+        const QString key = QString::fromLatin1(name);
+        if (!m_previous.contains(key))
+            m_previous.insert(key, {qEnvironmentVariableIsSet(name), qgetenv(name)});
+        qputenv(name, value);
+    }
+
+    ~ScopedEnvironment()
+    {
+        for (auto it = m_previous.constBegin(); it != m_previous.constEnd(); ++it) {
+            const QByteArray name = it.key().toLatin1();
+            if (it.value().first)
+                qputenv(name.constData(), it.value().second);
+            else
+                qunsetenv(name.constData());
+        }
+    }
+
+private:
+    QHash<QString, QPair<bool, QByteArray>> m_previous;
 };
 
 bool writeIndexFile(const QString &themeRoot, const QByteArray &content)
@@ -167,6 +191,7 @@ private slots:
     void providerInvalidatesPositiveAndNegativeCachesOnThemeChange();
     void providerSurvivesConcurrentThemeInvalidation();
     void searchPathsPreservePriorityAndDeduplicate();
+    void applyPreservesSplitThemePriority();
     void applyMergesExistingQtSearchPaths();
 };
 
@@ -667,34 +692,57 @@ void AstreaIconProviderTest::searchPathsPreservePriorityAndDeduplicate()
     QVERIFY(paths.contains(fakeHome.path() + QStringLiteral("/.icons")));
     QVERIFY(paths.contains(fakeHome.path()
                            + QStringLiteral("/.local/share/flatpak/exports/share/icons")));
+}
+
+void AstreaIconProviderTest::applyPreservesSplitThemePriority()
+{
+    ScopedIconState state;
+    ScopedEnvironment environment;
+    QTemporaryDir dataHome;
+    QTemporaryDir systemData;
+    QTemporaryDir fakeHome;
+    QVERIFY(dataHome.isValid());
+    QVERIFY(systemData.isValid());
+    QVERIFY(fakeHome.isValid());
 
     const QString userTheme = fakeHome.path()
-        + QStringLiteral("/.icons/priority-theme/48x48/apps");
-    const QString dataTheme = dataHome.path()
-        + QStringLiteral("/icons/priority-theme/48x48/apps");
-    QVERIFY(QDir().mkpath(userTheme));
-    QVERIFY(QDir().mkpath(dataTheme));
-    const QByteArray priorityIndex =
-        "[Icon Theme]\nName=Priority\nDirectories=48x48/apps\n\n"
+        + QStringLiteral("/.icons/priority-theme");
+    const QString systemTheme = systemData.path()
+        + QStringLiteral("/icons/priority-theme");
+    QVERIFY(QDir().mkpath(userTheme + QStringLiteral("/96x96/apps")));
+    QVERIFY(QDir().mkpath(systemTheme + QStringLiteral("/48x48/apps")));
+
+    const QByteArray userIndex =
+        "[Icon Theme]\nName=User Priority Metadata\nDirectories=96x96/apps\n\n"
+        "[96x96/apps]\nSize=96\nType=Fixed\nContext=Applications\n";
+    const QByteArray systemIndex =
+        "[Icon Theme]\nName=System Priority Metadata\nDirectories=48x48/apps\n\n"
         "[48x48/apps]\nSize=48\nType=Fixed\nContext=Applications\n";
-    QVERIFY(writeIndexFile(fakeHome.path() + QStringLiteral("/.icons/priority-theme"),
-                           priorityIndex));
-    QVERIFY(writeIndexFile(dataHome.path() + QStringLiteral("/icons/priority-theme"),
-                           priorityIndex));
-    QVERIFY(writeRaster(userTheme + QStringLiteral("/priority-test.png"),
-                        QSize(48, 48), QColor("#00aa00")));
-    QVERIFY(writeRaster(dataTheme + QStringLiteral("/priority-test.png"),
+    QVERIFY(writeIndexFile(userTheme, userIndex));
+    QVERIFY(writeIndexFile(systemTheme, systemIndex));
+    QVERIFY(writeRaster(userTheme + QStringLiteral("/96x96/apps/user-only-test.png"),
+                        QSize(96, 96), QColor("#00aa00")));
+    QVERIFY(writeRaster(userTheme + QStringLiteral("/96x96/apps/priority-test.png"),
+                        QSize(96, 96), QColor("#00aa00")));
+    QVERIFY(writeRaster(systemTheme + QStringLiteral("/48x48/apps/priority-test.png"),
                         QSize(48, 48), QColor("#aa0000")));
 
+    environment.set("HOME", fakeHome.path().toUtf8());
+    environment.set("XDG_DATA_HOME", dataHome.path().toUtf8());
+    environment.set("XDG_DATA_DIRS", systemData.path().toUtf8());
+    environment.set("ASTREA_ICON_THEME", "priority-theme");
+
     AstreaIconProvider provider;
-    QStringList qIconPaths = paths;
-    std::reverse(qIconPaths.begin(), qIconPaths.end());
-    QIcon::setThemeSearchPaths(qIconPaths);
-    QIcon::setFallbackSearchPaths(qIconPaths);
-    QIcon::setThemeName(QStringLiteral("priority-theme"));
-    QIcon::setFallbackThemeName(QStringLiteral("hicolor"));
-    provider.clearCache();
+    // The user-only probe identifies the first index.theme metadata source;
+    // the duplicate icon identifies the content root selected by QIcon.
+    const QString appliedTheme = AstreaIconTheme::apply();
+    QCOMPARE(appliedTheme, QStringLiteral("priority-theme"));
     QSize size;
+    const QPixmap userOnly = provider.requestPixmap(
+        QStringLiteral("user-only-test?logicalSize=96&dpr=1"), &size, {});
+    QCOMPARE(size, QSize(96, 96));
+    QCOMPARE(userOnly.toImage().pixelColor(10, 20), QColor("#00aa00"));
+
     const QPixmap pixmap = provider.requestPixmap(
         QStringLiteral("priority-test?logicalSize=48&dpr=1"), &size, {});
     QCOMPARE(size, QSize(48, 48));

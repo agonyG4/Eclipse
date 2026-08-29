@@ -7,8 +7,6 @@
 #include <QStandardPaths>
 #include <QSet>
 
-#include <algorithm>
-
 namespace {
 
 QStringList mergePaths(const QStringList &preferred, const QStringList &existing)
@@ -28,12 +26,11 @@ QStringList mergePaths(const QStringList &preferred, const QStringList &existing
 
 QStringList qIconSearchPaths(const QStringList &preferred, const QStringList &existing)
 {
-    QStringList paths = mergePaths(preferred, existing);
-    // QIconLoader resolves duplicate theme roots from the end of this list.
-    // Keep the public/searchPathsFor order in Freedesktop priority order while
-    // presenting QIcon with the equivalent reverse traversal order.
-    std::reverse(paths.begin(), paths.end());
-    return paths;
+    // Keep the merged roots in Freedesktop priority order. The split-theme
+    // regression proves that, with the Qt version used by this build, this
+    // order makes the first index.theme and the user override content agree;
+    // reversing the list makes the lower-priority metadata win.
+    return mergePaths(preferred, existing);
 }
 
 } // namespace

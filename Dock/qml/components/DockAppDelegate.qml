@@ -130,7 +130,8 @@ Item {
         width: root.iconSize
         height: root.iconSize
         scale: root.magnificationScale * root.dragScale
-        transformOrigin: Item.Bottom
+        transformOrigin: !root.dockPanel || !root.dockPanel.vertical ? Item.Bottom
+                         : DockController.position === "left" ? Item.Left : Item.Right
         iconName: root.iconName
         iconPath: root.iconPath
         iconUrl: root.iconUrl
@@ -149,16 +150,16 @@ Item {
     z: root.dragging ? 100 : root.magnificationScale
     Behavior on visualOffsetX {
         enabled: !root.dragging
-        NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
+        NumberAnimation { duration: root.dockPanel ? root.dockPanel.animationDuration(110) : 110; easing.type: Easing.OutCubic }
     }
     Behavior on visualOffsetY {
-        NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
+        NumberAnimation { duration: root.dockPanel ? root.dockPanel.animationDuration(110) : 110; easing.type: Easing.OutCubic }
     }
     Behavior on magnificationScale {
-        NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
+        NumberAnimation { duration: root.dockPanel ? root.dockPanel.animationDuration(110) : 110; easing.type: Easing.OutCubic }
     }
     Behavior on dragScale {
-        NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
+        NumberAnimation { duration: root.dockPanel ? root.dockPanel.animationDuration(110) : 110; easing.type: Easing.OutCubic }
     }
 
     Item {
@@ -178,10 +179,21 @@ Item {
             width = targetSize
             height = targetSize
             if (root.dockPanel) {
-                const bottomCenter = appIcon.mapToItem(root.dockPanel,
-                                                        appIcon.width / 2, appIcon.height)
-                x = bottomCenter.x - targetSize / 2
-                y = bottomCenter.y - targetSize
+                if (!root.dockPanel.vertical) {
+                    const bottomCenter = appIcon.mapToItem(root.dockPanel,
+                                                            appIcon.width / 2, appIcon.height)
+                    x = bottomCenter.x - targetSize / 2
+                    y = bottomCenter.y - targetSize
+                } else if (DockController.position === "left") {
+                    const leftCenter = appIcon.mapToItem(root.dockPanel, 0, appIcon.height / 2)
+                    x = leftCenter.x
+                    y = leftCenter.y - targetSize / 2
+                } else {
+                    const rightCenter = appIcon.mapToItem(root.dockPanel,
+                                                          appIcon.width, appIcon.height / 2)
+                    x = rightCenter.x - targetSize
+                    y = rightCenter.y - targetSize / 2
+                }
             } else {
                 x = appIcon.x + appIcon.width / 2 - targetSize / 2
                 y = appIcon.y + appIcon.height - targetSize
@@ -213,7 +225,7 @@ Item {
                 const outputRect = root.dockSurfaceGeometry.outputLocalDelegateRect(
                     root.dockPanel.outputWidth, root.dockPanel.outputHeight,
                     Math.round(root.dockPanel.width), Math.round(root.dockPanel.height),
-                    DockController.bottomMargin,
+                    DockController.position, DockController.effectiveEdgeMargin,
                     Qt.rect(topLeft.x, topLeft.y, root.width, root.height))
                 if (root.contextMenuController.debugEnabled) {
                     console.log("astrea.context-menu " + JSON.stringify({
@@ -265,7 +277,9 @@ Item {
                     return
                 const scenePosition = centroid.scenePosition
                 root.recordDragPointer(scenePosition.x, scenePosition.y)
-                root.dragMoved(root.desktopFileName, activeTranslation.x,
+                root.dragMoved(root.desktopFileName,
+                               root.dockPanel && root.dockPanel.vertical
+                                   ? activeTranslation.y : activeTranslation.x,
                                scenePosition.x, scenePosition.y)
             }
         }
@@ -283,12 +297,13 @@ Item {
      */
     Rectangle {
         z: -1
-        anchors.horizontalCenter: appIcon.horizontalCenter
-        anchors.bottom: appIcon.bottom
+        x: appIcon.x
+        y: appIcon.y
         width: appIcon.width
         height: appIcon.height
         scale: appIcon.scale
-        transformOrigin: Item.Bottom
+        transformOrigin: !root.dockPanel || !root.dockPanel.vertical ? Item.Bottom
+                         : DockController.position === "left" ? Item.Left : Item.Right
         radius: appIcon.iconRadius
         color: "#18FFFFFF"
         visible: tapHandler.pressed || dragHandler.active
@@ -298,14 +313,34 @@ Item {
      * The running indicator intentionally stays outside the icon transform.
      */
     Rectangle {
-        anchors.horizontalCenter: appIcon.horizontalCenter
-        anchors.top: appIcon.bottom
-        anchors.topMargin: 2
-        width: root.active ? 18 : 8
-        height: 3
-        radius: 1.5
+        id: runningIndicator
+        objectName: "runningIndicator"
+        function iconEdgePoint() {
+            if (root.dockPanel && root.dockPanel.vertical) {
+                return DockController.position === "left"
+                    ? Qt.point(appIcon.x, appIcon.y + appIcon.height / 2)
+                    : Qt.point(appIcon.x + appIcon.width,
+                               appIcon.y + appIcon.height / 2)
+            }
+            return Qt.point(appIcon.x + appIcon.width / 2, appIcon.y + appIcon.height)
+        }
+        x: !root.dockPanel || !root.dockPanel.vertical
+           ? iconEdgePoint().x - width / 2
+           : DockController.position === "left"
+             ? iconEdgePoint().x - width - 2
+             : iconEdgePoint().x + 2
+        y: !root.dockPanel || !root.dockPanel.vertical
+           ? iconEdgePoint().y + 2
+           : iconEdgePoint().y - height / 2
+        width: DockController.indicatorStyle === "dot" ? DockController.indicatorSize
+              : (!root.dockPanel || !root.dockPanel.vertical
+                 ? (root.active ? 18 : 8) : DockController.indicatorSize)
+        height: DockController.indicatorStyle === "dot" ? DockController.indicatorSize
+               : (root.dockPanel && root.dockPanel.vertical
+                  ? (root.active ? 18 : 8) : DockController.indicatorSize)
+        radius: DockController.indicatorStyle === "dot" ? width / 2 : Math.min(width, height) / 2
         color: systemPalette.highlight
-        visible: root.runtimeKnown && root.running
+        visible: root.runtimeKnown && root.running && DockController.indicatorStyle !== "none"
     }
 
     onIconSizeChanged: scheduleInteractionTargetGeometryUpdate()
@@ -316,6 +351,10 @@ Item {
         target: root.dockPanel
         function onWidthChanged() { root.scheduleInteractionTargetGeometryUpdate() }
         function onHeightChanged() { root.scheduleInteractionTargetGeometryUpdate() }
+    }
+    Connections {
+        target: DockController
+        function onConfigChanged() { root.scheduleInteractionTargetGeometryUpdate() }
     }
     Component.onCompleted: root.updateInteractionTargetGeometry()
 }

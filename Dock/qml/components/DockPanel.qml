@@ -5,11 +5,18 @@ import QtQuick
 Item {
     id: root
 
-    readonly property int restingWidth: appRow.implicitWidth + DockController.panelPadding * 2
-    readonly property int restingHeight: DockController.restingHeight
+    readonly property bool vertical: DockController.vertical
+    readonly property bool growsPositiveCross: DockController.position === "left"
+    readonly property int restingPrimary: (vertical ? appRow.implicitHeight : appRow.implicitWidth)
+        + DockController.panelPadding * 2
+    readonly property int restingCross: DockController.restingCrossThickness
+    readonly property int restingWidth: vertical ? restingCross : restingPrimary
+    readonly property int restingHeight: vertical ? restingPrimary : restingCross
     readonly property int contentWidth: restingWidth
     readonly property int contentHeight: restingHeight
-    readonly property int slotPitch: DockController.delegateWidth + DockController.itemSpacing
+    readonly property int slotPitch: (vertical ? DockController.delegateHeight
+                                                : DockController.delegateWidth)
+        + DockController.itemSpacing
     readonly property string configuredHoverEffect: DockController.hoverEffect
     readonly property real iconRestingTop: DockController.iconRestingTop
     readonly property real liftScale: 1.1
@@ -29,17 +36,21 @@ Item {
     readonly property real maximumMagnificationExtraWidth:
         maximumMagnifiedDelegateCount * DockController.iconSize
         * (Math.max(1, DockController.magnificationScale) - 1)
-    readonly property int surfaceWidth: Math.max(restingWidth,
-        Math.ceil(restingWidth + maximumMagnificationExtraWidth))
-    readonly property int surfaceHeight: Math.max(restingHeight,
-        Math.ceil(restingHeight + surfaceHeadroom))
+    readonly property real maximumMagnificationExtraPrimary: maximumMagnificationExtraWidth
+    readonly property int surfaceWidth: vertical
+        ? Math.max(restingWidth, Math.ceil(restingWidth + surfaceHeadroom))
+        : Math.max(restingWidth, Math.ceil(restingWidth + maximumMagnificationExtraPrimary))
+    readonly property int surfaceHeight: vertical
+        ? Math.max(restingHeight, Math.ceil(restingHeight + maximumMagnificationExtraPrimary))
+        : Math.max(restingHeight, Math.ceil(restingHeight + surfaceHeadroom))
     // Kept as a read-only compatibility property. The envelope reserves this
     // headroom structurally instead of resizing as the pointer moves.
     readonly property real visualHeadroom: surfaceHeadroom
+    readonly property real animationSpeed: Math.max(0.25, DockController.animationSpeed)
     property real magnificationWidth: 0
     property real magnificationHeight: 0
-    // Keep the pointer in the panel's centered coordinate system. The panel
-    // and its QQuickWindow remain fixed during hover.
+    // pointerX remains the relative pointer coordinate for the current primary
+    // axis. For Bottom this is the historical centered X coordinate.
     property real pointerX: 0
     property bool pointerInside: false
     property string pointerTargetDesktopFileName: ""
@@ -52,8 +63,8 @@ Item {
     property string draggedDesktopFileName: ""
     property int draggedSourceIndex: -1
     property int dragTargetIndex: -1
-    // Both values are relative to the panel center. This keeps the drag
-    // coordinate invariant while a centered visual surface changes width.
+    // Both values are relative to the panel center on the primary axis. This
+    // keeps the drag coordinate invariant while the visual chrome changes.
     property real dragOriginCenterRelativeX: 0
     property real dragCenterRelativeX: 0
     property var magnificationScales: []
@@ -66,23 +77,46 @@ Item {
     width: surfaceWidth
     height: surfaceHeight
 
+    function animationDuration(base) {
+        if (!DockController.animationsEnabled)
+            return 0
+        return Math.max(1, Math.round(base / root.animationSpeed))
+    }
+
+    function crossOffset(value) {
+        if (!vertical)
+            return -value
+        return growsPositiveCross ? value : -value
+    }
+
+    function primaryExtent() {
+        return vertical ? height : width
+    }
+
     Rectangle {
         id: dockChrome
         objectName: "dockChrome"
-        anchors.bottom: parent.bottom
-        anchors.horizontalCenter: parent.horizontalCenter
-        width: root.restingWidth + root.magnificationWidth
-        height: root.restingHeight
-        radius: 23
+        x: root.vertical ? (DockController.position === "left" ? 0 : parent.width - width)
+                         : (parent.width - width) / 2
+        y: root.vertical ? (parent.height - height) / 2 : parent.height - height
+        width: root.vertical ? root.restingWidth : root.restingWidth + root.magnificationWidth
+        height: root.vertical ? root.restingHeight + root.magnificationHeight : root.restingHeight
+        radius: DockController.cornerRadius
         color: "#80343434"
         border.color: "#33FFFFFF"
         border.width: 1
+        visible: DockController.revealed
 
         Behavior on width {
-            NumberAnimation { duration: 90; easing.type: Easing.OutCubic }
+            NumberAnimation { duration: root.animationDuration(90); easing.type: Easing.OutCubic }
+        }
+        Behavior on height {
+            NumberAnimation { duration: root.animationDuration(90); easing.type: Easing.OutCubic }
         }
         onWidthChanged: root.scheduleInputRegionUpdate()
+        onHeightChanged: root.scheduleInputRegionUpdate()
         onXChanged: root.scheduleInputRegionUpdate()
+        onYChanged: root.scheduleInputRegionUpdate()
 
         Rectangle {
             anchors.fill: parent
@@ -90,12 +124,16 @@ Item {
             color: "#10000000"
         }
 
-        Row {
+        Grid {
             id: appRow
-            anchors.horizontalCenter: dockChrome.horizontalCenter
-            anchors.bottom: dockChrome.bottom
-            anchors.bottomMargin: DockController.chromeBottomMargin
-            spacing: DockController.itemSpacing
+            columns: root.vertical ? 1 : Math.max(1, appRepeater.count)
+            rows: root.vertical ? Math.max(1, appRepeater.count) : 1
+            rowSpacing: root.vertical ? DockController.itemSpacing : 0
+            columnSpacing: root.vertical ? 0 : DockController.itemSpacing
+            x: root.vertical ? 0 : (dockChrome.width - implicitWidth) / 2
+            y: root.vertical ? (dockChrome.height - implicitHeight) / 2
+                             : dockChrome.height - implicitHeight - DockController.chromeBottomMargin
+            width: root.vertical ? dockChrome.width : implicitWidth
 
             Repeater {
                 id: appRepeater
@@ -126,6 +164,22 @@ Item {
         }
     }
 
+    // A mapped, bounded edge target keeps Always/Intelligent auto-hide
+    // revealable without making transparent surface headroom clickable.
+    Rectangle {
+        id: edgeRevealTarget
+        objectName: "edgeRevealTarget"
+        width: root.vertical ? 4 : Math.min(root.width, 96)
+        height: root.vertical ? Math.min(root.height, 96) : 4
+        x: root.vertical
+           ? (DockController.position === "left" ? 0 : root.width - width)
+           : (root.width - width) / 2
+        y: root.vertical ? (root.height - height) / 2 : root.height - height
+        radius: Math.min(width, height) / 2
+        color: "transparent"
+        visible: !DockController.revealed
+    }
+
     Connections {
         target: DockController.appModel
         function onRowsMoved(sourceParent, sourceStart, sourceEnd, destinationParent, destinationRow) {
@@ -148,6 +202,14 @@ Item {
         }
     }
 
+    Connections {
+        target: DockController
+        function onRevealedChanged() {
+            root.updateHoverEffect()
+            root.scheduleInputRegionUpdate()
+        }
+    }
+
     HoverHandler {
         id: hoverHandler
         objectName: "dockHoverHandler"
@@ -162,36 +224,37 @@ Item {
 
     function setPointerInside(inside) {
         pointerInside = inside
-        if (!inside) {
+        DockController.setPointerInside(inside)
+        if (!inside)
             pointerX = 0
-        }
         updateHoverEffect()
     }
 
-    // Keep the one-argument helper as a small compatibility surface for tests
-    // and non-pointer callers. Real pointer events use the semantic
-    // two-coordinate helper below so transparent visual headroom remains
-    // outside the Dock boundary.
-    function updatePointer(x) {
-        if (!isFinite(x))
+    // Keep the one-argument helper as a compatibility surface for tests and
+    // non-pointer callers. It represents a primary-axis coordinate.
+    function updatePointer(primary) {
+        if (!isFinite(primary))
             return
-        pointerX = x - width / 2
+        pointerX = primary - primaryExtent() / 2
         pointerInside = true
+        DockController.setPointerInside(true)
         updateHoverEffect()
     }
 
     function updatePointerAtPoint(x, y) {
         if (!isFinite(x) || !isFinite(y))
             return
-        pointerX = x - width / 2
-        pointerInside = isInteractivePoint(Qt.point(x, y))
+        pointerX = (vertical ? y : x) - primaryExtent() / 2
+        const interactive = isInteractivePoint(Qt.point(x, y))
+        pointerInside = interactive
+        DockController.setPointerInside(interactive)
         updateHoverEffect()
     }
 
     function updatePointerFromScene(sceneX, sceneY) {
         if (!isFinite(sceneX) || !isFinite(sceneY))
             return
-        var panelPoint = mapFromItem(null, sceneX, sceneY)
+        const panelPoint = mapFromItem(null, sceneX, sceneY)
         updatePointerAtPoint(panelPoint.x, panelPoint.y)
     }
 
@@ -199,19 +262,22 @@ Item {
         if (!point || !isFinite(point.x) || !isFinite(point.y))
             return false
 
-        const chromeLeft = dockChrome.x
-        const chromeTop = dockChrome.y
-        if (point.x >= chromeLeft && point.x < chromeLeft + dockChrome.width
-            && point.y >= chromeTop && point.y < chromeTop + dockChrome.height)
+        if (!DockController.revealed) {
+            return point.x >= edgeRevealTarget.x && point.x < edgeRevealTarget.x + edgeRevealTarget.width
+                && point.y >= edgeRevealTarget.y && point.y < edgeRevealTarget.y + edgeRevealTarget.height
+        }
+
+        if (point.x >= dockChrome.x && point.x < dockChrome.x + dockChrome.width
+            && point.y >= dockChrome.y && point.y < dockChrome.y + dockChrome.height)
             return true
 
         for (var i = 0; i < appRepeater.count; ++i) {
-            var item = appRepeater.itemAt(i)
+            const item = appRepeater.itemAt(i)
             if (!item)
                 continue
             // Repeater::itemAt is typed as QQuickItem; the delegate's
             // interactionRegion is intentionally read dynamically here.
-            var region = item["interaction" + "Region"]
+            const region = item["interaction" + "Region"]
             if (region && isFinite(region.x) && isFinite(region.y)
                 && isFinite(region.width) && isFinite(region.height)
                 && point.x >= region.x && point.x < region.x + region.width
@@ -239,11 +305,17 @@ Item {
             return
 
         inputInteractionRects.length = 0
+        if (!DockController.revealed) {
+            inputRegionBridge.update(windowRect(Qt.rect(edgeRevealTarget.x, edgeRevealTarget.y,
+                                                        edgeRevealTarget.width, edgeRevealTarget.height)),
+                                     inputInteractionRects, appRepeater.count)
+            return
+        }
         for (var i = 0; i < appRepeater.count; ++i) {
-            var item = appRepeater.itemAt(i)
+            const item = appRepeater.itemAt(i)
             if (!item)
                 continue
-            var region = item["interaction" + "Region"]
+            const region = item["interaction" + "Region"]
             if (region && isFinite(region.x) && isFinite(region.y)
                 && isFinite(region.width) && isFinite(region.height))
                 inputInteractionRects.push(windowRect(region))
@@ -259,7 +331,7 @@ Item {
         const center = item.parent.mapToItem(root,
                                             item.x + item.width / 2,
                                             item.y + item.height / 2)
-        return center.x
+        return vertical ? center.y : center.x
     }
 
     function isReordering() {
@@ -267,62 +339,68 @@ Item {
     }
 
     function updateHoverEffect() {
-        var count = appRepeater.count
-        var magnificationActive = pointerInside && configuredHoverEffect === "magnification"
+        const count = appRepeater.count
+        const magnificationActive = pointerInside && configuredHoverEffect === "magnification"
             && !isReordering()
-        var liftActive = pointerInside && configuredHoverEffect === "lift" && !isReordering()
-        var slotPitch = Math.max(1, root.slotPitch)
-        var radius = Math.max(1, DockController.magnificationRadius) * slotPitch
-        var maximumScale = Math.max(1, DockController.magnificationScale)
+        const liftActive = pointerInside && configuredHoverEffect === "lift" && !isReordering()
+        const slotPitch = Math.max(1, root.slotPitch)
+        const radius = Math.max(1, DockController.magnificationRadius) * slotPitch
+        const maximumScale = Math.max(1, DockController.magnificationScale)
         var totalExtra = 0
         var maximumExtra = 0
         var hoveredIndex = -1
         var closestIndex = -1
         var closestDistance = Number.POSITIVE_INFINITY
-        var localPointerX = pointerX + width / 2
+        var computedScales = []
+        var computedExtras = []
+        var computedPrefixes = []
+        const localPointerPrimary = pointerX + primaryExtent() / 2
 
         for (var i = 0; i < count; ++i) {
-            var item = appRepeater.itemAt(i)
+            const item = appRepeater.itemAt(i)
             if (!item)
                 continue
 
-            var itemCenter = delegateRestingCenterInPanel(item)
-            var itemLeft = itemCenter - item.width / 2
-            var itemRight = itemLeft + item.width
-            var slotHovered = pointerInside && localPointerX >= itemLeft
-                && localPointerX < itemRight
+            const itemCenter = delegateRestingCenterInPanel(item)
+            const itemStart = itemCenter - (vertical ? item.height : item.width) / 2
+            const itemEnd = itemStart + (vertical ? item.height : item.width)
+            const slotHovered = pointerInside && localPointerPrimary >= itemStart
+                && localPointerPrimary < itemEnd
             if (slotHovered)
                 hoveredIndex = i
 
-            var scale = liftActive && slotHovered ? 1.1 : 1
+            var scale = liftActive && slotHovered ? liftScale : 1
             if (magnificationActive) {
-                var center = itemCenter - width / 2
-                var distance = Math.abs(pointerX - center)
-                var t = Math.min(distance / radius, 1)
-                var influence = t < 1 ? 0.5 * (1 + Math.cos(Math.PI * t)) : 0
+                const center = itemCenter - primaryExtent() / 2
+                const distance = Math.abs(pointerX - center)
+                const t = Math.min(distance / radius, 1)
+                const influence = t < 1 ? 0.5 * (1 + Math.cos(Math.PI * t)) : 0
                 scale = 1 + (maximumScale - 1) * influence
                 if (distance < closestDistance) {
                     closestDistance = distance
                     closestIndex = i
                 }
             }
-            var extra = magnificationActive ? DockController.iconSize * (scale - 1) : 0
+            const extra = magnificationActive ? DockController.iconSize * (scale - 1) : 0
+            computedScales[i] = scale
+            computedExtras[i] = extra
+            computedPrefixes[i] = totalExtra
             magnificationScales[i] = scale
             extraWidths[i] = extra
             prefixExtraWidths[i] = totalExtra
             totalExtra += extra
             maximumExtra = Math.max(maximumExtra, extra)
-
         }
 
-        var targetIndex = magnificationActive ? closestIndex : hoveredIndex
-        var targetItem = targetIndex >= 0 ? appRepeater.itemAt(targetIndex) : null
+        const targetIndex = magnificationActive ? closestIndex : hoveredIndex
+        const targetItem = targetIndex >= 0 ? appRepeater.itemAt(targetIndex) : null
         pointerTargetDesktopFileName = targetItem ? targetItem.objectName : ""
-        magnificationWidth = magnificationActive ? totalExtra : 0
-        magnificationHeight = magnificationActive ? maximumExtra : 0
-        var liftedItem = liftActive && hoveredIndex >= 0 ? appRepeater.itemAt(hoveredIndex) : null
+        magnificationWidth = !vertical && magnificationActive ? totalExtra : 0
+        magnificationHeight = vertical && magnificationActive ? totalExtra : 0
+        const liftedItem = liftActive && hoveredIndex >= 0 ? appRepeater.itemAt(hoveredIndex) : null
         updateDelegateTransforms(totalExtra, slotPitch,
-                                 liftedItem ? liftedItem.objectName : "")
+                                 liftedItem ? liftedItem.objectName : "",
+                                 computedScales, computedExtras, computedPrefixes)
         scheduleInputRegionUpdate()
     }
 
@@ -338,28 +416,36 @@ Item {
         return originalIndex
     }
 
-    function updateDelegateTransforms(totalExtra, slotPitch, liftedKey) {
-        var count = appRepeater.count
-        var dragging = isReordering()
+    function updateDelegateTransforms(totalExtra, slotPitch, liftedKey,
+                                      computedScales, computedExtras, computedPrefixes) {
+        const count = appRepeater.count
+        const dragging = isReordering()
         for (var i = 0; i < count; ++i) {
-            var item = appRepeater.itemAt(i)
+            const item = appRepeater.itemAt(i)
             if (!item)
                 continue
 
-            var extra = extraWidths[i] || 0
-            var offset = (prefixExtraWidths[i] || 0) + extra / 2 - totalExtra / 2
+            const extra = computedExtras[i] || 0
+            var offset = (computedPrefixes[i] || 0) + extra / 2 - totalExtra / 2
             if (dragging) {
                 if (i === draggedSourceIndex) {
-                    var currentCenterRelative = delegateRestingCenterInPanel(item) - width / 2
+                    const currentCenterRelative = delegateRestingCenterInPanel(item)
+                        - primaryExtent() / 2
                     offset += dragCenterRelativeX - currentCenterRelative
                 } else {
                     offset += (previewIndexFor(i) - i) * slotPitch
                 }
             }
-            item.magnificationScale = dragging ? 1 : (magnificationScales[i] || 1)
-            item.visualOffsetX = offset
-            item.visualOffsetY = dragging && i === draggedSourceIndex ? -reorderOffsetY
-                : (!dragging && item.objectName === liftedKey ? -liftOffsetY : 0)
+            item.magnificationScale = dragging ? 1
+                : (computedScales[i] || 1)
+            item.visualOffsetX = vertical ? 0 : offset
+            item.visualOffsetY = vertical ? offset
+                : (dragging && i === draggedSourceIndex ? crossOffset(reorderOffsetY)
+                   : (!dragging && item.objectName === liftedKey ? crossOffset(liftOffsetY) : 0))
+            if (vertical && dragging && i === draggedSourceIndex)
+                item.visualOffsetX = crossOffset(reorderOffsetY)
+            else if (vertical)
+                item.visualOffsetX = item.objectName === liftedKey ? crossOffset(liftOffsetY) : 0
             item.dragScale = dragging && i === draggedSourceIndex ? reorderScale : 1
             item.dragging = i === draggedSourceIndex
         }
@@ -371,7 +457,7 @@ Item {
 
         var source = -1
         for (var i = 0; i < Math.min(DockController.pinCount, appRepeater.count); ++i) {
-            var item = appRepeater.itemAt(i)
+            const item = appRepeater.itemAt(i)
             if (item && item.objectName === key) {
                 source = i
                 break
@@ -380,13 +466,13 @@ Item {
         if (source < 0)
             return
 
-        var sourceItem = appRepeater.itemAt(source)
-        var visualCenter = sourceItem.mapToItem(root, sourceItem.width / 2,
-                                               sourceItem.height / 2)
+        const sourceItem = appRepeater.itemAt(source)
+        const visualCenter = sourceItem.mapToItem(root, sourceItem.width / 2,
+                                                  sourceItem.height / 2)
         draggedDesktopFileName = key
         draggedSourceIndex = source
         dragTargetIndex = source
-        dragOriginCenterRelativeX = visualCenter.x - width / 2
+        dragOriginCenterRelativeX = (vertical ? visualCenter.y : visualCenter.x) - primaryExtent() / 2
         dragCenterRelativeX = dragOriginCenterRelativeX
         updateHoverEffect()
     }
@@ -397,22 +483,21 @@ Item {
 
         updatePointerFromScene(sceneX, sceneY)
         dragCenterRelativeX = dragOriginCenterRelativeX + translationX
-        var firstItem = appRepeater.itemAt(0)
+        const firstItem = appRepeater.itemAt(0)
         if (!firstItem)
             return
-        var slotPitch = Math.max(1, root.slotPitch)
-        var firstCenterRelative = delegateRestingCenterInPanel(firstItem) - width / 2
+        const firstCenterRelative = delegateRestingCenterInPanel(firstItem) - primaryExtent() / 2
         dragTargetIndex = Math.max(0, Math.min(DockController.pinCount - 1,
                                                Math.round((dragCenterRelativeX
-                                                           - firstCenterRelative) / slotPitch)))
+                                                           - firstCenterRelative) / Math.max(1, root.slotPitch))))
         updateHoverEffect()
     }
 
     function finishReorder(key) {
         if (key !== draggedDesktopFileName)
             return
-        var target = dragTargetIndex
-        var source = draggedSourceIndex
+        const target = dragTargetIndex
+        const source = draggedSourceIndex
         draggedDesktopFileName = ""
         draggedSourceIndex = -1
         dragTargetIndex = -1

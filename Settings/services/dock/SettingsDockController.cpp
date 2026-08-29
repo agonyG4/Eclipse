@@ -178,7 +178,7 @@ void SettingsDockController::flush()
 
     DockConfigStore store(m_configPath);
     QString error;
-    if (!store.writeConfig(m_config, &error)) {
+    if (!store.writePersonalization(m_config, &error)) {
         applyLocalConfig(m_lastPersisted);
         setLastError(error);
     } else {

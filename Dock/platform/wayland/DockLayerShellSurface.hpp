@@ -1,6 +1,7 @@
 #pragma once
 
 #include "services/DockConfigWatcher.hpp"
+#include "platform/wayland/LayerShellHelper.hpp"
 
 #include <QString>
 #include <QtGlobal>
@@ -10,6 +11,9 @@ class QScreen;
 
 class DockLayerShellSurface final {
 public:
+    static AstreaLayerShellConfig configurationFor(const DockConfig &config,
+                                                   int exclusiveZoneHeight,
+                                                   QScreen *screen = nullptr);
     static bool configure(QQuickWindow *window, const DockConfig &config,
                           int exclusiveZoneHeight,
                           QScreen *screen = nullptr, QString *errorOut = nullptr);

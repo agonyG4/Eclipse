@@ -38,6 +38,7 @@ private:
     bool loadSurface(const QUrl &url, QQuickWindow **windowOut);
     bool configureSurfaces();
     bool configureDockSurface();
+    void updateDockExclusiveZone();
     void updateDockOutputGeometry();
     void syncDockVisibility();
     void handleCommand(const ShellIpcServer::Command &command);

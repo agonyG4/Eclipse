@@ -18,15 +18,32 @@ bool DockLayerShellSurface::configure(QQuickWindow *window, const DockConfig &co
     if (!setOutputGeometry(window, screen, errorOut))
         return false;
 
+    const AstreaLayerShellConfig layerConfig = configurationFor(config, exclusiveZoneHeight, screen);
+    return AstreaLayerShellHelper::configure(window, layerConfig, errorOut);
+}
+
+AstreaLayerShellConfig DockLayerShellSurface::configurationFor(const DockConfig &config,
+                                                               int exclusiveZoneHeight,
+                                                               QScreen *screen)
+{
     AstreaLayerShellConfig layerConfig;
     layerConfig.scope = QStringLiteral("astrea-dock");
     layerConfig.layer = AstreaLayerShellConfig::Layer::Top;
     layerConfig.keyboardInteractivity = AstreaLayerShellConfig::KeyboardInteractivity::None;
-    layerConfig.anchorBottom = true;
     layerConfig.exclusiveZone = qMax(0, exclusiveZoneHeight);
-    layerConfig.margins.setBottom(config.bottomMargin);
+    const int edgeMargin = config.effectiveEdgeMargin();
+    if (config.position == QStringLiteral("left")) {
+        layerConfig.anchorLeft = true;
+        layerConfig.margins.setLeft(edgeMargin);
+    } else if (config.position == QStringLiteral("right")) {
+        layerConfig.anchorRight = true;
+        layerConfig.margins.setRight(edgeMargin);
+    } else {
+        layerConfig.anchorBottom = true;
+        layerConfig.margins.setBottom(edgeMargin);
+    }
     layerConfig.screen = screen;
-    return AstreaLayerShellHelper::configure(window, layerConfig, errorOut);
+    return layerConfig;
 }
 
 bool DockLayerShellSurface::setOutputGeometry(QQuickWindow *window, QScreen *screen,

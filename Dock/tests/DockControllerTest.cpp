@@ -53,6 +53,8 @@ private slots:
     void invalidOrRuntimeOnlySourceIsRejected();
     void persistenceFailureLeavesOrderUnchanged();
     void runtimeOnlyOrderingRemainsUnchangedAfterPinMove();
+    void personalizationPropertiesPropagateAndUnchangedConfigIsQuiet();
+    void autoHidePolicyKeepsSurfaceMappedAndReservationBounded();
 };
 
 class CountingPersistence final : public DockConfigPersistence {
@@ -559,6 +561,91 @@ void DockControllerTest::runtimeOnlyOrderingRemainsUnchangedAfterPinMove()
 
     QCOMPARE(controller.appModel()->desktopFileNameAt(2), QStringLiteral("runtime-a.desktop"));
     QCOMPARE(controller.appModel()->desktopFileNameAt(3), QStringLiteral("runtime-b.desktop"));
+}
+
+void DockControllerTest::personalizationPropertiesPropagateAndUnchangedConfigIsQuiet()
+{
+    DockController controller;
+    controller.applyConfig(configWithPins({QStringLiteral("one.desktop")}));
+    QSignalSpy configSpy(&controller, &DockController::configChanged);
+
+    DockConfig config = DockConfig::defaults();
+    config.pins = {QStringLiteral("one.desktop")};
+    config.position = QStringLiteral("right");
+    config.edgeMargin = 30;
+    config.floating = false;
+    config.cornerRadius = 17;
+    config.autoHide = QStringLiteral("always");
+    config.indicatorStyle = QStringLiteral("dot");
+    config.indicatorSize = 6;
+    config.animationsEnabled = false;
+    config.animationSpeed = 2.5;
+    controller.applyConfig(config);
+
+    QCOMPARE(controller.edgeMargin(), 30);
+    QCOMPARE(controller.effectiveEdgeMargin(), 0);
+    QCOMPARE(controller.position(), QStringLiteral("right"));
+    QVERIFY(controller.vertical());
+    QCOMPARE(controller.cornerRadius(), 17);
+    QCOMPARE(controller.autoHide(), QStringLiteral("always"));
+    QCOMPARE(controller.indicatorStyle(), QStringLiteral("dot"));
+    QCOMPARE(controller.indicatorSize(), 6);
+    QVERIFY(!controller.animationsEnabled());
+    QCOMPARE(controller.animationSpeed(), 2.5);
+    QCOMPARE(configSpy.count(), 1);
+
+    controller.applyConfig(config);
+    QCOMPARE(configSpy.count(), 1);
+}
+
+void DockControllerTest::autoHidePolicyKeepsSurfaceMappedAndReservationBounded()
+{
+    DockController controller;
+    controller.applyConfig(configWithPins({QStringLiteral("one.desktop")}));
+    const int resting = controller.restingHeight();
+
+    QVERIFY(controller.visible());
+    QCOMPARE(controller.exclusiveZone(), resting);
+    QVERIFY(controller.revealed());
+
+    DockConfig config = DockConfig::defaults();
+    config.pins = {QStringLiteral("one.desktop")};
+    config.autoHide = QStringLiteral("always");
+    controller.applyConfig(config);
+    QVERIFY(controller.visible());
+    QCOMPARE(controller.exclusiveZone(), 0);
+    QVERIFY(!controller.revealed());
+
+    controller.setPointerInside(true);
+    QVERIFY(controller.revealed());
+    controller.setPointerInside(false);
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.revealed(), 1000);
+    QVERIFY(controller.visible());
+
+    config.autoHide = QStringLiteral("intelligent");
+    controller.applyConfig(config);
+    QCOMPARE(controller.exclusiveZone(), resting);
+    QVERIFY(controller.revealed());
+
+    Astrea::Typhon::Snapshot snapshot;
+    snapshot.connectionGeneration = 1;
+    snapshot.revision = 1;
+    Astrea::Typhon::Toplevel active;
+    active.id = QStringLiteral("maximized");
+    active.states = Astrea::Typhon::ToplevelStates{
+        Astrea::Typhon::ToplevelStateFlag::Active,
+        Astrea::Typhon::ToplevelStateFlag::Maximized};
+    snapshot.windows.append(active);
+    controller.applyTyphonSnapshot(snapshot);
+    QCOMPARE(controller.exclusiveZone(), 0);
+    QVERIFY(!controller.revealed());
+
+    active.states = Astrea::Typhon::ToplevelStates{
+        Astrea::Typhon::ToplevelStateFlag::Active};
+    snapshot.windows = {active};
+    controller.applyTyphonSnapshot(snapshot);
+    QCOMPARE(controller.exclusiveZone(), resting);
+    QVERIFY(controller.revealed());
 }
 
 QTEST_MAIN(DockControllerTest)

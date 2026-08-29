@@ -10,6 +10,7 @@
 #include <QHash>
 #include <QObject>
 #include <QSet>
+#include <QTimer>
 
 #include <optional>
 
@@ -25,7 +26,18 @@ class DockController final : public QObject {
     Q_PROPERTY(int launchingCount READ launchingCount NOTIFY modelChanged)
     Q_PROPERTY(bool runtimeKnown READ runtimeKnown NOTIFY modelChanged)
     Q_PROPERTY(int iconSize READ iconSize NOTIFY configChanged)
+    Q_PROPERTY(int edgeMargin READ edgeMargin NOTIFY configChanged)
+    Q_PROPERTY(int effectiveEdgeMargin READ effectiveEdgeMargin NOTIFY configChanged)
     Q_PROPERTY(int bottomMargin READ bottomMargin NOTIFY configChanged)
+    Q_PROPERTY(QString position READ position NOTIFY configChanged)
+    Q_PROPERTY(bool vertical READ vertical NOTIFY configChanged)
+    Q_PROPERTY(bool floating READ floating NOTIFY configChanged)
+    Q_PROPERTY(int cornerRadius READ cornerRadius NOTIFY configChanged)
+    Q_PROPERTY(QString autoHide READ autoHide NOTIFY configChanged)
+    Q_PROPERTY(QString indicatorStyle READ indicatorStyle NOTIFY configChanged)
+    Q_PROPERTY(int indicatorSize READ indicatorSize NOTIFY configChanged)
+    Q_PROPERTY(bool animationsEnabled READ animationsEnabled NOTIFY configChanged)
+    Q_PROPERTY(double animationSpeed READ animationSpeed NOTIFY configChanged)
     Q_PROPERTY(int chromeBottomMargin READ chromeBottomMargin CONSTANT)
     Q_PROPERTY(int iconRestingTop READ iconRestingTop NOTIFY configChanged)
     Q_PROPERTY(int panelPadding READ panelPadding NOTIFY configChanged)
@@ -38,6 +50,9 @@ class DockController final : public QObject {
     Q_PROPERTY(double magnificationScale READ magnificationScale NOTIFY configChanged)
     Q_PROPERTY(double magnificationRadius READ magnificationRadius NOTIFY configChanged)
     Q_PROPERTY(int restingHeight READ restingHeight NOTIFY configChanged)
+    Q_PROPERTY(int restingCrossThickness READ restingCrossThickness NOTIFY configChanged)
+    Q_PROPERTY(int exclusiveZone READ exclusiveZone NOTIFY reservationChanged)
+    Q_PROPERTY(bool revealed READ revealed NOTIFY revealedChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
 
 public:
@@ -56,7 +71,18 @@ public:
     DesktopEntryCatalog *catalog() const { return m_catalog; }
     ApplicationLauncher *launcher() const { return m_launcher; }
     int iconSize() const { return m_config.iconSize; }
-    int bottomMargin() const { return m_config.bottomMargin; }
+    int edgeMargin() const { return m_config.edgeMargin; }
+    int effectiveEdgeMargin() const { return m_config.effectiveEdgeMargin(); }
+    int bottomMargin() const { return edgeMargin(); }
+    QString position() const { return m_config.position; }
+    bool vertical() const { return m_config.position != QStringLiteral("bottom"); }
+    bool floating() const { return m_config.floating; }
+    int cornerRadius() const { return m_config.cornerRadius; }
+    QString autoHide() const { return m_config.autoHide; }
+    QString indicatorStyle() const { return m_config.indicatorStyle; }
+    int indicatorSize() const { return m_config.indicatorSize; }
+    bool animationsEnabled() const { return m_config.animationsEnabled; }
+    double animationSpeed() const { return m_config.animationSpeed; }
     int chromeBottomMargin() const { return DockMetrics::chromeBottomMargin; }
     int iconRestingTop() const { return DockMetrics::iconRestingTop(m_config.iconSize); }
     int panelPadding() const { return m_config.panelPadding; }
@@ -69,6 +95,9 @@ public:
     double magnificationScale() const { return m_config.magnificationScale; }
     double magnificationRadius() const { return m_config.magnificationRadius; }
     int restingHeight() const { return DockMetrics::restingHeight(m_config.iconSize); }
+    int restingCrossThickness() const { return restingHeight(); }
+    int exclusiveZone() const;
+    bool revealed() const { return m_revealed; }
     QString lastError() const { return m_lastError; }
 
     void applyConfig(const DockConfig &config);
@@ -77,6 +106,7 @@ public:
     void attachTyphonConnection(TyphonToplevelConnection *connection);
     void applyTyphonSnapshot(const Astrea::Typhon::Snapshot &snapshot);
     void clearTyphonRuntime();
+    Q_INVOKABLE void setPointerInside(bool inside);
 
     Q_INVOKABLE void launch(int row);
     Q_INVOKABLE void launchByDesktopFileName(const QString &desktopFileName);
@@ -95,6 +125,8 @@ signals:
     void visibleChanged();
     void modelChanged();
     void configChanged();
+    void reservationChanged();
+    void revealedChanged();
     void lastErrorChanged();
 
 private slots:
@@ -111,6 +143,9 @@ private:
     void finishLaunch(const QString &desktopId, bool success, const QString &error = {});
     void setLastError(const QString &error);
     void updateVisibility();
+    void updateAutoHidePolicy();
+    bool autoHideActive() const;
+    void setRevealed(bool revealed);
     void projectRuntime();
     void reconcileTyphonActionFailure(Astrea::Typhon::ToplevelActionError error);
     void launchItem(const DockAppInfo &item, bool activateRunning = true);
@@ -128,6 +163,9 @@ private:
     bool m_requestedVisible = true;
     bool m_visible = false;
     bool m_runtimeKnown = false;
+    bool m_pointerInside = false;
+    bool m_obstructed = false;
+    bool m_revealed = true;
     std::optional<Astrea::Typhon::Snapshot> m_runtimeSnapshot;
     QHash<QString, Astrea::Typhon::DockApplicationRuntimeState> m_runtimeStates;
     QHash<quint64, QString> m_pendingActivations;
@@ -142,4 +180,5 @@ private:
     QVector<QMetaObject::Connection> m_typhonConnections;
     Astrea::Typhon::DockApplicationStateProjector m_runtimeProjector;
     QString m_lastError;
+    QTimer m_autoHideTimer;
 };

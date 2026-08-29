@@ -13,6 +13,7 @@ class DockLayerShellSurfaceTest final : public QObject {
 private slots:
     void mappedReservationUsesRestingHeightNotVisualHeight();
     void unmappedReservationIsZero();
+    void anchorsAndMarginsFollowSelectedEdge();
     void explicitOutputGeometryDoesNotDependOnWindowScreen();
 };
 
@@ -34,6 +35,33 @@ void DockLayerShellSurfaceTest::unmappedReservationIsZero()
 {
     QCOMPARE(DockLayerShellSurface::exclusiveZoneForMapping(false, 68), 0);
     QCOMPARE(DockLayerShellSurface::exclusiveZoneForMapping(false, 96), 0);
+}
+
+void DockLayerShellSurfaceTest::anchorsAndMarginsFollowSelectedEdge()
+{
+    for (const QString &position : {QStringLiteral("bottom"), QStringLiteral("left"),
+                                    QStringLiteral("right")}) {
+        DockConfig config = DockConfig::defaults();
+        config.position = position;
+        config.edgeMargin = 22;
+        const AstreaLayerShellConfig layer =
+            DockLayerShellSurface::configurationFor(config, 68);
+        QCOMPARE(layer.exclusiveZone, 68);
+        QCOMPARE(layer.anchorBottom, position == QStringLiteral("bottom"));
+        QCOMPARE(layer.anchorLeft, position == QStringLiteral("left"));
+        QCOMPARE(layer.anchorRight, position == QStringLiteral("right"));
+        QVERIFY(!layer.anchorTop);
+        QCOMPARE(layer.margins.bottom(), position == QStringLiteral("bottom") ? 22 : 0);
+        QCOMPARE(layer.margins.left(), position == QStringLiteral("left") ? 22 : 0);
+        QCOMPARE(layer.margins.right(), position == QStringLiteral("right") ? 22 : 0);
+        QCOMPARE(layer.margins.top(), 0);
+    }
+
+    DockConfig attached = DockConfig::defaults();
+    attached.position = QStringLiteral("left");
+    attached.floating = false;
+    attached.edgeMargin = 22;
+    QCOMPARE(DockLayerShellSurface::configurationFor(attached, 68).margins.left(), 0);
 }
 
 void DockLayerShellSurfaceTest::explicitOutputGeometryDoesNotDependOnWindowScreen()

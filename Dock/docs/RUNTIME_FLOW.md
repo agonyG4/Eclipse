@@ -24,6 +24,15 @@ from `AstreaIconProvider`. Dock magnification changes only the delegate
 transform; a configuration change can change the maximum source target once,
 but a hover animation does not reload the source texture.
 
+The provider passes named icons directly to `QIcon::pixmap()` so Qt retains
+Freedesktop `Scale`, fixed/threshold/scalable directory, and theme-inheritance
+semantics. It normalizes only the returned pixmap DPR metadata at the QML
+boundary; it does not resample or reselect a representation using
+`availableSizes()`. Theme mutation and named-icon lookup share one narrow
+mutex. The Dock DPR boundary test records `Screen.devicePixelRatio`,
+`QQuickWindow::devicePixelRatio()`, and
+`QQuickWindow::effectiveDevicePixelRatio()` for 1x, 1.5x, and 2x runs.
+
 At startup, `DockRuntimePaths` resolves `ASTREA_ROOT` and the two AstreaOS
 configuration paths. `DockConfigWatcher` loads validated defaults or the user
 file, while `DesktopEntryCatalog` publishes an immutable XDG-priority

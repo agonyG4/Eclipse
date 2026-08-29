@@ -1,4 +1,5 @@
 #include <QColor>
+#include <QDir>
 #include <QFile>
 #include <QGuiApplication>
 #include <QIcon>
@@ -9,8 +10,11 @@
 #include <QTest>
 #include <QUrl>
 
+#include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <limits>
+#include <thread>
 
 #include "icons/AstreaIconProvider.hpp"
 #include "icons/AstreaIconTheme.hpp"
@@ -43,12 +47,18 @@ private:
     QStringList m_fallbackSearchPaths;
 };
 
-bool writeThemeIndex(const QString &themeRoot)
+bool writeIndexFile(const QString &themeRoot, const QByteArray &content)
 {
     QFile index(themeRoot + QStringLiteral("/index.theme"));
     if (!index.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
-    const QByteArray content =
+    return index.write(content) == content.size();
+}
+
+bool writeThemeIndex(const QString &themeRoot)
+{
+    return writeIndexFile(themeRoot,
+        QByteArray(
         "[Icon Theme]\n"
         "Name=Resolution Test\n"
         "Directories=48x48/apps,96x96/apps,128x128/apps,scalable/apps\n"
@@ -57,7 +67,22 @@ bool writeThemeIndex(const QString &themeRoot)
         "[48x48/apps]\nSize=48\nContext=Applications\nType=Fixed\n\n"
         "[96x96/apps]\nSize=96\nContext=Applications\nType=Fixed\n\n"
         "[128x128/apps]\nSize=128\nContext=Applications\nType=Fixed\n\n"
-        "[scalable/apps]\nSize=48\nMinSize=1\nMaxSize=256\nContext=Applications\nType=Scalable\n";
+        "[scalable/apps]\nSize=48\nMinSize=1\nMaxSize=256\nContext=Applications\nType=Scalable\n"));
+}
+
+bool writeScaleAwareThemeIndex(const QString &themeRoot)
+{
+    QFile index(themeRoot + QStringLiteral("/index.theme"));
+    if (!index.open(QIODevice::WriteOnly | QIODevice::Text))
+        return false;
+    const QByteArray content =
+        "[Icon Theme]\n"
+        "Name=HiDPI Test\n"
+        "Directories=48x48/apps\n"
+        "ScaledDirectories=48x48@2/apps\n"
+        "\n"
+        "[48x48/apps]\nSize=48\nScale=1\nType=Fixed\nContext=Applications\n\n"
+        "[48x48@2/apps]\nSize=48\nScale=2\nType=Fixed\nContext=Applications\n";
     return index.write(content) == content.size();
 }
 
@@ -83,6 +108,21 @@ bool writeSvg(const QString &path)
     return svg.write(content) == content.size();
 }
 
+bool writeHighFrequencySvg(const QString &path)
+{
+    QFile svg(path);
+    if (!svg.open(QIODevice::WriteOnly | QIODevice::Text))
+        return false;
+    const QByteArray content =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"128\" height=\"128\">"
+        "<rect width=\"128\" height=\"128\" fill=\"#101820\"/>"
+        "<path d=\"M0 0L128 128M-32 0L128 160M0 32L96 128M32 0L128 96M64 0L128 64\" "
+        "stroke=\"#00d084\" stroke-width=\"3\"/>"
+        "<circle cx=\"64\" cy=\"64\" r=\"24\" fill=\"none\" stroke=\"#ffd166\" stroke-width=\"4\"/>"
+        "</svg>";
+    return svg.write(content) == content.size();
+}
+
 QString prepareTheme(QTemporaryDir &temporary, const QString &themeName)
 {
     const QString themeRoot = temporary.path() + QStringLiteral("/") + themeName;
@@ -101,6 +141,7 @@ void selectTheme(AstreaIconProvider &provider, const QString &root, const QStrin
     QIcon::setThemeSearchPaths({root});
     QIcon::setFallbackSearchPaths({root});
     QIcon::setThemeName(theme);
+    QIcon::setFallbackThemeName(QStringLiteral("hicolor"));
     provider.clearCache();
 }
 
@@ -112,12 +153,19 @@ class AstreaIconProviderTest final : public QObject {
 private slots:
     void normalizesResolutionRequest();
     void rejectsInvalidResolutionRequest();
-    void providerUsesThemedPhysicalRepresentation();
+    void providerPreservesQtThemeRepresentation();
+    void providerHonorsThemeScaleMetadata();
+    void providerResolvesNamedScalableSvgAtPhysicalTarget();
+    void providerFollowsQtThresholdSelection();
+    void providerFallsBackThroughThemeInheritance();
+    void providerPrefersCurrentThemeOverCloserInheritedSize();
+    void providerFallsBackToHicolor();
     void providerDoesNotUpscaleSmallerRaster();
     void providerSeparatesLogicalAndDprCacheKeys();
     void providerSupportsDirectAndScalableFiles();
     void providerHandlesMissingAndBoundedInvalidRequests();
     void providerInvalidatesPositiveAndNegativeCachesOnThemeChange();
+    void providerSurvivesConcurrentThemeInvalidation();
     void searchPathsPreservePriorityAndDeduplicate();
     void applyMergesExistingQtSearchPaths();
 };
@@ -151,7 +199,7 @@ void AstreaIconProviderTest::rejectsInvalidResolutionRequest()
     QVERIFY(!IconRenderRequest::fromValues(48, std::numeric_limits<qreal>::infinity()).has_value());
 }
 
-void AstreaIconProviderTest::providerUsesThemedPhysicalRepresentation()
+void AstreaIconProviderTest::providerPreservesQtThemeRepresentation()
 {
     ScopedIconState state;
     QTemporaryDir temporary;
@@ -167,20 +215,236 @@ void AstreaIconProviderTest::providerUsesThemedPhysicalRepresentation()
 
     AstreaIconProvider provider;
     selectTheme(provider, temporary.path(), QStringLiteral("resolution-test"));
+    const QPixmap expected = QIcon::fromTheme(QStringLiteral("astrea-mark"))
+                                 .pixmap(QSize(48, 48), 2.0, QIcon::Normal, QIcon::Off);
+    QVERIFY(!expected.isNull());
+
     QSize returnedSize;
     const QPixmap pixmap = provider.requestPixmap(
         QStringLiteral("astrea-mark?logicalSize=48&dpr=2&pixelSize=96"),
         &returnedSize, {});
 
-    QCOMPARE(returnedSize, QSize(96, 96));
-    QCOMPARE(pixmap.size(), QSize(96, 96));
-    QCOMPARE(pixmap.toImage().pixelColor(10, 20), QColor("#00aa00"));
+    QCOMPARE(returnedSize, expected.size());
+    QCOMPARE(pixmap.size(), expected.size());
+    QCOMPARE(pixmap.toImage().pixelColor(10, 20), expected.toImage().pixelColor(10, 20));
 
     QSize extensionSize;
     const QPixmap extensionPixmap = provider.requestPixmap(
         QStringLiteral("astrea-mark.png?logicalSize=48&dpr=2"), &extensionSize, {});
-    QCOMPARE(extensionSize, QSize(96, 96));
-    QCOMPARE(extensionPixmap.toImage().pixelColor(10, 20), QColor("#00aa00"));
+    QCOMPARE(extensionSize, expected.size());
+    QCOMPARE(extensionPixmap.toImage().pixelColor(10, 20), expected.toImage().pixelColor(10, 20));
+
+    QSize fractionalSize;
+    const QPixmap fractional = provider.requestPixmap(
+        QStringLiteral("astrea-mark?logicalSize=64&dpr=1.5"), &fractionalSize, {});
+    const QPixmap fractionalExpected = QIcon::fromTheme(QStringLiteral("astrea-mark"))
+                                           .pixmap(QSize(64, 64), 1.5,
+                                                   QIcon::Normal, QIcon::Off);
+    QVERIFY(!fractionalExpected.isNull());
+    QCOMPARE(fractionalSize, fractionalExpected.size());
+    QCOMPARE(fractional.toImage().pixelColor(10, 20),
+             fractionalExpected.toImage().pixelColor(10, 20));
+}
+
+void AstreaIconProviderTest::providerHonorsThemeScaleMetadata()
+{
+    ScopedIconState state;
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    const QString themeRoot = temporary.path() + QStringLiteral("/hidpi-test");
+    QVERIFY(QDir().mkpath(themeRoot + QStringLiteral("/48x48/apps")));
+    QVERIFY(QDir().mkpath(themeRoot + QStringLiteral("/48x48@2/apps")));
+    QVERIFY(writeScaleAwareThemeIndex(themeRoot));
+    QVERIFY(writeRaster(themeRoot + QStringLiteral("/48x48/apps/scale-test.png"),
+                        QSize(48, 48), QColor("#aa0000")));
+    QVERIFY(writeRaster(themeRoot + QStringLiteral("/48x48@2/apps/scale-test.png"),
+                        QSize(96, 96), QColor("#00aa00")));
+
+    AstreaIconProvider provider;
+    selectTheme(provider, temporary.path(), QStringLiteral("hidpi-test"));
+
+    QSize oneXSize;
+    const QPixmap oneX = provider.requestPixmap(
+        QStringLiteral("scale-test?logicalSize=48&dpr=1"), &oneXSize, {});
+    QCOMPARE(oneXSize, QSize(48, 48));
+    QCOMPARE(oneX.toImage().pixelColor(10, 20), QColor("#aa0000"));
+
+    QSize twoXSize;
+    const QPixmap twoX = provider.requestPixmap(
+        QStringLiteral("scale-test?logicalSize=48&dpr=2"), &twoXSize, {});
+    QCOMPARE(twoXSize, QSize(96, 96));
+    QCOMPARE(twoX.devicePixelRatio(), 1.0);
+    QCOMPARE(twoX.toImage().pixelColor(10, 20), QColor("#00aa00"));
+}
+
+void AstreaIconProviderTest::providerResolvesNamedScalableSvgAtPhysicalTarget()
+{
+    ScopedIconState state;
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    const QString themeRoot = temporary.path() + QStringLiteral("/scalable-test");
+    QVERIFY(QDir().mkpath(themeRoot + QStringLiteral("/scalable/apps")));
+    QVERIFY(writeIndexFile(themeRoot,
+                           QByteArray(
+                               "[Icon Theme]\n"
+                               "Name=Scalable Test\n"
+                               "Directories=scalable/apps\n\n"
+                               "[scalable/apps]\nSize=48\nMinSize=1\nMaxSize=256\n"
+                               "Type=Scalable\nContext=Applications\n")));
+    QVERIFY(writeHighFrequencySvg(themeRoot + QStringLiteral("/scalable/apps/vector-quality.svg")));
+
+    AstreaIconProvider provider;
+    selectTheme(provider, temporary.path(), QStringLiteral("scalable-test"));
+
+    QSize oneXSize;
+    const QPixmap oneX = provider.requestPixmap(
+        QStringLiteral("vector-quality?logicalSize=96&dpr=1"), &oneXSize, {});
+    QCOMPARE(oneXSize, QSize(96, 96));
+    QVERIFY(!oneX.isNull());
+
+    QSize twoXSize;
+    const QPixmap twoX = provider.requestPixmap(
+        QStringLiteral("vector-quality?logicalSize=48&dpr=2"), &twoXSize, {});
+    QCOMPARE(twoXSize, QSize(96, 96));
+    QVERIFY(!twoX.isNull());
+
+    QSize largerTwoXSize;
+    const QPixmap largerTwoX = provider.requestPixmap(
+        QStringLiteral("vector-quality?logicalSize=96&dpr=2"), &largerTwoXSize, {});
+    QCOMPARE(largerTwoXSize, QSize(192, 192));
+    QVERIFY(!largerTwoX.isNull());
+}
+
+void AstreaIconProviderTest::providerFollowsQtThresholdSelection()
+{
+    ScopedIconState state;
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    const QString themeRoot = temporary.path() + QStringLiteral("/threshold-test");
+    QVERIFY(QDir().mkpath(themeRoot + QStringLiteral("/48x48/apps")));
+    QVERIFY(QDir().mkpath(themeRoot + QStringLiteral("/64x64/apps")));
+    QVERIFY(writeIndexFile(themeRoot,
+                           QByteArray(
+                               "[Icon Theme]\n"
+                               "Name=Threshold Test\n"
+                               "Directories=48x48/apps,64x64/apps\n\n"
+                               "[48x48/apps]\nSize=48\nType=Threshold\nThreshold=4\n"
+                               "Scale=1\nContext=Applications\n\n"
+                               "[64x64/apps]\nSize=64\nType=Fixed\nScale=1\n"
+                               "Context=Applications\n")));
+    QVERIFY(writeRaster(themeRoot + QStringLiteral("/48x48/apps/threshold-test.png"),
+                        QSize(48, 48), QColor("#aa0000")));
+    QVERIFY(writeRaster(themeRoot + QStringLiteral("/64x64/apps/threshold-test.png"),
+                        QSize(64, 64), QColor("#0000aa")));
+
+    AstreaIconProvider provider;
+    selectTheme(provider, temporary.path(), QStringLiteral("threshold-test"));
+    const QIcon icon = QIcon::fromTheme(QStringLiteral("threshold-test"));
+    QVERIFY(!icon.isNull());
+
+    const auto verifyQtResult = [&](const QString &requestId, int logicalSize) {
+        QSize providerSize;
+        const QPixmap actual = provider.requestPixmap(requestId, &providerSize, {});
+        QPixmap expected = icon.pixmap(QSize(logicalSize, logicalSize), 1.0,
+                                       QIcon::Normal, QIcon::Off);
+        expected.setDevicePixelRatio(1.0);
+        QVERIFY(!actual.isNull());
+        QVERIFY(!expected.isNull());
+        QCOMPARE(providerSize, expected.size());
+        QCOMPARE(actual.size(), expected.size());
+        QCOMPARE(actual.toImage().pixelColor(10, 20), expected.toImage().pixelColor(10, 20));
+    };
+
+    verifyQtResult(QStringLiteral("threshold-test?logicalSize=50&dpr=1"), 50);
+    verifyQtResult(QStringLiteral("threshold-test?logicalSize=58&dpr=1"), 58);
+}
+
+void AstreaIconProviderTest::providerFallsBackThroughThemeInheritance()
+{
+    ScopedIconState state;
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    const QString childRoot = temporary.path() + QStringLiteral("/child-theme");
+    const QString parentRoot = temporary.path() + QStringLiteral("/parent-theme");
+    QVERIFY(QDir().mkpath(childRoot + QStringLiteral("/48x48/apps")));
+    QVERIFY(QDir().mkpath(parentRoot + QStringLiteral("/48x48/apps")));
+    QVERIFY(writeIndexFile(childRoot,
+                           QByteArray("[Icon Theme]\nName=Child\n"
+                                      "Directories=48x48/apps\nInherits=parent-theme\n\n"
+                                      "[48x48/apps]\nSize=48\nType=Fixed\nContext=Applications\n")));
+    QVERIFY(writeIndexFile(parentRoot,
+                           QByteArray("[Icon Theme]\nName=Parent\n"
+                                      "Directories=48x48/apps\n\n"
+                                      "[48x48/apps]\nSize=48\nType=Fixed\nContext=Applications\n")));
+    QVERIFY(writeRaster(parentRoot + QStringLiteral("/48x48/apps/inherited-test.png"),
+                        QSize(48, 48), QColor("#00aa00")));
+
+    AstreaIconProvider provider;
+    selectTheme(provider, temporary.path(), QStringLiteral("child-theme"));
+    QSize size;
+    const QPixmap pixmap = provider.requestPixmap(
+        QStringLiteral("inherited-test?logicalSize=48&dpr=1"), &size, {});
+    QCOMPARE(size, QSize(48, 48));
+    QCOMPARE(pixmap.toImage().pixelColor(10, 20), QColor("#00aa00"));
+}
+
+void AstreaIconProviderTest::providerPrefersCurrentThemeOverCloserInheritedSize()
+{
+    ScopedIconState state;
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    const QString currentRoot = temporary.path() + QStringLiteral("/current-theme");
+    const QString parentRoot = temporary.path() + QStringLiteral("/parent-theme");
+    QVERIFY(QDir().mkpath(currentRoot + QStringLiteral("/64x64/apps")));
+    QVERIFY(QDir().mkpath(parentRoot + QStringLiteral("/48x48/apps")));
+    QVERIFY(writeIndexFile(currentRoot,
+                           QByteArray("[Icon Theme]\nName=Current\n"
+                                      "Directories=64x64/apps\nInherits=parent-theme\n\n"
+                                      "[64x64/apps]\nSize=64\nType=Fixed\nContext=Applications\n")));
+    QVERIFY(writeIndexFile(parentRoot,
+                           QByteArray("[Icon Theme]\nName=Parent\n"
+                                      "Directories=48x48/apps\n\n"
+                                      "[48x48/apps]\nSize=48\nType=Fixed\nContext=Applications\n")));
+    QVERIFY(writeRaster(currentRoot + QStringLiteral("/64x64/apps/current-wins.png"),
+                        QSize(64, 64), QColor("#0000aa")));
+    QVERIFY(writeRaster(parentRoot + QStringLiteral("/48x48/apps/current-wins.png"),
+                        QSize(48, 48), QColor("#aa0000")));
+
+    AstreaIconProvider provider;
+    selectTheme(provider, temporary.path(), QStringLiteral("current-theme"));
+    QSize size;
+    const QPixmap pixmap = provider.requestPixmap(
+        QStringLiteral("current-wins?logicalSize=48&dpr=1"), &size, {});
+    QCOMPARE(pixmap.toImage().pixelColor(10, 20), QColor("#0000aa"));
+}
+
+void AstreaIconProviderTest::providerFallsBackToHicolor()
+{
+    ScopedIconState state;
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    const QString currentRoot = temporary.path() + QStringLiteral("/current-theme");
+    const QString hicolorRoot = temporary.path() + QStringLiteral("/hicolor");
+    QVERIFY(QDir().mkpath(currentRoot + QStringLiteral("/48x48/apps")));
+    QVERIFY(QDir().mkpath(hicolorRoot + QStringLiteral("/48x48/apps")));
+    QVERIFY(writeIndexFile(currentRoot,
+                           QByteArray("[Icon Theme]\nName=Current\n"
+                                      "Directories=48x48/apps\n\n"
+                                      "[48x48/apps]\nSize=48\nType=Fixed\nContext=Applications\n")));
+    QVERIFY(writeIndexFile(hicolorRoot,
+                           QByteArray("[Icon Theme]\nName=hicolor\n"
+                                      "Directories=48x48/apps\n\n"
+                                      "[48x48/apps]\nSize=48\nType=Fixed\nContext=Applications\n")));
+    QVERIFY(writeRaster(hicolorRoot + QStringLiteral("/48x48/apps/fallback-test.png"),
+                        QSize(48, 48), QColor("#00aaaa")));
+
+    AstreaIconProvider provider;
+    selectTheme(provider, temporary.path(), QStringLiteral("current-theme"));
+    QSize size;
+    const QPixmap pixmap = provider.requestPixmap(
+        QStringLiteral("fallback-test?logicalSize=48&dpr=1"), &size, {});
+    QCOMPARE(size, QSize(48, 48));
+    QCOMPARE(pixmap.toImage().pixelColor(10, 20), QColor("#00aaaa"));
 }
 
 void AstreaIconProviderTest::providerDoesNotUpscaleSmallerRaster()
@@ -329,6 +593,58 @@ void AstreaIconProviderTest::providerInvalidatesPositiveAndNegativeCachesOnTheme
     QCOMPARE(appeared.toImage().pixelColor(10, 20), QColor("#00aa00"));
 }
 
+void AstreaIconProviderTest::providerSurvivesConcurrentThemeInvalidation()
+{
+    ScopedIconState state;
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    const QString firstTheme = prepareTheme(temporary, QStringLiteral("stress-first"));
+    const QString secondTheme = temporary.path() + QStringLiteral("/stress-second");
+    QVERIFY(!firstTheme.isEmpty());
+    QVERIFY(QDir().mkpath(secondTheme + QStringLiteral("/48x48/apps")));
+    QVERIFY(QDir().mkpath(secondTheme + QStringLiteral("/96x96/apps")));
+    QVERIFY(QDir().mkpath(secondTheme + QStringLiteral("/128x128/apps")));
+    QVERIFY(QDir().mkpath(secondTheme + QStringLiteral("/scalable/apps")));
+    QVERIFY(writeThemeIndex(secondTheme));
+    QVERIFY(writeRaster(firstTheme + QStringLiteral("/48x48/apps/stress-test.png"),
+                        QSize(48, 48), QColor("#aa0000")));
+    QVERIFY(writeRaster(secondTheme + QStringLiteral("/48x48/apps/stress-test.png"),
+                        QSize(48, 48), QColor("#0000aa")));
+
+    AstreaIconProvider provider;
+    selectTheme(provider, temporary.path(), QStringLiteral("stress-first"));
+    std::atomic_bool failed = false;
+    std::thread requester([&] {
+        for (int i = 0; i < 128 && !failed.load(std::memory_order_relaxed); ++i) {
+            QSize size;
+            const QPixmap pixmap = provider.requestPixmap(
+                QStringLiteral("stress-test?logicalSize=48&dpr=1"), &size, {});
+            if (pixmap.isNull() || size != QSize(48, 48)) {
+                failed.store(true, std::memory_order_relaxed);
+                break;
+            }
+            const QColor pixel = pixmap.toImage().pixelColor(10, 20);
+            if (pixel != QColor("#aa0000") && pixel != QColor("#0000aa"))
+                failed.store(true, std::memory_order_relaxed);
+        }
+    });
+
+    for (int i = 0; i < 32 && !failed.load(std::memory_order_relaxed); ++i) {
+        const QString theme = i % 2 == 0 ? QStringLiteral("stress-second")
+                                         : QStringLiteral("stress-first");
+        {
+            QMutexLocker lock(&AstreaIconTheme::qIconMutex());
+            QIcon::setThemeName(theme);
+            QIcon::setFallbackThemeName(QStringLiteral("hicolor"));
+            QIcon::setThemeSearchPaths({temporary.path()});
+            QIcon::setFallbackSearchPaths({temporary.path()});
+        }
+        provider.clearCache();
+    }
+    requester.join();
+    QVERIFY(!failed.load(std::memory_order_relaxed));
+}
+
 void AstreaIconProviderTest::searchPathsPreservePriorityAndDeduplicate()
 {
     QTemporaryDir dataHome;
@@ -346,11 +662,43 @@ void AstreaIconProviderTest::searchPathsPreservePriorityAndDeduplicate()
     const QStringList paths = AstreaIconTheme::searchPathsFor(
         {dataHome.path(), dataDir.path(), dataHome.path()}, fakeHome.path());
     QCOMPARE(paths.count(dataHome.path() + QStringLiteral("/icons")), 1);
-    QVERIFY(paths.indexOf(dataHome.path() + QStringLiteral("/icons"))
-            < paths.indexOf(dataDir.path() + QStringLiteral("/icons")));
+    QVERIFY(paths.indexOf(fakeHome.path() + QStringLiteral("/.icons"))
+            < paths.indexOf(dataHome.path() + QStringLiteral("/icons")));
     QVERIFY(paths.contains(fakeHome.path() + QStringLiteral("/.icons")));
     QVERIFY(paths.contains(fakeHome.path()
                            + QStringLiteral("/.local/share/flatpak/exports/share/icons")));
+
+    const QString userTheme = fakeHome.path()
+        + QStringLiteral("/.icons/priority-theme/48x48/apps");
+    const QString dataTheme = dataHome.path()
+        + QStringLiteral("/icons/priority-theme/48x48/apps");
+    QVERIFY(QDir().mkpath(userTheme));
+    QVERIFY(QDir().mkpath(dataTheme));
+    const QByteArray priorityIndex =
+        "[Icon Theme]\nName=Priority\nDirectories=48x48/apps\n\n"
+        "[48x48/apps]\nSize=48\nType=Fixed\nContext=Applications\n";
+    QVERIFY(writeIndexFile(fakeHome.path() + QStringLiteral("/.icons/priority-theme"),
+                           priorityIndex));
+    QVERIFY(writeIndexFile(dataHome.path() + QStringLiteral("/icons/priority-theme"),
+                           priorityIndex));
+    QVERIFY(writeRaster(userTheme + QStringLiteral("/priority-test.png"),
+                        QSize(48, 48), QColor("#00aa00")));
+    QVERIFY(writeRaster(dataTheme + QStringLiteral("/priority-test.png"),
+                        QSize(48, 48), QColor("#aa0000")));
+
+    AstreaIconProvider provider;
+    QStringList qIconPaths = paths;
+    std::reverse(qIconPaths.begin(), qIconPaths.end());
+    QIcon::setThemeSearchPaths(qIconPaths);
+    QIcon::setFallbackSearchPaths(qIconPaths);
+    QIcon::setThemeName(QStringLiteral("priority-theme"));
+    QIcon::setFallbackThemeName(QStringLiteral("hicolor"));
+    provider.clearCache();
+    QSize size;
+    const QPixmap pixmap = provider.requestPixmap(
+        QStringLiteral("priority-test?logicalSize=48&dpr=1"), &size, {});
+    QCOMPARE(size, QSize(48, 48));
+    QCOMPARE(pixmap.toImage().pixelColor(10, 20), QColor("#00aa00"));
 }
 
 void AstreaIconProviderTest::applyMergesExistingQtSearchPaths()

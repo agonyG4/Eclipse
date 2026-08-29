@@ -37,7 +37,12 @@ The pipeline is:
 
 ## Theme configuration
 
-`AstreaIconTheme::apply()` remains the single configuration entry point. It must merge Astrea's discovered icon roots with the existing Qt search and fallback paths, deduplicate them, and preserve native, resource, and platform-provided paths.
+`AstreaIconTheme::apply()` remains the single configuration entry point. It
+merges Astrea's discovered icon roots with the existing Qt search and fallback
+paths, deduplicates them, and preserves native, resource, and platform-provided
+paths. The public discovery order places `~/.icons` before XDG data roots and
+Flatpak exports; Qt receives the equivalent reverse traversal order because its
+loader resolves duplicate theme roots from the end of its search list.
 
 The effective theme priority remains:
 
@@ -85,7 +90,7 @@ icon.pixmap(QSize(logicalExtent, logicalExtent),
             QIcon::Off);
 ```
 
-The returned pixmap is normalized to raw physical dimensions before it is exposed to Qt Quick. The provider must not resize a smaller selected representation upward. SVG and other scalable sources may rasterize at the requested physical extent. Larger raster sources may be downsampled by Qt, but a smaller raster must not be promoted as if it contained additional detail.
+The returned pixmap is normalized to raw physical dimensions before it is exposed to Qt Quick. The provider must not resize a smaller selected representation upward. SVG and other scalable sources may rasterize at the requested physical extent. Larger raster sources may be downsampled by Qt, but a smaller raster must not be promoted as if it contained additional detail. `availableSizes()` is not part of this policy; Qt retains the directory metadata needed for `Scale`, `Type`, `Threshold`, scalable ranges, and inheritance.
 
 Extension-bearing names retry with the basename where appropriate. Direct absolute files are loaded directly. The legacy pixmaps directory remains a narrow fallback, not a second XDG theme resolver.
 
@@ -105,7 +110,7 @@ readonly property int effectiveSourcePixelSize
 readonly property string resolvedSource
 ```
 
-An explicit positive `maximumPresentationLogicalSize` wins. Otherwise the maximum logical target is `iconSize * maximumPresentationScale`. The normal DPR comes from `Screen.devicePixelRatio`; the override exists for deterministic QML tests. The source target is `ceil(effectiveMaximumLogicalSize * effectiveDevicePixelRatio)`, bounded by the provider contract.
+An explicit positive `maximumPresentationLogicalSize` wins. Otherwise the maximum logical target is `iconSize * maximumPresentationScale`. The normal DPR comes from `Screen.devicePixelRatio`; the override exists for deterministic QML tests. A Dock integration boundary records and compares this value with `QQuickWindow::devicePixelRatio()` and `QQuickWindow::effectiveDevicePixelRatio()` at 1x, 1.5x, and 2x. The source target is `ceil(effectiveMaximumLogicalSize * effectiveDevicePixelRatio)`, bounded by the provider contract.
 
 The image keeps `smooth: true`, `mipmap: true`, `asynchronous: true`, and the existing fallback behavior. Its source and `sourceSize` use the effective source target. Presentation scale, opacity, masking, and animation remain separate from source selection.
 
@@ -125,13 +130,17 @@ Spotlight uses its 40 logical result extent and the effective DPR. It no longer 
 
 ### Masking
 
-The existing `Qt5Compat.GraphicalEffects.OpacityMask` remains until a source-pipeline A/B comparison demonstrates that it degrades interior or edge quality. No replacement shader is introduced without evidence.
+The existing `Qt5Compat.GraphicalEffects.OpacityMask` remains. A deterministic
+same-raster A/B at a 1.6 presentation scale confirms that rounded alpha leaves
+interior high-frequency RGB detail unchanged while changing corner alpha and
+edge antialiasing. The offscreen scene graph does not provide a stable visual
+OpacityMask capture, so a live Wayland visual comparison remains pending.
 
 ## Verification strategy
 
 The implementation is verified at both the provider and QML policy boundaries.
 
-The dedicated provider test covers missing and empty names, absolute files, extension-bearing names, exact 48/96/128 representations, larger-over-smaller selection, `Scale=2`, logical-size versus DPR distinction, SVG, thresholds, inheritance, current-theme preference, hicolor, Flatpak roots, theme switches, positive and negative cache invalidation, cache-key separation, invalid zero/negative/non-finite/huge/overflow values, fractional DPR, and fractional maximum targets. Representation tests use deliberately distinguishable pixel content.
+The dedicated provider test covers missing and empty names, absolute files, extension-bearing names, Qt-selected 48/96/128 representations, true `Scale=2`, logical-size versus DPR distinction, named scalable SVG, thresholds, inheritance, current-theme preference, hicolor, `.icons` priority and deduplication, theme switches, positive and negative cache invalidation, cache-key separation, invalid zero/negative/non-finite/huge values, fractional DPR, and bounded physical targets. Representation tests use deliberately distinguishable pixel content. Flatpak roots are covered in search-root discovery/deduplication; a live Flatpak application icon remains a manual validation case.
 
 QML tests cover these calculations:
 
@@ -144,7 +153,7 @@ QML tests cover these calculations:
 
 The tests also prove that Dock hover changes visual scale while keeping source URL and effective source size unchanged, that a DPR change causes one quality-target change independent of hover, that AltTab selection changes presentation width without a quality reload, and that Spotlight uses 40 logical pixels times DPR.
 
-Verification includes Debug and Release builds, focused unit/QML suites, QML lint, high-DPI test runs at 1x, 1.5x, and 2x, and a bounded live Wayland startup/visual check. Runtime instrumentation or test spies are used where possible to show that loaded-icon hover frames cause zero provider requests, filesystem reads, SVG rasterizations, source-URL changes, or texture-quality changes. Any Wayland or low-resolution hardware limitation is reported explicitly.
+The verification record is command-based: focused provider/QML/Dock/AltTab/Spotlight tests, the hardened Dock test subset, Debug and Release builds, QML lint, `git diff --check`, and high-DPI runs at 1x, 1.5x, and 2x are recorded only after they execute. The deterministic mask A/B is a same-raster source-buffer comparison because the offscreen scene graph does not expose a stable OpacityMask capture. Live Wayland/Typhon visual validation, including Flatpak and low-resolution-only applications, remains pending unless explicitly run and reported.
 
 ## Non-goals
 

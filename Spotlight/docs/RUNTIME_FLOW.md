@@ -40,6 +40,10 @@ bounded positive and negative caches, and includes logical extent, effective
 DPR, physical source extent, and theme revision in its request/cache contract.
 Spotlight requests a 40 logical-pixel maximum and lets the shared QML policy
 convert it to physical pixels for the current display.
+Named theme representations are selected only by `QIcon::pixmap()`; the
+provider does not use `availableSizes()` to recreate theme metadata or
+manually choose a neighboring raster. Theme lookup/update synchronization is
+shared with the other Astrea consumers.
 
 ## Theme Change
 

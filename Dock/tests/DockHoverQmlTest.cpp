@@ -5,13 +5,17 @@
 #include "icons/AstreaIconProvider.hpp"
 
 #include <QCoreApplication>
+#include <QDir>
+#include <QFile>
 #include <QGuiApplication>
+#include <QImage>
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QPointingDevice>
+#include <QTemporaryDir>
 #include <QSignalSpy>
 #include <QTest>
 
@@ -157,6 +161,7 @@ class DockHoverQmlTest final : public QObject {
 private slots:
     void initTestCase();
     void iconSourceQualityRemainsStableDuringHover();
+    void windowDprMatchesScreenDprForDockIcon();
     void surfaceEnvelopeRemainsStableDuringMagnification();
     void pointerCenterRemainsStableForPracticalMagnificationTargets();
     void inputMaskTracksCenteredChromeAndMagnifiedIcon();
@@ -184,6 +189,21 @@ void DockHoverQmlTest::initTestCase()
 
 void DockHoverQmlTest::iconSourceQualityRemainsStableDuringHover()
 {
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    const QString themeRoot = temporary.path() + QStringLiteral("/dock-quality-theme");
+    const QString iconDirectory = themeRoot + QStringLiteral("/48x48/apps");
+    QVERIFY(QDir().mkpath(iconDirectory));
+    QFile index(themeRoot + QStringLiteral("/index.theme"));
+    QVERIFY(index.open(QIODevice::WriteOnly | QIODevice::Text));
+    const QByteArray indexContent =
+        "[Icon Theme]\nName=Dock Quality\nDirectories=48x48/apps\n\n"
+        "[48x48/apps]\nSize=48\nType=Fixed\nContext=Applications\n";
+    QCOMPARE(index.write(indexContent), indexContent.size());
+    QImage fixture(QSize(48, 48), QImage::Format_ARGB32);
+    fixture.fill(QColor("#00aa55"));
+    QVERIFY(fixture.save(iconDirectory + QStringLiteral("/quality-test-icon.png")));
+
     const QStringList pins{
         QStringLiteral("one.desktop"), QStringLiteral("two.desktop"),
         QStringLiteral("three.desktop")};
@@ -202,28 +222,113 @@ void DockHoverQmlTest::iconSourceQualityRemainsStableDuringHover()
     QQuickWindow window;
     panel->setParentItem(window.contentItem());
     window.resize(600, 180);
-    window.show();
     QTest::qWait(40);
 
     QQuickItem *source = delegate(panel, QStringLiteral("two.desktop"));
     QQuickItem *icon = iconItem(source);
     QVERIFY(source && icon);
-    icon->setProperty("iconName", QStringLiteral("quality-test-icon"));
+    icon->setProperty("iconPath",
+                      QUrl::fromLocalFile(iconDirectory
+                                          + QStringLiteral("/quality-test-icon.png"))
+                          .toString());
     icon->setProperty("devicePixelRatioOverride", 2.0);
-    QCoreApplication::processEvents();
+    QTRY_VERIFY_WITH_TIMEOUT(icon->property("ready").toBool(), 1500);
     const QString initialSource = icon->property("resolvedSource").toString();
     const int initialSourcePixels = icon->property("effectiveSourcePixelSize").toInt();
     const int logicalSourceSize = icon->property("effectiveMaximumLogicalSize").toInt();
-    QVERIFY(initialSource.contains(QStringLiteral("logicalSize=%1").arg(logicalSourceSize)));
+    QCOMPARE(initialSource,
+             QUrl::fromLocalFile(iconDirectory + QStringLiteral("/quality-test-icon.png"))
+                 .toString());
+    QVERIFY(!initialSource.contains(QStringLiteral("magnification")));
     QCOMPARE(initialSourcePixels, logicalSourceSize * 2);
 
-    const qreal initialVisualScale = icon->scale();
-    icon->setProperty("scale", 1.6);
-    QTest::qWait(180);
+    const auto verifyStableSource = [&] {
+        QCOMPARE(icon->property("resolvedSource").toString(), initialSource);
+        QCOMPARE(icon->property("effectiveSourcePixelSize").toInt(), initialSourcePixels);
+    };
+    const auto movePointerTo = [&](QQuickItem *target) {
+        const QPointF point = target->mapToItem(
+            panel, target->width() / 2.0, target->height() / 2.0);
+        QVERIFY(QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
+                                          Q_ARG(QVariant, QVariant(point.x())),
+                                          Q_ARG(QVariant, QVariant(point.y()))));
+    };
+    const auto movePointerToPoint = [&](const QPointF &point) {
+        QVERIFY(QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
+                                          Q_ARG(QVariant, QVariant(point.x())),
+                                          Q_ARG(QVariant, QVariant(point.y()))));
+    };
 
-    QCOMPARE(icon->property("resolvedSource").toString(), initialSource);
-    QCOMPARE(icon->property("effectiveSourcePixelSize").toInt(), initialSourcePixels);
-    QVERIFY(icon->property("scale").toReal() > initialVisualScale);
+    QVERIFY(QMetaObject::invokeMethod(panel, "setPointerInside",
+                                      Q_ARG(QVariant, QVariant(false))));
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(icon->scale() - 1.0) < 0.01, 1500);
+    verifyStableSource();
+
+    QQuickItem *neighbor = delegate(panel, QStringLiteral("one.desktop"));
+    QQuickItem *next = delegate(panel, QStringLiteral("three.desktop"));
+    QVERIFY(neighbor && next);
+    const QPointF neighborCenter = neighbor->mapToItem(
+        panel, neighbor->width() / 2.0, neighbor->height() / 2.0);
+    const QPointF sourceCenter = source->mapToItem(
+        panel, source->width() / 2.0, source->height() / 2.0);
+    const QPointF nextCenter = next->mapToItem(
+        panel, next->width() / 2.0, next->height() / 2.0);
+    movePointerToPoint(QPointF((neighborCenter.x() + sourceCenter.x()) / 2.0,
+                               sourceCenter.y()));
+    QTRY_VERIFY_WITH_TIMEOUT(icon->scale() > 1.0, 1500);
+    const qreal neighborScale = icon->scale();
+    verifyStableSource();
+
+    movePointerTo(source);
+    QTRY_VERIFY_WITH_TIMEOUT(icon->scale() > neighborScale, 1500);
+    verifyStableSource();
+
+    movePointerToPoint(QPointF((sourceCenter.x() + nextCenter.x()) / 2.0,
+                               sourceCenter.y()));
+    QTRY_VERIFY_WITH_TIMEOUT(icon->scale() > 1.0, 1500);
+    verifyStableSource();
+
+    QVERIFY(QMetaObject::invokeMethod(panel, "setPointerInside",
+                                      Q_ARG(QVariant, QVariant(false))));
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(icon->scale() - 1.0) < 0.01, 1500);
+    verifyStableSource();
+
+    delete panel;
+}
+
+void DockHoverQmlTest::windowDprMatchesScreenDprForDockIcon()
+{
+    DockController controller;
+    controller.applyConfig(configFor(QStringLiteral("magnification"), {
+        QStringLiteral("one.desktop")
+    }));
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready,
+             qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    QQuickWindow window;
+    panel->setParentItem(window.contentItem());
+    window.resize(240, 180);
+    window.show();
+    QTest::qWait(40);
+
+    QQuickItem *icon = iconItem(delegate(panel, QStringLiteral("one.desktop")));
+    QVERIFY(icon);
+    const qreal screenDpr = icon->property("effectiveDevicePixelRatio").toReal();
+    const qreal windowDpr = window.devicePixelRatio();
+    const qreal effectiveWindowDpr = window.effectiveDevicePixelRatio();
+    qInfo() << "Dock icon DPRs: Screen" << screenDpr
+            << "window" << windowDpr
+            << "effective window" << effectiveWindowDpr;
+    QVERIFY(screenDpr > 0.0);
+    QVERIFY(effectiveWindowDpr > 0.0);
+    QVERIFY(qAbs(screenDpr - effectiveWindowDpr) < 0.001);
     delete panel;
 }
 

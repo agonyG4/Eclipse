@@ -71,6 +71,17 @@ the real QWindow mask's actual chrome/icon union.
 The icon-quality regression also checks the shared logical-size/DPR formula and
 proves that changing the visual scale leaves the resolved icon URL and physical
 source target unchanged.
+`astrea-icon-provider-test` separately proves Qt-owned `Scale=2`, scalable SVG,
+threshold, inheritance, current-theme preference, hicolor fallback, smaller
+raster preservation, `.icons` priority, cache invalidation, and concurrent
+theme mutation. Its representation assertions compare distinguishable pixels
+and raw output dimensions, including deterministic `DPR=1`, `1.5`, and `2`
+requests. No production path uses `QIcon::availableSizes()` for selection.
+The shared QML test also performs a same-raster A/B of the high-frequency
+source with rounded alpha at a 1.6 presentation scale: interior RGB detail is
+unchanged, while corner alpha and edge antialiasing change as expected. It is
+a source-buffer comparison because the offscreen Qt scene graph does not give
+a stable visual `OpacityMask` capture.
 The cancellation case retains the panel cancellation reset path after a real
 pointer drag; the offscreen Qt backend does not provide a compositor
 pointer-cancel event.
@@ -98,7 +109,8 @@ activation from a drag.
 
 The QML lint check is a syntax/type check and the focused QML test runs offscreen;
 visual magnification and drag feel therefore still require live/manual
-verification on a Wayland session. Live validation must additionally confirm
+verification on a Wayland session. The deterministic verification does not
+constitute live Wayland/Typhon visual validation. Live validation must additionally confirm
 that the requested Layer Shell surface dimensions stay constant while the
 chrome width and icon transforms change independently.
 

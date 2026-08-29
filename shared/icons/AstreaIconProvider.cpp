@@ -50,45 +50,6 @@ QPixmap renderIcon(const QIcon &icon, const IconRenderRequest &request)
                                  QIcon::Normal,
                                  QIcon::Off);
 
-    // QIcon can choose a non-exact fixed raster for a density-aware request.
-    // Select the closest available source through QIcon's metadata so an exact
-    // 96-pixel representation wins over a 128-pixel neighbor at a 96-pixel
-    // target, while a smaller-only theme is never upscaled.
-    const QList<QSize> available = icon.availableSizes(QIcon::Normal, QIcon::Off);
-    QSize selected;
-    int selectedDimension = std::numeric_limits<int>::max();
-    int largestDimension = 0;
-    for (const QSize &candidate : available) {
-        const int dimension = qMax(candidate.width(), candidate.height());
-        if (dimension <= 0)
-            continue;
-        largestDimension = qMax(largestDimension, dimension);
-        if (dimension >= request.physicalExtent && dimension < selectedDimension) {
-            selected = candidate;
-            selectedDimension = dimension;
-        }
-    }
-    if (selected.isEmpty() && largestDimension > 0) {
-        for (const QSize &candidate : available) {
-            if (qMax(candidate.width(), candidate.height()) == largestDimension) {
-                selected = candidate;
-                break;
-            }
-        }
-    }
-    if (!selected.isEmpty()) {
-        const QPixmap source = icon.pixmap(selected, 1.0, QIcon::Normal, QIcon::Off);
-        if (!source.isNull())
-            result = source;
-        if (!result.isNull()
-            && qMax(selected.width(), selected.height()) > request.physicalExtent) {
-            result = result.scaled(request.physicalExtent,
-                                   request.physicalExtent,
-                                   Qt::KeepAspectRatio,
-                                   Qt::SmoothTransformation);
-        }
-    }
-
     if (result.isNull())
         return {};
 
@@ -205,6 +166,7 @@ QPixmap AstreaIconProvider::resolveIcon(const QString &iconName,
         result = renderIcon(QIcon(iconName), request);
 
     if (result.isNull()) {
+        QMutexLocker lock(&AstreaIconTheme::qIconMutex());
         QIcon themeIcon = QIcon::fromTheme(iconName);
         if (themeIcon.isNull()) {
             const QFileInfo iconInfo(iconName);

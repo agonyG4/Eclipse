@@ -65,3 +65,9 @@ The delegate keeps a maximum logical source extent of 84 pixels for both
 selected and unselected states. Selection changes the visible 72-to-84 pixel
 presentation animation, while the provider request remains based on the
 effective DPR and does not reload just because selection changed.
+
+Named representation selection is delegated to `QIcon::pixmap()`; the shared
+provider does not reconstruct theme `Scale`, threshold, scalable-directory, or
+inheritance rules from `availableSizes()`. The same shared theme boundary
+preserves user `.icons`, XDG, Flatpak, and existing Qt search roots with
+deterministic deduplication.

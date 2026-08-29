@@ -7,6 +7,8 @@
 #include <QStandardPaths>
 #include <QSet>
 
+#include <algorithm>
+
 namespace {
 
 QStringList mergePaths(const QStringList &preferred, const QStringList &existing)
@@ -24,7 +26,23 @@ QStringList mergePaths(const QStringList &preferred, const QStringList &existing
     return merged;
 }
 
+QStringList qIconSearchPaths(const QStringList &preferred, const QStringList &existing)
+{
+    QStringList paths = mergePaths(preferred, existing);
+    // QIconLoader resolves duplicate theme roots from the end of this list.
+    // Keep the public/searchPathsFor order in Freedesktop priority order while
+    // presenting QIcon with the equivalent reverse traversal order.
+    std::reverse(paths.begin(), paths.end());
+    return paths;
+}
+
 } // namespace
+
+QMutex &AstreaIconTheme::qIconMutex()
+{
+    static QMutex mutex;
+    return mutex;
+}
 
 QStringList AstreaIconTheme::searchPaths() {
     return searchPathsFor(
@@ -37,15 +55,6 @@ QStringList AstreaIconTheme::searchPathsFor(const QStringList &dataLocations,
     QSet<QString> seen;
     QStringList ordered;
 
-    for (const auto &d : dataLocations) {
-        const QString iconsDir = d + QStringLiteral("/icons");
-        const QString clean = QDir::cleanPath(iconsDir);
-        if (!QDir(clean).exists() || seen.contains(clean))
-            continue;
-        seen.insert(clean);
-        ordered.append(clean);
-    }
-
     const QString dotIcons = QDir::cleanPath(homePath + QStringLiteral("/.icons"));
     if (QDir(dotIcons).exists()) {
         const QString clean = QDir::cleanPath(dotIcons);
@@ -53,6 +62,15 @@ QStringList AstreaIconTheme::searchPathsFor(const QStringList &dataLocations,
             seen.insert(clean);
             ordered.append(clean);
         }
+    }
+
+    for (const auto &d : dataLocations) {
+        const QString iconsDir = d + QStringLiteral("/icons");
+        const QString clean = QDir::cleanPath(iconsDir);
+        if (!QDir(clean).exists() || seen.contains(clean))
+            continue;
+        seen.insert(clean);
+        ordered.append(clean);
     }
 
     QStringList flatpakDirs = {
@@ -87,7 +105,14 @@ static bool themeExistsInHighestPriorityDataHome(const QString &themeName) {
         QStringLiteral("icons/") + themeName + QStringLiteral("/index.theme")));
 }
 
-AstreaIconTheme::ResolveResult AstreaIconTheme::resolveWithSource() {
+AstreaIconTheme::ResolveResult AstreaIconTheme::resolveWithSource()
+{
+    QMutexLocker lock(&qIconMutex());
+    return resolveWithSourceUnlocked();
+}
+
+AstreaIconTheme::ResolveResult AstreaIconTheme::resolveWithSourceUnlocked()
+{
     ResolveResult result;
 
     QString env = qEnvironmentVariable("ASTREA_ICON_THEME").trimmed();
@@ -149,7 +174,8 @@ QString AstreaIconTheme::themeSource() {
 }
 
 QString AstreaIconTheme::apply() {
-    const auto resolved = resolveWithSource();
+    QMutexLocker lock(&qIconMutex());
+    const auto resolved = resolveWithSourceUnlocked();
     const QString theme = resolved.theme;
 
     QIcon::setThemeName(theme);
@@ -157,8 +183,10 @@ QString AstreaIconTheme::apply() {
     // Install paths after selecting the name. Qt resets its default resource
     // path when a theme name is selected, so merging before this call loses
     // the discovered XDG roots.
-    QIcon::setThemeSearchPaths(mergePaths(searchPaths(), QIcon::themeSearchPaths()));
-    QIcon::setFallbackSearchPaths(mergePaths(searchPaths(), QIcon::fallbackSearchPaths()));
+    const QStringList preferredPaths = searchPaths();
+    QIcon::setThemeSearchPaths(qIconSearchPaths(preferredPaths, QIcon::themeSearchPaths()));
+    QIcon::setFallbackSearchPaths(qIconSearchPaths(preferredPaths,
+                                                   QIcon::fallbackSearchPaths()));
 
     return theme;
 }

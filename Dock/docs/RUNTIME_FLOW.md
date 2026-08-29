@@ -10,7 +10,7 @@ startup
   -> authoritative runtime projection (pins + live resolved apps)
   -> QML
   -> QWindow input region (chrome + transformed interaction targets)
-  -> Layer Shell mapping at resting reservation
+  -> position-aware Layer Shell mapping at resting cross-axis reservation
   -> configured none/lift/magnification hover effect or pinned drag preview
   -> click or one identity-based reorder request
   -> exact Typhon activation or shared launcher
@@ -40,13 +40,15 @@ snapshot. The controller gives the model the configured pin order and QML
 receives the model through a context property.
 
 The application configures the Dock QQuickWindow through the required
-LayerShellQt integration using `DockController::restingHeight()` as an explicit
-exclusive-zone contract. QML reserves a fixed maximum transparent envelope for
-the configured row and possible magnification/lift/drag bounds before pointer
-interaction begins. The requested surface width and height therefore stay
-constant during hover and reorder; only the centered visual chrome width and
-icon transforms animate. The exclusive zone remains the resting height. `none`
-and `lift` clear stale scale and translate state when switching modes.
+LayerShellQt integration using `DockController::exclusiveZone()` as an explicit
+resting cross-axis contract. Bottom, Left, and Right select the corresponding
+Layer Shell edge; only that edge receives the effective margin. QML reserves a
+fixed maximum transparent envelope for the configured primary-axis rows and
+possible magnification/lift/drag bounds before pointer interaction begins. The
+requested surface dimensions therefore stay constant during hover and reorder;
+only the resting chrome's primary extent and icon transforms animate. The
+exclusive zone never includes temporary magnification headroom. `none` and
+`lift` clear stale scale and translate state when switching modes.
 Configuration and component toggles are debounced and re-applied without
 restarting the process. A Layer
 Shell setup or mapping failure is reported as a shell failure; the Dock is
@@ -79,9 +81,18 @@ resting icon center receives the raised-cosine influence
 `0.5 * (1 + cos(pi * distance / radius))` inside the configured radius and zero
 outside it. The panel derives prefix extra widths from those scales and applies
 visual translations; it does not rebuild the model or relayout a Row for each
-pointer sample. Only the icon is scaled from its bottom edge, leaving its
-running indicator stable. Reorder temporarily suspends hover visuals in all
+pointer sample. Only the icon is scaled from its edge-facing primary-axis
+origin (Bottom: bottom, Left: left, Right: right), leaving its running indicator
+stable. Reorder temporarily suspends hover visuals in all
 modes, then restores the configured effect after drop or cancellation.
+
+When `floating` is false, the selected Layer Shell edge margin is zero while
+the configured `edgeMargin` remains persisted for re-enabling floating. Auto-hide
+never unmaps an enabled Dock with rows: Always retains a bounded edge reveal
+target and zero exclusive zone, while Intelligent enters that behavior only for
+an active maximized or fullscreen Typhon toplevel. The heuristic intentionally
+does not claim overlap detection because v1 Typhon data has no output-local
+geometry. Revealing a collapsed Dock does not change its exclusive zone.
 
 A drag handler is enabled only for the configured-pin prefix. Once the system
 drag threshold is crossed, QML records the stable desktop filename, captures

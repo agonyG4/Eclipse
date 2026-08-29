@@ -21,6 +21,7 @@ void SettingsNavigationModelTest::exposesExactCatalogueOrder()
         QStringLiteral("bluetooth"), QStringLiteral("audio"), QStringLiteral("components"),
         QStringLiteral("services"), QStringLiteral("compositor"), QString(),
         QStringLiteral("performance"), QStringLiteral("appearance"), QStringLiteral("wallpaper"),
+        QStringLiteral("dock"),
         QStringLiteral("more-settings"),
     };
 
@@ -63,6 +64,8 @@ void SettingsNavigationModelTest::exposesNativePageRoutes()
         QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Compositor.qml"));
     const QUrl wallpaperRoute(
         QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Wallpaper.qml"));
+    const QUrl dockRoute(
+        QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Dock.qml"));
 
     for (int row = 0; row < model.rowCount(); ++row) {
         const QVariantMap entry = model.get(row);
@@ -72,6 +75,8 @@ void SettingsNavigationModelTest::exposesNativePageRoutes()
             QCOMPARE(route, compositorRoute);
         else if (id == QStringLiteral("wallpaper"))
             QCOMPARE(route, wallpaperRoute);
+        else if (id == QStringLiteral("dock"))
+            QCOMPARE(route, dockRoute);
         else
             QVERIFY(route.isEmpty());
     }

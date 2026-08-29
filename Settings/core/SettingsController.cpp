@@ -1,5 +1,6 @@
 #include "core/SettingsController.hpp"
 
+#include "services/dock/SettingsDockController.hpp"
 #include "services/wallpaper/SettingsWallpaperController.hpp"
 
 #include <utility>
@@ -33,6 +34,7 @@ SettingsController::SettingsController(std::unique_ptr<SettingsNavigationModel> 
             this, &SettingsController::filterTextChanged);
 
     m_wallpaperController = std::make_unique<SettingsWallpaperController>(QString(), this);
+    m_dockController = std::make_unique<SettingsDockController>(QString(), this);
 }
 
 SettingsNavigationModel *SettingsController::navigationModel()

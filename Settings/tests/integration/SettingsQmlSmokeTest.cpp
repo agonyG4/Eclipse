@@ -19,6 +19,7 @@ class SettingsQmlSmokeTest final : public QObject {
 private slots:
     void loadsCompositorRouteOffscreen();
     void loadsWallpaperRouteOffscreen();
+    void loadsDockRouteOffscreen();
     void wallpaperTranslationKeysExist();
 };
 
@@ -115,6 +116,31 @@ void SettingsQmlSmokeTest::loadsWallpaperRouteOffscreen()
     QVERIFY(confirm->property("enabled").toBool());
 }
 
+void SettingsQmlSmokeTest::loadsDockRouteOffscreen()
+{
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.selectSection(QStringLiteral("dock")));
+    QObject *root = engine.rootObjects().constFirst();
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("dockPage")) != nullptr, 1000);
+    QObject *page = root->findChild<QObject *>(QStringLiteral("dockPage"));
+    QVERIFY(page != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("dockPreview")) != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("iconSizeSlider")) != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("magnificationScaleSlider")) != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("animationSpeedSlider")) != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("indicatorSizeSlider")) != nullptr);
+}
+
 void SettingsQmlSmokeTest::wallpaperTranslationKeysExist()
 {
     QFile catalog(QDir(QStringLiteral(ASTREA_ECLIPSE_SOURCE_DIR))
@@ -161,6 +187,26 @@ void SettingsQmlSmokeTest::wallpaperTranslationKeysExist()
         QStringLiteral("apps.settings.pages.paper.wallpaper.text.wallpaper_library"),
         QStringLiteral("apps.settings.pages.paper.screensaver.text.screensaver"),
         QStringLiteral("apps.settings.pages.paper.lockscreen.text.lockscreen"),
+        QStringLiteral("settings.nav.dock"),
+        QStringLiteral("apps.settings.pages.appearance.dock.text.preview"),
+        QStringLiteral("apps.settings.pages.appearance.dock.text.layout"),
+        QStringLiteral("apps.settings.pages.appearance.dock.text.behavior"),
+        QStringLiteral("apps.settings.pages.appearance.dock.text.indicators"),
+        QStringLiteral("apps.settings.pages.appearance.dock.label.icon_size"),
+        QStringLiteral("apps.settings.pages.appearance.dock.label.icon_spacing"),
+        QStringLiteral("apps.settings.pages.appearance.dock.label.panel_padding"),
+        QStringLiteral("apps.settings.pages.appearance.dock.label.position"),
+        QStringLiteral("apps.settings.pages.appearance.dock.label.floating"),
+        QStringLiteral("apps.settings.pages.appearance.dock.label.edge_margin"),
+        QStringLiteral("apps.settings.pages.appearance.dock.label.corner_radius"),
+        QStringLiteral("apps.settings.pages.appearance.dock.label.hover_effect"),
+        QStringLiteral("apps.settings.pages.appearance.dock.label.magnification_strength"),
+        QStringLiteral("apps.settings.pages.appearance.dock.label.magnification_radius"),
+        QStringLiteral("apps.settings.pages.appearance.dock.label.auto_hide"),
+        QStringLiteral("apps.settings.pages.appearance.dock.label.animations"),
+        QStringLiteral("apps.settings.pages.appearance.dock.label.animation_speed"),
+        QStringLiteral("apps.settings.pages.appearance.dock.label.indicator_style"),
+        QStringLiteral("apps.settings.pages.appearance.dock.label.indicator_size"),
     };
     for (const auto &key : requiredKeys)
         QVERIFY2(messages.contains(key), qPrintable(QStringLiteral("Missing key: ") + key));

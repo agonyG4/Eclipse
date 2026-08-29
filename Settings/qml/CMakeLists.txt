@@ -30,6 +30,7 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     components/typography/Divider.qml
     components/typography/TextLabel.qml
     pages/system/Compositor.qml
+    pages/appearance/Dock.qml
     pages/appearance/Wallpaper.qml
     theme/Apps.qml
     theme/Shell.qml

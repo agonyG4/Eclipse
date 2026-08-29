@@ -1,23 +1,10 @@
 #pragma once
 
 #include <QFileSystemWatcher>
-#include <QJsonObject>
+#include "dock/DockConfig.hpp"
 #include <QObject>
 #include <QStringList>
 #include <QTimer>
-
-struct DockConfig {
-    int iconSize = 48;
-    int bottomMargin = 12;
-    int panelPadding = 14;
-    int itemSpacing = 10;
-    QString hoverEffect = QStringLiteral("magnification");
-    double magnificationScale = 1.6;
-    double magnificationRadius = 2.5;
-    QStringList pins;
-
-    static DockConfig defaults();
-};
 
 class DockConfigWatcher final : public QObject {
     Q_OBJECT
@@ -47,14 +34,7 @@ private:
     };
 
     JsonResult loadJsonFile(const QString &path) const;
-    DockConfig parseConfig(const QJsonObject &object, QStringList *errors) const;
     void addPathWithParents(const QString &path);
-    static int integerField(const QJsonObject &object, const QString &key, int fallback,
-                            int minimum, int maximum, QStringList *errors);
-    static bool booleanField(const QJsonObject &object, const QString &key, bool fallback,
-                             QStringList *errors);
-    static double doubleField(const QJsonObject &object, const QString &key, double fallback,
-                              double minimum, double maximum, QStringList *errors);
 
     QString m_configPath;
     QString m_componentsPath;

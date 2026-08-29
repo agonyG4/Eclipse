@@ -62,6 +62,21 @@ endfunction()
 
 astrea_shared_enable_sanitizers(astrea-shared-core)
 
+add_library(astrea-shared-dock STATIC
+    dock/DockConfig.cpp
+    dock/DockConfig.hpp
+    dock/DockConfigStore.cpp
+    dock/DockConfigStore.hpp
+)
+target_include_directories(astrea-shared-dock PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(astrea-shared-dock PUBLIC Qt6::Core)
+if(NOT MSVC)
+    target_compile_options(astrea-shared-dock PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+astrea_shared_enable_sanitizers(astrea-shared-dock)
+
 add_library(astrea-shared-statusnotifier STATIC
     statusnotifier/StatusNotifierTypes.cpp
     statusnotifier/StatusNotifierTypes.hpp
@@ -358,6 +373,17 @@ astrea_shared_enable_sanitizers(astrea-shared-typhon)
 option(ASTREA_SHARED_BUILD_TESTS "Build shared foundation tests" ON)
 if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     find_package(Qt6 6.8 REQUIRED COMPONENTS Test)
+
+    add_executable(dock-config-contract-test
+        tests/DockConfigTest.cpp
+    )
+    target_include_directories(dock-config-contract-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_link_libraries(dock-config-contract-test PRIVATE
+        astrea-shared-dock Qt6::Core Qt6::Test
+    )
+    add_test(NAME dock-config-contract-test COMMAND dock-config-contract-test)
 
     add_executable(typhon-shortcut-protocol-contract-test
         tests/TyphonShortcutProtocolContractTest.cpp

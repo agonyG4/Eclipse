@@ -150,11 +150,13 @@ void DockController::applyConfig(const DockConfig &config)
     const int previousReservation = exclusiveZone();
     const DockConfig next = normalizedConfig(config);
     const bool changed = !sameConfig(m_config, next);
+    if (!changed)
+        return;
+
     m_config = next;
     m_model.setPins(m_config.pins);
     projectRuntime();
-    if (changed)
-        emit configChanged();
+    emit configChanged();
     updateAutoHidePolicy();
     emit modelChanged();
     updateVisibility();

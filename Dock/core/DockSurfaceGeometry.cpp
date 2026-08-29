@@ -7,10 +7,29 @@ QRect DockSurfaceGeometry::delegateRectInOutput(const QSize &outputSize,
                                                 int bottomMargin,
                                                 const QRectF &delegateRect)
 {
-    const qreal surfaceOriginX =
-        (qMax(1, outputSize.width()) - qMax(1, surfaceSize.width())) / 2.0;
-    const qreal surfaceOriginY = qMax(1, outputSize.height())
-        - qMax(0, bottomMargin) - qMax(1, surfaceSize.height());
+    return delegateRectInOutput(outputSize, surfaceSize, QStringLiteral("bottom"),
+                                bottomMargin, delegateRect);
+}
+
+QRect DockSurfaceGeometry::delegateRectInOutput(const QSize &outputSize,
+                                                const QSize &surfaceSize,
+                                                const QString &position,
+                                                int edgeMargin,
+                                                const QRectF &delegateRect)
+{
+    const qreal outputWidth = qMax(1, outputSize.width());
+    const qreal outputHeight = qMax(1, outputSize.height());
+    const qreal surfaceWidth = qMax(1, surfaceSize.width());
+    const qreal surfaceHeight = qMax(1, surfaceSize.height());
+    qreal surfaceOriginX = (outputWidth - surfaceWidth) / 2.0;
+    qreal surfaceOriginY = (outputHeight - surfaceHeight) / 2.0;
+    const qreal margin = qMax(0, edgeMargin);
+    if (position == QStringLiteral("left"))
+        surfaceOriginX = margin;
+    else if (position == QStringLiteral("right"))
+        surfaceOriginX = outputWidth - margin - surfaceWidth;
+    else
+        surfaceOriginY = outputHeight - margin - surfaceHeight;
     const QRectF outputRect = delegateRect.translated(surfaceOriginX, surfaceOriginY);
     return QRect(qRound(outputRect.x()), qRound(outputRect.y()),
                  qRound(outputRect.width()), qRound(outputRect.height()));
@@ -18,9 +37,10 @@ QRect DockSurfaceGeometry::delegateRectInOutput(const QSize &outputSize,
 
 QRect DockSurfaceGeometry::outputLocalDelegateRect(int outputWidth, int outputHeight,
                                                    int surfaceWidth, int surfaceHeight,
-                                                   int bottomMargin,
+                                                   const QString &position, int edgeMargin,
                                                    const QRectF &delegateRect) const
 {
     return delegateRectInOutput(QSize(outputWidth, outputHeight),
-                                QSize(surfaceWidth, surfaceHeight), bottomMargin, delegateRect);
+                                QSize(surfaceWidth, surfaceHeight), position, edgeMargin,
+                                delegateRect);
 }

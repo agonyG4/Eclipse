@@ -207,6 +207,18 @@ void SettingsQmlSmokeTest::wallpaperTranslationKeysExist()
         QStringLiteral("apps.settings.pages.appearance.dock.label.animation_speed"),
         QStringLiteral("apps.settings.pages.appearance.dock.label.indicator_style"),
         QStringLiteral("apps.settings.pages.appearance.dock.label.indicator_size"),
+        QStringLiteral("apps.settings.pages.appearance.dock.option.bottom"),
+        QStringLiteral("apps.settings.pages.appearance.dock.option.left"),
+        QStringLiteral("apps.settings.pages.appearance.dock.option.right"),
+        QStringLiteral("apps.settings.pages.appearance.dock.option.none"),
+        QStringLiteral("apps.settings.pages.appearance.dock.option.lift"),
+        QStringLiteral("apps.settings.pages.appearance.dock.option.magnification"),
+        QStringLiteral("apps.settings.pages.appearance.dock.option.never"),
+        QStringLiteral("apps.settings.pages.appearance.dock.option.intelligent"),
+        QStringLiteral("apps.settings.pages.appearance.dock.option.always"),
+        QStringLiteral("apps.settings.pages.appearance.dock.option.line"),
+        QStringLiteral("apps.settings.pages.appearance.dock.option.dot"),
+        QStringLiteral("apps.settings.pages.appearance.dock.unit.pixels"),
     };
     for (const auto &key : requiredKeys)
         QVERIFY2(messages.contains(key), qPrintable(QStringLiteral("Missing key: ") + key));

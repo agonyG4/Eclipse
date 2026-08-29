@@ -12,13 +12,33 @@ namespace {
 bool sameConfig(const DockConfig &left, const DockConfig &right)
 {
     return left.iconSize == right.iconSize
-        && left.bottomMargin == right.bottomMargin
         && left.panelPadding == right.panelPadding
         && left.itemSpacing == right.itemSpacing
         && left.hoverEffect == right.hoverEffect
         && qFuzzyCompare(left.magnificationScale, right.magnificationScale)
         && qFuzzyCompare(left.magnificationRadius, right.magnificationRadius)
+        && left.edgeMargin == right.edgeMargin
+        && left.position == right.position
+        && left.floating == right.floating
+        && left.cornerRadius == right.cornerRadius
+        && left.autoHide == right.autoHide
+        && left.indicatorStyle == right.indicatorStyle
+        && left.indicatorSize == right.indicatorSize
+        && left.animationsEnabled == right.animationsEnabled
+        && qFuzzyCompare(left.animationSpeed, right.animationSpeed)
         && left.pins == right.pins;
+}
+
+DockConfig normalizedConfig(const DockConfig &config)
+{
+    DockConfig normalized = config;
+    const DockConfig defaults = DockConfig::defaults();
+    // Keep direct C++ callers of the old struct source-compatible while making the
+    // canonical edgeMargin field authoritative for parsed configurations.
+    if (config.edgeMargin == defaults.edgeMargin && config.bottomMargin != defaults.bottomMargin)
+        normalized.edgeMargin = config.bottomMargin;
+    normalized.bottomMargin = normalized.edgeMargin;
+    return normalized;
 }
 
 } // namespace
@@ -29,6 +49,13 @@ DockController::DockController(ApplicationLauncher *launcher, DesktopEntryCatalo
     : QObject(parent), m_launcher(launcher), m_persistence(persistence), m_catalog(catalog),
       m_catalogSnapshot(std::make_shared<const DesktopEntrySnapshot>())
 {
+    m_autoHideTimer.setSingleShot(true);
+    m_autoHideTimer.setInterval(180);
+    connect(&m_autoHideTimer, &QTimer::timeout, this, [this] {
+        if (!m_pointerInside && autoHideActive())
+            setRevealed(false);
+    });
+
     if (m_launcher) {
         connect(m_launcher, &ApplicationLauncher::launchSucceeded,
                 this, &DockController::onLaunchSucceeded);
@@ -43,6 +70,7 @@ DockController::DockController(ApplicationLauncher *launcher, DesktopEntryCatalo
         });
         setCatalogSnapshot(m_catalog->snapshot());
     }
+    updateAutoHidePolicy();
     updateVisibility();
 }
 
@@ -72,29 +100,83 @@ int DockController::launchingCount() const
     return count;
 }
 
+int DockController::exclusiveZone() const
+{
+    if (!m_enabled || !m_requestedVisible || m_model.rowCount() == 0 || autoHideActive())
+        return 0;
+    return restingHeight();
+}
+
+bool DockController::autoHideActive() const
+{
+    if (m_config.autoHide == QStringLiteral("always"))
+        return true;
+    return m_config.autoHide == QStringLiteral("intelligent") && m_obstructed;
+}
+
+void DockController::setRevealed(bool revealed)
+{
+    if (m_revealed == revealed)
+        return;
+    m_revealed = revealed;
+    emit revealedChanged();
+}
+
+void DockController::updateAutoHidePolicy()
+{
+    bool obstructed = false;
+    if (m_runtimeSnapshot.has_value()) {
+        obstructed = std::any_of(m_runtimeSnapshot->windows.cbegin(),
+                                 m_runtimeSnapshot->windows.cend(), [](const auto &window) {
+            return Astrea::Typhon::hasState(window.states,
+                                            Astrea::Typhon::ToplevelStateFlag::Active)
+                && (Astrea::Typhon::hasState(window.states,
+                                              Astrea::Typhon::ToplevelStateFlag::Maximized)
+                    || Astrea::Typhon::hasState(window.states,
+                                                Astrea::Typhon::ToplevelStateFlag::Fullscreen));
+        });
+    }
+    m_obstructed = obstructed;
+    if (!autoHideActive()) {
+        m_autoHideTimer.stop();
+        setRevealed(true);
+    } else if (!m_pointerInside) {
+        setRevealed(false);
+    }
+}
+
 void DockController::applyConfig(const DockConfig &config)
 {
-    const bool changed = !sameConfig(m_config, config);
-    m_config = config;
+    const int previousReservation = exclusiveZone();
+    const DockConfig next = normalizedConfig(config);
+    const bool changed = !sameConfig(m_config, next);
+    m_config = next;
     m_model.setPins(m_config.pins);
     projectRuntime();
     if (changed)
         emit configChanged();
+    updateAutoHidePolicy();
     emit modelChanged();
     updateVisibility();
+    if (previousReservation != exclusiveZone())
+        emit reservationChanged();
 }
 
 void DockController::setComponentEnabled(bool enabled)
 {
     if (m_enabled == enabled)
         return;
+    const int previousReservation = exclusiveZone();
     m_enabled = enabled;
     emit enabledChanged();
     updateVisibility();
+    if (previousReservation != exclusiveZone())
+        emit reservationChanged();
 }
 
 void DockController::setCatalogSnapshot(std::shared_ptr<const DesktopEntrySnapshot> snapshot)
 {
+    const int previousReservation = exclusiveZone();
     if (!snapshot)
         snapshot = std::make_shared<const DesktopEntrySnapshot>();
     m_catalogSnapshot = std::move(snapshot);
@@ -102,6 +184,8 @@ void DockController::setCatalogSnapshot(std::shared_ptr<const DesktopEntrySnapsh
     projectRuntime();
     emit modelChanged();
     updateVisibility();
+    if (previousReservation != exclusiveZone())
+        emit reservationChanged();
 }
 
 void DockController::attachTyphonConnection(TyphonToplevelConnection *connection)
@@ -147,21 +231,45 @@ void DockController::attachTyphonConnection(TyphonToplevelConnection *connection
 
 void DockController::applyTyphonSnapshot(const Astrea::Typhon::Snapshot &snapshot)
 {
+    const int previousReservation = exclusiveZone();
     m_runtimeSnapshot = snapshot;
     m_runtimeKnown = true;
+    updateAutoHidePolicy();
     projectRuntime();
     emit modelChanged();
+    if (previousReservation != exclusiveZone())
+        emit reservationChanged();
 }
 
 void DockController::clearTyphonRuntime()
 {
     const bool changed = m_runtimeKnown || m_runtimeSnapshot.has_value() || !m_runtimeStates.isEmpty();
+    const int previousReservation = exclusiveZone();
     m_runtimeKnown = false;
     m_runtimeSnapshot.reset();
     m_runtimeStates.clear();
     m_model.clearRuntimeProjection();
+    updateAutoHidePolicy();
     if (changed)
         emit modelChanged();
+    if (previousReservation != exclusiveZone())
+        emit reservationChanged();
+}
+
+void DockController::setPointerInside(bool inside)
+{
+    m_pointerInside = inside;
+    if (!autoHideActive()) {
+        m_autoHideTimer.stop();
+        setRevealed(true);
+        return;
+    }
+    if (inside) {
+        m_autoHideTimer.stop();
+        setRevealed(true);
+    } else if (m_revealed) {
+        m_autoHideTimer.start();
+    }
 }
 
 void DockController::launch(int row)
@@ -393,17 +501,29 @@ void DockController::launchItem(const DockAppInfo &item, bool activateRunning)
 void DockController::show()
 {
     if (m_requestedVisible)
+    {
+        setRevealed(true);
         return;
+    }
+    const int previousReservation = exclusiveZone();
     m_requestedVisible = true;
+    setRevealed(true);
     updateVisibility();
+    if (previousReservation != exclusiveZone())
+        emit reservationChanged();
 }
 
 void DockController::hide()
 {
     if (!m_requestedVisible)
         return;
+    const int previousReservation = exclusiveZone();
     m_requestedVisible = false;
+    m_autoHideTimer.stop();
+    setRevealed(false);
     updateVisibility();
+    if (previousReservation != exclusiveZone())
+        emit reservationChanged();
 }
 
 void DockController::onLaunchSucceeded(const QString &desktopId)

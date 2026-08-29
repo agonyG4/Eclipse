@@ -130,7 +130,7 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     target_include_directories(dock-layer-shell-surface-test PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
     target_link_libraries(dock-layer-shell-surface-test PRIVATE
-        astrea-shared-layer-shell Qt6::Core Qt6::Gui Qt6::Quick Qt6::Test)
+        astrea-shared-layer-shell astrea-shared-dock Qt6::Core Qt6::Gui Qt6::Quick Qt6::Test)
     dock_enable_sanitizers(dock-layer-shell-surface-test)
     add_test(NAME dock-layer-shell-surface-test COMMAND dock-layer-shell-surface-test)
 
@@ -163,7 +163,7 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     target_include_directories(dock-hover-qml-test PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
     target_link_libraries(dock-hover-qml-test PRIVATE
-        astrea-shared-core astrea-shared-coreplugin astrea-shared-typhon
+        astrea-shared-core astrea-shared-coreplugin astrea-shared-dock astrea-shared-typhon
         Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
     dock_enable_sanitizers(dock-hover-qml-test)
     add_test(NAME dock-hover-qml-test COMMAND dock-hover-qml-test)

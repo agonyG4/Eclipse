@@ -205,7 +205,7 @@ Item {
 
                 Form.SelectButton {
                     width: 180
-                    label: root.positionOptions[root.indexOf(root.positionOptions, root.controller.position)]
+                    label: root.positionOptions[root.indexOf(["bottom", "left", "right"], root.controller.position)]
                     options: root.positionOptions
                     selectedIndex: root.indexOf(["bottom", "left", "right"], root.controller.position)
                     onSelected: index => root.controller.setPosition(["bottom", "left", "right"][index])

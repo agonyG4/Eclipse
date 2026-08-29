@@ -266,6 +266,8 @@ bool AstreaShellApplication::initializeQml()
             this, &AstreaShellApplication::syncDockVisibility);
     connect(m_runtime->dockController(), &DockController::configChanged,
             this, &AstreaShellApplication::configureDockSurface);
+    connect(m_runtime->dockController(), &DockController::reservationChanged,
+            this, &AstreaShellApplication::updateDockExclusiveZone);
     syncDockVisibility();
     return true;
 }
@@ -321,7 +323,7 @@ bool AstreaShellApplication::configureDockSurface()
     QString error;
     const bool configured = DockLayerShellSurface::configure(
         m_dockWindow, m_runtime->dockConfig()->config(),
-        m_runtime->dockController()->restingHeight(),
+        m_runtime->dockController()->exclusiveZone(),
         screen, &error);
     if (!configured) {
         qCritical("Astrea shell Dock Layer Shell setup failed: %s", qPrintable(error));
@@ -337,6 +339,18 @@ bool AstreaShellApplication::configureDockSurface()
         m_dockLayerConfigurationRequested = true;
     }
     return configured;
+}
+
+void AstreaShellApplication::updateDockExclusiveZone()
+{
+    if (!m_dockWindow || !m_dockLayerConfigurationRequested)
+        return;
+    QString error;
+    if (!DockLayerShellSurface::updateExclusiveZone(
+            m_dockWindow, m_runtime->dockController()->exclusiveZone(), &error)) {
+        qCritical("Astrea shell Dock exclusive zone update failed: %s", qPrintable(error));
+        m_application.exit(1);
+    }
 }
 
 void AstreaShellApplication::updateDockOutputGeometry()
@@ -362,7 +376,7 @@ void AstreaShellApplication::syncDockVisibility()
     }
     QString error;
     if (!DockLayerShellSurface::setMapped(m_dockWindow, visible,
-                                          m_runtime->dockController()->restingHeight(), &error)) {
+                                          m_runtime->dockController()->exclusiveZone(), &error)) {
         qCritical("Astrea shell Dock Layer Shell mapping failed: %s", qPrintable(error));
         m_application.exit(1);
     }

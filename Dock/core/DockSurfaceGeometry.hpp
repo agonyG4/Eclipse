@@ -15,8 +15,11 @@ public:
 
     static QRect delegateRectInOutput(const QSize &outputSize, const QSize &surfaceSize,
                                       int bottomMargin, const QRectF &delegateRect);
+    static QRect delegateRectInOutput(const QSize &outputSize, const QSize &surfaceSize,
+                                      const QString &position, int edgeMargin,
+                                      const QRectF &delegateRect);
     Q_INVOKABLE QRect outputLocalDelegateRect(int outputWidth, int outputHeight,
                                                int surfaceWidth, int surfaceHeight,
-                                               int bottomMargin,
+                                               const QString &position, int edgeMargin,
                                                const QRectF &delegateRect) const;
 };

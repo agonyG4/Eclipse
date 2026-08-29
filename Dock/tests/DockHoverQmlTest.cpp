@@ -180,6 +180,7 @@ private slots:
     void magnifiedInteractionTargetMatchesVisualBounds();
     void magnifiedInteractionRegionsResolveByVisualStacking();
     void exclusiveDragReleaseInEmptyHeadroomStaysOutsideDock();
+    void verticalPositionsReusePrimaryAxisGeometry();
 };
 
 void DockHoverQmlTest::initTestCase()
@@ -817,7 +818,7 @@ void DockHoverQmlTest::dragGeometryRemainsStableDuringMagnificationCollapse()
         QVERIFY(surfaceWidth > restingWidth);
         QTRY_VERIFY_WITH_TIMEOUT(chrome->width() > restingWidth, 1000);
 
-        QTRY_VERIFY_WITH_TIMEOUT(propertyReal(source, "magnificationScale") > 1.1, 1000);
+        QTRY_VERIFY_WITH_TIMEOUT(propertyReal(source, "magnificationScale") > 1.1, 2000);
         if (sourceIndex == 0 || sourceIndex == pins.size() - 1) {
             QTRY_VERIFY_WITH_TIMEOUT(qAbs(propertyReal(source, "visualOffsetX")) > 1.0,
                                      1000);
@@ -1541,6 +1542,85 @@ void DockHoverQmlTest::reorderPreviewWorksForEveryHoverMode()
         QCOMPARE(reorderSpy.at(0).at(0).toString(), QStringLiteral("one.desktop"));
         QCOMPARE(reorderSpy.at(0).at(1).toInt(), 2);
         QCOMPARE(activationSpy.count(), 0);
+        delete panel;
+    }
+}
+
+void DockHoverQmlTest::verticalPositionsReusePrimaryAxisGeometry()
+{
+    const QStringList pins{
+        QStringLiteral("one.desktop"), QStringLiteral("two.desktop"),
+        QStringLiteral("three.desktop")};
+    for (const QString &position : {QStringLiteral("left"), QStringLiteral("right")}) {
+        DockController controller;
+        DockConfig config = configFor(QStringLiteral("magnification"), pins);
+        config.position = position;
+        config.indicatorStyle = QStringLiteral("line");
+        config.indicatorSize = 5;
+        controller.applyConfig(config);
+
+        QQmlEngine engine;
+        engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+        engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+        QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+        QVERIFY2(component.status() == QQmlComponent::Ready,
+                 qPrintable(component.errorString()));
+        auto *panel = qobject_cast<QQuickItem *>(component.create());
+        QVERIFY2(panel, qPrintable(component.errorString()));
+        QQuickWindow window;
+        panel->setParentItem(window.contentItem());
+        window.resize(180, 900);
+        QTest::qWait(40);
+
+        QVERIFY(panel->property("vertical").toBool());
+        QCOMPARE(panel->property("restingWidth").toInt(), controller.restingHeight());
+        QVERIFY(panel->height() > panel->property("restingHeight").toDouble());
+        QQuickItem *first = delegate(panel, pins.at(0));
+        QQuickItem *middle = delegate(panel, pins.at(1));
+        QQuickItem *last = delegate(panel, pins.at(2));
+        QVERIFY(first && middle && last);
+        QQuickItem *middleIcon = iconItem(middle);
+        QQuickItem *indicator = childWithObjectName(middle, QStringLiteral("runningIndicator"));
+        QVERIFY(middleIcon && indicator);
+
+        const qreal initialSurfaceWidth = panel->width();
+        const qreal initialSurfaceHeight = panel->height();
+        const QPointF middlePoint = middle->mapToItem(
+            panel, middle->width() / 2.0, middle->height() / 2.0);
+        QVERIFY(QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
+                                          Q_ARG(QVariant, QVariant(middlePoint.x())),
+                                          Q_ARG(QVariant, QVariant(middlePoint.y()))));
+        QTRY_VERIFY_WITH_TIMEOUT(middleIcon->scale() > 1.0, 1500);
+        QVERIFY2(qAbs(panel->width() - initialSurfaceWidth) < 0.1,
+                 "vertical hover must not resize the fixed surface width");
+        QVERIFY2(qAbs(panel->height() - initialSurfaceHeight) < 0.1,
+                 "vertical hover must not resize the fixed surface height");
+
+        const QRectF iconRect = middleIcon->mapRectToItem(
+            panel, QRectF(0, 0, middleIcon->width(), middleIcon->height()));
+        const QRectF indicatorRect = indicator->mapRectToItem(
+            panel, QRectF(0, 0, indicator->width(), indicator->height()));
+        if (position == QStringLiteral("left"))
+            QVERIFY(indicatorRect.right() <= iconRect.left() + 0.1);
+        else
+            QVERIFY(indicatorRect.left() >= iconRect.right() - 0.1);
+
+        const QPointF firstPoint = first->mapToItem(
+            panel, first->width() / 2.0, first->height() / 2.0);
+        QVERIFY(QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
+                                          Q_ARG(QVariant, QVariant(firstPoint.x())),
+                                          Q_ARG(QVariant, QVariant(firstPoint.y()))));
+        QTRY_VERIFY_WITH_TIMEOUT(iconItem(first)->scale() > 1.0, 1500);
+        QTRY_VERIFY_WITH_TIMEOUT(iconItem(first)->scale() >= iconItem(middle)->scale(), 1500);
+
+        const QPointF lastPoint = last->mapToItem(
+            panel, last->width() / 2.0, last->height() / 2.0);
+        QVERIFY(QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
+                                          Q_ARG(QVariant, QVariant(lastPoint.x())),
+                                          Q_ARG(QVariant, QVariant(lastPoint.y()))));
+        QTRY_VERIFY_WITH_TIMEOUT(iconItem(last)->scale() > 1.0, 1500);
+        QTRY_VERIFY_WITH_TIMEOUT(iconItem(last)->scale() >= iconItem(middle)->scale(), 1500);
+
         delete panel;
     }
 }

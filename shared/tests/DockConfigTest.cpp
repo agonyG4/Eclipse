@@ -21,6 +21,7 @@ private slots:
     void invalidEnumsFallbackIndependently();
     void nonFiniteNumbersFallbackAndFiniteValuesClamp();
     void storePreservesUnknownKeysAndExactPins();
+    void personalizationWritePreservesRawPins();
     void malformedExistingJsonIsRefusedWithoutReplacement();
 };
 
@@ -173,6 +174,30 @@ void DockConfigTest::storePreservesUnknownKeysAndExactPins()
     QCOMPARE(result.value(QStringLiteral("position")).toString(), QStringLiteral("left"));
     const QJsonArray expectedPins{QStringLiteral("second.desktop"), QStringLiteral("first.desktop")};
     QCOMPARE(result.value(QStringLiteral("pins")).toArray(), expectedPins);
+}
+
+void DockConfigTest::personalizationWritePreservesRawPins()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = configPath(directory);
+    const QJsonArray rawPins{QStringLiteral("one.desktop"), QStringLiteral("one.desktop"),
+                             QStringLiteral("not-a-pin")};
+    writeObject(path, QJsonObject{
+        {QStringLiteral("futureFeature"), true},
+        {QStringLiteral("pins"), rawPins}
+    });
+
+    DockConfig config = DockConfigCodec::parse(readObject(path));
+    config.iconSize = 52;
+    DockConfigStore store(path);
+    QString error;
+    QVERIFY2(store.writePersonalization(config, &error), qPrintable(error));
+
+    const QJsonObject result = readObject(path);
+    QCOMPARE(result.value(QStringLiteral("futureFeature")).toBool(), true);
+    QCOMPARE(result.value(QStringLiteral("pins")).toArray(), rawPins);
+    QCOMPARE(result.value(QStringLiteral("iconSize")).toInt(), 52);
 }
 
 void DockConfigTest::malformedExistingJsonIsRefusedWithoutReplacement()

@@ -59,6 +59,23 @@ bool DockConfigStore::writeConfig(const DockConfig &config, QString *errorOut) c
     return writeObject(DockConfigCodec::patchKnownFields(source, config, true), errorOut);
 }
 
+bool DockConfigStore::writePersonalization(const DockConfig &config, QString *errorOut) const
+{
+    DockConfig scalarConfig = config;
+    scalarConfig.pins.clear();
+    QString validationError;
+    if (!DockConfigCodec::validateConfig(scalarConfig, &validationError))
+        return fail(errorOut, validationError);
+
+    const DockConfigCodec::JsonResult current =
+        DockConfigCodec::readJsonObject(m_configPath);
+    if (!current.error.isEmpty())
+        return fail(errorOut, current.error);
+
+    const QJsonObject source = current.exists ? current.object : QJsonObject{};
+    return writeObject(DockConfigCodec::patchKnownFields(source, config, false), errorOut);
+}
+
 bool DockConfigStore::writeObject(const QJsonObject &object, QString *errorOut) const
 {
     const QByteArray serialized = QJsonDocument(object).toJson(QJsonDocument::Indented);

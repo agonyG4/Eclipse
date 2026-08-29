@@ -10,6 +10,7 @@ private slots:
     void ultrawideAndVirtualOriginDoNotDistortGeometry();
     void magnifiedSurfaceUsesCurrentSurfaceWidth();
     void itemPositionsAndBottomMarginsRemainDeterministic();
+    void verticalEdgesUseInwardOutputLocalOrigins();
 };
 
 void DockSurfaceGeometryTest::centeredDockUsesOutputLocalCoordinates()
@@ -64,6 +65,23 @@ void DockSurfaceGeometryTest::itemPositionsAndBottomMarginsRemainDeterministic()
         QVERIFY(item.top() >= 0);
         QVERIFY(item.bottom() < output.height());
     }
+}
+
+void DockSurfaceGeometryTest::verticalEdgesUseInwardOutputLocalOrigins()
+{
+    const QSize output(1920, 1080);
+    const QSize surface(100, 600);
+    const QRectF delegate(14, 19, 56, 62);
+
+    QCOMPARE(DockSurfaceGeometry::delegateRectInOutput(
+                  output, surface, QStringLiteral("left"), 12, delegate),
+              QRect(26, 259, 56, 62));
+    QCOMPARE(DockSurfaceGeometry::delegateRectInOutput(
+                  output, surface, QStringLiteral("right"), 12, delegate),
+              QRect(1822, 259, 56, 62));
+    QCOMPARE(DockSurfaceGeometry::delegateRectInOutput(
+                  output, surface, QStringLiteral("left"), 0, delegate),
+              QRect(14, 259, 56, 62));
 }
 
 QTEST_GUILESS_MAIN(DockSurfaceGeometryTest)

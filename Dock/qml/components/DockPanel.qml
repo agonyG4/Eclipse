@@ -14,6 +14,7 @@ Item {
     readonly property int restingHeight: vertical ? restingPrimary : restingCross
     readonly property int contentWidth: restingWidth
     readonly property int contentHeight: restingHeight
+    readonly property int surfaceCrossInset: DockController.chromeEdgeInset
     readonly property int slotPitch: (vertical ? DockController.delegateHeight
                                                 : DockController.delegateWidth)
         + DockController.itemSpacing
@@ -38,11 +39,13 @@ Item {
         * (Math.max(1, DockController.magnificationScale) - 1)
     readonly property real maximumMagnificationExtraPrimary: maximumMagnificationExtraWidth
     readonly property int surfaceWidth: vertical
-        ? Math.max(restingWidth, Math.ceil(restingWidth + surfaceHeadroom))
+        ? Math.max(restingWidth + surfaceCrossInset,
+                   Math.ceil(restingWidth + surfaceHeadroom + surfaceCrossInset))
         : Math.max(restingWidth, Math.ceil(restingWidth + maximumMagnificationExtraPrimary))
     readonly property int surfaceHeight: vertical
         ? Math.max(restingHeight, Math.ceil(restingHeight + maximumMagnificationExtraPrimary))
-        : Math.max(restingHeight, Math.ceil(restingHeight + surfaceHeadroom))
+        : Math.max(restingHeight + surfaceCrossInset,
+                   Math.ceil(restingHeight + surfaceHeadroom + surfaceCrossInset))
     // Kept as a read-only compatibility property. The envelope reserves this
     // headroom structurally instead of resizing as the pointer moves.
     readonly property real visualHeadroom: surfaceHeadroom
@@ -96,9 +99,11 @@ Item {
     Rectangle {
         id: dockChrome
         objectName: "dockChrome"
-        x: root.vertical ? (DockController.position === "left" ? 0 : parent.width - width)
+        x: root.vertical ? (DockController.position === "left" ? root.surfaceCrossInset
+                                                                  : parent.width - width - root.surfaceCrossInset)
                          : (parent.width - width) / 2
-        y: root.vertical ? (parent.height - height) / 2 : parent.height - height
+        y: root.vertical ? (parent.height - height) / 2
+                         : parent.height - height - root.surfaceCrossInset
         width: root.vertical ? root.restingWidth : root.restingWidth + root.magnificationWidth
         height: root.vertical ? root.restingHeight + root.magnificationHeight : root.restingHeight
         radius: DockController.cornerRadius
@@ -177,7 +182,7 @@ Item {
         y: root.vertical ? (root.height - height) / 2 : root.height - height
         radius: Math.min(width, height) / 2
         color: "transparent"
-        visible: !DockController.revealed
+        visible: DockController.physicalEdgeReveal && !DockController.revealed
     }
 
     Connections {
@@ -205,6 +210,10 @@ Item {
     Connections {
         target: DockController
         function onRevealedChanged() {
+            root.updateHoverEffect()
+            root.scheduleInputRegionUpdate()
+        }
+        function onSurfacePlacementChanged() {
             root.updateHoverEffect()
             root.scheduleInputRegionUpdate()
         }
@@ -262,10 +271,13 @@ Item {
         if (!point || !isFinite(point.x) || !isFinite(point.y))
             return false
 
-        if (!DockController.revealed) {
+        if (!DockController.revealed && DockController.physicalEdgeReveal) {
             return point.x >= edgeRevealTarget.x && point.x < edgeRevealTarget.x + edgeRevealTarget.width
                 && point.y >= edgeRevealTarget.y && point.y < edgeRevealTarget.y + edgeRevealTarget.height
         }
+
+        if (!DockController.revealed)
+            return false
 
         if (point.x >= dockChrome.x && point.x < dockChrome.x + dockChrome.width
             && point.y >= dockChrome.y && point.y < dockChrome.y + dockChrome.height)
@@ -305,10 +317,14 @@ Item {
             return
 
         inputInteractionRects.length = 0
-        if (!DockController.revealed) {
+        if (!DockController.revealed && DockController.physicalEdgeReveal) {
             inputRegionBridge.update(windowRect(Qt.rect(edgeRevealTarget.x, edgeRevealTarget.y,
                                                         edgeRevealTarget.width, edgeRevealTarget.height)),
                                      inputInteractionRects, appRepeater.count)
+            return
+        }
+        if (!DockController.revealed) {
+            inputRegionBridge.update(Qt.rect(), inputInteractionRects, appRepeater.count)
             return
         }
         for (var i = 0; i < appRepeater.count; ++i) {

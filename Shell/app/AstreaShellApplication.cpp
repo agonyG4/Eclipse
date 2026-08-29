@@ -264,7 +264,7 @@ bool AstreaShellApplication::initializeQml()
 
     connect(m_runtime->dockController(), &DockController::visibleChanged,
             this, &AstreaShellApplication::syncDockVisibility);
-    connect(m_runtime->dockController(), &DockController::configChanged,
+    connect(m_runtime->dockController(), &DockController::surfacePlacementChanged,
             this, &AstreaShellApplication::configureDockSurface);
     connect(m_runtime->dockController(), &DockController::reservationChanged,
             this, &AstreaShellApplication::updateDockExclusiveZone);
@@ -323,6 +323,7 @@ bool AstreaShellApplication::configureDockSurface()
     QString error;
     const bool configured = DockLayerShellSurface::configure(
         m_dockWindow, m_runtime->dockConfig()->config(),
+        m_runtime->dockController()->surfacePlacement(),
         m_runtime->dockController()->exclusiveZone(),
         screen, &error);
     if (!configured) {

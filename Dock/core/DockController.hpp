@@ -101,6 +101,8 @@ public:
     int restingHeight() const { return DockMetrics::restingHeight(m_config.iconSize); }
     int restingCrossThickness() const { return restingHeight(); }
     int exclusiveZone() const;
+    DockSurfacePlacement surfacePlacement() const
+    { return DockSurfaceGeometry::placementFor(m_config, autoHideActive()); }
     int layerShellEdgeMargin() const { return surfacePlacement().layerShellEdgeMargin; }
     int chromeEdgeInset() const { return surfacePlacement().chromeEdgeInset; }
     bool physicalEdgeReveal() const { return surfacePlacement().physicalEdgeReveal; }
@@ -153,8 +155,6 @@ private:
     void updateVisibility();
     void updateAutoHidePolicy();
     bool autoHideActive() const;
-    DockSurfacePlacement surfacePlacement() const
-    { return DockSurfaceGeometry::placementFor(m_config, autoHideActive()); }
     void setRevealed(bool revealed);
     void projectRuntime();
     void reconcileTyphonActionFailure(Astrea::Typhon::ToplevelActionError error);

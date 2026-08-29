@@ -1,21 +1,14 @@
 #pragma once
 
-#include <QJsonObject>
-#include <QString>
-#include <QStringList>
+#include "dock/DockConfig.hpp"
 
 namespace DockConfigValidation {
 
-inline constexpr qint64 kMaximumConfigBytes = 1024LL * 1024LL;
-inline constexpr int kMaximumPins = 256;
-inline constexpr int kMaximumPinLength = 255;
+inline constexpr qint64 kMaximumConfigBytes = DockConfigCodec::kMaximumConfigBytes;
+inline constexpr int kMaximumPins = DockConfigCodec::kMaximumPins;
+inline constexpr int kMaximumPinLength = DockConfigCodec::kMaximumPinLength;
 
-struct JsonResult {
-    QJsonObject object;
-    bool exists = false;
-    QString error;
-};
-
+using JsonResult = DockConfigCodec::JsonResult;
 JsonResult readJsonObject(const QString &path);
 bool validDesktopFileName(const QString &fileName);
 bool validatePinList(const QStringList &pins, QString *errorOut = nullptr);

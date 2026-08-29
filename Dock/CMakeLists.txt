@@ -49,7 +49,7 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
         services/DockConfigValidation.cpp
     )
     target_include_directories(dock-config-watcher-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
-    target_link_libraries(dock-config-watcher-test PRIVATE astrea-shared-core Qt6::Core Qt6::Gui Qt6::Test)
+    target_link_libraries(dock-config-watcher-test PRIVATE astrea-shared-core astrea-shared-dock Qt6::Core Qt6::Gui Qt6::Test)
     dock_enable_sanitizers(dock-config-watcher-test)
     add_test(NAME dock-config-watcher-test COMMAND dock-config-watcher-test)
 
@@ -62,7 +62,7 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     target_include_directories(dock-config-persistence-test PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
     target_link_libraries(dock-config-persistence-test PRIVATE
-        astrea-shared-core Qt6::Core Qt6::Gui Qt6::Test)
+        astrea-shared-core astrea-shared-dock Qt6::Core Qt6::Gui Qt6::Test)
     dock_enable_sanitizers(dock-config-persistence-test)
     add_test(NAME dock-config-persistence-test COMMAND dock-config-persistence-test)
 
@@ -85,7 +85,7 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     )
     target_include_directories(dock-controller-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
     target_link_libraries(dock-controller-test PRIVATE
-        astrea-shared-core astrea-shared-typhon Qt6::Core Qt6::Gui Qt6::Test)
+        astrea-shared-core astrea-shared-dock astrea-shared-typhon Qt6::Core Qt6::Gui Qt6::Test)
     dock_enable_sanitizers(dock-controller-test)
     add_test(NAME dock-controller-test COMMAND dock-controller-test)
 
@@ -100,7 +100,7 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     target_include_directories(dock-typhon-runtime-integration-test PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
     target_link_libraries(dock-typhon-runtime-integration-test PRIVATE
-        astrea-shared-core astrea-shared-typhon Qt6::Core Qt6::Gui Qt6::Test)
+        astrea-shared-core astrea-shared-dock astrea-shared-typhon Qt6::Core Qt6::Gui Qt6::Test)
     dock_enable_sanitizers(dock-typhon-runtime-integration-test)
     add_test(NAME dock-typhon-runtime-integration-test
              COMMAND dock-typhon-runtime-integration-test)

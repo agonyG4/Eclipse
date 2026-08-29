@@ -47,7 +47,19 @@ class FakeInputRegionBridge final : public QObject {
     Q_OBJECT
 
 public:
-    Q_INVOKABLE void update(const QRectF &, const QVariantList &, int) {}
+    Q_INVOKABLE void update(const QRectF &chrome, const QVariantList &interactionRects,
+                            int itemCount)
+    {
+        lastChrome = chrome;
+        lastInteractionRects = interactionRects;
+        lastItemCount = itemCount;
+        ++updateCount;
+    }
+
+    QRectF lastChrome;
+    QVariantList lastInteractionRects;
+    int lastItemCount = 0;
+    int updateCount = 0;
 
 signals:
     void windowReady();
@@ -182,6 +194,7 @@ private slots:
     void exclusiveDragReleaseInEmptyHeadroomStaysOutsideDock();
     void verticalPositionsReusePrimaryAxisGeometry();
     void verticalContentIsCenteredWithinChrome();
+    void verticalDragReorderUsesPrimaryAndCrossAxes();
     void floatingAutoHideUsesPhysicalEdgeRevealGeometry();
 };
 
@@ -1679,6 +1692,156 @@ void DockHoverQmlTest::verticalContentIsCenteredWithinChrome()
             QVERIFY2(qAbs(edgeDistance - leftEdgeDistance) < 0.1,
                      qPrintable(QStringLiteral("left distance=%1 right distance=%2")
                                     .arg(leftEdgeDistance).arg(edgeDistance)));
+        delete panel;
+    }
+}
+
+void DockHoverQmlTest::verticalDragReorderUsesPrimaryAndCrossAxes()
+{
+    const QStringList pins{
+        QStringLiteral("one.desktop"), QStringLiteral("two.desktop"),
+        QStringLiteral("three.desktop")};
+    for (const QString &position : {QStringLiteral("left"), QStringLiteral("right")}) {
+        for (const int sourceIndex : {0, 2}) {
+            DockController controller;
+            DockConfig config = configFor(QStringLiteral("magnification"), pins);
+            config.position = position;
+            controller.applyConfig(config);
+
+            QQmlEngine engine;
+            engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+            engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+            QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+            QVERIFY2(component.status() == QQmlComponent::Ready,
+                     qPrintable(component.errorString()));
+            auto *panel = qobject_cast<QQuickItem *>(component.create());
+            QVERIFY2(panel, qPrintable(component.errorString()));
+            FakeInputRegionBridge inputBridge;
+            panel->setProperty("inputRegionBridge", QVariant::fromValue(
+                                                         static_cast<QObject *>(&inputBridge)));
+            QQuickWindow window;
+            panel->setParentItem(window.contentItem());
+            QCoreApplication::processEvents();
+
+            const QString sourceKey = pins.at(sourceIndex);
+            QQuickItem *source = delegate(panel, sourceKey);
+            QVERIFY(source);
+            QQuickItem *sourceIcon = iconItem(source);
+            QVERIFY(sourceIcon);
+            const QPointF pointer = source->mapToItem(
+                panel, source->width() / 2.0, source->height() / 2.0);
+            QVERIFY(QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
+                                              Q_ARG(QVariant, QVariant(pointer.x())),
+                                              Q_ARG(QVariant, QVariant(pointer.y()))));
+            QTRY_VERIFY_WITH_TIMEOUT(sourceIcon->scale() > 1.0, 1000);
+            QTest::qWait(160);
+            QCoreApplication::processEvents();
+
+            const qreal initialWidth = panel->width();
+            const qreal initialHeight = panel->height();
+            const QPointF sourceCenter = source->mapToItem(
+                panel, source->width() / 2.0, source->height() / 2.0);
+            QVERIFY(QMetaObject::invokeMethod(panel, "beginReorder",
+                                              Q_ARG(QVariant, QVariant(sourceKey))));
+            const qreal expectedOrigin = sourceCenter.y() - panel->height() / 2.0;
+            QVERIFY2(qAbs(panel->property("dragOriginCenterRelativeX").toReal()
+                          - expectedOrigin) < 0.1,
+                     qPrintable(QStringLiteral("%1 source=%2 origin=%3 expected=%4")
+                                    .arg(position).arg(sourceKey)
+                                    .arg(panel->property("dragOriginCenterRelativeX").toReal())
+                                    .arg(expectedOrigin)));
+            QTRY_COMPARE_WITH_TIMEOUT(propertyReal(source, "magnificationScale"), 1.0, 1000);
+            QCOMPARE(panel->property("dragOriginCenterRelativeX").toReal(), expectedOrigin);
+
+            const qreal direction = sourceIndex == 0 ? 1.0 : -1.0;
+            const qreal delta = direction * panel->property("slotPitch").toReal() * 2.0;
+            QVERIFY(QMetaObject::invokeMethod(panel, "updateReorder",
+                                              Q_ARG(QVariant, QVariant(sourceKey)),
+                                              Q_ARG(QVariant, QVariant(delta)),
+                                              Q_ARG(QVariant, QVariant(sourceCenter.x())),
+                                              Q_ARG(QVariant, QVariant(sourceCenter.y()))));
+            QCoreApplication::processEvents();
+            const int expectedTarget = sourceIndex == 0 ? 2 : 0;
+            QCOMPARE(panel->property("dragTargetIndex").toInt(), expectedTarget);
+            QCOMPARE(panel->property("dragOriginCenterRelativeX").toReal(), expectedOrigin);
+            QCOMPARE(panel->property("magnificationScales").toList().size(), pins.size());
+            QCOMPARE(propertyReal(source, "magnificationScale"), 1.0);
+
+            const qreal expectedCrossLift = position == QStringLiteral("left") ? 8.0 : -8.0;
+            QCOMPARE(propertyReal(source, "visualOffsetX"), expectedCrossLift);
+            const qreal expectedNeighborOffset = sourceIndex == 0
+                ? -panel->property("slotPitch").toReal()
+                : panel->property("slotPitch").toReal();
+            for (const QString &key : pins) {
+                if (key == sourceKey)
+                    continue;
+                QTRY_COMPARE_WITH_TIMEOUT(propertyReal(delegate(panel, key), "visualOffsetY"),
+                                          expectedNeighborOffset, 1000);
+            }
+
+            QVERIFY(QMetaObject::invokeMethod(panel, "updateInputRegion"));
+            QVERIFY(inputBridge.updateCount > 0);
+            QCOMPARE(inputBridge.lastItemCount, pins.size());
+            QVERIFY(inputBridge.lastChrome.left() >= -0.1);
+            QVERIFY(inputBridge.lastChrome.top() >= -0.1);
+            QVERIFY(inputBridge.lastChrome.right() < panel->width() + 0.1);
+            QVERIFY(inputBridge.lastChrome.bottom() < panel->height() + 0.1);
+            for (const QVariant &value : inputBridge.lastInteractionRects) {
+                const QRectF rect = value.toRectF();
+                QVERIFY(rect.left() >= -0.1);
+                QVERIFY(rect.top() >= -0.1);
+                QVERIFY(rect.right() < panel->width() + 0.1);
+                QVERIFY(rect.bottom() < panel->height() + 0.1);
+            }
+            const qreal widthWhileDragging = panel->width();
+            const qreal heightWhileDragging = panel->height();
+            QCOMPARE(widthWhileDragging, initialWidth);
+            QCOMPARE(heightWhileDragging, initialHeight);
+
+            QSignalSpy activationSpy(source, SIGNAL(activated(QString)));
+            QSignalSpy reorderSpy(panel, SIGNAL(reorderRequested(QString,int)));
+            QVERIFY(activationSpy.isValid() && reorderSpy.isValid());
+            QVERIFY(QMetaObject::invokeMethod(panel, "finishReorder",
+                                              Q_ARG(QVariant, QVariant(sourceKey))));
+            QCOMPARE(reorderSpy.count(), 1);
+            QCOMPARE(reorderSpy.at(0).at(0).toString(), sourceKey);
+            QCOMPARE(reorderSpy.at(0).at(1).toInt(), expectedTarget);
+            QCOMPARE(activationSpy.count(), 0);
+            QVERIFY(QMetaObject::invokeMethod(panel, "finishReorder",
+                                              Q_ARG(QVariant, QVariant(sourceKey))));
+            QCOMPARE(reorderSpy.count(), 1);
+            delete panel;
+        }
+
+        DockController controller;
+        controller.applyConfig(configFor(QStringLiteral("magnification"), pins));
+        DockConfig verticalConfig = configFor(QStringLiteral("magnification"), pins);
+        verticalConfig.position = position;
+        controller.applyConfig(verticalConfig);
+        QQmlEngine engine;
+        engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+        engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+        QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+        QVERIFY2(component.status() == QQmlComponent::Ready,
+                 qPrintable(component.errorString()));
+        auto *panel = qobject_cast<QQuickItem *>(component.create());
+        QVERIFY2(panel, qPrintable(component.errorString()));
+        QQuickWindow window;
+        panel->setParentItem(window.contentItem());
+        QCoreApplication::processEvents();
+        QQuickItem *source = delegate(panel, pins.at(1));
+        QVERIFY(source);
+        QSignalSpy reorderSpy(panel, SIGNAL(reorderRequested(QString,int)));
+        QVERIFY(QMetaObject::invokeMethod(panel, "beginReorder",
+                                          Q_ARG(QVariant, QVariant(pins.at(1)))));
+        QVERIFY(QMetaObject::invokeMethod(panel, "updateReorder",
+                                          Q_ARG(QVariant, QVariant(pins.at(1))),
+                                          Q_ARG(QVariant, QVariant(panel->property("slotPitch").toReal())),
+                                          Q_ARG(QVariant, QVariant(0.0)),
+                                          Q_ARG(QVariant, QVariant(0.0))));
+        QVERIFY(QMetaObject::invokeMethod(panel, "cancelReorder",
+                                          Q_ARG(QVariant, QVariant(pins.at(1)))));
+        QCOMPARE(reorderSpy.count(), 0);
         delete panel;
     }
 }

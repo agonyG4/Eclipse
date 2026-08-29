@@ -181,6 +181,7 @@ private slots:
     void magnifiedInteractionRegionsResolveByVisualStacking();
     void exclusiveDragReleaseInEmptyHeadroomStaysOutsideDock();
     void verticalPositionsReusePrimaryAxisGeometry();
+    void verticalContentIsCenteredWithinChrome();
     void floatingAutoHideUsesPhysicalEdgeRevealGeometry();
 };
 
@@ -1622,6 +1623,62 @@ void DockHoverQmlTest::verticalPositionsReusePrimaryAxisGeometry()
         QTRY_VERIFY_WITH_TIMEOUT(iconItem(last)->scale() > 1.0, 1500);
         QTRY_VERIFY_WITH_TIMEOUT(iconItem(last)->scale() >= iconItem(middle)->scale(), 1500);
 
+        delete panel;
+    }
+}
+
+void DockHoverQmlTest::verticalContentIsCenteredWithinChrome()
+{
+    const QStringList pins{
+        QStringLiteral("one.desktop"), QStringLiteral("two.desktop"),
+        QStringLiteral("three.desktop")};
+    qreal leftEdgeDistance = -1;
+    for (const QString &position : {QStringLiteral("left"), QStringLiteral("right")}) {
+        DockController controller;
+        DockConfig config = configFor(QStringLiteral("none"), pins);
+        config.position = position;
+        controller.applyConfig(config);
+
+        QQmlEngine engine;
+        engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+        engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+        QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+        QVERIFY2(component.status() == QQmlComponent::Ready,
+                 qPrintable(component.errorString()));
+        auto *panel = qobject_cast<QQuickItem *>(component.create());
+        QVERIFY2(panel, qPrintable(component.errorString()));
+        QQuickWindow window;
+        panel->setParentItem(window.contentItem());
+        QCoreApplication::processEvents();
+
+        QQuickItem *chrome = childWithObjectName(panel, QStringLiteral("dockChrome"));
+        QVERIFY(chrome);
+        const QRectF chromeRect = chrome->mapRectToItem(
+            panel, QRectF(0, 0, chrome->width(), chrome->height()));
+        for (const QString &key : pins) {
+            QQuickItem *icon = iconItem(delegate(panel, key));
+            QVERIFY(icon);
+            const QRectF iconRect = icon->mapRectToItem(
+                panel, QRectF(0, 0, icon->width(), icon->height()));
+            QVERIFY2(qAbs(iconRect.center().x() - chromeRect.center().x()) < 0.1,
+                     qPrintable(QStringLiteral("%1 icon center=%2 chrome center=%3")
+                                    .arg(position).arg(iconRect.center().x())
+                                    .arg(chromeRect.center().x())));
+        }
+
+        const QQuickItem *middleIcon = iconItem(delegate(panel, pins.at(1)));
+        QVERIFY(middleIcon);
+        const QRectF middleRect = middleIcon->mapRectToItem(
+            panel, QRectF(0, 0, middleIcon->width(), middleIcon->height()));
+        const qreal edgeDistance = position == QStringLiteral("left")
+            ? middleRect.center().x() - chromeRect.left()
+            : chromeRect.right() - middleRect.center().x();
+        if (position == QStringLiteral("left"))
+            leftEdgeDistance = edgeDistance;
+        else
+            QVERIFY2(qAbs(edgeDistance - leftEdgeDistance) < 0.1,
+                     qPrintable(QStringLiteral("left distance=%1 right distance=%2")
+                                    .arg(leftEdgeDistance).arg(edgeDistance)));
         delete panel;
     }
 }

@@ -135,7 +135,7 @@ Item {
             rows: root.vertical ? Math.max(1, appRepeater.count) : 1
             rowSpacing: root.vertical ? DockController.itemSpacing : 0
             columnSpacing: root.vertical ? 0 : DockController.itemSpacing
-            x: root.vertical ? 0 : (dockChrome.width - implicitWidth) / 2
+            x: (dockChrome.width - implicitWidth) / 2
             y: root.vertical ? (dockChrome.height - implicitHeight) / 2
                              : dockChrome.height - implicitHeight - DockController.chromeBottomMargin
             width: root.vertical ? dockChrome.width : implicitWidth

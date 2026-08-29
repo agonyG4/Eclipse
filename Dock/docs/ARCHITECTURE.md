@@ -39,6 +39,14 @@ scale while `DockAppDelegate` applies the animated magnification as a visual
 transform. Hover frames therefore change presentation scale and translation
 without changing the icon URL, source size, or provider cache key.
 
+Representation selection remains inside `QIcon::pixmap()`. The provider does
+not use `availableSizes()` or implement a second `Scale`, `Type`, `Threshold`,
+scalable-range, or inheritance resolver. The shared theme setup presents
+`~/.icons` before XDG data and Flatpak export roots in Freedesktop priority
+order, while preserving existing Qt paths and deduplicating exact roots. A
+narrow Astrea-owned mutex serializes those Qt global theme lookups and updates;
+positive and negative cache locks are never held during icon rendering.
+
 `DockPanel` keeps a stable resting `Row` and selects one configured hover effect.
 `none` leaves resting geometry unchanged. `lift` keeps the lightweight Eclipse
 behavior: only the directly hovered delegate scales to about `1.1` and moves

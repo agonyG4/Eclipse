@@ -5,6 +5,7 @@
 #include <QTest>
 
 #include "core/DockMetrics.hpp"
+#include "core/DockSurfaceGeometry.hpp"
 #include "platform/wayland/DockLayerShellSurface.hpp"
 
 class DockLayerShellSurfaceTest final : public QObject {
@@ -14,6 +15,8 @@ private slots:
     void mappedReservationUsesRestingHeightNotVisualHeight();
     void unmappedReservationIsZero();
     void anchorsAndMarginsFollowSelectedEdge();
+    void placementPolicySeparatesPhysicalAndVisualMargins();
+    void placementPolicyKeepsAttachedDockAtPhysicalEdge();
     void explicitOutputGeometryDoesNotDependOnWindowScreen();
 };
 
@@ -62,6 +65,40 @@ void DockLayerShellSurfaceTest::anchorsAndMarginsFollowSelectedEdge()
     attached.floating = false;
     attached.edgeMargin = 22;
     QCOMPARE(DockLayerShellSurface::configurationFor(attached, 68).margins.left(), 0);
+}
+
+void DockLayerShellSurfaceTest::placementPolicySeparatesPhysicalAndVisualMargins()
+{
+    DockConfig config = DockConfig::defaults();
+    config.edgeMargin = 12;
+    config.floating = true;
+
+    const DockSurfacePlacement normal = DockSurfaceGeometry::placementFor(config, false);
+    QCOMPARE(normal.layerShellEdgeMargin, 12);
+    QCOMPARE(normal.chromeEdgeInset, 0);
+    QVERIFY(!normal.physicalEdgeReveal);
+
+    const DockSurfacePlacement hidden = DockSurfaceGeometry::placementFor(config, true);
+    QCOMPARE(hidden.layerShellEdgeMargin, 0);
+    QCOMPARE(hidden.chromeEdgeInset, 12);
+    QVERIFY(hidden.physicalEdgeReveal);
+}
+
+void DockLayerShellSurfaceTest::placementPolicyKeepsAttachedDockAtPhysicalEdge()
+{
+    DockConfig config = DockConfig::defaults();
+    config.edgeMargin = 24;
+    config.floating = false;
+
+    const DockSurfacePlacement normal = DockSurfaceGeometry::placementFor(config, false);
+    QCOMPARE(normal.layerShellEdgeMargin, 0);
+    QCOMPARE(normal.chromeEdgeInset, 0);
+    QVERIFY(!normal.physicalEdgeReveal);
+
+    const DockSurfacePlacement hidden = DockSurfaceGeometry::placementFor(config, true);
+    QCOMPARE(hidden.layerShellEdgeMargin, 0);
+    QCOMPARE(hidden.chromeEdgeInset, 0);
+    QVERIFY(hidden.physicalEdgeReveal);
 }
 
 void DockLayerShellSurfaceTest::explicitOutputGeometryDoesNotDependOnWindowScreen()

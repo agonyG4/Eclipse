@@ -2,6 +2,15 @@
 
 #include <QtGlobal>
 
+DockSurfacePlacement DockSurfaceGeometry::placementFor(const DockConfig &config,
+                                                       bool autoHideActive)
+{
+    const int configuredMargin = config.effectiveEdgeMargin();
+    if (autoHideActive)
+        return {0, configuredMargin, true};
+    return {configuredMargin, 0, false};
+}
+
 QRect DockSurfaceGeometry::delegateRectInOutput(const QSize &outputSize,
                                                 const QSize &surfaceSize,
                                                 int bottomMargin,

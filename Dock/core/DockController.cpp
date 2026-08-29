@@ -148,6 +148,7 @@ void DockController::updateAutoHidePolicy()
 void DockController::applyConfig(const DockConfig &config)
 {
     const int previousReservation = exclusiveZone();
+    const DockSurfacePlacement previousPlacement = surfacePlacement();
     const DockConfig next = normalizedConfig(config);
     const bool changed = !sameConfig(m_config, next);
     if (!changed)
@@ -156,8 +157,10 @@ void DockController::applyConfig(const DockConfig &config)
     m_config = next;
     m_model.setPins(m_config.pins);
     projectRuntime();
-    emit configChanged();
     updateAutoHidePolicy();
+    emit configChanged();
+    if (previousPlacement != surfacePlacement())
+        emit surfacePlacementChanged();
     emit modelChanged();
     updateVisibility();
     if (previousReservation != exclusiveZone())
@@ -234,11 +237,14 @@ void DockController::attachTyphonConnection(TyphonToplevelConnection *connection
 void DockController::applyTyphonSnapshot(const Astrea::Typhon::Snapshot &snapshot)
 {
     const int previousReservation = exclusiveZone();
+    const DockSurfacePlacement previousPlacement = surfacePlacement();
     m_runtimeSnapshot = snapshot;
     m_runtimeKnown = true;
     updateAutoHidePolicy();
     projectRuntime();
     emit modelChanged();
+    if (previousPlacement != surfacePlacement())
+        emit surfacePlacementChanged();
     if (previousReservation != exclusiveZone())
         emit reservationChanged();
 }
@@ -247,6 +253,7 @@ void DockController::clearTyphonRuntime()
 {
     const bool changed = m_runtimeKnown || m_runtimeSnapshot.has_value() || !m_runtimeStates.isEmpty();
     const int previousReservation = exclusiveZone();
+    const DockSurfacePlacement previousPlacement = surfacePlacement();
     m_runtimeKnown = false;
     m_runtimeSnapshot.reset();
     m_runtimeStates.clear();
@@ -254,6 +261,8 @@ void DockController::clearTyphonRuntime()
     updateAutoHidePolicy();
     if (changed)
         emit modelChanged();
+    if (previousPlacement != surfacePlacement())
+        emit surfacePlacementChanged();
     if (previousReservation != exclusiveZone())
         emit reservationChanged();
 }

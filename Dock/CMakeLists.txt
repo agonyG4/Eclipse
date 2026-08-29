@@ -79,6 +79,7 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
         tests/DockControllerTest.cpp
         core/DockController.cpp
         core/DockAppModel.cpp
+        core/DockSurfaceGeometry.cpp
         services/DockConfigPersistence.cpp
         services/DockConfigValidation.cpp
         services/DockConfigWatcher.cpp
@@ -93,6 +94,7 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
         tests/DockTyphonRuntimeIntegrationTest.cpp
         core/DockController.cpp
         core/DockAppModel.cpp
+        core/DockSurfaceGeometry.cpp
         services/DockConfigPersistence.cpp
         services/DockConfigValidation.cpp
         services/DockConfigWatcher.cpp
@@ -125,6 +127,7 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
 
     add_executable(dock-layer-shell-surface-test
         tests/DockLayerShellSurfaceTest.cpp
+        core/DockSurfaceGeometry.cpp
         platform/wayland/DockLayerShellSurface.cpp
     )
     target_include_directories(dock-layer-shell-surface-test PRIVATE

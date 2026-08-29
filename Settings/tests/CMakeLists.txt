@@ -16,6 +16,7 @@ function(add_settings_unit_test target source)
 endfunction()
 
 add_settings_unit_test(settings-controller-test unit/SettingsControllerTest.cpp)
+add_settings_unit_test(settings-dock-controller-test unit/SettingsDockControllerTest.cpp)
 add_settings_unit_test(settings-wallpaper-controller-test unit/SettingsWallpaperControllerTest.cpp)
 add_settings_unit_test(settings-navigation-model-test unit/SettingsNavigationModelTest.cpp)
 add_settings_unit_test(settings-user-profile-provider-test unit/SettingsUserProfileProviderTest.cpp)

@@ -14,6 +14,8 @@ add_library(astrea-settings-core STATIC
     ../platform/linux/AdministrativeGroupPolicy.hpp
     ../services/assets/SettingsIconResolver.cpp
     ../services/assets/SettingsIconResolver.hpp
+    ../services/dock/SettingsDockController.cpp
+    ../services/dock/SettingsDockController.hpp
     ../services/i18n/SettingsTranslationController.cpp
     ../services/i18n/SettingsTranslationController.hpp
     ../services/profile/SettingsUserProfileProvider.cpp

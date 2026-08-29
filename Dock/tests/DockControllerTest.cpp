@@ -568,6 +568,7 @@ void DockControllerTest::personalizationPropertiesPropagateAndUnchangedConfigIsQ
     DockController controller;
     controller.applyConfig(configWithPins({QStringLiteral("one.desktop")}));
     QSignalSpy configSpy(&controller, &DockController::configChanged);
+    QSignalSpy modelSpy(&controller, &DockController::modelChanged);
 
     DockConfig config = DockConfig::defaults();
     config.pins = {QStringLiteral("one.desktop")};
@@ -593,9 +594,11 @@ void DockControllerTest::personalizationPropertiesPropagateAndUnchangedConfigIsQ
     QVERIFY(!controller.animationsEnabled());
     QCOMPARE(controller.animationSpeed(), 2.5);
     QCOMPARE(configSpy.count(), 1);
+    QCOMPARE(modelSpy.count(), 1);
 
     controller.applyConfig(config);
     QCOMPARE(configSpy.count(), 1);
+    QCOMPARE(modelSpy.count(), 1);
 }
 
 void DockControllerTest::autoHidePolicyKeepsSurfaceMappedAndReservationBounded()

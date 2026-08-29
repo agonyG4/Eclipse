@@ -1,8 +1,19 @@
 #pragma once
 
+#include "dock/DockConfig.hpp"
+
 #include <QObject>
 #include <QRect>
 #include <QSize>
+
+struct DockSurfacePlacement final {
+    int layerShellEdgeMargin = 0;
+    int chromeEdgeInset = 0;
+    bool physicalEdgeReveal = false;
+
+    friend constexpr bool operator==(const DockSurfacePlacement &, const DockSurfacePlacement &)
+        = default;
+};
 
 class DockSurfaceGeometry final : public QObject {
     Q_OBJECT
@@ -13,6 +24,7 @@ public:
     {
     }
 
+    static DockSurfacePlacement placementFor(const DockConfig &config, bool autoHideActive);
     static QRect delegateRectInOutput(const QSize &outputSize, const QSize &surfaceSize,
                                       int bottomMargin, const QRectF &delegateRect);
     static QRect delegateRectInOutput(const QSize &outputSize, const QSize &surfaceSize,

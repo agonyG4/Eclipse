@@ -55,6 +55,7 @@ private slots:
     void runtimeOnlyOrderingRemainsUnchangedAfterPinMove();
     void personalizationPropertiesPropagateAndUnchangedConfigIsQuiet();
     void autoHidePolicyKeepsSurfaceMappedAndReservationBounded();
+    void runtimeObstructionUpdatesSurfacePlacement();
 };
 
 class CountingPersistence final : public DockConfigPersistence {
@@ -649,6 +650,49 @@ void DockControllerTest::autoHidePolicyKeepsSurfaceMappedAndReservationBounded()
     controller.applyTyphonSnapshot(snapshot);
     QCOMPARE(controller.exclusiveZone(), resting);
     QVERIFY(controller.revealed());
+}
+
+void DockControllerTest::runtimeObstructionUpdatesSurfacePlacement()
+{
+    DockController controller;
+    DockConfig config = configWithPins({QStringLiteral("one.desktop")});
+    config.edgeMargin = 12;
+    config.autoHide = QStringLiteral("intelligent");
+    controller.applyConfig(config);
+
+    QSignalSpy placementSpy(&controller, &DockController::surfacePlacementChanged);
+    QSignalSpy reservationSpy(&controller, &DockController::reservationChanged);
+    QCOMPARE(controller.layerShellEdgeMargin(), 12);
+    QCOMPARE(controller.chromeEdgeInset(), 0);
+    QVERIFY(!controller.physicalEdgeReveal());
+
+    Astrea::Typhon::Snapshot snapshot;
+    snapshot.connectionGeneration = 1;
+    snapshot.revision = 1;
+    Astrea::Typhon::Toplevel active;
+    active.id = QStringLiteral("maximized");
+    active.states = Astrea::Typhon::ToplevelStates{
+        Astrea::Typhon::ToplevelStateFlag::Active,
+        Astrea::Typhon::ToplevelStateFlag::Maximized};
+    snapshot.windows.append(active);
+    controller.applyTyphonSnapshot(snapshot);
+
+    QCOMPARE(placementSpy.count(), 1);
+    QCOMPARE(reservationSpy.count(), 1);
+    QCOMPARE(controller.layerShellEdgeMargin(), 0);
+    QCOMPARE(controller.chromeEdgeInset(), 12);
+    QVERIFY(controller.physicalEdgeReveal());
+
+    active.states = Astrea::Typhon::ToplevelStates{
+        Astrea::Typhon::ToplevelStateFlag::Active};
+    snapshot.windows = {active};
+    controller.applyTyphonSnapshot(snapshot);
+
+    QCOMPARE(placementSpy.count(), 2);
+    QCOMPARE(reservationSpy.count(), 2);
+    QCOMPARE(controller.layerShellEdgeMargin(), 12);
+    QCOMPARE(controller.chromeEdgeInset(), 0);
+    QVERIFY(!controller.physicalEdgeReveal());
 }
 
 QTEST_MAIN(DockControllerTest)

@@ -2,6 +2,7 @@
 
 #include "core/DockAppModel.hpp"
 #include "core/DockMetrics.hpp"
+#include "core/DockSurfaceGeometry.hpp"
 #include "services/DockConfigWatcher.hpp"
 #include "services/DockConfigPersistence.hpp"
 #include "apps/DesktopEntryCatalog.hpp"
@@ -52,6 +53,9 @@ class DockController final : public QObject {
     Q_PROPERTY(int restingHeight READ restingHeight NOTIFY configChanged)
     Q_PROPERTY(int restingCrossThickness READ restingCrossThickness NOTIFY configChanged)
     Q_PROPERTY(int exclusiveZone READ exclusiveZone NOTIFY reservationChanged)
+    Q_PROPERTY(int layerShellEdgeMargin READ layerShellEdgeMargin NOTIFY surfacePlacementChanged)
+    Q_PROPERTY(int chromeEdgeInset READ chromeEdgeInset NOTIFY surfacePlacementChanged)
+    Q_PROPERTY(bool physicalEdgeReveal READ physicalEdgeReveal NOTIFY surfacePlacementChanged)
     Q_PROPERTY(bool revealed READ revealed NOTIFY revealedChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
 
@@ -97,6 +101,9 @@ public:
     int restingHeight() const { return DockMetrics::restingHeight(m_config.iconSize); }
     int restingCrossThickness() const { return restingHeight(); }
     int exclusiveZone() const;
+    int layerShellEdgeMargin() const { return surfacePlacement().layerShellEdgeMargin; }
+    int chromeEdgeInset() const { return surfacePlacement().chromeEdgeInset; }
+    bool physicalEdgeReveal() const { return surfacePlacement().physicalEdgeReveal; }
     bool revealed() const { return m_revealed; }
     QString lastError() const { return m_lastError; }
 
@@ -126,6 +133,7 @@ signals:
     void modelChanged();
     void configChanged();
     void reservationChanged();
+    void surfacePlacementChanged();
     void revealedChanged();
     void lastErrorChanged();
 
@@ -145,6 +153,8 @@ private:
     void updateVisibility();
     void updateAutoHidePolicy();
     bool autoHideActive() const;
+    DockSurfacePlacement surfacePlacement() const
+    { return DockSurfaceGeometry::placementFor(m_config, autoHideActive()); }
     void setRevealed(bool revealed);
     void projectRuntime();
     void reconcileTyphonActionFailure(Astrea::Typhon::ToplevelActionError error);

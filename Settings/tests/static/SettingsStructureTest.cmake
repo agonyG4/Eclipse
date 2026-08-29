@@ -117,6 +117,7 @@ set(core_production_cpp_files
     services/assets/SettingsIconResolver.cpp
     services/i18n/SettingsTranslationController.cpp
     services/profile/SettingsUserProfileProvider.cpp
+    services/dock/SettingsDockController.cpp
 )
 foreach(relative_path IN LISTS core_production_cpp_files)
     string(FIND "${settings_tests_cmake}" "${relative_path}" repeated_position)
@@ -178,10 +179,26 @@ set(production_source_files
     services/profile/SettingsUserProfile.hpp
     services/profile/SettingsUserProfileProvider.cpp
     services/profile/SettingsUserProfileProvider.hpp
+    services/dock/SettingsDockController.cpp
+    services/dock/SettingsDockController.hpp
     app/main.cpp
     app/SettingsApplication.cpp
     app/SettingsApplication.hpp
 )
+list(APPEND production_source_files qml/pages/appearance/Dock.qml)
+
+set(required_dock_production_sources
+    services/dock/SettingsDockController.cpp
+    services/dock/SettingsDockController.hpp
+    qml/pages/appearance/Dock.qml
+)
+foreach(relative_path IN LISTS required_dock_production_sources)
+    list(FIND production_source_files "${relative_path}" required_source_index)
+    if(required_source_index EQUAL -1)
+        message(FATAL_ERROR "Dock production source is missing from the architecture guard: ${relative_path}")
+    endif()
+endforeach()
+
 set(forbidden_production_tokens
     "import Quickshell"
     "Quickshell.Io"
@@ -203,6 +220,42 @@ foreach(relative_path IN LISTS production_source_files)
             message(FATAL_ERROR "Forbidden token '${token}' found in production source ${relative_path}")
         endif()
     endforeach()
+endforeach()
+
+file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/Dock.qml" dock_qml_source)
+foreach(dock_qml_forbidden_token IN ITEMS
+    "import Quickshell"
+    "Quickshell.Io"
+    "Process {"
+    "QProcess"
+    "File"
+    "FileView"
+    "FileDialog"
+    "FolderListModel"
+    "Qt.labs.folderlistmodel"
+    "Qt.labs.settings"
+    "Settings {"
+    "import QtDBus"
+    "QtDBus"
+    "DBus"
+    "QDBus"
+    "Socket"
+    "LocalSocket"
+    "Datagram"
+    "IPC"
+    "DockIpc"
+    "ShellIpc"
+    "LayerShell"
+    "LayerShellQt"
+    "LayerShellHelper"
+    "Hyprland"
+    "hyprctl"
+    "Typhon"
+)
+    string(FIND "${dock_qml_source}" "${dock_qml_forbidden_token}" dock_qml_token_position)
+    if(NOT dock_qml_token_position EQUAL -1)
+        message(FATAL_ERROR "Forbidden token '${dock_qml_forbidden_token}' found in Dock.qml")
+    endif()
 endforeach()
 
 foreach(feedback_file IN ITEMS DnsPresetChip DnsStatusCard ProgressCard SpeedCard StatusDot)

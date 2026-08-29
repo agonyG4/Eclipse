@@ -84,14 +84,29 @@ raster preservation, `.icons` priority, cache invalidation, and concurrent
 theme mutation. Its representation assertions compare distinguishable pixels
 and raw output dimensions, including deterministic `DPR=1`, `1.5`, and `2`
 requests. No production path uses `QIcon::availableSizes()` for selection.
-The shared QML test also performs a same-raster A/B of the high-frequency
-source with rounded alpha at a 1.6 presentation scale: interior RGB detail is
-unchanged, while corner alpha and edge antialiasing change as expected. It is
-a source-buffer comparison because the offscreen Qt scene graph does not give
-a stable visual `OpacityMask` capture.
+The shared QML test keeps a deterministic
+`roundedAlphaMathPreservesInteriorDetail` source-buffer check, which does not
+execute QML `OpacityMask`. It also has
+`opacityMaskPreservesInteriorDetailAtMaximumScale`, which instantiates the real
+`AstreaAppIcon`, captures unmasked and rounded paths, and compares interior
+detail separately from corner alpha and edge antialiasing. The offscreen Qt
+backend currently skips that case because its masked output is not capturable;
+the live Wayland run is the qualifying A/B and records the measured contrast
+ratio rather than treating the synthetic check as proof.
 The cancellation case retains the panel cancellation reset path after a real
 pointer drag; the offscreen Qt backend does not provide a compositor
 pointer-cancel event.
+
+`floatingAutoHideUsesPhysicalEdgeRevealGeometry` proves the shared placement
+policy and the one-surface QML geometry for Bottom, Left, and Right with a
+non-zero floating gap: normal mode keeps the Layer Shell margin, auto-hide
+uses the physical edge, the revealed chrome keeps the visual inset, and the
+exclusive zone stays zero. It does not prove that a compositor delivers a
+pointer touching the physical output boundary to the reveal target, or that
+pointer traversal through the floating gap reaches the target reliably. Those
+cases require live Wayland qualification with the production LayerShellQt
+backend. The deterministic vertical drag test exercises real QML delegates and
+signals, but it does not prove compositor pointer delivery or visual drag feel.
 
 `dock-input-region-test` is a pure Qt policy test for resting chrome, magnified
 headroom, multiple delegate rectangles, finite/invalid geometry, clipping, and

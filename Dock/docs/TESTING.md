@@ -48,14 +48,21 @@ activation, close removal, and authority loss. Explorer's source contract is
 covered by `python3 -m unittest src/System/tests/test_bin_launchers.py` in the
 current AstreaOS source tree.
 
-`dock-config-watcher-test` covers hover-effect modes, legacy compatibility,
-magnification defaults, type and finite-number fallbacks, and bounds.
+`dock-config-contract-test` covers personalization defaults, new-field parsing,
+enum and finite-number handling, bounds, legacy `bottomMargin` and
+`magnificationEnabled` compatibility, unknown-key/pin preservation, malformed
+file refusal, and atomic replacement. `dock-config-watcher-test` covers
+hover-effect modes, legacy compatibility, all personalization values, type and
+finite-number fallbacks, and bounds.
 `dock-config-persistence-test` covers pins-only atomic replacement, preservation
 of known and unknown keys, malformed-file refusal, validation, write errors, and
 watcher recovery. `dock-controller-test` covers stable identity reorder,
-launch-state preservation, persistence failure, and unchanged runtime-only
-order. `dock-layer-shell-surface-test` covers the explicit resting reservation
-and zero reservation while unmapped. `dock-hover-qml-test` exercises the real
+launch-state preservation, persistence failure, unchanged runtime-only order,
+all personalization values, floating effective margin, animation and indicator
+state, and deterministic auto-hide policy. `dock-layer-shell-surface-test`
+covers Bottom/Left/Right anchors and margins, position-aware output geometry,
+the explicit resting reservation, and zero reservation while unmapped or
+auto-hidden. `dock-hover-qml-test` exercises the real
 Dock panel and delegate for none/lift/magnification geometry, mode transitions,
 neighbor displacement, fixed chrome height, and reorder preview/drop signaling
 across all modes. It asserts that the maximum transparent surface envelope is
@@ -98,7 +105,10 @@ Dock.
 
 The visual test checks the center/neighbor/distant raised-cosine ordering,
 left/right symmetry, continuity at an influence boundary, exact return to
-scale `1.0`, and outward prefix-width translations. The Layer Shell test keeps
+scale `1.0`, and inward prefix-width translations for vertical positions. Its
+vertical cases cover Left/Right first/middle/last delegates, fixed envelopes,
+primary-axis drag/reorder coordinates, release behavior, and edge-side
+indicators. The Layer Shell test keeps
 the exclusive zone at the normal resting height even when the visual surface
 height is larger. Its reorder cases cover off-center rendered drag origins for
 first, middle, and last pins, stable geometry while magnification collapses,

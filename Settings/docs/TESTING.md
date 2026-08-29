@@ -18,17 +18,18 @@ cmake --build /tmp/eclipse-settings-structure-release --parallel
 ctest --test-dir /tmp/eclipse-settings-structure-release --output-on-failure
 ```
 
-The Settings tests cover controller behavior, navigation descriptors and
-selection, profile composition, Linux group enumeration and policy, theme
-compatibility, the full application QML route, representative registered QML
-components, Compositor source policy, and structural ownership invariants.
+The Settings tests cover controller behavior, Dock defaults and typed atomic
+persistence, external Dock replacement, navigation descriptors and selection,
+profile composition, Linux group enumeration and policy, theme compatibility,
+the full application QML route, representative registered QML components,
+Compositor source policy, and structural ownership invariants.
 
 The repository-level `create-source-archive-test` runs Bash syntax checks and
 qualifies a Git-based archive in an isolated temporary repository.
 
 ## QML Registration and Lint
 
-The authoritative QML list is in `qml/CMakeLists.txt`. It contains 35 files and
+The authoritative QML list is in `qml/CMakeLists.txt`. It contains 38 files and
 is registered once by `astrea-settings-ui`. The application and integration
 tests consume the same module and generated plugin.
 
@@ -47,6 +48,11 @@ Production Settings source must have zero matches for Quickshell,
 `Quickshell.Io`, LayerShellQt, `hyprctl`, `QProcess`, QML `Process`,
 `system(`, `popen(`, `pageIndex`, Typhon-private protocol names, and process or
 IPC access in `Compositor.qml`.
+
+The Dock QML route is loaded offscreen through the same registered module and
+checks its preview, Layout/Behavior/Indicators controls, disabled-state
+dependencies, and required translation keys. Its source has no JSON, file,
+process, IPC, DBus, compositor, Shell, Typhon, or Layer Shell API access.
 
 `astrea-settings-core` must expose only Qt Core in its link interface. The
 freshly built Settings executable must have no LayerShellQt or unexpected

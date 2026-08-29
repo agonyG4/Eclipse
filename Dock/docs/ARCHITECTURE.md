@@ -3,9 +3,11 @@
 The resident Dock is hosted by the unified `astrea-shell` Qt 6 process.
 `astrea-dock` is a compatibility IPC client and is not a second resident Dock.
 `app/` performs compatibility-client bootstrap; `core/` owns the stable Dock
-model and launch/reorder policy; `services/` owns validated configuration and
-the narrow pins persistence boundary; `platform/` owns runtime paths, IPC, and
-Layer Shell; `qml/` presents state and emits interaction requests.
+model and launch/reorder policy; `services/` owns the watcher and the narrow
+pins persistence boundary; `platform/` owns runtime paths, IPC, and Layer
+Shell; `qml/` presents state and emits interaction requests. The
+compositor-independent schema, parser, validator, and atomic known-field
+writer live in `shared/dock/` and are consumed by both Dock and Settings.
 
 `DockAppModel` uses the full desktop filename as its stable row key. Its visible
 rows are the ordered union of configured pins and resolved applications with
@@ -47,30 +49,30 @@ order, while preserving existing Qt paths and deduplicating exact roots. A
 narrow Astrea-owned mutex serializes those Qt global theme lookups and updates;
 positive and negative cache locks are never held during icon rendering.
 
-`DockPanel` keeps a stable resting `Row` and selects one configured hover effect.
-`none` leaves resting geometry unchanged. `lift` keeps the lightweight Eclipse
-behavior: only the directly hovered delegate scales to about `1.1` and moves
-upward. `magnification` performs one linear pass over the materialized
-delegates on each pointer update and applies a symmetric raised-cosine (Hann)
-scale based on distance from each resting icon center. Prefix sums of the
-per-icon extra widths provide visual translations that make room for the
-enlarged icons while keeping the strip centered. Magnification icons scale from
-their bottom edge; running indicators remain outside that transform. A
-panel-level hover handler drives the magnification calculation, so it is
-continuous rather than a per-icon contains-mouse switch. After a structural
-model move, the panel defers one geometry refresh so its hover target and
-per-icon arrays are rebuilt from the current delegates rather than a parallel
-row-identity cache.
+`DockPanel` keeps one resting positioner and one magnification algorithm. Its
+primary axis is X for Bottom and Y for Left/Right; its cross axis is Y for
+Bottom and X for the vertical positions. `none` leaves resting geometry
+unchanged. `lift` keeps the lightweight Eclipse behavior: only the directly
+hovered delegate scales to about `1.1` and moves inward. `magnification` performs
+one linear pass over materialized delegates on each pointer update and applies a
+symmetric raised-cosine (Hann) scale based on distance from each resting icon
+center. Prefix sums of per-icon extra primary-axis extent provide translations
+that make room for enlarged icons while keeping the strip centered. Icons grow
+upward at Bottom, rightward at Left, and leftward at Right; running indicators
+remain outside that transform. A panel-level hover handler drives the same
+calculation for all positions. After a structural model move, the panel defers
+one geometry refresh so its hover target and per-icon arrays are rebuilt from
+the current delegates rather than a parallel row-identity cache.
 
 The panel derives a fixed transparent surface envelope from the resting Dock
-width, the bounded magnification neighborhood, and the maximum magnification,
-lift, and drag headroom. Its width and height depend only on structural state
-(the materialized row and configuration), never on the current pointer frame.
-The bottom-anchored `dockChrome` remains exactly the resting height and is
-centered inside that envelope; only its explicit visual width animates from the
-resting width to the current magnification width. The Row's resting centers
-remain panel-center-relative, so changing chrome width cannot move the output
-baseline or invalidate pointer coordinates.
+primary extent, cross thickness, bounded magnification neighborhood, and the
+maximum magnification, lift, and drag headroom. Its width and height depend
+only on structural state (the materialized rows and configuration), never on the
+current pointer frame. `dockChrome` remains exactly the resting cross thickness
+and is centered on the non-edge axis; only its primary extent animates from the
+resting extent to the current magnified extent. Resting centers remain
+panel-center-relative on the primary axis, so changing chrome extent cannot
+move the output baseline or invalidate pointer coordinates.
 
 Configured pins use a Qt Quick drag handler with a system-sized threshold. The
 dragged delegate is raised, lifted, and scaled; neighboring pinned delegates
@@ -117,10 +119,21 @@ When Typhon is authoritative, pinned rows missing from the projection are
 known stopped (`runtimeKnown=true`, `running=false`). When authority is lost,
 pinned rows become neutral unknown rows and runtime-only rows are removed.
 
-The Dock Layer Shell policy is explicit: scope `astrea-dock`, top layer,
-bottom-only anchor, no keyboard interactivity, configured bottom margin, and an
-exclusive zone equal to the normal resting Dock height. The requested surface
-width and height remain constant through pointer entry, magnification, hover
+The Dock Layer Shell policy is explicit: scope `astrea-dock`, top layer, no
+keyboard interactivity, and exactly one selected edge anchor. Bottom uses the
+effective edge margin on Bottom; Left and Right use it on their selected edge
+only. Floating uses the configured margin, while an attached Dock uses zero
+effective margin without changing the stored value. The exclusive zone is the
+resting cross-axis thickness, never the fixed magnified envelope. The requested
+surface dimensions remain constant through pointer entry, magnification, hover
 exit, and reorder; neither is used as a transient clearance signal. Maximized
-or tiled windows therefore do not move. An empty or disabled Dock is unmapped
-and reserves no positive zone.
+or tiled windows therefore do not move.
+
+Auto-hide never fully unmaps an enabled Dock with rows. Always collapses its
+chrome while retaining a bounded edge reveal target and zero exclusive zone.
+Intelligent uses the currently published Typhon state as a conservative v1
+heuristic: an active maximized or fullscreen toplevel counts as obstructing and
+switches to Always behavior; otherwise it behaves as Never. This is not overlap
+geometry and must be replaced when Typhon publishes output-local geometry.
+Manual `dock show`/`dock hide` remains the higher-level mapping override.
+An empty or disabled Dock is unmapped and reserves no positive zone.

@@ -18,6 +18,7 @@ SettingsIconResolver
   -> SettingsController
 ThemeController
 SettingsTranslationController
+SettingsDockController -> shared DockConfigStore
 QQmlApplicationEngine
 ```
 
@@ -76,7 +77,12 @@ the page and recreates its local preview state when selected again.
 
 `SettingsController` is the stable QML facade. It delegates navigation to
 `SettingsNavigationModel`, profile values to an immutable `SettingsUserProfile`,
-and resource URL construction to `SettingsIconResolver`.
+resource URL construction to `SettingsIconResolver`, and Dock personalization to
+the focused `SettingsDockController`. The latter exposes typed validated
+properties, debounced atomic writes, bounded errors, and a file watcher for
+external replacement. It depends only on the shared compositor-independent
+Dock configuration boundary; it does not reach into Shell, Typhon, or
+LayerShellQt.
 
 `SettingsUserProfileProvider` resolves the current username, the readable
 AccountsService avatar path, and administrative membership. `AdminGroupDetector`
@@ -90,5 +96,7 @@ public QML names and semantics, but live under their service ownership paths.
 
 Settings has no Quickshell import, LayerShellQt dependency, Hyprland command,
 Typhon-private protocol, compositor backend, IPC boundary, persistence for the
-Compositor preview, or shell command execution. Performance, Appearance, and
-More Settings remain ordinary selectable rows.
+Compositor preview, or shell command execution. The Dock page is a native route
+under the Appearance group and its preview is presentation-only; it does not
+import resident Dock QML or implement a second schema. Performance and More
+Settings remain ordinary selectable rows.

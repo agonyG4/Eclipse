@@ -225,7 +225,7 @@ Item {
                 const outputRect = root.dockSurfaceGeometry.outputLocalDelegateRect(
                     root.dockPanel.outputWidth, root.dockPanel.outputHeight,
                     Math.round(root.dockPanel.width), Math.round(root.dockPanel.height),
-                    DockController.position, DockController.effectiveEdgeMargin,
+                    DockController.position, DockController.layerShellEdgeMargin,
                     Qt.rect(topLeft.x, topLeft.y, root.width, root.height))
                 if (root.contextMenuController.debugEnabled) {
                     console.log("astrea.context-menu " + JSON.stringify({

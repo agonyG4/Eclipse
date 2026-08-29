@@ -11,6 +11,7 @@ private slots:
     void magnifiedSurfaceUsesCurrentSurfaceWidth();
     void itemPositionsAndBottomMarginsRemainDeterministic();
     void verticalEdgesUseInwardOutputLocalOrigins();
+    void physicalEdgeSurfaceDoesNotDoubleApplyFloatingMargin();
 };
 
 void DockSurfaceGeometryTest::centeredDockUsesOutputLocalCoordinates()
@@ -82,6 +83,24 @@ void DockSurfaceGeometryTest::verticalEdgesUseInwardOutputLocalOrigins()
     QCOMPARE(DockSurfaceGeometry::delegateRectInOutput(
                   output, surface, QStringLiteral("left"), 0, delegate),
               QRect(14, 259, 56, 62));
+}
+
+void DockSurfaceGeometryTest::physicalEdgeSurfaceDoesNotDoubleApplyFloatingMargin()
+{
+    const QSize output(1920, 1080);
+    const QSize surface(100, 600);
+    const QRectF delegate(14, 19, 56, 62);
+
+    QCOMPARE(DockSurfaceGeometry::delegateRectInOutput(
+                  output, surface, QStringLiteral("left"), 0, delegate),
+              QRect(14, 259, 56, 62));
+    QCOMPARE(DockSurfaceGeometry::delegateRectInOutput(
+                  output, surface, QStringLiteral("right"), 0, delegate),
+              QRect(1834, 259, 56, 62));
+    QCOMPARE(DockSurfaceGeometry::delegateRectInOutput(
+                  output, QSize(600, 84), QStringLiteral("bottom"), 0,
+                  QRectF(272, 19, 56, 62)),
+              QRect(932, 1015, 56, 62));
 }
 
 QTEST_GUILESS_MAIN(DockSurfaceGeometryTest)

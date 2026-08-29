@@ -181,6 +181,7 @@ private slots:
     void magnifiedInteractionRegionsResolveByVisualStacking();
     void exclusiveDragReleaseInEmptyHeadroomStaysOutsideDock();
     void verticalPositionsReusePrimaryAxisGeometry();
+    void floatingAutoHideUsesPhysicalEdgeRevealGeometry();
 };
 
 void DockHoverQmlTest::initTestCase()
@@ -1621,6 +1622,70 @@ void DockHoverQmlTest::verticalPositionsReusePrimaryAxisGeometry()
         QTRY_VERIFY_WITH_TIMEOUT(iconItem(last)->scale() > 1.0, 1500);
         QTRY_VERIFY_WITH_TIMEOUT(iconItem(last)->scale() >= iconItem(middle)->scale(), 1500);
 
+        delete panel;
+    }
+}
+
+void DockHoverQmlTest::floatingAutoHideUsesPhysicalEdgeRevealGeometry()
+{
+    const QStringList pins{QStringLiteral("one.desktop")};
+    for (const QString &position : {QStringLiteral("bottom"), QStringLiteral("left"),
+                                    QStringLiteral("right")}) {
+        DockController controller;
+        DockConfig config = configFor(QStringLiteral("none"), pins);
+        config.position = position;
+        config.edgeMargin = 12;
+        config.floating = true;
+        controller.applyConfig(config);
+
+        QQmlEngine engine;
+        engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+        engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+        QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+        QVERIFY2(component.status() == QQmlComponent::Ready,
+                 qPrintable(component.errorString()));
+        auto *panel = qobject_cast<QQuickItem *>(component.create());
+        QVERIFY2(panel, qPrintable(component.errorString()));
+        QQuickWindow window;
+        panel->setParentItem(window.contentItem());
+        QCoreApplication::processEvents();
+
+        QQuickItem *chrome = childWithObjectName(panel, QStringLiteral("dockChrome"));
+        QQuickItem *reveal = childWithObjectName(panel, QStringLiteral("edgeRevealTarget"));
+        QVERIFY(chrome && reveal);
+        QCOMPARE(controller.layerShellEdgeMargin(), 12);
+        QCOMPARE(controller.chromeEdgeInset(), 0);
+        QVERIFY(!controller.physicalEdgeReveal());
+        const qreal normalCrossExtent = position == QStringLiteral("bottom")
+            ? panel->height() : panel->width();
+        QCOMPARE(controller.exclusiveZone(), controller.restingHeight());
+
+        config.autoHide = QStringLiteral("always");
+        controller.applyConfig(config);
+        QCoreApplication::processEvents();
+        QCOMPARE(controller.layerShellEdgeMargin(), 0);
+        QCOMPARE(controller.chromeEdgeInset(), 12);
+        QVERIFY(controller.physicalEdgeReveal());
+        QCOMPARE(controller.exclusiveZone(), 0);
+        const qreal hiddenCrossExtent = position == QStringLiteral("bottom")
+            ? panel->height() : panel->width();
+        QCOMPARE(hiddenCrossExtent, normalCrossExtent + 12);
+
+        if (position == QStringLiteral("bottom")) {
+            QCOMPARE(reveal->y() + reveal->height(), panel->height());
+            QCOMPARE(panel->height() - (chrome->y() + chrome->height()), 12.0);
+        } else if (position == QStringLiteral("left")) {
+            QCOMPARE(reveal->x(), 0.0);
+            QCOMPARE(chrome->x(), 12.0);
+        } else {
+            QCOMPARE(reveal->x() + reveal->width(), panel->width());
+            QCOMPARE(panel->width() - (chrome->x() + chrome->width()), 12.0);
+        }
+
+        controller.setPointerInside(true);
+        QCoreApplication::processEvents();
+        QVERIFY(controller.revealed());
+        QCOMPARE(controller.exclusiveZone(), 0);
         delete panel;
     }
 }

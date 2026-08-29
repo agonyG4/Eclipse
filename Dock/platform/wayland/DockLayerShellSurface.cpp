@@ -15,10 +15,20 @@ bool DockLayerShellSurface::configure(QQuickWindow *window, const DockConfig &co
                                       int exclusiveZoneHeight, QScreen *screen,
                                       QString *errorOut)
 {
+    return configure(window, config, DockSurfaceGeometry::placementFor(config, false),
+                     exclusiveZoneHeight, screen, errorOut);
+}
+
+bool DockLayerShellSurface::configure(QQuickWindow *window, const DockConfig &config,
+                                      const DockSurfacePlacement &placement,
+                                      int exclusiveZoneHeight, QScreen *screen,
+                                      QString *errorOut)
+{
     if (!setOutputGeometry(window, screen, errorOut))
         return false;
 
-    const AstreaLayerShellConfig layerConfig = configurationFor(config, exclusiveZoneHeight, screen);
+    const AstreaLayerShellConfig layerConfig =
+        configurationFor(config, exclusiveZoneHeight, placement, screen);
     return AstreaLayerShellHelper::configure(window, layerConfig, errorOut);
 }
 
@@ -26,12 +36,20 @@ AstreaLayerShellConfig DockLayerShellSurface::configurationFor(const DockConfig 
                                                                int exclusiveZoneHeight,
                                                                QScreen *screen)
 {
+    return configurationFor(config, exclusiveZoneHeight,
+                            DockSurfaceGeometry::placementFor(config, false), screen);
+}
+
+AstreaLayerShellConfig DockLayerShellSurface::configurationFor(
+    const DockConfig &config, int exclusiveZoneHeight,
+    const DockSurfacePlacement &placement, QScreen *screen)
+{
     AstreaLayerShellConfig layerConfig;
     layerConfig.scope = QStringLiteral("astrea-dock");
     layerConfig.layer = AstreaLayerShellConfig::Layer::Top;
     layerConfig.keyboardInteractivity = AstreaLayerShellConfig::KeyboardInteractivity::None;
     layerConfig.exclusiveZone = qMax(0, exclusiveZoneHeight);
-    const int edgeMargin = config.effectiveEdgeMargin();
+    const int edgeMargin = placement.layerShellEdgeMargin;
     if (config.position == QStringLiteral("left")) {
         layerConfig.anchorLeft = true;
         layerConfig.margins.setLeft(edgeMargin);

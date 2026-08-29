@@ -17,6 +17,7 @@ private slots:
     void anchorsAndMarginsFollowSelectedEdge();
     void placementPolicySeparatesPhysicalAndVisualMargins();
     void placementPolicyKeepsAttachedDockAtPhysicalEdge();
+    void runtimePlacementUsesPhysicalEdgeMargins();
     void explicitOutputGeometryDoesNotDependOnWindowScreen();
 };
 
@@ -99,6 +100,34 @@ void DockLayerShellSurfaceTest::placementPolicyKeepsAttachedDockAtPhysicalEdge()
     QCOMPARE(hidden.layerShellEdgeMargin, 0);
     QCOMPARE(hidden.chromeEdgeInset, 0);
     QVERIFY(hidden.physicalEdgeReveal);
+}
+
+void DockLayerShellSurfaceTest::runtimePlacementUsesPhysicalEdgeMargins()
+{
+    for (const QString &position : {QStringLiteral("bottom"), QStringLiteral("left"),
+                                    QStringLiteral("right")}) {
+        DockConfig config = DockConfig::defaults();
+        config.position = position;
+        config.edgeMargin = 12;
+        config.floating = true;
+
+        const DockSurfacePlacement normal = DockSurfaceGeometry::placementFor(config, false);
+        const AstreaLayerShellConfig normalLayer =
+            DockLayerShellSurface::configurationFor(config, 68, normal);
+        QCOMPARE(normalLayer.exclusiveZone, 68);
+        QCOMPARE(normalLayer.margins.bottom(), position == QStringLiteral("bottom") ? 12 : 0);
+        QCOMPARE(normalLayer.margins.left(), position == QStringLiteral("left") ? 12 : 0);
+        QCOMPARE(normalLayer.margins.right(), position == QStringLiteral("right") ? 12 : 0);
+
+        const DockSurfacePlacement hidden = DockSurfaceGeometry::placementFor(config, true);
+        const AstreaLayerShellConfig hiddenLayer =
+            DockLayerShellSurface::configurationFor(config, 0, hidden);
+        QCOMPARE(hiddenLayer.exclusiveZone, 0);
+        QCOMPARE(hiddenLayer.margins.bottom(), 0);
+        QCOMPARE(hiddenLayer.margins.left(), 0);
+        QCOMPARE(hiddenLayer.margins.right(), 0);
+        QVERIFY(hidden.physicalEdgeReveal);
+    }
 }
 
 void DockLayerShellSurfaceTest::explicitOutputGeometryDoesNotDependOnWindowScreen()

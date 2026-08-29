@@ -41,8 +41,17 @@ The pipeline is:
 merges Astrea's discovered icon roots with the existing Qt search and fallback
 paths, deduplicates them, and preserves native, resource, and platform-provided
 paths. The public discovery order places `~/.icons` before XDG data roots and
-Flatpak exports; Qt receives the equivalent reverse traversal order because its
-loader resolves duplicate theme roots from the end of its search list.
+Flatpak exports, and `AstreaIconTheme::apply()` passes that merged order to Qt.
+The split-theme regression uses different `index.theme` metadata and content
+under user and system roots; on the supported Qt 6.11.2 environment it proves
+that keeping the order intact preserves both the first metadata source and the
+user content override. Reversing the list makes the lower-priority metadata
+win, so no reverse traversal is used.
+Qt's public QIcon API provides one search-path order for both theme metadata
+and content; it does not expose independent controls for those two scans. The
+regression therefore locks the single order that is predictable on the
+supported Qt version and avoids introducing a second Astrea representation
+resolver.
 
 The effective theme priority remains:
 
@@ -130,11 +139,16 @@ Spotlight uses its 40 logical result extent and the effective DPR. It no longer 
 
 ### Masking
 
-The existing `Qt5Compat.GraphicalEffects.OpacityMask` remains. A deterministic
-same-raster A/B at a 1.6 presentation scale confirms that rounded alpha leaves
-interior high-frequency RGB detail unchanged while changing corner alpha and
-edge antialiasing. The offscreen scene graph does not provide a stable visual
-OpacityMask capture, so a live Wayland visual comparison remains pending.
+The existing `Qt5Compat.GraphicalEffects.OpacityMask` remains in place pending a
+separately designed replacement. The deterministic same-raster A/B checks only
+the rounded-alpha math. The real QML A/B instantiates `AstreaAppIcon` at a 1.6
+presentation scale and compares interior detail separately from edge alpha.
+The offscreen scene graph currently produces no capturable masked interior. On
+the supported Qt 6.11.2 Wayland run, only the rounded path loses interior
+contrast (ratio `0.912873`), so `OpacityMask` is a measured secondary
+bottleneck in that runtime. A bounded `MultiEffect` substitution did not
+produce a qualifying capture and was not a drop-in source-preserving change;
+no effect migration is justified by that experiment.
 
 ## Verification strategy
 
@@ -153,7 +167,7 @@ QML tests cover these calculations:
 
 The tests also prove that Dock hover changes visual scale while keeping source URL and effective source size unchanged, that a DPR change causes one quality-target change independent of hover, that AltTab selection changes presentation width without a quality reload, and that Spotlight uses 40 logical pixels times DPR.
 
-The verification record is command-based: focused provider/QML/Dock/AltTab/Spotlight tests, the hardened Dock test subset, Debug and Release builds, QML lint, `git diff --check`, and high-DPI runs at 1x, 1.5x, and 2x are recorded only after they execute. The deterministic mask A/B is a same-raster source-buffer comparison because the offscreen scene graph does not expose a stable OpacityMask capture. Live Wayland/Typhon visual validation, including Flatpak and low-resolution-only applications, remains pending unless explicitly run and reported.
+The verification record is command-based: focused provider/QML/Dock/AltTab/Spotlight tests, the hardened Dock test subset, Debug and Release builds, QML lint, `git diff --check`, and high-DPI runs at 1x, 1.5x, and 2x are recorded only after they execute. The deterministic mask A/B is a same-raster source-buffer comparison; the real QML mask A/B is skipped when the selected platform cannot capture the effect and is run separately on Wayland. Live Wayland/Typhon visual validation, including Flatpak and low-resolution-only applications, remains pending unless explicitly run and reported.
 
 ## Non-goals
 

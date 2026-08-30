@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Window
-import Qt5Compat.GraphicalEffects
 
 Item {
     id: root
@@ -125,6 +124,9 @@ Item {
         mipmap: true
         asynchronous: true
         cache: true
+        // Keep this Image as the shader's direct texture source. It is hidden
+        // only while the shader owns the draw, so rounded mode cannot render
+        // the source twice.
         visible: status === Image.Ready && root.iconRadius <= 0
 
         onStatusChanged: {
@@ -133,19 +135,28 @@ Item {
         }
     }
 
-    OpacityMask {
+    Loader {
+        id: roundedEffectLoader
+        objectName: "roundedIconEffectLoader"
         anchors.fill: iconImage
-        source: iconImage
-        maskSource: Rectangle {
-            width: iconImage.width
-            height: iconImage.height
-            radius: root.iconRadius > 0 ? root.iconRadius : 0
-            visible: false
+        active: iconImage.status === Image.Ready && root.iconRadius > 0
+        sourceComponent: ShaderEffect {
+            objectName: "roundedIconEffect"
+            anchors.fill: parent
+            property variant source: iconImage
+            property real roundedRadius: root.iconRadius
+                / Math.min(width, height)
+            // Keep qt_TexCoord0 in the local [0, 1] range. Qt detaches an
+            // atlas texture when necessary, which preserves correct sampling
+            // for this non-linear UV-space mask.
+            supportsAtlasTextures: false
+            blending: true
+            fragmentShader: "qrc:/shaders/rounded_icon.frag.qsb"
         }
-        visible: iconImage.status === Image.Ready && root.iconRadius > 0
     }
 
     Rectangle {
+        objectName: "fallbackSurface"
         anchors.fill: parent
         radius: root.fallbackRadius
         color: root.fallbackColor

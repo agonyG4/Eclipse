@@ -2,11 +2,11 @@
 
 > **For agentic workers:** Execute inline in this session; subagents are explicitly disabled for this task. Steps use checkbox syntax for tracking.
 
-**Goal:** Replace the proven rounded-icon OpacityMask bottleneck with a source-preserving MultiEffect path and qualify it at real window DPRs.
+**Goal:** Replace the proven rounded-icon OpacityMask bottleneck with a source-preserving rounded path and qualify it at real window DPRs.
 
-**Architecture:** Keep `AstreaAppIcon`'s existing resolution-aware `Image` and source URL unchanged. Use a Loader-created `MultiEffect` with a texture-backed rounded mask only for rounded icons; if measured quality remains below threshold, implement the smallest direct-sampling analytic shader.
+**Architecture:** Keep `AstreaAppIcon`'s existing resolution-aware `Image` and source URL unchanged. A Loader-created analytic `ShaderEffect` samples that Image directly only for rounded icons. A correctly configured MultiEffect was measured first and rejected because it matched the legacy quality loss.
 
-**Tech Stack:** C++20, Qt 6.8+ QML, QtQuick.Effects.MultiEffect, Qt Quick scene-graph captures, QImage metrics, CMake/CTest, rtk.
+**Tech Stack:** C++20, Qt 6.8+ QML, Qt Quick ShaderEffect with Qt `.qsb` compilation, Qt Quick scene-graph captures, QImage metrics, CMake/CTest, rtk.
 
 ## Global Constraints
 
@@ -29,19 +29,19 @@
 - The QML test will expose no new production provider interface; it will use the existing `AstreaAppIcon` properties and an inline test-only legacy component.
 - The provider tests will expose `applyPreservesSplitThemeMetadataPriority()` and a separate duplicate-content selection test using production `AstreaIconTheme::apply()`.
 
-- [ ] **Step 1: Add the DPR-aware three-path capture test.**
+- [x] **Step 1: Add the DPR-aware three-path capture test.**
 
   Remove `devicePixelRatioOverride = 1.0` from the real mask capture. Assert screen DPR, `QQuickWindow::devicePixelRatio()`, `QQuickWindow::effectiveDevicePixelRatio()`, and QML `effectiveDevicePixelRatio` agree before computing expected source pixels. Capture direct Image, inline legacy OpacityMask, and production rounded path using identical source, geometry, scale, and URL. Keep `maximumInteriorDifference` and contrast metrics, add edge-alpha checks, `hasProxySource`, and a `0.98` new/unmasked threshold plus required improvement over legacy.
 
-- [ ] **Step 2: Add light and dark deterministic source cases.**
+- [x] **Step 2: Add light and dark deterministic source cases.**
 
   Run the same capture for dark high-contrast and light high-contrast SVG artwork. Keep the 12-pixel interior exclusion and report source pixels, all DPR values, all three contrast values/ratios, maximum differences, edge behavior, and proxy state.
 
-- [ ] **Step 3: Split the theme tests.**
+- [x] **Step 3: Split the theme tests.**
 
   Rename the differing-metadata test to metadata priority and leave its user-only probe. Add a separate identical-`48x48/apps` metadata test with green user and red system duplicate content, invoke `AstreaIconTheme::apply()` and the provider, and report/assert the actual Qt-selected root without claiming both contracts are proven.
 
-- [ ] **Step 4: Run the new tests against the current implementation.**
+- [x] **Step 4: Run the new tests against the current implementation.**
 
   Run:
 
@@ -51,30 +51,42 @@
   QT_QPA_PLATFORM=offscreen build/debug/shared/astrea-icon-provider-test
   ```
 
-  Expected: the DPR assertions expose the actual source extent, the legacy-backed production rounded path fails the new improvement/quality criterion, and the split tests identify Qt's actual duplicate-content behavior.
+  Result: the DPR assertions exposed the expected source extents, the
+  legacy-backed production rounded path failed the improvement/quality
+  criterion, and the split tests identified Qt's actual duplicate-content
+  behavior.
 
-### Task 2: Implement the minimal MultiEffect replacement
+### Task 2: Evaluate the minimal MultiEffect replacement
 
 **Files:**
-- Modify: `shared/qml/AstreaAppIcon.qml`
+- Modify: `shared/qml/AstreaAppIcon.qml` (evaluation only; not the final path)
 
 **Interfaces:**
 - Preserve every existing `AstreaAppIcon` property and resolved-source expression.
 - Add only internal object names/diagnostic structure needed by the test; no provider or Dock API changes.
 
-- [ ] **Step 1: Configure direct Image and rounded mask texture.**
+- [x] **Step 1: Configure direct Image and rounded mask texture.**
 
-  Import `QtQuick.Effects`. Keep the source Image's existing `source`, dynamic `sourceSize`, smoothing, mipmapping, retry, and readiness behavior. Use a texture-backed mask item covering the Image rectangle with `radius: root.iconRadius` and no fixed pixel size.
+  A direct-Image MultiEffect configuration was evaluated while keeping the
+  source Image's existing `source`, dynamic `sourceSize`, smoothing,
+  mipmapping, retry, and readiness behavior. The final path does not need a
+  mask texture.
 
-- [ ] **Step 2: Load MultiEffect only for rounded icons.**
+- [x] **Step 2: Load MultiEffect only for rounded icons.**
 
-  Create the effect through a Loader active only when the Image is ready and `iconRadius > 0`. Set `source: iconImage`, `maskEnabled: true`, `maskSource: roundedMaskTexture`, `blurEnabled: false`, `shadowEnabled: false`, and leave all unrelated effect properties at defaults. Set source opacity to zero only while the effect is active; keep the direct Image visible for `iconRadius = 0`.
+  The attempted Loader-created MultiEffect was active only when the Image was
+  ready and `iconRadius > 0`, with masking as its only effect. It reported no
+  proxy source but did not meet the quality threshold, so the production
+  Loader now creates the analytic ShaderEffect instead.
 
-- [ ] **Step 3: Preserve fallback and source invariants.**
+- [x] **Step 3: Preserve fallback and source invariants.**
 
-  Keep fallback visibility tied to Image readiness, ensure the direct path has no active effect item, ensure rounded mode does not double-render, and confirm changing `scale` leaves `resolvedSource` and `effectiveSourcePixelSize` unchanged.
+  Keep fallback visibility tied to Image readiness, ensure the direct path has
+  no active effect item, ensure rounded mode does not double-render, and
+  confirm changing `scale` leaves `resolvedSource` and
+  `effectiveSourcePixelSize` unchanged.
 
-- [ ] **Step 4: Run the focused QML test.**
+- [x] **Step 4: Run the focused QML test.**
 
   ```bash
   cmake --build build/debug --target astrea-app-icon-qml-test -j2
@@ -82,9 +94,11 @@
     build/debug/shared/astrea-app-icon-qml-test opacityMaskPreservesInteriorDetailAtMaximumScale
   ```
 
-  Expected: MultiEffect has no proxy source, rounded output has transparent/antialiased edges, and new interior contrast clears both the `0.98` threshold and legacy result.
+  Result: `hasProxySource` was false, but the MultiEffect output matched the
+  legacy OpacityMask loss (`0.912873` contrast ratio at DPR 1), so it did not
+  clear the quality threshold and was not retained.
 
-### Task 3: Use an analytic shader only if the measured MultiEffect path fails
+### Task 3: Use the measured direct-sampling analytic shader
 
 **Files:**
 - Modify: `shared/qml/AstreaAppIcon.qml`
@@ -95,15 +109,18 @@
 - Keep the same `AstreaAppIcon` properties and Image source.
 - The fallback shader samples the existing high-resolution texture and multiplies source alpha by analytic rounded-rectangle alpha.
 
-- [ ] **Step 1: Confirm MultiEffect failure with repeated captures.**
+- [x] **Step 1: Confirm MultiEffect failure with the real capture.**
 
-  Repeat the three-path test at DPR 1, 1.5, and 2 for both source themes. Proceed only if the correctly configured MultiEffect remains below `0.98` or does not materially improve over legacy.
+  The correctly configured MultiEffect was captured at DPR 1 for both source
+  themes and remained at the legacy contrast ratio (`0.912873` for the dark
+  case). The final ShaderEffect was then captured at DPR 1, 1.5, and 2 for
+  both themes.
 
-- [ ] **Step 2: Implement the smallest direct-sampling shader.**
+- [x] **Step 2: Implement the smallest direct-sampling shader.**
 
   Use the repository's Qt 6 shader build pipeline, premultiplied-alpha output, UV-space rounded-rectangle coverage, and no unrelated color/effect operations. Account for the source texture's atlas coordinates using the existing ShaderEffect conventions.
 
-- [ ] **Step 3: Extend the same metrics and edge assertions.**
+- [x] **Step 3: Extend the same metrics and edge assertions.**
 
   Require the shader path to meet the same threshold and source-request invariants. Do not add Qt Quick Effect Maker output unless it is necessary for the existing build.
 
@@ -113,30 +130,34 @@
 - Modify: `docs/superpowers/specs/2026-08-29-sharp-rounded-app-icons-design.md`
 - Modify: `docs/superpowers/qualifications/2026-08-29-resolution-aware-icon-pipeline-final-validation.md`
 
-- [ ] **Step 1: Rebuild Debug and Release targets from the final tree.**
+- [x] **Step 1: Rebuild Debug and Release targets from the final tree.**
 
   ```bash
   cmake --build build/debug --target astrea-icon-provider-test astrea-app-icon-qml-test dock-hover-qml-test -j2
   cmake --build build/release --target astrea-icon-provider-test astrea-app-icon-qml-test dock-hover-qml-test -j2
   ```
 
-- [ ] **Step 2: Run focused, affected, and high-DPI tests.**
+- [x] **Step 2: Run focused, affected, and high-DPI tests.**
 
   Run the three named tests and affected Dock/AltTab/Spotlight tests at offscreen DPR 1, 1.5, and 2. Run the real mask test on Wayland at all three factors and record every requested metric.
 
-- [ ] **Step 3: Run QML lint/cache and inspect effect state.**
+- [x] **Step 3: Run QML lint/cache and inspect effect state.**
 
   ```bash
   cmake --build build/debug --target astrea-shell_qmllint astrea-settings-ui_qmllint -j2
   ```
 
-  Confirm existing warnings are distinguished from errors, `hasProxySource` is false, and no filesystem/provider/effect shader work is driven by hover frames.
+  Confirm existing warnings are distinguished from errors, record
+  `hasProxySource == false` for the rejected MultiEffect trial, and treat it
+  as not applicable to the final ShaderEffect. No filesystem/provider/effect
+  shader work is driven by hover frames in the tested source path; explicit
+  filesystem/provider allocation counters were not instrumented.
 
-- [ ] **Step 4: Regenerate the qualification record.**
+- [x] **Step 4: Regenerate the qualification record.**
 
   Replace stale claims about `surfacePlacement()` with fresh final-tree results. Separate metadata priority from duplicate content-root behavior, include measured before/after mask numbers, record unavailable live-session checks honestly, and keep all prose in English.
 
-- [ ] **Step 5: Check and commit only scoped files.**
+- [x] **Step 5: Check and commit only scoped files.**
 
   ```bash
   git diff --check

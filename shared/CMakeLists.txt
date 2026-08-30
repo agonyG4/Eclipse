@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick DBus)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick DBus ShaderTools)
 if(NOT TARGET PkgConfig::ASTREA_PIPEWIRE)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(ASTREA_PIPEWIRE REQUIRED IMPORTED_TARGET libpipewire-0.3)
@@ -171,6 +171,13 @@ qt_add_qml_module(astrea-shared-core
     OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Astrea/Shared"
     QML_FILES
         qml/AstreaAppIcon.qml
+)
+
+qt_add_shaders(astrea-shared-core astrea_shared_core_shaders
+    PREFIX "/shaders"
+    BASE qml/shaders
+    FILES
+        qml/shaders/rounded_icon.frag
 )
 
 add_library(astrea-shared-layer-shell STATIC

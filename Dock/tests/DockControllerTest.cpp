@@ -56,6 +56,7 @@ private slots:
     void personalizationPropertiesPropagateAndUnchangedConfigIsQuiet();
     void autoHidePolicyKeepsSurfaceMappedAndReservationBounded();
     void runtimeObstructionUpdatesSurfacePlacement();
+    void surfacePlacementTracksRuntimePositionTransitions();
 };
 
 class CountingPersistence final : public DockConfigPersistence {
@@ -693,6 +694,85 @@ void DockControllerTest::runtimeObstructionUpdatesSurfacePlacement()
     QCOMPARE(controller.layerShellEdgeMargin(), 12);
     QCOMPARE(controller.chromeEdgeInset(), 0);
     QVERIFY(!controller.physicalEdgeReveal());
+}
+
+void DockControllerTest::surfacePlacementTracksRuntimePositionTransitions()
+{
+    DockController controller;
+    DockConfig config = configWithPins({QStringLiteral("one.desktop")});
+    config.edgeMargin = 12;
+    config.floating = true;
+    config.autoHide = QStringLiteral("never");
+    controller.applyConfig(config);
+
+    QSignalSpy placementSpy(&controller, &DockController::surfacePlacementChanged);
+    QCOMPARE(controller.surfacePlacement().position, QStringLiteral("bottom"));
+
+    config.position = QStringLiteral("left");
+    controller.applyConfig(config);
+    QCOMPARE(placementSpy.count(), 1);
+    QCOMPARE(controller.surfacePlacement().position, QStringLiteral("left"));
+
+    config.position = QStringLiteral("right");
+    controller.applyConfig(config);
+    QCOMPARE(placementSpy.count(), 2);
+    QCOMPARE(controller.surfacePlacement().position, QStringLiteral("right"));
+
+    config.position = QStringLiteral("bottom");
+    controller.applyConfig(config);
+    QCOMPARE(placementSpy.count(), 3);
+    QCOMPARE(controller.surfacePlacement().position, QStringLiteral("bottom"));
+
+    config.autoHide = QStringLiteral("always");
+    controller.applyConfig(config);
+    placementSpy.clear();
+    QCOMPARE(controller.surfacePlacement().layerShellEdgeMargin, 0);
+    QCOMPARE(controller.surfacePlacement().chromeEdgeInset, 12);
+    QVERIFY(controller.surfacePlacement().physicalEdgeReveal);
+
+    for (const QString &position : {QStringLiteral("left"), QStringLiteral("right"),
+                                    QStringLiteral("bottom")}) {
+        config.position = position;
+        controller.applyConfig(config);
+        QCOMPARE(placementSpy.count(), 1);
+        QCOMPARE(controller.surfacePlacement().position, position);
+        placementSpy.clear();
+    }
+
+    config.autoHide = QStringLiteral("intelligent");
+    controller.applyConfig(config);
+
+    Astrea::Typhon::Snapshot snapshot;
+    snapshot.connectionGeneration = 1;
+    snapshot.revision = 1;
+    Astrea::Typhon::Toplevel active;
+    active.id = QStringLiteral("maximized");
+    active.states = Astrea::Typhon::ToplevelStates{
+        Astrea::Typhon::ToplevelStateFlag::Active,
+        Astrea::Typhon::ToplevelStateFlag::Maximized};
+    snapshot.windows.append(active);
+    controller.applyTyphonSnapshot(snapshot);
+    placementSpy.clear();
+    QCOMPARE(controller.surfacePlacement().layerShellEdgeMargin, 0);
+    QCOMPARE(controller.surfacePlacement().chromeEdgeInset, 12);
+    QVERIFY(controller.surfacePlacement().physicalEdgeReveal);
+
+    for (const QString &position : {QStringLiteral("left"), QStringLiteral("right"),
+                                    QStringLiteral("bottom")}) {
+        config.position = position;
+        controller.applyConfig(config);
+        QCOMPARE(placementSpy.count(), 1);
+        QCOMPARE(controller.surfacePlacement().position, position);
+        QCOMPARE(controller.surfacePlacement().layerShellEdgeMargin, 0);
+        QCOMPARE(controller.surfacePlacement().chromeEdgeInset, 12);
+        QVERIFY(controller.surfacePlacement().physicalEdgeReveal);
+        placementSpy.clear();
+    }
+
+    const int cornerRadius = config.cornerRadius;
+    config.cornerRadius = cornerRadius + 1;
+    controller.applyConfig(config);
+    QCOMPARE(placementSpy.count(), 0);
 }
 
 QTEST_MAIN(DockControllerTest)

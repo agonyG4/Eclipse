@@ -7,11 +7,12 @@
 #include <QSize>
 
 struct DockSurfacePlacement final {
+    QString position = QStringLiteral("bottom");
     int layerShellEdgeMargin = 0;
     int chromeEdgeInset = 0;
     bool physicalEdgeReveal = false;
 
-    friend constexpr bool operator==(const DockSurfacePlacement &, const DockSurfacePlacement &)
+    friend bool operator==(const DockSurfacePlacement &, const DockSurfacePlacement &)
         = default;
 };
 

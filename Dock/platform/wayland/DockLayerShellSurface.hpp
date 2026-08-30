@@ -15,15 +15,13 @@ public:
     static AstreaLayerShellConfig configurationFor(const DockConfig &config,
                                                    int exclusiveZoneHeight,
                                                    QScreen *screen = nullptr);
-    static AstreaLayerShellConfig configurationFor(const DockConfig &config,
+    static AstreaLayerShellConfig configurationFor(const DockSurfacePlacement &placement,
                                                    int exclusiveZoneHeight,
-                                                   const DockSurfacePlacement &placement,
                                                    QScreen *screen = nullptr);
     static bool configure(QQuickWindow *window, const DockConfig &config,
                           int exclusiveZoneHeight,
                           QScreen *screen = nullptr, QString *errorOut = nullptr);
-    static bool configure(QQuickWindow *window, const DockConfig &config,
-                          const DockSurfacePlacement &placement,
+    static bool configure(QQuickWindow *window, const DockSurfacePlacement &placement,
                           int exclusiveZoneHeight,
                           QScreen *screen = nullptr, QString *errorOut = nullptr);
     // Publish the compositor's logical output geometry to the Dock root. The

@@ -18,6 +18,7 @@ private slots:
     void placementPolicySeparatesPhysicalAndVisualMargins();
     void placementPolicyKeepsAttachedDockAtPhysicalEdge();
     void runtimePlacementUsesPhysicalEdgeMargins();
+    void placementSnapshotSelectsItsOwnAnchor();
     void explicitOutputGeometryDoesNotDependOnWindowScreen();
 };
 
@@ -113,7 +114,7 @@ void DockLayerShellSurfaceTest::runtimePlacementUsesPhysicalEdgeMargins()
 
         const DockSurfacePlacement normal = DockSurfaceGeometry::placementFor(config, false);
         const AstreaLayerShellConfig normalLayer =
-            DockLayerShellSurface::configurationFor(config, 68, normal);
+            DockLayerShellSurface::configurationFor(normal, 68);
         QCOMPARE(normalLayer.exclusiveZone, 68);
         QCOMPARE(normalLayer.margins.bottom(), position == QStringLiteral("bottom") ? 12 : 0);
         QCOMPARE(normalLayer.margins.left(), position == QStringLiteral("left") ? 12 : 0);
@@ -121,12 +122,35 @@ void DockLayerShellSurfaceTest::runtimePlacementUsesPhysicalEdgeMargins()
 
         const DockSurfacePlacement hidden = DockSurfaceGeometry::placementFor(config, true);
         const AstreaLayerShellConfig hiddenLayer =
-            DockLayerShellSurface::configurationFor(config, 0, hidden);
+            DockLayerShellSurface::configurationFor(hidden, 0);
         QCOMPARE(hiddenLayer.exclusiveZone, 0);
         QCOMPARE(hiddenLayer.margins.bottom(), 0);
         QCOMPARE(hiddenLayer.margins.left(), 0);
         QCOMPARE(hiddenLayer.margins.right(), 0);
         QVERIFY(hidden.physicalEdgeReveal);
+    }
+}
+
+void DockLayerShellSurfaceTest::placementSnapshotSelectsItsOwnAnchor()
+{
+    for (const QString &position : {QStringLiteral("bottom"), QStringLiteral("left"),
+                                    QStringLiteral("right")}) {
+        DockConfig selected = DockConfig::defaults();
+        selected.position = position;
+        selected.edgeMargin = 12;
+        selected.floating = true;
+        const DockSurfacePlacement placement = DockSurfaceGeometry::placementFor(selected, false);
+
+        const AstreaLayerShellConfig layer =
+            DockLayerShellSurface::configurationFor(placement, 68);
+
+        QCOMPARE(placement.position, position);
+        QCOMPARE(layer.anchorBottom, position == QStringLiteral("bottom"));
+        QCOMPARE(layer.anchorLeft, position == QStringLiteral("left"));
+        QCOMPARE(layer.anchorRight, position == QStringLiteral("right"));
+        QCOMPARE(layer.margins.bottom(), position == QStringLiteral("bottom") ? 12 : 0);
+        QCOMPARE(layer.margins.left(), position == QStringLiteral("left") ? 12 : 0);
+        QCOMPARE(layer.margins.right(), position == QStringLiteral("right") ? 12 : 0);
     }
 }
 

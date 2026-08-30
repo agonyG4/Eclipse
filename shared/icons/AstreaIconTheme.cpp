@@ -26,10 +26,12 @@ QStringList mergePaths(const QStringList &preferred, const QStringList &existing
 
 QStringList qIconSearchPaths(const QStringList &preferred, const QStringList &existing)
 {
-    // Keep the merged roots in Freedesktop priority order. The split-theme
-    // regression proves that, with the Qt version used by this build, this
-    // order makes the first index.theme and the user override content agree;
-    // reversing the list makes the lower-priority metadata win.
+    // Keep the merged roots in Freedesktop priority order so Qt reads the
+    // highest-priority index.theme first. QIcon uses this same list for
+    // content entries, but its internal front-insertion order can make a
+    // duplicate lower-priority file win; public QIcon APIs do not expose
+    // separate metadata and content search-path lists. Reversing the list
+    // would make the lower-priority metadata win as well.
     return mergePaths(preferred, existing);
 }
 

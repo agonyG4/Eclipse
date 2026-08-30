@@ -1,19 +1,18 @@
 # Resolution-Aware Icon Pipeline Final Validation
 
 Date: 2026-08-29  
-Environment: Qt 6.11.2, x86_64, Debug build, Qt Quick offscreen and Wayland
-(`WAYLAND_DISPLAY=wayland-1`)
+Environment: Qt 6.11.2, x86_64, NVIDIA, Debug and Release builds,
+Qt Quick Wayland (`WAYLAND_DISPLAY=wayland-1`) and offscreen tests
 
 ## Representation-selection correctness
 
-The production provider continues to use `QIcon::fromTheme()` followed by
-`QIcon::pixmap(logicalSize, devicePixelRatio, ...)`. Production code does not
-use `QIcon::availableSizes()` to select a representation. The existing
-pixel-distinguishable tests remain in place for theme `Scale=2`, named
-scalable SVG, threshold selection, inheritance, current-theme preference,
-hicolor fallback, and smaller-raster non-upscaling.
+The provider still delegates representation selection to
+`QIcon::fromTheme()` and `QIcon::pixmap(logicalSize, devicePixelRatio, ...)`.
+Production code does not use `QIcon::availableSizes()` or reimplement XDG
+Scale, Threshold, scalable-SVG, inheritance, or fallback matching.
 
-`astrea-icon-provider-test` passed all 20 tests, including:
+`astrea-icon-provider-test` passed all 21 test cases. The required
+pixel-distinguishable regressions remain present and pass:
 
 ```text
 providerHonorsThemeScaleMetadata
@@ -25,119 +24,200 @@ providerFallsBackToHicolor
 providerDoesNotUpscaleSmallerRaster
 ```
 
+`providerInvalidatesPositiveAndNegativeCachesOnThemeChange` also passed the
+concurrent invalidation stress sequence. The existing independent cache locks
+remain separate from the serialized `AstreaIconTheme::qIconMutex()` region
+covering QIcon theme mutation and rendering.
+
 ## Split-theme metadata and content-root priority
 
-`applyPreservesSplitThemePriority` creates two roots for the same theme and
-invokes the production `AstreaIconTheme::apply()` path. The user root contains
-only `96x96/apps` metadata and green content; the lower-priority system root
-contains only `48x48/apps` metadata and red content, with a duplicate icon name.
-The user-only icon proves which `index.theme` metadata was selected, while the
-duplicate icon proves which content root won.
+The tests now use the production `AstreaIconTheme::apply()` path. The pure
+`searchPathsFor()` ordering test remains separate from provider behavior.
 
-The original reversed-QIcon-path behavior failed the user-only probe. Keeping
-the merged Freedesktop-priority order passes both probes on Qt 6.11.2. This is
-the smallest change that preserves predictable user overrides without adding
-an Astrea size/Scale/Threshold resolver. Qt's public API offers one shared
-search-path order for metadata and content rather than independent controls;
-the regression records the supported-version behavior instead of guessing
-around that limitation. The pure `searchPathsFor()` ordering and deduplication
-test remains separate.
+`applyPreservesSplitThemeMetadataPriority` uses different `index.theme`
+metadata: the high-priority user root advertises only `96x96/apps`, while the
+lower-priority system root advertises only `48x48/apps`. The user-only green
+icon is found, proving that the first user `index.theme` is the metadata
+source.
 
-## Real OpacityMask A/B
+`applyPreservesDuplicateContentRootPriority` uses identical `48x48/apps`
+metadata and green user versus red system duplicate content. Qt 6.11.2
+selects the red lower-priority system file. This is recorded as actual
+behavior; it is not claimed as a user-content override guarantee.
 
-`roundedAlphaMathPreservesInteriorDetail` is retained as a deterministic
-source-buffer check and is explicitly not a QML effect test.
+The production list remains in Freedesktop priority order so metadata priority
+is predictable. Qt exposes one shared search-path list for both metadata and
+content, while its QIconLoader content-entry insertion order can differ from
+metadata traversal. Public QIcon APIs do not provide independent lists. The
+task therefore documents this Qt limitation and does not add a second Astrea
+Scale/Threshold/representation resolver.
 
-`opacityMaskPreservesInteriorDetailAtMaximumScale` instantiates the real
-`AstreaAppIcon.qml`, renders the same high-frequency SVG unmasked and with the
-normal rounded mask at presentation scale `1.6`, and compares interior detail
-separately from corner alpha and edge antialiasing.
+## Rounded-path A/B result
 
-The real offscreen capture is not qualifying: the masked interior is not
-capturable, so the test reports an explicit skip. The real Wayland capture
-passed at all three requested scale factors with:
+`roundedAlphaMathPreservesInteriorDetail` remains as a deterministic image
+math test. Its documentation explicitly says that it does not execute QML
+`OpacityMask` and is not proof about effect texture resolution.
+
+`opacityMaskPreservesInteriorDetailAtMaximumScale` now performs a real
+three-path Wayland capture using identical high-frequency dark and light SVG
+artwork, source URL, logical geometry, presentation scale `1.6`, source
+extent, DPR, and outer scene transform:
 
 ```text
-QT_SCALE_FACTOR=1:   source pixels 154, maximum interior difference 190, contrast ratio 0.912873
-QT_SCALE_FACTOR=1.5: source pixels 154, maximum interior difference 125, contrast ratio 0.975791
-QT_SCALE_FACTOR=2:   source pixels 154, maximum interior difference 231, contrast ratio 0.99043
+A. direct production Image
+B. inline test-only legacy Qt5Compat OpacityMask
+C. production analytic ShaderEffect rounded path
 ```
 
-The rounded path therefore loses measurable interior detail in this runtime;
-`OpacityMask` is a proven secondary bottleneck. It remains installed because
-the bounded `MultiEffect` substitution did not provide a qualifying capture
-or a source-preserving drop-in. A replacement needs a separate, measured
-implementation design.
+The metric uses a 12-pixel inset so rounded corners and antialiased boundary
+pixels are not treated as interior detail. `maximumInteriorDifference` and
+interior contrast are retained. The acceptance threshold is
+`new/unmasked contrast >= 0.98`, plus a measurable improvement over legacy.
+
+The correctly configured MultiEffect trial was also measured before choosing
+the shader. At DPR 1 it reported `hasProxySource == false`, but its interior
+contrast was `16.0475` versus `17.5791` unmasked, a ratio of `0.912873`, and
+its maximum interior difference was `190`, the same as legacy OpacityMask.
+It therefore did not close the measured quality gap and was not retained.
+
+The final ShaderEffect samples the already-loaded Image texture directly and
+computes rounded coverage analytically. It uses the Qt `.qsb` shader pipeline,
+premultiplied-alpha output, no blur/shadow/color features, and no fixed-size
+mask texture. `hasProxySource` is not applicable to the final ShaderEffect;
+the test reports it as unavailable. `supportsAtlasTextures: false` keeps the
+shader's UVs local, allowing Qt to detach an atlas texture when necessary.
+
+### Measured Wayland matrix
+
+Each row is one artwork. Contrast ratios are relative to the unmasked path;
+maximum differences are 8-bit channel differences within the interior.
+
+| `QT_SCALE_FACTOR` | source px | artwork | unmasked contrast | legacy contrast | legacy ratio | new contrast | new ratio | legacy max diff | new max diff |
+| ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 154 | dark | 17.5791 | 16.0475 | 0.912873 | 17.5789 | 0.999986 | 190 | 2 |
+| 1 | 154 | light | 24.7019 | 22.0442 | 0.892408 | 24.7020 | 1.000000 | 234 | 2 |
+| 1.5 | 231 | dark | 11.0059 | 10.6696 | 0.969445 | 11.0059 | 0.999995 | 133 | 2 |
+| 1.5 | 231 | light | 15.7433 | 15.1324 | 0.961195 | 15.7433 | 0.999999 | 147 | 2 |
+| 2 | 308 | dark | 8.09799 | 8.02245 | 0.990672 | 8.09794 | 0.999994 | 237 | 3 |
+| 2 | 308 | light | 11.6905 | 11.5273 | 0.986040 | 11.6905 | 1.000000 | 264 | 3 |
+
+All six final rounded captures passed the edge checks: transparent outside
+corners, antialiased partial edge pixels, opaque interior pixels, and clean
+zero-alpha RGB values. No square-corner, halo, black-fringe, or
+premultiplied-alpha artifact was observed by the deterministic checks.
+
+The offscreen QML run is intentionally non-qualifying for effect quality: it
+passed its non-capture tests and explicitly skipped the unmeasurable effect
+capture. The Wayland captures above are the qualifying runtime evidence.
 
 ## DPR evidence
 
-`windowDprMatchesScreenDprForDockIcon` passed under the offscreen backend at
-all requested scale factors:
+The real rounded capture asserts Screen DPR, `QQuickWindow::devicePixelRatio`,
+`QQuickWindow::effectiveDevicePixelRatio`, and QML's effective DPR before
+interpreting image metrics. All matched:
 
-| `QT_SCALE_FACTOR` | Screen DPR | window DPR | effective window DPR |
-| --- | ---: | ---: | ---: |
-| `1` | `1` | `1` | `1` |
-| `1.5` | `1.5` | `1.5` | `1.5` |
-| `2` | `2` | `2` | `2` |
+| `QT_SCALE_FACTOR` | Screen DPR | window DPR | effective window DPR | QML DPR | source px |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 1 | 1 | 1 | 1 | 154 |
+| 1.5 | 1.5 | 1.5 | 1.5 | 1.5 | 231 |
+| 2 | 2 | 2 | 2 | 2 | 308 |
 
-It also passed in the live Wayland backend at `QT_SCALE_FACTOR=1.5` with
-`1.5 / 1.5 / 1.5`. No reproduced per-window mismatch justifies a DPR service;
-the simple QML property is retained.
+The expected source extent is `ceil(ceil(96 * 1.6) * DPR)`. No DPR service or
+process-global replacement was introduced.
 
-## Dock source-request invariant
+## Source-request invariant and fallback behavior
 
-The live-capable Wayland run of
-`iconSourceQualityRemainsStableDuringHover` passed. It preserves both
-`resolvedSource` and `effectiveSourcePixelSize` while `magnificationScale`
-changes. The mask investigation does not feed instantaneous magnification
-back into source resolution.
+The Wayland `dock-hover-qml-test` passed its real-hover regression. During
+magnification, `resolvedSource` and `effectiveSourcePixelSize` remain
+unchanged while `magnificationScale` changes. The new rounded path only
+changes the draw path; it does not feed instantaneous magnification into the
+provider request. The test does not instrument filesystem, provider,
+rasterization, shader-compilation, or texture-allocation counters per frame;
+the source stability and static effect configuration are the automated
+evidence for this pass.
+
+The QML regression also passed for direct Image mode, rounded mode, missing
+icon readiness, error fallback, and fallback initials. `iconRadius = 0` has no
+active rounded effect and uses the direct Image path.
 
 ## Verification commands and results
 
-Focused tests passed:
+Fresh Debug build:
 
 ```text
-QT_QPA_PLATFORM=offscreen ctest --test-dir build/debug \
-  -R '^(astrea-icon-provider-test|astrea-app-icon-qml-test|dock-hover-qml-test)$' \
-  --output-on-failure
-=> 3/3 passed
+rtk run cmake --build build/debug --clean-first -j2
+=> exit 0; all 774 build steps completed
 ```
 
-The affected offscreen suite passed `27/27`, covering the provider, shared QML,
-Spotlight, AltTab, and Dock test groups. The QML lint/cache targets passed:
+Fresh Release build:
 
 ```text
-cmake --build build/debug --target astrea-shell_qmllint astrea-settings-ui_qmllint -j2
+rtk run cmake --build build/release --clean-first -j2
+=> exit 0; all configured targets completed
+```
+
+Focused tests:
+
+```text
+QT_QPA_PLATFORM=offscreen rtk run ctest --test-dir build/debug -R '^astrea-icon-provider-test$' --output-on-failure
+=> 1/1 passed; direct test output: 21 passed, 0 failed, 0 skipped
+
+QT_QPA_PLATFORM=offscreen rtk run ctest --test-dir build/debug -R '^astrea-app-icon-qml-test$' --output-on-failure
+=> 1/1 passed; direct offscreen output: 7 passed, 0 failed, 1 skipped
+
+WAYLAND_DISPLAY=wayland-1 QT_QPA_PLATFORM=wayland rtk run ctest --test-dir build/debug -R '^dock-hover-qml-test$' --output-on-failure
+=> 1/1 passed
+```
+
+The affected suites also passed under `QT_QPA_PLATFORM=offscreen`:
+
+```text
+rtk run ctest --test-dir build/debug -R dock --output-on-failure
+=> 16/16 passed
+
+rtk run ctest --test-dir build/debug -R alttab --output-on-failure
+=> 11/11 passed
+
+rtk run ctest --test-dir build/debug -R spotlight --output-on-failure
+=> 2/2 passed
+```
+
+The focused provider, QML, and Dock tests were rerun at offscreen scale
+factors `1`, `1.5`, and `2`; the qualifying rounded capture was rerun on
+Wayland at all three factors. QML lint/cache generation completed through:
+
+```text
+rtk run cmake --build build/debug --target astrea-shell_qmllint astrea-settings-ui_qmllint -j2
 => exit 0; existing qmllint warnings, no errors
 ```
 
-The focused tests also passed at offscreen `QT_SCALE_FACTOR=1`, `1.5`, and
-`2`. The real Wayland mask and Dock invariant passed as reported above.
+`git diff --check` passed before the final commit.
 
-`git diff --check` passed before commit.
+## Live Dock quality pass and remaining limits
 
-## Live Dock quality and remaining limits
+No Typhon/Eclipse production Shell and Dock session was available for a
+manual visual pass in this workspace. The running session exposed a separate
+Astrea quickshell compositor, and the repository's real Wayland QML tests
+were available, but there was no running Typhon/Eclipse process to exercise
+the production Dock with pointer, context-menu, reorder, and input-region
+interactions.
 
-The real Wayland QML hover regression ran successfully, but no Typhon/Eclipse
-production session was available in this workspace: no running Typhon, shell,
-or Dock process was present, and the full Debug build is blocked by an
-unrelated existing compile error in `Shell/app/AstreaShellApplication.cpp`:
-`DockController::surfacePlacement() const` is private. Typhon was not modified.
-
-Consequently, the manual production Dock pass remains unverified for these
-specific live inputs:
+Therefore these manual production checks remain unverified:
 
 ```text
-Scale=2 theme raster
-large raster
 named scalable SVG
-direct SVG
-small-only raster
+large raster theme icon
+Scale=2 theme raster
 Flatpak application
+small-only raster
 ```
 
-Resting quality, maximum magnification sharpness, delayed sharpness changes,
-provider reload behavior, rounded/unrounded visual comparison, and the honest
-small-raster source limitation still require a real Typhon/Eclipse session.
-The repository tests verify the source-request invariant and representation
-selection, but do not substitute for that manual visual qualification.
+The automated evidence verifies the source invariant and the rounded render
+quality on a real Wayland QQuickWindow, but it does not substitute for the
+requested live Typhon/Eclipse visual pass. The small-only raster remains
+honestly source-limited: the provider cannot recover detail absent from its
+available source pixels.
+
+No Typhon source was modified, and no Dock geometry, Layer Shell envelope,
+input-region, reorder, context-menu, personalization, provider resolver, or
+`availableSizes()` behavior was changed.

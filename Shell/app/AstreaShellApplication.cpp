@@ -322,8 +322,7 @@ bool AstreaShellApplication::configureDockSurface()
     }
     QString error;
     const bool configured = DockLayerShellSurface::configure(
-        m_dockWindow, m_runtime->dockConfig()->config(),
-        m_runtime->dockController()->surfacePlacement(),
+        m_dockWindow, m_runtime->dockController()->surfacePlacement(),
         m_runtime->dockController()->exclusiveZone(),
         screen, &error);
     if (!configured) {

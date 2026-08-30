@@ -5,10 +5,14 @@
 DockSurfacePlacement DockSurfaceGeometry::placementFor(const DockConfig &config,
                                                        bool autoHideActive)
 {
+    const QString position = config.position == QStringLiteral("left")
+        ? QStringLiteral("left")
+        : config.position == QStringLiteral("right") ? QStringLiteral("right")
+                                                       : QStringLiteral("bottom");
     const int configuredMargin = config.effectiveEdgeMargin();
     if (autoHideActive)
-        return {0, configuredMargin, true};
-    return {configuredMargin, 0, false};
+        return {position, 0, configuredMargin, true};
+    return {position, configuredMargin, 0, false};
 }
 
 QRect DockSurfaceGeometry::delegateRectInOutput(const QSize &outputSize,

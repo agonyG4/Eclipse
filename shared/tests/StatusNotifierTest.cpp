@@ -8,9 +8,11 @@
 
 #include <QSignalSpy>
 #include <QDir>
+#include <QFile>
 #include <QImage>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QUrl>
 
 using namespace Astrea::StatusNotifier;
 
@@ -24,12 +26,14 @@ private slots:
     void argb32NetworkPixelsDecodeExactly();
     void iconSelectionPrefersLargerThenSmaller();
     void iconSelectionPrefersThemeNamesAndFallsBackPerEntry();
+    void iconSelectionFindsItemLocalFiles();
     void iconRevisionInvalidatesProviderSource();
     void menuLabelsAndBoundsAreSafe();
     void menuLiveUpdatesKeepLimitsAndRemovedPropertiesResetState();
     void lazySubmenusAdvertiseChildrenBeforeTheyLoad();
     void emptyMenuRootIsValid();
     void menuWireShapeAndSubtreesArePreserved();
+    void menuLayoutValueAcceptsRootAndFullReplyShapes();
     void menuModelExposesNestedChildren();
     void serviceKeepsPassiveItemsAndHealthIsSafe();
     void testWatcherDeduplicatesAndRecoversAddresses();
@@ -197,6 +201,49 @@ void StatusNotifierTest::iconSelectionPrefersThemeNamesAndFallsBackPerEntry()
     QCOMPARE(store.image(key).pixel(0, 0), qRgba(2, 2, 2, 2));
 }
 
+void StatusNotifierTest::iconSelectionFindsItemLocalFiles()
+{
+    QTemporaryDir themeDir;
+    QVERIFY(themeDir.isValid());
+
+    QImage direct(16, 16, QImage::Format_ARGB32);
+    direct.fill(qRgba(0x12, 0x34, 0x56, 0xff));
+    QVERIFY(direct.save(QDir(themeDir.path()).filePath(QStringLiteral("direct.png"))));
+
+    const QString svgPath = QDir(themeDir.path()).filePath(QStringLiteral("symbolic.svg"));
+    QFile svg(svgPath);
+    QVERIFY(svg.open(QIODevice::WriteOnly));
+    QVERIFY(svg.write(QByteArrayLiteral(
+                "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\">"
+                "<rect width=\"16\" height=\"16\" fill=\"#abcdef\"/>"
+                "</svg>")) > 0);
+    svg.close();
+
+    StatusNotifierIconStore store;
+    ItemSnapshot snapshot;
+    snapshot.address = {QStringLiteral("org.example.ItemLocalIcons"),
+                        QStringLiteral("/StatusNotifierItem"), QStringLiteral(":1.8")};
+    snapshot.iconThemePath = themeDir.path();
+    snapshot.iconName = QStringLiteral("direct");
+    store.updateItem(snapshot);
+    QCOMPARE(store.image(snapshot.address.key()).pixel(0, 0), qRgba(0x12, 0x34, 0x56, 0xff));
+
+    snapshot.iconName = QStringLiteral("symbolic");
+    store.updateItem(snapshot);
+    const QImage symbolic = store.image(snapshot.address.key());
+    QVERIFY(!symbolic.isNull());
+    QCOMPARE(symbolic.pixel(0, 0), qRgba(0xab, 0xcd, 0xef, 0xff));
+
+    QImage transparent(16, 16, QImage::Format_ARGB32);
+    transparent.fill(Qt::transparent);
+    QVERIFY(transparent.save(QDir(themeDir.path()).filePath(QStringLiteral("transparent.png"))));
+    snapshot.iconName = QStringLiteral("transparent");
+    store.updateItem(snapshot);
+    QVERIFY(store.hasIcon(snapshot.address.key()));
+    QVERIFY(!store.image(snapshot.address.key()).isNull());
+    QCOMPARE(qAlpha(store.image(snapshot.address.key()).pixel(0, 0)), 0);
+}
+
 void StatusNotifierTest::iconRevisionInvalidatesProviderSource()
 {
     StatusNotifierIconStore store;
@@ -207,6 +254,9 @@ void StatusNotifierTest::iconRevisionInvalidatesProviderSource()
     store.updateItem(snapshot);
     const quint64 first = store.revision(snapshot.address.key());
     const QString source = store.imageSource(snapshot.address.key());
+    const QString encodedKey = source.mid(QStringLiteral("image://astrea-tray/").size())
+        .section(QLatin1Char('?'), 0, 0);
+    QCOMPARE(QUrl::fromPercentEncoding(encodedKey.toUtf8()), snapshot.address.key());
     store.updateItem(snapshot);
     QVERIFY(store.revision(snapshot.address.key()) > first);
     QVERIFY(source != store.imageSource(snapshot.address.key()));
@@ -347,6 +397,27 @@ void StatusNotifierTest::menuWireShapeAndSubtreesArePreserved()
     auto *nested = qobject_cast<DBusMenuModel *>(model.childModel(10));
     QVERIFY(nested);
     QCOMPARE(nested->data(nested->index(0, 0), DBusMenuModel::NodeIdRole).toInt(), 13);
+}
+
+void StatusNotifierTest::menuLayoutValueAcceptsRootAndFullReplyShapes()
+{
+    registerDBusMenuMetaTypes();
+
+    DBusMenuLayoutNodeWire root;
+    root.id = 0;
+    root.children = {{42, {{QStringLiteral("label"), QStringLiteral("Live root")}}, {}}};
+    const auto rootParsed = parseMenuLayout(QVariant::fromValue(root));
+    QVERIFY(rootParsed.ok());
+    QCOMPARE(rootParsed.revision, quint32(0));
+    QCOMPARE(rootParsed.root.children.constFirst().id, 42);
+
+    DBusMenuLayoutReply reply;
+    reply.revision = 19;
+    reply.root = root;
+    const auto fullParsed = parseMenuLayout(QVariant::fromValue(reply));
+    QVERIFY(fullParsed.ok());
+    QCOMPARE(fullParsed.revision, quint32(19));
+    QCOMPARE(fullParsed.root.children.constFirst().label, QStringLiteral("Live root"));
 }
 
 void StatusNotifierTest::menuModelExposesNestedChildren()

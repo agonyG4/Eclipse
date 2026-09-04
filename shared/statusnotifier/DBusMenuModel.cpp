@@ -32,7 +32,13 @@ QVariantMap normalizedProperties(const QVariantMap &properties);
 bool parseWireArgument(const QDBusArgument &argument, DBusMenuLayoutNodeWire &node,
                        QString *errorOut)
 {
-    Q_UNUSED(errorOut)
+    const QString signature = argument.currentSignature();
+    if (!signature.startsWith(QLatin1StringView("(i"))) {
+        if (errorOut)
+            *errorOut = QStringLiteral("DBusMenu layout node has unsupported signature %1")
+                .arg(signature);
+        return false;
+    }
     const QDBusArgument copy = argument;
     copy >> node;
     return true;
@@ -268,6 +274,13 @@ DBusMenuParseResult parseMenuLayout(const QVariant &value, const DBusMenuLimits 
             result.root = {};
         return result;
     }
+    if (unwrapped.canConvert<DBusMenuLayoutNodeWire>()) {
+        const auto node = unwrapped.value<DBusMenuLayoutNodeWire>();
+        int nodeCount = 0;
+        if (!parseNodeWire(node, result.root, limits, 0, nodeCount, &result.error))
+            result.root = {};
+        return result;
+    }
     if (unwrapped.canConvert<QDBusArgument>())
         return parseMenuLayoutArgument(unwrapped.value<QDBusArgument>(), 0, limits);
 
@@ -288,12 +301,25 @@ DBusMenuParseResult parseMenuLayoutArgument(const QDBusArgument &argument, quint
 {
     registerDBusMenuMetaTypes();
     DBusMenuParseResult result;
-    DBusMenuLayoutReply wire;
-    const QDBusArgument copy = argument;
-    copy >> wire;
-    result.revision = wire.revision == 0 ? revision : wire.revision;
+    const QString signature = argument.currentSignature();
+    DBusMenuLayoutNodeWire root;
+    if (signature.startsWith(QLatin1StringView("(i"))) {
+        const QDBusArgument copy = argument;
+        copy >> root;
+        result.revision = revision;
+    } else if (signature.startsWith(QLatin1StringView("(u"))) {
+        DBusMenuLayoutReply wire;
+        const QDBusArgument copy = argument;
+        copy >> wire;
+        root = wire.root;
+        result.revision = wire.revision == 0 ? revision : wire.revision;
+    } else {
+        result.error = QStringLiteral("DBusMenu layout has unsupported signature %1")
+            .arg(signature);
+        return result;
+    }
     int nodeCount = 0;
-    if (!parseNodeWire(wire.root, result.root, limits, 0, nodeCount, &result.error))
+    if (!parseNodeWire(root, result.root, limits, 0, nodeCount, &result.error))
         result.root = {};
     return result;
 }
@@ -346,8 +372,9 @@ QHash<int, QByteArray> DBusMenuModel::roleNames() const
 {
     return {{NodeIdRole, "nodeId"}, {LabelRole, "label"}, {IconNameRole, "iconName"},
             {IconSourceRole, "iconSource"}, {TypeRole, "type"},
-            {ToggleTypeRole, "toggleType"}, {StateRole, "state"}, {EnabledRole, "enabled"},
-            {VisibleRole, "visible"}, {SeparatorRole, "separator"},
+            {ToggleTypeRole, "toggleType"}, {StateRole, "state"},
+            {EnabledRole, "nodeEnabled"}, {VisibleRole, "nodeVisible"},
+            {SeparatorRole, "separator"},
             {HasChildrenRole, "hasChildren"}, {ChildrenDisplayRole, "childrenDisplay"},
             {ChildModelRole, "childModel"}};
 }
@@ -623,6 +650,9 @@ void DBusMenuClient::prepareForPresentation(int nodeId)
 {
     if (m_stopped || m_menuPath.isEmpty())
         return;
+    if (m_pendingPresentations.contains(nodeId))
+        return;
+    m_pendingPresentations.insert(nodeId);
     connectSignals();
     const bool initialRoot = nodeId == 0
         && (m_state == DBusMenuLifecycleState::Unloaded
@@ -648,6 +678,7 @@ void DBusMenuClient::prepareForPresentation(int nodeId)
         if (initialRoot || needUpdate)
             requestLayout(nodeId);
         else {
+            m_pendingPresentations.remove(nodeId);
             m_loading = false;
             m_state = m_rootModel->rowCount() == 0 ? DBusMenuLifecycleState::Empty
                                                    : DBusMenuLifecycleState::Ready;
@@ -695,6 +726,8 @@ void DBusMenuClient::stop()
     m_stopped = true;
     ++m_generation;
     disconnectSignals();
+    m_pendingPresentations.clear();
+    m_pendingLayouts.clear();
     if (m_iconStore)
         m_iconStore->clearAuxiliaryImages(QStringLiteral("menu:%1:").arg(m_address.key()));
     m_state = DBusMenuLifecycleState::Stopped;
@@ -706,6 +739,9 @@ void DBusMenuClient::requestLayout(int parentId)
 {
     if (m_stopped || m_menuPath.isEmpty())
         return;
+    if (m_pendingLayouts.contains(parentId))
+        return;
+    m_pendingLayouts.insert(parentId);
     m_loading = true;
     m_state = DBusMenuLifecycleState::Loading;
     emit changed();
@@ -722,6 +758,8 @@ void DBusMenuClient::requestLayout(int parentId)
         watcher->deleteLater();
         if (generation != m_generation || itemGeneration != m_itemGeneration || m_stopped)
             return;
+        m_pendingLayouts.remove(parentId);
+        m_pendingPresentations.remove(parentId);
         m_loading = false;
         if (reply.type() == QDBusMessage::ErrorMessage || reply.arguments().isEmpty()) {
             const QString error = reply.errorMessage().isEmpty()

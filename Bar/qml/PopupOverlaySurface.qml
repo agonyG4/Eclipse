@@ -42,11 +42,14 @@ Window {
         objectName: "astreaMenu"
         visible: popupController && popupController.surfaceRequired
                   && popupController.kind === 1
-        width: barGeometry ? barGeometry.popupWidth(outputWidth, implicitWidth, sidePadding)
-                           : implicitWidth
-        x: popupController && barGeometry
-            ? barGeometry.popupX(outputWidth, width, popupController.anchorX, sidePadding)
-            : sidePadding
+        width: window.barGeometry
+            ? window.barGeometry.popupWidth(window.outputWidth, astreaMenu.implicitWidth,
+                                            window.sidePadding)
+                           : astreaMenu.implicitWidth
+        x: window.popupController && window.barGeometry
+            ? window.barGeometry.popupX(window.outputWidth, astreaMenu.width,
+                                        window.popupController.anchorX, window.sidePadding)
+            : window.sidePadding
         y: topOffset
         z: 2
         barController: window.barController
@@ -60,11 +63,14 @@ Window {
         objectName: "networkPopup"
         visible: popupController && popupController.surfaceRequired
                   && popupController.kind === 3
-        width: barGeometry ? barGeometry.popupWidth(outputWidth, implicitWidth, sidePadding)
-                           : implicitWidth
-        x: popupController && barGeometry
-            ? barGeometry.popupX(outputWidth, width, popupController.anchorX, sidePadding)
-            : sidePadding
+        width: window.barGeometry
+            ? window.barGeometry.popupWidth(window.outputWidth, networkPopup.implicitWidth,
+                                            window.sidePadding)
+                           : networkPopup.implicitWidth
+        x: window.popupController && window.barGeometry
+            ? window.barGeometry.popupX(window.outputWidth, networkPopup.width,
+                                        window.popupController.anchorX, window.sidePadding)
+            : window.sidePadding
         y: topOffset
         z: 2
         networkService: window.networkService
@@ -77,11 +83,14 @@ Window {
         objectName: "bluetoothPopup"
         visible: popupController && popupController.surfaceRequired
                   && popupController.kind === 4
-        width: barGeometry ? barGeometry.popupWidth(outputWidth, implicitWidth, sidePadding)
-                           : implicitWidth
-        x: popupController && barGeometry
-            ? barGeometry.popupX(outputWidth, width, popupController.anchorX, sidePadding)
-            : sidePadding
+        width: window.barGeometry
+            ? window.barGeometry.popupWidth(window.outputWidth, bluetoothPopup.implicitWidth,
+                                            window.sidePadding)
+                           : bluetoothPopup.implicitWidth
+        x: window.popupController && window.barGeometry
+            ? window.barGeometry.popupX(window.outputWidth, bluetoothPopup.width,
+                                        window.popupController.anchorX, window.sidePadding)
+            : window.sidePadding
         y: topOffset
         z: 2
         bluetoothService: window.bluetoothService
@@ -94,11 +103,14 @@ Window {
         objectName: "volumePopup"
         visible: popupController && popupController.surfaceRequired
                   && popupController.kind === 5
-        width: barGeometry ? barGeometry.popupWidth(outputWidth, implicitWidth, sidePadding)
-                           : implicitWidth
-        x: popupController && barGeometry
-            ? barGeometry.popupX(outputWidth, width, popupController.anchorX, sidePadding)
-            : sidePadding
+        width: window.barGeometry
+            ? window.barGeometry.popupWidth(window.outputWidth, volumePopup.implicitWidth,
+                                            window.sidePadding)
+                           : volumePopup.implicitWidth
+        x: window.popupController && window.barGeometry
+            ? window.barGeometry.popupX(window.outputWidth, volumePopup.width,
+                                        window.popupController.anchorX, window.sidePadding)
+            : window.sidePadding
         y: topOffset
         z: 2
         audioService: window.audioService

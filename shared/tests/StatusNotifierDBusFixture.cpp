@@ -231,6 +231,23 @@ public slots:
         unknown.id = parentId;
         return {m_menu->revision, unknown};
     }
+    DBusMenuLayoutNodeWire GetLayoutRoot(int parentId, int, const QStringList &)
+    {
+        const DBusMenuLayoutNodeWire fullRoot = m_menu->root();
+        if (parentId == 0)
+            return fullRoot;
+        for (const auto &node : fullRoot.children) {
+            if (node.id == parentId)
+                return node;
+            for (const auto &child : node.children) {
+                if (child.id == parentId)
+                    return child;
+            }
+        }
+        DBusMenuLayoutNodeWire unknown;
+        unknown.id = parentId;
+        return unknown;
+    }
     bool AboutToShow(int nodeId)
     {
         ++m_menu->aboutToShowCount;

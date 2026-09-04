@@ -53,6 +53,7 @@ public:
     QJsonObject healthJson() const;
 
     Q_INVOKABLE bool hasMenuForItem(const QString &itemKey) const;
+    Q_INVOKABLE bool hasUsableMenuForItem(const QString &itemKey) const;
     Q_INVOKABLE QObject *menuModelForItem(const QString &itemKey) const;
     Q_INVOKABLE int menuStateForItem(const QString &itemKey) const;
     Q_INVOKABLE QString displayTitleForItem(const QString &itemKey) const;

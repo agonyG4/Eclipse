@@ -80,19 +80,22 @@ controller, and QML engine. It registers `SettingsController`,
 `ThemeController`, and `I18n` as context properties and registers the shared
 icon provider as `astrea-icon`.
 
-The catalogue provides ordered descriptors. The model expands sections and
-selects only routable Page/Child entries by stable ID. `SettingsController`
-selects the first routable descriptor at startup, and its
-`selectedPageSource` reads the selected descriptor's optional URL. `Main.qml`
-supplies that URL to one `Loader`; an empty URL is never selected and therefore
-does not produce an empty selected page.
+The catalogue provides ordered descriptors for the flat sidebar and the full
+nested destination graph. The model exposes only sidebar-visible rows and
+provides native child and ancestor lookup. `SettingsController` selects the
+first navigable destination at startup, derives the sidebar highlight for
+nested routes, and owns the bounded Back/Forward session history. `Main.qml`
+supplies its `selectedPageSource` to one authoritative `Loader`; an empty URL is
+never selected and therefore does not produce an empty page.
 
 ## Adding a Visual-Only Page
 
 1. Add the QML source under the established `qml/pages/` tree.
 2. Register it in the single `astrea-settings-ui` module list.
 3. Add one stable descriptor to `SettingsNavigationCatalog` with its exact QML
-   module URL.
+   module URL. For a nested destination, set `parentId` and
+   `sidebarVisible=false`; expose its parent as a navigable Hub only when it
+   has a real child.
 4. Add native model/controller route tests and a source-policy test if needed.
 
 Do not add a route condition to `Main.qml` and do not add a numeric page index.

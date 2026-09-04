@@ -7,19 +7,51 @@
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QDir>
+#include <QQuickItem>
+#include <QRegularExpression>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlError>
 #include <QTemporaryDir>
 #include <QtTest>
 
+namespace {
+
+QQuickItem *findVisualItem(QQuickItem *item, const QString &objectName)
+{
+    if (!item)
+        return nullptr;
+    if (item->objectName() == objectName)
+        return item;
+    for (QQuickItem *child : item->childItems()) {
+        if (QQuickItem *match = findVisualItem(child, objectName))
+            return match;
+    }
+    return nullptr;
+}
+
+int countVisualItems(QQuickItem *item, const QRegularExpression &pattern)
+{
+    if (!item)
+        return 0;
+    int count = pattern.match(item->objectName()).hasMatch() ? 1 : 0;
+    for (QQuickItem *child : item->childItems())
+        count += countVisualItems(child, pattern);
+    return count;
+}
+
+} // namespace
+
 class SettingsQmlSmokeTest final : public QObject {
     Q_OBJECT
 
 private slots:
     void loadsCompositorRouteOffscreen();
-    void loadsWallpaperRouteOffscreen();
-    void loadsDockRouteOffscreen();
+    void loadsCustomizationHubOffscreen();
+    void loadsWallpaperRouteFromHubOffscreen();
+    void loadsDockRouteFromHubOffscreen();
+    void navigatesBackAndForwardFromHub();
+    void sidebarHidesNestedDestinations();
     void wallpaperTranslationKeysExist();
 };
 
@@ -48,7 +80,7 @@ void SettingsQmlSmokeTest::loadsCompositorRouteOffscreen()
     QObject *root = engine.rootObjects().constFirst();
     QObject *loader = root->findChild<QObject *>(QStringLiteral("settingsPageLoader"));
     QVERIFY(loader != nullptr);
-    QVERIFY(settingsController.selectSection(QStringLiteral("compositor")));
+    QVERIFY(settingsController.navigateTo(QStringLiteral("compositor")));
     auto loadedPage = [&loader]() {
         return qvariant_cast<QObject *>(loader->property("item"));
     };
@@ -61,13 +93,13 @@ void SettingsQmlSmokeTest::loadsCompositorRouteOffscreen()
     page->setProperty("animationsEnabled", false);
     QCOMPARE(page->property("animationsEnabled").toBool(), false);
 
-    QVERIFY(!settingsController.selectSection(QStringLiteral("system")));
-    QCOMPARE(settingsController.selectedSectionId(), QStringLiteral("compositor"));
-    QVERIFY(settingsController.selectSection(QStringLiteral("wallpaper")));
+    QVERIFY(!settingsController.navigateTo(QStringLiteral("system")));
+    QCOMPARE(settingsController.currentDestinationId(), QStringLiteral("compositor"));
+    QVERIFY(settingsController.navigateTo(QStringLiteral("wallpaper")));
     QTRY_VERIFY_WITH_TIMEOUT(loadedPage() != nullptr
                                  && loadedPage()->objectName() == QStringLiteral("wallpaperPage"),
                              1000);
-    QVERIFY(settingsController.selectSection(QStringLiteral("compositor")));
+    QVERIFY(settingsController.navigateTo(QStringLiteral("compositor")));
     QTRY_VERIFY_WITH_TIMEOUT(loadedPage() != nullptr
                                  && loadedPage()->objectName() == QStringLiteral("compositorPage"),
                              1000);
@@ -75,7 +107,7 @@ void SettingsQmlSmokeTest::loadsCompositorRouteOffscreen()
     QVERIFY2(qmlWarnings.isEmpty(), qPrintable(qmlWarnings.isEmpty() ? QString() : qmlWarnings.constFirst().toString()));
 }
 
-void SettingsQmlSmokeTest::loadsWallpaperRouteOffscreen()
+void SettingsQmlSmokeTest::loadsCustomizationHubOffscreen()
 {
     SettingsController settingsController;
     SettingsTranslationController translationController;
@@ -88,8 +120,40 @@ void SettingsQmlSmokeTest::loadsWallpaperRouteOffscreen()
     engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
 
     QCOMPARE(engine.rootObjects().size(), 1);
-    QVERIFY(settingsController.selectSection(QStringLiteral("wallpaper")));
+    QVERIFY(settingsController.navigateTo(QStringLiteral("customization")));
     QObject *root = engine.rootObjects().constFirst();
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("settingsHubPage")) != nullptr, 1000);
+    QObject *hub = root->findChild<QObject *>(QStringLiteral("settingsHubPage"));
+    QVERIFY(hub != nullptr);
+    QQuickItem *hubItem = qobject_cast<QQuickItem *>(hub);
+    QVERIFY(hubItem != nullptr);
+    QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-wallpaper")) != nullptr);
+    QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-dock")) != nullptr);
+    QCOMPARE(countVisualItems(hubItem, QRegularExpression(QStringLiteral("^hubNavigationRow-"))), 2);
+    QCOMPARE(settingsController.currentDestinationChildren().size(), 2);
+}
+
+void SettingsQmlSmokeTest::loadsWallpaperRouteFromHubOffscreen()
+{
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("customization")));
+    QObject *root = engine.rootObjects().constFirst();
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("settingsHubPage")) != nullptr, 1000);
+    QObject *hub = root->findChild<QObject *>(QStringLiteral("settingsHubPage"));
+    QVERIFY(hub != nullptr);
+    QObject *row = findVisualItem(qobject_cast<QQuickItem *>(hub), QStringLiteral("hubNavigationRow-wallpaper"));
+    QVERIFY(row != nullptr);
+    QVERIFY(QMetaObject::invokeMethod(row, "clicked"));
     QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("wallpaperPage")) != nullptr, 1000);
     QObject *page = root->findChild<QObject *>(QStringLiteral("wallpaperPage"));
     QVERIFY(page != nullptr);
@@ -138,9 +202,11 @@ void SettingsQmlSmokeTest::loadsWallpaperRouteOffscreen()
     QVERIFY(!blurredWallpaper->property("enabled").toBool());
     QVERIFY(!transition->property("enabled").toBool());
     QCOMPARE(transition->property("selectedIndex").toInt(), 0);
+    QCOMPARE(settingsController.selectedSidebarId(), QStringLiteral("customization"));
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("wallpaperPreview")) != nullptr);
 }
 
-void SettingsQmlSmokeTest::loadsDockRouteOffscreen()
+void SettingsQmlSmokeTest::loadsDockRouteFromHubOffscreen()
 {
     SettingsController settingsController;
     SettingsTranslationController translationController;
@@ -153,16 +219,71 @@ void SettingsQmlSmokeTest::loadsDockRouteOffscreen()
     engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
 
     QCOMPARE(engine.rootObjects().size(), 1);
-    QVERIFY(settingsController.selectSection(QStringLiteral("dock")));
+    QVERIFY(settingsController.navigateTo(QStringLiteral("customization")));
     QObject *root = engine.rootObjects().constFirst();
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("settingsHubPage")) != nullptr, 1000);
+    QObject *hub = root->findChild<QObject *>(QStringLiteral("settingsHubPage"));
+    QVERIFY(hub != nullptr);
+    QObject *row = findVisualItem(qobject_cast<QQuickItem *>(hub), QStringLiteral("hubNavigationRow-dock"));
+    QVERIFY(row != nullptr);
+    QVERIFY(QMetaObject::invokeMethod(row, "clicked"));
     QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("dockPage")) != nullptr, 1000);
     QObject *page = root->findChild<QObject *>(QStringLiteral("dockPage"));
     QVERIFY(page != nullptr);
+    QCOMPARE(settingsController.selectedSidebarId(), QStringLiteral("customization"));
     QVERIFY(page->findChild<QObject *>(QStringLiteral("dockPreview")) != nullptr);
     QVERIFY(page->findChild<QObject *>(QStringLiteral("iconSizeSlider")) != nullptr);
     QVERIFY(page->findChild<QObject *>(QStringLiteral("magnificationScaleSlider")) != nullptr);
     QVERIFY(page->findChild<QObject *>(QStringLiteral("animationSpeedSlider")) != nullptr);
     QVERIFY(page->findChild<QObject *>(QStringLiteral("indicatorSizeSlider")) != nullptr);
+}
+
+void SettingsQmlSmokeTest::navigatesBackAndForwardFromHub()
+{
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("customization")));
+    QVERIFY(settingsController.navigateTo(QStringLiteral("dock")));
+    QObject *root = engine.rootObjects().constFirst();
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("dockPage")) != nullptr, 1000);
+
+    settingsController.goBack();
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("settingsHubPage")) != nullptr, 1000);
+    QVERIFY(settingsController.canGoForward());
+
+    settingsController.goForward();
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("dockPage")) != nullptr, 1000);
+    QVERIFY(!settingsController.canGoForward());
+}
+
+void SettingsQmlSmokeTest::sidebarHidesNestedDestinations()
+{
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QObject *root = engine.rootObjects().constFirst();
+    QObject *sidebar = root->findChild<QObject *>(QStringLiteral("settingsSidebar"));
+    QVERIFY(sidebar != nullptr);
+    QVERIFY(sidebar->findChild<QObject *>(QStringLiteral("settingsSidebarRow-wallpaper")) == nullptr);
+    QVERIFY(sidebar->findChild<QObject *>(QStringLiteral("settingsSidebarRow-dock")) == nullptr);
+    QCOMPARE(settingsController.navigationModel()->rowCount(), 12);
 }
 
 void SettingsQmlSmokeTest::wallpaperTranslationKeysExist()
@@ -177,6 +298,8 @@ void SettingsQmlSmokeTest::wallpaperTranslationKeysExist()
 
     const auto messages = document.object();
     const QStringList requiredKeys{
+        QStringLiteral("settings.nav.customization"),
+        QStringLiteral("settings.nav.customization.subtitle"),
         QStringLiteral("apps.settings.pages.paper.wallpaper.option.simple"),
         QStringLiteral("apps.settings.pages.paper.wallpaper.option.fade"),
         QStringLiteral("apps.settings.pages.paper.wallpaper.option.left"),

@@ -24,11 +24,13 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     components/menu/ContextMenuAction.qml
     components/menu/ContextMenuDivider.qml
     components/navigation/NavItem.qml
+    components/navigation/HubNavigationRow.qml
     components/navigation/Sidebar.qml
     components/navigation/SidebarFrame.qml
     components/typography/DisplayLabel.qml
     components/typography/Divider.qml
     components/typography/TextLabel.qml
+    pages/navigation/Hub.qml
     pages/system/Compositor.qml
     pages/appearance/Dock.qml
     pages/appearance/Wallpaper.qml

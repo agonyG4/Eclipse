@@ -27,15 +27,19 @@ The native application includes:
 
 - a normal frameless Qt Wayland window with native window actions;
 - the source-preserved legacy glass shell, profile composition, and sidebar;
-- catalogue-owned navigation with stable selection and native section expansion;
-- fourteen navigation rows including the non-selectable spacer, with Page,
-  Section, Child, and Spacer semantics;
+- catalogue-owned flat navigation with stable IDs, hub metadata, and native
+  session history;
+- twelve sidebar rows including the non-selectable spacer, with Page, Hub, and
+  Spacer semantics; Wallpaper and Dock are nested catalogue destinations;
 - native theme configuration, translations, icon resolution, and user-profile
   services; Linux libc/NSS administrative-group detection recognizes only
   `wheel` and `sudo`;
 - three real page routes: `Compositor`, immediately after `Services`, plus the
-  native `Wallpaper` and `Dock` routes under Appearance; unavailable catalogue
-  entries remain visible but cannot select an empty content route;
+  native `Wallpaper` and `Dock` routes under the `Customization` hub;
+  unavailable catalogue entries remain visible but cannot select an empty
+  content route;
+- a generic `Hub` page and Astrea-native Back/Forward toolbar backed by a
+  bounded, session-only navigation history;
 - reusable form controls and one reusable `Astrea.Settings` QML module.
 
 The Compositor page is a visual-only preview. Its toggles and selectors use

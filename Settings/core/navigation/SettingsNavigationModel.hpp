@@ -4,12 +4,12 @@
 
 #include <QAbstractListModel>
 #include <QUrl>
+#include <QVariantList>
 #include <QVariantMap>
 #include <QVector>
 
 class SettingsNavigationModel final : public QAbstractListModel {
     Q_OBJECT
-    Q_PROPERTY(QString selectedId READ selectedId NOTIFY selectedIdChanged)
 
 public:
     enum Role {
@@ -19,16 +19,14 @@ public:
         IconNameRole,
         KindRole,
         EnabledRole,
-        SelectedRole,
         LabelRole,
         LabelKeyRole,
         SymRole,
         IconSourceRole,
         IconKeyRole,
         PageSourceRole,
-        SectionKeyRole,
-        ParentSectionRole,
-        ExpandedRole,
+        SidebarVisibleRole,
+        ParentIdRole,
     };
     Q_ENUM(Role)
 
@@ -40,28 +38,24 @@ public:
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-    QString selectedId() const;
-    bool setSelectedId(const QString &id);
-    Q_INVOKABLE bool toggleSection(const QString &sectionId);
+    const SettingsNavigationEntry *entryForId(const QString &id) const;
+    QVector<SettingsNavigationEntry> childrenForId(const QString &id) const;
+    QString firstNavigableSidebarDestination() const;
+    QString sidebarAncestorForId(const QString &id) const;
 
     Q_INVOKABLE QVariantMap get(int row) const;
+    Q_INVOKABLE QVariantMap descriptorForId(const QString &id) const;
+    Q_INVOKABLE QVariantList childDescriptorsForId(const QString &id) const;
 
     QString titleForId(const QString &id) const;
     QUrl pageSourceForId(const QString &id) const;
-    bool containsSelectableId(const QString &id) const;
-
-signals:
-    void selectedIdChanged();
+    bool containsNavigableId(const QString &id) const;
 
 private:
-    void rebuildVisibleRows();
-    bool isSelectable(const SettingsNavigationEntry &entry) const;
-    int sectionIndexForId(const QString &sectionId) const;
-    int firstSelectableSourceIndex() const;
+    bool isNavigable(const SettingsNavigationEntry &entry) const;
     int sourceIndexForId(const QString &id) const;
-    int visibleRowForSourceIndex(int sourceIndex) const;
+    QVariantMap descriptorForEntry(const SettingsNavigationEntry &entry) const;
 
     QVector<SettingsNavigationEntry> m_entries;
-    QVector<int> m_visibleRows;
-    QString m_selectedId;
+    QVector<int> m_sidebarRows;
 };

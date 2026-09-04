@@ -61,12 +61,13 @@ is implemented in focused C++ services and platform classes.
 
 ## Navigation and Routing
 
-`SettingsNavigationCatalog` owns the ordered descriptors, stable IDs, visible
-metadata, Page/Section/Child/Spacer kind, section relationships, and optional
-`pageSource`. The model copies that catalogue and owns selection and section
-expansion state. A row is selectable only when it is enabled, is a Page or
-Child, and has a non-empty `pageSource`. `SettingsController` exposes
-`selectedPageSource`, derived from the selected descriptor.
+`SettingsNavigationCatalog` owns the authoritative descriptor catalogue:
+stable IDs, visible metadata, Page/Hub/Spacer kind, parent relationships, and
+optional `pageSource`. The model exposes only sidebar-visible rows while also
+providing native lookup, child, ancestor, and first-destination helpers. A
+destination is navigable only when it is enabled and has a valid route; a Hub
+also requires at least one navigable child. `SettingsController` owns the
+current destination, sidebar highlight, selected route, and session history.
 
 `Main.qml` passes the native URL directly to a `Loader`. The catalogue is the
 single source of truth for row order and page routing. There is no numeric page
@@ -78,12 +79,13 @@ qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Wallpaper.qml
 qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Dock.qml
 ```
 
-Rows without implemented pages remain visible with an empty URL but cannot be
-selected. The first routable descriptor selects Compositor at startup. Sections
-toggle expansion by stable ID and never become selected; Wallpaper and Dock are
-children of Appearance, and a selected child remains visible while its section
-is collapsed. Leaving Compositor destroys the page and recreates its local
-preview state when selected again.
+Rows without implemented pages remain visible but cannot be selected. The first
+navigable sidebar destination is supplied by the catalogue and is currently
+Compositor. The sidebar is flat: `Customization` remains highlighted while its
+nested Wallpaper or Dock destination is open. Hub pages render their children
+from controller metadata, and the controller maintains a bounded 64-entry
+Back/Forward history without duplicate current entries. Leaving Compositor
+destroys the page and recreates its local preview state when selected again.
 
 ## Native Ownership
 
@@ -109,6 +111,6 @@ public QML names and semantics, but live under their service ownership paths.
 Settings has no Quickshell import, LayerShellQt dependency, Hyprland command,
 Typhon-private protocol, compositor backend, IPC boundary, persistence for the
 Compositor preview, or shell command execution. The Dock page is a native route
-under the Appearance section and its preview is presentation-only; it does not
-import resident Dock QML or implement a second schema. Performance, Appearance,
-and More Settings are non-selectable sections.
+under the Customization hub and its preview is presentation-only; it does not
+import resident Dock QML or implement a second schema. Performance and More
+Settings are visible but unavailable hubs until they receive navigable children.

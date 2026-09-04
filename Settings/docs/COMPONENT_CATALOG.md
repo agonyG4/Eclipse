@@ -1,6 +1,6 @@
 # Registered QML Components
 
-The `astrea-settings-ui` module registers 37 QML files. The canonical legacy
+The `astrea-settings-ui` module registers 39 QML files. The canonical legacy
 source column points to the corresponding Astrea source where one exists.
 
 | Path | Public type | Category | Canonical legacy source | Current consumers | Classification |
@@ -30,12 +30,14 @@ source column points to the corresponding Astrea source where one exists.
 | `qml/components/menu/ContextMenuAction.qml` | `ContextMenuAction` | menu | `src/Core/components/menu/ContextMenuAction.qml` | `ContextMenu` fixture | page primitive |
 | `qml/components/menu/ContextMenuDivider.qml` | `ContextMenuDivider` | menu | `src/Core/components/menu/ContextMenuDivider.qml` | `ContextMenu` fixture | page primitive |
 | `qml/components/navigation/NavItem.qml` | `NavItem` | navigation | `src/Core/components/navigation/NavItem.qml` | `Sidebar` | shell-critical |
+| `qml/components/navigation/HubNavigationRow.qml` | `HubNavigationRow` | navigation | native Settings hub row | `Hub` | shell-critical |
 | `qml/components/navigation/Sidebar.qml` | `Sidebar` | navigation | `src/Core/components/navigation/Sidebar.qml` | `Main` | shell-critical |
 | `qml/components/navigation/SidebarFrame.qml` | `SidebarFrame` | navigation | `src/Core/components/navigation/SidebarFrame.qml` | `Sidebar` | shell-critical |
 | `qml/components/typography/DisplayLabel.qml` | `DisplayLabel` | typography | `src/Core/components/typography/DisplayLabel.qml` | future pages | page primitive |
 | `qml/components/typography/Divider.qml` | `Divider` | typography | `src/Core/components/typography/Divider.qml` | future pages | page primitive |
 | `qml/components/typography/TextLabel.qml` | `TextLabel` | typography | `src/Core/components/typography/TextLabel.qml` | future pages | page primitive |
 | `qml/pages/system/Compositor.qml` | `Compositor` | page | native Settings preview source | `Main` Loader | shell-critical |
+| `qml/pages/navigation/Hub.qml` | `Hub` | page | native Settings hub navigation | `Main` Loader | shell-critical |
 | `qml/pages/appearance/Wallpaper.qml` | `Wallpaper` | page | `src/Apps/Settings/pages/paper/Wallpaper.qml` | `Main` Loader | native Paper-backed route |
 | `qml/pages/appearance/Dock.qml` | `Dock` | page | native Settings Dock personalization | `Main` Loader | native shared-config route |
 | `qml/theme/Apps.qml` | `Apps` | singleton theme | `src/Core/components/theme/Borealis/Apps.qml` | `Theme` | shell-critical |

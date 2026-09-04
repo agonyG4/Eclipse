@@ -6,8 +6,7 @@
 struct SettingsNavigationEntry {
     enum class Kind {
         Page,
-        Section,
-        Child,
+        Hub,
         Spacer,
     };
 
@@ -15,13 +14,13 @@ struct SettingsNavigationEntry {
     QString label;
     QString labelKey;
     QString subtitle;
+    QString subtitleKey;
     QString sym;
     QString iconSource;
     QString iconKey;
     QUrl pageSource;
     Kind kind = Kind::Page;
     bool enabled = true;
-    QString sectionKey;
-    QString parentSection;
-    bool expanded = true;
+    bool sidebarVisible = true;
+    QString parentId;
 };

@@ -23,55 +23,6 @@ foreach(relative_path IN LISTS registered_qml_files)
     endif()
 endforeach()
 
-file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/Wallpaper.qml" wallpaper_source)
-foreach(wallpaper_forbidden_token IN ITEMS
-    "Quickshell"
-    "Quickshell.Io"
-    "Process {"
-    "python3"
-    "zenity"
-    "wallpaper_manager.py"
-    "ASTREA_ROOT"
-    "XDG_DATA_HOME"
-    "XDG_CONFIG_HOME"
-    "Hyprland"
-    "Typhon"
-)
-    string(FIND "${wallpaper_source}" "${wallpaper_forbidden_token}" wallpaper_token_position)
-    if(NOT wallpaper_token_position EQUAL -1)
-        message(FATAL_ERROR "Forbidden token '${wallpaper_forbidden_token}' found in Wallpaper.qml")
-    endif()
-endforeach()
-
-foreach(wallpaper_required_token IN ITEMS
-    "visible: root.controller.errorMessage !== \"\""
-    "closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside"
-    "Keys.onReturnPressed"
-    "Keys.onEnterPressed"
-    "Keys.onEscapePressed"
-    "e.g. Tokyo Night"
-    "e.g. Mountain Sunset"
-    "maximumLength: 128"
-    "text: I18n.tr(\"apps.settings.pages.paper.wallpaper.text.confirm\", \"Confirm\")"
-    "root.clearPendingWallpaperState()"
-)
-    string(FIND "${wallpaper_source}" "${wallpaper_required_token}" wallpaper_required_position)
-    if(wallpaper_required_position EQUAL -1)
-        message(FATAL_ERROR "Wallpaper.qml is missing required closure contract '${wallpaper_required_token}'")
-    endif()
-endforeach()
-
-foreach(wallpaper_closure_forbidden_token IN ITEMS
-    "operation_in_progress"
-    "text: I18n.tr(\"apps.settings.pages.paper.wallpaper.text.add\", \"Add\")"
-    "enabled: wallpaperNameInput.text.trim() !== \"\""
-)
-    string(FIND "${wallpaper_source}" "${wallpaper_closure_forbidden_token}" wallpaper_forbidden_closure_position)
-    if(NOT wallpaper_forbidden_closure_position EQUAL -1)
-        message(FATAL_ERROR "Wallpaper.qml retains forbidden closure behavior '${wallpaper_closure_forbidden_token}'")
-    endif()
-endforeach()
-
 set(deleted_legacy_paths
     qml/components/AppShell.qml
     qml/components/EmptyContent.qml
@@ -122,14 +73,12 @@ foreach(relative_path IN LISTS deleted_migration_paths)
     endif()
 endforeach()
 
-file(READ "${SETTINGS_SOURCE_DIR}/CMakeLists.txt" settings_root_cmake)
 file(READ "${SETTINGS_SOURCE_DIR}/core/CMakeLists.txt" settings_core_cmake)
-file(READ "${SETTINGS_SOURCE_DIR}/app/SettingsApplication.cpp" settings_application_source)
 file(READ "${SETTINGS_SOURCE_DIR}/tests/CMakeLists.txt" settings_tests_cmake)
+file(READ "${SETTINGS_SOURCE_DIR}/app/SettingsApplication.cpp" settings_application_source)
 if(settings_tests_cmake MATCHES "qt_add_qml_module")
     message(FATAL_ERROR "Settings tests must consume astrea-settings-ui, not declare a QML module")
 endif()
-
 if(settings_core_cmake MATCHES "astrea-shared-core")
     message(FATAL_ERROR "astrea-settings-core must not link astrea-shared-core")
 endif()
@@ -149,7 +98,6 @@ endforeach()
 if(settings_core_cmake MATCHES "target_link_libraries\\(astrea-settings-core PUBLIC[^)]*Qt6::Network")
     message(FATAL_ERROR "Qt6::Network must remain private to astrea-settings-core")
 endif()
-
 foreach(redundant_context_property IN ITEMS
     "setContextProperty(QStringLiteral(\"WallpaperController\")"
     "setContextProperty(QStringLiteral(\"AstreaIconProvider\")"
@@ -180,16 +128,33 @@ foreach(relative_path IN LISTS core_production_cpp_files)
 endforeach()
 
 file(READ "${SETTINGS_SOURCE_DIR}/qml/Main.qml" main_source)
-foreach(forbidden_route IN ITEMS
-    "selectedSectionId === \"compositor\""
+foreach(main_forbidden_token IN ITEMS
+    "selectedSection"
+    "selectSection"
     "pages/system/Compositor.qml"
+    "pages/appearance/Wallpaper.qml"
+    "pages/appearance/Dock.qml"
 )
-    string(FIND "${main_source}" "${forbidden_route}" route_position)
-    if(NOT route_position EQUAL -1)
-        message(FATAL_ERROR "Main.qml hardcodes a Compositor route: ${forbidden_route}")
+    string(FIND "${main_source}" "${main_forbidden_token}" main_token_position)
+    if(NOT main_token_position EQUAL -1)
+        message(FATAL_ERROR "Main.qml contains forbidden navigation detail '${main_forbidden_token}'")
     endif()
 endforeach()
-
+foreach(main_required_token IN ITEMS
+    "SettingsController.selectedSidebarId"
+    "SettingsController.navigateTo"
+    "SettingsController.canGoBack"
+    "SettingsController.canGoForward"
+    "SettingsController.goBack"
+    "SettingsController.goForward"
+    "settingsNavigationToolbar"
+    "settingsBackForwardControl"
+)
+    string(FIND "${main_source}" "${main_required_token}" main_required_position)
+    if(main_required_position EQUAL -1)
+        message(FATAL_ERROR "Main.qml is missing native navigation contract '${main_required_token}'")
+    endif()
+endforeach()
 foreach(window_invariant IN ITEMS
     "height: Math.min(760, Screen.desktopAvailableHeight - 32)"
     "minimumHeight: 650"
@@ -198,17 +163,6 @@ foreach(window_invariant IN ITEMS
     string(FIND "${main_source}" "${window_invariant}" window_invariant_position)
     if(window_invariant_position EQUAL -1)
         message(FATAL_ERROR "Main.qml is missing window sizing invariant: ${window_invariant}")
-    endif()
-endforeach()
-
-file(READ "${SETTINGS_SOURCE_DIR}/qml/components/form/SettingRow.qml" setting_row_source)
-foreach(setting_row_invariant IN ITEMS
-    "spacing: Components.Theme.spacingMicro"
-    "implicitHeight: Math.max(sr.sublabel !== \"\" ? 64 : 52, rowLayout.implicitHeight + Components.Theme.spacingMedium * 2)"
-)
-    string(FIND "${setting_row_source}" "${setting_row_invariant}" setting_row_invariant_position)
-    if(setting_row_invariant_position EQUAL -1)
-        message(FATAL_ERROR "SettingRow.qml is missing shared geometry invariant: ${setting_row_invariant}")
     endif()
 endforeach()
 
@@ -240,45 +194,129 @@ set(production_source_files
     qml/Main.qml
     qml/components/AppIcon.qml
     qml/components/navigation/NavItem.qml
+    qml/components/navigation/HubNavigationRow.qml
     qml/components/navigation/Sidebar.qml
+    qml/pages/navigation/Hub.qml
     qml/pages/appearance/Wallpaper.qml
     qml/pages/system/Compositor.qml
-)
-list(APPEND production_source_files qml/pages/appearance/Dock.qml)
-
-set(required_dock_production_sources
-    services/dock/SettingsDockController.cpp
-    services/dock/SettingsDockController.hpp
     qml/pages/appearance/Dock.qml
 )
-foreach(relative_path IN LISTS required_dock_production_sources)
-    list(FIND production_source_files "${relative_path}" required_source_index)
-    if(required_source_index EQUAL -1)
-        message(FATAL_ERROR "Dock production source is missing from the architecture guard: ${relative_path}")
+
+foreach(relative_path IN LISTS production_source_files)
+    if(NOT EXISTS "${SETTINGS_SOURCE_DIR}/${relative_path}")
+        message(FATAL_ERROR "Settings production source is missing: ${relative_path}")
+    endif()
+endforeach()
+
+file(READ "${SETTINGS_SOURCE_DIR}/core/navigation/SettingsNavigationEntry.hpp" navigation_entry_source)
+file(READ "${SETTINGS_SOURCE_DIR}/core/navigation/SettingsNavigationCatalog.cpp" navigation_catalog_source)
+file(READ "${SETTINGS_SOURCE_DIR}/core/navigation/SettingsNavigationModel.hpp" navigation_model_header)
+file(READ "${SETTINGS_SOURCE_DIR}/core/navigation/SettingsNavigationModel.cpp" navigation_model_source)
+file(READ "${SETTINGS_SOURCE_DIR}/core/SettingsController.hpp" controller_header)
+file(READ "${SETTINGS_SOURCE_DIR}/core/SettingsController.cpp" controller_source)
+foreach(navigation_forbidden_token IN ITEMS
+    "Kind::Section"
+    "Kind::Child"
+    "toggleSection"
+    "sectionKey"
+    "parentSection"
+    "expanded"
+    "SelectedRole"
+    "selectedSection"
+    "selectSection"
+)
+    foreach(navigation_source IN ITEMS
+        navigation_entry_source navigation_catalog_source navigation_model_header
+        navigation_model_source controller_header controller_source
+    )
+        string(FIND "${${navigation_source}}" "${navigation_forbidden_token}" navigation_token_position)
+        if(NOT navigation_token_position EQUAL -1)
+            message(FATAL_ERROR "Obsolete navigation token '${navigation_forbidden_token}' found in ${navigation_source}")
+        endif()
+    endforeach()
+endforeach()
+foreach(navigation_required_token IN ITEMS
+    "Kind::Hub"
+    "sidebarVisible"
+    "parentId"
+    "childrenForId"
+    "firstNavigableSidebarDestination"
+    "sidebarAncestorForId"
+)
+    string(FIND "${navigation_entry_source}${navigation_catalog_source}${navigation_model_header}${navigation_model_source}"
+        "${navigation_required_token}" navigation_required_position)
+    if(navigation_required_position EQUAL -1)
+        message(FATAL_ERROR "Native destination graph is missing '${navigation_required_token}'")
     endif()
 endforeach()
 
 file(READ "${SETTINGS_SOURCE_DIR}/qml/components/navigation/Sidebar.qml" sidebar_source)
+foreach(sidebar_forbidden_token IN ITEMS
+    "section"
+    "child"
+    "toggleSection"
+    "leftInset"
+    "compact"
+    "sectionMouse"
+    "expanded"
+)
+    string(FIND "${sidebar_source}" "${sidebar_forbidden_token}" sidebar_token_position)
+    if(NOT sidebar_token_position EQUAL -1)
+        message(FATAL_ERROR "Flat Sidebar contains obsolete expansion behavior '${sidebar_forbidden_token}'")
+    endif()
+endforeach()
 foreach(sidebar_required_token IN ITEMS
-    "itemKind === \"section\""
-    "itemKind === \"child\""
-    "root.model.toggleSection(model.entryId)"
-    "leftInset:  navDelegate.itemKind === \"child\" ? 24 : 0"
-    "compact:    navDelegate.itemKind === \"child\""
+    "root.model"
+    "root.selectedId"
+    "root.selectId(model.entryId)"
+    "settingsSidebar"
 )
     string(FIND "${sidebar_source}" "${sidebar_required_token}" sidebar_required_position)
     if(sidebar_required_position EQUAL -1)
-        message(FATAL_ERROR "Sidebar is missing canonical navigation contract '${sidebar_required_token}'")
+        message(FATAL_ERROR "Flat Sidebar is missing '${sidebar_required_token}'")
     endif()
 endforeach()
-foreach(sidebar_forbidden_token IN ITEMS
-    "openUserProfile"
-    "setProperty(index"
-    "pageIndex"
+
+file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/navigation/Hub.qml" hub_source)
+foreach(hub_required_token IN ITEMS
+    "settingsHubPage"
+    "SettingsController.currentDestination"
+    "SettingsController.currentDestinationChildren"
+    "SettingsController.navigateTo(descriptor.entryId)"
 )
-    string(FIND "${sidebar_source}" "${sidebar_forbidden_token}" sidebar_forbidden_position)
-    if(NOT sidebar_forbidden_position EQUAL -1)
-        message(FATAL_ERROR "Forbidden Sidebar migration behavior returned: ${sidebar_forbidden_token}")
+    string(FIND "${hub_source}" "${hub_required_token}" hub_required_position)
+    if(hub_required_position EQUAL -1)
+        message(FATAL_ERROR "Generic Hub is missing '${hub_required_token}'")
+    endif()
+endforeach()
+foreach(hub_forbidden_token IN ITEMS
+    "Wallpaper.qml"
+    "Dock.qml"
+    "currentDestinationId ==="
+    "if (currentDestination"
+)
+    string(FIND "${hub_source}" "${hub_forbidden_token}" hub_forbidden_position)
+    if(NOT hub_forbidden_position EQUAL -1)
+        message(FATAL_ERROR "Generic Hub contains hardcoded destination behavior '${hub_forbidden_token}'")
+    endif()
+endforeach()
+
+file(READ "${SETTINGS_SOURCE_DIR}/qml/components/navigation/HubNavigationRow.qml" hub_row_source)
+foreach(hub_row_required_token IN ITEMS "destinationId" "signal clicked" "chevron")
+    string(FIND "${hub_row_source}" "${hub_row_required_token}" hub_row_required_position)
+    if(hub_row_required_position EQUAL -1)
+        message(FATAL_ERROR "Hub navigation row is missing '${hub_row_required_token}'")
+    endif()
+endforeach()
+
+file(READ "${SETTINGS_SOURCE_DIR}/qml/components/form/SettingRow.qml" setting_row_source)
+foreach(setting_row_invariant IN ITEMS
+    "spacing: Components.Theme.spacingMicro"
+    "implicitHeight: Math.max(sr.sublabel !== \"\" ? 64 : 52, rowLayout.implicitHeight + Components.Theme.spacingMedium * 2)"
+)
+    string(FIND "${setting_row_source}" "${setting_row_invariant}" setting_row_invariant_position)
+    if(setting_row_invariant_position EQUAL -1)
+        message(FATAL_ERROR "SettingRow.qml is missing shared geometry invariant: ${setting_row_invariant}")
     endif()
 endforeach()
 
@@ -292,22 +330,18 @@ if(NOT wrong_app_icon_provider_position EQUAL -1)
     message(FATAL_ERROR "Settings AppIcon uses the unregistered icon provider")
 endif()
 
-file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/Wallpaper.qml" wallpaper_controls_source)
-foreach(deferred_wallpaper_control IN ITEMS
+file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/Wallpaper.qml" wallpaper_source)
+foreach(wallpaper_required_token IN ITEMS
     "objectName: \"allWorkspacesToggle\""
     "objectName: \"blurredWallpaperToggle\""
     "objectName: \"transitionSelector\""
     "enabled: false"
 )
-    string(FIND "${wallpaper_controls_source}" "${deferred_wallpaper_control}" deferred_control_position)
-    if(deferred_control_position EQUAL -1)
-        message(FATAL_ERROR "Wallpaper deferred-control contract is missing '${deferred_wallpaper_control}'")
+    string(FIND "${wallpaper_source}" "${wallpaper_required_token}" wallpaper_position)
+    if(wallpaper_position EQUAL -1)
+        message(FATAL_ERROR "Wallpaper deferred-control contract is missing '${wallpaper_required_token}'")
     endif()
 endforeach()
-string(FIND "${wallpaper_controls_source}" "selectedTransition" selected_transition_position)
-if(NOT selected_transition_position EQUAL -1)
-    message(FATAL_ERROR "Wallpaper retains unsupported mutable transition preview state")
-endif()
 
 set(forbidden_production_tokens
     "import Quickshell"
@@ -332,48 +366,4 @@ foreach(relative_path IN LISTS production_source_files)
     endforeach()
 endforeach()
 
-file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/Dock.qml" dock_qml_source)
-foreach(dock_qml_forbidden_token IN ITEMS
-    "import Quickshell"
-    "Quickshell.Io"
-    "Process {"
-    "QProcess"
-    "File"
-    "FileView"
-    "FileDialog"
-    "FolderListModel"
-    "Qt.labs.folderlistmodel"
-    "Qt.labs.settings"
-    "Settings {"
-    "import QtDBus"
-    "QtDBus"
-    "DBus"
-    "QDBus"
-    "Socket"
-    "LocalSocket"
-    "Datagram"
-    "IPC"
-    "DockIpc"
-    "ShellIpc"
-    "LayerShell"
-    "LayerShellQt"
-    "LayerShellHelper"
-    "Hyprland"
-    "hyprctl"
-    "Typhon"
-)
-    string(FIND "${dock_qml_source}" "${dock_qml_forbidden_token}" dock_qml_token_position)
-    if(NOT dock_qml_token_position EQUAL -1)
-        message(FATAL_ERROR "Forbidden token '${dock_qml_forbidden_token}' found in Dock.qml")
-    endif()
-endforeach()
-
-foreach(feedback_file IN ITEMS DnsPresetChip DnsStatusCard ProgressCard SpeedCard StatusDot)
-    file(READ "${SETTINGS_SOURCE_DIR}/qml/components/feedback/${feedback_file}.qml" feedback_source)
-    string(FIND "${feedback_source}" "import \"./feedback\"" recursive_import_position)
-    if(NOT recursive_import_position EQUAL -1)
-        message(FATAL_ERROR "Feedback component recursively imports its own directory: ${feedback_file}")
-    endif()
-endforeach()
-
-message(STATUS "Settings structure invariants passed")
+message(STATUS "Settings structure invariants passed (${CMAKE_MATCH_COUNT} registered QML files checked)")

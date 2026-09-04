@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import QtQuick.Effects
 import QtQuick.Controls
 import QtQuick.Window
+import "components/controls" as Controls
 
 ApplicationWindow {
     id: window
@@ -83,26 +84,59 @@ ApplicationWindow {
                 Layout.preferredWidth: 256
                 Layout.fillHeight: true
                 model: SettingsController.navigationModel
-                selectedId: SettingsController.selectedSectionId
+                selectedId: SettingsController.selectedSidebarId
                 translationMessages: I18n.messages
                 userName: SettingsController.userName
                 avatarPath: SettingsController.avatarUrl
                 isSudo: SettingsController.isSudo
                 iconTheme: Theme.iconTheme
                 iconUrlResolver: (iconKey, iconTheme) => SettingsController.iconUrl(iconKey, iconTheme)
-                onSelectId: id => SettingsController.selectSection(id)
+                onSelectId: id => SettingsController.navigateTo(id)
             }
 
             Item {
+                id: contentPane
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
-                Loader {
-                    id: pageLoader
-                    objectName: "settingsPageLoader"
+                ColumnLayout {
                     anchors.fill: parent
-                    active: window.selectedPageSource.toString() !== ""
-                    source: window.selectedPageSource
+                    spacing: 0
+
+                    Item {
+                        id: navigationToolbar
+                        objectName: "settingsNavigationToolbar"
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 52
+
+                        Controls.DualButton {
+                            id: backForwardControl
+                            objectName: "settingsBackForwardControl"
+                            anchors.left: parent.left
+                            anchors.leftMargin: 24
+                            anchors.verticalCenter: parent.verticalCenter
+                            controlWidth: 68
+                            controlHeight: 30
+                            segmentWidth: 34
+                            iconSize: 16
+                            iconFontFamily: "JetBrainsMono Nerd Font"
+                            leftIconText: "\uf060"
+                            rightIconText: "\uf061"
+                            leftEnabled: SettingsController.canGoBack
+                            rightEnabled: SettingsController.canGoForward
+                            onLeftClicked: SettingsController.goBack()
+                            onRightClicked: SettingsController.goForward()
+                        }
+                    }
+
+                    Loader {
+                        id: pageLoader
+                        objectName: "settingsPageLoader"
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        active: window.selectedPageSource.toString() !== ""
+                        source: window.selectedPageSource
+                    }
                 }
             }
         }

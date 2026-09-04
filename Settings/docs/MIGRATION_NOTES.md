@@ -24,7 +24,8 @@ shell.
 
 - application lifecycle and QML startup: `app/SettingsApplication.*`;
 - navigation descriptors: `core/navigation/SettingsNavigationCatalog.*`;
-- model selection and section expansion: `core/navigation/SettingsNavigationModel.*`;
+- sidebar-visible rows, catalogue lookup, and child/ancestor resolution:
+  `core/navigation/SettingsNavigationModel.*`;
 - stable QML facade: `core/SettingsController.*`;
 - profile value and provider: `services/profile/`;
 - icon URL resolution: `services/assets/`;
@@ -39,14 +40,15 @@ No service or platform construction occurs in QML.
 ## Routing Policy
 
 The navigation catalogue contains stable IDs and optional native `QUrl` page
-descriptors. Page, Section, Child, and Spacer rows preserve the approved order.
-Sections toggle by stable ID and are never selected; Wallpaper and Dock are
-children of Appearance. A Page or Child without a route remains visible but is
-not selectable, so the first routable descriptor (currently Compositor) is the
-initial selection. Compositor is a visual/local preview route; Wallpaper and
-Dock are native routes backed by their focused C++ boundaries. Future pages
-must add a descriptor and QML source through the catalogue; numeric page
-indexes and QML route-ID conditions are prohibited.
+descriptors. Page, Hub, and Spacer rows preserve the approved flat sidebar
+order; nested destinations remain in the authoritative catalogue with a
+`parentId` and `sidebarVisible=false`. A Hub is navigable only when it has at
+least one navigable child. A Page without a route remains visible but is not
+selectable, so the first navigable descriptor (currently Compositor) is the
+initial selection. The controller owns the selected route, ancestor highlight,
+and bounded session-only Back/Forward history. Future pages must add a
+descriptor and QML source through the catalogue; numeric page indexes and QML
+route-ID conditions are prohibited.
 
 ## Compositor Preview Policy
 

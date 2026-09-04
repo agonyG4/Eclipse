@@ -8,94 +8,162 @@ class SettingsControllerTest final : public QObject {
     Q_OBJECT
 
 private slots:
-    void startsWithFirstRoutablePage();
-    void rejectsUnknownOrUnavailableSelection();
-    void exposesSelectedRole();
-    void selectsCompositor();
-    void exposesSelectedPageSource();
-    void unavailableSelectionPreservesRouteAndSignal();
+    void startsWithFirstDestination();
+    void navigatesToCustomizationHub();
+    void nestedDestinationsKeepSidebarAncestorSelected();
+    void directNestedNavigationDerivesSidebarAncestor();
+    void backAndForwardTraverseSessionHistory();
+    void divergentNavigationClearsForwardHistory();
+    void currentDestinationDoesNotDuplicateHistory();
+    void invalidNavigationPreservesRouteAndHistory();
+    void historyRemainsBounded();
     void usesInjectedProfileForIsSudo();
 };
 
-void SettingsControllerTest::startsWithFirstRoutablePage()
+void SettingsControllerTest::startsWithFirstDestination()
 {
     SettingsController controller;
 
-    QCOMPARE(controller.selectedSectionId(), QStringLiteral("compositor"));
-    QCOMPARE(controller.selectedSectionTitle(), QStringLiteral("Compositor"));
+    QCOMPARE(controller.currentDestinationId(), QStringLiteral("compositor"));
+    QCOMPARE(controller.selectedSidebarId(), QStringLiteral("compositor"));
     QCOMPARE(controller.selectedPageSource(),
              QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Compositor.qml")));
-    QCOMPARE(controller.navigationModel()->rowCount(), 14);
+    QVERIFY(!controller.canGoBack());
+    QVERIFY(!controller.canGoForward());
 }
 
-void SettingsControllerTest::rejectsUnknownOrUnavailableSelection()
+void SettingsControllerTest::navigatesToCustomizationHub()
 {
     SettingsController controller;
-    QSignalSpy selectionSpy(&controller, &SettingsController::selectionChanged);
+    QSignalSpy navigationSpy(&controller, &SettingsController::navigationChanged);
 
-    QVERIFY(!controller.selectSection(QStringLiteral("missing")));
-    QVERIFY(!controller.selectSection(QStringLiteral("appearance")));
-    QVERIFY(!controller.selectSection(QStringLiteral("system")));
-    QCOMPARE(controller.selectedSectionId(), QStringLiteral("compositor"));
-    QCOMPARE(selectionSpy.count(), 0);
+    QVERIFY(controller.navigateTo(QStringLiteral("customization")));
+    QCOMPARE(controller.currentDestinationId(), QStringLiteral("customization"));
+    QCOMPARE(controller.selectedSidebarId(), QStringLiteral("customization"));
+    QCOMPARE(controller.selectedPageSource(),
+             QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/navigation/Hub.qml")));
+    QCOMPARE(controller.currentDestination().value(QStringLiteral("kind")).toString(), QStringLiteral("hub"));
+    QCOMPARE(controller.currentDestinationChildren().size(), 2);
+    QCOMPARE(navigationSpy.count(), 1);
+    QVERIFY(controller.canGoBack());
+    QVERIFY(!controller.canGoForward());
 }
 
-void SettingsControllerTest::exposesSelectedRole()
+void SettingsControllerTest::nestedDestinationsKeepSidebarAncestorSelected()
 {
     SettingsController controller;
-    SettingsNavigationModel *model = controller.navigationModel();
 
-    QVERIFY(controller.selectSection(QStringLiteral("compositor")));
+    QVERIFY(controller.navigateTo(QStringLiteral("customization")));
+    QVERIFY(controller.navigateTo(QStringLiteral("dock")));
+    QCOMPARE(controller.currentDestinationId(), QStringLiteral("dock"));
+    QCOMPARE(controller.selectedSidebarId(), QStringLiteral("customization"));
+    QCOMPARE(controller.selectedPageSource(),
+             QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Dock.qml")));
 
-    int selectedRows = 0;
-    for (int row = 0; row < model->rowCount(); ++row) {
-        const QModelIndex index = model->index(row, 0);
-        if (model->data(index, SettingsNavigationModel::SelectedRole).toBool()) {
-            ++selectedRows;
-            QCOMPARE(model->data(index, SettingsNavigationModel::IdRole).toString(),
-                     QStringLiteral("compositor"));
-        }
+    QVERIFY(controller.navigateTo(QStringLiteral("wallpaper")));
+    QCOMPARE(controller.currentDestinationId(), QStringLiteral("wallpaper"));
+    QCOMPARE(controller.selectedSidebarId(), QStringLiteral("customization"));
+}
+
+void SettingsControllerTest::directNestedNavigationDerivesSidebarAncestor()
+{
+    SettingsController controller;
+
+    QVERIFY(controller.navigateTo(QStringLiteral("dock")));
+    QCOMPARE(controller.currentDestinationId(), QStringLiteral("dock"));
+    QCOMPARE(controller.selectedSidebarId(), QStringLiteral("customization"));
+}
+
+void SettingsControllerTest::backAndForwardTraverseSessionHistory()
+{
+    SettingsController controller;
+    QSignalSpy navigationSpy(&controller, &SettingsController::navigationChanged);
+
+    QVERIFY(controller.navigateTo(QStringLiteral("customization")));
+    QVERIFY(controller.navigateTo(QStringLiteral("dock")));
+    QCOMPARE(controller.currentDestinationId(), QStringLiteral("dock"));
+
+    controller.goBack();
+    QCOMPARE(controller.currentDestinationId(), QStringLiteral("customization"));
+    QCOMPARE(controller.selectedSidebarId(), QStringLiteral("customization"));
+    QVERIFY(controller.canGoForward());
+
+    controller.goForward();
+    QCOMPARE(controller.currentDestinationId(), QStringLiteral("dock"));
+    QCOMPARE(controller.selectedSidebarId(), QStringLiteral("customization"));
+    QVERIFY(!controller.canGoForward());
+    QCOMPARE(navigationSpy.count(), 4);
+}
+
+void SettingsControllerTest::divergentNavigationClearsForwardHistory()
+{
+    SettingsController controller;
+
+    QVERIFY(controller.navigateTo(QStringLiteral("customization")));
+    QVERIFY(controller.navigateTo(QStringLiteral("dock")));
+    controller.goBack();
+    QVERIFY(controller.canGoForward());
+
+    QVERIFY(controller.navigateTo(QStringLiteral("wallpaper")));
+    QVERIFY(!controller.canGoForward());
+    QCOMPARE(controller.currentDestinationId(), QStringLiteral("wallpaper"));
+    controller.goForward();
+    QCOMPARE(controller.currentDestinationId(), QStringLiteral("wallpaper"));
+}
+
+void SettingsControllerTest::currentDestinationDoesNotDuplicateHistory()
+{
+    SettingsController controller;
+    QSignalSpy navigationSpy(&controller, &SettingsController::navigationChanged);
+    QSignalSpy historySpy(&controller, &SettingsController::historyChanged);
+
+    QVERIFY(controller.navigateTo(QStringLiteral("customization")));
+    QCOMPARE(navigationSpy.count(), 1);
+    QCOMPARE(historySpy.count(), 1);
+
+    QVERIFY(controller.navigateTo(QStringLiteral("customization")));
+    QCOMPARE(navigationSpy.count(), 1);
+    QCOMPARE(historySpy.count(), 1);
+
+    controller.goBack();
+    QCOMPARE(controller.currentDestinationId(), QStringLiteral("compositor"));
+    QVERIFY(!controller.canGoBack());
+    QVERIFY(controller.canGoForward());
+}
+
+void SettingsControllerTest::invalidNavigationPreservesRouteAndHistory()
+{
+    SettingsController controller;
+    QSignalSpy navigationSpy(&controller, &SettingsController::navigationChanged);
+
+    QVERIFY(controller.navigateTo(QStringLiteral("customization")));
+    QVERIFY(controller.navigateTo(QStringLiteral("dock")));
+    const qsizetype signalCount = navigationSpy.count();
+
+    QVERIFY(!controller.navigateTo(QStringLiteral("missing")));
+    QVERIFY(!controller.navigateTo(QStringLiteral("performance")));
+    QVERIFY(!controller.navigateTo(QStringLiteral("more-settings")));
+    QCOMPARE(controller.currentDestinationId(), QStringLiteral("dock"));
+    QCOMPARE(controller.selectedSidebarId(), QStringLiteral("customization"));
+    QCOMPARE(navigationSpy.count(), signalCount);
+    QVERIFY(!controller.canGoForward());
+}
+
+void SettingsControllerTest::historyRemainsBounded()
+{
+    SettingsController controller;
+
+    for (int i = 0; i < 80; ++i)
+        QVERIFY(controller.navigateTo(i % 2 == 0 ? QStringLiteral("customization") : QStringLiteral("dock")));
+
+    int backSteps = 0;
+    while (controller.canGoBack()) {
+        controller.goBack();
+        ++backSteps;
     }
-    QCOMPARE(selectedRows, 1);
-}
-
-void SettingsControllerTest::selectsCompositor()
-{
-    SettingsController controller;
-    SettingsNavigationModel *model = controller.navigationModel();
-
-    QVERIFY(controller.selectSection(QStringLiteral("compositor")));
-    QCOMPARE(controller.selectedSectionId(), QStringLiteral("compositor"));
-    QCOMPARE(controller.selectedSectionTitle(), QStringLiteral("Compositor"));
-
-    const QVariantMap entry = model->get(7);
-    QCOMPARE(entry.value(QStringLiteral("labelKey")).toString(), QStringLiteral("settings.nav.compositor"));
-    QCOMPARE(entry.value(QStringLiteral("subtitle")).toString(), QStringLiteral("Astrea compositor preferences"));
-    QCOMPARE(entry.value(QStringLiteral("kind")).toString(), QStringLiteral("page"));
-}
-
-void SettingsControllerTest::exposesSelectedPageSource()
-{
-    SettingsController controller;
-
-    QCOMPARE(controller.selectedPageSource(),
-             QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Compositor.qml")));
-    QVERIFY(controller.selectSection(QStringLiteral("compositor")));
-    QCOMPARE(controller.selectedPageSource(),
-             QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Compositor.qml")));
-}
-
-void SettingsControllerTest::unavailableSelectionPreservesRouteAndSignal()
-{
-    SettingsController controller;
-    const QUrl route = controller.selectedPageSource();
-
-    QSignalSpy selectionSpy(&controller, &SettingsController::selectionChanged);
-    QVERIFY(!controller.selectSection(QStringLiteral("software-update")));
-    QVERIFY(!controller.selectSection(QStringLiteral("more-settings")));
-    QCOMPARE(controller.selectedPageSource(), route);
-    QCOMPARE(controller.selectedSectionId(), QStringLiteral("compositor"));
-    QCOMPARE(selectionSpy.count(), 0);
+    QCOMPARE(backSteps, 63);
+    QCOMPARE(controller.currentDestinationId(), QStringLiteral("customization"));
+    QVERIFY(!controller.canGoBack());
 }
 
 void SettingsControllerTest::usesInjectedProfileForIsSudo()

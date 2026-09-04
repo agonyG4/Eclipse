@@ -781,6 +781,8 @@
     "apps.wallpapers.text.delete_named_wallpaper": "Delete {name}?",
     "apps.wallpapers.text.delete_help": "This removes it from the managed wallpaper library.",
     "settings.nav.compositor": "Compositor",
+    "settings.nav.customization": "Customization",
+    "settings.nav.customization.subtitle": "Personalize the look and behavior of your Astrea desktop.",
     "apps.settings.pages.system.compositor.text.compositor": "COMPOSITOR",
     "apps.settings.pages.system.compositor.text.visual_effects": "VISUAL EFFECTS",
     "apps.settings.pages.system.compositor.text.presentation": "PRESENTATION",

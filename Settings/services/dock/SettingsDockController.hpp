@@ -95,6 +95,7 @@ private:
     void setLastError(const QString &error);
     void addPathWithParents(const QString &path);
     void setFieldConfig(const DockConfig &config);
+    bool refreshFromDisk();
 
     QString m_configPath;
     DockConfig m_config;

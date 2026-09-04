@@ -23,9 +23,10 @@ Settings/
 │       └── SettingsNavigationModel.hpp
 ├── services/
 │   ├── assets/
+│   ├── dock/
 │   ├── i18n/
 │   ├── profile/
-│   └── theme/
+│   └── wallpaper/
 ├── platform/linux/
 ├── qml/
 │   ├── CMakeLists.txt
@@ -47,9 +48,11 @@ Settings/
 ## Target Graph
 
 ```text
-astrea-settings-core  -> Qt6::Core
+astrea-settings-core  -> PUBLIC Qt6::Core, astrea-shared-dock;
+                         PRIVATE Qt6::Network; direct Paper protocol include
 astrea-settings-ui    -> Qt6::Core, Core5Compat, Gui, Qml, Quick, QuickControls2
-astrea-settings       -> settings-core, settings-ui, settings-ui-plugin,
+astrea-settings       -> astrea-settings-core, astrea-settings-ui,
+                          astrea-settings-uiplugin,
                           astrea-shared-core, astrea-shared-coreplugin, Qt app libraries
 Settings unit tests   -> astrea-settings-core, Qt6::Test
 Settings QML tests    -> astrea-settings-core, astrea-settings-ui,
@@ -66,19 +69,23 @@ shared -> compositor-independent utilities only
 ```
 
 The core target deliberately has no Qt QML, Qt Quick, Quick Controls,
-LayerShellQt, or compositor dependency.
+LayerShellQt, or compositor dependency. The application owns shared UI-facing
+dependencies directly; the core does not obtain them transitively.
 
 ## Composition and Route Flow
 
 `SettingsApplication` constructs the Linux detector, profile provider and value,
 navigation catalogue and model, icon resolver, theme controller, translation
 controller, and QML engine. It registers `SettingsController`,
-`ThemeController`, and `I18n` as context properties.
+`ThemeController`, and `I18n` as context properties and registers the shared
+icon provider as `astrea-icon`.
 
-The catalogue provides ordered descriptors. The model filters and selects by
-stable ID. `SettingsController.selectedPageSource` reads the selected
-descriptor's optional URL. `Main.qml` supplies that URL to one `Loader`; an
-empty URL leaves the loader inactive.
+The catalogue provides ordered descriptors. The model expands sections and
+selects only routable Page/Child entries by stable ID. `SettingsController`
+selects the first routable descriptor at startup, and its
+`selectedPageSource` reads the selected descriptor's optional URL. `Main.qml`
+supplies that URL to one `Loader`; an empty URL is never selected and therefore
+does not produce an empty selected page.
 
 ## Adding a Visual-Only Page
 

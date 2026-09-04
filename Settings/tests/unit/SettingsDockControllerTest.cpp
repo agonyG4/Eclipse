@@ -20,6 +20,8 @@ private slots:
     void invalidValuesAreClampedOrRejected();
     void unchangedValueDoesNotEmitPropertyChange();
     void externalReplacementUpdatesProperties();
+    void pendingWriteDefersExternalRefreshUntilFlush();
+    void flushPreservesExternalPinsWhileApplyingLocalDraft();
     void failedWriteRestoresPreviousStateAndReportsBoundedError();
 };
 
@@ -149,6 +151,50 @@ void SettingsDockControllerTest::externalReplacementUpdatesProperties()
     QTRY_COMPARE_WITH_TIMEOUT(controller.iconSize(), 40, 1500);
     QTRY_COMPARE_WITH_TIMEOUT(controller.position(), QStringLiteral("right"), 1500);
     QTRY_COMPARE_WITH_TIMEOUT(controller.autoHide(), QStringLiteral("always"), 1500);
+}
+
+void SettingsDockControllerTest::pendingWriteDefersExternalRefreshUntilFlush()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = configPath(directory);
+    writeObject(path, QJsonObject{{QStringLiteral("iconSize"), 40}});
+    SettingsDockController controller(path);
+
+    controller.setIconSize(60);
+    writeObject(path, QJsonObject{{QStringLiteral("iconSize"), 40},
+                                  {QStringLiteral("position"), QStringLiteral("right")}});
+    QTest::qWait(130);
+
+    QCOMPARE(controller.iconSize(), 60);
+    QCOMPARE(controller.position(), QStringLiteral("bottom"));
+    QVERIFY(controller.pendingWrite());
+}
+
+void SettingsDockControllerTest::flushPreservesExternalPinsWhileApplyingLocalDraft()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = configPath(directory);
+    writeObject(path, QJsonObject{{QStringLiteral("iconSize"), 40},
+                                  {QStringLiteral("pins"), QJsonArray{QStringLiteral("old.desktop")}}});
+    SettingsDockController controller(path);
+
+    controller.setIconSize(60);
+    writeObject(path, QJsonObject{{QStringLiteral("iconSize"), 40},
+                                  {QStringLiteral("pins"), QJsonArray{QStringLiteral("new.desktop")}},
+                                  {QStringLiteral("future"), QStringLiteral("preserve")}});
+    QTest::qWait(130);
+    QCOMPARE(controller.iconSize(), 60);
+
+    controller.flush();
+    const QJsonObject object = readObject(path);
+    QCOMPARE(object.value(QStringLiteral("iconSize")).toInt(), 60);
+    QCOMPARE(object.value(QStringLiteral("pins")).toArray(),
+             QJsonArray{QStringLiteral("new.desktop")});
+    QCOMPARE(object.value(QStringLiteral("future")).toString(), QStringLiteral("preserve"));
+    QCOMPARE(controller.iconSize(), 60);
+    QVERIFY(!controller.pendingWrite());
 }
 
 void SettingsDockControllerTest::failedWriteRestoresPreviousStateAndReportsBoundedError()

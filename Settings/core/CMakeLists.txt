@@ -26,9 +26,17 @@ add_library(astrea-settings-core STATIC
 target_include_directories(astrea-settings-core PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/.."
 )
+target_include_directories(astrea-settings-core PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../shared"
+)
 
 target_link_libraries(astrea-settings-core PUBLIC
-    Qt6::Core Qt6::Network astrea-shared-core astrea-shared-dock)
+    Qt6::Core
+    astrea-shared-dock
+)
+target_link_libraries(astrea-settings-core PRIVATE
+    Qt6::Network
+)
 
 settings_enable_warnings(astrea-settings-core)
 settings_enable_sanitizers(astrea-settings-core)

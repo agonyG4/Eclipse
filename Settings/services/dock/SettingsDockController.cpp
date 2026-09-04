@@ -154,11 +154,20 @@ void SettingsDockController::addPathWithParents(const QString &path)
 
 void SettingsDockController::refresh()
 {
+    if (m_pendingWrite) {
+        return;
+    }
+
+    refreshFromDisk();
+}
+
+bool SettingsDockController::refreshFromDisk()
+{
     const DockConfigCodec::JsonResult json = DockConfigCodec::readJsonObject(m_configPath);
     if (!json.error.isEmpty()) {
         setLastError(json.error);
         addPathWithParents(m_configPath);
-        return;
+        return false;
     }
 
     QStringList diagnostics;
@@ -168,6 +177,7 @@ void SettingsDockController::refresh()
     m_lastPersisted = next;
     setLastError(diagnostics.join(QStringLiteral("; ")));
     addPathWithParents(m_configPath);
+    return true;
 }
 
 void SettingsDockController::flush()
@@ -178,16 +188,24 @@ void SettingsDockController::flush()
 
     DockConfigStore store(m_configPath);
     QString error;
-    if (!store.writePersonalization(m_config, &error)) {
-        applyLocalConfig(m_lastPersisted);
-        setLastError(error);
-    } else {
-        m_lastPersisted = m_config;
-        setLastError(QString());
-    }
+    const bool wrote = store.writePersonalization(m_config, &error);
 
     m_pendingWrite = false;
     emit pendingWriteChanged();
+    m_refreshDebounce.stop();
+
+    if (wrote) {
+        // Always converge the in-memory snapshot with the file that the store
+        // actually wrote. This also imports pins changed by another writer.
+        refreshFromDisk();
+    } else {
+        // A failed write must not leave the local draft selected. Prefer the
+        // latest readable disk state, while retaining the bounded write error.
+        if (!refreshFromDisk())
+            applyLocalConfig(m_lastPersisted);
+        setLastError(error);
+    }
+
     addPathWithParents(m_configPath);
 }
 

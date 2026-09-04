@@ -111,7 +111,7 @@ Rectangle {
             return text
         if (text.indexOf("/") >= 0)
             return "file://" + text
-        return "image://icon/" + text
+        return "image://astrea-icon/" + text
     }
 
     function reloadIcon() {

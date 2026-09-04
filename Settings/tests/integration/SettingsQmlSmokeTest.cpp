@@ -46,19 +46,32 @@ void SettingsQmlSmokeTest::loadsCompositorRouteOffscreen()
 
     QCOMPARE(engine.rootObjects().size(), 1);
     QObject *root = engine.rootObjects().constFirst();
+    QObject *loader = root->findChild<QObject *>(QStringLiteral("settingsPageLoader"));
+    QVERIFY(loader != nullptr);
     QVERIFY(settingsController.selectSection(QStringLiteral("compositor")));
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("compositorPage")) != nullptr, 1000);
-    QObject *page = root->findChild<QObject *>(QStringLiteral("compositorPage"));
+    auto loadedPage = [&loader]() {
+        return qvariant_cast<QObject *>(loader->property("item"));
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(loadedPage() != nullptr
+                                 && loadedPage()->objectName() == QStringLiteral("compositorPage"),
+                             1000);
+    QObject *page = loadedPage();
     QVERIFY(page != nullptr);
     QCOMPARE(page->property("animationsEnabled").toBool(), true);
     page->setProperty("animationsEnabled", false);
     QCOMPARE(page->property("animationsEnabled").toBool(), false);
 
-    QVERIFY(settingsController.selectSection(QStringLiteral("system")));
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("compositorPage")) == nullptr, 1000);
+    QVERIFY(!settingsController.selectSection(QStringLiteral("system")));
+    QCOMPARE(settingsController.selectedSectionId(), QStringLiteral("compositor"));
+    QVERIFY(settingsController.selectSection(QStringLiteral("wallpaper")));
+    QTRY_VERIFY_WITH_TIMEOUT(loadedPage() != nullptr
+                                 && loadedPage()->objectName() == QStringLiteral("wallpaperPage"),
+                             1000);
     QVERIFY(settingsController.selectSection(QStringLiteral("compositor")));
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("compositorPage")) != nullptr, 1000);
-    QCOMPARE(root->findChild<QObject *>(QStringLiteral("compositorPage"))->property("animationsEnabled").toBool(), true);
+    QTRY_VERIFY_WITH_TIMEOUT(loadedPage() != nullptr
+                                 && loadedPage()->objectName() == QStringLiteral("compositorPage"),
+                             1000);
+    QCOMPARE(loadedPage()->property("animationsEnabled").toBool(), true);
     QVERIFY2(qmlWarnings.isEmpty(), qPrintable(qmlWarnings.isEmpty() ? QString() : qmlWarnings.constFirst().toString()));
 }
 
@@ -114,6 +127,17 @@ void SettingsQmlSmokeTest::loadsWallpaperRouteOffscreen()
     QVERIFY(confirm != nullptr);
     QCOMPARE(confirm->property("text").toString(), QStringLiteral("Confirm"));
     QVERIFY(confirm->property("enabled").toBool());
+
+    QObject *allWorkspaces = page->findChild<QObject *>(QStringLiteral("allWorkspacesToggle"));
+    QObject *blurredWallpaper = page->findChild<QObject *>(QStringLiteral("blurredWallpaperToggle"));
+    QObject *transition = page->findChild<QObject *>(QStringLiteral("transitionSelector"));
+    QVERIFY(allWorkspaces != nullptr);
+    QVERIFY(blurredWallpaper != nullptr);
+    QVERIFY(transition != nullptr);
+    QVERIFY(!allWorkspaces->property("enabled").toBool());
+    QVERIFY(!blurredWallpaper->property("enabled").toBool());
+    QVERIFY(!transition->property("enabled").toBool());
+    QCOMPARE(transition->property("selectedIndex").toInt(), 0);
 }
 
 void SettingsQmlSmokeTest::loadsDockRouteOffscreen()

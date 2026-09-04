@@ -72,12 +72,8 @@ bool SettingsApplication::initializeQml()
     m_iconProvider = new AstreaIconProvider;
     m_engine->addImportPath(QStringLiteral("qrc:/"));
     m_engine->addImageProvider(QStringLiteral("astrea-icon"), m_iconProvider);
-    m_engine->rootContext()->setContextProperty(QStringLiteral("AstreaIconProvider"),
-                                                m_iconProvider);
     m_engine->rootContext()->setContextProperty(QStringLiteral("SettingsController"),
                                                 m_controller.get());
-    m_engine->rootContext()->setContextProperty(QStringLiteral("WallpaperController"),
-                                                m_controller->wallpaper());
     m_engine->rootContext()->setContextProperty(QStringLiteral("I18n"),
                                                 m_translationController.get());
     m_engine->rootContext()->setContextProperty(QStringLiteral("ThemeController"),

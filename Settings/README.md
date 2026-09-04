@@ -27,13 +27,15 @@ The native application includes:
 
 - a normal frameless Qt Wayland window with native window actions;
 - the source-preserved legacy glass shell, profile composition, and sidebar;
-- catalogue-owned navigation with filtering and stable selection;
-- thirteen navigation rows including the non-selectable spacer;
+- catalogue-owned navigation with stable selection and native section expansion;
+- fourteen navigation rows including the non-selectable spacer, with Page,
+  Section, Child, and Spacer semantics;
 - native theme configuration, translations, icon resolution, and user-profile
   services; Linux libc/NSS administrative-group detection recognizes only
   `wheel` and `sudo`;
-- two real page routes: `Compositor`, immediately after `Services`, and the
-  native `Wallpaper` route under Appearance;
+- three real page routes: `Compositor`, immediately after `Services`, plus the
+  native `Wallpaper` and `Dock` routes under Appearance; unavailable catalogue
+  entries remain visible but cannot select an empty content route;
 - reusable form controls and one reusable `Astrea.Settings` QML module.
 
 The Compositor page is a visual-only preview. Its toggles and selectors use
@@ -53,8 +55,10 @@ does not use shell commands, Quickshell, LayerShellQt, Hyprland, or Typhon.
 Existing ThemeController configuration is separate from the Compositor preview
 state.
 
-Settings links `astrea-shared-core` and its QML plugin only for
-compositor-independent shared utilities. Layer Shell code is isolated in
+The Settings application links `astrea-shared-core` and its QML plugin only for
+compositor-independent shared utilities. `astrea-settings-core` publicly
+exposes Qt Core and the shared Dock configuration boundary, keeps Qt Network
+private, and includes the Paper protocol header directly. Layer Shell code is isolated in
 `astrea-shared-layer-shell`, which is linked only by Dock, Spotlight, and
 AltTab. Administrative-group detection does not spawn subprocesses.
 

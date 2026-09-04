@@ -4,12 +4,12 @@ import ".." as Components
 
 Item {
     id: root
+    objectName: "settingsSidebar"
 
     required property var   model
     required property string selectedId
     property var translationMessages: ({})
     signal selectId(string id)
-    signal openUserProfile()
 
     property string userName: ""
     property string avatarPath: ""
@@ -50,13 +50,6 @@ Item {
             width: parent.width - 32
             x: 16
             height: 64
-
-            MouseArea {
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.openUserProfile()
-            }
 
             RowLayout {
                 anchors.fill: parent
@@ -134,21 +127,86 @@ Item {
                 readonly property string itemKind: model.kind !== undefined && model.kind.length > 0 ? model.kind : "page"
 
                 width: parent.width
-                height: itemKind === "spacer" ? 12 : 40
+                height: itemKind === "spacer" ? 12
+                    : itemKind === "section" ? 32
+                    : itemKind === "child" ? 36
+                    : 40
                 visible: height > 0
                 clip: true
 
+                Behavior on height { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+
                 Components.NavItem {
                     anchors.fill: parent
-                    visible:    navDelegate.itemKind !== "spacer"
+                    visible:    navDelegate.itemKind !== "section" && navDelegate.itemKind !== "spacer"
                     label:      root.translatedLabel(model)
                     sym:        model.sym !== undefined ? model.sym : ""
                     iconSource: model.iconKey !== undefined && root.iconUrlResolver
                         ? root.iconUrlResolver(model.iconKey, root.iconTheme)
                         : (model.iconSource !== undefined ? model.iconSource : "")
                     iconKey: ""
-                    selected:   root.selectedId === model.entryId
+                    leftInset:  navDelegate.itemKind === "child" ? 24 : 0
+                    compact:    navDelegate.itemKind === "child"
+                    enabled:    model.entryEnabled === true
+                    selected:   model.entryEnabled === true && root.selectedId === model.entryId
                     onClicked:  root.selectId(model.entryId)
+                }
+
+                Rectangle {
+                    visible: navDelegate.itemKind === "section"
+                    anchors {
+                        fill: parent
+                        leftMargin: 8
+                        rightMargin: 8
+                        topMargin: 3
+                        bottomMargin: 3
+                    }
+                    radius: 8
+                    color: sectionMouse.containsMouse
+                        ? (Components.Theme.themeMode === 1
+                            ? Qt.rgba(0, 0, 0, 0.04)
+                            : Qt.rgba(1, 1, 1, 0.045))
+                        : "transparent"
+                    border.width: sectionMouse.containsMouse ? 1 : 0
+                    border.color: Components.Theme.themeMode === 1
+                        ? Qt.rgba(0, 0, 0, 0.055)
+                        : Qt.rgba(1, 1, 1, 0.05)
+
+                    RowLayout {
+                        anchors {
+                            fill: parent
+                            leftMargin: 12
+                            rightMargin: 10
+                        }
+                        spacing: 8
+
+                        Text {
+                            text: model.expanded === true ? "⌄" : "›"
+                            color: Components.Theme.textTertiary
+                            font.family: Components.Theme.fontFamily
+                            font.pixelSize: Components.Theme.fontSizeSmall
+                            horizontalAlignment: Text.AlignHCenter
+                            Layout.preferredWidth: 14
+                        }
+
+                        Text {
+                            text: root.translatedLabel(model)
+                            color: Components.Theme.textSecondary
+                            font.family: Components.Theme.fontFamily
+                            font.pixelSize: Components.Theme.fontSizeSmall
+                            font.weight: Components.Theme.fontWeightDemiBold
+                            elide: Text.ElideRight
+                            Layout.fillWidth: true
+                        }
+                    }
+
+                    MouseArea {
+                        id: sectionMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.model.toggleSection(model.entryId)
+                    }
                 }
             }
         }

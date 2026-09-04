@@ -26,7 +26,6 @@ Item {
         I18n.tr("apps.settings.pages.paper.wallpaper.option.any", "Any"),
         I18n.tr("apps.settings.pages.paper.wallpaper.option.random", "Random")
     ]
-    property int selectedTransition: 0
     property string pendingWallpaperPath: ""
     property bool pendingAddsToLibrary: false
 
@@ -219,8 +218,9 @@ Item {
                         }
                         Form.ToggleSwitch {
                             id: allWorkspacesToggle
+                            objectName: "allWorkspacesToggle"
                             checked: true
-                            onToggled: checked = true
+                            enabled: false
                         }
                     }
 
@@ -236,8 +236,9 @@ Item {
                         }
                         Form.ToggleSwitch {
                             id: blurredWallpaperToggle
+                            objectName: "blurredWallpaperToggle"
                             checked: false
-                            onToggled: checked = false
+                            enabled: false
                         }
                     }
 
@@ -297,11 +298,12 @@ Item {
                 isLast: true
 
                 Form.SelectButton {
+                    objectName: "transitionSelector"
                     implicitWidth: 140
-                    label: root.transitions[root.selectedTransition]
+                    label: root.transitions[0]
                     options: root.transitions
-                    selectedIndex: root.selectedTransition
-                    onSelected: index => root.selectedTransition = index
+                    selectedIndex: 0
+                    enabled: false
                 }
             }
         }

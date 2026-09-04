@@ -213,6 +213,16 @@ bool StatusNotifierService::hasMenuForItem(const QString &itemKey) const
     return !snapshot.menuPath.isEmpty();
 }
 
+bool StatusNotifierService::hasUsableMenuForItem(const QString &itemKey) const
+{
+    const auto *menu = m_menus.value(itemKey);
+    if (!menu)
+        return false;
+    return menu->state() != DBusMenuLifecycleState::Unavailable
+        && menu->state() != DBusMenuLifecycleState::Error
+        && menu->state() != DBusMenuLifecycleState::Stopped;
+}
+
 QObject *StatusNotifierService::menuModelForItem(const QString &itemKey) const
 {
     const auto *menu = m_menus.value(itemKey);

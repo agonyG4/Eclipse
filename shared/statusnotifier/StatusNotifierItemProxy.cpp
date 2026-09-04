@@ -15,6 +15,8 @@ constexpr QLatin1StringView kKdeItem("org.kde.StatusNotifierItem");
 
 QVariant unwrap(const QVariant &value)
 {
+    if (value.canConvert<QDBusArgument>())
+        return value;
     if (value.canConvert<QDBusVariant>())
         return value.value<QDBusVariant>().variant();
     if (value.canConvert<QDBusObjectPath>())
@@ -26,23 +28,47 @@ QList<PixmapData> parsePixmaps(const QVariant &input)
 {
     const QVariant value = unwrap(input);
     QList<PixmapData> result;
+    if (value.canConvert<QDBusArgument>()) {
+        const QDBusArgument argument = value.value<QDBusArgument>();
+        const QString signature = argument.currentSignature();
+        if (signature.startsWith(QLatin1StringView("a("))) {
+            argument.beginArray();
+            while (!argument.atEnd()) {
+                if (!argument.currentSignature().startsWith(QLatin1StringView("(i")))
+                    break;
+                StatusNotifierPixmap entry;
+                argument >> entry;
+                result.append({entry.width, entry.height, entry.bytes});
+            }
+            argument.endArray();
+            return result;
+        }
+        if (signature.startsWith(QLatin1StringView("(i"))) {
+            StatusNotifierPixmap entry;
+            argument >> entry;
+            result.append({entry.width, entry.height, entry.bytes});
+            return result;
+        }
+    }
     if (value.canConvert<StatusNotifierPixmapList>()) {
         const StatusNotifierPixmapList typed = value.value<StatusNotifierPixmapList>();
         for (const StatusNotifierPixmap &entry : typed)
             result.append({entry.width, entry.height, entry.bytes});
         return result;
     }
-    if (value.canConvert<QDBusArgument>()) {
-        StatusNotifierPixmapList typed;
-        const QDBusArgument argument = value.value<QDBusArgument>();
-        argument >> typed;
-        for (const StatusNotifierPixmap &entry : typed)
-            result.append({entry.width, entry.height, entry.bytes});
-        return result;
-    }
     const QVariantList list = value.toList();
     for (const QVariant &entry : list) {
-        const QVariantList tuple = unwrap(entry).toList();
+        const QVariant unwrappedEntry = unwrap(entry);
+        if (unwrappedEntry.canConvert<QDBusArgument>()) {
+            const QDBusArgument argument = unwrappedEntry.value<QDBusArgument>();
+            if (argument.currentSignature().startsWith(QLatin1StringView("(i"))) {
+                StatusNotifierPixmap pixmap;
+                argument >> pixmap;
+                result.append({pixmap.width, pixmap.height, pixmap.bytes});
+            }
+            continue;
+        }
+        const QVariantList tuple = unwrappedEntry.toList();
         if (tuple.size() < 3)
             continue;
         PixmapData pixmap;

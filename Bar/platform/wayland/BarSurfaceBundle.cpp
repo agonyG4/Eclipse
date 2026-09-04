@@ -274,7 +274,25 @@ QQuickWindow *BarSurfaceBundle::createSurface(const QUrl &sourceUrl, int width, 
         {QStringLiteral("outputOriginY"), m_screen ? m_screen->geometry().y() : 0},
         {QStringLiteral("outputKey"), m_screen ? m_screen->name() : QString()},
     };
-    QObject *object = component.createWithInitialProperties(properties, m_engine->rootContext());
+    QObject *object = component.beginCreate(m_engine->rootContext());
+    if (!object) {
+        if (errorOut)
+            *errorOut = component.errors().isEmpty()
+                ? QStringLiteral("Bar QML component did not begin creation")
+                : component.errors().constFirst().toString();
+        return nullptr;
+    }
+    for (auto it = properties.cbegin(); it != properties.cend(); ++it) {
+        if (object->metaObject()->indexOfProperty(it.key().toUtf8().constData()) >= 0)
+            object->setProperty(it.key().toUtf8().constData(), it.value());
+    }
+    component.completeCreate();
+    if (component.isError()) {
+        object->deleteLater();
+        if (errorOut)
+            *errorOut = component.errors().constFirst().toString();
+        return nullptr;
+    }
     auto *window = qobject_cast<QQuickWindow *>(object);
     if (!window) {
         if (object)

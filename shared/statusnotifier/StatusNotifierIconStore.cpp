@@ -76,6 +76,14 @@ QImage StatusNotifierIconStore::loadNamedIcon(const QString &name, const QString
                                   QStringLiteral("48x48"), QStringLiteral("64x64")};
         const QStringList extensions{QStringLiteral(""), QStringLiteral(".png"),
                                      QStringLiteral(".svg"), QStringLiteral(".svgz")};
+        for (const QString &extension : extensions) {
+            const QString candidate = QDir(itemThemePath).filePath(name + extension);
+            if (QFileInfo::exists(candidate)) {
+                QImage image(candidate);
+                if (!image.isNull())
+                    return image;
+            }
+        }
         for (const QString &subdir : subdirs) {
             for (const QString &extension : extensions) {
                 const QString candidate = QDir(itemThemePath).filePath(
@@ -217,9 +225,9 @@ QString StatusNotifierIconStore::imageSource(const QString &itemKey) const
 {
     if (!m_auxiliaryImages.contains(itemKey) && !m_entries.contains(itemKey))
         return {};
-    return QStringLiteral("image://astrea-tray/%1?revision=%2")
-        .arg(QString::fromUtf8(QUrl::toPercentEncoding(itemKey)))
-        .arg(revision(itemKey));
+    return QStringLiteral("image://astrea-tray/")
+        + QString::fromUtf8(QUrl::toPercentEncoding(itemKey))
+        + QStringLiteral("?revision=") + QString::number(revision(itemKey));
 }
 
 quint64 StatusNotifierIconStore::revision(const QString &itemKey) const

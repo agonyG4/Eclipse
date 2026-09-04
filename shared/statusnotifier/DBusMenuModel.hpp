@@ -5,6 +5,7 @@
 #include <QAbstractListModel>
 #include <QDBusArgument>
 #include <QPointer>
+#include <QSet>
 
 #include <optional>
 
@@ -195,6 +196,8 @@ private:
     DBusMenuLifecycleState m_state = DBusMenuLifecycleState::Unloaded;
     bool m_stopped = false;
     bool m_signalsConnected = false;
+    QSet<int> m_pendingPresentations;
+    QSet<int> m_pendingLayouts;
 };
 
 } // namespace Astrea::StatusNotifier

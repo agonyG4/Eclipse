@@ -197,6 +197,23 @@ void StatusNotifierIntegrationTest::realSessionBusRegistrationActionsAndMenuLife
 
     QDBusInterface menu(snapshot.address.service, QStringLiteral("/org/test/MenuA"),
                         QStringLiteral("com.canonical.dbusmenu"), QDBusConnection::sessionBus());
+    const QDBusMessage rawRootReply = menu.call(QStringLiteral("GetLayoutRoot"), 0, -1,
+                                                QStringList{});
+    QVERIFY2(rawRootReply.type() != QDBusMessage::ErrorMessage,
+             qPrintable(rawRootReply.errorMessage()));
+    QVERIFY(!rawRootReply.arguments().isEmpty());
+    const QVariant rawRoot = rawRootReply.arguments().constFirst();
+    const DBusMenuParseResult parsedRawRoot = rawRoot.canConvert<QDBusArgument>()
+        ? parseMenuLayoutArgument(rawRoot.value<QDBusArgument>(), 23)
+        : parseMenuLayout(rawRoot);
+    QVERIFY2(parsedRawRoot.ok(), qPrintable(parsedRawRoot.error));
+    QCOMPARE(parsedRawRoot.root.id, 0);
+    QCOMPARE(parsedRawRoot.root.children.constFirst().id, 10);
+    QVERIFY2(control.call(QStringLiteral("ResetCounters")).type() != QDBusMessage::ErrorMessage,
+             qPrintable(diagnostics(fixture)));
+    service.prepareMenuForPresentation(key);
+    service.prepareMenuForPresentation(key);
+    QTRY_COMPARE_WITH_TIMEOUT(menu.property("RootAboutToShowCount").toInt(), 1, 2000);
     service.prepareMenuForPresentation(key);
     QTRY_VERIFY_WITH_TIMEOUT(service.menuModelForItem(key) != nullptr, 2000);
     auto *model = qobject_cast<DBusMenuModel *>(service.menuModelForItem(key));

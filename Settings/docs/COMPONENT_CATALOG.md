@@ -1,6 +1,6 @@
 # Registered QML Components
 
-The `astrea-settings-ui` module registers 38 QML files. The canonical legacy
+The `astrea-settings-ui` module registers 37 QML files. The canonical legacy
 source column points to the corresponding Astrea source where one exists.
 
 | Path | Public type | Category | Canonical legacy source | Current consumers | Classification |

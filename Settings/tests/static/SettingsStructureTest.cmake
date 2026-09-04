@@ -101,11 +101,64 @@ foreach(relative_path IN LISTS deleted_legacy_paths)
     endif()
 endforeach()
 
+set(deleted_migration_paths
+    core/SettingsNavigationModel.cpp
+    core/SettingsNavigationModel.hpp
+    core/SettingsTranslationController.cpp
+    core/SettingsTranslationController.hpp
+    core/ThemeController.cpp
+    core/ThemeController.hpp
+    core/SettingsGroupMembership.cpp
+    core/SettingsGroupMembership.hpp
+    tests/SettingsControllerTest.cpp
+    tests/SettingsGroupMembershipTest.cpp
+    tests/SettingsQmlSmokeTest.cpp
+    tests/ThemeControllerTest.cpp
+    tests/CompositorPageSourceTest.cmake
+)
+foreach(relative_path IN LISTS deleted_migration_paths)
+    if(EXISTS "${SETTINGS_SOURCE_DIR}/${relative_path}")
+        message(FATAL_ERROR "Deleted migration-era path has reappeared: ${relative_path}")
+    endif()
+endforeach()
+
 file(READ "${SETTINGS_SOURCE_DIR}/CMakeLists.txt" settings_root_cmake)
+file(READ "${SETTINGS_SOURCE_DIR}/core/CMakeLists.txt" settings_core_cmake)
+file(READ "${SETTINGS_SOURCE_DIR}/app/SettingsApplication.cpp" settings_application_source)
 file(READ "${SETTINGS_SOURCE_DIR}/tests/CMakeLists.txt" settings_tests_cmake)
 if(settings_tests_cmake MATCHES "qt_add_qml_module")
     message(FATAL_ERROR "Settings tests must consume astrea-settings-ui, not declare a QML module")
 endif()
+
+if(settings_core_cmake MATCHES "astrea-shared-core")
+    message(FATAL_ERROR "astrea-settings-core must not link astrea-shared-core")
+endif()
+foreach(core_boundary_token IN ITEMS
+    "target_link_libraries(astrea-settings-core PUBLIC"
+    "Qt6::Core"
+    "astrea-shared-dock"
+    "target_link_libraries(astrea-settings-core PRIVATE"
+    "Qt6::Network"
+    "../../shared"
+)
+    string(FIND "${settings_core_cmake}" "${core_boundary_token}" core_boundary_position)
+    if(core_boundary_position EQUAL -1)
+        message(FATAL_ERROR "Settings core dependency boundary is missing '${core_boundary_token}'")
+    endif()
+endforeach()
+if(settings_core_cmake MATCHES "target_link_libraries\\(astrea-settings-core PUBLIC[^)]*Qt6::Network")
+    message(FATAL_ERROR "Qt6::Network must remain private to astrea-settings-core")
+endif()
+
+foreach(redundant_context_property IN ITEMS
+    "setContextProperty(QStringLiteral(\"WallpaperController\")"
+    "setContextProperty(QStringLiteral(\"AstreaIconProvider\")"
+)
+    string(FIND "${settings_application_source}" "${redundant_context_property}" context_property_position)
+    if(NOT context_property_position EQUAL -1)
+        message(FATAL_ERROR "Redundant Settings context property returned: ${redundant_context_property}")
+    endif()
+endforeach()
 
 set(core_production_cpp_files
     core/SettingsController.cpp
@@ -184,6 +237,12 @@ set(production_source_files
     app/main.cpp
     app/SettingsApplication.cpp
     app/SettingsApplication.hpp
+    qml/Main.qml
+    qml/components/AppIcon.qml
+    qml/components/navigation/NavItem.qml
+    qml/components/navigation/Sidebar.qml
+    qml/pages/appearance/Wallpaper.qml
+    qml/pages/system/Compositor.qml
 )
 list(APPEND production_source_files qml/pages/appearance/Dock.qml)
 
@@ -198,6 +257,57 @@ foreach(relative_path IN LISTS required_dock_production_sources)
         message(FATAL_ERROR "Dock production source is missing from the architecture guard: ${relative_path}")
     endif()
 endforeach()
+
+file(READ "${SETTINGS_SOURCE_DIR}/qml/components/navigation/Sidebar.qml" sidebar_source)
+foreach(sidebar_required_token IN ITEMS
+    "itemKind === \"section\""
+    "itemKind === \"child\""
+    "root.model.toggleSection(model.entryId)"
+    "leftInset:  navDelegate.itemKind === \"child\" ? 24 : 0"
+    "compact:    navDelegate.itemKind === \"child\""
+)
+    string(FIND "${sidebar_source}" "${sidebar_required_token}" sidebar_required_position)
+    if(sidebar_required_position EQUAL -1)
+        message(FATAL_ERROR "Sidebar is missing canonical navigation contract '${sidebar_required_token}'")
+    endif()
+endforeach()
+foreach(sidebar_forbidden_token IN ITEMS
+    "openUserProfile"
+    "setProperty(index"
+    "pageIndex"
+)
+    string(FIND "${sidebar_source}" "${sidebar_forbidden_token}" sidebar_forbidden_position)
+    if(NOT sidebar_forbidden_position EQUAL -1)
+        message(FATAL_ERROR "Forbidden Sidebar migration behavior returned: ${sidebar_forbidden_token}")
+    endif()
+endforeach()
+
+file(READ "${SETTINGS_SOURCE_DIR}/qml/components/AppIcon.qml" app_icon_source)
+string(FIND "${app_icon_source}" "image://astrea-icon/" app_icon_provider_position)
+if(app_icon_provider_position EQUAL -1)
+    message(FATAL_ERROR "Settings AppIcon must use the registered astrea-icon provider")
+endif()
+string(FIND "${app_icon_source}" "image://icon/" wrong_app_icon_provider_position)
+if(NOT wrong_app_icon_provider_position EQUAL -1)
+    message(FATAL_ERROR "Settings AppIcon uses the unregistered icon provider")
+endif()
+
+file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/Wallpaper.qml" wallpaper_controls_source)
+foreach(deferred_wallpaper_control IN ITEMS
+    "objectName: \"allWorkspacesToggle\""
+    "objectName: \"blurredWallpaperToggle\""
+    "objectName: \"transitionSelector\""
+    "enabled: false"
+)
+    string(FIND "${wallpaper_controls_source}" "${deferred_wallpaper_control}" deferred_control_position)
+    if(deferred_control_position EQUAL -1)
+        message(FATAL_ERROR "Wallpaper deferred-control contract is missing '${deferred_wallpaper_control}'")
+    endif()
+endforeach()
+string(FIND "${wallpaper_controls_source}" "selectedTransition" selected_transition_position)
+if(NOT selected_transition_position EQUAL -1)
+    message(FATAL_ERROR "Wallpaper retains unsupported mutable transition preview state")
+endif()
 
 set(forbidden_production_tokens
     "import Quickshell"

@@ -12,7 +12,7 @@ SettingsNavigationEntry makeEntry(const QString &id,
                                   SettingsNavigationEntry::Kind kind = SettingsNavigationEntry::Kind::Page,
                                   bool enabled = true)
 {
-    return {
+    SettingsNavigationEntry entry{
         id,
         label,
         labelKey,
@@ -23,7 +23,27 @@ SettingsNavigationEntry makeEntry(const QString &id,
         pageSource,
         kind,
         enabled,
+        {},
+        {},
+        kind == SettingsNavigationEntry::Kind::Section,
     };
+    if (kind == SettingsNavigationEntry::Kind::Section)
+        entry.sectionKey = id;
+    return entry;
+}
+
+SettingsNavigationEntry makeChild(const QString &id,
+                                   const QString &label,
+                                   const QString &labelKey,
+                                   const QString &subtitle,
+                                   const QString &iconKey,
+                                   const QUrl &pageSource,
+                                   const QString &parentSection)
+{
+    SettingsNavigationEntry entry = makeEntry(id, label, labelKey, subtitle, {}, iconKey,
+                                              pageSource, SettingsNavigationEntry::Kind::Child);
+    entry.parentSection = parentSection;
+    return entry;
 }
 
 } // namespace
@@ -56,21 +76,23 @@ SettingsNavigationCatalog::SettingsNavigationCatalog()
           makeEntry({}, {}, {}, {}, {}, {}, {}, SettingsNavigationEntry::Kind::Spacer, false),
           makeEntry(QStringLiteral("performance"), QStringLiteral("Performance"), {},
                     QStringLiteral("Performance settings"), {}, QStringLiteral("performance"), {},
-                    SettingsNavigationEntry::Kind::Group),
+                    SettingsNavigationEntry::Kind::Section),
           makeEntry(QStringLiteral("appearance"), QStringLiteral("Appearance"), {},
                     QStringLiteral("Appearance settings"), {}, QStringLiteral("theme"), {},
-                    SettingsNavigationEntry::Kind::Group),
-          makeEntry(QStringLiteral("wallpaper"), QStringLiteral("Wallpaper"),
+                    SettingsNavigationEntry::Kind::Section),
+          makeChild(QStringLiteral("wallpaper"), QStringLiteral("Wallpaper"),
                     QStringLiteral("settings.nav.wallpaper"), QStringLiteral("Desktop background"),
-                    {}, QStringLiteral("wallpaper"),
-                    QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Wallpaper.qml"))),
-          makeEntry(QStringLiteral("dock"), QStringLiteral("Dock"),
+                    QStringLiteral("wallpaper"),
+                    QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Wallpaper.qml")),
+                    QStringLiteral("appearance")),
+          makeChild(QStringLiteral("dock"), QStringLiteral("Dock"),
                     QStringLiteral("settings.nav.dock"), QStringLiteral("Dock layout and behavior"),
-                    {}, QStringLiteral("theme"),
-                    QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Dock.qml"))),
+                    QStringLiteral("theme"),
+                    QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Dock.qml")),
+                    QStringLiteral("appearance")),
           makeEntry(QStringLiteral("more-settings"), QStringLiteral("More Settings"), {},
                     QStringLiteral("Additional settings"), QStringLiteral("\uf013"), {}, {},
-                    SettingsNavigationEntry::Kind::Group),
+                    SettingsNavigationEntry::Kind::Section),
       }
 {
 }

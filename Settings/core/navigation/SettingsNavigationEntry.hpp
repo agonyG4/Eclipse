@@ -6,7 +6,8 @@
 struct SettingsNavigationEntry {
     enum class Kind {
         Page,
-        Group,
+        Section,
+        Child,
         Spacer,
     };
 
@@ -20,4 +21,7 @@ struct SettingsNavigationEntry {
     QUrl pageSource;
     Kind kind = Kind::Page;
     bool enabled = true;
+    QString sectionKey;
+    QString parentSection;
+    bool expanded = true;
 };

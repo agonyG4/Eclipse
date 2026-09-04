@@ -6,8 +6,10 @@ QString kindName(SettingsNavigationEntry::Kind kind)
     switch (kind) {
     case SettingsNavigationEntry::Kind::Page:
         return QStringLiteral("page");
-    case SettingsNavigationEntry::Kind::Group:
-        return QStringLiteral("group");
+    case SettingsNavigationEntry::Kind::Section:
+        return QStringLiteral("section");
+    case SettingsNavigationEntry::Kind::Child:
+        return QStringLiteral("child");
     case SettingsNavigationEntry::Kind::Spacer:
         return QStringLiteral("spacer");
     }
@@ -21,7 +23,9 @@ SettingsNavigationModel::SettingsNavigationModel(const SettingsNavigationCatalog
     , m_entries(catalog.entries())
 {
     rebuildVisibleRows();
-    m_selectedId = QStringLiteral("system");
+    const int firstSelectable = firstSelectableSourceIndex();
+    if (firstSelectable >= 0)
+        m_selectedId = m_entries.at(firstSelectable).id;
 }
 
 SettingsNavigationModel::SettingsNavigationModel(QObject *parent)
@@ -54,9 +58,9 @@ QVariant SettingsNavigationModel::data(const QModelIndex &index, int role) const
     case KindRole:
         return kindName(entry.kind);
     case EnabledRole:
-        return entry.enabled;
+        return isSelectable(entry);
     case SelectedRole:
-        return entry.kind != SettingsNavigationEntry::Kind::Spacer && entry.id == m_selectedId;
+        return isSelectable(entry) && entry.id == m_selectedId;
     case LabelKeyRole:
         return entry.labelKey;
     case SymRole:
@@ -65,6 +69,12 @@ QVariant SettingsNavigationModel::data(const QModelIndex &index, int role) const
         return entry.iconSource;
     case PageSourceRole:
         return entry.pageSource;
+    case SectionKeyRole:
+        return entry.sectionKey;
+    case ParentSectionRole:
+        return entry.parentSection;
+    case ExpandedRole:
+        return entry.expanded;
     default:
         return {};
     }
@@ -86,25 +96,10 @@ QHash<int, QByteArray> SettingsNavigationModel::roleNames() const
         {IconSourceRole, QByteArrayLiteral("iconSource")},
         {IconKeyRole, QByteArrayLiteral("iconKey")},
         {PageSourceRole, QByteArrayLiteral("pageSource")},
+        {SectionKeyRole, QByteArrayLiteral("sectionKey")},
+        {ParentSectionRole, QByteArrayLiteral("parentSection")},
+        {ExpandedRole, QByteArrayLiteral("expanded")},
     };
-}
-
-QString SettingsNavigationModel::filterText() const
-{
-    return m_filterText;
-}
-
-void SettingsNavigationModel::setFilterText(const QString &filterText)
-{
-    const QString normalized = filterText.trimmed();
-    if (m_filterText == normalized)
-        return;
-
-    beginResetModel();
-    m_filterText = normalized;
-    rebuildVisibleRows();
-    endResetModel();
-    emit filterTextChanged();
 }
 
 QString SettingsNavigationModel::selectedId() const
@@ -119,7 +114,7 @@ bool SettingsNavigationModel::setSelectedId(const QString &id)
         return false;
 
     const SettingsNavigationEntry &entry = m_entries.at(sourceIndex);
-    if (!entry.enabled || entry.kind == SettingsNavigationEntry::Kind::Spacer)
+    if (!isSelectable(entry))
         return false;
     if (m_selectedId == id)
         return true;
@@ -143,6 +138,19 @@ bool SettingsNavigationModel::setSelectedId(const QString &id)
     return true;
 }
 
+bool SettingsNavigationModel::toggleSection(const QString &sectionId)
+{
+    const int sourceIndex = sectionIndexForId(sectionId);
+    if (sourceIndex < 0)
+        return false;
+
+    beginResetModel();
+    m_entries[sourceIndex].expanded = !m_entries.at(sourceIndex).expanded;
+    rebuildVisibleRows();
+    endResetModel();
+    return true;
+}
+
 QVariantMap SettingsNavigationModel::get(int row) const
 {
     if (row < 0 || row >= m_visibleRows.size())
@@ -158,6 +166,10 @@ QVariantMap SettingsNavigationModel::get(int row) const
         {QStringLiteral("iconSource"), entry.iconSource},
         {QStringLiteral("iconKey"), entry.iconKey},
         {QStringLiteral("pageSource"), entry.pageSource},
+        {QStringLiteral("entryEnabled"), isSelectable(entry)},
+        {QStringLiteral("sectionKey"), entry.sectionKey},
+        {QStringLiteral("parentSection"), entry.parentSection},
+        {QStringLiteral("expanded"), entry.expanded},
     };
 }
 
@@ -179,29 +191,50 @@ bool SettingsNavigationModel::containsSelectableId(const QString &id) const
     if (sourceIndex < 0)
         return false;
     const SettingsNavigationEntry &entry = m_entries.at(sourceIndex);
-    return entry.kind != SettingsNavigationEntry::Kind::Spacer && entry.enabled;
+    return isSelectable(entry);
 }
 
 void SettingsNavigationModel::rebuildVisibleRows()
 {
     m_visibleRows.clear();
-    const bool filtering = !m_filterText.isEmpty();
 
     for (int i = 0; i < m_entries.size(); ++i) {
         const SettingsNavigationEntry &entry = m_entries.at(i);
-        if (entry.kind == SettingsNavigationEntry::Kind::Spacer) {
-            if (!filtering)
-                m_visibleRows.append(i);
+        if (entry.kind != SettingsNavigationEntry::Kind::Child) {
+            m_visibleRows.append(i);
             continue;
         }
 
-        if (!filtering
-            || entry.label.contains(m_filterText, Qt::CaseInsensitive)
-            || entry.subtitle.contains(m_filterText, Qt::CaseInsensitive)
-            || entry.id.contains(m_filterText, Qt::CaseInsensitive)) {
+        const int sectionIndex = sectionIndexForId(entry.parentSection);
+        const bool expanded = sectionIndex < 0 || m_entries.at(sectionIndex).expanded;
+        if (expanded || entry.id == m_selectedId)
             m_visibleRows.append(i);
-        }
     }
+}
+
+bool SettingsNavigationModel::isSelectable(const SettingsNavigationEntry &entry) const
+{
+    return entry.enabled
+        && (entry.kind == SettingsNavigationEntry::Kind::Page
+            || entry.kind == SettingsNavigationEntry::Kind::Child)
+        && !entry.pageSource.isEmpty();
+}
+
+int SettingsNavigationModel::sectionIndexForId(const QString &sectionId) const
+{
+    const int index = sourceIndexForId(sectionId);
+    if (index < 0 || m_entries.at(index).kind != SettingsNavigationEntry::Kind::Section)
+        return -1;
+    return index;
+}
+
+int SettingsNavigationModel::firstSelectableSourceIndex() const
+{
+    for (int i = 0; i < m_entries.size(); ++i) {
+        if (isSelectable(m_entries.at(i)))
+            return i;
+    }
+    return -1;
 }
 
 int SettingsNavigationModel::sourceIndexForId(const QString &id) const

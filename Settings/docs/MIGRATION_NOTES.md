@@ -24,11 +24,11 @@ shell.
 
 - application lifecycle and QML startup: `app/SettingsApplication.*`;
 - navigation descriptors: `core/navigation/SettingsNavigationCatalog.*`;
-- model filtering and selection: `core/navigation/SettingsNavigationModel.*`;
+- model selection and section expansion: `core/navigation/SettingsNavigationModel.*`;
 - stable QML facade: `core/SettingsController.*`;
 - profile value and provider: `services/profile/`;
 - icon URL resolution: `services/assets/`;
-- theme and translations: `services/theme/` and `services/i18n/`;
+- shared theme and Settings translations: `shared/theme/` and `services/i18n/`;
 - wallpaper presentation/controller boundary: `qml/pages/appearance/Wallpaper.qml`
   and `services/wallpaper/SettingsWallpaperController.*`;
 - libc/NSS and Linux account policy: `platform/linux/`;
@@ -39,8 +39,12 @@ No service or platform construction occurs in QML.
 ## Routing Policy
 
 The navigation catalogue contains stable IDs and optional native `QUrl` page
-descriptors. Compositor is a visual/local preview route; Wallpaper is a real
-native route backed by `SettingsWallpaperController` and Paper. Future pages
+descriptors. Page, Section, Child, and Spacer rows preserve the approved order.
+Sections toggle by stable ID and are never selected; Wallpaper and Dock are
+children of Appearance. A Page or Child without a route remains visible but is
+not selectable, so the first routable descriptor (currently Compositor) is the
+initial selection. Compositor is a visual/local preview route; Wallpaper and
+Dock are native routes backed by their focused C++ boundaries. Future pages
 must add a descriptor and QML source through the catalogue; numeric page
 indexes and QML route-ID conditions are prohibited.
 

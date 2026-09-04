@@ -30,8 +30,6 @@ SettingsController::SettingsController(std::unique_ptr<SettingsNavigationModel> 
 
     connect(m_navigationModel.get(), &SettingsNavigationModel::selectedIdChanged,
             this, &SettingsController::selectionChanged);
-    connect(m_navigationModel.get(), &SettingsNavigationModel::filterTextChanged,
-            this, &SettingsController::filterTextChanged);
 
     m_wallpaperController = std::make_unique<SettingsWallpaperController>(QString(), this);
     m_dockController = std::make_unique<SettingsDockController>(QString(), this);
@@ -57,11 +55,6 @@ QUrl SettingsController::selectedPageSource() const
     return m_navigationModel->pageSourceForId(m_navigationModel->selectedId());
 }
 
-QString SettingsController::filterText() const
-{
-    return m_navigationModel->filterText();
-}
-
 QString SettingsController::userName() const
 {
     return m_userProfile.userName;
@@ -85,14 +78,4 @@ bool SettingsController::selectSection(const QString &id)
 QUrl SettingsController::iconUrl(const QString &iconKey, const QString &iconTheme) const
 {
     return m_iconResolver.resolve(iconKey, iconTheme);
-}
-
-void SettingsController::setFilterText(const QString &filterText)
-{
-    m_navigationModel->setFilterText(filterText);
-}
-
-void SettingsController::clearFilter()
-{
-    m_navigationModel->setFilterText(QString());
 }

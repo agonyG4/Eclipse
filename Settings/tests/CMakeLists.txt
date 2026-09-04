@@ -1,4 +1,4 @@
-find_package(Qt6 6.6 REQUIRED COMPONENTS Test)
+find_package(Qt6 6.6 REQUIRED COMPONENTS Gui Network Test)
 
 function(add_settings_unit_test target source)
     add_executable(${target} "${source}")
@@ -6,7 +6,7 @@ function(add_settings_unit_test target source)
         "${CMAKE_CURRENT_SOURCE_DIR}/.."
         "${CMAKE_CURRENT_SOURCE_DIR}/../../shared"
     )
-    target_link_libraries(${target} PRIVATE astrea-settings-core Qt6::Test)
+    target_link_libraries(${target} PRIVATE astrea-settings-core Qt6::Gui Qt6::Network Qt6::Test)
     target_compile_definitions(${target} PRIVATE
         ASTREA_ECLIPSE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     )
@@ -23,6 +23,7 @@ add_settings_unit_test(settings-user-profile-provider-test unit/SettingsUserProf
 add_settings_unit_test(admin-group-detector-test unit/AdminGroupDetectorTest.cpp)
 add_settings_unit_test(administrative-group-policy-test unit/AdministrativeGroupPolicyTest.cpp)
 add_settings_unit_test(theme-controller-test unit/ThemeControllerTest.cpp)
+target_link_libraries(theme-controller-test PRIVATE astrea-shared-core)
 
 function(add_settings_qml_integration_test target source)
     qt_add_executable(${target} "${source}")

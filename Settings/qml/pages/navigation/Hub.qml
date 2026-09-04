@@ -25,6 +25,20 @@ Item {
         return item && item.subtitle ? item.subtitle : ""
     }
 
+    function iconSourceFor(item) {
+        const iconKey = item && item.iconKey !== undefined ? item.iconKey : ""
+        if (iconKey !== "")
+            return SettingsController.iconUrl(iconKey, Theme.iconTheme).toString()
+
+        const iconSource = item && item.iconSource !== undefined ? item.iconSource : ""
+        if (iconSource !== "")
+            return iconSource
+
+        return ""
+    }
+
+    readonly property string heroIconSource: root.iconSourceFor(root.destination)
+
     Form.ScrollPage {
         anchors.fill: parent
         contentMargins: 32
@@ -32,6 +46,7 @@ Item {
 
         Form.FormCard {
             Layout.fillWidth: true
+            Layout.bottomMargin: Components.Theme.spacingLarge
             margins: 0
 
             Item {
@@ -55,9 +70,7 @@ Item {
                         Image {
                             anchors.fill: parent
                             anchors.margins: 16
-                            source: root.destination && root.destination.iconKey
-                                ? SettingsController.iconUrl(root.destination.iconKey, Theme.iconTheme)
-                                : ""
+                            source: root.heroIconSource
                             sourceSize: Qt.size(96, 96)
                             fillMode: Image.PreserveAspectFit
                             smooth: true
@@ -68,7 +81,7 @@ Item {
                         Text {
                             anchors.centerIn: parent
                             text: root.destination && root.destination.sym ? root.destination.sym : ""
-                            visible: root.destination && root.destination.iconKey === ""
+                            visible: root.heroIconSource === ""
                             color: Components.Theme.accent
                             font.family: Components.Theme.monoFontFamily
                             font.pixelSize: Components.Theme.fontSizeIconLarge

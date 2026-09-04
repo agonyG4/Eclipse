@@ -283,6 +283,10 @@ foreach(hub_required_token IN ITEMS
     "SettingsController.currentDestination"
     "SettingsController.currentDestinationChildren"
     "SettingsController.navigateTo(descriptor.entryId)"
+    "Layout.bottomMargin: Components.Theme.spacingLarge"
+    "function iconSourceFor"
+    "SettingsController.iconUrl(iconKey, Theme.iconTheme)"
+    "iconSource"
 )
     string(FIND "${hub_source}" "${hub_required_token}" hub_required_position)
     if(hub_required_position EQUAL -1)
@@ -366,4 +370,5 @@ foreach(relative_path IN LISTS production_source_files)
     endforeach()
 endforeach()
 
-message(STATUS "Settings structure invariants passed (${CMAKE_MATCH_COUNT} registered QML files checked)")
+list(LENGTH registered_qml_files registered_qml_file_count)
+message(STATUS "Settings structure invariants passed (${registered_qml_file_count} registered QML files checked)")

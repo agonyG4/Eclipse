@@ -52,6 +52,7 @@ private slots:
     void loadsDockRouteFromHubOffscreen();
     void navigatesBackAndForwardFromHub();
     void sidebarHidesNestedDestinations();
+    void resolvesHubHeroIconsByMetadataPrecedence();
     void wallpaperTranslationKeysExist();
 };
 
@@ -231,6 +232,12 @@ void SettingsQmlSmokeTest::loadsDockRouteFromHubOffscreen()
     QObject *page = root->findChild<QObject *>(QStringLiteral("dockPage"));
     QVERIFY(page != nullptr);
     QCOMPARE(settingsController.selectedSidebarId(), QStringLiteral("customization"));
+    QQuickItem *sidebar = qobject_cast<QQuickItem *>(root->findChild<QObject *>(QStringLiteral("settingsSidebar")));
+    QVERIFY(sidebar != nullptr);
+    QQuickItem *customizationRow = findVisualItem(sidebar, QStringLiteral("settingsSidebarRow-customization"));
+    QVERIFY(customizationRow != nullptr);
+    QVERIFY(customizationRow->property("selected").toBool());
+    QVERIFY(findVisualItem(sidebar, QStringLiteral("settingsSidebarRow-dock")) == nullptr);
     QVERIFY(page->findChild<QObject *>(QStringLiteral("dockPreview")) != nullptr);
     QVERIFY(page->findChild<QObject *>(QStringLiteral("iconSizeSlider")) != nullptr);
     QVERIFY(page->findChild<QObject *>(QStringLiteral("magnificationScaleSlider")) != nullptr);
@@ -263,6 +270,49 @@ void SettingsQmlSmokeTest::navigatesBackAndForwardFromHub()
     settingsController.goForward();
     QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("dockPage")) != nullptr, 1000);
     QVERIFY(!settingsController.canGoForward());
+}
+
+void SettingsQmlSmokeTest::resolvesHubHeroIconsByMetadataPrecedence()
+{
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("customization")));
+    QObject *root = engine.rootObjects().constFirst();
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("settingsHubPage")) != nullptr, 1000);
+    QObject *hub = root->findChild<QObject *>(QStringLiteral("settingsHubPage"));
+    QVERIFY(hub != nullptr);
+
+    const QString providedSource = QStringLiteral("qrc:/provided-icon.svg");
+    const QVariantMap keyedDescriptor{
+        {QStringLiteral("iconKey"), QStringLiteral("theme")},
+        {QStringLiteral("iconSource"), providedSource},
+    };
+    QVariant resolved;
+    QVERIFY(QMetaObject::invokeMethod(hub, "iconSourceFor", Q_RETURN_ARG(QVariant, resolved),
+                                      Q_ARG(QVariant, QVariant::fromValue(keyedDescriptor))));
+    QVERIFY(resolved.toString().endsWith(QStringLiteral("/theme.svg")));
+    QVERIFY(resolved.toString() != providedSource);
+
+    const QVariantMap sourceDescriptor{{QStringLiteral("iconSource"), providedSource}};
+    resolved.clear();
+    QVERIFY(QMetaObject::invokeMethod(hub, "iconSourceFor", Q_RETURN_ARG(QVariant, resolved),
+                                      Q_ARG(QVariant, QVariant::fromValue(sourceDescriptor))));
+    QCOMPARE(resolved.toString(), providedSource);
+
+    const QVariantMap symbolDescriptor{{QStringLiteral("sym"), QStringLiteral("S")}};
+    resolved.clear();
+    QVERIFY(QMetaObject::invokeMethod(hub, "iconSourceFor", Q_RETURN_ARG(QVariant, resolved),
+                                      Q_ARG(QVariant, QVariant::fromValue(symbolDescriptor))));
+    QVERIFY(resolved.toString().isEmpty());
 }
 
 void SettingsQmlSmokeTest::sidebarHidesNestedDestinations()

@@ -122,6 +122,8 @@ Item {
 
                 readonly property string itemKind: model.kind !== undefined && model.kind.length > 0
                     ? model.kind : "page"
+                readonly property bool selected: itemKind !== "spacer"
+                    && model.entryEnabled === true && root.selectedId === model.entryId
 
                 width: parent.width
                 height: itemKind === "spacer" ? 12 : 40
@@ -137,7 +139,7 @@ Item {
                         : (model.iconSource !== undefined ? model.iconSource : "")
                     iconKey: ""
                     enabled: model.entryEnabled === true
-                    selected: model.entryEnabled === true && root.selectedId === model.entryId
+                    selected: navDelegate.selected
                     onClicked: root.selectId(model.entryId)
                 }
             }

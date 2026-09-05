@@ -302,6 +302,7 @@ private slots:
     void popupOverlayRejectsUnsupportedKinds();
     void workspaceDelegatesExposeReferenceHitboxes();
     void workspaceAndLauncherReserveStableWidth();
+    void workspaceStripIsVerticallyCenteredInLauncherPill();
     void workspaceActivationIsTruthfullyUnavailable();
     void popupVisualsUseNativeServiceInputs();
     void volumeUiDisablesWhenDefaultStateUnavailable();
@@ -1561,6 +1562,46 @@ void BarQmlSmokeTest::workspaceAndLauncherReserveStableWidth()
         {QStringLiteral("4"), true, false, false, {}},
     });
     QTRY_COMPARE_WITH_TIMEOUT(launcher->width(), reservedLauncherWidth, 500);
+    delete launcher;
+}
+
+void BarQmlSmokeTest::workspaceStripIsVerticallyCenteredInLauncherPill()
+{
+    QQmlEngine engine;
+    BarLayoutMetrics metrics;
+    BarPopupController popup;
+    WorkspaceModel model;
+    model.replaceWorkspaces({
+        {QStringLiteral("1"), true, true, false, {}},
+        {QStringLiteral("3"), false, true, false, {}},
+        {QStringLiteral("7"), false, true, false, {}},
+    });
+
+    QQmlComponent component(&engine, QUrl(QStringLiteral(
+        "qrc:/qt/qml/Astrea/Shell/Bar/qml/LauncherSurface.qml")));
+    auto *launcher = qobject_cast<QQuickWindow *>(component.createWithInitialProperties({
+        {QStringLiteral("barGeometry"), QVariant::fromValue(&metrics)},
+        {QStringLiteral("popupController"), QVariant::fromValue(&popup)},
+        {QStringLiteral("workspaceModel"), QVariant::fromValue(&model)},
+    }));
+    QVERIFY2(launcher != nullptr, qPrintable(component.errors().isEmpty()
+        ? QStringLiteral("Launcher surface did not instantiate")
+        : component.errors().constFirst().toString()));
+
+    auto *launcherPill = qobject_cast<QQuickItem *>(launcher->findChild<QObject *>(
+        QStringLiteral("launcherPill")));
+    auto *workspaceStrip = qobject_cast<QQuickItem *>(launcher->findChild<QObject *>(
+        QStringLiteral("workspaceStrip")));
+    QVERIFY(launcherPill != nullptr);
+    QVERIFY(workspaceStrip != nullptr);
+
+    launcher->show();
+    QTest::qWait(20);
+    const QPointF workspaceCenter = workspaceStrip->mapToItem(
+        launcherPill,
+        QPointF(workspaceStrip->width() / 2.0, workspaceStrip->height() / 2.0));
+    QCOMPARE(qRound(workspaceCenter.y()), qRound(launcherPill->height() / 2.0));
+
     delete launcher;
 }
 

@@ -7,6 +7,7 @@ class TyphonWorkspaceStateTest final : public QObject {
 
 private slots:
     void managerDoneCommitsBufferedWorkspaceState();
+    void hiddenWorkspaceReappearsWithStableIdentity();
     void stableProtocolIdIsTheIdentity();
 };
 
@@ -22,6 +23,28 @@ void TyphonWorkspaceStateTest::managerDoneCommitsBufferedWorkspaceState()
     state.commitDone(7);
     QCOMPARE(state.committedWorkspaces().size(), 1);
     QVERIFY(state.committedWorkspaces().front().active);
+    QVERIFY(!state.committedWorkspaces().front().hidden);
+}
+
+void TyphonWorkspaceStateTest::hiddenWorkspaceReappearsWithStableIdentity()
+{
+    TyphonWorkspaceState state;
+    state.beginGeneration(8);
+    state.beginWorkspace(QStringLiteral("typhon.workspace.4"));
+    state.setWorkspaceName(QStringLiteral("4"));
+    state.setWorkspaceState(4u);
+    QVERIFY(state.commitDone(8));
+    QVERIFY(state.committedWorkspaces().isEmpty());
+
+    state.beginWorkspace(QStringLiteral("typhon.workspace.4"));
+    state.setWorkspaceState(0u);
+    QVERIFY(state.commitDone(8));
+    QCOMPARE(state.committedWorkspaces().size(), 1);
+    QCOMPARE(state.committedWorkspaces().front().id,
+             QStringLiteral("typhon.workspace.4"));
+    QCOMPARE(state.committedWorkspaces().front().name, QStringLiteral("4"));
+    QVERIFY(!state.committedWorkspaces().front().active);
+    QVERIFY(!state.committedWorkspaces().front().hidden);
 }
 
 void TyphonWorkspaceStateTest::stableProtocolIdIsTheIdentity()

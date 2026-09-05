@@ -64,6 +64,7 @@ Window {
             objectName: "workspaceStrip"
             workspaceModel: window.workspaceModel
             activationAvailable: false
+            anchors.verticalCenter: parent.verticalCenter
         }
     }
 }

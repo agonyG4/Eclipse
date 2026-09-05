@@ -340,8 +340,10 @@ foreach(wallpaper_required_token IN ITEMS
     "objectName: \"blurredWallpaperToggle\""
     "objectName: \"transitionSelector\""
     "objectName: \"wallpaperRemoveDialog\""
-    "objectName: \"wallpaperRemoveButton\""
-    "objectName: \"wallpaperTileImage\""
+    "objectName: \"wallpaperRemoveConfirmButton\""
+    "objectName: \"wallpaperTile-\""
+    "objectName: \"wallpaperTileImage-\""
+    "objectName: \"wallpaperTileRemoveButton-\""
     "source: root.controller.effectivePreviewUrl"
     "source: modelData.previewUrl"
     "sourceSize.width"
@@ -355,6 +357,7 @@ foreach(wallpaper_required_token IN ITEMS
 endforeach()
 
 foreach(wallpaper_forbidden_token IN ITEMS
+    "objectName: \"wallpaperRemoveButton\""
     "source: root.controller.effectiveSource"
     "source: modelData.resolvedSource"
     "source: modelData.source"

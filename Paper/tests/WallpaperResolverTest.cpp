@@ -19,6 +19,8 @@ private slots:
     void rejectsMissingDirectoryAndUnsupportedImage();
     void rejectsUnsupportedKindAndScopeBeforeFilesystemAccess();
     void usesExplicitEmergencyFallbackWhenDefaultIsUnavailable();
+    void usesPhysicalEmergencyFallbackWhenFactoryArtworkIsUnavailable();
+    void doesNotAdvertisePrivateQrcPreviewSource();
     void defaultResolverProvidesPackagedFactoryArtwork();
 
 private:
@@ -46,6 +48,7 @@ void WallpaperResolverTest::resolvesImagePathWithSpacesAndUnicode()
 
     QVERIFY2(result.ok(), qPrintable(result.message));
     QCOMPARE(result.descriptor.resolvedSource(), QFileInfo(path).canonicalFilePath());
+    QCOMPARE(result.descriptor.previewSource(), QFileInfo(path).canonicalFilePath());
     QCOMPARE(result.descriptor.fit(), WallpaperFit::Contain);
 }
 
@@ -63,6 +66,7 @@ void WallpaperResolverTest::resolvesFileUriAndSymlinkTarget()
 
     QVERIFY2(result.ok(), qPrintable(result.message));
     QCOMPARE(result.descriptor.resolvedSource(), QFileInfo(imagePath).canonicalFilePath());
+    QCOMPARE(result.descriptor.previewSource(), QFileInfo(imagePath).canonicalFilePath());
 }
 
 void WallpaperResolverTest::rejectsMissingDirectoryAndUnsupportedImage()
@@ -116,6 +120,33 @@ void WallpaperResolverTest::usesExplicitEmergencyFallbackWhenDefaultIsUnavailabl
     QCOMPARE(result.error, WallpaperResolutionError::EmergencyFallback);
     QCOMPARE(result.descriptor.logicalId(), QStringLiteral("astrea://wallpaper/emergency"));
     QCOMPARE(result.descriptor.fit(), WallpaperFit::Center);
+    QCOMPARE(result.descriptor.previewSource(), QFileInfo(emergency).canonicalFilePath());
+}
+
+void WallpaperResolverTest::usesPhysicalEmergencyFallbackWhenFactoryArtworkIsUnavailable()
+{
+    const auto missingFactory = QStringLiteral("/path/that/does/not/exist/default.jpg");
+    const auto result = WallpaperResolver(missingFactory, {}).factoryDefault();
+
+    QVERIFY2(result.ok(), qPrintable(result.message));
+    QCOMPARE(result.error, WallpaperResolutionError::EmergencyFallback);
+    QVERIFY(!result.descriptor.previewSource().isEmpty());
+    QVERIFY(QFileInfo(result.descriptor.previewSource()).isAbsolute());
+    QVERIFY(QFileInfo::exists(result.descriptor.previewSource()));
+    QVERIFY(result.descriptor.previewSource().endsWith(QStringLiteral("emergency.svg")));
+}
+
+void WallpaperResolverTest::doesNotAdvertisePrivateQrcPreviewSource()
+{
+    const auto result = WallpaperResolver().resolve(WallpaperDescriptor::systemResource(
+        QStringLiteral("astrea://wallpaper/private-emergency"),
+        QStringLiteral(":/qt/qml/Astrea/Paper/assets/emergency.svg"),
+        WallpaperFit::Cover));
+
+    QVERIFY2(result.ok(), qPrintable(result.message));
+    QCOMPARE(result.descriptor.resolvedSource(),
+             QStringLiteral(":/qt/qml/Astrea/Paper/assets/emergency.svg"));
+    QVERIFY(result.descriptor.previewSource().isEmpty());
 }
 
 void WallpaperResolverTest::defaultResolverProvidesPackagedFactoryArtwork()
@@ -132,6 +163,7 @@ void WallpaperResolverTest::defaultResolverProvidesPackagedFactoryArtwork()
     QVERIFY(!result.descriptor.resolvedSource().startsWith(QStringLiteral(":/")));
     QVERIFY(QFileInfo(result.descriptor.resolvedSource()).isAbsolute());
     QVERIFY(QFileInfo::exists(result.descriptor.resolvedSource()));
+    QCOMPARE(result.descriptor.previewSource(), result.descriptor.resolvedSource());
 }
 
 QTEST_MAIN(WallpaperResolverTest)

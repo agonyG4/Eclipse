@@ -619,7 +619,7 @@ Item {
             }
 
             Button {
-                objectName: "wallpaperRemoveButton"
+                objectName: "wallpaperRemoveConfirmButton"
                 Layout.fillWidth: true
                 implicitHeight: 34
                 enabled: !root.controller.busy && root.pendingRemovalId !== ""
@@ -752,24 +752,27 @@ Item {
 
                     delegate: Item {
                         required property var modelData
+                        objectName: "wallpaperTile-" + modelData.logicalId
+                        property bool isCurrent: modelData.isCurrent === true
                         width: (wallpaperGrid.width - 16) / 3
                         height: width * 0.6 + 28
 
                         ColumnLayout {
+                            z: 0
                             anchors.fill: parent
                             spacing: 6
 
                             Rectangle {
                                 id: tileImage
-                                objectName: "wallpaperTile"
+                                objectName: "wallpaperTileFrame-" + modelData.logicalId
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 radius: 14
                                 color: Qt.rgba(0.05, 0.11, 0.16, 1)
-                                border.width: modelData.isCurrent === true ? 2 : 1
-                                border.color: modelData.isCurrent === true
+                                border.width: isCurrent ? 2 : 1
+                                border.color: isCurrent
                                                ? Components.Theme.accent
-                                               : tileMouse.containsMouse
+                                               : tileHover.hovered
                                                ? Components.Theme.accent
                                                : Components.Theme.cardBorder
                                 Behavior on border.color { ColorAnimation { duration: 120 } }
@@ -787,7 +790,7 @@ Item {
                                 }
 
                                 Image {
-                                    objectName: "wallpaperTileImage"
+                                    objectName: "wallpaperTileImage-" + modelData.logicalId
                                     anchors.fill: parent
                                     source: modelData.previewUrl
                                     fillMode: Image.PreserveAspectCrop
@@ -804,30 +807,6 @@ Item {
                                     }
                                 }
 
-                                Button {
-                                    id: tileRemoveButton
-                                    objectName: "wallpaperRemoveButton"
-                                    visible: modelData.removable === true
-                                             && tileMouse.containsMouse
-                                             && !root.controller.busy
-                                    z: 2
-                                    anchors {
-                                        top: parent.top
-                                        right: parent.right
-                                        margins: 6
-                                    }
-                                    implicitWidth: 62
-                                    implicitHeight: 24
-                                    text: I18n.tr("apps.settings.pages.paper.wallpaper.action.remove", "Remove")
-                                    font.pixelSize: 10
-                                    onClicked: root.beginWallpaperRemoval(modelData)
-                                    background: Rectangle {
-                                        radius: 7
-                                        color: Qt.rgba(0.02, 0.04, 0.06, 0.88)
-                                        border.width: 1
-                                        border.color: Components.Theme.cardBorder
-                                    }
-                                }
                             }
 
                             Text {
@@ -842,15 +821,46 @@ Item {
                             }
                         }
 
+                        HoverHandler {
+                            id: tileHover
+                            acceptedDevices: PointerDevice.Mouse
+                            enabled: !root.controller.busy && (modelData.kind || "image") === "image"
+                        }
+
                         MouseArea {
                             id: tileMouse
                             anchors.fill: parent
+                            z: 1
                             enabled: !root.controller.busy && (modelData.kind || "image") === "image"
-                            hoverEnabled: true
                             cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                             onClicked: root.controller.selectWallpaper(
                                            modelData.logicalId,
                                            root.controller.selectionFit)
+                        }
+
+                        Button {
+                            id: tileRemoveButton
+                            objectName: "wallpaperTileRemoveButton-" + modelData.logicalId
+                            visible: modelData.removable === true
+                                     && tileHover.hovered
+                                     && !root.controller.busy
+                            z: 2
+                            anchors {
+                                top: parent.top
+                                right: parent.right
+                                margins: 6
+                            }
+                            implicitWidth: 62
+                            implicitHeight: 24
+                            text: I18n.tr("apps.settings.pages.paper.wallpaper.action.remove", "Remove")
+                            font.pixelSize: 10
+                            onClicked: root.beginWallpaperRemoval(modelData)
+                            background: Rectangle {
+                                radius: 7
+                                color: Qt.rgba(0.02, 0.04, 0.06, 0.88)
+                                border.width: 1
+                                border.color: Components.Theme.cardBorder
+                            }
                         }
                     }
                 }

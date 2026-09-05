@@ -9,6 +9,8 @@
 namespace Paper {
 namespace {
 
+const auto kPrivatePaperResourcePrefix = QStringLiteral(":/qt/qml/Astrea/Paper/");
+
 WallpaperResolution failure(const WallpaperResolutionError error, const QString &message)
 {
     WallpaperResolution result;
@@ -20,6 +22,11 @@ WallpaperResolution failure(const WallpaperResolutionError error, const QString 
 bool isResourcePath(const QString &source)
 {
     return source.startsWith(QStringLiteral(":/"));
+}
+
+bool isPrivatePaperResource(const QString &source)
+{
+    return source.startsWith(kPrivatePaperResourcePrefix);
 }
 
 } // namespace
@@ -66,6 +73,9 @@ WallpaperResolution WallpaperResolver::resolve(const WallpaperDescriptor &candid
         }
         auto result = candidate;
         result.setResolvedSource(source);
+        if (!isPrivatePaperResource(source)) {
+            result.setPreviewSource(source);
+        }
         return {result, WallpaperResolutionError::None, {}};
     }
 
@@ -117,6 +127,7 @@ WallpaperResolution WallpaperResolver::resolveLocal(const WallpaperDescriptor &c
 
     auto result = candidate;
     result.setResolvedSource(canonicalPath);
+    result.setPreviewSource(canonicalPath);
     return {result, WallpaperResolutionError::None, {}};
 }
 
@@ -162,6 +173,36 @@ QStringList WallpaperResolver::factoryCandidates() const
     return candidates;
 }
 
+QStringList WallpaperResolver::emergencyCandidates() const
+{
+    QStringList candidates;
+    if (!m_emergencySource.isEmpty()) {
+        candidates.append(m_emergencySource);
+        return candidates;
+    }
+
+    const auto environmentEmergency = qEnvironmentVariable("ASTREA_WALLPAPER_EMERGENCY");
+    if (!environmentEmergency.isEmpty()) {
+        candidates.append(environmentEmergency);
+    }
+
+    const auto installedEmergency = QStandardPaths::locate(
+        QStandardPaths::GenericDataLocation,
+        QStringLiteral("AstreaOS/wallpapers/emergency.svg"),
+        QStandardPaths::LocateFile);
+    if (!installedEmergency.isEmpty()) {
+        candidates.append(installedEmergency);
+    }
+
+#ifdef ASTREA_PAPER_SOURCE_DIR
+    candidates.append(QDir(QStringLiteral(ASTREA_PAPER_SOURCE_DIR)).filePath(
+        QStringLiteral("assets/emergency.svg")));
+#endif
+
+    candidates.append(QStringLiteral(":/qt/qml/Astrea/Paper/assets/emergency.svg"));
+    return candidates;
+}
+
 WallpaperResolution WallpaperResolver::factoryDefault(const WallpaperFit fit) const
 {
     for (const auto &source : factoryCandidates()) {
@@ -173,13 +214,15 @@ WallpaperResolution WallpaperResolver::factoryDefault(const WallpaperFit fit) co
         }
     }
 
-    auto emergency = WallpaperDescriptor::systemResource(
-        QStringLiteral("astrea://wallpaper/emergency"), m_emergencySource, fit);
-    auto result = resolve(emergency);
-    if (result.ok()) {
-        result.error = WallpaperResolutionError::EmergencyFallback;
-        result.message = QStringLiteral("Factory artwork was unavailable; using emergency wallpaper");
-        return result;
+    for (const auto &source : emergencyCandidates()) {
+        auto emergency = WallpaperDescriptor::systemResource(
+            QStringLiteral("astrea://wallpaper/emergency"), source, fit);
+        auto result = resolve(emergency);
+        if (result.ok()) {
+            result.error = WallpaperResolutionError::EmergencyFallback;
+            result.message = QStringLiteral("Factory artwork was unavailable; using emergency wallpaper");
+            return result;
+        }
     }
 
     return failure(WallpaperResolutionError::FactoryDefaultUnavailable,

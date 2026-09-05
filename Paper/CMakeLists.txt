@@ -48,6 +48,9 @@ target_compile_definitions(astrea-paper-core PRIVATE
 install(FILES assets/default.jpg
     DESTINATION "${CMAKE_INSTALL_DATADIR}/AstreaOS/wallpapers"
 )
+install(FILES assets/emergency.svg
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/AstreaOS/wallpapers"
+)
 
 if(NOT MSVC)
     target_compile_options(astrea-paper-core PRIVATE -Wall -Wextra -Wpedantic)

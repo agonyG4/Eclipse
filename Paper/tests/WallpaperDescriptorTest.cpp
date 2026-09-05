@@ -77,6 +77,7 @@ void WallpaperDescriptorTest::serializesStableSourceFields()
         QStringLiteral("file:///tmp/space%20and%20snow.png"), WallpaperFit::Contain);
     descriptor.setLogicalId(QStringLiteral("file:wallpaper/test"));
     descriptor.setResolvedSource(QStringLiteral("/tmp/space and snow.png"));
+    descriptor.setPreviewSource(QStringLiteral("/tmp/space and snow.png"));
 
     const QJsonObject json = descriptor.toJson();
     QCOMPARE(json.value(QStringLiteral("kind")).toString(), QStringLiteral("image"));
@@ -87,6 +88,8 @@ void WallpaperDescriptorTest::serializesStableSourceFields()
              QStringLiteral("file:wallpaper/test"));
     QCOMPARE(json.value(QStringLiteral("fit")).toString(), QStringLiteral("contain"));
     QCOMPARE(json.value(QStringLiteral("scope")).toString(), QStringLiteral("global"));
+    QCOMPARE(json.value(QStringLiteral("previewSource")).toString(),
+             QStringLiteral("/tmp/space and snow.png"));
 }
 
 void WallpaperDescriptorTest::infersSystemOriginForLegacySystemJson()

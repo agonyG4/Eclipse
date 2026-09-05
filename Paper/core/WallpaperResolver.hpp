@@ -3,6 +3,7 @@
 #include "WallpaperDescriptor.hpp"
 
 #include <QString>
+#include <QStringList>
 
 namespace Paper {
 
@@ -37,7 +38,7 @@ class WallpaperResolver final
 {
 public:
     explicit WallpaperResolver(QString factoryDefaultSource = {},
-                                QString emergencySource = QStringLiteral(":/qt/qml/Astrea/Paper/assets/emergency.svg"));
+                                QString emergencySource = {});
 
     WallpaperResolution resolve(const WallpaperDescriptor &candidate) const;
     WallpaperResolution factoryDefault(WallpaperFit fit = WallpaperFit::Cover) const;
@@ -48,6 +49,7 @@ private:
     WallpaperResolution resolveLocal(const WallpaperDescriptor &candidate,
                                       const QString &path) const;
     QStringList factoryCandidates() const;
+    QStringList emergencyCandidates() const;
 
     QString m_factoryDefaultSource;
     QString m_emergencySource;

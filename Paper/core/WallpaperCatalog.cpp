@@ -301,6 +301,7 @@ std::optional<WallpaperDescriptor> WallpaperCatalog::importWallpaper(const QStri
     descriptor.setOrigin(WallpaperOrigin::User);
     descriptor.setDisplayName(normalizedName);
     descriptor.setResolvedSource(QFileInfo(finalPath).canonicalFilePath());
+    descriptor.setPreviewSource(descriptor.resolvedSource());
     addDescriptor(descriptor);
     return descriptor;
 }
@@ -518,6 +519,7 @@ void WallpaperCatalog::scanDirectory(const QString &directory, const WallpaperOr
                                                                        info.completeBaseName())));
         }
         descriptor.setResolvedSource(canonical);
+        descriptor.setPreviewSource(canonical);
         addDescriptor(std::move(descriptor));
     }
 }

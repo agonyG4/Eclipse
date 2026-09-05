@@ -2,6 +2,7 @@
 
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QImage>
 #include <QImageReader>
 #include <QDir>
 #include <QJsonArray>
@@ -686,6 +687,14 @@ void SettingsWallpaperControllerTest::projectsPreviewUrlsAndSerializesRemoval()
         + QString(64, QLatin1Char('c'));
     const auto inactiveId = QStringLiteral("astrea://wallpaper/user/")
         + QString(64, QLatin1Char('d'));
+    const auto currentPreview = temp.filePath(QStringLiteral("Current # 雪.png"));
+    const auto inactivePreview = temp.filePath(QStringLiteral("Snow # Café.png"));
+    QImage currentImage(16, 12, QImage::Format_ARGB32);
+    currentImage.fill(Qt::blue);
+    QVERIFY(currentImage.save(currentPreview));
+    QImage inactiveImage(16, 12, QImage::Format_ARGB32);
+    inactiveImage.fill(Qt::red);
+    QVERIFY(inactiveImage.save(inactivePreview));
     QObject::connect(&server, &QLocalServer::newConnection, this, [&, currentId, inactiveId] {
         auto *socket = server.nextPendingConnection();
         connect(socket, &QLocalSocket::readyRead, this, [&, socket, currentId, inactiveId] {
@@ -702,6 +711,7 @@ void SettingsWallpaperControllerTest::projectsPreviewUrlsAndSerializesRemoval()
             effective.insert(QStringLiteral("logicalId"), currentId);
             effective.insert(QStringLiteral("source"), QStringLiteral(":/Astrea/Paper/assets/default.jpg"));
             effective.insert(QStringLiteral("resolvedSource"), QStringLiteral(":/Astrea/Paper/assets/default.jpg"));
+            effective.insert(QStringLiteral("previewSource"), currentPreview);
             state.insert(QStringLiteral("effective"), effective);
             QJsonArray entries;
             if (!line.startsWith(QStringLiteral("wallpaper remove"))) {
@@ -710,12 +720,14 @@ void SettingsWallpaperControllerTest::projectsPreviewUrlsAndSerializesRemoval()
                                 {QStringLiteral("kind"), QStringLiteral("image")},
                                 {QStringLiteral("origin"), QStringLiteral("user")},
                                 {QStringLiteral("source"), QStringLiteral("/current/raw.png")},
-                                {QStringLiteral("resolvedSource"), QStringLiteral("/current/path # 雪.png")},
+                                {QStringLiteral("resolvedSource"), QStringLiteral(":/qt/qml/Astrea/Paper/assets/private.png")},
+                                {QStringLiteral("previewSource"), currentPreview},
                                 {QStringLiteral("displayName"), QStringLiteral("Current")}},
                     QJsonObject{{QStringLiteral("logicalId"), inactiveId},
                                 {QStringLiteral("kind"), QStringLiteral("image")},
                                 {QStringLiteral("origin"), QStringLiteral("user")},
                                 {QStringLiteral("source"), QStringLiteral("relative.png")},
+                                {QStringLiteral("previewSource"), QUrl::fromLocalFile(inactivePreview).toString()},
                                 {QStringLiteral("displayName"), QStringLiteral("Inactive")}},
                     QJsonObject{{QStringLiteral("logicalId"), QStringLiteral("astrea://wallpaper/system/landscape")},
                                 {QStringLiteral("kind"), QStringLiteral("image")},
@@ -738,20 +750,20 @@ void SettingsWallpaperControllerTest::projectsPreviewUrlsAndSerializesRemoval()
     controller.refreshLibrary();
     QTRY_VERIFY_WITH_TIMEOUT(!controller.busy(), 1000);
     QCOMPARE(controller.effectivePreviewUrl(),
-             QUrl(QStringLiteral("qrc:/Astrea/Paper/assets/default.jpg")));
+             QUrl::fromLocalFile(currentPreview));
     QCOMPARE(controller.userWallpapers().size(), 2);
     const auto current = controller.userWallpapers().at(0).toMap();
     const auto inactive = controller.userWallpapers().at(1).toMap();
     QCOMPARE(current.value(QStringLiteral("previewUrl")).toUrl(),
-             QUrl::fromLocalFile(QStringLiteral("/current/path # 雪.png")));
-    QVERIFY(!inactive.value(QStringLiteral("previewUrl")).toUrl().isValid());
+             QUrl::fromLocalFile(currentPreview));
+    QCOMPARE(inactive.value(QStringLiteral("previewUrl")).toUrl(),
+             QUrl::fromLocalFile(inactivePreview));
     QCOMPARE(current.value(QStringLiteral("isCurrent")).toBool(), true);
     QCOMPARE(current.value(QStringLiteral("removable")).toBool(), false);
     QCOMPARE(inactive.value(QStringLiteral("isCurrent")).toBool(), false);
     QCOMPARE(inactive.value(QStringLiteral("removable")).toBool(), true);
     const auto landscape = controller.landscapeWallpapers().constFirst().toMap();
-    QCOMPARE(landscape.value(QStringLiteral("previewUrl")).toUrl(),
-             QUrl(QStringLiteral("qrc:/landscape.jpg")));
+    QVERIFY(!landscape.value(QStringLiteral("previewUrl")).toUrl().isValid());
     QCOMPARE(landscape.value(QStringLiteral("removable")).toBool(), false);
 
     controller.removeUserWallpaper(inactiveId);

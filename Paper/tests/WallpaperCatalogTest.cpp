@@ -41,6 +41,14 @@ QString writeImage(const QString &path)
     return path;
 }
 
+QString emptySystemDirectory(const QTemporaryDir &temp)
+{
+    const auto path = temp.filePath(QStringLiteral("system"));
+    if (!QDir().mkpath(path))
+        qFatal("Could not create isolated system wallpaper directory at %s", qPrintable(path));
+    return path;
+}
+
 } // namespace
 
 void WallpaperCatalogTest::listsStableSystemDefault()
@@ -48,7 +56,8 @@ void WallpaperCatalogTest::listsStableSystemDefault()
     QTemporaryDir temp;
     QVERIFY(temp.isValid());
     const auto factory = writeImage(temp.filePath(QStringLiteral("factory.png")));
-    WallpaperCatalog catalog(WallpaperResolver(factory), temp.filePath(QStringLiteral("user")));
+    WallpaperCatalog catalog(WallpaperResolver(factory), temp.filePath(QStringLiteral("user")),
+                             emptySystemDirectory(temp));
 
     catalog.refresh();
     const auto entry = catalog.resolve(QStringLiteral("astrea://wallpaper/default"));
@@ -66,7 +75,7 @@ void WallpaperCatalogTest::importsUserImageWithStableId()
     const auto factory = writeImage(temp.filePath(QStringLiteral("factory.png")));
     const auto source = writeImage(temp.filePath(QStringLiteral("snow & café.png")));
     const auto userRoot = temp.filePath(QStringLiteral("user"));
-    WallpaperCatalog catalog(WallpaperResolver(factory), userRoot);
+    WallpaperCatalog catalog(WallpaperResolver(factory), userRoot, emptySystemDirectory(temp));
 
     QString error;
     const auto imported = catalog.importWallpaper(source, &error);
@@ -85,7 +94,8 @@ void WallpaperCatalogTest::reusesDuplicateContent()
     QVERIFY(temp.isValid());
     const auto factory = writeImage(temp.filePath(QStringLiteral("factory.png")));
     const auto source = writeImage(temp.filePath(QStringLiteral("same.png")));
-    WallpaperCatalog catalog(WallpaperResolver(factory), temp.filePath(QStringLiteral("user")));
+    WallpaperCatalog catalog(WallpaperResolver(factory), temp.filePath(QStringLiteral("user")),
+                             emptySystemDirectory(temp));
 
     QString firstError;
     const auto first = catalog.importWallpaper(source, &firstError);
@@ -105,7 +115,7 @@ void WallpaperCatalogTest::persistsDisplayNameAcrossRefreshAndReconstruction()
     const auto factory = writeImage(temp.filePath(QStringLiteral("factory.png")));
     const auto source = writeImage(temp.filePath(QStringLiteral("snow & cafe.png")));
     const auto userRoot = temp.filePath(QStringLiteral("user"));
-    WallpaperCatalog catalog(WallpaperResolver(factory), userRoot);
+    WallpaperCatalog catalog(WallpaperResolver(factory), userRoot, emptySystemDirectory(temp));
 
     QString error;
     const auto imported = catalog.importWallpaper(source, QStringLiteral("Snow Café"), &error);
@@ -117,7 +127,7 @@ void WallpaperCatalogTest::persistsDisplayNameAcrossRefreshAndReconstruction()
     QVERIFY(refreshed.has_value());
     QCOMPARE(refreshed->displayName(), QStringLiteral("Snow Café"));
 
-    WallpaperCatalog reconstructed(WallpaperResolver(factory), userRoot);
+    WallpaperCatalog reconstructed(WallpaperResolver(factory), userRoot, emptySystemDirectory(temp));
     const auto restored = reconstructed.resolve(logicalId);
     QVERIFY(restored.has_value());
     QCOMPARE(restored->logicalId(), logicalId);
@@ -132,7 +142,7 @@ void WallpaperCatalogTest::updatesDuplicateDisplayNameWithoutSecondImage()
     const auto factory = writeImage(temp.filePath(QStringLiteral("factory.png")));
     const auto source = writeImage(temp.filePath(QStringLiteral("same.png")));
     const auto userRoot = temp.filePath(QStringLiteral("user"));
-    WallpaperCatalog catalog(WallpaperResolver(factory), userRoot);
+    WallpaperCatalog catalog(WallpaperResolver(factory), userRoot, emptySystemDirectory(temp));
 
     QString firstError;
     const auto first = catalog.importWallpaper(source, QStringLiteral("First name"), &firstError);
@@ -157,7 +167,7 @@ void WallpaperCatalogTest::ignoresMalformedOrMissingMetadataWithoutExposingDiges
     const auto factory = writeImage(temp.filePath(QStringLiteral("factory.png")));
     const auto source = writeImage(temp.filePath(QStringLiteral("legacy.png")));
     const auto userRoot = temp.filePath(QStringLiteral("user"));
-    WallpaperCatalog catalog(WallpaperResolver(factory), userRoot);
+    WallpaperCatalog catalog(WallpaperResolver(factory), userRoot, emptySystemDirectory(temp));
 
     QString error;
     const auto imported = catalog.importWallpaper(source, QStringLiteral("Legacy name"), &error);
@@ -199,7 +209,7 @@ void WallpaperCatalogTest::rejectsFailedMetadataPublicationWithoutCatalogEntry()
     sourceFile.close();
     QVERIFY(QDir().mkpath(QDir(userRoot).filePath(digest + QStringLiteral(".json"))));
 
-    WallpaperCatalog catalog(WallpaperResolver(factory), userRoot);
+    WallpaperCatalog catalog(WallpaperResolver(factory), userRoot, emptySystemDirectory(temp));
     QString error;
     QVERIFY(!catalog.importWallpaper(source, QStringLiteral("Should not publish"), &error).has_value());
     QVERIFY(!error.isEmpty());
@@ -213,7 +223,7 @@ void WallpaperCatalogTest::rejectsDirectoryAndUnsupportedImage()
     QVERIFY(temp.isValid());
     const auto factory = writeImage(temp.filePath(QStringLiteral("factory.png")));
     const auto userRoot = temp.filePath(QStringLiteral("user"));
-    WallpaperCatalog catalog(WallpaperResolver(factory), userRoot);
+    WallpaperCatalog catalog(WallpaperResolver(factory), userRoot, emptySystemDirectory(temp));
 
     QString directoryError;
     QVERIFY(!catalog.importWallpaper(temp.path(), &directoryError).has_value());

@@ -251,6 +251,16 @@ void WallpaperDescriptor::setResolvedSource(const QString &resolvedSource)
     m_resolvedSource = resolvedSource;
 }
 
+const QString &WallpaperDescriptor::previewSource() const
+{
+    return m_previewSource;
+}
+
+void WallpaperDescriptor::setPreviewSource(const QString &previewSource)
+{
+    m_previewSource = previewSource;
+}
+
 const QString &WallpaperDescriptor::displayName() const
 {
     return m_displayName;
@@ -285,6 +295,9 @@ QJsonObject WallpaperDescriptor::toJson() const
     if (!m_resolvedSource.isEmpty()) {
         json.insert(QStringLiteral("resolvedSource"), m_resolvedSource);
     }
+    if (!m_previewSource.isEmpty()) {
+        json.insert(QStringLiteral("previewSource"), m_previewSource);
+    }
     return json;
 }
 
@@ -304,6 +317,7 @@ WallpaperDescriptor WallpaperDescriptor::fromJson(const QJsonObject &json)
     descriptor.m_logicalId = json.value(QStringLiteral("logicalId")).toString();
     descriptor.m_source = json.value(QStringLiteral("source")).toString();
     descriptor.m_resolvedSource = json.value(QStringLiteral("resolvedSource")).toString();
+    descriptor.m_previewSource = json.value(QStringLiteral("previewSource")).toString();
     descriptor.m_displayName = json.value(QStringLiteral("displayName")).toString();
     return descriptor;
 }
@@ -315,6 +329,7 @@ bool operator==(const WallpaperDescriptor &lhs, const WallpaperDescriptor &rhs)
         && lhs.m_fit == rhs.m_fit && lhs.m_scope == rhs.m_scope
         && lhs.m_logicalId == rhs.m_logicalId && lhs.m_source == rhs.m_source
         && lhs.m_resolvedSource == rhs.m_resolvedSource
+        && lhs.m_previewSource == rhs.m_previewSource
         && lhs.m_displayName == rhs.m_displayName;
 }
 

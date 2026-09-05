@@ -16,19 +16,19 @@
 
 namespace {
 
-QUrl previewUrlForSource(const QString &rawSource)
+QUrl previewUrlForSource(const QString &rawSource, const bool allowQrc)
 {
     const auto source = rawSource.trimmed();
     if (source.isEmpty()) {
         return {};
     }
     if (source.startsWith(QStringLiteral(":/"))) {
-        return QUrl(QStringLiteral("qrc:") + source.mid(1));
+        return allowQrc ? QUrl(QStringLiteral("qrc:") + source.mid(1)) : QUrl();
     }
 
     const QUrl url(source);
     if (url.scheme().compare(QStringLiteral("qrc"), Qt::CaseInsensitive) == 0) {
-        return url;
+        return allowQrc ? url : QUrl();
     }
     if (url.scheme().compare(QStringLiteral("file"), Qt::CaseInsensitive) == 0) {
         const auto localPath = url.toLocalFile();
@@ -41,6 +41,20 @@ QUrl previewUrlForSource(const QString &rawSource)
         return QUrl::fromLocalFile(source);
     }
     return {};
+}
+
+QUrl previewUrlForDescriptor(const QJsonObject &object)
+{
+    const auto previewSource = object.value(QStringLiteral("previewSource")).toString();
+    if (!previewSource.trimmed().isEmpty()) {
+        return previewUrlForSource(previewSource, true);
+    }
+
+    const auto resolvedSource = object.value(QStringLiteral("resolvedSource")).toString();
+    const auto source = resolvedSource.isEmpty()
+        ? object.value(QStringLiteral("source")).toString()
+        : resolvedSource;
+    return previewUrlForSource(source, false);
 }
 
 bool isManagedWallpaperId(const QString &logicalId)
@@ -64,11 +78,7 @@ QVariantMap projectWallpaper(const QJsonObject &object,
 {
     auto result = object.toVariantMap();
     const auto logicalId = object.value(QStringLiteral("logicalId")).toString();
-    const auto resolvedSource = object.value(QStringLiteral("resolvedSource")).toString();
-    const auto source = resolvedSource.isEmpty()
-        ? object.value(QStringLiteral("source")).toString()
-        : resolvedSource;
-    result.insert(QStringLiteral("previewUrl"), previewUrlForSource(source));
+    result.insert(QStringLiteral("previewUrl"), previewUrlForDescriptor(object));
     result.insert(QStringLiteral("isCurrent"), logicalId == effectiveId);
     result.insert(QStringLiteral("removable"),
                   object.value(QStringLiteral("origin")).toString().trimmed().compare(
@@ -316,7 +326,7 @@ bool SettingsWallpaperController::applyResponse(const QByteArray &payload)
     m_effectiveSource = resolvedEffectiveSource.isEmpty()
         ? effective.value(QStringLiteral("source")).toString()
         : resolvedEffectiveSource;
-    m_effectivePreviewUrl = previewUrlForSource(m_effectiveSource);
+    m_effectivePreviewUrl = previewUrlForDescriptor(effective);
     m_effectiveFit = effectiveFit;
     m_currentDisplayName = effective.value(QStringLiteral("displayName")).toString().trimmed();
     m_stateName = state.value(QStringLiteral("state")).toString();

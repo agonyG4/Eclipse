@@ -72,6 +72,7 @@ class WallpaperDescriptor final
     Q_PROPERTY(QString logicalId READ logicalId WRITE setLogicalId)
     Q_PROPERTY(QString source READ source WRITE setSource)
     Q_PROPERTY(QString resolvedSource READ resolvedSource WRITE setResolvedSource)
+    Q_PROPERTY(QString previewSource READ previewSource WRITE setPreviewSource)
     Q_PROPERTY(QString displayName READ displayName WRITE setDisplayName)
 
 public:
@@ -104,6 +105,9 @@ public:
     const QString &resolvedSource() const;
     void setResolvedSource(const QString &resolvedSource);
 
+    const QString &previewSource() const;
+    void setPreviewSource(const QString &previewSource);
+
     const QString &displayName() const;
     void setDisplayName(const QString &displayName);
 
@@ -128,6 +132,7 @@ private:
     QString m_logicalId;
     QString m_source;
     QString m_resolvedSource;
+    QString m_previewSource;
     QString m_displayName;
 };
 

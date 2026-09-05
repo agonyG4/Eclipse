@@ -343,7 +343,13 @@ foreach(wallpaper_required_token IN ITEMS
     "objectName: \"wallpaperRemoveConfirmButton\""
     "objectName: \"wallpaperTile-\""
     "objectName: \"wallpaperTileImage-\""
-    "objectName: \"wallpaperTileRemoveButton-\""
+    "import \"../../components/menu\" as WallpaperMenu"
+    "WallpaperMenu.ContextMenu"
+    "objectName: \"wallpaperContextMenu\""
+    "objectName: \"wallpaperContextRemoveAction\""
+    "acceptedButtons: Qt.LeftButton | Qt.RightButton"
+    "mouse.button === Qt.RightButton"
+    "contextWallpaperId"
     "source: root.controller.effectivePreviewUrl"
     "source: modelData.previewUrl"
     "sourceSize.width"
@@ -357,6 +363,7 @@ foreach(wallpaper_required_token IN ITEMS
 endforeach()
 
 foreach(wallpaper_forbidden_token IN ITEMS
+    "wallpaperTileRemoveButton"
     "objectName: \"wallpaperRemoveButton\""
     "source: root.controller.effectiveSource"
     "source: modelData.resolvedSource"

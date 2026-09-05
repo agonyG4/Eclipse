@@ -54,6 +54,17 @@ QUrl previewUrlForDescriptor(const QJsonObject &object)
     return previewUrlForSource(source);
 }
 
+QString userFacingPaperError(const QString &errorCode, const QString &message)
+{
+    if (errorCode == QStringLiteral("control-protocol-error")
+        && message.contains(QStringLiteral("Unknown Paper wallpaper action"),
+                           Qt::CaseInsensitive)) {
+        return QStringLiteral("The running Astrea Shell does not support wallpaper removal yet. "
+                              "Restart the updated Astrea Shell and try again.");
+    }
+    return message;
+}
+
 bool isManagedWallpaperId(const QString &logicalId)
 {
     const auto prefix = QStringLiteral("astrea://wallpaper/user/");
@@ -75,14 +86,15 @@ QVariantMap projectWallpaper(const QJsonObject &object,
 {
     auto result = object.toVariantMap();
     const auto logicalId = object.value(QStringLiteral("logicalId")).toString();
+    const auto isUserOrigin = object.value(QStringLiteral("origin")).toString().trimmed().compare(
+                                  QStringLiteral("user"), Qt::CaseInsensitive)
+        == 0;
+    const auto managedUser = isUserOrigin && isManagedWallpaperId(logicalId);
     result.insert(QStringLiteral("previewUrl"), previewUrlForDescriptor(object));
     result.insert(QStringLiteral("isCurrent"), logicalId == effectiveId);
+    result.insert(QStringLiteral("managedUser"), managedUser);
     result.insert(QStringLiteral("removable"),
-                  object.value(QStringLiteral("origin")).toString().trimmed().compare(
-                      QStringLiteral("user"), Qt::CaseInsensitive)
-                          == 0
-                      && isManagedWallpaperId(logicalId) && logicalId != configuredId
-                      && logicalId != effectiveId);
+                  managedUser && logicalId != configuredId && logicalId != effectiveId);
     return result;
 }
 
@@ -290,6 +302,7 @@ bool SettingsWallpaperController::applyResponse(const QByteArray &payload)
                           .toString(QStringLiteral("paper-request-failed"));
         m_errorMessage = response.value(QStringLiteral("message"))
                              .toString(QStringLiteral("Paper wallpaper request failed"));
+        m_errorMessage = userFacingPaperError(m_errorCode, m_errorMessage);
         if (oldCode != m_errorCode || oldMessage != m_errorMessage)
             emit errorChanged();
         return true;
@@ -376,6 +389,7 @@ bool SettingsWallpaperController::applyResponse(const QByteArray &payload)
                           .toString(QStringLiteral("paper-request-failed"));
         m_errorMessage = response.value(QStringLiteral("message"))
                              .toString(QStringLiteral("Paper wallpaper request failed"));
+        m_errorMessage = userFacingPaperError(m_errorCode, m_errorMessage);
     }
     emit snapshotChanged();
     if (oldCode != m_errorCode || oldMessage != m_errorMessage)

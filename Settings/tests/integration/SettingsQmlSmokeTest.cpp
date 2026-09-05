@@ -16,6 +16,7 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QRegularExpression>
+#include <QSignalSpy>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlError>
@@ -461,15 +462,13 @@ void SettingsQmlSmokeTest::wallpaperPreviewAndRemovalUseRealPointerEvents()
         images.filePath(QStringLiteral("Current # Café 雪.png")), QColor("#466b9a"));
     const auto inactivePath = writeWallpaperImage(
         images.filePath(QStringLiteral("Snow # Café 雪.png")), QColor("#9a6b46"));
-    const auto selectionPath = writeWallpaperImage(
-        images.filePath(QStringLiteral("Tokyo # 東京.png")), QColor("#6b9a46"));
     const auto endpoint = QDir(runtime.path()).filePath(QStringLiteral("astrea-shell/wallpaper.sock"));
     QLocalServer server;
     QVERIFY(server.listen(endpoint));
 
     const auto currentId = QStringLiteral("astrea://wallpaper/user/") + QString(64, QLatin1Char('a'));
     const auto inactiveId = QStringLiteral("astrea://wallpaper/user/") + QString(64, QLatin1Char('b'));
-    const auto selectionId = QStringLiteral("astrea://wallpaper/user/") + QString(64, QLatin1Char('c'));
+    const auto systemId = QStringLiteral("astrea://wallpaper/system/landscape");
     QStringList requests;
     QByteArray requestBuffer;
     bool removed = false;
@@ -478,10 +477,11 @@ void SettingsQmlSmokeTest::wallpaperPreviewAndRemovalUseRealPointerEvents()
     const auto descriptor = [](const QString &logicalId,
                                const QString &source,
                                const QString &previewSource,
-                               const QString &displayName) {
+                               const QString &displayName,
+                               const QString &origin) {
         return QJsonObject{{QStringLiteral("logicalId"), logicalId},
                            {QStringLiteral("kind"), QStringLiteral("image")},
-                           {QStringLiteral("origin"), QStringLiteral("user")},
+                           {QStringLiteral("origin"), origin},
                            {QStringLiteral("source"), source},
                            {QStringLiteral("resolvedSource"), source},
                            {QStringLiteral("previewSource"), previewSource},
@@ -489,9 +489,9 @@ void SettingsQmlSmokeTest::wallpaperPreviewAndRemovalUseRealPointerEvents()
     };
 
     const auto makeSnapshot = [&] {
-        const auto currentPathForSnapshot = effectiveId == selectionId ? selectionPath : currentPath;
-        const auto currentSource = effectiveId == selectionId
-            ? QStringLiteral(":/private/selection.png")
+        const auto currentPathForSnapshot = effectiveId == inactiveId ? inactivePath : currentPath;
+        const auto currentSource = effectiveId == inactiveId
+            ? QStringLiteral(":/private/inactive.png")
             : QStringLiteral(":/private/current.png");
         const QJsonObject configured{{QStringLiteral("logicalId"), effectiveId},
                                      {QStringLiteral("source"), currentSource},
@@ -517,18 +517,20 @@ void SettingsQmlSmokeTest::wallpaperPreviewAndRemovalUseRealPointerEvents()
             descriptor(currentId,
                        QStringLiteral(":/private/current.png"),
                        currentPath,
-                       QStringLiteral("Current")),
-            descriptor(selectionId,
-                       QStringLiteral(":/private/selection.png"),
-                       selectionPath,
-                       QStringLiteral("Tokyo")),
+                       QStringLiteral("Current"),
+                       QStringLiteral("user")),
+            descriptor(systemId,
+                       QStringLiteral(":/landscape.jpg"),
+                       QStringLiteral("qrc:/landscape.jpg"),
+                       QStringLiteral("Landscape"),
+                       QStringLiteral("system")),
         };
         if (!removed) {
-            wallpapers.insert(1,
-                              descriptor(inactiveId,
-                                         QStringLiteral(":/private/inactive.png"),
-                                         inactivePath,
-                                         QStringLiteral("Snow")));
+            wallpapers.insert(1, descriptor(inactiveId,
+                                             QStringLiteral(":/private/inactive.png"),
+                                             inactivePath,
+                                             QStringLiteral("Snow"),
+                                             QStringLiteral("user")));
         }
         return wallpapers;
     };
@@ -546,7 +548,7 @@ void SettingsQmlSmokeTest::wallpaperPreviewAndRemovalUseRealPointerEvents()
             if (line.startsWith(QStringLiteral("wallpaper remove"))) {
                 removed = true;
             } else if (line.startsWith(QStringLiteral("wallpaper set"))) {
-                effectiveId = selectionId;
+                effectiveId = line.contains(inactiveId) ? inactiveId : currentId;
             }
             const auto wallpapers = makeWallpapers();
             socket->write(QJsonDocument(QJsonObject{
@@ -595,54 +597,73 @@ void SettingsQmlSmokeTest::wallpaperPreviewAndRemovalUseRealPointerEvents()
     auto *previewImage = page->findChild<QObject *>(QStringLiteral("wallpaperPreviewImage"));
     QTRY_VERIFY_WITH_TIMEOUT(previewImage->property("source").toUrl().isLocalFile(), 1500);
     QTRY_COMPARE_WITH_TIMEOUT(previewImage->property("status").toInt(), 1, 3000);
-    QTRY_COMPARE_WITH_TIMEOUT(settingsController.wallpaper()->userWallpapers().size(), 3, 1500);
+    QTRY_COMPARE_WITH_TIMEOUT(settingsController.wallpaper()->userWallpapers().size(), 2, 1500);
 
     const auto inactiveTileName = QStringLiteral("wallpaperTile-") + inactiveId;
-    const auto inactiveButtonName = QStringLiteral("wallpaperTileRemoveButton-") + inactiveId;
     const auto currentTileName = QStringLiteral("wallpaperTile-") + currentId;
-    const auto selectionTileName = QStringLiteral("wallpaperTile-") + selectionId;
+    const auto systemTileName = QStringLiteral("wallpaperTile-") + systemId;
     QTRY_VERIFY_WITH_TIMEOUT(findVisualItem(page, inactiveTileName) != nullptr, 1500);
     QTRY_VERIFY_WITH_TIMEOUT(findVisualItem(page, currentTileName) != nullptr, 1500);
-    QTRY_VERIFY_WITH_TIMEOUT(findVisualItem(page, selectionTileName) != nullptr, 1500);
+    QTRY_VERIFY_WITH_TIMEOUT(findVisualItem(page, systemTileName) != nullptr, 1500);
     auto *inactiveTile = findVisualItem(page, inactiveTileName);
     auto *currentTile = findVisualItem(page, currentTileName);
-    auto *selectionTile = findVisualItem(page, selectionTileName);
     QVERIFY(inactiveTile != nullptr);
     QVERIFY(currentTile != nullptr);
-    QVERIFY(selectionTile != nullptr);
     auto *inactiveImage = findVisualItem(
         page, QStringLiteral("wallpaperTileImage-") + inactiveId);
     QVERIFY(inactiveImage != nullptr);
     QTRY_VERIFY_WITH_TIMEOUT(inactiveImage->property("source").toUrl().isLocalFile(), 1500);
     QTRY_COMPARE_WITH_TIMEOUT(inactiveImage->property("status").toInt(), 1, 3000);
     QCOMPARE(currentTile->property("isCurrent").toBool(), true);
-    auto *currentRemoveButton = findVisualItem(
-        page, QStringLiteral("wallpaperTileRemoveButton-") + currentId);
-    QVERIFY(currentRemoveButton != nullptr);
-    QCOMPARE(currentRemoveButton->property("visible").toBool(), false);
+    QCOMPARE(settingsController.wallpaper()->landscapeWallpapers().size(), 1);
 
-    auto *inactiveRemoveButton = findVisualItem(page, inactiveButtonName);
-    QVERIFY(inactiveRemoveButton != nullptr);
-    QCOMPARE(inactiveRemoveButton->property("visible").toBool(), false);
-    auto *inactiveRemoveItem = qobject_cast<QQuickItem *>(inactiveRemoveButton);
-    QVERIFY(inactiveRemoveItem != nullptr);
-    const auto removePoint = inactiveRemoveItem->mapToItem(
-        window->contentItem(), QPointF(inactiveRemoveItem->width() / 2, inactiveRemoveItem->height() / 2));
-    QTest::mouseMove(window, removePoint.toPoint());
-    QTRY_VERIFY_WITH_TIMEOUT(inactiveRemoveButton->property("visible").toBool(), 1000);
-    const auto setRequestCountBeforeRemove = std::count_if(
-        requests.cbegin(), requests.cend(), [](const QString &request) {
-            return request.startsWith(QStringLiteral("wallpaper set "));
+    auto countRequests = [&](const QString &prefix) {
+        return std::count_if(requests.cbegin(), requests.cend(), [&](const QString &request) {
+            return request.startsWith(prefix);
         });
-    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, removePoint.toPoint());
+    };
+    auto pointFor = [&](QQuickItem *item, const QPointF &localPoint) {
+        return item->mapToItem(window->contentItem(), localPoint).toPoint();
+    };
+
+    auto *contextMenu = page->findChild<QObject *>(QStringLiteral("wallpaperContextMenu"));
+    QVERIFY(contextMenu != nullptr);
+    auto *contextRemoveAction = page->findChild<QObject *>(
+        QStringLiteral("wallpaperContextRemoveAction"));
+    QVERIFY(contextRemoveAction != nullptr);
+
+    const QPointF bLocalPoint(inactiveTile->width() / 2, inactiveTile->height() / 2);
+    const auto bPoint = pointFor(inactiveTile, bLocalPoint);
+    const auto bMenuPoint = inactiveTile->mapToItem(page, bLocalPoint).toPoint();
+    const auto removeCountBefore = countRequests(QStringLiteral("wallpaper remove "));
+    const auto setCountBefore = countRequests(QStringLiteral("wallpaper set "));
+    QTest::mouseClick(window, Qt::RightButton, Qt::NoModifier, bPoint);
+    QTRY_VERIFY_WITH_TIMEOUT(contextMenu->property("menuOpen").toBool(), 1000);
+    QCOMPARE(contextMenu->property("requestedX").toReal(), bMenuPoint.x());
+    QCOMPARE(contextMenu->property("requestedY").toReal(), bMenuPoint.y());
+    QVERIFY(contextMenu->property("menuPositioned").toBool());
+    QVERIFY(contextRemoveAction->property("visible").toBool());
+    QVERIFY(contextRemoveAction->property("actionEnabled").toBool());
+    QCOMPARE(contextRemoveAction->property("destructive").toBool(), true);
+    QCOMPARE(countRequests(QStringLiteral("wallpaper set ")), setCountBefore);
+    QCOMPARE(settingsController.wallpaper()->effectiveId(), currentId);
+
+    auto *contextRemoveItem = qobject_cast<QQuickItem *>(contextRemoveAction);
+    QVERIFY(contextRemoveItem != nullptr);
+    QSignalSpy actionTriggered(contextRemoveAction, SIGNAL(triggered()));
+    QVERIFY(actionTriggered.isValid());
+    const auto contextRemovePoint = pointFor(
+        contextRemoveItem, QPointF(contextRemoveItem->width() / 2, contextRemoveItem->height() / 2));
+    QTest::mouseMove(window, contextRemovePoint);
+    QTRY_VERIFY_WITH_TIMEOUT(contextRemoveAction->property("hovered").toBool(), 1000);
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, contextRemovePoint);
+    QCOMPARE(actionTriggered.count(), 1);
+    QTRY_VERIFY_WITH_TIMEOUT(!contextMenu->property("menuOpen").toBool(), 1000);
     auto *removeDialog = page->findChild<QObject *>(QStringLiteral("wallpaperRemoveDialog"));
     QVERIFY(removeDialog != nullptr);
     QTRY_VERIFY_WITH_TIMEOUT(removeDialog->property("visible").toBool(), 1000);
+    QCOMPARE(countRequests(QStringLiteral("wallpaper remove ")), removeCountBefore);
     QVERIFY(!removed);
-    QCOMPARE(std::count_if(requests.cbegin(), requests.cend(), [](const QString &request) {
-                return request.startsWith(QStringLiteral("wallpaper set "));
-            }),
-             setRequestCountBeforeRemove);
     QCOMPARE(settingsController.wallpaper()->effectiveId(), currentId);
 
     auto *confirmButton = page->findChild<QObject *>(QStringLiteral("wallpaperRemoveConfirmButton"));
@@ -658,38 +679,61 @@ void SettingsQmlSmokeTest::wallpaperPreviewAndRemovalUseRealPointerEvents()
     QTRY_VERIFY_WITH_TIMEOUT(findVisualItem(page, inactiveTileName) == nullptr, 1500);
     QVERIFY(findVisualItem(page, currentTileName) != nullptr);
     QCOMPARE(settingsController.wallpaper()->effectiveId(), currentId);
-    QCOMPARE(settingsController.wallpaper()->userWallpapers().size(), 2);
+    QCOMPARE(settingsController.wallpaper()->userWallpapers().size(), 1);
 
-    auto *selectionImage = findVisualItem(
-        page, QStringLiteral("wallpaperTileImage-") + selectionId);
-    QVERIFY(selectionImage != nullptr);
-    QTRY_VERIFY_WITH_TIMEOUT(selectionImage->property("source").toUrl().isLocalFile(), 1500);
-    QTRY_COMPARE_WITH_TIMEOUT(selectionImage->property("status").toInt(), 1, 3000);
-    selectionTile = findVisualItem(page, selectionTileName);
-    QVERIFY(selectionTile != nullptr);
-    const auto setRequestCountBeforeSelection = std::count_if(
-        requests.cbegin(), requests.cend(), [](const QString &request) {
-            return request.startsWith(QStringLiteral("wallpaper set "));
-        });
-    const auto selectionBodyPoint = selectionTile->mapToItem(
-        window->contentItem(), QPointF(selectionTile->width() / 2, selectionTile->height() / 3));
-    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, selectionBodyPoint.toPoint());
-    QTRY_VERIFY_WITH_TIMEOUT(!settingsController.wallpaper()->busy(), 1500);
-    QCOMPARE(std::count_if(requests.cbegin(), requests.cend(), [](const QString &request) {
-                return request.startsWith(QStringLiteral("wallpaper set "));
-            }),
-             setRequestCountBeforeSelection + 1);
-    QVERIFY(requests.last().contains(selectionId));
-    QVERIFY(!requests.last().startsWith(QStringLiteral("wallpaper remove ")));
-    QCOMPARE(settingsController.wallpaper()->effectiveId(), selectionId);
-    auto *selectedTile = findVisualItem(page, selectionTileName);
-    QVERIFY(selectedTile != nullptr);
-    QCOMPARE(selectedTile->property("isCurrent").toBool(), true);
-    auto *selectionRemoveButton = findVisualItem(
-        page, QStringLiteral("wallpaperTileRemoveButton-") + selectionId);
-    QVERIFY(selectionRemoveButton != nullptr);
-    QCOMPARE(selectionRemoveButton->property("visible").toBool(), false);
-    QCOMPARE(settingsController.wallpaper()->userWallpapers().size(), 2);
+    auto *currentTileAfterRemoval = findVisualItem(page, currentTileName);
+    QVERIFY(currentTileAfterRemoval != nullptr);
+    const auto currentPoint = pointFor(currentTileAfterRemoval,
+                                       QPointF(currentTileAfterRemoval->width() - 2,
+                                               currentTileAfterRemoval->height() / 2));
+    QTest::mouseClick(window, Qt::RightButton, Qt::NoModifier, currentPoint);
+    QTRY_VERIFY_WITH_TIMEOUT(contextMenu->property("menuOpen").toBool(), 1000);
+    QVERIFY(contextRemoveAction->property("visible").toBool());
+    QCOMPARE(contextRemoveAction->property("actionEnabled").toBool(), false);
+    const auto removeCountBeforeCurrent = countRequests(QStringLiteral("wallpaper remove "));
+    auto *currentContextRemoveItem = qobject_cast<QQuickItem *>(contextRemoveAction);
+    QVERIFY(currentContextRemoveItem != nullptr);
+    const auto currentContextRemovePoint = pointFor(
+        currentContextRemoveItem,
+        QPointF(currentContextRemoveItem->width() / 2, currentContextRemoveItem->height() / 2));
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, currentContextRemovePoint);
+    QTest::qWait(50);
+    QCOMPARE(countRequests(QStringLiteral("wallpaper remove ")), removeCountBeforeCurrent);
+    QCOMPARE(settingsController.wallpaper()->effectiveId(), currentId);
+    QTest::keyClick(window, Qt::Key_Escape);
+    QTRY_VERIFY_WITH_TIMEOUT(!contextMenu->property("menuOpen").toBool(), 1000);
+
+    auto *systemTile = findVisualItem(page, systemTileName);
+    QVERIFY(systemTile != nullptr);
+    const auto systemPoint = pointFor(systemTile,
+                                      QPointF(systemTile->width() / 2, systemTile->height() - 2));
+    QTest::mouseClick(window, Qt::RightButton, Qt::NoModifier, systemPoint);
+    QTRY_VERIFY_WITH_TIMEOUT(!contextMenu->property("menuOpen").toBool(), 1000);
+    QCOMPARE(countRequests(QStringLiteral("wallpaper remove ")), removeCountBeforeCurrent);
+
+    removed = false;
+    effectiveId = currentId;
+    settingsController.wallpaper()->refreshLibrary();
+    QTRY_COMPARE_WITH_TIMEOUT(settingsController.wallpaper()->userWallpapers().size(), 2, 1500);
+    QTRY_VERIFY_WITH_TIMEOUT(findVisualItem(page, inactiveTileName) != nullptr, 1500);
+    auto *inactiveTileForSelection = findVisualItem(page, inactiveTileName);
+    QVERIFY(inactiveTileForSelection != nullptr);
+    const auto setCountBeforeSelection = countRequests(QStringLiteral("wallpaper set "));
+    QTest::mouseClick(window, Qt::MiddleButton, Qt::NoModifier,
+                      pointFor(inactiveTileForSelection,
+                               QPointF(inactiveTileForSelection->width() / 2,
+                                       inactiveTileForSelection->height() / 2)));
+    QTest::qWait(50);
+    QCOMPARE(countRequests(QStringLiteral("wallpaper set ")), setCountBeforeSelection);
+    QVERIFY(!contextMenu->property("menuOpen").toBool());
+    const auto selectionPoint = pointFor(
+        inactiveTileForSelection,
+        QPointF(inactiveTileForSelection->width() / 2, inactiveTileForSelection->height() / 2));
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, selectionPoint);
+    QTRY_COMPARE_WITH_TIMEOUT(settingsController.wallpaper()->effectiveId(), inactiveId, 1500);
+    QCOMPARE(countRequests(QStringLiteral("wallpaper set ")), setCountBeforeSelection + 1);
+    QVERIFY(requests.last().contains(inactiveId));
+    QVERIFY(!contextMenu->property("menuOpen").toBool());
 
     if (hadPreviousRuntime)
         qputenv("XDG_RUNTIME_DIR", previousRuntime);

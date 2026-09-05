@@ -37,6 +37,7 @@ private slots:
     void selectsStableIdsAndImportsPaths();
     void serializesImportAndCatalogAddWithDisplayNames();
     void projectsPreviewUrlsAndSerializesRemoval();
+    void surfacesOldShellWallpaperRemovalDiagnostic();
 };
 
 namespace {
@@ -760,11 +761,14 @@ void SettingsWallpaperControllerTest::projectsPreviewUrlsAndSerializesRemoval()
     QCOMPARE(inactive.value(QStringLiteral("previewUrl")).toUrl(),
              QUrl::fromLocalFile(inactivePreview));
     QCOMPARE(current.value(QStringLiteral("isCurrent")).toBool(), true);
+    QCOMPARE(current.value(QStringLiteral("managedUser")).toBool(), true);
     QCOMPARE(current.value(QStringLiteral("removable")).toBool(), false);
     QCOMPARE(inactive.value(QStringLiteral("isCurrent")).toBool(), false);
+    QCOMPARE(inactive.value(QStringLiteral("managedUser")).toBool(), true);
     QCOMPARE(inactive.value(QStringLiteral("removable")).toBool(), true);
     const auto landscape = controller.landscapeWallpapers().constFirst().toMap();
     QVERIFY(!landscape.value(QStringLiteral("previewUrl")).toUrl().isValid());
+    QCOMPARE(landscape.value(QStringLiteral("managedUser")).toBool(), false);
     QCOMPARE(landscape.value(QStringLiteral("removable")).toBool(), false);
 
     controller.removeUserWallpaper(inactiveId);
@@ -773,6 +777,42 @@ void SettingsWallpaperControllerTest::projectsPreviewUrlsAndSerializesRemoval()
     QVERIFY(history.contains("wallpaper remove"));
     QVERIFY(history.contains(inactiveId.toUtf8()));
     QCOMPARE(controller.userWallpapers().size(), 0);
+}
+
+void SettingsWallpaperControllerTest::surfacesOldShellWallpaperRemovalDiagnostic()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const auto endpoint = temp.filePath(QStringLiteral("w.sock"));
+    QLocalServer server;
+    QVERIFY(server.listen(endpoint));
+    QObject::connect(&server, &QLocalServer::newConnection, this, [&] {
+        auto *socket = server.nextPendingConnection();
+        connect(socket, &QLocalSocket::readyRead, this, [socket] {
+            socket->readAll();
+            socket->write(QJsonDocument(QJsonObject{
+                                            {QStringLiteral("ok"), false},
+                                            {QStringLiteral("completed"), true},
+                                            {QStringLiteral("errorCode"),
+                                             QStringLiteral("control-protocol-error")},
+                                            {QStringLiteral("message"),
+                                             QStringLiteral("Unknown Paper wallpaper action")},
+                                        })
+                              .toJson(QJsonDocument::Compact)
+                          + '\n');
+            socket->flush();
+        });
+    });
+
+    SettingsWallpaperController controller(endpoint);
+    const auto id = QStringLiteral("astrea://wallpaper/user/") + QString(64, QLatin1Char('a'));
+    controller.removeUserWallpaper(id);
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.busy(), 1000);
+    QCOMPARE(controller.errorCode(), QStringLiteral("control-protocol-error"));
+    QCOMPARE(controller.errorMessage(),
+             QStringLiteral("The running Astrea Shell does not support wallpaper removal yet. "
+                            "Restart the updated Astrea Shell and try again."));
+    QVERIFY(controller.errorMessage() != QStringLiteral("wallpaper-not-found"));
 }
 
 QTEST_GUILESS_MAIN(SettingsWallpaperControllerTest)

@@ -76,6 +76,7 @@ Item {
         id: menuCard
 
         visible: menuRoot.menuOpen
+        z: 1
         x: menuRoot.menuX
         y: menuRoot.menuY
         opacity: menuRoot.menuPositioned ? 1 : 0

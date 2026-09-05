@@ -5,6 +5,7 @@ import QtQuick.Dialogs
 import QtQuick.Effects
 import "../../components" as Components
 import "../../components/form" as Form
+import "../../components/menu" as WallpaperMenu
 
 Item {
     id: root
@@ -30,6 +31,10 @@ Item {
     property bool pendingAddsToLibrary: false
     property string pendingRemovalId: ""
     property string pendingRemovalName: ""
+    property string contextWallpaperId: ""
+    property string contextWallpaperName: ""
+    property bool contextWallpaperRemovable: false
+    property bool contextWallpaperIsCurrent: false
 
     function openWallpaperPicker(addOnly) {
         if (root.controller.busy)
@@ -45,19 +50,52 @@ Item {
         wallpaperNameInput.clear()
     }
 
-    function beginWallpaperRemoval(wallpaper) {
-        if (root.controller.busy || !wallpaper || wallpaper.removable !== true)
+    function isManagedUserWallpaper(wallpaper) {
+        return wallpaper && wallpaper.managedUser === true
+    }
+
+    function openWallpaperContextMenu(wallpaper, x, y) {
+        if (root.controller.busy || !root.isManagedUserWallpaper(wallpaper))
             return
-        root.pendingRemovalId = wallpaper.logicalId || ""
-        root.pendingRemovalName = wallpaper.displayName
+
+        root.contextWallpaperId = wallpaper.logicalId || ""
+        root.contextWallpaperName = wallpaper.displayName
             || I18n.tr("apps.settings.pages.paper.wallpaper.text.my_wallpaper", "My Wallpaper")
-        if (root.pendingRemovalId !== "")
-            wallpaperRemoveDialog.open()
+        root.contextWallpaperRemovable = wallpaper.removable === true
+        root.contextWallpaperIsCurrent = wallpaper.isCurrent === true
+        if (root.contextWallpaperId !== "")
+            wallpaperContextMenu.openAt(x, y)
+    }
+
+    function beginWallpaperRemovalFromContext() {
+        if (root.controller.busy || root.contextWallpaperId === ""
+                || !root.contextWallpaperRemovable || root.contextWallpaperIsCurrent) {
+            return
+        }
+        root.pendingRemovalId = root.contextWallpaperId
+        root.pendingRemovalName = root.contextWallpaperName
+        wallpaperContextMenu.closeMenu()
+        wallpaperRemoveDialog.open()
     }
 
     function clearPendingRemovalState() {
         root.pendingRemovalId = ""
         root.pendingRemovalName = ""
+    }
+
+    function clearWallpaperContextState() {
+        root.contextWallpaperId = ""
+        root.contextWallpaperName = ""
+        root.contextWallpaperRemovable = false
+        root.contextWallpaperIsCurrent = false
+    }
+
+    function contextWallpaperStillExists() {
+        for (const wallpaper of root.controller.wallpapers) {
+            if (wallpaper.logicalId === root.contextWallpaperId)
+                return true
+        }
+        return false
     }
 
     Component.onCompleted: root.controller.refreshLibrary()
@@ -421,7 +459,35 @@ Item {
             font.family: Components.Theme.fontFamily
             font.pixelSize: 11
             color: Components.Theme.textPrimary
-            elide: Text.ElideRight
+            wrapMode: Text.WordWrap
+        }
+    }
+
+    WallpaperMenu.ContextMenu {
+        id: wallpaperContextMenu
+        objectName: "wallpaperContextMenu"
+
+        WallpaperMenu.ContextMenuAction {
+            objectName: "wallpaperContextRemoveAction"
+            label: I18n.tr("apps.settings.pages.paper.wallpaper.action.remove", "Remove")
+            destructive: true
+            actionEnabled: !root.controller.busy
+                           && root.contextWallpaperRemovable
+                           && !root.contextWallpaperIsCurrent
+            onTriggered: root.beginWallpaperRemovalFromContext()
+        }
+
+        onMenuOpenChanged: {
+            if (!menuOpen)
+                root.clearWallpaperContextState()
+        }
+    }
+
+    Connections {
+        target: root.controller
+        function onSnapshotChanged() {
+            if (root.contextWallpaperId !== "" && !root.contextWallpaperStillExists())
+                wallpaperContextMenu.closeMenu()
         }
     }
 
@@ -832,34 +898,21 @@ Item {
                             anchors.fill: parent
                             z: 1
                             enabled: !root.controller.busy && (modelData.kind || "image") === "image"
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
                             cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                            onClicked: root.controller.selectWallpaper(
-                                           modelData.logicalId,
-                                           root.controller.selectionFit)
-                        }
+                            onClicked: function(mouse) {
+                                if (mouse.button === Qt.LeftButton) {
+                                    root.controller.selectWallpaper(
+                                        modelData.logicalId,
+                                        root.controller.selectionFit)
+                                    return
+                                }
 
-                        Button {
-                            id: tileRemoveButton
-                            objectName: "wallpaperTileRemoveButton-" + modelData.logicalId
-                            visible: modelData.removable === true
-                                     && tileHover.hovered
-                                     && !root.controller.busy
-                            z: 2
-                            anchors {
-                                top: parent.top
-                                right: parent.right
-                                margins: 6
-                            }
-                            implicitWidth: 62
-                            implicitHeight: 24
-                            text: I18n.tr("apps.settings.pages.paper.wallpaper.action.remove", "Remove")
-                            font.pixelSize: 10
-                            onClicked: root.beginWallpaperRemoval(modelData)
-                            background: Rectangle {
-                                radius: 7
-                                color: Qt.rgba(0.02, 0.04, 0.06, 0.88)
-                                border.width: 1
-                                border.color: Components.Theme.cardBorder
+                                if (mouse.button === Qt.RightButton) {
+                                    const menuPoint = tileMouse.mapToItem(root, mouse.x, mouse.y)
+                                    root.openWallpaperContextMenu(
+                                        modelData, menuPoint.x, menuPoint.y)
+                                }
                             }
                         }
                     }

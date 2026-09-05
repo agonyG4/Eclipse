@@ -16,20 +16,17 @@
 
 namespace {
 
-QUrl previewUrlForSource(const QString &rawSource, const bool allowQrc)
+QUrl previewUrlForSource(const QString &rawSource)
 {
     const auto source = rawSource.trimmed();
     if (source.isEmpty()) {
         return {};
     }
     if (source.startsWith(QStringLiteral(":/"))) {
-        return allowQrc ? QUrl(QStringLiteral("qrc:") + source.mid(1)) : QUrl();
+        return {};
     }
 
     const QUrl url(source);
-    if (url.scheme().compare(QStringLiteral("qrc"), Qt::CaseInsensitive) == 0) {
-        return allowQrc ? url : QUrl();
-    }
     if (url.scheme().compare(QStringLiteral("file"), Qt::CaseInsensitive) == 0) {
         const auto localPath = url.toLocalFile();
         return localPath.isEmpty() ? QUrl() : QUrl::fromLocalFile(localPath);
@@ -47,14 +44,14 @@ QUrl previewUrlForDescriptor(const QJsonObject &object)
 {
     const auto previewSource = object.value(QStringLiteral("previewSource")).toString();
     if (!previewSource.trimmed().isEmpty()) {
-        return previewUrlForSource(previewSource, true);
+        return previewUrlForSource(previewSource);
     }
 
     const auto resolvedSource = object.value(QStringLiteral("resolvedSource")).toString();
     const auto source = resolvedSource.isEmpty()
         ? object.value(QStringLiteral("source")).toString()
         : resolvedSource;
-    return previewUrlForSource(source, false);
+    return previewUrlForSource(source);
 }
 
 bool isManagedWallpaperId(const QString &logicalId)

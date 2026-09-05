@@ -733,6 +733,7 @@ void SettingsWallpaperControllerTest::projectsPreviewUrlsAndSerializesRemoval()
                                 {QStringLiteral("kind"), QStringLiteral("image")},
                                 {QStringLiteral("origin"), QStringLiteral("system")},
                                 {QStringLiteral("source"), QStringLiteral(":/landscape.jpg")},
+                                {QStringLiteral("previewSource"), QStringLiteral("qrc:/landscape.jpg")},
                                 {QStringLiteral("displayName"), QStringLiteral("Landscape")}}
                 };
             }

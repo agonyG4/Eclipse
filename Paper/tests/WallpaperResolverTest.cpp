@@ -20,7 +20,7 @@ private slots:
     void rejectsUnsupportedKindAndScopeBeforeFilesystemAccess();
     void usesExplicitEmergencyFallbackWhenDefaultIsUnavailable();
     void usesPhysicalEmergencyFallbackWhenFactoryArtworkIsUnavailable();
-    void doesNotAdvertisePrivateQrcPreviewSource();
+    void doesNotAdvertiseAnyQrcPreviewSource();
     void defaultResolverProvidesPackagedFactoryArtwork();
 
 private:
@@ -136,16 +136,16 @@ void WallpaperResolverTest::usesPhysicalEmergencyFallbackWhenFactoryArtworkIsUna
     QVERIFY(result.descriptor.previewSource().endsWith(QStringLiteral("emergency.svg")));
 }
 
-void WallpaperResolverTest::doesNotAdvertisePrivateQrcPreviewSource()
+void WallpaperResolverTest::doesNotAdvertiseAnyQrcPreviewSource()
 {
     const auto result = WallpaperResolver().resolve(WallpaperDescriptor::systemResource(
-        QStringLiteral("astrea://wallpaper/private-emergency"),
-        QStringLiteral(":/qt/qml/Astrea/Paper/assets/emergency.svg"),
+        QStringLiteral("astrea://wallpaper/test-resource"),
+        QStringLiteral(":/paper-resolver-test/assets/emergency.svg"),
         WallpaperFit::Cover));
 
     QVERIFY2(result.ok(), qPrintable(result.message));
     QCOMPARE(result.descriptor.resolvedSource(),
-             QStringLiteral(":/qt/qml/Astrea/Paper/assets/emergency.svg"));
+             QStringLiteral(":/paper-resolver-test/assets/emergency.svg"));
     QVERIFY(result.descriptor.previewSource().isEmpty());
 }
 

@@ -111,6 +111,10 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
         Qt6::Gui
         Qt6::Test
     )
+    qt_add_resources(paper-resolver-test paper-resolver-test-resources
+        PREFIX "/paper-resolver-test"
+        FILES assets/emergency.svg
+    )
     add_test(NAME paper-resolver-test COMMAND paper-resolver-test)
 
     add_executable(paper-persistence-test

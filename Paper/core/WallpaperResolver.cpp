@@ -9,8 +9,6 @@
 namespace Paper {
 namespace {
 
-const auto kPrivatePaperResourcePrefix = QStringLiteral(":/qt/qml/Astrea/Paper/");
-
 WallpaperResolution failure(const WallpaperResolutionError error, const QString &message)
 {
     WallpaperResolution result;
@@ -22,11 +20,6 @@ WallpaperResolution failure(const WallpaperResolutionError error, const QString 
 bool isResourcePath(const QString &source)
 {
     return source.startsWith(QStringLiteral(":/"));
-}
-
-bool isPrivatePaperResource(const QString &source)
-{
-    return source.startsWith(kPrivatePaperResourcePrefix);
 }
 
 } // namespace
@@ -73,9 +66,7 @@ WallpaperResolution WallpaperResolver::resolve(const WallpaperDescriptor &candid
         }
         auto result = candidate;
         result.setResolvedSource(source);
-        if (!isPrivatePaperResource(source)) {
-            result.setPreviewSource(source);
-        }
+        result.setPreviewSource({});
         return {result, WallpaperResolutionError::None, {}};
     }
 

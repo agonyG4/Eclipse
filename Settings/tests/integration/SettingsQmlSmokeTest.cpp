@@ -22,6 +22,8 @@
 #include <QTemporaryDir>
 #include <QtTest>
 
+#include <algorithm>
+
 namespace {
 
 QQuickItem *findVisualItem(QQuickItem *item, const QString &objectName)
@@ -459,25 +461,46 @@ void SettingsQmlSmokeTest::wallpaperPreviewAndRemovalUseRealPointerEvents()
         images.filePath(QStringLiteral("Current # Café 雪.png")), QColor("#466b9a"));
     const auto inactivePath = writeWallpaperImage(
         images.filePath(QStringLiteral("Snow # Café 雪.png")), QColor("#9a6b46"));
+    const auto selectionPath = writeWallpaperImage(
+        images.filePath(QStringLiteral("Tokyo # 東京.png")), QColor("#6b9a46"));
     const auto endpoint = QDir(runtime.path()).filePath(QStringLiteral("astrea-shell/wallpaper.sock"));
     QLocalServer server;
     QVERIFY(server.listen(endpoint));
 
     const auto currentId = QStringLiteral("astrea://wallpaper/user/") + QString(64, QLatin1Char('a'));
     const auto inactiveId = QStringLiteral("astrea://wallpaper/user/") + QString(64, QLatin1Char('b'));
+    const auto selectionId = QStringLiteral("astrea://wallpaper/user/") + QString(64, QLatin1Char('c'));
     QStringList requests;
     QByteArray requestBuffer;
     bool removed = false;
+    auto effectiveId = currentId;
+
+    const auto descriptor = [](const QString &logicalId,
+                               const QString &source,
+                               const QString &previewSource,
+                               const QString &displayName) {
+        return QJsonObject{{QStringLiteral("logicalId"), logicalId},
+                           {QStringLiteral("kind"), QStringLiteral("image")},
+                           {QStringLiteral("origin"), QStringLiteral("user")},
+                           {QStringLiteral("source"), source},
+                           {QStringLiteral("resolvedSource"), source},
+                           {QStringLiteral("previewSource"), previewSource},
+                           {QStringLiteral("displayName"), displayName}};
+    };
 
     const auto makeSnapshot = [&] {
-        const QJsonObject configured{{QStringLiteral("logicalId"), currentId},
-                                     {QStringLiteral("source"), QStringLiteral(":/private/current.png")},
-                                     {QStringLiteral("resolvedSource"), QStringLiteral(":/private/current.png")},
+        const auto currentPathForSnapshot = effectiveId == selectionId ? selectionPath : currentPath;
+        const auto currentSource = effectiveId == selectionId
+            ? QStringLiteral(":/private/selection.png")
+            : QStringLiteral(":/private/current.png");
+        const QJsonObject configured{{QStringLiteral("logicalId"), effectiveId},
+                                     {QStringLiteral("source"), currentSource},
+                                     {QStringLiteral("resolvedSource"), currentSource},
                                      {QStringLiteral("fit"), QStringLiteral("cover")}};
-        const QJsonObject effective{{QStringLiteral("logicalId"), currentId},
-                                    {QStringLiteral("source"), QStringLiteral(":/private/current.png")},
-                                    {QStringLiteral("resolvedSource"), QStringLiteral(":/private/current.png")},
-                                    {QStringLiteral("previewSource"), currentPath},
+        const QJsonObject effective{{QStringLiteral("logicalId"), effectiveId},
+                                    {QStringLiteral("source"), currentSource},
+                                    {QStringLiteral("resolvedSource"), currentSource},
+                                    {QStringLiteral("previewSource"), currentPathForSnapshot},
                                     {QStringLiteral("fit"), QStringLiteral("cover")}};
         return QJsonObject{{QStringLiteral("configured"), configured},
                            {QStringLiteral("factoryDefault"), effective},
@@ -487,6 +510,27 @@ void SettingsQmlSmokeTest::wallpaperPreviewAndRemovalUseRealPointerEvents()
                            {QStringLiteral("generation"), 2},
                            {QStringLiteral("errorCode"), QString()},
                            {QStringLiteral("lastError"), QString()}};
+    };
+
+    const auto makeWallpapers = [&] {
+        QJsonArray wallpapers{
+            descriptor(currentId,
+                       QStringLiteral(":/private/current.png"),
+                       currentPath,
+                       QStringLiteral("Current")),
+            descriptor(selectionId,
+                       QStringLiteral(":/private/selection.png"),
+                       selectionPath,
+                       QStringLiteral("Tokyo")),
+        };
+        if (!removed) {
+            wallpapers.insert(1,
+                              descriptor(inactiveId,
+                                         QStringLiteral(":/private/inactive.png"),
+                                         inactivePath,
+                                         QStringLiteral("Snow")));
+        }
+        return wallpapers;
     };
 
     connect(&server, &QLocalServer::newConnection, this, [&] {
@@ -499,26 +543,12 @@ void SettingsQmlSmokeTest::wallpaperPreviewAndRemovalUseRealPointerEvents()
             requestBuffer.clear();
             requests.append(line);
 
-            auto wallpapers = QJsonArray{
-                QJsonObject{{QStringLiteral("logicalId"), currentId},
-                            {QStringLiteral("kind"), QStringLiteral("image")},
-                            {QStringLiteral("origin"), QStringLiteral("user")},
-                            {QStringLiteral("source"), QStringLiteral(":/private/current.png")},
-                            {QStringLiteral("resolvedSource"), QStringLiteral(":/private/current.png")},
-                            {QStringLiteral("previewSource"), currentPath},
-                            {QStringLiteral("displayName"), QStringLiteral("Current")}},
-                QJsonObject{{QStringLiteral("logicalId"), inactiveId},
-                            {QStringLiteral("kind"), QStringLiteral("image")},
-                            {QStringLiteral("origin"), QStringLiteral("user")},
-                            {QStringLiteral("source"), QStringLiteral(":/private/inactive.png")},
-                            {QStringLiteral("resolvedSource"), QStringLiteral(":/private/inactive.png")},
-                            {QStringLiteral("previewSource"), inactivePath},
-                            {QStringLiteral("displayName"), QStringLiteral("Snow")}}
-            };
             if (line.startsWith(QStringLiteral("wallpaper remove"))) {
                 removed = true;
-                wallpapers = QJsonArray{wallpapers.at(0)};
+            } else if (line.startsWith(QStringLiteral("wallpaper set"))) {
+                effectiveId = selectionId;
             }
+            const auto wallpapers = makeWallpapers();
             socket->write(QJsonDocument(QJsonObject{
                                             {QStringLiteral("ok"), true},
                                             {QStringLiteral("completed"), true},
@@ -565,17 +595,21 @@ void SettingsQmlSmokeTest::wallpaperPreviewAndRemovalUseRealPointerEvents()
     auto *previewImage = page->findChild<QObject *>(QStringLiteral("wallpaperPreviewImage"));
     QTRY_VERIFY_WITH_TIMEOUT(previewImage->property("source").toUrl().isLocalFile(), 1500);
     QTRY_COMPARE_WITH_TIMEOUT(previewImage->property("status").toInt(), 1, 3000);
-    QTRY_COMPARE_WITH_TIMEOUT(settingsController.wallpaper()->userWallpapers().size(), 2, 1500);
+    QTRY_COMPARE_WITH_TIMEOUT(settingsController.wallpaper()->userWallpapers().size(), 3, 1500);
 
     const auto inactiveTileName = QStringLiteral("wallpaperTile-") + inactiveId;
     const auto inactiveButtonName = QStringLiteral("wallpaperTileRemoveButton-") + inactiveId;
     const auto currentTileName = QStringLiteral("wallpaperTile-") + currentId;
+    const auto selectionTileName = QStringLiteral("wallpaperTile-") + selectionId;
     QTRY_VERIFY_WITH_TIMEOUT(findVisualItem(page, inactiveTileName) != nullptr, 1500);
     QTRY_VERIFY_WITH_TIMEOUT(findVisualItem(page, currentTileName) != nullptr, 1500);
+    QTRY_VERIFY_WITH_TIMEOUT(findVisualItem(page, selectionTileName) != nullptr, 1500);
     auto *inactiveTile = findVisualItem(page, inactiveTileName);
     auto *currentTile = findVisualItem(page, currentTileName);
+    auto *selectionTile = findVisualItem(page, selectionTileName);
     QVERIFY(inactiveTile != nullptr);
     QVERIFY(currentTile != nullptr);
+    QVERIFY(selectionTile != nullptr);
     auto *inactiveImage = findVisualItem(
         page, QStringLiteral("wallpaperTileImage-") + inactiveId);
     QVERIFY(inactiveImage != nullptr);
@@ -587,28 +621,29 @@ void SettingsQmlSmokeTest::wallpaperPreviewAndRemovalUseRealPointerEvents()
     QVERIFY(currentRemoveButton != nullptr);
     QCOMPARE(currentRemoveButton->property("visible").toBool(), false);
 
-    const auto bodyPoint = inactiveTile->mapToItem(
-        window->contentItem(), QPointF(inactiveTile->width() / 2, inactiveTile->height() / 2));
-    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, bodyPoint.toPoint());
-    QTRY_VERIFY_WITH_TIMEOUT(!settingsController.wallpaper()->busy(), 1500);
-    QVERIFY(requests.last().startsWith(QStringLiteral("wallpaper set ")));
-    QVERIFY(!requests.last().startsWith(QStringLiteral("wallpaper remove ")));
-    QCOMPARE(settingsController.wallpaper()->effectiveId(), currentId);
-
     auto *inactiveRemoveButton = findVisualItem(page, inactiveButtonName);
     QVERIFY(inactiveRemoveButton != nullptr);
+    QCOMPARE(inactiveRemoveButton->property("visible").toBool(), false);
     auto *inactiveRemoveItem = qobject_cast<QQuickItem *>(inactiveRemoveButton);
     QVERIFY(inactiveRemoveItem != nullptr);
     const auto removePoint = inactiveRemoveItem->mapToItem(
         window->contentItem(), QPointF(inactiveRemoveItem->width() / 2, inactiveRemoveItem->height() / 2));
     QTest::mouseMove(window, removePoint.toPoint());
     QTRY_VERIFY_WITH_TIMEOUT(inactiveRemoveButton->property("visible").toBool(), 1000);
+    const auto setRequestCountBeforeRemove = std::count_if(
+        requests.cbegin(), requests.cend(), [](const QString &request) {
+            return request.startsWith(QStringLiteral("wallpaper set "));
+        });
     QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, removePoint.toPoint());
     auto *removeDialog = page->findChild<QObject *>(QStringLiteral("wallpaperRemoveDialog"));
     QVERIFY(removeDialog != nullptr);
     QTRY_VERIFY_WITH_TIMEOUT(removeDialog->property("visible").toBool(), 1000);
     QVERIFY(!removed);
-    QVERIFY(requests.last().startsWith(QStringLiteral("wallpaper set ")));
+    QCOMPARE(std::count_if(requests.cbegin(), requests.cend(), [](const QString &request) {
+                return request.startsWith(QStringLiteral("wallpaper set "));
+            }),
+             setRequestCountBeforeRemove);
+    QCOMPARE(settingsController.wallpaper()->effectiveId(), currentId);
 
     auto *confirmButton = page->findChild<QObject *>(QStringLiteral("wallpaperRemoveConfirmButton"));
     QVERIFY(confirmButton != nullptr);
@@ -618,10 +653,43 @@ void SettingsQmlSmokeTest::wallpaperPreviewAndRemovalUseRealPointerEvents()
         window->contentItem(), QPointF(confirmItem->width() / 2, confirmItem->height() / 2));
     QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, confirmPoint.toPoint());
     QTRY_VERIFY_WITH_TIMEOUT(removed, 1500);
-    QCOMPARE(requests.count(QStringLiteral("wallpaper remove {\"id\":\"%1\"}").arg(inactiveId)), 1);
+    const auto removeRequest = QStringLiteral("wallpaper remove {\"id\":\"%1\"}").arg(inactiveId);
+    QCOMPARE(requests.count(removeRequest), 1);
     QTRY_VERIFY_WITH_TIMEOUT(findVisualItem(page, inactiveTileName) == nullptr, 1500);
     QVERIFY(findVisualItem(page, currentTileName) != nullptr);
     QCOMPARE(settingsController.wallpaper()->effectiveId(), currentId);
+    QCOMPARE(settingsController.wallpaper()->userWallpapers().size(), 2);
+
+    auto *selectionImage = findVisualItem(
+        page, QStringLiteral("wallpaperTileImage-") + selectionId);
+    QVERIFY(selectionImage != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(selectionImage->property("source").toUrl().isLocalFile(), 1500);
+    QTRY_COMPARE_WITH_TIMEOUT(selectionImage->property("status").toInt(), 1, 3000);
+    selectionTile = findVisualItem(page, selectionTileName);
+    QVERIFY(selectionTile != nullptr);
+    const auto setRequestCountBeforeSelection = std::count_if(
+        requests.cbegin(), requests.cend(), [](const QString &request) {
+            return request.startsWith(QStringLiteral("wallpaper set "));
+        });
+    const auto selectionBodyPoint = selectionTile->mapToItem(
+        window->contentItem(), QPointF(selectionTile->width() / 2, selectionTile->height() / 3));
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, selectionBodyPoint.toPoint());
+    QTRY_VERIFY_WITH_TIMEOUT(!settingsController.wallpaper()->busy(), 1500);
+    QCOMPARE(std::count_if(requests.cbegin(), requests.cend(), [](const QString &request) {
+                return request.startsWith(QStringLiteral("wallpaper set "));
+            }),
+             setRequestCountBeforeSelection + 1);
+    QVERIFY(requests.last().contains(selectionId));
+    QVERIFY(!requests.last().startsWith(QStringLiteral("wallpaper remove ")));
+    QCOMPARE(settingsController.wallpaper()->effectiveId(), selectionId);
+    auto *selectedTile = findVisualItem(page, selectionTileName);
+    QVERIFY(selectedTile != nullptr);
+    QCOMPARE(selectedTile->property("isCurrent").toBool(), true);
+    auto *selectionRemoveButton = findVisualItem(
+        page, QStringLiteral("wallpaperTileRemoveButton-") + selectionId);
+    QVERIFY(selectionRemoveButton != nullptr);
+    QCOMPARE(selectionRemoveButton->property("visible").toBool(), false);
+    QCOMPARE(settingsController.wallpaper()->userWallpapers().size(), 2);
 
     if (hadPreviousRuntime)
         qputenv("XDG_RUNTIME_DIR", previousRuntime);

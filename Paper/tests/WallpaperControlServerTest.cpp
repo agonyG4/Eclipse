@@ -32,6 +32,7 @@ private slots:
     void boundsIdleClientsAndReclaimsCapacity();
     void rejectsMalformedUnknownAndOversizedRequests();
     void preservesUnicodeSpacesAndInjectionShapedSourceAsData();
+    void removesManagedWallpaperThroughBoundedControlProtocol();
 
 private:
     static QString writeImage(const QString &path);
@@ -487,6 +488,65 @@ void WallpaperControlServerTest::preservesUnicodeSpacesAndInjectionShapedSourceA
     QVERIFY(service.snapshot().effective.logicalId().startsWith(
         QStringLiteral("astrea://wallpaper/user/")));
     QVERIFY(!QFileInfo::exists(temp.filePath(QStringLiteral("no"))));
+}
+
+void WallpaperControlServerTest::removesManagedWallpaperThroughBoundedControlProtocol()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const auto factory = writeImage(temp.filePath(QStringLiteral("factory.png")));
+    const auto emergency = writeImage(temp.filePath(QStringLiteral("emergency.png")));
+    const auto source = writeImage(temp.filePath(QStringLiteral("to-remove.png")));
+    auto catalog = std::make_shared<WallpaperCatalog>(
+        WallpaperResolver(factory, emergency), temp.filePath(QStringLiteral("library")));
+    WallpaperService service(WallpaperResolver(factory, emergency),
+                             std::make_unique<XdgWallpaperPersistence>(
+                                 temp.filePath(QStringLiteral("paper.ini")),
+                                 temp.filePath(QStringLiteral("legacy-wallpaper"))),
+                             catalog);
+    service.initialize();
+    const auto add = service.addWallpaper(source, QStringLiteral("To remove"));
+    QVERIFY(add != 0);
+    QString managedId;
+    QString managedImage;
+    for (const auto &entry : service.listWallpapers()) {
+        if (entry.displayName() == QStringLiteral("To remove")) {
+            managedId = entry.logicalId();
+            managedImage = entry.source();
+            break;
+        }
+    }
+    QVERIFY(!managedId.isEmpty());
+    QVERIFY(QFileInfo::exists(managedImage));
+    const auto endpoint = temp.filePath(QStringLiteral("r/w.sock"));
+    WallpaperControlServer server(&service, endpoint);
+    QVERIFY(server.listen());
+
+    const auto removed = request(endpoint,
+                                 QStringLiteral("wallpaper remove {\"id\":\"%1\"}")
+                                     .arg(managedId));
+    QCOMPARE(removed.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(removed.value(QStringLiteral("completed")).toBool(), true);
+    QVERIFY(!QFileInfo::exists(managedImage));
+    for (const auto &entry : removed.value(QStringLiteral("wallpapers")).toArray()) {
+        QVERIFY(entry.toObject().value(QStringLiteral("logicalId")).toString() != managedId);
+    }
+    QVERIFY(QFileInfo::exists(source));
+
+    const auto missing = request(endpoint,
+                                 QStringLiteral("wallpaper remove {\"id\":\"%1\"}")
+                                     .arg(managedId));
+    QCOMPARE(missing.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(missing.value(QStringLiteral("errorCode")).toString(),
+             QStringLiteral("wallpaper-not-found"));
+    const auto nonString = request(endpoint, QStringLiteral("wallpaper remove {\"id\":42}"));
+    QCOMPARE(nonString.value(QStringLiteral("errorCode")).toString(),
+             QStringLiteral("invalid-descriptor"));
+    const auto injection = request(
+        endpoint,
+        QStringLiteral("wallpaper remove {\"id\":\"astrea://wallpaper/user/$(touch no)\"}"));
+    QCOMPARE(injection.value(QStringLiteral("errorCode")).toString(),
+             QStringLiteral("wallpaper-not-found"));
 }
 
 QTEST_GUILESS_MAIN(WallpaperControlServerTest)

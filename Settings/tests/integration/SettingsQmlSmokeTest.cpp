@@ -170,7 +170,8 @@ void SettingsQmlSmokeTest::loadsWallpaperRouteFromHubOffscreen()
     QCOMPARE(preview->property("width").toInt(), 180);
     QCOMPARE(preview->property("height").toInt(), 112);
     for (const auto name : {"wallpaperFileDialog", "wallpaperNameDialog", "wallpaperNameInput",
-                            "userWallpapersAddButton"}) {
+                            "userWallpapersAddButton", "wallpaperRemoveDialog",
+                            "wallpaperRemoveButton"}) {
         QVERIFY2(page->findChild<QObject *>(QString::fromLatin1(name)) != nullptr, name);
     }
     QObject *dialog = page->findChild<QObject *>(QStringLiteral("wallpaperNameDialog"));
@@ -368,12 +369,16 @@ void SettingsQmlSmokeTest::wallpaperTranslationKeysExist()
         QStringLiteral("apps.settings.pages.paper.wallpaper.label.transition"),
         QStringLiteral("apps.settings.pages.paper.wallpaper.sublabel.awww_wallpaper_animation"),
         QStringLiteral("apps.settings.pages.paper.wallpaper.text.change"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.action.remove"),
         QStringLiteral("apps.settings.pages.paper.wallpaper.text.current"),
         QStringLiteral("apps.settings.pages.paper.wallpaper.text.choose_wallpaper"),
         QStringLiteral("apps.settings.pages.paper.wallpaper.text.name_this_wallpaper"),
         QStringLiteral("apps.settings.pages.paper.wallpaper.text.no_wallpapers_found"),
         QStringLiteral("apps.settings.pages.paper.wallpaper.text.my_wallpaper"),
         QStringLiteral("apps.settings.pages.paper.wallpaper.text.preview_fail"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.text.remove_named_wallpaper"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.text.remove_help"),
+        QStringLiteral("apps.settings.pages.paper.wallpaper.text.original_not_affected"),
         QStringLiteral("apps.settings.pages.paper.wallpaper.text.cancel"),
         QStringLiteral("apps.settings.pages.paper.wallpaper.text.confirm"),
         QStringLiteral("apps.settings.pages.paper.wallpaper.text.placeholder_change"),

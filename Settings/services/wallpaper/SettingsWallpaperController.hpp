@@ -4,6 +4,7 @@
 #include <QJsonObject>
 #include <QString>
 #include <QPointer>
+#include <QUrl>
 #include <QVariantList>
 
 class SettingsWallpaperController final : public QObject
@@ -13,6 +14,7 @@ class SettingsWallpaperController final : public QObject
     Q_PROPERTY(QString configuredId READ configuredId NOTIFY snapshotChanged)
     Q_PROPERTY(QString configuredFit READ configuredFit NOTIFY snapshotChanged)
     Q_PROPERTY(QString effectiveSource READ effectiveSource NOTIFY snapshotChanged)
+    Q_PROPERTY(QUrl effectivePreviewUrl READ effectivePreviewUrl NOTIFY snapshotChanged)
     Q_PROPERTY(QString effectiveId READ effectiveId NOTIFY snapshotChanged)
     Q_PROPERTY(QString effectiveFit READ effectiveFit NOTIFY snapshotChanged)
     Q_PROPERTY(QString selectionFit READ selectionFit NOTIFY snapshotChanged)
@@ -37,6 +39,7 @@ public:
     QString configuredId() const { return m_configuredId; }
     QString configuredFit() const { return m_configuredFit; }
     QString effectiveSource() const { return m_effectiveSource; }
+    QUrl effectivePreviewUrl() const { return m_effectivePreviewUrl; }
     QString effectiveId() const { return m_effectiveId; }
     QString effectiveFit() const { return m_effectiveFit; }
     QString selectionFit() const;
@@ -66,6 +69,7 @@ public:
                                               const QString &fit = QStringLiteral("cover"));
     Q_INVOKABLE void addUserWallpaper(const QString &path,
                                       const QString &displayName);
+    Q_INVOKABLE void removeUserWallpaper(const QString &logicalId);
     Q_INVOKABLE void reset();
     Q_INVOKABLE void loadDefault();
 
@@ -90,6 +94,7 @@ private:
     QString m_configuredId;
     QString m_configuredFit;
     QString m_effectiveSource;
+    QUrl m_effectivePreviewUrl;
     QString m_effectiveId;
     QString m_effectiveFit;
     QString m_currentDisplayName;

@@ -10,8 +10,76 @@
 #include <QLocalSocket>
 #include <QStandardPaths>
 #include <QTimer>
+#include <QUrl>
 
 #include <utility>
+
+namespace {
+
+QUrl previewUrlForSource(const QString &rawSource)
+{
+    const auto source = rawSource.trimmed();
+    if (source.isEmpty()) {
+        return {};
+    }
+    if (source.startsWith(QStringLiteral(":/"))) {
+        return QUrl(QStringLiteral("qrc:") + source.mid(1));
+    }
+
+    const QUrl url(source);
+    if (url.scheme().compare(QStringLiteral("qrc"), Qt::CaseInsensitive) == 0) {
+        return url;
+    }
+    if (url.scheme().compare(QStringLiteral("file"), Qt::CaseInsensitive) == 0) {
+        const auto localPath = url.toLocalFile();
+        return localPath.isEmpty() ? QUrl() : QUrl::fromLocalFile(localPath);
+    }
+    if (!url.scheme().isEmpty()) {
+        return {};
+    }
+    if (source.startsWith(QLatin1Char('/'))) {
+        return QUrl::fromLocalFile(source);
+    }
+    return {};
+}
+
+bool isManagedWallpaperId(const QString &logicalId)
+{
+    const auto prefix = QStringLiteral("astrea://wallpaper/user/");
+    if (!logicalId.startsWith(prefix) || logicalId.size() != prefix.size() + 64) {
+        return false;
+    }
+    for (const auto character : logicalId.mid(prefix.size())) {
+        const auto latin = character.toLatin1();
+        if (!((latin >= '0' && latin <= '9') || (latin >= 'a' && latin <= 'f'))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+QVariantMap projectWallpaper(const QJsonObject &object,
+                             const QString &configuredId,
+                             const QString &effectiveId)
+{
+    auto result = object.toVariantMap();
+    const auto logicalId = object.value(QStringLiteral("logicalId")).toString();
+    const auto resolvedSource = object.value(QStringLiteral("resolvedSource")).toString();
+    const auto source = resolvedSource.isEmpty()
+        ? object.value(QStringLiteral("source")).toString()
+        : resolvedSource;
+    result.insert(QStringLiteral("previewUrl"), previewUrlForSource(source));
+    result.insert(QStringLiteral("isCurrent"), logicalId == effectiveId);
+    result.insert(QStringLiteral("removable"),
+                  object.value(QStringLiteral("origin")).toString().trimmed().compare(
+                      QStringLiteral("user"), Qt::CaseInsensitive)
+                          == 0
+                      && isManagedWallpaperId(logicalId) && logicalId != configuredId
+                      && logicalId != effectiveId);
+    return result;
+}
+
+} // namespace
 
 SettingsWallpaperController::SettingsWallpaperController(QString endpoint, QObject *parent)
     : QObject(parent)
@@ -244,8 +312,11 @@ bool SettingsWallpaperController::applyResponse(const QByteArray &payload)
         : QString();
     m_configuredFit = configured.isObject() ? configuredFit : QString();
     m_effectiveId = effective.value(QStringLiteral("logicalId")).toString();
-    m_effectiveSource = effective.value(QStringLiteral("resolvedSource"))
-                            .toString(effective.value(QStringLiteral("source")).toString());
+    const auto resolvedEffectiveSource = effective.value(QStringLiteral("resolvedSource")).toString();
+    m_effectiveSource = resolvedEffectiveSource.isEmpty()
+        ? effective.value(QStringLiteral("source")).toString()
+        : resolvedEffectiveSource;
+    m_effectivePreviewUrl = previewUrlForSource(m_effectiveSource);
     m_effectiveFit = effectiveFit;
     m_currentDisplayName = effective.value(QStringLiteral("displayName")).toString().trimmed();
     m_stateName = state.value(QStringLiteral("state")).toString();
@@ -256,7 +327,7 @@ bool SettingsWallpaperController::applyResponse(const QByteArray &payload)
         QVariantList wallpapers;
         for (const auto &entry : response.value(QStringLiteral("wallpapers")).toArray()) {
             if (entry.isObject()) {
-                wallpapers.append(entry.toObject().toVariantMap());
+                wallpapers.append(projectWallpaper(entry.toObject(), m_configuredId, m_effectiveId));
             }
         }
         m_wallpapers = std::move(wallpapers);
@@ -396,6 +467,19 @@ void SettingsWallpaperController::addUserWallpaper(const QString &path,
     startRequest(QStringLiteral("add"),
                  QJsonObject{{QStringLiteral("path"), path},
                              {QStringLiteral("displayName"), displayName}});
+}
+
+void SettingsWallpaperController::removeUserWallpaper(const QString &logicalId)
+{
+    const auto id = logicalId.trimmed();
+    if (!isManagedWallpaperId(id)) {
+        m_errorCode = QStringLiteral("invalid-descriptor");
+        m_errorMessage = QStringLiteral("Managed wallpaper ID is required");
+        emit errorChanged();
+        setBusy(false);
+        return;
+    }
+    startRequest(QStringLiteral("remove"), QJsonObject{{QStringLiteral("id"), id}});
 }
 
 void SettingsWallpaperController::reset()

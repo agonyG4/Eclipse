@@ -339,11 +339,29 @@ foreach(wallpaper_required_token IN ITEMS
     "objectName: \"allWorkspacesToggle\""
     "objectName: \"blurredWallpaperToggle\""
     "objectName: \"transitionSelector\""
+    "objectName: \"wallpaperRemoveDialog\""
+    "objectName: \"wallpaperRemoveButton\""
+    "objectName: \"wallpaperTileImage\""
+    "source: root.controller.effectivePreviewUrl"
+    "source: modelData.previewUrl"
+    "sourceSize.width"
+    "sourceSize.height"
     "enabled: false"
 )
     string(FIND "${wallpaper_source}" "${wallpaper_required_token}" wallpaper_position)
     if(wallpaper_position EQUAL -1)
         message(FATAL_ERROR "Wallpaper deferred-control contract is missing '${wallpaper_required_token}'")
+    endif()
+endforeach()
+
+foreach(wallpaper_forbidden_token IN ITEMS
+    "source: root.controller.effectiveSource"
+    "source: modelData.resolvedSource"
+    "source: modelData.source"
+)
+    string(FIND "${wallpaper_source}" "${wallpaper_forbidden_token}" wallpaper_position)
+    if(NOT wallpaper_position EQUAL -1)
+        message(FATAL_ERROR "Wallpaper QML owns raw source semantics via '${wallpaper_forbidden_token}'")
     endif()
 endforeach()
 

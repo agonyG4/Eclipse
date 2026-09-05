@@ -54,6 +54,13 @@ selection; QML owns only presentation and native file/name dialogs. Missing or
 malformed Paper metadata stays empty at the backend boundary and receives a
 localized generic label in Settings, never a digest-derived name.
 
+Wallpaper previews are exposed to QML as native `QUrl` projections. The Paper
+control contract is `wallpaper get`, `list`, `import`, `add`, `set`, `remove`,
+`reset`, and `default`; `remove` accepts only a stable logical ID for a
+Paper-managed user wallpaper. Active wallpapers are rejected, and the original
+import source is never deleted. QML does not construct filesystem URLs or own
+wallpaper removal policy.
+
 The Compositor preview intentionally has no compositor integration. Settings
 does not use shell commands, Quickshell, LayerShellQt, Hyprland, or Typhon.
 Existing ThemeController configuration is separate from the Compositor preview

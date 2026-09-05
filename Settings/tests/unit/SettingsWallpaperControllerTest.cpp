@@ -12,6 +12,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QUrl>
 
 class SettingsWallpaperControllerTest final : public QObject
 {
@@ -34,6 +35,7 @@ private slots:
     void projectsNativePresentationMetadata();
     void selectsStableIdsAndImportsPaths();
     void serializesImportAndCatalogAddWithDisplayNames();
+    void projectsPreviewUrlsAndSerializesRemoval();
 };
 
 namespace {
@@ -670,6 +672,94 @@ void SettingsWallpaperControllerTest::serializesImportAndCatalogAddWithDisplayNa
     QVERIFY(history.contains("wallpaper add"));
     QVERIFY(history.contains("\"displayName\":\"Snow Café\""));
     QVERIFY(history.contains("\"displayName\":\"Library B\""));
+}
+
+void SettingsWallpaperControllerTest::projectsPreviewUrlsAndSerializesRemoval()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const auto endpoint = temp.filePath(QStringLiteral("w.sock"));
+    QLocalServer server;
+    QVERIFY(server.listen(endpoint));
+    QByteArray history;
+    const auto currentId = QStringLiteral("astrea://wallpaper/user/")
+        + QString(64, QLatin1Char('c'));
+    const auto inactiveId = QStringLiteral("astrea://wallpaper/user/")
+        + QString(64, QLatin1Char('d'));
+    QObject::connect(&server, &QLocalServer::newConnection, this, [&, currentId, inactiveId] {
+        auto *socket = server.nextPendingConnection();
+        connect(socket, &QLocalSocket::readyRead, this, [&, socket, currentId, inactiveId] {
+            const auto line = QString::fromUtf8(socket->readAll()).trimmed();
+            history += line.toUtf8();
+            auto state = snapshot(QStringLiteral(":/Astrea/Paper/assets/default.jpg"),
+                                  QStringLiteral("ready"),
+                                  QStringLiteral("none"));
+            state.insert(QStringLiteral("configured"),
+                         QJsonObject{{QStringLiteral("logicalId"), currentId},
+                                     {QStringLiteral("source"), QStringLiteral("/configured/raw.png")},
+                                     {QStringLiteral("fit"), QStringLiteral("cover")} });
+            auto effective = state.value(QStringLiteral("effective")).toObject();
+            effective.insert(QStringLiteral("logicalId"), currentId);
+            effective.insert(QStringLiteral("source"), QStringLiteral(":/Astrea/Paper/assets/default.jpg"));
+            effective.insert(QStringLiteral("resolvedSource"), QStringLiteral(":/Astrea/Paper/assets/default.jpg"));
+            state.insert(QStringLiteral("effective"), effective);
+            QJsonArray entries;
+            if (!line.startsWith(QStringLiteral("wallpaper remove"))) {
+                entries = QJsonArray{
+                    QJsonObject{{QStringLiteral("logicalId"), currentId},
+                                {QStringLiteral("kind"), QStringLiteral("image")},
+                                {QStringLiteral("origin"), QStringLiteral("user")},
+                                {QStringLiteral("source"), QStringLiteral("/current/raw.png")},
+                                {QStringLiteral("resolvedSource"), QStringLiteral("/current/path # 雪.png")},
+                                {QStringLiteral("displayName"), QStringLiteral("Current")}},
+                    QJsonObject{{QStringLiteral("logicalId"), inactiveId},
+                                {QStringLiteral("kind"), QStringLiteral("image")},
+                                {QStringLiteral("origin"), QStringLiteral("user")},
+                                {QStringLiteral("source"), QStringLiteral("relative.png")},
+                                {QStringLiteral("displayName"), QStringLiteral("Inactive")}},
+                    QJsonObject{{QStringLiteral("logicalId"), QStringLiteral("astrea://wallpaper/system/landscape")},
+                                {QStringLiteral("kind"), QStringLiteral("image")},
+                                {QStringLiteral("origin"), QStringLiteral("system")},
+                                {QStringLiteral("source"), QStringLiteral(":/landscape.jpg")},
+                                {QStringLiteral("displayName"), QStringLiteral("Landscape")}}
+                };
+            }
+            socket->write(QJsonDocument(QJsonObject{{QStringLiteral("ok"), true},
+                                                    {QStringLiteral("completed"), true},
+                                                    {QStringLiteral("snapshot"), state},
+                                                    {QStringLiteral("wallpapers"), entries}})
+                              .toJson(QJsonDocument::Compact)
+                          + '\n');
+            socket->flush();
+        });
+    });
+
+    SettingsWallpaperController controller(endpoint);
+    controller.refreshLibrary();
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.busy(), 1000);
+    QCOMPARE(controller.effectivePreviewUrl(),
+             QUrl(QStringLiteral("qrc:/Astrea/Paper/assets/default.jpg")));
+    QCOMPARE(controller.userWallpapers().size(), 2);
+    const auto current = controller.userWallpapers().at(0).toMap();
+    const auto inactive = controller.userWallpapers().at(1).toMap();
+    QCOMPARE(current.value(QStringLiteral("previewUrl")).toUrl(),
+             QUrl::fromLocalFile(QStringLiteral("/current/path # 雪.png")));
+    QVERIFY(!inactive.value(QStringLiteral("previewUrl")).toUrl().isValid());
+    QCOMPARE(current.value(QStringLiteral("isCurrent")).toBool(), true);
+    QCOMPARE(current.value(QStringLiteral("removable")).toBool(), false);
+    QCOMPARE(inactive.value(QStringLiteral("isCurrent")).toBool(), false);
+    QCOMPARE(inactive.value(QStringLiteral("removable")).toBool(), true);
+    const auto landscape = controller.landscapeWallpapers().constFirst().toMap();
+    QCOMPARE(landscape.value(QStringLiteral("previewUrl")).toUrl(),
+             QUrl(QStringLiteral("qrc:/landscape.jpg")));
+    QCOMPARE(landscape.value(QStringLiteral("removable")).toBool(), false);
+
+    controller.removeUserWallpaper(inactiveId);
+    QVERIFY(controller.busy());
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.busy(), 1000);
+    QVERIFY(history.contains("wallpaper remove"));
+    QVERIFY(history.contains(inactiveId.toUtf8()));
+    QCOMPARE(controller.userWallpapers().size(), 0);
 }
 
 QTEST_GUILESS_MAIN(SettingsWallpaperControllerTest)

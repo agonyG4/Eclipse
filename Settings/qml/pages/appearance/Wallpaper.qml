@@ -28,6 +28,8 @@ Item {
     ]
     property string pendingWallpaperPath: ""
     property bool pendingAddsToLibrary: false
+    property string pendingRemovalId: ""
+    property string pendingRemovalName: ""
 
     function openWallpaperPicker(addOnly) {
         if (root.controller.busy)
@@ -41,6 +43,21 @@ Item {
         root.pendingWallpaperPath = ""
         root.pendingAddsToLibrary = false
         wallpaperNameInput.clear()
+    }
+
+    function beginWallpaperRemoval(wallpaper) {
+        if (root.controller.busy || !wallpaper || wallpaper.removable !== true)
+            return
+        root.pendingRemovalId = wallpaper.logicalId || ""
+        root.pendingRemovalName = wallpaper.displayName
+            || I18n.tr("apps.settings.pages.paper.wallpaper.text.my_wallpaper", "My Wallpaper")
+        if (root.pendingRemovalId !== "")
+            wallpaperRemoveDialog.open()
+    }
+
+    function clearPendingRemovalState() {
+        root.pendingRemovalId = ""
+        root.pendingRemovalName = ""
     }
 
     Component.onCompleted: root.controller.refreshLibrary()
@@ -107,8 +124,9 @@ Item {
 
                     Image {
                         id: previewImage
+                        objectName: "wallpaperPreviewImage"
                         anchors.fill: parent
-                        source: root.controller.effectiveSource
+                        source: root.controller.effectivePreviewUrl
                         fillMode: Image.PreserveAspectCrop
                         asynchronous: true
                         smooth: true
@@ -531,6 +549,101 @@ Item {
         onClosed: root.clearPendingWallpaperState()
     }
 
+    Dialog {
+        id: wallpaperRemoveDialog
+        objectName: "wallpaperRemoveDialog"
+        modal: true
+        width: 340
+        padding: 20
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        anchors.centerIn: Overlay.overlay
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.6) }
+
+        background: Rectangle {
+            radius: 14
+            color: Components.Theme.cardBg
+            border.width: 1
+            border.color: Components.Theme.cardBorder
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 10
+
+            Text {
+                Layout.fillWidth: true
+                text: I18n.tr("apps.settings.pages.paper.wallpaper.text.remove_named_wallpaper",
+                              "Remove “%1”?").replace("%1", root.pendingRemovalName)
+                font.family: Components.Theme.fontFamily
+                font.pixelSize: 15
+                font.weight: Font.Medium
+                color: Components.Theme.textPrimary
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: I18n.tr("apps.settings.pages.paper.wallpaper.text.remove_help",
+                              "This removes it from the Astrea managed wallpaper library.")
+                font.family: Components.Theme.fontFamily
+                font.pixelSize: 12
+                color: Components.Theme.textSecondary
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: I18n.tr("apps.settings.pages.paper.wallpaper.text.original_not_affected",
+                              "Your original image is not affected.")
+                font.family: Components.Theme.fontFamily
+                font.pixelSize: 12
+                color: Components.Theme.textSecondary
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        footer: RowLayout {
+            spacing: 8
+
+            Button {
+                objectName: "wallpaperRemoveCancelButton"
+                Layout.fillWidth: true
+                implicitHeight: 34
+                text: I18n.tr("apps.settings.pages.paper.wallpaper.text.cancel", "Cancel")
+                onClicked: wallpaperRemoveDialog.reject()
+                background: Rectangle {
+                    radius: 8
+                    color: Qt.rgba(1, 1, 1, 0.06)
+                    border.width: 1
+                    border.color: Components.Theme.cardBorder
+                }
+            }
+
+            Button {
+                objectName: "wallpaperRemoveButton"
+                Layout.fillWidth: true
+                implicitHeight: 34
+                enabled: !root.controller.busy && root.pendingRemovalId !== ""
+                text: I18n.tr("apps.settings.pages.paper.wallpaper.action.remove", "Remove")
+                onClicked: wallpaperRemoveDialog.accept()
+                background: Rectangle {
+                    radius: 8
+                    color: parent.enabled ? Components.Theme.accent : Qt.rgba(1, 1, 1, 0.06)
+                    border.width: 1
+                    border.color: Components.Theme.accent
+                }
+            }
+        }
+
+        onAccepted: {
+            const id = root.pendingRemovalId
+            root.clearPendingRemovalState()
+            if (id !== "")
+                root.controller.removeUserWallpaper(id)
+        }
+        onRejected: root.clearPendingRemovalState()
+        onClosed: root.clearPendingRemovalState()
+    }
+
     component WallpaperSection: ColumnLayout {
         id: section
         property string title: ""
@@ -648,12 +761,17 @@ Item {
 
                             Rectangle {
                                 id: tileImage
+                                objectName: "wallpaperTile"
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 radius: 14
                                 color: Qt.rgba(0.05, 0.11, 0.16, 1)
-                                border.width: 1
-                                border.color: tileMouse.containsMouse ? Components.Theme.accent : Components.Theme.cardBorder
+                                border.width: modelData.isCurrent === true ? 2 : 1
+                                border.color: modelData.isCurrent === true
+                                               ? Components.Theme.accent
+                                               : tileMouse.containsMouse
+                                               ? Components.Theme.accent
+                                               : Components.Theme.cardBorder
                                 Behavior on border.color { ColorAnimation { duration: 120 } }
 
                                 Item {
@@ -669,17 +787,45 @@ Item {
                                 }
 
                                 Image {
+                                    objectName: "wallpaperTileImage"
                                     anchors.fill: parent
-                                    source: modelData.resolvedSource || modelData.source || ""
+                                    source: modelData.previewUrl
                                     fillMode: Image.PreserveAspectCrop
                                     asynchronous: true
                                     smooth: true
                                     mipmap: true
                                     cache: true
+                                    sourceSize.width: Math.max(1, Math.round(width))
+                                    sourceSize.height: Math.max(1, Math.round(height))
                                     layer.enabled: true
                                     layer.effect: MultiEffect {
                                         maskEnabled: true
                                         maskSource: tileMask
+                                    }
+                                }
+
+                                Button {
+                                    id: tileRemoveButton
+                                    objectName: "wallpaperRemoveButton"
+                                    visible: modelData.removable === true
+                                             && tileMouse.containsMouse
+                                             && !root.controller.busy
+                                    z: 2
+                                    anchors {
+                                        top: parent.top
+                                        right: parent.right
+                                        margins: 6
+                                    }
+                                    implicitWidth: 62
+                                    implicitHeight: 24
+                                    text: I18n.tr("apps.settings.pages.paper.wallpaper.action.remove", "Remove")
+                                    font.pixelSize: 10
+                                    onClicked: root.beginWallpaperRemoval(modelData)
+                                    background: Rectangle {
+                                        radius: 7
+                                        color: Qt.rgba(0.02, 0.04, 0.06, 0.88)
+                                        border.width: 1
+                                        border.color: Components.Theme.cardBorder
                                     }
                                 }
                             }

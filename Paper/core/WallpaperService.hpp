@@ -117,6 +117,7 @@ public:
                                          const QString &displayName = {});
     WallpaperOperationId addWallpaper(const QString &source,
                                       const QString &displayName = {});
+    WallpaperOperationId removeWallpaper(const QString &logicalId);
     WallpaperOperationId resetWallpaper();
     void reload();
 

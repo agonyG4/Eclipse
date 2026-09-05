@@ -256,7 +256,7 @@ void WallpaperControlServer::handleLine(QLocalSocket *socket, const QByteArray &
     const QString argument = separator < 0 ? QStringLiteral("{}") : text.mid(separator + 1).trimmed();
     if (action != QStringLiteral("get") && action != QStringLiteral("list")
         && action != QStringLiteral("import") && action != QStringLiteral("add")
-        && action != QStringLiteral("set")
+        && action != QStringLiteral("set") && action != QStringLiteral("remove")
         && action != QStringLiteral("reset") && action != QStringLiteral("default")) {
         sendReply(socket,
                   errorReply(QStringLiteral("control-protocol-error"),
@@ -370,6 +370,23 @@ void WallpaperControlServer::handleLine(QLocalSocket *socket, const QByteArray &
             return;
         }
         queueOperation(m_service->addWallpaper(path.toString(), displayName.toString()));
+        return;
+    } else if (action == QStringLiteral("remove")) {
+        const auto id = object.value(QStringLiteral("id"));
+        if (!id.isString() || id.toString().trimmed().isEmpty()) {
+            sendReply(socket,
+                      errorReply(QStringLiteral("invalid-descriptor"),
+                                 QStringLiteral("Wallpaper remove requires a logical ID")));
+            return;
+        }
+        auto &client = m_clients[socket];
+        if (client.operationId) {
+            sendReply(socket,
+                      errorReply(QStringLiteral("control-protocol-error"),
+                                 QStringLiteral("A wallpaper operation is already pending")));
+            return;
+        }
+        queueOperation(m_service->removeWallpaper(id.toString()));
         return;
     } else if (action == QStringLiteral("set")) {
         const auto fit = object.value(QStringLiteral("fit")).toString(QStringLiteral("cover"));

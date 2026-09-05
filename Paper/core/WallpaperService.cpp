@@ -364,6 +364,54 @@ WallpaperOperationId WallpaperService::addWallpaper(const QString &source,
     return operationId;
 }
 
+WallpaperOperationId WallpaperService::removeWallpaper(const QString &logicalId)
+{
+    if (!m_initialized) {
+        initialize();
+    }
+
+    const auto operationId = ++m_nextOperationId;
+    const auto reject = [this, operationId](const QString &code, const QString &message) {
+        finishOperation(operationId,
+                        WallpaperOperationStatus::Rejected,
+                        m_snapshot,
+                        code,
+                        message);
+        return operationId;
+    };
+
+    if (!m_catalog) {
+        return reject(QStringLiteral("wallpaper-catalog-unavailable"),
+                      QStringLiteral("Wallpaper catalog is unavailable"));
+    }
+    if (m_validationActive || m_pendingValidation.has_value()) {
+        return reject(QStringLiteral("paper-request-busy"),
+                      QStringLiteral("Wallpaper removal is unavailable while another wallpaper request is active"));
+    }
+
+    const auto id = logicalId.trimmed();
+    if ((m_snapshot.configured && m_snapshot.configured->logicalId() == id)
+        || m_snapshot.effective.logicalId() == id) {
+        return reject(QStringLiteral("wallpaper-in-use"),
+                      QStringLiteral("The active wallpaper cannot be removed"));
+    }
+
+    if (!m_catalog->resolve(id)) {
+        return reject(QStringLiteral("wallpaper-not-found"),
+                      QStringLiteral("Managed wallpaper was not found"));
+    }
+
+    QString error;
+    if (!m_catalog->removeUserWallpaper(id, &error)) {
+        return reject(QStringLiteral("wallpaper-remove-failed"),
+                      error.isEmpty() ? QStringLiteral("Could not remove managed wallpaper")
+                                      : error);
+    }
+
+    finishOperation(operationId, WallpaperOperationStatus::Succeeded, m_snapshot);
+    return operationId;
+}
+
 WallpaperOperationId WallpaperService::resetWallpaper()
 {
     if (!m_initialized) {

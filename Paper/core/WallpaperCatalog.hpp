@@ -28,6 +28,7 @@ public:
     {
         return importWallpaper(source, {}, errorMessage);
     }
+    bool removeUserWallpaper(const QString &logicalId, QString *errorMessage = nullptr);
 
     QString userDirectory() const;
     QString systemDirectory() const;

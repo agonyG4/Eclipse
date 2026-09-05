@@ -68,6 +68,16 @@ landscape asset migration remain deferred follow-up work. If a user metadata
 sidecar is missing or malformed, Paper leaves the display name empty so Settings
 can provide a localized generic label; digest IDs are never shown as names.
 
+Wallpaper library correctness is also native-owned: Paper projects a preview
+`QUrl` for Settings while retaining raw source and resolved-source metadata,
+and QML consumes only those projections. The bounded Paper actions are:
+`wallpaper get`, `list`, `import`, `add`, `set`, `remove`, `reset`, and
+`default`. Remove accepts a stable logical ID only, removes only a managed user
+image and its sidecar inside Paper's configured library, rejects the active
+wallpaper, and never deletes the original import source. An inactive removal
+does not change configured/effective selection, generation, fit, watchers, or
+wallpaper-change signals.
+
 ## Source Handoff Policy
 
 Use only `tools/create-source-archive`. It requires `main` and a clean worktree

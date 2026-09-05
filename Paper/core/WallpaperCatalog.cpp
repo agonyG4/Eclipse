@@ -23,6 +23,7 @@ constexpr qint64 kMaxImagePixels = 32 * 1024 * 1024;
 constexpr int kMaxImageDimension = 8192;
 constexpr int kMaxDisplayNameLength = 128;
 const auto kDefaultImportedDisplayName = QStringLiteral("Wallpaper");
+const auto kManagedWallpaperPrefix = QStringLiteral("astrea://wallpaper/user/");
 
 void setError(QString *errorMessage, const QString &message)
 {
@@ -37,6 +38,37 @@ bool isImageFile(const QFileInfo &info)
     return suffix == QStringLiteral("jpg") || suffix == QStringLiteral("jpeg")
         || suffix == QStringLiteral("png") || suffix == QStringLiteral("webp")
         || suffix == QStringLiteral("bmp") || suffix == QStringLiteral("gif");
+}
+
+bool managedDigestForId(const QString &logicalId, QString *digest)
+{
+    if (!logicalId.startsWith(kManagedWallpaperPrefix)) {
+        return false;
+    }
+    const auto value = logicalId.mid(kManagedWallpaperPrefix.size());
+    if (value.size() != 64) {
+        return false;
+    }
+    for (const auto character : value) {
+        const auto latin = character.toLatin1();
+        if (!((latin >= '0' && latin <= '9') || (latin >= 'a' && latin <= 'f'))) {
+            return false;
+        }
+    }
+    if (digest) {
+        *digest = value;
+    }
+    return true;
+}
+
+bool isDirectChildFile(const QFileInfo &info, const QString &canonicalDirectory)
+{
+    if (!info.exists() || !info.isFile() || info.isSymLink()) {
+        return false;
+    }
+    const auto canonicalPath = info.canonicalFilePath();
+    return !canonicalPath.isEmpty()
+        && QFileInfo(canonicalPath).absolutePath() == canonicalDirectory;
 }
 
 } // namespace
@@ -93,6 +125,71 @@ std::optional<WallpaperDescriptor> WallpaperCatalog::resolve(const QString &logi
 bool WallpaperCatalog::contains(const QString &logicalId) const
 {
     return resolve(logicalId).has_value();
+}
+
+bool WallpaperCatalog::removeUserWallpaper(const QString &logicalId, QString *errorMessage)
+{
+    if (errorMessage) {
+        errorMessage->clear();
+    }
+
+    QString digest;
+    if (!managedDigestForId(logicalId, &digest)) {
+        setError(errorMessage,
+                 QStringLiteral("Wallpaper ID is not a managed content-addressed user wallpaper"));
+        return false;
+    }
+
+    const auto descriptor = resolve(logicalId);
+    if (!descriptor || descriptor->origin() != WallpaperOrigin::User) {
+        setError(errorMessage, QStringLiteral("Managed user wallpaper was not found"));
+        return false;
+    }
+
+    const auto canonicalDirectory = QFileInfo(m_userDirectory).canonicalFilePath();
+    if (canonicalDirectory.isEmpty()) {
+        setError(errorMessage, QStringLiteral("Paper user wallpaper directory is unavailable"));
+        return false;
+    }
+
+    const auto imageSource = descriptor->resolvedSource().isEmpty() ? descriptor->source()
+                                                                      : descriptor->resolvedSource();
+    const QFileInfo imageInfo(imageSource);
+    const auto canonicalImage = imageInfo.canonicalFilePath();
+    if (!isDirectChildFile(imageInfo, canonicalDirectory) || canonicalImage.isEmpty()
+        || QFileInfo(canonicalImage).completeBaseName() != digest
+        || !isImageFile(QFileInfo(canonicalImage))) {
+        setError(errorMessage,
+                 QStringLiteral("Managed wallpaper source is outside the Paper user library"));
+        refresh();
+        return false;
+    }
+
+    const auto metadataPath = metadataPathFor(canonicalDirectory, digest);
+    const QFileInfo metadataInfo(metadataPath);
+    if (metadataInfo.exists()
+        && (!isDirectChildFile(metadataInfo, canonicalDirectory)
+            || metadataInfo.isSymLink())) {
+        setError(errorMessage,
+                 QStringLiteral("Managed wallpaper metadata is outside the Paper user library"));
+        refresh();
+        return false;
+    }
+
+    if (!QFile::remove(canonicalImage)) {
+        setError(errorMessage, QStringLiteral("Could not remove managed wallpaper image"));
+        refresh();
+        return false;
+    }
+
+    if (metadataInfo.exists() && !QFile::remove(metadataPath)) {
+        setError(errorMessage, QStringLiteral("Could not remove managed wallpaper metadata"));
+        refresh();
+        return false;
+    }
+
+    refresh();
+    return true;
 }
 
 std::optional<WallpaperDescriptor> WallpaperCatalog::importWallpaper(const QString &source,

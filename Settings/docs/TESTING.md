@@ -31,6 +31,13 @@ the full application QML route, disabled deferred Wallpaper controls,
 representative registered QML components, AppIcon provider ownership,
 Compositor source policy, and structural ownership invariants.
 
+Wallpaper correctness is covered by `paper-catalog-test`,
+`paper-service-test`, `paper-control-server-test`, and
+`settings-wallpaper-controller-test`. These tests exercise native preview URL
+projection (including resource and special-character local paths), managed
+content-addressed removal, active-wallpaper rejection, bounded JSON removal,
+refreshed catalog responses, and Settings' non-optimistic removal transport.
+
 The repository-level `create-source-archive-test` runs Bash syntax checks and
 qualifies a Git-based archive in an isolated temporary repository.
 

@@ -39,6 +39,7 @@ private slots:
     void migratesLegacySymlinkIntoManagedCatalog();
     void missingCatalogSelectionFallsBackWithoutErasingIntent();
     void committedWallpaperChangeEmitsOnce();
+    void inactiveManagedRemovalPreservesWallpaperState();
 
 private:
     static QString writeImage(const QString &path);
@@ -677,6 +678,74 @@ void WallpaperServiceTest::committedWallpaperChangeEmitsOnce()
     QCOMPARE(changed.count(), 1);
     QCOMPARE(qvariant_cast<qulonglong>(changed.at(0).at(2)), service.snapshot().generation);
     QCOMPARE(changed.at(0).at(3).toString(), QStringLiteral("runtime"));
+}
+
+void WallpaperServiceTest::inactiveManagedRemovalPreservesWallpaperState()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const auto factory = writeImage(temp.filePath(QStringLiteral("factory.png")));
+    const auto emergency = writeImage(temp.filePath(QStringLiteral("emergency.png")));
+    const auto activeSource = writeImage(temp.filePath(QStringLiteral("active.png")));
+    const auto inactiveSource = writeImage(temp.filePath(QStringLiteral("inactive.png")));
+    QImage inactiveImage(inactiveSource);
+    inactiveImage.fill(Qt::red);
+    QVERIFY(inactiveImage.save(inactiveSource));
+    const auto resolver = WallpaperResolver(factory, emergency);
+    auto catalog = std::make_shared<WallpaperCatalog>(resolver, temp.filePath(QStringLiteral("library")));
+    WallpaperService service(resolver,
+                             persistence(temp.filePath(QStringLiteral("paper.ini"))),
+                             catalog);
+    service.initialize();
+
+    QSignalSpy finished(&service, &WallpaperService::wallpaperOperationFinished);
+    const auto activeOperation = service.importWallpaper(activeSource,
+                                                         WallpaperFit::Contain,
+                                                         QStringLiteral("Active"));
+    QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 1500);
+    QCOMPARE(qvariant_cast<WallpaperOperationResult>(finished.at(0).at(1)).id, activeOperation);
+    finished.clear();
+    const auto addOperation = service.addWallpaper(inactiveSource, QStringLiteral("Inactive"));
+    QCOMPARE(qvariant_cast<WallpaperOperationResult>(finished.at(0).at(1)).id, addOperation);
+
+    QString inactiveId;
+    QString inactiveManagedImage;
+    for (const auto &entry : service.listWallpapers()) {
+        if (entry.displayName() == QStringLiteral("Inactive")) {
+            inactiveId = entry.logicalId();
+            inactiveManagedImage = entry.source();
+            break;
+        }
+    }
+    QVERIFY(!inactiveId.isEmpty());
+    QVERIFY(QFileInfo::exists(inactiveManagedImage));
+    const auto configuredId = service.snapshot().configured->logicalId();
+    const auto effectiveId = service.snapshot().effective.logicalId();
+    const auto fit = service.snapshot().effective.fit();
+    const auto generation = service.snapshot().generation;
+    QSignalSpy changed(&service, &WallpaperService::wallpaperChanged);
+
+    finished.clear();
+    const auto removeOperation = service.removeWallpaper(inactiveId);
+    QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 1000);
+    const auto removed = qvariant_cast<WallpaperOperationResult>(finished.at(0).at(1));
+    QCOMPARE(removed.id, removeOperation);
+    QCOMPARE(removed.status, WallpaperOperationStatus::Succeeded);
+    QCOMPARE(changed.count(), 0);
+    QCOMPARE(service.snapshot().configured->logicalId(), configuredId);
+    QCOMPARE(service.snapshot().effective.logicalId(), effectiveId);
+    QCOMPARE(service.snapshot().effective.fit(), fit);
+    QCOMPARE(service.snapshot().generation, generation);
+    QVERIFY(!QFileInfo::exists(inactiveManagedImage));
+
+    finished.clear();
+    const auto currentRemove = service.removeWallpaper(configuredId);
+    QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 1000);
+    const auto rejected = qvariant_cast<WallpaperOperationResult>(finished.at(0).at(1));
+    QCOMPARE(rejected.id, currentRemove);
+    QCOMPARE(rejected.status, WallpaperOperationStatus::Rejected);
+    QCOMPARE(rejected.errorCode, QStringLiteral("wallpaper-in-use"));
+    QVERIFY(QFileInfo::exists(service.snapshot().configured->source()));
 }
 
 QTEST_MAIN(WallpaperServiceTest)

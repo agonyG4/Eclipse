@@ -26,6 +26,7 @@ private slots:
     void ignoresMalformedOrMissingMetadataWithoutExposingDigest();
     void rejectsFailedMetadataPublicationWithoutCatalogEntry();
     void rejectsDirectoryAndUnsupportedImage();
+    void removesOnlyManagedUserWallpapers();
 };
 
 namespace {
@@ -239,6 +240,56 @@ void WallpaperCatalogTest::rejectsDirectoryAndUnsupportedImage()
                                      &controlNameError)
                  .has_value());
     QVERIFY(!controlNameError.isEmpty());
+}
+
+void WallpaperCatalogTest::removesOnlyManagedUserWallpapers()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const auto factory = writeImage(temp.filePath(QStringLiteral("factory.png")));
+    const auto emergency = writeImage(temp.filePath(QStringLiteral("emergency.png")));
+    const auto source = writeImage(temp.filePath(QStringLiteral("source.png")));
+    const auto outside = writeImage(temp.filePath(QStringLiteral("outside.png")));
+    const auto userDirectory = temp.filePath(QStringLiteral("library"));
+    const auto systemDirectory = temp.filePath(QStringLiteral("system"));
+    QVERIFY(QDir().mkpath(systemDirectory));
+    writeImage(QDir(systemDirectory).filePath(QStringLiteral("system.png")));
+
+    WallpaperCatalog catalog(WallpaperResolver(factory, emergency), userDirectory, systemDirectory);
+    QString error;
+    const auto managed = catalog.importWallpaper(source, QStringLiteral("Managed"), &error);
+    QVERIFY2(managed.has_value(), qPrintable(error));
+    const auto managedImage = managed->source();
+    const auto digest = managed->logicalId().section(QLatin1Char('/'), -1);
+    const auto metadata = QDir(userDirectory).filePath(digest + QStringLiteral(".json"));
+    QVERIFY(QFileInfo::exists(managedImage));
+    QVERIFY(QFileInfo::exists(metadata));
+
+    QVERIFY(catalog.removeUserWallpaper(managed->logicalId(), &error));
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QVERIFY(!QFileInfo::exists(managedImage));
+    QVERIFY(!QFileInfo::exists(metadata));
+    QVERIFY(QFileInfo::exists(source));
+    QVERIFY(!catalog.resolve(managed->logicalId()).has_value());
+
+    const auto system = catalog.resolve(QStringLiteral("astrea://wallpaper/system/system"));
+    QVERIFY(system.has_value());
+    QVERIFY(!catalog.removeUserWallpaper(system->logicalId(), &error));
+    QVERIFY(QFileInfo::exists(system->source()));
+
+    const auto escapedId = QStringLiteral("astrea://wallpaper/user/")
+        + QString(64, QLatin1Char('a'));
+    const auto escapedLink = QDir(userDirectory).filePath(QString(64, QLatin1Char('a'))
+                                                          + QStringLiteral(".png"));
+    QVERIFY(QFile::link(outside, escapedLink));
+    catalog.refresh();
+    QVERIFY(catalog.resolve(escapedId).has_value());
+    QVERIFY(!catalog.removeUserWallpaper(escapedId, &error));
+    QVERIFY(QFileInfo::exists(outside));
+    QVERIFY(QFileInfo::exists(escapedLink));
+    QVERIFY(!catalog.removeUserWallpaper(QStringLiteral("astrea://wallpaper/user/not-a-digest"),
+                                         &error));
+    QVERIFY(!error.isEmpty());
 }
 
 QTEST_MAIN(WallpaperCatalogTest)

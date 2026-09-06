@@ -12,16 +12,20 @@ QQC2.Slider {
     // inherited Slider interaction contract.
     property bool showEndpointGlyphs: true
 
+    leftPadding: showEndpointGlyphs
+        ? endpointSize + endpointGap - thumbWidth / 2
+        : 0
+    rightPadding: leftPadding
+
     readonly property real trackHeight: 4
     readonly property real thumbWidth: 28
     readonly property real thumbHeight: 18
     readonly property real endpointSize: 18
-    readonly property real endpointGap: 9
-    readonly property real trackStart: showEndpointGlyphs
-        ? endpointSize + endpointGap
-        : thumbWidth / 2
-    readonly property real trackEnd: trackStart
-    readonly property real trackWidth: Math.max(0, width - trackStart - trackEnd)
+    readonly property real endpointGap: 13
+    readonly property real handleTravel: Math.max(0, availableWidth - thumbWidth)
+    readonly property real trackStart: leftPadding + thumbWidth / 2
+    readonly property real trackEnd: trackStart + handleTravel
+    readonly property real trackWidth: Math.max(0, trackEnd - trackStart)
     readonly property color neutralTrackColor: Qt.rgba(
         Components.Theme.textTertiary.r,
         Components.Theme.textTertiary.g,
@@ -29,7 +33,11 @@ QQC2.Slider {
         Components.Theme.isLight ? 0.28 : 0.36)
     readonly property color thumbSurface: Components.Theme.isLight
         ? Qt.rgba(1, 1, 1, 0.98)
-        : Components.Theme.cardBg
+        : Qt.rgba(
+            Components.Theme.textPrimary.r,
+            Components.Theme.textPrimary.g,
+            Components.Theme.textPrimary.b,
+            0.98)
     readonly property color thumbBorder: Qt.rgba(
         Components.Theme.textPrimary.r,
         Components.Theme.textPrimary.g,
@@ -117,7 +125,7 @@ QQC2.Slider {
     handle: Item {
         width: root.thumbWidth
         height: root.thumbHeight
-        x: root.trackStart + root.visualPosition * root.trackWidth - width / 2
+        x: root.leftPadding + root.visualPosition * (root.availableWidth - width)
         y: (root.height - height) / 2
         scale: root.pressed ? 1.04 : (root.hovered ? 1.02 : 1.0)
         opacity: root.enabled ? 1 : Components.Theme.opacityMuted

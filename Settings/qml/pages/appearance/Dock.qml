@@ -1,7 +1,7 @@
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
 import "../../components" as Components
+import "../../components/controls" as Controls
 import "../../components/form" as Form
 
 Item {
@@ -153,9 +153,8 @@ Item {
                 label: I18n.tr("apps.settings.pages.appearance.dock.label.icon_size", "Icon size")
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.icon_size", "Choose the resting size of Dock icons")
 
-                Slider {
+                Controls.Slider {
                     objectName: "iconSizeSlider"
-                    width: 180
                     from: 32
                     to: 64
                     stepSize: 1
@@ -170,9 +169,8 @@ Item {
                 label: I18n.tr("apps.settings.pages.appearance.dock.label.icon_spacing", "Icon spacing")
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.icon_spacing", "Set the distance between neighboring icons")
 
-                Slider {
+                Controls.Slider {
                     objectName: "itemSpacingSlider"
-                    width: 180
                     from: 4
                     to: 24
                     stepSize: 1
@@ -187,9 +185,8 @@ Item {
                 label: I18n.tr("apps.settings.pages.appearance.dock.label.panel_padding", "Panel padding")
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.panel_padding", "Set the space between the panel edge and icons")
 
-                Slider {
+                Controls.Slider {
                     objectName: "panelPaddingSlider"
-                    width: 180
                     from: 8
                     to: 32
                     stepSize: 1
@@ -203,7 +200,7 @@ Item {
                 label: I18n.tr("apps.settings.pages.appearance.dock.label.position", "Position")
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.position", "Choose which screen edge owns the Dock")
 
-                Form.SelectButton {
+                Controls.SelectButton {
                     width: 180
                     label: root.positionOptions[root.indexOf(["bottom", "left", "right"], root.controller.position)]
                     options: root.positionOptions
@@ -216,7 +213,7 @@ Item {
                 label: I18n.tr("apps.settings.pages.appearance.dock.label.floating", "Floating Dock")
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.floating", "Keep the configured edge distance when the Dock is floating")
 
-                Form.ToggleSwitch {
+                Controls.ToggleSwitch {
                     checked: root.controller.floating
                     onToggled: targetChecked => { root.controller.setFloating(targetChecked); root.controller.flush() }
                 }
@@ -227,9 +224,8 @@ Item {
                 label: I18n.tr("apps.settings.pages.appearance.dock.label.edge_margin", "Distance from screen edge")
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.edge_margin", "Preserved while Floating Dock is disabled")
 
-                Slider {
+                Controls.Slider {
                     objectName: "edgeMarginSlider"
-                    width: 180
                     from: 0
                     to: 48
                     stepSize: 1
@@ -244,9 +240,8 @@ Item {
                 label: I18n.tr("apps.settings.pages.appearance.dock.label.corner_radius", "Corner radius")
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.corner_radius", "Round the Dock panel corners")
 
-                Slider {
+                Controls.Slider {
                     objectName: "cornerRadiusSlider"
-                    width: 180
                     from: 0
                     to: 48
                     stepSize: 1
@@ -269,7 +264,7 @@ Item {
                 label: I18n.tr("apps.settings.pages.appearance.dock.label.hover_effect", "Hover effect")
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.hover_effect", "Choose how icons respond to pointer movement")
 
-                Form.SelectButton {
+                Controls.SelectButton {
                     width: 180
                     label: root.hoverOptions[root.indexOf(["none", "lift", "magnification"], root.controller.hoverEffect)]
                     options: root.hoverOptions
@@ -283,9 +278,8 @@ Item {
                 label: I18n.tr("apps.settings.pages.appearance.dock.label.magnification_strength", "Magnification strength")
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.magnification_strength", "Set how large hovered icons become")
 
-                Slider {
+                Controls.Slider {
                     objectName: "magnificationScaleSlider"
-                    width: 180
                     enabled: root.magnificationSelected
                     from: 1.0
                     to: 2.0
@@ -301,9 +295,8 @@ Item {
                 label: I18n.tr("apps.settings.pages.appearance.dock.label.magnification_radius", "Magnification radius")
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.magnification_radius", "Set how far magnification reaches along the Dock")
 
-                Slider {
+                Controls.Slider {
                     objectName: "magnificationRadiusSlider"
-                    width: 180
                     enabled: root.magnificationSelected
                     from: 1.0
                     to: 4.0
@@ -318,7 +311,7 @@ Item {
                 label: I18n.tr("apps.settings.pages.appearance.dock.label.auto_hide", "Auto-hide")
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.auto_hide", "Choose when the Dock collapses while staying edge-revealable")
 
-                Form.SelectButton {
+                Controls.SelectButton {
                     width: 180
                     label: root.autoHideOptions[root.indexOf(["never", "intelligent", "always"], root.controller.autoHide)]
                     options: root.autoHideOptions
@@ -331,7 +324,7 @@ Item {
                 label: I18n.tr("apps.settings.pages.appearance.dock.label.animations", "Animations")
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.animations", "Animate Dock movement and hover transitions")
 
-                Form.ToggleSwitch {
+                Controls.ToggleSwitch {
                     checked: root.controller.animationsEnabled
                     onToggled: targetChecked => { root.controller.setAnimationsEnabled(targetChecked); root.controller.flush() }
                 }
@@ -342,9 +335,8 @@ Item {
                 label: I18n.tr("apps.settings.pages.appearance.dock.label.animation_speed", "Animation speed")
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.animation_speed", "Adjust how quickly Dock transitions complete")
 
-                Slider {
+                Controls.Slider {
                     objectName: "animationSpeedSlider"
-                    width: 180
                     enabled: root.controller.animationsEnabled
                     from: 0.25
                     to: 4.0
@@ -368,7 +360,7 @@ Item {
                 label: I18n.tr("apps.settings.pages.appearance.dock.label.indicator_style", "Indicator style")
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.indicator_style", "Show which running applications are active")
 
-                Form.SelectButton {
+                Controls.SelectButton {
                     width: 180
                     label: root.indicatorOptions[root.indexOf(["line", "dot", "none"], root.controller.indicatorStyle)]
                     options: root.indicatorOptions
@@ -383,9 +375,8 @@ Item {
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.indicator_size", "Set line thickness or dot diameter")
                 isLast: true
 
-                Slider {
+                Controls.Slider {
                     objectName: "indicatorSizeSlider"
-                    width: 180
                     enabled: root.controller.indicatorStyle !== "none"
                     from: 1
                     to: 12

@@ -4,6 +4,7 @@ import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Effects
 import "../../components" as Components
+import "../../components/controls" as Controls
 import "../../components/form" as Form
 import "../../components/menu" as WallpaperMenu
 
@@ -272,7 +273,7 @@ Item {
                             font.pixelSize: 13
                             color: Components.Theme.textPrimary
                         }
-                        Form.ToggleSwitch {
+                        Controls.ToggleSwitch {
                             id: allWorkspacesToggle
                             objectName: "allWorkspacesToggle"
                             checked: true
@@ -290,7 +291,7 @@ Item {
                             font.pixelSize: 13
                             color: Components.Theme.textPrimary
                         }
-                        Form.ToggleSwitch {
+                        Controls.ToggleSwitch {
                             id: blurredWallpaperToggle
                             objectName: "blurredWallpaperToggle"
                             checked: false
@@ -353,7 +354,7 @@ Item {
                 sublabel: I18n.tr("apps.settings.pages.paper.wallpaper.sublabel.awww_wallpaper_animation", "awww wallpaper animation")
                 isLast: true
 
-                Form.SelectButton {
+                Controls.SelectButton {
                     objectName: "transitionSelector"
                     implicitWidth: 140
                     label: root.transitions[0]

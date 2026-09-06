@@ -7,6 +7,10 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     components/controls/ButtonCapsule.qml
     components/controls/DualButton.qml
     components/controls/FloatingButton.qml
+    components/controls/ToggleSwitch.qml
+    components/controls/SelectButton.qml
+    components/controls/SearchField.qml
+    components/controls/Slider.qml
     components/feedback/DnsPresetChip.qml
     components/feedback/DnsStatusCard.qml
     components/feedback/ProgressCard.qml
@@ -15,11 +19,8 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     components/form/FormCard.qml
     components/form/IconListRow.qml
     components/form/ScrollPage.qml
-    components/form/SearchField.qml
     components/form/SectionHeader.qml
-    components/form/SelectButton.qml
     components/form/SettingRow.qml
-    components/form/ToggleSwitch.qml
     components/menu/ContextMenu.qml
     components/menu/ContextMenuAction.qml
     components/menu/ContextMenuDivider.qml

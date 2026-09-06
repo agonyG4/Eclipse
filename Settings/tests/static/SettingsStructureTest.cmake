@@ -375,6 +375,56 @@ foreach(wallpaper_forbidden_token IN ITEMS
     endif()
 endforeach()
 
+file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/Dock.qml" dock_source)
+foreach(dock_required_token IN ITEMS
+    "import \"../../components/controls\" as Controls"
+    "Controls.Slider"
+    "Controls.ToggleSwitch"
+    "Controls.SelectButton"
+)
+    string(FIND "${dock_source}" "${dock_required_token}" dock_required_position)
+    if(dock_required_position EQUAL -1)
+        message(FATAL_ERROR "Dock page is missing reusable control contract '${dock_required_token}'")
+    endif()
+endforeach()
+if(dock_source MATCHES "(^|\\n)[ \\t]*Slider[ \\t]*\\{")
+    message(FATAL_ERROR "Dock page contains a direct unqualified Slider instance")
+endif()
+if(dock_source MATCHES "(^|\\n)[ \\t]*import QtQuick\\.Controls([ \\t]*$|[ \\t]*\\n)")
+    message(FATAL_ERROR "Dock page retains the unused unqualified Qt Quick Controls import")
+endif()
+
+set(settings_control_paths
+    components/controls/Slider.qml
+    components/controls/ToggleSwitch.qml
+    components/controls/SelectButton.qml
+    components/controls/SearchField.qml
+)
+foreach(relative_path IN LISTS settings_control_paths)
+    list(FIND registered_qml_files "${relative_path}" registered_index)
+    if(registered_index EQUAL -1)
+        message(FATAL_ERROR "Reusable control is not registered: ${relative_path}")
+    endif()
+    if(NOT EXISTS "${SETTINGS_SOURCE_DIR}/qml/${relative_path}")
+        message(FATAL_ERROR "Reusable control source is missing: ${relative_path}")
+    endif()
+endforeach()
+
+set(legacy_form_control_paths
+    components/form/ToggleSwitch.qml
+    components/form/SelectButton.qml
+    components/form/SearchField.qml
+)
+foreach(relative_path IN LISTS legacy_form_control_paths)
+    list(FIND registered_qml_files "${relative_path}" registered_index)
+    if(NOT registered_index EQUAL -1)
+        message(FATAL_ERROR "Legacy form control remains registered: ${relative_path}")
+    endif()
+    if(EXISTS "${SETTINGS_SOURCE_DIR}/qml/${relative_path}")
+        message(FATAL_ERROR "Legacy form control source remains present: ${relative_path}")
+    endif()
+endforeach()
+
 set(forbidden_production_tokens
     "import Quickshell"
     "Quickshell.Io"
@@ -399,4 +449,7 @@ foreach(relative_path IN LISTS production_source_files)
 endforeach()
 
 list(LENGTH registered_qml_files registered_qml_file_count)
+if(NOT registered_qml_file_count EQUAL 40)
+    message(FATAL_ERROR "Settings module must register exactly 40 QML files, found ${registered_qml_file_count}")
+endif()
 message(STATUS "Settings structure invariants passed (${registered_qml_file_count} registered QML files checked)")

@@ -49,6 +49,14 @@ Item {
         }
     }
 
+    Settings.Slider {
+        objectName: "componentSmokeSlider"
+        from: 0
+        to: 10
+        stepSize: 2
+        value: 4
+    }
+
     Settings.NavItem {
         width: 240
         height: 40
@@ -82,6 +90,14 @@ Item {
 
     QObject *root = component.create();
     QVERIFY(root != nullptr);
+    QObject *slider = root->findChild<QObject *>(QStringLiteral("componentSmokeSlider"));
+    QVERIFY(slider != nullptr);
+    QCOMPARE(slider->property("from").toReal(), 0.0);
+    QCOMPARE(slider->property("to").toReal(), 10.0);
+    QCOMPARE(slider->property("stepSize").toReal(), 2.0);
+    QCOMPARE(slider->property("value").toReal(), 4.0);
+    QVERIFY(QMetaObject::invokeMethod(slider, "increase"));
+    QCOMPARE(slider->property("value").toReal(), 6.0);
     QVERIFY2(qmlWarnings.isEmpty(),
              qPrintable(qmlWarnings.isEmpty() ? QString() : qmlWarnings.constFirst().toString()));
     delete root;

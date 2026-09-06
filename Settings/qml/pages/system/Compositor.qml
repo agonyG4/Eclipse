@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import "../../components" as Components
+import "../../components/controls" as Controls
 import "../../components/form" as Form
 
 Item {
@@ -78,7 +79,7 @@ Item {
                 label: I18n.tr("apps.settings.pages.system.compositor.label.animations", "Animations")
                 sublabel: I18n.tr("apps.settings.pages.system.compositor.sublabel.animations", "Animate window movement, workspace transitions, and compositor effects")
 
-                Form.ToggleSwitch {
+                Controls.ToggleSwitch {
                     checked: root.animationsEnabled
                     onToggled: targetChecked => root.animationsEnabled = targetChecked
                 }
@@ -88,7 +89,7 @@ Item {
                 label: I18n.tr("apps.settings.pages.system.compositor.label.background_blur", "Background blur")
                 sublabel: I18n.tr("apps.settings.pages.system.compositor.sublabel.background_blur", "Blur transparent application and shell surfaces")
 
-                Form.ToggleSwitch {
+                Controls.ToggleSwitch {
                     checked: root.blurEnabled
                     onToggled: targetChecked => root.blurEnabled = targetChecked
                 }
@@ -99,7 +100,7 @@ Item {
                 sublabel: I18n.tr("apps.settings.pages.system.compositor.sublabel.window_shadows", "Draw shadows around floating and layered surfaces")
                 isLast: true
 
-                Form.ToggleSwitch {
+                Controls.ToggleSwitch {
                     checked: root.shadowsEnabled
                     onToggled: targetChecked => root.shadowsEnabled = targetChecked
                 }
@@ -118,7 +119,7 @@ Item {
                 label: I18n.tr("apps.settings.pages.system.compositor.label.variable_refresh_rate", "Variable refresh rate")
                 sublabel: I18n.tr("apps.settings.pages.system.compositor.sublabel.variable_refresh_rate", "Control when compatible displays may use adaptive refresh")
 
-                Form.SelectButton {
+                Controls.SelectButton {
                     width: 180
                     label: root.vrrOptions[root.vrrModeIndex]
                     options: root.vrrOptions
@@ -131,7 +132,7 @@ Item {
                 label: I18n.tr("apps.settings.pages.system.compositor.label.tearing_policy", "Tearing policy")
                 sublabel: I18n.tr("apps.settings.pages.system.compositor.sublabel.tearing_policy", "Allow immediate presentation for latency-sensitive fullscreen applications")
 
-                Form.SelectButton {
+                Controls.SelectButton {
                     width: 180
                     label: root.tearingPolicyOptions[root.tearingPolicyIndex]
                     options: root.tearingPolicyOptions
@@ -144,7 +145,7 @@ Item {
                 label: I18n.tr("apps.settings.pages.system.compositor.label.direct_scanout", "Direct scanout")
                 sublabel: I18n.tr("apps.settings.pages.system.compositor.sublabel.direct_scanout", "Present eligible fullscreen surfaces directly when possible")
 
-                Form.ToggleSwitch {
+                Controls.ToggleSwitch {
                     checked: root.directScanoutEnabled
                     onToggled: targetChecked => root.directScanoutEnabled = targetChecked
                 }
@@ -155,7 +156,7 @@ Item {
                 sublabel: I18n.tr("apps.settings.pages.system.compositor.sublabel.triple_buffering", "Select the compositor frame-buffering policy")
                 isLast: true
 
-                Form.SelectButton {
+                Controls.SelectButton {
                     width: 180
                     label: root.tripleBufferingOptions[root.tripleBufferingModeIndex]
                     options: root.tripleBufferingOptions
@@ -177,7 +178,7 @@ Item {
                 label: I18n.tr("apps.settings.pages.system.compositor.label.xwayland", "XWayland")
                 sublabel: I18n.tr("apps.settings.pages.system.compositor.sublabel.xwayland", "Allow legacy X11 applications to run through XWayland")
 
-                Form.ToggleSwitch {
+                Controls.ToggleSwitch {
                     checked: root.xwaylandEnabled
                     onToggled: targetChecked => root.xwaylandEnabled = targetChecked
                 }
@@ -188,7 +189,7 @@ Item {
                 sublabel: I18n.tr("apps.settings.pages.system.compositor.sublabel.hardware_cursor", "Choose whether the cursor uses a hardware plane or compositor rendering")
                 isLast: true
 
-                Form.SelectButton {
+                Controls.SelectButton {
                     width: 180
                     label: root.hardwareCursorOptions[root.hardwareCursorModeIndex]
                     options: root.hardwareCursorOptions

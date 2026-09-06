@@ -6,20 +6,20 @@ archived build directory as evidence.
 ## Debug and Release
 
 ```bash
-cmake -S . -B build/settings-hub-debug -G Ninja \
+cmake -S . -B build/settings-slider-debug -G Ninja \
   -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON \
   -DASTREA_BUILD_TESTS=ON -DASTREA_SETTINGS_BUILD_TESTS=ON \
   -DASTREA_ENABLE_LAYER_SHELL=OFF
-cmake --build build/settings-hub-debug --parallel
-ctest --test-dir build/settings-hub-debug --output-on-failure
-ctest --test-dir build/settings-hub-debug -N
+cmake --build build/settings-slider-debug --parallel
+ctest --test-dir build/settings-slider-debug --output-on-failure
+cmake --build build/settings-slider-debug --target astrea-settings-ui_qmllint
 
-cmake -S . -B build/settings-hub-release -G Ninja \
+cmake -S . -B build/settings-slider-release -G Ninja \
   -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
   -DASTREA_BUILD_TESTS=ON -DASTREA_SETTINGS_BUILD_TESTS=ON \
   -DASTREA_ENABLE_LAYER_SHELL=OFF
-cmake --build build/settings-hub-release --parallel
-ctest --test-dir build/settings-hub-release --output-on-failure
+cmake --build build/settings-slider-release --parallel
+ctest --test-dir build/settings-slider-release --output-on-failure
 ```
 
 The Settings tests cover controller behavior, Dock defaults and typed atomic
@@ -43,18 +43,29 @@ qualifies a Git-based archive in an isolated temporary repository.
 
 ## QML Registration and Lint
 
-The authoritative QML list is in `qml/CMakeLists.txt`. It contains 39 files and
+The authoritative QML list is in `qml/CMakeLists.txt`. It contains 40 files and
 is registered once by `astrea-settings-ui`. The application and integration
 tests consume the same module and generated plugin.
 
 Build the module lint target in a fresh build:
 
 ```bash
-cmake --build build/settings-hub-debug --target astrea-settings-ui_qmllint
+cmake --build build/settings-slider-debug --target astrea-settings-ui_qmllint
 ```
 
 The final report must record the registered count, linted count, and warning and
 error counts. Registered and linted counts must match.
+
+After implementation, run these source audits from the repository root:
+
+```bash
+grep -RIn 'Form\.ToggleSwitch\|Form\.SelectButton\|Form\.SearchField' Settings/qml
+grep -RIn 'components/form/ToggleSwitch.qml\|components/form/SelectButton.qml\|components/form/SearchField.qml' Settings
+grep -nE '^[[:space:]]*Slider[[:space:]]*\{' Settings/qml/pages/appearance/Dock.qml
+```
+
+The current-source results must be empty. Historical documentation may mention
+the old paths only when it is clearly describing the migration.
 
 ## Source and Dependency Policy
 
@@ -79,4 +90,8 @@ have no LayerShellQt or unexpected compositor dependency in `readelf -d` or
 The agent does not inspect or control the desktop session, use desktop input or
 screenshot automation, or claim visual parity. The user performs the manual
 Hyprland qualification with the exact freshly built executable path supplied in
-the final report. No Typhon session is launched by this workflow.
+the final report. Check light and dark themes, two accent colors, minimum/
+middle/maximum values, hover, pressed/dragged, disabled magnification/
+animation-speed/indicator-size controls, live Dock preview updates, endpoint
+alignment, and no clipping at the minimum Settings window size. No Typhon
+session is launched by this workflow.

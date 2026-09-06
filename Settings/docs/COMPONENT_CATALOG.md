@@ -1,7 +1,14 @@
 # Registered QML Components
 
-The `astrea-settings-ui` module registers 39 QML files. The canonical legacy
+The `astrea-settings-ui` module registers 40 QML files. The canonical legacy
 source column points to the corresponding Astrea source where one exists.
+
+Component ownership is intentional: `controls/` contains reusable interactive
+primitives, while `form/` contains Settings-specific structural and layout
+composition. When Qt Quick Controls already provides the semantic control,
+new interactive primitives should derive from or wrap that control and replace
+its visual delegates instead of rebuilding pointer, keyboard, or touch
+interaction with a raw `MouseArea`.
 
 | Path | Public type | Category | Canonical legacy source | Current consumers | Classification |
 | --- | --- | --- | --- | --- | --- |
@@ -13,6 +20,10 @@ source column points to the corresponding Astrea source where one exists.
 | `qml/components/controls/ButtonCapsule.qml` | `ButtonCapsule` | controls | `src/Core/components/controls/ButtonCapsule.qml` | future pages | page primitive |
 | `qml/components/controls/DualButton.qml` | `DualButton` | controls | `src/Core/components/controls/DualButton.qml` | future pages | page primitive |
 | `qml/components/controls/FloatingButton.qml` | `FloatingButton` | controls | `src/Core/components/controls/FloatingButton.qml` | future pages | page primitive |
+| `qml/components/controls/SearchField.qml` | `SearchField` | controls | `src/Core/components/form/SearchField.qml` | none currently | page primitive |
+| `qml/components/controls/SelectButton.qml` | `SelectButton` | controls | `src/Core/components/form/SelectButton.qml` | `Dock`, `Compositor` | page primitive |
+| `qml/components/controls/Slider.qml` | `Slider` | controls | new Astrea Settings control | `Dock` | page primitive |
+| `qml/components/controls/ToggleSwitch.qml` | `ToggleSwitch` | controls | `src/Core/components/form/ToggleSwitch.qml` | `Dock`, `Wallpaper`, `Compositor` | page primitive |
 | `qml/components/feedback/DnsPresetChip.qml` | `DnsPresetChip` | feedback | `src/Core/components/feedback/DnsPresetChip.qml` | none currently | compatibility component |
 | `qml/components/feedback/DnsStatusCard.qml` | `DnsStatusCard` | feedback | `src/Core/components/feedback/DnsStatusCard.qml` | none currently | compatibility component |
 | `qml/components/feedback/ProgressCard.qml` | `ProgressCard` | feedback | `src/Core/components/feedback/ProgressCard.qml` | none currently | compatibility component |
@@ -21,11 +32,8 @@ source column points to the corresponding Astrea source where one exists.
 | `qml/components/form/FormCard.qml` | `FormCard` | form | `src/Core/components/form/FormCard.qml` | `Compositor` | page primitive |
 | `qml/components/form/IconListRow.qml` | `IconListRow` | form | `src/Core/components/form/IconListRow.qml` | none currently | page primitive |
 | `qml/components/form/ScrollPage.qml` | `ScrollPage` | form | `src/Core/components/form/ScrollPage.qml` | `Compositor` | page primitive |
-| `qml/components/form/SearchField.qml` | `SearchField` | form | `src/Core/components/form/SearchField.qml` | none currently | page primitive |
 | `qml/components/form/SectionHeader.qml` | `SectionHeader` | form | `src/Core/components/form/SectionHeader.qml` | `Compositor` | page primitive |
-| `qml/components/form/SelectButton.qml` | `SelectButton` | form | `src/Core/components/form/SelectButton.qml` | `Compositor` | page primitive |
 | `qml/components/form/SettingRow.qml` | `SettingRow` | form | `src/Core/components/form/SettingRow.qml` | `Compositor` | page primitive |
-| `qml/components/form/ToggleSwitch.qml` | `ToggleSwitch` | form | `src/Core/components/form/ToggleSwitch.qml` | `Compositor` | page primitive |
 | `qml/components/menu/ContextMenu.qml` | `ContextMenu` | menu | `src/Core/components/menu/ContextMenu.qml` | none currently | page primitive |
 | `qml/components/menu/ContextMenuAction.qml` | `ContextMenuAction` | menu | `src/Core/components/menu/ContextMenuAction.qml` | `ContextMenu` fixture | page primitive |
 | `qml/components/menu/ContextMenuDivider.qml` | `ContextMenuDivider` | menu | `src/Core/components/menu/ContextMenuDivider.qml` | `ContextMenu` fixture | page primitive |

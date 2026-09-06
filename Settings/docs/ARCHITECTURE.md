@@ -37,10 +37,18 @@ implementation, and includes the header-only Paper protocol directly. It does
 not link Qt QML, Qt Quick, Quick Controls, LayerShellQt, or a compositor
 library.
 
-`astrea-settings-ui` is the only `Astrea.Settings 1.0` QML module. The
-application and QML integration tests consume that same target and generated
-plugin. The application additionally links the existing shared core and QML
-plugin for compositor-independent shared utilities.
+`astrea-settings-ui` is the only `Astrea.Settings 1.0` QML module and registers
+40 QML files. The application and QML integration tests consume that same
+target and generated plugin. The application additionally links the existing
+shared core and QML plugin for compositor-independent shared utilities.
+
+The QML component taxonomy separates reusable interaction from page composition:
+`components/controls/` owns interactive primitives, while `components/form/`
+owns Settings-specific structural/layout composition. A semantic Qt Quick
+Controls type is the preferred base for a new interactive primitive; replace
+its visual delegates and retain the framework's pointer, keyboard, touch,
+focus, range, and RTL behavior instead of implementing a second input state
+machine with `MouseArea`.
 
 Unit tests link `astrea-settings-core`. Integration tests link both reusable
 production targets. No test target lists a production `.cpp` file owned by the

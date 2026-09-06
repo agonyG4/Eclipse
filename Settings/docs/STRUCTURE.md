@@ -32,6 +32,12 @@ Settings/
 │   ├── CMakeLists.txt
 │   ├── Main.qml
 │   ├── components/
+│   │   ├── controls/       # reusable interactive primitives
+│   │   ├── feedback/
+│   │   ├── form/           # Settings-specific structural/layout composition
+│   │   ├── menu/
+│   │   ├── navigation/
+│   │   └── typography/
 │   ├── pages/
 │   └── theme/
 ├── tests/
@@ -71,6 +77,13 @@ shared -> compositor-independent utilities only
 The core target deliberately has no Qt QML, Qt Quick, Quick Controls,
 LayerShellQt, or compositor dependency. The application owns shared UI-facing
 dependencies directly; the core does not obtain them transitively.
+
+Within QML, `components/controls/` owns reusable interactive primitives such as
+`Slider`, `ToggleSwitch`, `SelectButton`, and `SearchField`. `components/form/`
+owns structural Settings composition such as `FormCard`, `SettingRow`, and
+`ScrollPage`. Prefer deriving from a Qt Quick Controls semantic control and
+replacing its visual delegates when one exists; do not recreate pointer,
+keyboard, or touch interaction with a raw `MouseArea`.
 
 ## Composition and Route Flow
 

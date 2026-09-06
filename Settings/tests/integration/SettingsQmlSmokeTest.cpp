@@ -260,10 +260,41 @@ void SettingsQmlSmokeTest::loadsDockRouteFromHubOffscreen()
     QVERIFY(customizationRow->property("selected").toBool());
     QVERIFY(findVisualItem(sidebar, QStringLiteral("settingsSidebarRow-dock")) == nullptr);
     QVERIFY(page->findChild<QObject *>(QStringLiteral("dockPreview")) != nullptr);
-    QVERIFY(page->findChild<QObject *>(QStringLiteral("iconSizeSlider")) != nullptr);
-    QVERIFY(page->findChild<QObject *>(QStringLiteral("magnificationScaleSlider")) != nullptr);
-    QVERIFY(page->findChild<QObject *>(QStringLiteral("animationSpeedSlider")) != nullptr);
-    QVERIFY(page->findChild<QObject *>(QStringLiteral("indicatorSizeSlider")) != nullptr);
+    const struct SliderExpectation {
+        const char *objectName;
+        const char *defaultProperty;
+    } sliders[] = {
+        {"iconSizeSlider", "defaultIconSize"},
+        {"itemSpacingSlider", "defaultItemSpacing"},
+        {"panelPaddingSlider", "defaultPanelPadding"},
+        {"edgeMarginSlider", "defaultEdgeMargin"},
+        {"cornerRadiusSlider", "defaultCornerRadius"},
+        {"magnificationScaleSlider", "defaultMagnificationScale"},
+        {"magnificationRadiusSlider", "defaultMagnificationRadius"},
+        {"animationSpeedSlider", "defaultAnimationSpeed"},
+        {"indicatorSizeSlider", "defaultIndicatorSize"},
+    };
+    for (const auto &expectation : sliders) {
+        QObject *slider = page->findChild<QObject *>(QString::fromLatin1(expectation.objectName));
+        QVERIFY2(slider != nullptr, expectation.objectName);
+        QVERIFY(slider->property("detentEnabled").toBool());
+        QCOMPARE(slider->property("detentValue").toDouble(),
+                 settingsController.dock()->property(expectation.defaultProperty).toDouble());
+        QVERIFY(!slider->property("valueText").toString().isEmpty());
+    }
+
+    QObject *restoreButton = page->findChild<QObject *>(QStringLiteral("restoreDefaultsButton"));
+    QObject *restoreToast = page->findChild<QObject *>(QStringLiteral("dockRestoreToast"));
+    QObject *undoButton = page->findChild<QObject *>(QStringLiteral("dockRestoreUndoButton"));
+    QVERIFY(restoreButton != nullptr);
+    QVERIFY(restoreToast != nullptr);
+    QVERIFY(undoButton != nullptr);
+    QCOMPARE(restoreButton->property("enabled").toBool(),
+             !settingsController.dock()->property("isDefault").toBool());
+    QCOMPARE(restoreToast->property("visible").toBool(),
+             settingsController.dock()->property("canUndoRestore").toBool());
+    QCOMPARE(undoButton->property("enabled").toBool(),
+             settingsController.dock()->property("canUndoRestore").toBool());
 }
 
 void SettingsQmlSmokeTest::navigatesBackAndForwardFromHub()
@@ -441,6 +472,9 @@ void SettingsQmlSmokeTest::wallpaperTranslationKeysExist()
         QStringLiteral("apps.settings.pages.appearance.dock.option.line"),
         QStringLiteral("apps.settings.pages.appearance.dock.option.dot"),
         QStringLiteral("apps.settings.pages.appearance.dock.unit.pixels"),
+        QStringLiteral("apps.settings.pages.appearance.dock.action.restore_defaults"),
+        QStringLiteral("apps.settings.pages.appearance.dock.status.restored"),
+        QStringLiteral("apps.settings.pages.appearance.dock.action.undo"),
     };
     for (const auto &key : requiredKeys)
         QVERIFY2(messages.contains(key), qPrintable(QStringLiteral("Missing key: ") + key));

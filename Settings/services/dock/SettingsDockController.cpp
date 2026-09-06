@@ -36,6 +36,11 @@ SettingsDockController::SettingsDockController(const QString &configPath, QObjec
     m_writeDebounce.setInterval(180);
     connect(&m_writeDebounce, &QTimer::timeout, this, &SettingsDockController::flush);
 
+    m_restoreUndoTimer.setSingleShot(true);
+    m_restoreUndoTimer.setInterval(4000);
+    connect(&m_restoreUndoTimer, &QTimer::timeout,
+            this, &SettingsDockController::clearUndoRestore);
+
     connect(&m_watcher, &QFileSystemWatcher::fileChanged, this,
             [this](const QString &) {
                 addPathWithParents(m_configPath);
@@ -53,7 +58,8 @@ SettingsDockController::~SettingsDockController()
     flush();
 }
 
-bool SettingsDockController::sameConfig(const DockConfig &left, const DockConfig &right)
+bool SettingsDockController::samePersonalization(const DockConfig &left,
+                                                 const DockConfig &right)
 {
     return left.iconSize == right.iconSize && left.panelPadding == right.panelPadding
         && left.itemSpacing == right.itemSpacing && left.hoverEffect == right.hoverEffect
@@ -64,12 +70,18 @@ bool SettingsDockController::sameConfig(const DockConfig &left, const DockConfig
         && left.autoHide == right.autoHide && left.indicatorStyle == right.indicatorStyle
         && left.indicatorSize == right.indicatorSize
         && left.animationsEnabled == right.animationsEnabled
-        && equalReal(left.animationSpeed, right.animationSpeed) && left.pins == right.pins;
+        && equalReal(left.animationSpeed, right.animationSpeed);
+}
+
+bool SettingsDockController::sameConfig(const DockConfig &left, const DockConfig &right)
+{
+    return samePersonalization(left, right) && left.pins == right.pins;
 }
 
 void SettingsDockController::applyLocalConfig(const DockConfig &config)
 {
     const DockConfig previous = m_config;
+    const bool previousIsDefault = m_isDefault;
     m_config = config;
     m_config.bottomMargin = m_config.edgeMargin;
 
@@ -103,6 +115,9 @@ void SettingsDockController::applyLocalConfig(const DockConfig &config)
         emit animationsEnabledChanged();
     if (!equalReal(previous.animationSpeed, m_config.animationSpeed))
         emit animationSpeedChanged();
+    m_isDefault = samePersonalization(m_config, DockConfig::defaults());
+    if (previousIsDefault != m_isDefault)
+        emit isDefaultChanged();
     if (!sameConfig(previous, m_config))
         emit configChanged();
 }
@@ -180,11 +195,11 @@ bool SettingsDockController::refreshFromDisk()
     return true;
 }
 
-void SettingsDockController::flush()
+bool SettingsDockController::flushPendingWrite()
 {
     m_writeDebounce.stop();
     if (!m_pendingWrite)
-        return;
+        return true;
 
     DockConfigStore store(m_configPath);
     QString error;
@@ -207,6 +222,56 @@ void SettingsDockController::flush()
     }
 
     addPathWithParents(m_configPath);
+    return wrote;
+}
+
+void SettingsDockController::flush()
+{
+    flushPendingWrite();
+}
+
+void SettingsDockController::clearUndoRestore()
+{
+    m_restoreUndoTimer.stop();
+    if (!m_canUndoRestore)
+        return;
+    m_canUndoRestore = false;
+    emit canUndoRestoreChanged();
+}
+
+void SettingsDockController::restoreDefaults()
+{
+    if (m_isDefault)
+        return;
+
+    m_restoreSnapshot = m_config;
+    DockConfig defaults = DockConfig::defaults();
+    defaults.pins = m_config.pins;
+    applyLocalConfig(defaults);
+    scheduleWrite();
+
+    if (flushPendingWrite()) {
+        if (!m_canUndoRestore) {
+            m_canUndoRestore = true;
+            emit canUndoRestoreChanged();
+        }
+        m_restoreUndoTimer.start();
+    } else {
+        clearUndoRestore();
+    }
+}
+
+void SettingsDockController::undoRestore()
+{
+    if (!m_canUndoRestore)
+        return;
+
+    DockConfig restored = m_restoreSnapshot;
+    restored.pins = m_config.pins;
+    applyLocalConfig(restored);
+    scheduleWrite();
+    if (flushPendingWrite())
+        clearUndoRestore();
 }
 
 void SettingsDockController::setIconSize(int value)

@@ -101,7 +101,9 @@ the parser reads `bottomMargin`; if both are present, `edgeMargin` wins. Setting
 writes emit canonical `edgeMargin` and remove only the legacy alias. A Settings
 personalization write preserves the raw `pins` array and all unknown keys; pin
 reorder/pin actions remain the only operations that intentionally replace
-`pins`.
+`pins`. Settings Restore Defaults resets only the personalization fields to
+`DockConfig::defaults()` and its short Undo action restores the previous
+personalization snapshot; neither operation writes pins or unknown keys.
 
 Dock presentation QML never writes `dock.json`. A successful configured-pin
 reorder, or an explicit Dock pin/unpin action, is committed by `DockController`

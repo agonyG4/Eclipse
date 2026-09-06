@@ -101,10 +101,13 @@ destroys the page and recreates its local preview state when selected again.
 `SettingsNavigationModel`, profile values to an immutable `SettingsUserProfile`,
 resource URL construction to `SettingsIconResolver`, and Dock personalization to
 the focused `SettingsDockController`. The latter exposes typed validated
-properties, debounced atomic writes, bounded errors, and a file watcher for
-external replacement. It depends only on the shared compositor-independent
-Dock configuration boundary; it does not reach into Shell, Typhon, or
-LayerShellQt.
+properties, canonical defaults sourced from shared `DockConfig`, debounced
+atomic writes, bounded errors, a file watcher for external replacement, and
+the bounded Restore Defaults/Undo state. It depends only on the shared
+compositor-independent Dock configuration boundary; it does not reach into
+Shell, Typhon, or LayerShellQt. QML remains presentation-only: the reusable
+slider observes native Qt edits for detents and the Dock page formats values,
+while the controller owns persistence and undo.
 
 `SettingsUserProfileProvider` resolves the current username, the readable
 AccountsService avatar path, and administrative membership. `AdminGroupDetector`

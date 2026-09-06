@@ -17,6 +17,12 @@ private slots:
     void loadsRepresentativeRegisteredComponents();
     void sliderThumbPressAtMinimumDoesNotJump();
     void sliderThumbPressAtMaximumDoesNotJump();
+    void sliderWithoutDetentRemainsContinuous();
+    void sliderEntersDefaultDetent();
+    void sliderDetentUsesHysteresis();
+    void sliderDetentPulseIsOneShotPerEntry();
+    void sliderKeyboardCrossesDefaultDetent();
+    void sliderMarkerUsesMirroredTrackGeometry();
 };
 
 namespace {
@@ -48,7 +54,9 @@ Settings.Slider {
     height: 32
     from: 0
     to: 10
-    stepSize: 1
+    stepSize: 0.1
+    property bool mirrorForTest: false
+    LayoutMirroring.enabled: mirrorForTest
 }
 )qml";
 
@@ -70,6 +78,16 @@ Settings.Slider {
         window.show();
         QTest::qWait(20);
         return true;
+    }
+
+    QPoint pointForVisualPosition(qreal position) const
+    {
+        const qreal trackStart = slider->property("trackStart").toReal();
+        const qreal trackWidth = slider->property("trackWidth").toReal();
+        return slider->mapToItem(window.contentItem(),
+                                 QPointF(trackStart + position * trackWidth,
+                                         slider->property("height").toReal() / 2.0))
+            .toPoint();
     }
 
     QPoint renderedHandleCenter() const
@@ -204,6 +222,155 @@ void SettingsComponentSmokeTest::sliderThumbPressAtMaximumDoesNotJump()
     QCoreApplication::processEvents();
 
     QCOMPARE(fixture.slider->property("value").toReal(), 10.0);
+}
+
+void SettingsComponentSmokeTest::sliderWithoutDetentRemainsContinuous()
+{
+    SliderFixture fixture;
+    QVERIFY(fixture.directory.isValid());
+
+    QString error;
+    QVERIFY2(fixture.create(2, &error), qPrintable(error));
+    fixture.slider->setProperty("detentValue", 5.0);
+    QVERIFY(!fixture.slider->property("detentEnabled").toBool());
+    QSignalSpy edited(fixture.slider, SIGNAL(valueEdited(double)));
+    QVERIFY(edited.isValid());
+
+    QTest::mousePress(&fixture.window, Qt::LeftButton, Qt::NoModifier,
+                      fixture.renderedHandleCenter());
+    QTest::mouseMove(&fixture.window, fixture.pointForVisualPosition(0.37));
+    QCoreApplication::processEvents();
+    QTest::mouseRelease(&fixture.window, Qt::LeftButton, Qt::NoModifier,
+                        fixture.pointForVisualPosition(0.37));
+
+    QVERIFY(!edited.isEmpty());
+    QVERIFY(qAbs(fixture.slider->property("value").toReal() - 3.7) < 0.2);
+    QVERIFY(qAbs(edited.constLast().at(0).toReal() - 5.0) > 0.2);
+}
+
+void SettingsComponentSmokeTest::sliderEntersDefaultDetent()
+{
+    SliderFixture fixture;
+    QVERIFY(fixture.directory.isValid());
+
+    QString error;
+    QVERIFY2(fixture.create(2, &error), qPrintable(error));
+    fixture.slider->setProperty("detentEnabled", true);
+    fixture.slider->setProperty("detentValue", 5.0);
+    QSignalSpy edited(fixture.slider, SIGNAL(valueEdited(double)));
+    QVERIFY(edited.isValid());
+
+    QTest::mousePress(&fixture.window, Qt::LeftButton, Qt::NoModifier,
+                      fixture.renderedHandleCenter());
+    QTest::mouseMove(&fixture.window, fixture.pointForVisualPosition(0.475));
+    QCoreApplication::processEvents();
+
+    QCOMPARE(fixture.slider->property("value").toReal(), 5.0);
+    QVERIFY(fixture.slider->property("detentLatched").toBool());
+    QVERIFY(!edited.isEmpty());
+    QCOMPARE(edited.constLast().at(0).toReal(), 5.0);
+    QTest::mouseRelease(&fixture.window, Qt::LeftButton, Qt::NoModifier,
+                        fixture.pointForVisualPosition(0.475));
+}
+
+void SettingsComponentSmokeTest::sliderDetentUsesHysteresis()
+{
+    SliderFixture fixture;
+    QVERIFY(fixture.directory.isValid());
+
+    QString error;
+    QVERIFY2(fixture.create(2, &error), qPrintable(error));
+    fixture.slider->setProperty("detentEnabled", true);
+    fixture.slider->setProperty("detentValue", 5.0);
+    fixture.slider->setProperty("detentSnapDistancePx", 8.0);
+    fixture.slider->setProperty("detentReleaseDistancePx", 14.0);
+
+    QTest::mousePress(&fixture.window, Qt::LeftButton, Qt::NoModifier,
+                      fixture.renderedHandleCenter());
+    QTest::mouseMove(&fixture.window, fixture.pointForVisualPosition(0.475));
+    QCOMPARE(fixture.slider->property("value").toReal(), 5.0);
+    QVERIFY(fixture.slider->property("detentLatched").toBool());
+
+    QTest::mouseMove(&fixture.window, fixture.pointForVisualPosition(0.54));
+    QCOMPARE(fixture.slider->property("value").toReal(), 5.0);
+    QVERIFY(fixture.slider->property("detentLatched").toBool());
+
+    QTest::mouseMove(&fixture.window, fixture.pointForVisualPosition(0.60));
+    QVERIFY(fixture.slider->property("value").toReal() > 5.0);
+    QVERIFY(!fixture.slider->property("detentLatched").toBool());
+    QTest::mouseRelease(&fixture.window, Qt::LeftButton, Qt::NoModifier,
+                        fixture.pointForVisualPosition(0.60));
+}
+
+void SettingsComponentSmokeTest::sliderDetentPulseIsOneShotPerEntry()
+{
+    SliderFixture fixture;
+    QVERIFY(fixture.directory.isValid());
+
+    QString error;
+    QVERIFY2(fixture.create(2, &error), qPrintable(error));
+    fixture.slider->setProperty("detentEnabled", true);
+    fixture.slider->setProperty("detentValue", 5.0);
+
+    QTest::mousePress(&fixture.window, Qt::LeftButton, Qt::NoModifier,
+                      fixture.renderedHandleCenter());
+    QTest::mouseMove(&fixture.window, fixture.pointForVisualPosition(0.475));
+    QTRY_VERIFY_WITH_TIMEOUT(fixture.slider->property("pulseScale").toReal() > 1.02, 100);
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(fixture.slider->property("pulseScale").toReal() - 1.0) < 0.01,
+                             300);
+
+    QTest::mouseMove(&fixture.window, fixture.pointForVisualPosition(0.54));
+    QTest::qWait(30);
+    QVERIFY(fixture.slider->property("pulseScale").toReal() < 1.02);
+    QTest::mouseRelease(&fixture.window, Qt::LeftButton, Qt::NoModifier,
+                        fixture.pointForVisualPosition(0.54));
+}
+
+void SettingsComponentSmokeTest::sliderKeyboardCrossesDefaultDetent()
+{
+    SliderFixture fixture;
+    QVERIFY(fixture.directory.isValid());
+
+    QString error;
+    QVERIFY2(fixture.create(4.8, &error), qPrintable(error));
+    fixture.slider->setProperty("detentEnabled", true);
+    fixture.slider->setProperty("detentValue", 5.0);
+    fixture.slider->forceActiveFocus();
+    QVERIFY(fixture.slider->property("activeFocus").toBool());
+
+    QTest::keyClick(&fixture.window, Qt::Key_Right);
+    QVERIFY(fixture.slider->property("value").toReal() > 4.8);
+    for (int i = 0; i < 5; ++i)
+        QTest::keyClick(&fixture.window, Qt::Key_Right);
+    const qreal valueAfterKeys = fixture.slider->property("value").toReal();
+    QVERIFY2(valueAfterKeys > 5.0, qPrintable(QStringLiteral("value=%1").arg(valueAfterKeys)));
+}
+
+void SettingsComponentSmokeTest::sliderMarkerUsesMirroredTrackGeometry()
+{
+    SliderFixture fixture;
+    QVERIFY(fixture.directory.isValid());
+
+    QString error;
+    QVERIFY2(fixture.create(0, &error), qPrintable(error));
+    fixture.slider->setProperty("detentEnabled", true);
+    fixture.slider->setProperty("detentValue", 2.5);
+    auto *marker = qobject_cast<QQuickItem *>(
+        fixture.slider->findChild<QObject *>(QStringLiteral("sliderDefaultDetentMarker")));
+    QVERIFY(marker != nullptr);
+
+    const qreal trackStart = fixture.slider->property("trackStart").toReal();
+    const qreal trackWidth = fixture.slider->property("trackWidth").toReal();
+    const qreal markerCenter = marker->mapToItem(fixture.slider,
+                                                  QPointF(marker->width() / 2.0,
+                                                          marker->height() / 2.0)).x();
+    QVERIFY(qAbs(markerCenter - (trackStart + trackWidth * 0.25)) < 1.0);
+
+    QVERIFY(fixture.slider->setProperty("mirrorForTest", true));
+    QCoreApplication::processEvents();
+    const qreal mirroredCenter = marker->mapToItem(
+        fixture.slider, QPointF(marker->width() / 2.0, marker->height() / 2.0)).x();
+    QVERIFY(qAbs(mirroredCenter - (trackStart + trackWidth * 0.75)) < 1.0);
 }
 
 QTEST_MAIN(SettingsComponentSmokeTest)

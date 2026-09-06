@@ -25,6 +25,17 @@ class SettingsDockController final : public QObject {
     Q_PROPERTY(double animationSpeed READ animationSpeed WRITE setAnimationSpeed NOTIFY animationSpeedChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
     Q_PROPERTY(bool pendingWrite READ pendingWrite NOTIFY pendingWriteChanged)
+    Q_PROPERTY(bool isDefault READ isDefault NOTIFY isDefaultChanged)
+    Q_PROPERTY(int defaultIconSize READ defaultIconSize CONSTANT)
+    Q_PROPERTY(int defaultPanelPadding READ defaultPanelPadding CONSTANT)
+    Q_PROPERTY(int defaultItemSpacing READ defaultItemSpacing CONSTANT)
+    Q_PROPERTY(double defaultMagnificationScale READ defaultMagnificationScale CONSTANT)
+    Q_PROPERTY(double defaultMagnificationRadius READ defaultMagnificationRadius CONSTANT)
+    Q_PROPERTY(int defaultEdgeMargin READ defaultEdgeMargin CONSTANT)
+    Q_PROPERTY(int defaultCornerRadius READ defaultCornerRadius CONSTANT)
+    Q_PROPERTY(int defaultIndicatorSize READ defaultIndicatorSize CONSTANT)
+    Q_PROPERTY(double defaultAnimationSpeed READ defaultAnimationSpeed CONSTANT)
+    Q_PROPERTY(bool canUndoRestore READ canUndoRestore NOTIFY canUndoRestoreChanged)
 
 public:
     explicit SettingsDockController(const QString &configPath = {}, QObject *parent = nullptr);
@@ -48,6 +59,17 @@ public:
     double animationSpeed() const { return m_config.animationSpeed; }
     QString lastError() const { return m_lastError; }
     bool pendingWrite() const { return m_pendingWrite; }
+    bool isDefault() const { return m_isDefault; }
+    int defaultIconSize() const { return DockConfig::defaults().iconSize; }
+    int defaultPanelPadding() const { return DockConfig::defaults().panelPadding; }
+    int defaultItemSpacing() const { return DockConfig::defaults().itemSpacing; }
+    double defaultMagnificationScale() const { return DockConfig::defaults().magnificationScale; }
+    double defaultMagnificationRadius() const { return DockConfig::defaults().magnificationRadius; }
+    int defaultEdgeMargin() const { return DockConfig::defaults().edgeMargin; }
+    int defaultCornerRadius() const { return DockConfig::defaults().cornerRadius; }
+    int defaultIndicatorSize() const { return DockConfig::defaults().indicatorSize; }
+    double defaultAnimationSpeed() const { return DockConfig::defaults().animationSpeed; }
+    bool canUndoRestore() const { return m_canUndoRestore; }
 
 public slots:
     void setIconSize(int value);
@@ -67,6 +89,8 @@ public slots:
     void setAnimationSpeed(double value);
     void refresh();
     Q_INVOKABLE void flush();
+    Q_INVOKABLE void restoreDefaults();
+    Q_INVOKABLE void undoRestore();
 
 signals:
     void iconSizeChanged();
@@ -87,8 +111,11 @@ signals:
     void configChanged();
     void lastErrorChanged();
     void pendingWriteChanged();
+    void isDefaultChanged();
+    void canUndoRestoreChanged();
 
 private:
+    static bool samePersonalization(const DockConfig &left, const DockConfig &right);
     static bool sameConfig(const DockConfig &left, const DockConfig &right);
     void applyLocalConfig(const DockConfig &config);
     void scheduleWrite();
@@ -96,13 +123,19 @@ private:
     void addPathWithParents(const QString &path);
     void setFieldConfig(const DockConfig &config);
     bool refreshFromDisk();
+    bool flushPendingWrite();
+    void clearUndoRestore();
 
     QString m_configPath;
     DockConfig m_config;
     DockConfig m_lastPersisted;
     QString m_lastError;
     bool m_pendingWrite = false;
+    bool m_isDefault = true;
+    bool m_canUndoRestore = false;
+    DockConfig m_restoreSnapshot;
     QFileSystemWatcher m_watcher;
     QTimer m_refreshDebounce;
     QTimer m_writeDebounce;
+    QTimer m_restoreUndoTimer;
 };

@@ -7,10 +7,22 @@ QQC2.Slider {
 
     implicitWidth: 216
     implicitHeight: 32
+    clip: false
 
     // The presentation can hide the endpoint glyphs without changing the
     // inherited Slider interaction contract.
     property bool showEndpointGlyphs: true
+    property bool detentEnabled: false
+    property real detentValue: 0
+    property real detentSnapDistancePx: 8
+    property real detentReleaseDistancePx: 14
+    property string valueText: ""
+
+    signal valueEdited(real value)
+
+    property bool detentLatched: false
+    property real pulseScale: 1.0
+    property int pulseSerial: 0
 
     leftPadding: showEndpointGlyphs
         ? endpointSize + endpointGap - thumbWidth / 2
@@ -26,6 +38,10 @@ QQC2.Slider {
     readonly property real trackStart: leftPadding + thumbWidth / 2
     readonly property real trackEnd: trackStart + handleTravel
     readonly property real trackWidth: Math.max(0, trackEnd - trackStart)
+    readonly property real detentPosition: to === from
+        ? 0
+        : Math.max(0, Math.min(1, (detentValue - from) / (to - from)))
+    readonly property real detentVisualPosition: mirrored ? 1 - detentPosition : detentPosition
     readonly property color neutralTrackColor: Qt.rgba(
         Components.Theme.textTertiary.r,
         Components.Theme.textTertiary.g,
@@ -47,6 +63,113 @@ QQC2.Slider {
     readonly property color endpointColor: Components.Theme.isLight
         ? Components.Theme.textSecondary
         : Components.Theme.textTertiary
+
+    property bool tooltipVisible: false
+    property bool keyboardEditPending: false
+
+    function handleNativeMove() {
+        if (!root.detentEnabled || !root.pressed || root.keyboardEditPending) {
+            root.detentLatched = false
+            root.valueEdited(root.value)
+            return
+        }
+
+        const distance = Math.abs(root.visualPosition - root.detentVisualPosition)
+            * root.handleTravel
+        const threshold = root.detentLatched
+            ? root.detentReleaseDistancePx
+            : root.detentSnapDistancePx
+        if (distance <= threshold) {
+            if (!root.detentLatched) {
+                root.detentLatched = true
+                root.pulseSerial += 1
+            }
+            if (Math.abs(root.value - root.detentValue) > 0.000001)
+                root.value = root.detentValue
+            root.valueEdited(root.detentValue)
+            return
+        }
+
+        root.detentLatched = false
+        root.valueEdited(root.value)
+    }
+
+    onMoved: root.handleNativeMove()
+    onDetentEnabledChanged: if (!detentEnabled) detentLatched = false
+    onPressedChanged: {
+        if (pressed) {
+            hoverTooltipTimer.stop()
+            tooltipVisible = valueText !== ""
+        } else if (hovered) {
+            hoverTooltipTimer.restart()
+        } else {
+            tooltipVisible = false
+        }
+    }
+    onHoveredChanged: {
+        if (!hovered) {
+            hoverTooltipTimer.stop()
+            tooltipVisible = false
+        } else if (!pressed) {
+            hoverTooltipTimer.restart()
+        }
+    }
+    onEnabledChanged: {
+        if (!enabled) {
+            hoverTooltipTimer.stop()
+            tooltipVisible = false
+            detentLatched = false
+        }
+    }
+    onValueTextChanged: if (valueText === "") tooltipVisible = false
+
+    Keys.priority: Keys.BeforeItem
+    Keys.onPressed: function(event) {
+        const keyboardKey = event.key === Qt.Key_Left || event.key === Qt.Key_Right
+            || event.key === Qt.Key_Up || event.key === Qt.Key_Down
+            || event.key === Qt.Key_PageUp || event.key === Qt.Key_PageDown
+            || event.key === Qt.Key_Home || event.key === Qt.Key_End
+        if (keyboardKey) {
+            root.keyboardEditPending = true
+            keyboardEditReset.restart()
+        }
+        event.accepted = false
+    }
+
+    Timer {
+        id: keyboardEditReset
+        interval: 0
+        repeat: false
+        onTriggered: root.keyboardEditPending = false
+    }
+
+    Timer {
+        id: hoverTooltipTimer
+        interval: 350
+        repeat: false
+        onTriggered: if (root.enabled && root.hovered && !root.pressed && root.valueText !== "")
+                         root.tooltipVisible = true
+    }
+
+    SequentialAnimation {
+        id: pulseAnimation
+        NumberAnimation {
+            target: root
+            property: "pulseScale"
+            to: 1.06
+            duration: 50
+            easing.type: Easing.OutCubic
+        }
+        NumberAnimation {
+            target: root
+            property: "pulseScale"
+            to: 1.0
+            duration: 70
+            easing.type: Easing.InOutCubic
+        }
+    }
+
+    onPulseSerialChanged: pulseAnimation.restart()
 
     background: Item {
         implicitWidth: root.implicitWidth
@@ -119,15 +242,42 @@ QQC2.Slider {
                 radius: height / 2
                 color: Components.Theme.accent
             }
+
+            Rectangle {
+                id: detentMarker
+                objectName: "sliderDefaultDetentMarker"
+                visible: root.detentEnabled
+                x: Math.max(0, Math.min(parent.width - width,
+                                         root.detentVisualPosition * parent.width - width / 2))
+                y: -2
+                width: 2.5
+                height: parent.height + 4
+                radius: width / 2
+                color: root.detentMarkerColor
+                opacity: root.enabled
+                    ? (root.detentLatched ? 0.88 : 0.42)
+                    : Components.Theme.opacityMuted
+
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: Components.Theme.animationMicro
+                        easing.type: Easing.OutCubic
+                    }
+                }
+            }
         }
     }
+
+    readonly property color detentMarkerColor: Components.Theme.isLight
+        ? Components.Theme.textSecondary
+        : Components.Theme.textPrimary
 
     handle: Item {
         width: root.thumbWidth
         height: root.thumbHeight
         x: root.leftPadding + root.visualPosition * (root.availableWidth - width)
         y: (root.height - height) / 2
-        scale: root.pressed ? 1.04 : (root.hovered ? 1.02 : 1.0)
+        scale: Math.max(root.pulseScale, root.pressed ? 1.04 : (root.hovered ? 1.02 : 1.0))
         opacity: root.enabled ? 1 : Components.Theme.opacityMuted
 
         Rectangle {
@@ -157,6 +307,38 @@ QQC2.Slider {
         Behavior on opacity {
             NumberAnimation {
                 duration: Components.Theme.animationMicro
+            }
+        }
+    }
+
+    Item {
+        id: tooltipLayer
+        visible: root.enabled && root.tooltipVisible && root.valueText !== ""
+        enabled: false
+        z: 10
+        width: tooltipSurface.width
+        height: tooltipSurface.height
+        x: root.handle.x + root.handle.width / 2 - width / 2
+        y: root.handle.y - height - 6
+        opacity: visible ? 1 : 0
+
+        Rectangle {
+            id: tooltipSurface
+            width: tooltipLabel.implicitWidth + 16
+            height: tooltipLabel.implicitHeight + 8
+            radius: Components.Theme.controlRadius
+            color: Components.Theme.popupBg
+            border.width: 1
+            border.color: Components.Theme.cardBorder
+
+            Text {
+                id: tooltipLabel
+                anchors.centerIn: parent
+                text: root.valueText
+                color: Components.Theme.textPrimary
+                font.family: Components.Theme.fontFamily
+                font.pixelSize: Components.Theme.fontSizeSmall
+                font.weight: Components.Theme.fontWeightMedium
             }
         }
     }

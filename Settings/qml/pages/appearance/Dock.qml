@@ -40,6 +40,17 @@ Item {
             + I18n.tr("apps.settings.pages.appearance.dock.unit.pixels", "px")
     }
 
+    function compactNumber(value, decimals) {
+        var text = Number(value).toFixed(decimals)
+        while (text.indexOf(".") >= 0 && (text.endsWith("0") || text.endsWith(".")))
+            text = text.slice(0, -1)
+        return text
+    }
+
+    function scaleUnit(value) {
+        return compactNumber(value, 2) + "×"
+    }
+
     Form.ScrollPage {
         id: scrollPage
         objectName: "dockScrollPage"
@@ -159,7 +170,10 @@ Item {
                     to: 64
                     stepSize: 1
                     value: root.controller.iconSize
-                    onMoved: root.controller.setIconSize(Math.round(value))
+                    detentEnabled: true
+                    detentValue: root.controller.defaultIconSize
+                    valueText: root.unit(value)
+                    onValueEdited: editedValue => root.controller.setIconSize(Math.round(editedValue))
                     onPressedChanged: if (!pressed) root.controller.flush()
                 }
             }
@@ -175,7 +189,10 @@ Item {
                     to: 24
                     stepSize: 1
                     value: root.controller.itemSpacing
-                    onMoved: root.controller.setItemSpacing(Math.round(value))
+                    detentEnabled: true
+                    detentValue: root.controller.defaultItemSpacing
+                    valueText: root.unit(value)
+                    onValueEdited: editedValue => root.controller.setItemSpacing(Math.round(editedValue))
                     onPressedChanged: if (!pressed) root.controller.flush()
                 }
             }
@@ -191,7 +208,10 @@ Item {
                     to: 32
                     stepSize: 1
                     value: root.controller.panelPadding
-                    onMoved: root.controller.setPanelPadding(Math.round(value))
+                    detentEnabled: true
+                    detentValue: root.controller.defaultPanelPadding
+                    valueText: root.unit(value)
+                    onValueEdited: editedValue => root.controller.setPanelPadding(Math.round(editedValue))
                     onPressedChanged: if (!pressed) root.controller.flush()
                 }
             }
@@ -230,7 +250,10 @@ Item {
                     to: 48
                     stepSize: 1
                     value: root.controller.edgeMargin
-                    onMoved: root.controller.setEdgeMargin(Math.round(value))
+                    detentEnabled: true
+                    detentValue: root.controller.defaultEdgeMargin
+                    valueText: root.unit(value)
+                    onValueEdited: editedValue => root.controller.setEdgeMargin(Math.round(editedValue))
                     onPressedChanged: if (!pressed) root.controller.flush()
                 }
             }
@@ -246,7 +269,10 @@ Item {
                     to: 48
                     stepSize: 1
                     value: root.controller.cornerRadius
-                    onMoved: root.controller.setCornerRadius(Math.round(value))
+                    detentEnabled: true
+                    detentValue: root.controller.defaultCornerRadius
+                    valueText: root.unit(value)
+                    onValueEdited: editedValue => root.controller.setCornerRadius(Math.round(editedValue))
                     onPressedChanged: if (!pressed) root.controller.flush()
                 }
             }
@@ -285,7 +311,10 @@ Item {
                     to: 2.0
                     stepSize: 0.05
                     value: root.controller.magnificationScale
-                    onMoved: root.controller.setMagnificationScale(value)
+                    detentEnabled: true
+                    detentValue: root.controller.defaultMagnificationScale
+                    valueText: root.scaleUnit(value)
+                    onValueEdited: editedValue => root.controller.setMagnificationScale(editedValue)
                     onPressedChanged: if (!pressed) root.controller.flush()
                 }
             }
@@ -302,7 +331,10 @@ Item {
                     to: 4.0
                     stepSize: 0.05
                     value: root.controller.magnificationRadius
-                    onMoved: root.controller.setMagnificationRadius(value)
+                    detentEnabled: true
+                    detentValue: root.controller.defaultMagnificationRadius
+                    valueText: root.compactNumber(value, 2)
+                    onValueEdited: editedValue => root.controller.setMagnificationRadius(editedValue)
                     onPressedChanged: if (!pressed) root.controller.flush()
                 }
             }
@@ -342,7 +374,10 @@ Item {
                     to: 4.0
                     stepSize: 0.05
                     value: root.controller.animationSpeed
-                    onMoved: root.controller.setAnimationSpeed(value)
+                    detentEnabled: true
+                    detentValue: root.controller.defaultAnimationSpeed
+                    valueText: root.scaleUnit(value)
+                    onValueEdited: editedValue => root.controller.setAnimationSpeed(editedValue)
                     onPressedChanged: if (!pressed) root.controller.flush()
                 }
             }
@@ -382,7 +417,10 @@ Item {
                     to: 12
                     stepSize: 1
                     value: root.controller.indicatorSize
-                    onMoved: root.controller.setIndicatorSize(Math.round(value))
+                    detentEnabled: true
+                    detentValue: root.controller.defaultIndicatorSize
+                    valueText: root.unit(value)
+                    onValueEdited: editedValue => root.controller.setIndicatorSize(Math.round(editedValue))
                     onPressedChanged: if (!pressed) root.controller.flush()
                 }
             }
@@ -397,6 +435,86 @@ Item {
             font.family: Components.Theme.fontFamily
             font.pixelSize: Components.Theme.fontSizeSmall
             wrapMode: Text.WordWrap
+        }
+
+        Item {
+            objectName: "dockRestoreFooter"
+            Layout.fillWidth: true
+            Layout.preferredHeight: 34
+            Layout.bottomMargin: 28
+
+            Controls.Button {
+                objectName: "restoreDefaultsButton"
+                anchors.right: parent.right
+                label: I18n.tr(
+                    "apps.settings.pages.appearance.dock.action.restore_defaults",
+                    "Restore Defaults")
+                iconText: "↶"
+                flat: true
+                enabled: !root.controller.isDefault
+                onClicked: root.controller.restoreDefaults()
+            }
+        }
+    }
+
+    Item {
+        id: restoreToast
+        objectName: "dockRestoreToast"
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 24
+        width: Math.min(parent.width - 32, 360)
+        height: 44
+        visible: root.controller.canUndoRestore
+        enabled: visible
+        z: 20
+        opacity: visible ? 1 : 0
+
+        Rectangle {
+            anchors.fill: parent
+            radius: Components.Theme.controlRadius
+            color: Components.Theme.popupBg
+            border.width: 1
+            border.color: Components.Theme.cardBorder
+        }
+
+        Row {
+            anchors.fill: parent
+            anchors.leftMargin: 14
+            anchors.rightMargin: 8
+            spacing: 12
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.max(0, parent.width - undoButton.implicitWidth - parent.spacing)
+                text: I18n.tr(
+                    "apps.settings.pages.appearance.dock.status.restored",
+                    "Dock settings restored")
+                color: Components.Theme.textPrimary
+                font.family: Components.Theme.fontFamily
+                font.pixelSize: Components.Theme.fontSizeSmall
+                elide: Text.ElideRight
+                verticalAlignment: Text.AlignVCenter
+            }
+
+            Controls.Button {
+                id: undoButton
+                objectName: "dockRestoreUndoButton"
+                anchors.verticalCenter: parent.verticalCenter
+                label: I18n.tr(
+                    "apps.settings.pages.appearance.dock.action.undo",
+                    "Undo")
+                flat: true
+                enabled: root.controller.canUndoRestore
+                onClicked: root.controller.undoRestore()
+            }
+        }
+
+        Behavior on opacity {
+            NumberAnimation {
+                duration: Components.Theme.animationQuick
+                easing.type: Easing.OutCubic
+            }
         }
     }
 }

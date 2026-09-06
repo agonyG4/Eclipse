@@ -865,5 +865,8 @@
     "apps.settings.pages.appearance.dock.option.always": "Always",
     "apps.settings.pages.appearance.dock.option.line": "Line",
     "apps.settings.pages.appearance.dock.option.dot": "Dot",
-    "apps.settings.pages.appearance.dock.unit.pixels": "px"
+    "apps.settings.pages.appearance.dock.unit.pixels": "px",
+    "apps.settings.pages.appearance.dock.action.restore_defaults": "Restore Defaults",
+    "apps.settings.pages.appearance.dock.status.restored": "Dock settings restored",
+    "apps.settings.pages.appearance.dock.action.undo": "Undo"
 }

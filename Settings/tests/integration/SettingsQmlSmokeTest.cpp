@@ -40,6 +40,21 @@ QQuickItem *findVisualItem(QQuickItem *item, const QString &objectName)
     return nullptr;
 }
 
+QQuickItem *findPreviewSurface(QQuickItem *item)
+{
+    if (!item)
+        return nullptr;
+    if (item->property("iconExtent").isValid()
+        && item->property("panelExtent").isValid()) {
+        return item;
+    }
+    for (QQuickItem *child : item->childItems()) {
+        if (QQuickItem *match = findPreviewSurface(child))
+            return match;
+    }
+    return nullptr;
+}
+
 int countVisualItems(QQuickItem *item, const QRegularExpression &pattern)
 {
     if (!item)
@@ -60,6 +75,7 @@ private slots:
     void loadsCustomizationHubOffscreen();
     void loadsWallpaperRouteFromHubOffscreen();
     void loadsDockRouteFromHubOffscreen();
+    void dockPreviewUsesFiveIconFootprint();
     void navigatesBackAndForwardFromHub();
     void sidebarHidesNestedDestinations();
     void resolvesHubHeroIconsByMetadataPrecedence();
@@ -296,6 +312,45 @@ void SettingsQmlSmokeTest::loadsDockRouteFromHubOffscreen()
              settingsController.dock()->property("canUndoRestore").toBool());
     QCOMPARE(undoButton->property("enabled").toBool(),
              settingsController.dock()->property("canUndoRestore").toBool());
+}
+
+void SettingsQmlSmokeTest::dockPreviewUsesFiveIconFootprint()
+{
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("dock")));
+    QObject *root = engine.rootObjects().constFirst();
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("dockPage")) != nullptr, 1000);
+    auto *page = qobject_cast<QQuickItem *>(
+        root->findChild<QObject *>(QStringLiteral("dockPage")));
+    QVERIFY(page != nullptr);
+    auto *previewCard = qobject_cast<QQuickItem *>(
+        page->findChild<QObject *>(QStringLiteral("dockPreview")));
+    QVERIFY(previewCard != nullptr);
+    QQuickItem *previewSurface = findPreviewSurface(previewCard);
+    QVERIFY(previewSurface != nullptr);
+    QVERIFY(previewSurface->parentItem() != nullptr);
+
+    const qreal iconExtent = previewSurface->property("iconExtent").toReal();
+    const qreal panelPadding = settingsController.dock()->property("panelPadding").toReal();
+    const qreal itemSpacing = settingsController.dock()->property("itemSpacing").toReal();
+    const qreal expectedPrimary = panelPadding * 2 + iconExtent * 5 + itemSpacing * 4;
+    const bool vertical = previewSurface->property("vertical").toBool();
+    const qreal expected = vertical
+        ? qMin(previewSurface->parentItem()->height(), expectedPrimary)
+        : qMin(previewSurface->parentItem()->width() - 40, expectedPrimary);
+    const qreal actual = vertical ? previewSurface->height() : previewSurface->width();
+    QVERIFY2(qAbs(actual - expected) < 0.5,
+             qPrintable(QStringLiteral("expected %1, got %2").arg(expected).arg(actual)));
 }
 
 void SettingsQmlSmokeTest::navigatesBackAndForwardFromHub()

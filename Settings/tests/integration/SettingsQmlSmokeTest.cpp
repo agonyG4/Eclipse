@@ -277,6 +277,7 @@ void SettingsQmlSmokeTest::loadsDockRouteFromHubOffscreen()
     for (const auto &expectation : sliders) {
         QObject *slider = page->findChild<QObject *>(QString::fromLatin1(expectation.objectName));
         QVERIFY2(slider != nullptr, expectation.objectName);
+        QVERIFY(slider->property("modelValueEnabled").toBool());
         QVERIFY(slider->property("detentEnabled").toBool());
         QCOMPARE(slider->property("detentValue").toDouble(),
                  settingsController.dock()->property(expectation.defaultProperty).toDouble());

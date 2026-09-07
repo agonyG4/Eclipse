@@ -169,10 +169,11 @@ Item {
                     from: 32
                     to: 64
                     stepSize: 1
-                    value: root.controller.iconSize
+                    modelValueEnabled: true
+                    modelValue: root.controller.iconSize
                     detentEnabled: true
                     detentValue: root.controller.defaultIconSize
-                    valueText: root.unit(value)
+                    valueText: root.unit(displayedValue)
                     onValueEdited: editedValue => root.controller.setIconSize(Math.round(editedValue))
                     onPressedChanged: if (!pressed) root.controller.flush()
                 }
@@ -188,10 +189,11 @@ Item {
                     from: 4
                     to: 24
                     stepSize: 1
-                    value: root.controller.itemSpacing
+                    modelValueEnabled: true
+                    modelValue: root.controller.itemSpacing
                     detentEnabled: true
                     detentValue: root.controller.defaultItemSpacing
-                    valueText: root.unit(value)
+                    valueText: root.unit(displayedValue)
                     onValueEdited: editedValue => root.controller.setItemSpacing(Math.round(editedValue))
                     onPressedChanged: if (!pressed) root.controller.flush()
                 }
@@ -207,10 +209,11 @@ Item {
                     from: 8
                     to: 32
                     stepSize: 1
-                    value: root.controller.panelPadding
+                    modelValueEnabled: true
+                    modelValue: root.controller.panelPadding
                     detentEnabled: true
                     detentValue: root.controller.defaultPanelPadding
-                    valueText: root.unit(value)
+                    valueText: root.unit(displayedValue)
                     onValueEdited: editedValue => root.controller.setPanelPadding(Math.round(editedValue))
                     onPressedChanged: if (!pressed) root.controller.flush()
                 }
@@ -249,10 +252,11 @@ Item {
                     from: 0
                     to: 48
                     stepSize: 1
-                    value: root.controller.edgeMargin
+                    modelValueEnabled: true
+                    modelValue: root.controller.edgeMargin
                     detentEnabled: true
                     detentValue: root.controller.defaultEdgeMargin
-                    valueText: root.unit(value)
+                    valueText: root.unit(displayedValue)
                     onValueEdited: editedValue => root.controller.setEdgeMargin(Math.round(editedValue))
                     onPressedChanged: if (!pressed) root.controller.flush()
                 }
@@ -268,10 +272,11 @@ Item {
                     from: 0
                     to: 48
                     stepSize: 1
-                    value: root.controller.cornerRadius
+                    modelValueEnabled: true
+                    modelValue: root.controller.cornerRadius
                     detentEnabled: true
                     detentValue: root.controller.defaultCornerRadius
-                    valueText: root.unit(value)
+                    valueText: root.unit(displayedValue)
                     onValueEdited: editedValue => root.controller.setCornerRadius(Math.round(editedValue))
                     onPressedChanged: if (!pressed) root.controller.flush()
                 }
@@ -310,10 +315,11 @@ Item {
                     from: 1.0
                     to: 2.0
                     stepSize: 0.05
-                    value: root.controller.magnificationScale
+                    modelValueEnabled: true
+                    modelValue: root.controller.magnificationScale
                     detentEnabled: true
                     detentValue: root.controller.defaultMagnificationScale
-                    valueText: root.scaleUnit(value)
+                    valueText: root.scaleUnit(displayedValue)
                     onValueEdited: editedValue => root.controller.setMagnificationScale(editedValue)
                     onPressedChanged: if (!pressed) root.controller.flush()
                 }
@@ -330,10 +336,11 @@ Item {
                     from: 1.0
                     to: 4.0
                     stepSize: 0.05
-                    value: root.controller.magnificationRadius
+                    modelValueEnabled: true
+                    modelValue: root.controller.magnificationRadius
                     detentEnabled: true
                     detentValue: root.controller.defaultMagnificationRadius
-                    valueText: root.compactNumber(value, 2)
+                    valueText: root.compactNumber(displayedValue, 2)
                     onValueEdited: editedValue => root.controller.setMagnificationRadius(editedValue)
                     onPressedChanged: if (!pressed) root.controller.flush()
                 }
@@ -373,10 +380,11 @@ Item {
                     from: 0.25
                     to: 4.0
                     stepSize: 0.05
-                    value: root.controller.animationSpeed
+                    modelValueEnabled: true
+                    modelValue: root.controller.animationSpeed
                     detentEnabled: true
                     detentValue: root.controller.defaultAnimationSpeed
-                    valueText: root.scaleUnit(value)
+                    valueText: root.scaleUnit(displayedValue)
                     onValueEdited: editedValue => root.controller.setAnimationSpeed(editedValue)
                     onPressedChanged: if (!pressed) root.controller.flush()
                 }
@@ -416,10 +424,11 @@ Item {
                     from: 1
                     to: 12
                     stepSize: 1
-                    value: root.controller.indicatorSize
+                    modelValueEnabled: true
+                    modelValue: root.controller.indicatorSize
                     detentEnabled: true
                     detentValue: root.controller.defaultIndicatorSize
-                    valueText: root.unit(value)
+                    valueText: root.unit(displayedValue)
                     onValueEdited: editedValue => root.controller.setIndicatorSize(Math.round(editedValue))
                     onPressedChanged: if (!pressed) root.controller.flush()
                 }

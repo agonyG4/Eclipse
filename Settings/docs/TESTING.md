@@ -1,26 +1,22 @@
 # Settings Verification
 
-All verification uses fresh build directories. Do not use a checked-in or
-archived build directory as evidence.
+All verification reuses the checkout's existing configured build directory.
+Do not create feature-specific build directories, alternate Debug/Release
+directories, or delete the existing directory for a clean-build claim. If no
+configured build directory is available, report that build verification could
+not be performed.
 
-## Debug and Release
+## Existing build directory
 
 ```bash
-cmake -S . -B build/settings-dock-defaults-debug -G Ninja \
-  -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON \
-  -DASTREA_BUILD_TESTS=ON -DASTREA_SETTINGS_BUILD_TESTS=ON \
-  -DASTREA_ENABLE_LAYER_SHELL=OFF
-cmake --build build/settings-dock-defaults-debug --parallel
-ctest --test-dir build/settings-dock-defaults-debug --output-on-failure
-cmake --build build/settings-dock-defaults-debug --target astrea-settings-ui_qmllint
-
-cmake -S . -B build/settings-dock-defaults-release -G Ninja \
-  -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
-  -DASTREA_BUILD_TESTS=ON -DASTREA_SETTINGS_BUILD_TESTS=ON \
-  -DASTREA_ENABLE_LAYER_SHELL=OFF
-cmake --build build/settings-dock-defaults-release --parallel
-ctest --test-dir build/settings-dock-defaults-release --output-on-failure
+cmake --build build --parallel 4
+ctest --test-dir build --output-on-failure
+cmake --build build --target astrea-settings-ui_qmllint --parallel 4
 ```
+
+Use the build type already recorded in `build/CMakeCache.txt`; do not create a
+second directory to verify another configuration. Reconfigure `build` in place
+only when it is genuinely necessary.
 
 The Settings tests cover controller behavior, Dock defaults and typed atomic
 persistence, deferred external Dock replacement and pin preservation,
@@ -47,10 +43,10 @@ The authoritative QML list is in `qml/CMakeLists.txt`. It contains 40 files and
 is registered once by `astrea-settings-ui`. The application and integration
 tests consume the same module and generated plugin.
 
-Build the module lint target in a fresh build:
+Build the module lint target from the existing build:
 
 ```bash
-cmake --build build/settings-dock-defaults-debug --target astrea-settings-ui_qmllint
+cmake --build build --target astrea-settings-ui_qmllint --parallel 4
 ```
 
 The final report must record the registered count, linted count, and warning and

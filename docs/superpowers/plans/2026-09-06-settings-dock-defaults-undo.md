@@ -33,12 +33,13 @@ Extend the existing Settings Dock personalization page with canonical default de
 
 6. Verify and document the public behavior.
    - Update concise architecture/testing/configuration notes where needed.
-   - Run fresh Debug and Release configure/build/CTest, qmllint, focused tests, source audits, and inspect the final diff.
+   - Locate the checkout's existing configured build directory and reuse it for build, CTest, and qmllint. Do not create feature-specific or alternate Debug/Release directories; if no configured build directory exists, report that build verification cannot be performed.
+   - Run the available Settings tests, qmllint, focused tests, source audits, and inspect the final diff.
    - Report the exact executable and leave manual light/dark/input/visual qualification to the user.
 
 ## Verification commands
 
-Use the fresh in-repository build directories `build/settings-dock-defaults-debug` and `build/settings-dock-defaults-release`, with the approved CMake flags, then run the complete test suite, `astrea-settings-ui_qmllint`, the four focused tests, and source audits for the nine slider consumers, defaults, persistence boundary, and registered QML count.
+Reuse the existing configured build directory reported by the checkout (currently `build`, whose configured type is recorded in `build/CMakeCache.txt`). Run `cmake --build <build> --parallel 4`, the complete available test suite, `cmake --build <build> --target astrea-settings-ui_qmllint --parallel 4`, the four focused tests, and source audits for the nine slider consumers, defaults, persistence boundary, and registered QML count. Do not create a new build directory or delete the existing one for fresh-build evidence.
 
 ## Execution choice
 

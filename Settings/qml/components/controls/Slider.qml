@@ -17,6 +17,8 @@ QQC2.Slider {
     property real detentSnapDistancePx: 8
     property real detentReleaseDistancePx: 14
     property string valueText: ""
+    property bool modelValueEnabled: false
+    property real modelValue: value
 
     signal valueEdited(real value)
 
@@ -42,6 +44,10 @@ QQC2.Slider {
         ? 0
         : Math.max(0, Math.min(1, (detentValue - from) / (to - from)))
     readonly property real detentVisualPosition: mirrored ? 1 - detentPosition : detentPosition
+    readonly property real effectiveVisualPosition: detentLatched
+        ? detentVisualPosition
+        : visualPosition
+    readonly property real displayedValue: detentLatched ? detentValue : value
     readonly property color neutralTrackColor: Qt.rgba(
         Components.Theme.textTertiary.r,
         Components.Theme.textTertiary.g,
@@ -67,6 +73,13 @@ QQC2.Slider {
     property bool tooltipVisible: false
     property bool keyboardEditPending: false
 
+    Binding {
+        target: root
+        property: "value"
+        value: root.modelValue
+        when: root.modelValueEnabled && !root.pressed && !root.keyboardEditPending
+    }
+
     function handleNativeMove() {
         if (!root.detentEnabled || !root.pressed || root.keyboardEditPending) {
             root.detentLatched = false
@@ -84,8 +97,6 @@ QQC2.Slider {
                 root.detentLatched = true
                 root.pulseSerial += 1
             }
-            if (Math.abs(root.value - root.detentValue) > 0.000001)
-                root.value = root.detentValue
             root.valueEdited(root.detentValue)
             return
         }
@@ -105,6 +116,8 @@ QQC2.Slider {
         } else {
             tooltipVisible = false
         }
+        if (!pressed)
+            detentLatched = false
     }
     onHoveredChanged: {
         if (!hovered) {
@@ -237,7 +250,7 @@ QQC2.Slider {
             opacity: root.enabled ? 1 : Components.Theme.opacityMuted
 
             Rectangle {
-                width: root.visualPosition * parent.width
+                width: root.effectiveVisualPosition * parent.width
                 height: parent.height
                 radius: height / 2
                 color: Components.Theme.accent
@@ -275,7 +288,7 @@ QQC2.Slider {
     handle: Item {
         width: root.thumbWidth
         height: root.thumbHeight
-        x: root.leftPadding + root.visualPosition * (root.availableWidth - width)
+        x: root.leftPadding + root.effectiveVisualPosition * (root.availableWidth - width)
         y: (root.height - height) / 2
         scale: Math.max(root.pulseScale, root.pressed ? 1.04 : (root.hovered ? 1.02 : 1.0))
         opacity: root.enabled ? 1 : Components.Theme.opacityMuted

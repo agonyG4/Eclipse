@@ -21,6 +21,8 @@ private slots:
     void sliderEntersDefaultDetent();
     void sliderDetentUsesHysteresis();
     void sliderDetentPulseIsOneShotPerEntry();
+    void sliderControlledBindingSurvivesDetent();
+    void sliderLatchClearsOnReleaseAndRearmsSnap();
     void sliderKeyboardCrossesDefaultDetent();
     void sliderMarkerUsesMirroredTrackGeometry();
 };
@@ -33,6 +35,7 @@ struct SliderFixture {
     ThemeController themeController;
     QQmlApplicationEngine engine;
     QQuickWindow window;
+    QObject *fixtureRoot = nullptr;
     QQuickItem *slider = nullptr;
 
     SliderFixture()
@@ -74,6 +77,60 @@ Settings.Slider {
         }
         slider->setProperty("value", initialValue);
         slider->setParentItem(window.contentItem());
+        window.resize(216, 32);
+        window.show();
+        QTest::qWait(20);
+        return true;
+    }
+
+    bool createControlled(qreal initialValue, QString *error)
+    {
+        const QByteArray fixture = R"qml(
+import QtQuick
+import Astrea.Settings 1.0 as Settings
+
+Item {
+    objectName: "controlledSliderFixture"
+    width: 216
+    height: 32
+    property real backendValue: 2
+
+    Settings.Slider {
+        objectName: "sliderRegressionControl"
+        anchors.fill: parent
+        from: 0
+        to: 10
+        stepSize: 0.1
+        modelValueEnabled: true
+        modelValue: parent.backendValue
+        detentEnabled: true
+        detentValue: 5
+        valueText: Number(displayedValue).toFixed(1)
+        onValueEdited: editedValue => parent.backendValue = editedValue
+    }
+}
+)qml";
+
+        QQmlComponent component(&engine);
+        component.setData(fixture, QUrl(QStringLiteral("qrc:/settings-controlled-slider-regression.qml")));
+        if (component.status() != QQmlComponent::Ready) {
+            *error = component.errorString();
+            return false;
+        }
+
+        fixtureRoot = component.create();
+        auto *rootItem = qobject_cast<QQuickItem *>(fixtureRoot);
+        if (!rootItem) {
+            *error = QStringLiteral("failed to create controlled slider fixture");
+            return false;
+        }
+        rootItem->setProperty("backendValue", initialValue);
+        rootItem->setParentItem(window.contentItem());
+        slider = rootItem->findChild<QQuickItem *>(QStringLiteral("sliderRegressionControl"));
+        if (!slider) {
+            *error = QStringLiteral("failed to find controlled slider");
+            return false;
+        }
         window.resize(216, 32);
         window.show();
         QTest::qWait(20);
@@ -265,12 +322,13 @@ void SettingsComponentSmokeTest::sliderEntersDefaultDetent()
     QTest::mouseMove(&fixture.window, fixture.pointForVisualPosition(0.475));
     QCoreApplication::processEvents();
 
-    QCOMPARE(fixture.slider->property("value").toReal(), 5.0);
+    QCOMPARE(fixture.slider->property("displayedValue").toReal(), 5.0);
     QVERIFY(fixture.slider->property("detentLatched").toBool());
     QVERIFY(!edited.isEmpty());
     QCOMPARE(edited.constLast().at(0).toReal(), 5.0);
     QTest::mouseRelease(&fixture.window, Qt::LeftButton, Qt::NoModifier,
                         fixture.pointForVisualPosition(0.475));
+    QVERIFY(!fixture.slider->property("detentLatched").toBool());
 }
 
 void SettingsComponentSmokeTest::sliderDetentUsesHysteresis()
@@ -288,15 +346,15 @@ void SettingsComponentSmokeTest::sliderDetentUsesHysteresis()
     QTest::mousePress(&fixture.window, Qt::LeftButton, Qt::NoModifier,
                       fixture.renderedHandleCenter());
     QTest::mouseMove(&fixture.window, fixture.pointForVisualPosition(0.475));
-    QCOMPARE(fixture.slider->property("value").toReal(), 5.0);
+    QCOMPARE(fixture.slider->property("displayedValue").toReal(), 5.0);
     QVERIFY(fixture.slider->property("detentLatched").toBool());
 
     QTest::mouseMove(&fixture.window, fixture.pointForVisualPosition(0.54));
-    QCOMPARE(fixture.slider->property("value").toReal(), 5.0);
+    QCOMPARE(fixture.slider->property("displayedValue").toReal(), 5.0);
     QVERIFY(fixture.slider->property("detentLatched").toBool());
 
     QTest::mouseMove(&fixture.window, fixture.pointForVisualPosition(0.60));
-    QVERIFY(fixture.slider->property("value").toReal() > 5.0);
+    QVERIFY(fixture.slider->property("displayedValue").toReal() > 5.0);
     QVERIFY(!fixture.slider->property("detentLatched").toBool());
     QTest::mouseRelease(&fixture.window, Qt::LeftButton, Qt::NoModifier,
                         fixture.pointForVisualPosition(0.60));
@@ -315,6 +373,7 @@ void SettingsComponentSmokeTest::sliderDetentPulseIsOneShotPerEntry()
     QTest::mousePress(&fixture.window, Qt::LeftButton, Qt::NoModifier,
                       fixture.renderedHandleCenter());
     QTest::mouseMove(&fixture.window, fixture.pointForVisualPosition(0.475));
+    QCOMPARE(fixture.slider->property("pulseSerial").toInt(), 1);
     QTRY_VERIFY_WITH_TIMEOUT(fixture.slider->property("pulseScale").toReal() > 1.02, 100);
     QTRY_VERIFY_WITH_TIMEOUT(qAbs(fixture.slider->property("pulseScale").toReal() - 1.0) < 0.01,
                              300);
@@ -322,8 +381,77 @@ void SettingsComponentSmokeTest::sliderDetentPulseIsOneShotPerEntry()
     QTest::mouseMove(&fixture.window, fixture.pointForVisualPosition(0.54));
     QTest::qWait(30);
     QVERIFY(fixture.slider->property("pulseScale").toReal() < 1.02);
+    QCOMPARE(fixture.slider->property("pulseSerial").toInt(), 1);
     QTest::mouseRelease(&fixture.window, Qt::LeftButton, Qt::NoModifier,
                         fixture.pointForVisualPosition(0.54));
+
+    QTest::mousePress(&fixture.window, Qt::LeftButton, Qt::NoModifier,
+                      fixture.renderedHandleCenter());
+    QTest::mouseMove(&fixture.window, fixture.pointForVisualPosition(0.475));
+    QCOMPARE(fixture.slider->property("pulseSerial").toInt(), 2);
+    QTest::mouseRelease(&fixture.window, Qt::LeftButton, Qt::NoModifier,
+                        fixture.pointForVisualPosition(0.475));
+}
+
+void SettingsComponentSmokeTest::sliderControlledBindingSurvivesDetent()
+{
+    SliderFixture fixture;
+    QVERIFY(fixture.directory.isValid());
+
+    QString error;
+    QVERIFY2(fixture.createControlled(2, &error), qPrintable(error));
+    QVERIFY(fixture.fixtureRoot != nullptr);
+    QCOMPARE(fixture.fixtureRoot->property("backendValue").toReal(), 2.0);
+
+    QTest::mousePress(&fixture.window, Qt::LeftButton, Qt::NoModifier,
+                      fixture.renderedHandleCenter());
+    QTest::mouseMove(&fixture.window, fixture.pointForVisualPosition(0.475));
+    QCOMPARE(fixture.fixtureRoot->property("backendValue").toReal(), 5.0);
+    QCOMPARE(fixture.slider->property("displayedValue").toReal(), 5.0);
+    QVERIFY(fixture.slider->property("detentLatched").toBool());
+    QTest::mouseRelease(&fixture.window, Qt::LeftButton, Qt::NoModifier,
+                        fixture.pointForVisualPosition(0.475));
+    QVERIFY(!fixture.slider->property("detentLatched").toBool());
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(fixture.slider->property("value").toReal() - 5.0) < 0.001,
+                             100);
+
+    fixture.fixtureRoot->setProperty("backendValue", 7.0);
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(fixture.slider->property("value").toReal() - 7.0) < 0.001,
+                             100);
+    QCOMPARE(fixture.slider->property("displayedValue").toReal(), 7.0);
+    QCOMPARE(fixture.slider->property("valueText").toString(), QStringLiteral("7.0"));
+}
+
+void SettingsComponentSmokeTest::sliderLatchClearsOnReleaseAndRearmsSnap()
+{
+    SliderFixture fixture;
+    QVERIFY(fixture.directory.isValid());
+
+    QString error;
+    QVERIFY2(fixture.create(2, &error), qPrintable(error));
+    fixture.slider->setProperty("detentEnabled", true);
+    fixture.slider->setProperty("detentValue", 5.0);
+    fixture.slider->setProperty("detentSnapDistancePx", 8.0);
+    fixture.slider->setProperty("detentReleaseDistancePx", 14.0);
+    auto *marker = qobject_cast<QQuickItem *>(
+        fixture.slider->findChild<QObject *>(QStringLiteral("sliderDefaultDetentMarker")));
+    QVERIFY(marker != nullptr);
+
+    QTest::mousePress(&fixture.window, Qt::LeftButton, Qt::NoModifier,
+                      fixture.renderedHandleCenter());
+    QTest::mouseMove(&fixture.window, fixture.pointForVisualPosition(0.475));
+    QVERIFY(fixture.slider->property("detentLatched").toBool());
+    QTest::mouseRelease(&fixture.window, Qt::LeftButton, Qt::NoModifier,
+                        fixture.pointForVisualPosition(0.475));
+    QVERIFY(!fixture.slider->property("detentLatched").toBool());
+    QVERIFY(marker->property("opacity").toReal() < 0.8);
+
+    QTest::mousePress(&fixture.window, Qt::LeftButton, Qt::NoModifier,
+                      fixture.renderedHandleCenter());
+    QTest::mouseMove(&fixture.window, fixture.pointForVisualPosition(0.55));
+    QVERIFY(!fixture.slider->property("detentLatched").toBool());
+    QTest::mouseRelease(&fixture.window, Qt::LeftButton, Qt::NoModifier,
+                        fixture.pointForVisualPosition(0.55));
 }
 
 void SettingsComponentSmokeTest::sliderKeyboardCrossesDefaultDetent()

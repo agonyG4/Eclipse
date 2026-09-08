@@ -2,13 +2,17 @@
 
 #include <QFileSystemWatcher>
 #include <QObject>
+#include <QStyleHints>
 #include <QTimer>
 #include <QString>
 #include <QVariantMap>
 
+#include <functional>
+
 class ThemeController final : public QObject {
     Q_OBJECT
     Q_PROPERTY(int themeMode READ themeMode WRITE setThemeMode NOTIFY themeModeChanged)
+    Q_PROPERTY(QString themePreference READ themePreference WRITE setThemePreference NOTIFY themePreferenceChanged)
     Q_PROPERTY(int shellStyle READ shellStyle WRITE setShellStyle NOTIFY shellStyleChanged)
     Q_PROPERTY(int iconStyle READ iconStyle WRITE setIconStyle NOTIFY iconStyleChanged)
     Q_PROPERTY(QString iconTheme READ iconTheme WRITE setIconTheme NOTIFY iconThemeChanged)
@@ -18,10 +22,15 @@ class ThemeController final : public QObject {
     Q_PROPERTY(bool loaded READ loaded CONSTANT)
 
 public:
-    explicit ThemeController(const QString &configPath = {}, QObject *parent = nullptr);
+    using ColorSchemeProvider = std::function<Qt::ColorScheme()>;
+
+    explicit ThemeController(const QString &configPath = {}, QObject *parent = nullptr,
+                             ColorSchemeProvider colorSchemeProvider = {});
 
     int themeMode() const;
     void setThemeMode(int value);
+    QString themePreference() const;
+    void setThemePreference(const QString &value);
     int shellStyle() const;
     void setShellStyle(int value);
     int iconStyle() const;
@@ -41,21 +50,32 @@ public:
 
 signals:
     void themeModeChanged();
+    void themePreferenceChanged();
     void shellStyleChanged();
     void iconStyleChanged();
     void iconThemeChanged();
     void accentHexChanged();
     void audioOsdStyleChanged();
 
+private slots:
+    void handlePlatformColorSchemeChanged();
+
 private:
+    static QString normalizedThemePreference(const QString &value);
+    static bool isValidThemePreference(const QString &value);
+    void updateEffectiveThemeMode();
+    void setEffectiveThemeMode(int value);
+    Qt::ColorScheme platformColorScheme() const;
     void scheduleReload();
     void updateWatchPaths();
 
     QString m_configPath;
+    ColorSchemeProvider m_colorSchemeProvider;
     QFileSystemWatcher m_watcher;
     QTimer m_reloadTimer;
     int m_themeMode = 0;
-    int m_shellStyle = 0;
+    QString m_themePreference = QStringLiteral("auto");
+    int m_shellStyle = 1;
     int m_iconStyle = 0;
     QString m_iconTheme = QStringLiteral("dark");
     QString m_accentHex = QStringLiteral("#0a84ff");

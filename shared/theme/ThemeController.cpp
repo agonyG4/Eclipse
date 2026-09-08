@@ -1,16 +1,22 @@
 #include "theme/ThemeController.hpp"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
 
-ThemeController::ThemeController(const QString &configPath, QObject *parent)
+#include <utility>
+
+ThemeController::ThemeController(const QString &configPath, QObject *parent,
+                                 ColorSchemeProvider colorSchemeProvider)
     : QObject(parent)
     , m_configPath(configPath.isEmpty()
                        ? QDir::homePath() + QStringLiteral("/.config/AstreaOS/ui/theme.json")
                        : QFileInfo(configPath).absoluteFilePath())
+    , m_colorSchemeProvider(std::move(colorSchemeProvider))
 {
     m_reloadTimer.setSingleShot(true);
     m_reloadTimer.setInterval(100);
@@ -19,7 +25,13 @@ ThemeController::ThemeController(const QString &configPath, QObject *parent)
             this, [this](const QString &) { scheduleReload(); });
     connect(&m_watcher, &QFileSystemWatcher::directoryChanged,
             this, [this](const QString &) { scheduleReload(); });
+    if (auto *application = qobject_cast<QGuiApplication *>(QCoreApplication::instance());
+        application && application->styleHints()) {
+        connect(application->styleHints(), &QStyleHints::colorSchemeChanged,
+                this, [this](Qt::ColorScheme) { handlePlatformColorSchemeChanged(); });
+    }
     reload();
+    updateEffectiveThemeMode();
     m_loaded = true;
 }
 
@@ -28,17 +40,26 @@ int ThemeController::themeMode() const { return m_themeMode; }
 void ThemeController::setThemeMode(int value)
 {
     const int next = value == 1 ? 1 : 0;
-    if (m_themeMode == next)
-        return;
-    m_themeMode = next;
-    emit themeModeChanged();
+    setThemePreference(next == 1 ? QStringLiteral("light") : QStringLiteral("dark"));
+}
+
+QString ThemeController::themePreference() const { return m_themePreference; }
+
+void ThemeController::setThemePreference(const QString &value)
+{
+    const QString next = normalizedThemePreference(value);
+    if (m_themePreference != next) {
+        m_themePreference = next;
+        emit themePreferenceChanged();
+    }
+    updateEffectiveThemeMode();
 }
 
 int ThemeController::shellStyle() const { return m_shellStyle; }
 
 void ThemeController::setShellStyle(int value)
 {
-    const int next = qBound(0, value, 2);
+    const int next = value >= 0 && value <= 2 ? value : 1;
     if (m_shellStyle == next)
         return;
     m_shellStyle = next;
@@ -93,14 +114,36 @@ bool ThemeController::loaded() const { return m_loaded; }
 void ThemeController::applyConfig(const QVariantMap &config)
 {
     const auto value = [&config](const QString &key) { return config.value(key); };
-    if (value(QStringLiteral("theme_mode")).isValid())
-        setThemeMode(value(QStringLiteral("theme_mode")).toInt());
-    if (value(QStringLiteral("theme")).toString().compare(QStringLiteral("light"), Qt::CaseInsensitive) == 0)
-        setThemeMode(1);
-    else if (value(QStringLiteral("theme")).toString().compare(QStringLiteral("dark"), Qt::CaseInsensitive) == 0)
-        setThemeMode(0);
-    if (value(QStringLiteral("shell_style")).isValid())
-        setShellStyle(value(QStringLiteral("shell_style")).toInt());
+    bool themePreferenceApplied = false;
+    const QString configuredPreference = value(QStringLiteral("theme_preference")).toString();
+    if (isValidThemePreference(configuredPreference)) {
+        setThemePreference(configuredPreference);
+        themePreferenceApplied = true;
+    }
+
+    if (!themePreferenceApplied) {
+        const QString legacyTheme = value(QStringLiteral("theme")).toString();
+        if (legacyTheme.compare(QStringLiteral("light"), Qt::CaseInsensitive) == 0) {
+            setThemePreference(QStringLiteral("light"));
+            themePreferenceApplied = true;
+        } else if (legacyTheme.compare(QStringLiteral("dark"), Qt::CaseInsensitive) == 0) {
+            setThemePreference(QStringLiteral("dark"));
+            themePreferenceApplied = true;
+        }
+    }
+
+    if (!themePreferenceApplied) {
+        bool ok = false;
+        const int legacyMode = value(QStringLiteral("theme_mode")).toInt(&ok);
+        if (ok && (legacyMode == 0 || legacyMode == 1))
+            setThemePreference(legacyMode == 1 ? QStringLiteral("light") : QStringLiteral("dark"));
+    }
+
+    if (value(QStringLiteral("shell_style")).isValid()) {
+        bool ok = false;
+        const int shellStyle = value(QStringLiteral("shell_style")).toInt(&ok);
+        setShellStyle(ok ? shellStyle : 1);
+    }
     if (value(QStringLiteral("icon_style")).isValid())
         setIconStyle(value(QStringLiteral("icon_style")).toInt());
     if (value(QStringLiteral("icon_theme")).isValid())
@@ -134,6 +177,7 @@ void ThemeController::save()
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
         return;
     const QJsonObject object{
+        {QStringLiteral("theme_preference"), m_themePreference},
         {QStringLiteral("theme"), m_themeMode == 1 ? QStringLiteral("light") : QStringLiteral("dark")},
         {QStringLiteral("theme_mode"), m_themeMode},
         {QStringLiteral("shell_style"), m_shellStyle},
@@ -144,6 +188,57 @@ void ThemeController::save()
     };
     file.write(QJsonDocument(object).toJson(QJsonDocument::Indented));
     updateWatchPaths();
+}
+
+QString ThemeController::normalizedThemePreference(const QString &value)
+{
+    const QString normalized = value.trimmed().toLower();
+    return isValidThemePreference(normalized) ? normalized : QStringLiteral("auto");
+}
+
+bool ThemeController::isValidThemePreference(const QString &value)
+{
+    const QString normalized = value.trimmed().toLower();
+    return normalized == QStringLiteral("auto")
+        || normalized == QStringLiteral("light")
+        || normalized == QStringLiteral("dark");
+}
+
+void ThemeController::updateEffectiveThemeMode()
+{
+    int next = 0;
+    if (m_themePreference == QStringLiteral("light")) {
+        next = 1;
+    } else if (m_themePreference == QStringLiteral("auto")) {
+        next = platformColorScheme() == Qt::ColorScheme::Light ? 1 : 0;
+    }
+    setEffectiveThemeMode(next);
+}
+
+void ThemeController::setEffectiveThemeMode(int value)
+{
+    const int next = value == 1 ? 1 : 0;
+    if (m_themeMode == next)
+        return;
+    m_themeMode = next;
+    emit themeModeChanged();
+}
+
+Qt::ColorScheme ThemeController::platformColorScheme() const
+{
+    if (m_colorSchemeProvider)
+        return m_colorSchemeProvider();
+
+    auto *application = qobject_cast<QGuiApplication *>(QCoreApplication::instance());
+    if (!application || !application->styleHints())
+        return Qt::ColorScheme::Unknown;
+    return application->styleHints()->colorScheme();
+}
+
+void ThemeController::handlePlatformColorSchemeChanged()
+{
+    if (m_themePreference == QStringLiteral("auto"))
+        updateEffectiveThemeMode();
 }
 
 void ThemeController::scheduleReload()

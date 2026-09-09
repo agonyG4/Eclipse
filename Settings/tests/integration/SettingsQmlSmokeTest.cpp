@@ -400,6 +400,13 @@ void SettingsQmlSmokeTest::appearancePreviewsUseCurrentWallpaperSnapshot()
                  ->property("materialId")
                  .toString(),
              QStringLiteral("frosted"));
+    auto *frostedPreview = findVisualItem(
+        page, QStringLiteral("materialPreview-interface-frosted"));
+    QVERIFY(frostedPreview != nullptr);
+    QVERIFY(frostedPreview->findChild<QObject *>(QStringLiteral("materialPreviewLiveFrosted"))
+            != nullptr);
+    QCOMPARE(frostedPreview->property("liveFrostedAvailable").toBool(), false);
+    QCOMPARE(frostedPreview->property("liveFrostedActive").toBool(), false);
 }
 
 void SettingsQmlSmokeTest::appearanceReusesSnapshotAndUpdatesWithoutRecreation()

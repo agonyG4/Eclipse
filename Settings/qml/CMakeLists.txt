@@ -35,6 +35,7 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     pages/system/Compositor.qml
     pages/appearance/Appearance.qml
     pages/appearance/MaterialPreview.qml
+    pages/appearance/MaterialShowcase.qml
     pages/appearance/Dock.qml
     pages/appearance/Wallpaper.qml
     theme/Apps.qml

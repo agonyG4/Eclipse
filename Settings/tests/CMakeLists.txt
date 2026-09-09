@@ -37,6 +37,8 @@ function(add_settings_qml_integration_test target source)
         astrea-settings-uiplugin
         astrea-shared-core
         astrea-shared-coreplugin
+        astrea-shared-wayland-effects
+        astrea-shared-wayland-effectsplugin
         Qt6::Core
         Qt6::Core5Compat
         Qt6::Gui

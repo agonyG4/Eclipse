@@ -15,6 +15,8 @@ target_link_libraries(astrea-settings PRIVATE
     astrea-settings-uiplugin
     astrea-shared-core
     astrea-shared-coreplugin
+    astrea-shared-wayland-effects
+    astrea-shared-wayland-effectsplugin
     Qt6::Core
     Qt6::Core5Compat
     Qt6::Gui

@@ -38,7 +38,7 @@ not link Qt QML, Qt Quick, Quick Controls, LayerShellQt, or a compositor
 library.
 
 `astrea-settings-ui` is the only `Astrea.Settings 1.0` QML module and registers
-42 QML files. The application and QML integration tests consume that same
+43 QML files. The application and QML integration tests consume that same
 target and generated plugin. The application additionally links the existing
 shared core and QML plugin for compositor-independent shared utilities.
 
@@ -53,9 +53,12 @@ machine with `MouseArea`.
 `pages/appearance/MaterialPreview.qml` is the reusable preview surface for
 Appearance and Interface Style cards. It consumes the effective wallpaper
 snapshot projected by `SettingsController.wallpaper`, including its preview
-URL and fit mode, and keeps the local material presentation behind a seam for
-a future renderer-owned preview. It does not own wallpaper state, add a new
-transport, or couple Settings to the compositor.
+URL and fit mode. `MaterialShowcase.qml` owns the existing fallback visual
+tree, while the Frosted variant additionally offers that same content through
+the `Astrea.Effects.BackdropEffectSurface` child-surface primitive. The public
+Wayland-effects service uses Qt's existing Wayland display and window surface;
+it never opens a second display connection. If the compositor or protocol is
+unavailable, the fallback showcase remains visible.
 
 Unit tests link `astrea-settings-core`. Integration tests link both reusable
 production targets. No test target lists a production `.cpp` file owned by the
@@ -68,7 +71,7 @@ app -> core -> services -> platform/linux
 app -> qml context properties
 qml -> presentation and interaction
 tests -> production targets and explicit fakes
-shared -> compositor-independent shared utilities
+shared -> compositor-independent utilities and capability-gated Wayland effects
 ```
 
 QML has no filesystem, process, IPC, DBus, or compositor API. Platform access
@@ -150,7 +153,9 @@ opacity or darkening filters.
 
 Settings has no Quickshell import, LayerShellQt dependency, Hyprland command,
 Typhon-private protocol, compositor backend, IPC boundary, persistence for the
-Compositor preview, or shell command execution. The Dock page is a native route
+Compositor preview, or shell command execution. The shared public Wayland
+effects module is a narrow Qt-owned child-surface bridge; it is independent of
+Typhon and falls back cleanly when unsupported. The Dock page is a native route
 under the Customization hub and its preview is presentation-only; it does not
 import resident Dock QML or implement a second schema. Performance and More
 Settings are visible but unavailable hubs until they receive navigable children.

@@ -231,6 +231,78 @@ endif()
 
 astrea_shared_enable_sanitizers(astrea-shared-layer-shell)
 
+if(NOT DEFINED ASTREA_WAYLAND_EFFECTS_AVAILABLE)
+    set(ASTREA_WAYLAND_EFFECTS_AVAILABLE OFF)
+endif()
+
+add_library(astrea-shared-wayland-effects STATIC
+    platform/wayland/effects/AstreaEffectChildWindow.cpp
+    platform/wayland/effects/AstreaEffectChildWindow.hpp
+    platform/wayland/effects/AstreaWaylandEffects.cpp
+    platform/wayland/effects/AstreaWaylandEffects.hpp
+    platform/wayland/effects/QtWaylandWindow.cpp
+    platform/wayland/effects/QtWaylandWindow.hpp
+    platform/wayland/effects/RoundedEffectRegion.cpp
+    platform/wayland/effects/RoundedEffectRegion.hpp
+)
+
+target_include_directories(astrea-shared-wayland-effects PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(astrea-shared-wayland-effects PUBLIC
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Qml
+    Qt6::Quick
+)
+if(NOT MSVC)
+    target_compile_options(astrea-shared-wayland-effects PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+if(ASTREA_WAYLAND_EFFECTS_AVAILABLE)
+    set(ASTREA_EFFECTS_PROTOCOL_XML
+        "${CMAKE_CURRENT_SOURCE_DIR}/platform/wayland/protocols/ext-background-effect-v1.xml")
+    set(ASTREA_EFFECTS_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/effects")
+    set(ASTREA_EFFECTS_GENERATED_HEADER
+        "${ASTREA_EFFECTS_GENERATED_DIR}/ext-background-effect-v1-client-protocol.h")
+    set(ASTREA_EFFECTS_GENERATED_SOURCE
+        "${ASTREA_EFFECTS_GENERATED_DIR}/ext-background-effect-v1-protocol.c")
+    add_custom_command(
+        OUTPUT "${ASTREA_EFFECTS_GENERATED_HEADER}" "${ASTREA_EFFECTS_GENERATED_SOURCE}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${ASTREA_EFFECTS_GENERATED_DIR}"
+        COMMAND "${ASTREA_WAYLAND_SCANNER}" client-header
+                "${ASTREA_EFFECTS_PROTOCOL_XML}" "${ASTREA_EFFECTS_GENERATED_HEADER}"
+        COMMAND "${ASTREA_WAYLAND_SCANNER}" private-code
+                "${ASTREA_EFFECTS_PROTOCOL_XML}" "${ASTREA_EFFECTS_GENERATED_SOURCE}"
+        DEPENDS "${ASTREA_EFFECTS_PROTOCOL_XML}"
+        VERBATIM
+    )
+    set_source_files_properties("${ASTREA_EFFECTS_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
+    target_sources(astrea-shared-wayland-effects PRIVATE
+        "${ASTREA_EFFECTS_GENERATED_HEADER}"
+        "${ASTREA_EFFECTS_GENERATED_SOURCE}"
+    )
+    target_include_directories(astrea-shared-wayland-effects PRIVATE
+        "${ASTREA_EFFECTS_GENERATED_DIR}"
+    )
+    target_link_libraries(astrea-shared-wayland-effects PRIVATE PkgConfig::ASTREA_WAYLAND_CLIENT)
+    target_compile_definitions(astrea-shared-wayland-effects PUBLIC ASTREA_HAVE_WAYLAND_EFFECTS=1)
+else()
+    target_compile_definitions(astrea-shared-wayland-effects PUBLIC ASTREA_HAVE_WAYLAND_EFFECTS=0)
+endif()
+
+qt_add_qml_module(astrea-shared-wayland-effects
+    URI Astrea.Effects
+    VERSION 1.0
+    OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Astrea/Effects"
+    SOURCES
+        AstreaEffectChildWindow.hpp
+    QML_FILES
+        qml/effects/BackdropEffectSurface.qml
+)
+
+astrea_shared_enable_sanitizers(astrea-shared-wayland-effects)
+
 add_library(astrea-shared-typhon STATIC
     platform/typhon/TyphonProtocolAdapter.cpp
     platform/typhon/TyphonProtocolAdapter.hpp
@@ -529,6 +601,19 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     )
     astrea_shared_enable_sanitizers(layer-shell-helper-test)
     add_test(NAME layer-shell-helper-test COMMAND layer-shell-helper-test)
+
+    add_executable(rounded-effect-region-test
+        tests/RoundedEffectRegionTest.cpp
+    )
+    target_include_directories(rounded-effect-region-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_link_libraries(rounded-effect-region-test PRIVATE
+        astrea-shared-wayland-effects
+        Qt6::Test
+    )
+    astrea_shared_enable_sanitizers(rounded-effect-region-test)
+    add_test(NAME rounded-effect-region-test COMMAND rounded-effect-region-test)
 
     function(add_typhon_shared_test TEST_NAME TEST_FILE)
         add_executable(${TEST_NAME}

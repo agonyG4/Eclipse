@@ -199,6 +199,7 @@ set(production_source_files
     qml/pages/navigation/Hub.qml
     qml/pages/appearance/Appearance.qml
     qml/pages/appearance/MaterialPreview.qml
+    qml/pages/appearance/MaterialShowcase.qml
     qml/pages/appearance/Wallpaper.qml
     qml/pages/system/Compositor.qml
     qml/pages/appearance/Dock.qml
@@ -395,7 +396,6 @@ file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/MaterialPreview.qml" mate
 foreach(material_preview_required_token IN ITEMS
     "objectName: \"materialPreview\""
     "objectName: \"materialPreviewWallpaper\""
-    "objectName: \"materialPreviewShowcase\""
     "objectName: \"materialPreviewFallback\""
     "property url wallpaperSource"
     "property string wallpaperFit"
@@ -410,10 +410,24 @@ foreach(material_preview_required_token IN ITEMS
     "Image.Stretch"
     "Image.Pad"
     "Image.Tile"
+    "import Astrea.Effects"
+    "liveFrosted.effectActive"
 )
     string(FIND "${material_preview_source}" "${material_preview_required_token}" material_preview_token_position)
     if(material_preview_token_position EQUAL -1)
         message(FATAL_ERROR "MaterialPreview.qml is missing '${material_preview_required_token}'")
+    endif()
+endforeach()
+
+file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/MaterialShowcase.qml" material_showcase_source)
+foreach(material_showcase_required_token IN ITEMS
+    "objectName: \"materialPreviewShowcase\""
+    "property string themeVariant"
+    "property string materialId"
+)
+    string(FIND "${material_showcase_source}" "${material_showcase_required_token}" material_showcase_token_position)
+    if(material_showcase_token_position EQUAL -1)
+        message(FATAL_ERROR "MaterialShowcase.qml is missing '${material_showcase_required_token}'")
     endif()
 endforeach()
 
@@ -532,7 +546,7 @@ foreach(relative_path IN LISTS production_source_files)
 endforeach()
 
 list(LENGTH registered_qml_files registered_qml_file_count)
-if(NOT registered_qml_file_count EQUAL 42)
-    message(FATAL_ERROR "Settings module must register exactly 42 QML files, found ${registered_qml_file_count}")
+if(NOT registered_qml_file_count EQUAL 43)
+    message(FATAL_ERROR "Settings module must register exactly 43 QML files, found ${registered_qml_file_count}")
 endif()
 message(STATUS "Settings structure invariants passed (${registered_qml_file_count} registered QML files checked)")

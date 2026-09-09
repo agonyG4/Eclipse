@@ -93,7 +93,9 @@ Item {
     BackdropEffectSurface {
         id: liveFrosted
         objectName: "materialPreviewLiveFrosted"
-        anchors.fill: parent
+        anchors.centerIn: parent
+        width: parent.width * 0.70
+        height: parent.height * 0.64
         visible: root.materialId === "frosted" && !root.usingRendererPreview
         effectEnabled: visible
         cornerRadius: 8
@@ -110,7 +112,9 @@ Item {
     // Fallback remains the canonical preview when the compositor or Qt
     // Wayland path cannot provide a live child surface.
     MaterialShowcase {
-        anchors.fill: parent
+        anchors.centerIn: parent
+        width: parent.width * 0.70
+        height: parent.height * 0.64
         themeVariant: root.themeVariant
         materialId: root.materialId
         visible: !root.usingRendererPreview && !liveFrosted.effectActive

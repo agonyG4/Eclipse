@@ -12,6 +12,21 @@ if(NOT TARGET PkgConfig::ASTREA_PIPEWIRE)
     pkg_check_modules(ASTREA_PIPEWIRE REQUIRED IMPORTED_TARGET libpipewire-0.3)
 endif()
 
+if(NOT DEFINED ASTREA_WAYLAND_EFFECTS_AVAILABLE)
+    if(NOT TARGET PkgConfig::ASTREA_WAYLAND_CLIENT)
+        pkg_check_modules(ASTREA_WAYLAND_CLIENT QUIET IMPORTED_TARGET wayland-client)
+    endif()
+    find_program(ASTREA_WAYLAND_SCANNER wayland-scanner)
+    set(ASTREA_WAYLAND_EFFECTS_AVAILABLE OFF)
+    if(ASTREA_WAYLAND_CLIENT_FOUND AND ASTREA_WAYLAND_SCANNER)
+        set(ASTREA_WAYLAND_EFFECTS_AVAILABLE ON)
+    endif()
+endif()
+
+if(ASTREA_WAYLAND_EFFECTS_AVAILABLE AND NOT CMAKE_C_COMPILER_LOADED)
+    enable_language(C)
+endif()
+
 add_library(astrea-shared-core STATIC
     apps/DesktopEntryParser.cpp
     apps/DesktopEntryParser.hpp
@@ -231,13 +246,11 @@ endif()
 
 astrea_shared_enable_sanitizers(astrea-shared-layer-shell)
 
-if(NOT DEFINED ASTREA_WAYLAND_EFFECTS_AVAILABLE)
-    set(ASTREA_WAYLAND_EFFECTS_AVAILABLE OFF)
-endif()
-
 add_library(astrea-shared-wayland-effects STATIC
     platform/wayland/effects/AstreaEffectChildWindow.cpp
     platform/wayland/effects/AstreaEffectChildWindow.hpp
+    platform/wayland/effects/AstreaEffectSurfaceController.cpp
+    platform/wayland/effects/AstreaEffectSurfaceController.hpp
     platform/wayland/effects/AstreaWaylandEffects.cpp
     platform/wayland/effects/AstreaWaylandEffects.hpp
     platform/wayland/effects/QtWaylandWindow.cpp
@@ -260,6 +273,18 @@ if(NOT MSVC)
 endif()
 
 if(ASTREA_WAYLAND_EFFECTS_AVAILABLE)
+    find_path(ASTREA_QT_GUI_QPA_INCLUDE_DIR
+        qpa/qplatformnativeinterface.h
+        PATHS ${Qt6Gui_INCLUDE_DIRS}
+        PATH_SUFFIXES "${Qt6Gui_VERSION}/QtGui"
+    )
+    if(NOT ASTREA_QT_GUI_QPA_INCLUDE_DIR)
+        message(FATAL_ERROR
+            "Public Wayland effects require Qt's platform native window-resource interface")
+    endif()
+    target_include_directories(astrea-shared-wayland-effects PRIVATE
+        "${ASTREA_QT_GUI_QPA_INCLUDE_DIR}"
+    )
     set(ASTREA_EFFECTS_PROTOCOL_XML
         "${CMAKE_CURRENT_SOURCE_DIR}/platform/wayland/protocols/ext-background-effect-v1.xml")
     set(ASTREA_EFFECTS_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/effects")
@@ -614,6 +639,19 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     )
     astrea_shared_enable_sanitizers(rounded-effect-region-test)
     add_test(NAME rounded-effect-region-test COMMAND rounded-effect-region-test)
+
+    add_executable(wayland-effects-state-test
+        tests/WaylandEffectsStateTest.cpp
+    )
+    target_include_directories(wayland-effects-state-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_link_libraries(wayland-effects-state-test PRIVATE
+        astrea-shared-wayland-effects
+        Qt6::Test
+    )
+    astrea_shared_enable_sanitizers(wayland-effects-state-test)
+    add_test(NAME wayland-effects-state-test COMMAND wayland-effects-state-test)
 
     function(add_typhon_shared_test TEST_NAME TEST_FILE)
         add_executable(${TEST_NAME}

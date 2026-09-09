@@ -16,6 +16,7 @@ Item {
         anchors.fill: parent
         window: AstreaEffectChildWindow {
             id: childWindow
+            objectName: "effectChildWindow"
             width: root.width
             height: root.height
             visible: root.visible && root.effectEnabled
@@ -26,7 +27,8 @@ Item {
                 id: contentLoader
                 parent: childWindow.contentItem
                 anchors.fill: parent
-                sourceComponent: root.content
+                active: childWindow.effectActive
+                sourceComponent: childWindow.effectActive ? root.content : undefined
             }
         }
     }

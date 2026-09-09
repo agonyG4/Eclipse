@@ -20,6 +20,7 @@
 #include <QSignalSpy>
 #include <QThread>
 #include <QTimer>
+#include <QQmlComponent>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlError>
@@ -28,6 +29,7 @@
 #include <QtTest>
 
 #include <algorithm>
+#include <memory>
 
 namespace {
 
@@ -64,6 +66,7 @@ private slots:
     void loadsCustomizationHubOffscreen();
     void loadsAppearanceRouteFromHubOffscreen();
     void appearancePreviewsUseCurrentWallpaperSnapshot();
+    void materialPreviewFrostedGeometryMatchesFallback();
     void appearanceReusesSnapshotAndUpdatesWithoutRecreation();
     void appearanceDoesNotRefreshWhileWallpaperBusy();
     void appearancePreviewFallsBackWithoutWallpaperService();
@@ -407,6 +410,35 @@ void SettingsQmlSmokeTest::appearancePreviewsUseCurrentWallpaperSnapshot()
             != nullptr);
     QCOMPARE(frostedPreview->property("liveFrostedAvailable").toBool(), false);
     QCOMPARE(frostedPreview->property("liveFrostedActive").toBool(), false);
+}
+
+void SettingsQmlSmokeTest::materialPreviewFrostedGeometryMatchesFallback()
+{
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    QQmlComponent component(
+        &engine,
+        QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/MaterialPreview.qml")));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    std::unique_ptr<QObject> previewObject(component.create());
+    QVERIFY(previewObject != nullptr);
+
+    auto *preview = qobject_cast<QQuickItem *>(previewObject.get());
+    QVERIFY(preview != nullptr);
+    preview->setWidth(1000);
+    preview->setHeight(600);
+    preview->setProperty("materialId", QStringLiteral("frosted"));
+    QCoreApplication::processEvents();
+
+    auto *live = findVisualItem(preview, QStringLiteral("materialPreviewLiveFrosted"));
+    auto *fallback = findVisualItem(preview, QStringLiteral("materialPreviewShowcase"));
+    QVERIFY(live != nullptr);
+    QVERIFY(fallback != nullptr);
+    QCOMPARE(live->width(), fallback->width());
+    QCOMPARE(live->height(), fallback->height());
+    QCOMPARE(live->x(), fallback->x());
+    QCOMPARE(live->y(), fallback->y());
 }
 
 void SettingsQmlSmokeTest::appearanceReusesSnapshotAndUpdatesWithoutRecreation()

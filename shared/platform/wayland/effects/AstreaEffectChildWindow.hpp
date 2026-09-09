@@ -1,6 +1,10 @@
 #pragma once
 
+#include "platform/wayland/effects/AstreaEffectSurfaceController.hpp"
+
 #include <QQuickWindow>
+
+#include <memory>
 
 #include <QtQml/qqmlregistration.h>
 
@@ -16,10 +20,10 @@ public:
     explicit AstreaEffectChildWindow(QWindow *parent = nullptr);
     ~AstreaEffectChildWindow() override;
 
-    bool effectAvailable() const { return m_effectAvailable; }
-    bool effectActive() const { return m_effectActive; }
-    bool effectEnabled() const { return m_effectEnabled; }
-    qreal cornerRadius() const { return m_cornerRadius; }
+    bool effectAvailable() const;
+    bool effectActive() const;
+    bool effectEnabled() const;
+    qreal cornerRadius() const;
     void setEffectEnabled(bool enabled);
     void setCornerRadius(qreal radius);
 
@@ -27,11 +31,9 @@ signals:
     void effectStateChanged();
 
 private:
+    bool event(QEvent *event) override;
     void scheduleEffectUpdate();
     void updateEffect();
 
-    bool m_effectAvailable = false;
-    bool m_effectActive = false;
-    bool m_effectEnabled = true;
-    qreal m_cornerRadius = 18.0;
+    std::unique_ptr<AstreaEffectSurfaceController> m_controller;
 };

@@ -411,6 +411,9 @@ foreach(material_preview_required_token IN ITEMS
     "Image.Pad"
     "Image.Tile"
     "import Astrea.Effects"
+    "anchors.centerIn: parent"
+    "width: parent.width * 0.70"
+    "height: parent.height * 0.64"
     "liveFrosted.effectActive"
 )
     string(FIND "${material_preview_source}" "${material_preview_required_token}" material_preview_token_position)
@@ -424,10 +427,49 @@ foreach(material_showcase_required_token IN ITEMS
     "objectName: \"materialPreviewShowcase\""
     "property string themeVariant"
     "property string materialId"
+    "Rectangle {"
 )
     string(FIND "${material_showcase_source}" "${material_showcase_required_token}" material_showcase_token_position)
     if(material_showcase_token_position EQUAL -1)
         message(FATAL_ERROR "MaterialShowcase.qml is missing '${material_showcase_required_token}'")
+    endif()
+endforeach()
+
+file(READ "${SETTINGS_SOURCE_DIR}/../shared/platform/wayland/effects/AstreaWaylandEffects.cpp"
+    wayland_effects_source)
+string(FIND "${wayland_effects_source}" "wl_surface_commit(" raw_wayland_commit_position)
+if(NOT raw_wayland_commit_position EQUAL -1)
+    message(FATAL_ERROR "Public Wayland effects must not commit Qt-owned wl_surface objects")
+endif()
+string(FIND "${wayland_effects_source}" "m_surfaces" global_surface_map_position)
+if(NOT global_surface_map_position EQUAL -1)
+    message(FATAL_ERROR "Per-surface effect proxies must not be owned by the application manager")
+endif()
+foreach(wayland_effects_required_token IN ITEMS
+    "wl_display_roundtrip(m_display)"
+    "updateCapabilities(flags)"
+    "updateAvailability()"
+    "requestQtFrame(window)"
+)
+    string(FIND "${wayland_effects_source}" "${wayland_effects_required_token}"
+        wayland_effects_token_position)
+    if(wayland_effects_token_position EQUAL -1)
+        message(FATAL_ERROR "Wayland effects manager is missing '${wayland_effects_required_token}'")
+    endif()
+endforeach()
+
+file(READ "${SETTINGS_SOURCE_DIR}/../shared/platform/wayland/effects/AstreaEffectChildWindow.cpp"
+    effect_child_window_source)
+foreach(effect_child_window_required_token IN ITEMS
+    "format.setAlphaBufferSize(8)"
+    "Qt::WindowTransparentForInput"
+    "QPlatformSurfaceEvent::SurfaceCreated"
+    "QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed"
+)
+    string(FIND "${effect_child_window_source}" "${effect_child_window_required_token}"
+        effect_child_window_token_position)
+    if(effect_child_window_token_position EQUAL -1)
+        message(FATAL_ERROR "Effect child window is missing '${effect_child_window_required_token}'")
     endif()
 endforeach()
 

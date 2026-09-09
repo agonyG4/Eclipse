@@ -1,8 +1,9 @@
 import QtQuick
 import "../../components" as Components
 
-Item {
+Rectangle {
     id: root
+    objectName: "materialPreviewShowcase"
     property string themeVariant: "dark"
     property string materialId: "default"
 
@@ -13,26 +14,20 @@ Item {
     readonly property color darkSurface: "#272e3a"
     readonly property color darkText: "#d8deea"
 
-    Rectangle {
-        id: showcase
-        objectName: "materialPreviewShowcase"
-        anchors.centerIn: parent
-        width: parent.width * 0.70
-        height: parent.height * 0.64
-        radius: 8
-        clip: true
-        color: root.themeVariant === "auto"
-            ? "transparent"
-            : root.themeVariant === "light"
-                ? root.lightSurface
-                : root.themeVariant === "dark"
-                    ? root.darkSurface
-                    : Components.Theme.isLight ? root.lightSurface : root.darkSurface
-        opacity: root.themeVariant === "auto" ? 0.96 : root.materialOpacity
-        border.width: 1
-        border.color: root.themeVariant === "auto"
-            ? "#9aa8b9"
-            : root.themeVariant === "light" ? "#d2d9e4" : "#3b4554"
+    radius: 8
+    clip: true
+    color: root.themeVariant === "auto"
+        ? "transparent"
+        : root.themeVariant === "light"
+            ? root.lightSurface
+            : root.themeVariant === "dark"
+                ? root.darkSurface
+                : Components.Theme.isLight ? root.lightSurface : root.darkSurface
+    opacity: root.themeVariant === "auto" ? 0.96 : root.materialOpacity
+    border.width: 1
+    border.color: root.themeVariant === "auto"
+        ? "#9aa8b9"
+        : root.themeVariant === "light" ? "#d2d9e4" : "#3b4554"
 
         Rectangle {
             visible: root.themeVariant === "auto"
@@ -215,5 +210,4 @@ Item {
             color: Components.Theme.accent
             opacity: 0.72
         }
-    }
 }

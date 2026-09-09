@@ -4,11 +4,11 @@
 
 #include <QCoreApplication>
 #include <QGuiApplication>
+#include <QQuickWindow>
 
 #include <algorithm>
 #include <cerrno>
 #include <cstring>
-#include <utility>
 
 #if ASTREA_HAVE_WAYLAND_EFFECTS
 #include <wayland-client-core.h>
@@ -34,9 +34,6 @@ AstreaWaylandEffects::AstreaWaylandEffects(QObject *parent)
 AstreaWaylandEffects::~AstreaWaylandEffects()
 {
 #if ASTREA_HAVE_WAYLAND_EFFECTS
-    for (auto *effect : std::as_const(m_surfaces))
-        ext_background_effect_surface_v1_destroy(effect);
-    m_surfaces.clear();
     if (m_manager)
         ext_background_effect_manager_v1_destroy(m_manager);
 #endif
@@ -96,14 +93,16 @@ bool AstreaWaylandEffects::initialize()
         setError(QStringLiteral("Compositor does not advertise ext_background_effect_v1"));
         return false;
     }
-    m_available = m_capabilities & 1u;
-    if (!m_available) {
-        setError(QStringLiteral("Compositor does not advertise blur capability"));
-        ext_background_effect_manager_v1_destroy(m_manager);
-        m_manager = nullptr;
+
+    m_capabilityState.setManagerBound(true);
+    updateAvailability();
+    if (wl_display_roundtrip(m_display) < 0) {
+        setError(QStringLiteral("Wayland capability synchronization failed"));
         return false;
     }
-    emit availableChanged();
+    updateAvailability();
+    if (!m_available)
+        setError(QStringLiteral("Compositor does not advertise blur capability"));
     return true;
 #endif
 }
@@ -114,30 +113,57 @@ void AstreaWaylandEffects::handleCapabilities(void *data,
 {
     auto *effects = static_cast<AstreaWaylandEffects *>(data);
     if (effects)
-        effects->m_capabilities = flags;
+        effects->updateCapabilities(flags);
 }
 
-bool AstreaWaylandEffects::setBlurRegion(QWindow *window, const QVector<QRect> &rectangles)
+void AstreaWaylandEffects::updateCapabilities(const uint32_t flags)
 {
-    if (!initialize())
+    m_capabilityState.setCapabilities(flags);
+    updateAvailability();
+}
+
+void AstreaWaylandEffects::updateAvailability()
+{
+    const bool available = m_capabilityState.available();
+    if (m_available == available)
+        return;
+    m_available = available;
+    if (m_available)
+        m_error.clear();
+    emit availableChanged();
+}
+
+bool AstreaWaylandEffects::createEffect(
+    wl_surface *surface, ext_background_effect_surface_v1 **effect)
+{
+    if (effect)
+        *effect = nullptr;
+    if (!effect || !surface || !initialize() || !m_manager || !m_available)
+        return false;
+
+#if !ASTREA_HAVE_WAYLAND_EFFECTS
+    Q_UNUSED(surface);
+    Q_UNUSED(effect);
+    return false;
+#else
+    *effect = ext_background_effect_manager_v1_get_background_effect(m_manager, surface);
+    return *effect != nullptr;
+#endif
+}
+
+bool AstreaWaylandEffects::setBlurRegion(
+    QQuickWindow *window, ext_background_effect_surface_v1 *effect,
+    const QVector<QRect> &rectangles)
+{
+    if (!window || !effect || !initialize() || !m_available)
         return false;
 
 #if !ASTREA_HAVE_WAYLAND_EFFECTS
     Q_UNUSED(window);
+    Q_UNUSED(effect);
     Q_UNUSED(rectangles);
     return false;
 #else
-    wl_surface *surface = astreaQtWaylandSurface(window);
-    if (!surface)
-        return false;
-
-    auto effect = m_surfaces.value(surface);
-    if (!effect) {
-        effect = ext_background_effect_manager_v1_get_background_effect(m_manager, surface);
-        if (!effect)
-            return false;
-        m_surfaces.insert(surface, effect);
-    }
 
     wl_region *region = nullptr;
     if (!rectangles.isEmpty()) {
@@ -153,29 +179,34 @@ bool AstreaWaylandEffects::setBlurRegion(QWindow *window, const QVector<QRect> &
     ext_background_effect_surface_v1_set_blur_region(effect, region);
     if (region)
         wl_region_destroy(region);
-    wl_surface_commit(surface);
+    requestQtFrame(window);
     if (wl_display_flush(m_display) < 0 && errno != EAGAIN)
         return false;
     return true;
 #endif
 }
 
-void AstreaWaylandEffects::clear(QWindow *window)
+void AstreaWaylandEffects::destroyEffect(
+    QQuickWindow *window, ext_background_effect_surface_v1 *effect, const bool requestFrame)
 {
 #if ASTREA_HAVE_WAYLAND_EFFECTS
-    if (!m_display || !window)
+    if (!m_display || !effect)
         return;
-    wl_surface *surface = astreaQtWaylandSurface(window);
-    if (!surface)
-        return;
-    if (auto *effect = m_surfaces.take(surface)) {
-        ext_background_effect_surface_v1_destroy(effect);
-        wl_surface_commit(surface);
-        wl_display_flush(m_display);
-    }
+    ext_background_effect_surface_v1_destroy(effect);
+    if (requestFrame)
+        requestQtFrame(window);
+    wl_display_flush(m_display);
 #else
     Q_UNUSED(window);
+    Q_UNUSED(effect);
+    Q_UNUSED(requestFrame);
 #endif
+}
+
+void AstreaWaylandEffects::requestQtFrame(QQuickWindow *window) const
+{
+    if (window)
+        window->update();
 }
 
 void AstreaWaylandEffects::setError(const QString &error)

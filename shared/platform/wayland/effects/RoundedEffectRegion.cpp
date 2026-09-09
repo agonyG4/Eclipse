@@ -14,44 +14,39 @@ QVector<QRect> AstreaRoundedEffectRegion::rectangles(const QSize &size, qreal ra
 
     constexpr int maxSegmentsPerCorner = 16;
     const int segments = qBound(1, clippedRadius, maxSegmentsPerCorner);
-    const int bandHeight = qMax(1, qCeil(qreal(clippedRadius) / segments));
     QVector<QRect> result;
     result.reserve(2 * segments + 1);
 
-    for (int band = 0; band < segments; ++band) {
-        const int y = band * bandHeight;
-        const int height = qMin(bandHeight, clippedRadius - y);
-        const qreal distanceFromCorner = qreal(y + height);
-        const qreal remaining = qMax(0.0,
-                                     qreal(clippedRadius * clippedRadius)
-                                         - qreal(clippedRadius) * qreal(clippedRadius)
-                                               - distanceFromCorner * distanceFromCorner
-                                               + 2.0 * qreal(clippedRadius) * distanceFromCorner);
-        const int inset = qBound(0, clippedRadius - qFloor(qSqrt(remaining)), size.width() / 2);
-        const int width = size.width() - 2 * inset;
-        if (width > 0 && height > 0)
-            result.append(QRect(inset, y, width, height));
-    }
+    const int maxInset = qMax(0, (size.width() - 1) / 2);
+    const auto appendBand = [&](const int band, const bool mirror) {
+        const int top = (clippedRadius * band) / segments;
+        const int bottom = (clippedRadius * (band + 1)) / segments;
+        const int height = bottom - top;
+        if (height <= 0)
+            return;
 
-    const int middleTop = segments * bandHeight;
+        const qreal distanceFromCenter = qreal(clippedRadius - top);
+        const qreal remaining = qMax(
+            0.0,
+            qreal(clippedRadius * clippedRadius) - distanceFromCenter * distanceFromCenter);
+        const int inset = qBound(0, clippedRadius - qFloor(qSqrt(remaining)), maxInset);
+        const int width = size.width() - 2 * inset;
+        if (width <= 0)
+            return;
+
+        const int y = mirror ? size.height() - bottom : top;
+        result.append(QRect(inset, y, width, height));
+    };
+
+    for (int band = 0; band < segments; ++band)
+        appendBand(band, false);
+
+    const int middleTop = clippedRadius;
     const int middleHeight = size.height() - 2 * middleTop;
     if (middleHeight > 0)
         result.append(QRect(0, middleTop, size.width(), middleHeight));
 
-    for (int band = segments - 1; band >= 0; --band) {
-        const int y = band * bandHeight;
-        const int height = qMin(bandHeight, clippedRadius - y);
-        const int mirroredY = size.height() - y - height;
-        const qreal distanceFromCorner = qreal(y + height);
-        const qreal remaining = qMax(0.0,
-                                     qreal(clippedRadius * clippedRadius)
-                                         - qreal(clippedRadius) * qreal(clippedRadius)
-                                               - distanceFromCorner * distanceFromCorner
-                                               + 2.0 * qreal(clippedRadius) * distanceFromCorner);
-        const int inset = qBound(0, clippedRadius - qFloor(qSqrt(remaining)), size.width() / 2);
-        const int width = size.width() - 2 * inset;
-        if (width > 0 && height > 0)
-            result.append(QRect(inset, mirroredY, width, height));
-    }
+    for (int band = segments - 1; band >= 0; --band)
+        appendBand(band, true);
     return result;
 }

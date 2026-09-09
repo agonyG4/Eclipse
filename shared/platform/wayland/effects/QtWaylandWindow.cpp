@@ -2,23 +2,12 @@
 
 #include <QCoreApplication>
 #include <QGuiApplication>
+#include <QtGui/qguiapplication_platform.h>
 #include <QWindow>
+#include <qpa/qplatformnativeinterface.h>
 
 #if ASTREA_HAVE_WAYLAND_EFFECTS
-#include <QtGui/qguiapplication_platform.h>
 #include <wayland-client-core.h>
-
-namespace QNativeInterface::Private {
-
-// This is the stable native-interface lookup contract used by Qt's Wayland
-// plugin. Keeping the declaration local avoids taking a dependency on Qt's
-// private headers while still asking Qt for the surface it owns.
-struct QWaylandWindow {
-    QT_DECLARE_NATIVE_INTERFACE(QWaylandWindow, 1, QWindow)
-    virtual wl_surface *surface() const = 0;
-};
-
-} // namespace QNativeInterface::Private
 #endif
 
 namespace {
@@ -57,9 +46,11 @@ wl_surface *astreaQtWaylandSurface(QWindow *window)
 #if ASTREA_HAVE_WAYLAND_EFFECTS
     if (!window || !astreaQtWaylandDisplay())
         return nullptr;
-    const auto *nativeWindow =
-        window->nativeInterface<QNativeInterface::Private::QWaylandWindow>();
-    return nativeWindow ? nativeWindow->surface() : nullptr;
+    auto *platformInterface = QGuiApplication::platformNativeInterface();
+    if (!platformInterface)
+        return nullptr;
+    return static_cast<wl_surface *>(
+        platformInterface->nativeResourceForWindow(QByteArrayLiteral("surface"), window));
 #else
     Q_UNUSED(window);
     return nullptr;

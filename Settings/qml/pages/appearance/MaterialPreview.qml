@@ -103,6 +103,7 @@ Item {
         content: Component {
             MaterialShowcase {
                 anchors.fill: parent
+                canonicalIdentity: liveFrosted.effectActive
                 themeVariant: root.themeVariant
                 materialId: root.materialId
             }
@@ -115,6 +116,7 @@ Item {
         anchors.centerIn: parent
         width: parent.width * 0.70
         height: parent.height * 0.64
+        canonicalIdentity: !liveFrosted.effectActive
         themeVariant: root.themeVariant
         materialId: root.materialId
         visible: !root.usingRendererPreview && !liveFrosted.effectActive

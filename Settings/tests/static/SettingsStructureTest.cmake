@@ -424,7 +424,9 @@ endforeach()
 
 file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/MaterialShowcase.qml" material_showcase_source)
 foreach(material_showcase_required_token IN ITEMS
-    "objectName: \"materialPreviewShowcase\""
+    "objectName: canonicalIdentity ? \"materialPreviewShowcase\" : \"materialPreviewShowcaseFallback\""
+    "property bool canonicalIdentity"
+    "materialPreviewShowcaseFallback"
     "property string themeVariant"
     "property string materialId"
     "Rectangle {"
@@ -437,6 +439,12 @@ endforeach()
 
 file(READ "${SETTINGS_SOURCE_DIR}/../shared/platform/wayland/effects/AstreaWaylandEffects.cpp"
     wayland_effects_source)
+string(REGEX MATCHALL "return m_available;" wayland_effects_returns
+    "${wayland_effects_source}")
+list(LENGTH wayland_effects_returns wayland_effects_return_count)
+if(wayland_effects_return_count LESS 2)
+    message(FATAL_ERROR "Wayland effects initialization must return actual availability")
+endif()
 string(FIND "${wayland_effects_source}" "wl_surface_commit(" raw_wayland_commit_position)
 if(NOT raw_wayland_commit_position EQUAL -1)
     message(FATAL_ERROR "Public Wayland effects must not commit Qt-owned wl_surface objects")
@@ -457,6 +465,27 @@ foreach(wayland_effects_required_token IN ITEMS
         message(FATAL_ERROR "Wayland effects manager is missing '${wayland_effects_required_token}'")
     endif()
 endforeach()
+
+file(READ "${SETTINGS_SOURCE_DIR}/../shared/platform/wayland/effects/AstreaEffectSurfaceController.cpp"
+    effect_surface_controller_source)
+foreach(effect_surface_controller_required_token IN ITEMS
+    "const bool initialized = effects && effects->initialize();"
+    "m_available = initialized && effects->available();"
+)
+    string(FIND "${effect_surface_controller_source}" "${effect_surface_controller_required_token}"
+        effect_surface_controller_token_position)
+    if(effect_surface_controller_token_position EQUAL -1)
+        message(FATAL_ERROR "Effect surface controller is missing '${effect_surface_controller_required_token}'")
+    endif()
+endforeach()
+
+file(READ "${SETTINGS_SOURCE_DIR}/CMakeLists.txt" settings_cmake_source)
+string(FIND "${settings_cmake_source}"
+    "find_package(Qt6 6.8 REQUIRED COMPONENTS Core Core5Compat Gui Network Qml Quick QuickControls2)"
+    settings_qt_floor_position)
+if(settings_qt_floor_position EQUAL -1)
+    message(FATAL_ERROR "Standalone Settings must require Qt 6.8 or newer")
+endif()
 
 file(READ "${SETTINGS_SOURCE_DIR}/../shared/platform/wayland/effects/AstreaEffectChildWindow.cpp"
     effect_child_window_source)

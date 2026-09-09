@@ -26,6 +26,7 @@
 #include <QQmlError>
 #include <QQmlExpression>
 #include <QTemporaryDir>
+#include <QVariantMap>
 #include <QtTest>
 
 #include <algorithm>
@@ -67,6 +68,7 @@ private slots:
     void loadsAppearanceRouteFromHubOffscreen();
     void appearancePreviewsUseCurrentWallpaperSnapshot();
     void materialPreviewFrostedGeometryMatchesFallback();
+    void materialShowcaseIdentityNamesAreDistinct();
     void appearanceReusesSnapshotAndUpdatesWithoutRecreation();
     void appearanceDoesNotRefreshWhileWallpaperBusy();
     void appearancePreviewFallsBackWithoutWallpaperService();
@@ -439,6 +441,27 @@ void SettingsQmlSmokeTest::materialPreviewFrostedGeometryMatchesFallback()
     QCOMPARE(live->height(), fallback->height());
     QCOMPARE(live->x(), fallback->x());
     QCOMPARE(live->y(), fallback->y());
+}
+
+void SettingsQmlSmokeTest::materialShowcaseIdentityNamesAreDistinct()
+{
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    QQmlComponent component(
+        &engine,
+        QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/MaterialShowcase.qml")));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+
+    const QVariantMap fallbackProperties{{QStringLiteral("canonicalIdentity"), false}};
+    const QVariantMap liveProperties{{QStringLiteral("canonicalIdentity"), true}};
+    std::unique_ptr<QObject> fallback(component.createWithInitialProperties(fallbackProperties));
+    std::unique_ptr<QObject> live(component.createWithInitialProperties(liveProperties));
+    QVERIFY(fallback != nullptr);
+    QVERIFY(live != nullptr);
+    QCOMPARE(fallback->objectName(), QStringLiteral("materialPreviewShowcaseFallback"));
+    QCOMPARE(live->objectName(), QStringLiteral("materialPreviewShowcase"));
+    QVERIFY(fallback->objectName() != live->objectName());
 }
 
 void SettingsQmlSmokeTest::appearanceReusesSnapshotAndUpdatesWithoutRecreation()

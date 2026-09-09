@@ -3,7 +3,8 @@ import "../../components" as Components
 
 Rectangle {
     id: root
-    objectName: "materialPreviewShowcase"
+    property bool canonicalIdentity: true
+    objectName: canonicalIdentity ? "materialPreviewShowcase" : "materialPreviewShowcaseFallback"
     property string themeVariant: "dark"
     property string materialId: "default"
 

@@ -103,7 +103,7 @@ bool AstreaWaylandEffects::initialize()
     updateAvailability();
     if (!m_available)
         setError(QStringLiteral("Compositor does not advertise blur capability"));
-    return true;
+    return m_available;
 #endif
 }
 

@@ -53,7 +53,8 @@ bool AstreaEffectSurfaceController::sync()
 {
     auto *window = m_window.data();
     auto *effects = AstreaWaylandEffects::instance();
-    m_available = effects && effects->initialize();
+    const bool initialized = effects && effects->initialize();
+    m_available = initialized && effects->available();
 
     auto *resolvedSurface = window ? astreaQtWaylandSurface(window) : nullptr;
     if (resolvedSurface != m_surface) {

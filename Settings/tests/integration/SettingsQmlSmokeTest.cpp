@@ -14,9 +14,11 @@
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QQuickItem>
+#include <QQuickImageProvider>
 #include <QQuickWindow>
 #include <QRegularExpression>
 #include <QSignalSpy>
+#include <QThread>
 #include <QTimer>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -65,6 +67,7 @@ private slots:
     void appearanceReusesSnapshotAndUpdatesWithoutRecreation();
     void appearanceDoesNotRefreshWhileWallpaperBusy();
     void appearancePreviewFallsBackWithoutWallpaperService();
+    void materialPreviewRendererHandoffIsFailSafe();
     void appearanceChoicesUpdateController();
     void appearanceChoicesPreserveExternalControllerPropagation();
     void appearanceIconChoicesPreserveControllerPropagation();
@@ -146,6 +149,31 @@ public:
 private:
     QByteArray m_previous;
     bool m_hadPrevious = false;
+};
+
+class DelayedMaterialPreviewProvider final : public QQuickImageProvider
+{
+public:
+    explicit DelayedMaterialPreviewProvider(const int delayMs)
+        : QQuickImageProvider(QQuickImageProvider::Image,
+                              QQuickImageProvider::ForceAsynchronousImageLoading)
+        , m_delayMs(delayMs)
+    {
+    }
+
+    QImage requestImage(const QString &, QSize *size, const QSize &requestedSize) override
+    {
+        QThread::msleep(static_cast<unsigned long>(m_delayMs));
+        const auto imageSize = requestedSize.isValid() ? requestedSize : QSize(96, 64);
+        if (size)
+            *size = imageSize;
+        QImage image(imageSize, QImage::Format_ARGB32);
+        image.fill(QColor("#b87333"));
+        return image;
+    }
+
+private:
+    int m_delayMs = 0;
 };
 
 void SettingsQmlSmokeTest::loadsCompositorRouteOffscreen()
@@ -398,12 +426,25 @@ void SettingsQmlSmokeTest::appearanceReusesSnapshotAndUpdatesWithoutRecreation()
             requestBuffer += socket->readAll();
             if (!requestBuffer.endsWith('\n'))
                 return;
+            const auto line = QString::fromUtf8(requestBuffer).trimmed();
             requestBuffer.clear();
+            if (!line.startsWith(QStringLiteral("wallpaper get")))
+                return;
             ++requestCount;
             const auto path = requestCount == 1 ? firstPath : secondPath;
             const auto fit = requestCount == 1 ? QStringLiteral("cover") : QStringLiteral("stretch");
-            socket->write(appearanceWallpaperResponse(path, fit, requestCount == 1 ? 0 : 1));
-            socket->flush();
+            const auto response = appearanceWallpaperResponse(path, fit, requestCount == 1 ? 0 : 1);
+            if (requestCount == 1) {
+                socket->write(response);
+                socket->flush();
+                return;
+            }
+            QTimer::singleShot(250, socket, [socket, response] {
+                if (!socket->isValid())
+                    return;
+                socket->write(response);
+                socket->flush();
+            });
         });
     });
 
@@ -433,11 +474,11 @@ void SettingsQmlSmokeTest::appearanceReusesSnapshotAndUpdatesWithoutRecreation()
     QVERIFY(page != nullptr);
     auto *preview = findVisualItem(page, QStringLiteral("materialPreview-appearance-auto"));
     QVERIFY(preview != nullptr);
-    QCOMPARE(requestCount, 1);
-    QCOMPARE(preview->property("wallpaperSource").toUrl(), QUrl::fromLocalFile(firstPath));
-
-    settingsController.wallpaper()->refresh();
     QTRY_COMPARE_WITH_TIMEOUT(requestCount, 2, 1500);
+    QCOMPARE(preview->property("wallpaperSource").toUrl(), QUrl::fromLocalFile(firstPath));
+    QVERIFY(settingsController.wallpaper()->busy());
+
+    QTRY_VERIFY_WITH_TIMEOUT(!settingsController.wallpaper()->busy(), 1500);
     QTRY_COMPARE_WITH_TIMEOUT(preview->property("wallpaperSource").toUrl(),
                               QUrl::fromLocalFile(secondPath), 1500);
     QCOMPARE(preview->property("wallpaperFit").toString(), QStringLiteral("stretch"));
@@ -544,6 +585,84 @@ void SettingsQmlSmokeTest::appearancePreviewFallsBackWithoutWallpaperService()
             .toBool(),
         1000);
     QVERIFY(page->findChild<QObject *>(QStringLiteral("appearanceOption-light")) != nullptr);
+}
+
+void SettingsQmlSmokeTest::materialPreviewRendererHandoffIsFailSafe()
+{
+    QTemporaryDir runtime;
+    QTemporaryDir images;
+    QVERIFY(runtime.isValid());
+    QVERIFY(images.isValid());
+    QVERIFY(QDir(runtime.path()).mkpath(QStringLiteral("astrea-shell")));
+    RuntimeEnvironmentGuard runtimeGuard(runtime.path());
+
+    const auto wallpaperPath = writeWallpaperImage(
+        images.filePath(QStringLiteral("renderer-wallpaper.png")), QColor("#496d9c"));
+    const auto endpoint = QDir(runtime.path()).filePath(QStringLiteral("astrea-shell/wallpaper.sock"));
+    QLocalServer server;
+    QVERIFY(server.listen(endpoint));
+    QByteArray requestBuffer;
+    QObject::connect(&server, &QLocalServer::newConnection, this, [&, wallpaperPath] {
+        auto *socket = server.nextPendingConnection();
+        connect(socket, &QLocalSocket::readyRead, this, [&, socket, wallpaperPath] {
+            requestBuffer += socket->readAll();
+            if (!requestBuffer.endsWith('\n'))
+                return;
+            requestBuffer.clear();
+            socket->write(appearanceWallpaperResponse(wallpaperPath, QStringLiteral("cover"), 0));
+            socket->flush();
+        });
+    });
+
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+    engine.addImageProvider(QStringLiteral("material-preview-test"),
+                            new DelayedMaterialPreviewProvider(250));
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"),
+                                             &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("appearance")));
+    auto *root = engine.rootObjects().constFirst();
+    QVERIFY(root != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("appearancePage")) != nullptr,
+                             1000);
+    auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(
+        QStringLiteral("appearancePage")));
+    QVERIFY(page != nullptr);
+    auto *preview = findVisualItem(page, QStringLiteral("materialPreview-appearance-auto"));
+    QVERIFY(preview != nullptr);
+    auto *wallpaper = findVisualItem(preview, QStringLiteral("materialPreviewWallpaper"));
+    auto *rendererFrame = findVisualItem(preview, QStringLiteral("materialPreviewRendererFrame"));
+    QVERIFY(wallpaper != nullptr);
+    QVERIFY(rendererFrame != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(preview->property("wallpaperReady").toBool(), 1500);
+    QVERIFY(wallpaper->property("visible").toBool());
+    QVERIFY(!rendererFrame->property("visible").toBool());
+
+    preview->setProperty("rendererPreviewSource",
+                         QUrl(QStringLiteral("image://material-preview-test/slow")));
+    preview->setProperty("rendererPreviewReady", true);
+    QVERIFY(preview->property("rendererPreviewRequested").toBool());
+    QVERIFY(!preview->property("usingRendererPreview").toBool());
+    QVERIFY(wallpaper->property("visible").toBool());
+    QVERIFY(!rendererFrame->property("visible").toBool());
+
+    QTRY_VERIFY_WITH_TIMEOUT(preview->property("usingRendererPreview").toBool(), 2000);
+    QVERIFY(rendererFrame->property("visible").toBool());
+
+    preview->setProperty("rendererPreviewSource",
+                         QUrl::fromLocalFile(images.filePath(QStringLiteral("missing-renderer.png"))));
+    QVERIFY(preview->property("rendererPreviewRequested").toBool());
+    QTRY_VERIFY_WITH_TIMEOUT(preview->property("rendererPreviewFailed").toBool(), 1500);
+    QVERIFY(!preview->property("usingRendererPreview").toBool());
+    QTRY_VERIFY_WITH_TIMEOUT(wallpaper->property("visible").toBool(), 1500);
+    QVERIFY(!rendererFrame->property("visible").toBool());
 }
 
 void SettingsQmlSmokeTest::appearanceChoicesUpdateController()

@@ -11,7 +11,6 @@ Item {
 
     Component.onCompleted: {
         if (root.wallpaperController
-            && root.wallpaperController.stateName === ""
             && !root.wallpaperController.busy)
             root.wallpaperController.refresh()
     }

@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import "../../components" as Components
 
 Item {
@@ -15,8 +16,12 @@ Item {
     property url rendererPreviewSource
     property bool rendererPreviewReady: false
     property bool hasLoadedWallpaper: false
-    readonly property bool usingRendererPreview: rendererPreviewReady
+    readonly property bool rendererPreviewRequested: rendererPreviewReady
         && rendererPreviewSource.toString().length > 0
+    readonly property bool usingRendererPreview: rendererPreviewRequested
+        && rendererFrame.status === Image.Ready
+    readonly property bool rendererPreviewFailed: rendererPreviewRequested
+        && rendererFrame.status === Image.Error
     readonly property bool wallpaperReady: hasLoadedWallpaper
         && (wallpaperImage.status === Image.Ready || wallpaperImage.status === Image.Loading)
     readonly property real materialOpacity: materialId === "transparent" ? 0.58
@@ -78,7 +83,7 @@ Item {
         id: rendererFrame
         objectName: "materialPreviewRendererFrame"
         anchors.fill: parent
-        source: root.usingRendererPreview ? root.rendererPreviewSource : ""
+        source: root.rendererPreviewRequested ? root.rendererPreviewSource : ""
         fillMode: Image.Stretch
         asynchronous: true
         cache: true

@@ -103,6 +103,7 @@ Item {
         height: parent.height * 0.64
         radius: 8
         clip: true
+        visible: !root.usingRendererPreview
         color: root.themeVariant === "auto"
             ? "transparent"
             : root.themeVariant === "light"

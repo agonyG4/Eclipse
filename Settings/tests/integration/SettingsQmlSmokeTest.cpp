@@ -639,11 +639,14 @@ void SettingsQmlSmokeTest::materialPreviewRendererHandoffIsFailSafe()
     QVERIFY(preview != nullptr);
     auto *wallpaper = findVisualItem(preview, QStringLiteral("materialPreviewWallpaper"));
     auto *rendererFrame = findVisualItem(preview, QStringLiteral("materialPreviewRendererFrame"));
+    auto *showcase = findVisualItem(preview, QStringLiteral("materialPreviewShowcase"));
     QVERIFY(wallpaper != nullptr);
     QVERIFY(rendererFrame != nullptr);
+    QVERIFY(showcase != nullptr);
     QTRY_VERIFY_WITH_TIMEOUT(preview->property("wallpaperReady").toBool(), 1500);
     QVERIFY(wallpaper->property("visible").toBool());
     QVERIFY(!rendererFrame->property("visible").toBool());
+    QVERIFY(showcase->property("visible").toBool());
 
     preview->setProperty("rendererPreviewSource",
                          QUrl(QStringLiteral("image://material-preview-test/slow")));
@@ -652,9 +655,11 @@ void SettingsQmlSmokeTest::materialPreviewRendererHandoffIsFailSafe()
     QVERIFY(!preview->property("usingRendererPreview").toBool());
     QVERIFY(wallpaper->property("visible").toBool());
     QVERIFY(!rendererFrame->property("visible").toBool());
+    QVERIFY(showcase->property("visible").toBool());
 
     QTRY_VERIFY_WITH_TIMEOUT(preview->property("usingRendererPreview").toBool(), 2000);
     QVERIFY(rendererFrame->property("visible").toBool());
+    QVERIFY(!showcase->property("visible").toBool());
 
     preview->setProperty("rendererPreviewSource",
                          QUrl::fromLocalFile(images.filePath(QStringLiteral("missing-renderer.png"))));
@@ -663,6 +668,7 @@ void SettingsQmlSmokeTest::materialPreviewRendererHandoffIsFailSafe()
     QVERIFY(!preview->property("usingRendererPreview").toBool());
     QTRY_VERIFY_WITH_TIMEOUT(wallpaper->property("visible").toBool(), 1500);
     QVERIFY(!rendererFrame->property("visible").toBool());
+    QVERIFY(showcase->property("visible").toBool());
 }
 
 void SettingsQmlSmokeTest::appearanceChoicesUpdateController()

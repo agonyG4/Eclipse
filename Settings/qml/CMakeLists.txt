@@ -33,6 +33,8 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     components/typography/TextLabel.qml
     pages/navigation/Hub.qml
     pages/system/Compositor.qml
+    pages/appearance/Appearance.qml
+    pages/appearance/MaterialPreview.qml
     pages/appearance/Dock.qml
     pages/appearance/Wallpaper.qml
     theme/Apps.qml

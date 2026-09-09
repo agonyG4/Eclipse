@@ -39,7 +39,7 @@ qualifies a Git-based archive in an isolated temporary repository.
 
 ## QML Registration and Lint
 
-The authoritative QML list is in `qml/CMakeLists.txt`. It contains 40 files and
+The authoritative QML list is in `qml/CMakeLists.txt`. It contains 42 files and
 is registered once by `astrea-settings-ui`. The application and integration
 tests consume the same module and generated plugin.
 

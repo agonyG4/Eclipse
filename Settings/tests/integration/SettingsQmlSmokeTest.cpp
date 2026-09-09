@@ -17,9 +17,11 @@
 #include <QQuickWindow>
 #include <QRegularExpression>
 #include <QSignalSpy>
+#include <QTimer>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlError>
+#include <QQmlExpression>
 #include <QTemporaryDir>
 #include <QtTest>
 
@@ -35,21 +37,6 @@ QQuickItem *findVisualItem(QQuickItem *item, const QString &objectName)
         return item;
     for (QQuickItem *child : item->childItems()) {
         if (QQuickItem *match = findVisualItem(child, objectName))
-            return match;
-    }
-    return nullptr;
-}
-
-QQuickItem *findPreviewSurface(QQuickItem *item)
-{
-    if (!item)
-        return nullptr;
-    if (item->property("iconExtent").isValid()
-        && item->property("panelExtent").isValid()) {
-        return item;
-    }
-    for (QQuickItem *child : item->childItems()) {
-        if (QQuickItem *match = findPreviewSurface(child))
             return match;
     }
     return nullptr;
@@ -73,9 +60,17 @@ class SettingsQmlSmokeTest final : public QObject {
 private slots:
     void loadsCompositorRouteOffscreen();
     void loadsCustomizationHubOffscreen();
+    void loadsAppearanceRouteFromHubOffscreen();
+    void appearancePreviewsUseCurrentWallpaperSnapshot();
+    void appearanceReusesSnapshotAndUpdatesWithoutRecreation();
+    void appearanceDoesNotRefreshWhileWallpaperBusy();
+    void appearancePreviewFallsBackWithoutWallpaperService();
+    void appearanceChoicesUpdateController();
+    void appearanceChoicesPreserveExternalControllerPropagation();
+    void appearanceIconChoicesPreserveControllerPropagation();
+    void appearanceAccentChoicesUpdateController();
     void loadsWallpaperRouteFromHubOffscreen();
     void loadsDockRouteFromHubOffscreen();
-    void dockPreviewUsesFiveIconFootprint();
     void navigatesBackAndForwardFromHub();
     void sidebarHidesNestedDestinations();
     void resolvesHubHeroIconsByMetadataPrecedence();
@@ -91,6 +86,67 @@ QString writeWallpaperImage(const QString &path, const QColor &color)
         qFatal("Could not create wallpaper fixture at %s", qPrintable(path));
     return path;
 }
+
+QJsonObject appearanceWallpaperSnapshot(const QString &previewSource,
+                                        const QString &fit = QStringLiteral("cover"),
+                                        const int generation = 0)
+{
+    const QJsonObject effective{
+        {QStringLiteral("logicalId"), QStringLiteral("astrea://wallpaper/test/current")},
+        {QStringLiteral("source"), QStringLiteral("/paper/internal/current.png")},
+        {QStringLiteral("resolvedSource"), QStringLiteral("/paper/internal/current.png")},
+        {QStringLiteral("previewSource"), previewSource},
+        {QStringLiteral("fit"), fit},
+        {QStringLiteral("displayName"), QStringLiteral("Test Wallpaper")},
+    };
+    return {
+        {QStringLiteral("configured"), effective},
+        {QStringLiteral("factoryDefault"), effective},
+        {QStringLiteral("effective"), effective},
+        {QStringLiteral("state"), QStringLiteral("ready")},
+        {QStringLiteral("fallback"), QStringLiteral("none")},
+        {QStringLiteral("generation"), generation},
+        {QStringLiteral("errorCode"), QString()},
+        {QStringLiteral("lastError"), QString()},
+    };
+}
+
+QByteArray appearanceWallpaperResponse(const QString &previewSource,
+                                       const QString &fit = QStringLiteral("cover"),
+                                       const int generation = 0)
+{
+    return QJsonDocument(QJsonObject{
+                             {QStringLiteral("ok"), true},
+                             {QStringLiteral("completed"), true},
+                             {QStringLiteral("snapshot"),
+                              appearanceWallpaperSnapshot(previewSource, fit, generation)},
+                         })
+        .toJson(QJsonDocument::Compact)
+        + '\n';
+}
+
+class RuntimeEnvironmentGuard final
+{
+public:
+    explicit RuntimeEnvironmentGuard(const QString &runtimePath)
+        : m_previous(qgetenv("XDG_RUNTIME_DIR"))
+        , m_hadPrevious(qEnvironmentVariableIsSet("XDG_RUNTIME_DIR"))
+    {
+        qputenv("XDG_RUNTIME_DIR", runtimePath.toUtf8());
+    }
+
+    ~RuntimeEnvironmentGuard()
+    {
+        if (m_hadPrevious)
+            qputenv("XDG_RUNTIME_DIR", m_previous);
+        else
+            qunsetenv("XDG_RUNTIME_DIR");
+    }
+
+private:
+    QByteArray m_previous;
+    bool m_hadPrevious = false;
+};
 
 void SettingsQmlSmokeTest::loadsCompositorRouteOffscreen()
 {
@@ -164,10 +220,654 @@ void SettingsQmlSmokeTest::loadsCustomizationHubOffscreen()
     QVERIFY(hub != nullptr);
     QQuickItem *hubItem = qobject_cast<QQuickItem *>(hub);
     QVERIFY(hubItem != nullptr);
+    QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-appearance")) != nullptr);
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-wallpaper")) != nullptr);
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-dock")) != nullptr);
-    QCOMPARE(countVisualItems(hubItem, QRegularExpression(QStringLiteral("^hubNavigationRow-"))), 2);
-    QCOMPARE(settingsController.currentDestinationChildren().size(), 2);
+    QCOMPARE(countVisualItems(hubItem, QRegularExpression(QStringLiteral("^hubNavigationRow-"))), 3);
+    const QVariantList children = settingsController.currentDestinationChildren();
+    QCOMPARE(children.size(), 3);
+    QCOMPARE(children.at(0).toMap().value(QStringLiteral("entryId")).toString(),
+             QStringLiteral("appearance"));
+}
+
+void SettingsQmlSmokeTest::loadsAppearanceRouteFromHubOffscreen()
+{
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+    QList<QQmlError> qmlWarnings;
+
+    connect(&engine, &QQmlApplicationEngine::warnings, this,
+            [&qmlWarnings](const QList<QQmlError> &warnings) {
+                qmlWarnings.append(warnings);
+            });
+
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("customization")));
+    QObject *root = engine.rootObjects().constFirst();
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("settingsHubPage")) != nullptr,
+                             1000);
+    QObject *hub = root->findChild<QObject *>(QStringLiteral("settingsHubPage"));
+    QVERIFY(hub != nullptr);
+    QObject *row = findVisualItem(qobject_cast<QQuickItem *>(hub),
+                                  QStringLiteral("hubNavigationRow-appearance"));
+    QVERIFY(row != nullptr);
+    qmlWarnings.clear();
+    QVERIFY(QMetaObject::invokeMethod(row, "clicked"));
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("appearancePage")) != nullptr,
+                             1000);
+    QObject *page = root->findChild<QObject *>(QStringLiteral("appearancePage"));
+    QVERIFY(page != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("appearanceScrollPage")) != nullptr);
+    for (const auto name : {"appearanceOption-auto", "appearanceOption-light",
+                            "appearanceOption-dark", "interfaceStyleOption-default",
+                            "interfaceStyleOption-transparent", "interfaceStyleOption-frosted"}) {
+        QVERIFY2(page->findChild<QObject *>(QString::fromLatin1(name)) != nullptr, name);
+    }
+    QVERIFY2(qmlWarnings.isEmpty(),
+             qPrintable(qmlWarnings.isEmpty() ? QString() : qmlWarnings.constFirst().toString()));
+}
+
+void SettingsQmlSmokeTest::appearancePreviewsUseCurrentWallpaperSnapshot()
+{
+    QTemporaryDir runtime;
+    QTemporaryDir images;
+    QVERIFY(runtime.isValid());
+    QVERIFY(images.isValid());
+    QVERIFY(QDir(runtime.path()).mkpath(QStringLiteral("astrea-shell")));
+    RuntimeEnvironmentGuard runtimeGuard(runtime.path());
+
+    const auto previewPath = writeWallpaperImage(
+        images.filePath(QStringLiteral("appearance-current.png")), QColor("#456e9d"));
+    const auto endpoint = QDir(runtime.path()).filePath(QStringLiteral("astrea-shell/wallpaper.sock"));
+    QLocalServer server;
+    QVERIFY(server.listen(endpoint));
+    int requestCount = 0;
+    QByteArray requestBuffer;
+    QObject::connect(&server, &QLocalServer::newConnection, this, [&, previewPath] {
+        auto *socket = server.nextPendingConnection();
+        connect(socket, &QLocalSocket::readyRead, this, [&, socket, previewPath] {
+            requestBuffer += socket->readAll();
+            if (!requestBuffer.endsWith('\n'))
+                return;
+            const auto line = QString::fromUtf8(requestBuffer).trimmed();
+            requestBuffer.clear();
+            if (!line.startsWith(QStringLiteral("wallpaper get")))
+                return;
+            ++requestCount;
+            socket->write(appearanceWallpaperResponse(previewPath, QStringLiteral("contain"), 0));
+            socket->flush();
+        });
+    });
+
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"),
+                                             &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("appearance")));
+    auto *root = engine.rootObjects().constFirst();
+    QVERIFY(root != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("appearancePage")) != nullptr,
+                             1000);
+    auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(
+        QStringLiteral("appearancePage")));
+    QVERIFY(page != nullptr);
+    QTRY_COMPARE_WITH_TIMEOUT(requestCount, 1, 1500);
+
+    const auto expectedSource = QUrl::fromLocalFile(previewPath);
+    const QStringList appearancePreviewNames{
+        QStringLiteral("materialPreview-appearance-auto"),
+        QStringLiteral("materialPreview-appearance-light"),
+        QStringLiteral("materialPreview-appearance-dark"),
+        QStringLiteral("materialPreview-interface-default"),
+        QStringLiteral("materialPreview-interface-transparent"),
+        QStringLiteral("materialPreview-interface-frosted"),
+    };
+    for (const auto &name : appearancePreviewNames) {
+        auto *preview = findVisualItem(page, name);
+        QVERIFY2(preview != nullptr, qPrintable(name));
+        QTRY_COMPARE_WITH_TIMEOUT(preview->property("wallpaperSource").toUrl(), expectedSource,
+                                  1500);
+        QCOMPARE(preview->property("wallpaperFit").toString(), QStringLiteral("contain"));
+        QCOMPARE(preview->property("usingRendererPreview").toBool(), false);
+        QVERIFY(findVisualItem(preview, QStringLiteral("materialPreviewWallpaper")) != nullptr);
+        QVERIFY(findVisualItem(preview, QStringLiteral("materialPreviewShowcase")) != nullptr);
+        QVERIFY(findVisualItem(preview, QStringLiteral("materialPreviewFallback")) != nullptr);
+    }
+
+    QCOMPARE(findVisualItem(page, QStringLiteral("materialPreview-appearance-auto"))
+                 ->property("themeVariant")
+                 .toString(),
+             QStringLiteral("auto"));
+    QCOMPARE(findVisualItem(page, QStringLiteral("materialPreview-appearance-light"))
+                 ->property("themeVariant")
+                 .toString(),
+             QStringLiteral("light"));
+    QCOMPARE(findVisualItem(page, QStringLiteral("materialPreview-appearance-dark"))
+                 ->property("themeVariant")
+                 .toString(),
+             QStringLiteral("dark"));
+    QCOMPARE(findVisualItem(page, QStringLiteral("materialPreview-interface-default"))
+                 ->property("materialId")
+                 .toString(),
+             QStringLiteral("default"));
+    QCOMPARE(findVisualItem(page, QStringLiteral("materialPreview-interface-transparent"))
+                 ->property("materialId")
+                 .toString(),
+             QStringLiteral("transparent"));
+    QCOMPARE(findVisualItem(page, QStringLiteral("materialPreview-interface-frosted"))
+                 ->property("materialId")
+                 .toString(),
+             QStringLiteral("frosted"));
+}
+
+void SettingsQmlSmokeTest::appearanceReusesSnapshotAndUpdatesWithoutRecreation()
+{
+    QTemporaryDir runtime;
+    QTemporaryDir images;
+    QVERIFY(runtime.isValid());
+    QVERIFY(images.isValid());
+    QVERIFY(QDir(runtime.path()).mkpath(QStringLiteral("astrea-shell")));
+    RuntimeEnvironmentGuard runtimeGuard(runtime.path());
+
+    const auto firstPath = writeWallpaperImage(
+        images.filePath(QStringLiteral("first.png")), QColor("#496d9c"));
+    const auto secondPath = writeWallpaperImage(
+        images.filePath(QStringLiteral("second.png")), QColor("#9b6549"));
+    const auto endpoint = QDir(runtime.path()).filePath(QStringLiteral("astrea-shell/wallpaper.sock"));
+    QLocalServer server;
+    QVERIFY(server.listen(endpoint));
+    int requestCount = 0;
+    QByteArray requestBuffer;
+    QObject::connect(&server, &QLocalServer::newConnection, this, [&, firstPath, secondPath] {
+        auto *socket = server.nextPendingConnection();
+        connect(socket, &QLocalSocket::readyRead, this, [&, socket, firstPath, secondPath] {
+            requestBuffer += socket->readAll();
+            if (!requestBuffer.endsWith('\n'))
+                return;
+            requestBuffer.clear();
+            ++requestCount;
+            const auto path = requestCount == 1 ? firstPath : secondPath;
+            const auto fit = requestCount == 1 ? QStringLiteral("cover") : QStringLiteral("stretch");
+            socket->write(appearanceWallpaperResponse(path, fit, requestCount == 1 ? 0 : 1));
+            socket->flush();
+        });
+    });
+
+    SettingsController settingsController;
+    settingsController.wallpaper()->refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!settingsController.wallpaper()->busy(), 1500);
+    QCOMPARE(requestCount, 1);
+    QCOMPARE(settingsController.wallpaper()->stateName(), QStringLiteral("ready"));
+
+    SettingsTranslationController translationController;
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"),
+                                             &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("appearance")));
+    auto *root = engine.rootObjects().constFirst();
+    QVERIFY(root != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("appearancePage")) != nullptr,
+                             1000);
+    auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(
+        QStringLiteral("appearancePage")));
+    QVERIFY(page != nullptr);
+    auto *preview = findVisualItem(page, QStringLiteral("materialPreview-appearance-auto"));
+    QVERIFY(preview != nullptr);
+    QCOMPARE(requestCount, 1);
+    QCOMPARE(preview->property("wallpaperSource").toUrl(), QUrl::fromLocalFile(firstPath));
+
+    settingsController.wallpaper()->refresh();
+    QTRY_COMPARE_WITH_TIMEOUT(requestCount, 2, 1500);
+    QTRY_COMPARE_WITH_TIMEOUT(preview->property("wallpaperSource").toUrl(),
+                              QUrl::fromLocalFile(secondPath), 1500);
+    QCOMPARE(preview->property("wallpaperFit").toString(), QStringLiteral("stretch"));
+}
+
+void SettingsQmlSmokeTest::appearanceDoesNotRefreshWhileWallpaperBusy()
+{
+    QTemporaryDir runtime;
+    QTemporaryDir images;
+    QVERIFY(runtime.isValid());
+    QVERIFY(images.isValid());
+    QVERIFY(QDir(runtime.path()).mkpath(QStringLiteral("astrea-shell")));
+    RuntimeEnvironmentGuard runtimeGuard(runtime.path());
+
+    const auto previewPath = writeWallpaperImage(
+        images.filePath(QStringLiteral("busy.png")), QColor("#647f9e"));
+    const auto endpoint = QDir(runtime.path()).filePath(QStringLiteral("astrea-shell/wallpaper.sock"));
+    QLocalServer server;
+    QVERIFY(server.listen(endpoint));
+    int requestCount = 0;
+    QByteArray requestBuffer;
+    QObject::connect(&server, &QLocalServer::newConnection, this, [&, previewPath] {
+        auto *socket = server.nextPendingConnection();
+        connect(socket, &QLocalSocket::readyRead, this, [&, socket, previewPath] {
+            requestBuffer += socket->readAll();
+            if (!requestBuffer.endsWith('\n'))
+                return;
+            requestBuffer.clear();
+            ++requestCount;
+            QTimer::singleShot(250, socket, [socket, previewPath] {
+                if (!socket->isValid())
+                    return;
+                socket->write(appearanceWallpaperResponse(previewPath, QStringLiteral("center"), 0));
+                socket->flush();
+            });
+        });
+    });
+
+    SettingsController settingsController;
+    settingsController.wallpaper()->refresh();
+    QTRY_COMPARE_WITH_TIMEOUT(requestCount, 1, 1000);
+    QVERIFY(settingsController.wallpaper()->busy());
+
+    SettingsTranslationController translationController;
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"),
+                                             &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("appearance")));
+    auto *root = engine.rootObjects().constFirst();
+    QVERIFY(root != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("appearancePage")) != nullptr,
+                             1000);
+    auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(
+        QStringLiteral("appearancePage")));
+    QVERIFY(page != nullptr);
+    QTest::qWait(100);
+    QCOMPARE(requestCount, 1);
+
+    auto *preview = findVisualItem(page, QStringLiteral("materialPreview-appearance-auto"));
+    QVERIFY(preview != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(!settingsController.wallpaper()->busy(), 1500);
+    QTRY_COMPARE_WITH_TIMEOUT(preview->property("wallpaperSource").toUrl(),
+                              QUrl::fromLocalFile(previewPath), 1500);
+    QCOMPARE(preview->property("wallpaperFit").toString(), QStringLiteral("center"));
+}
+
+void SettingsQmlSmokeTest::appearancePreviewFallsBackWithoutWallpaperService()
+{
+    QTemporaryDir runtime;
+    QVERIFY(runtime.isValid());
+    QVERIFY(QDir(runtime.path()).mkpath(QStringLiteral("astrea-shell")));
+    RuntimeEnvironmentGuard runtimeGuard(runtime.path());
+
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"),
+                                             &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("appearance")));
+    auto *root = engine.rootObjects().constFirst();
+    QVERIFY(root != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("appearancePage")) != nullptr,
+                             1000);
+    auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(
+        QStringLiteral("appearancePage")));
+    QVERIFY(page != nullptr);
+    auto *preview = findVisualItem(page, QStringLiteral("materialPreview-appearance-auto"));
+    QVERIFY(preview != nullptr);
+    QVERIFY(findVisualItem(preview, QStringLiteral("materialPreviewFallback")) != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        findVisualItem(preview, QStringLiteral("materialPreviewFallback"))->property("visible")
+            .toBool(),
+        1000);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("appearanceOption-light")) != nullptr);
+}
+
+void SettingsQmlSmokeTest::appearanceChoicesUpdateController()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController(directory.filePath(QStringLiteral("missing-theme.json")), nullptr,
+                                    [] { return Qt::ColorScheme::Dark; });
+    QQmlApplicationEngine engine;
+
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("appearance")));
+    QObject *root = engine.rootObjects().constFirst();
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("appearancePage")) != nullptr,
+                             1000);
+    QObject *page = root->findChild<QObject *>(QStringLiteral("appearancePage"));
+    QVERIFY(page != nullptr);
+
+    auto *automatic = page->findChild<QObject *>(QStringLiteral("appearanceOption-auto"));
+    auto *light = page->findChild<QObject *>(QStringLiteral("appearanceOption-light"));
+    auto *dark = page->findChild<QObject *>(QStringLiteral("appearanceOption-dark"));
+    auto *defaultStyle = page->findChild<QObject *>(QStringLiteral("interfaceStyleOption-default"));
+    auto *transparent = page->findChild<QObject *>(QStringLiteral("interfaceStyleOption-transparent"));
+    auto *frosted = page->findChild<QObject *>(QStringLiteral("interfaceStyleOption-frosted"));
+    QVERIFY(automatic != nullptr);
+    QVERIFY(light != nullptr);
+    QVERIFY(dark != nullptr);
+    QVERIFY(defaultStyle != nullptr);
+    QVERIFY(transparent != nullptr);
+    QVERIFY(frosted != nullptr);
+
+    QCOMPARE(themeController.themePreference(), QStringLiteral("auto"));
+    QCOMPARE(themeController.shellStyle(), 1);
+    QVERIFY(automatic->property("selected").toBool());
+    QVERIFY(!light->property("selected").toBool());
+    QVERIFY(!dark->property("selected").toBool());
+    QVERIFY(defaultStyle->property("selected").toBool());
+    QVERIFY(!transparent->property("selected").toBool());
+    QVERIFY(!frosted->property("selected").toBool());
+
+    QVERIFY(QMetaObject::invokeMethod(light, "activate"));
+    QCOMPARE(themeController.themePreference(), QStringLiteral("light"));
+    QCOMPARE(themeController.themeMode(), 1);
+    QVERIFY(QMetaObject::invokeMethod(dark, "activate"));
+    QCOMPARE(themeController.themePreference(), QStringLiteral("dark"));
+    QCOMPARE(themeController.themeMode(), 0);
+    QVERIFY(QMetaObject::invokeMethod(automatic, "activate"));
+    QCOMPARE(themeController.themePreference(), QStringLiteral("auto"));
+
+    QVERIFY(QMetaObject::invokeMethod(defaultStyle, "activate"));
+    QCOMPARE(themeController.shellStyle(), 1);
+    QVERIFY(QMetaObject::invokeMethod(transparent, "activate"));
+    QCOMPARE(themeController.shellStyle(), 0);
+    QVERIFY(QMetaObject::invokeMethod(frosted, "activate"));
+    QCOMPARE(themeController.shellStyle(), 2);
+    QCOMPARE(themeController.themePreference(), QStringLiteral("auto"));
+}
+
+void SettingsQmlSmokeTest::appearanceChoicesPreserveExternalControllerPropagation()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController(directory.filePath(QStringLiteral("theme.json")), nullptr,
+                                    [] { return Qt::ColorScheme::Dark; });
+    QQmlApplicationEngine engine;
+
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("appearance")));
+    QObject *root = engine.rootObjects().constFirst();
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("appearancePage")) != nullptr,
+                             1000);
+    QObject *page = root->findChild<QObject *>(QStringLiteral("appearancePage"));
+    QVERIFY(page != nullptr);
+
+    auto *light = page->findChild<QObject *>(QStringLiteral("appearanceOption-light"));
+    auto *dark = page->findChild<QObject *>(QStringLiteral("appearanceOption-dark"));
+    auto *transparent = page->findChild<QObject *>(QStringLiteral("interfaceStyleOption-transparent"));
+    auto *frosted = page->findChild<QObject *>(QStringLiteral("interfaceStyleOption-frosted"));
+    QVERIFY(light != nullptr);
+    QVERIFY(dark != nullptr);
+    QVERIFY(transparent != nullptr);
+    QVERIFY(frosted != nullptr);
+
+    QVERIFY(QMetaObject::invokeMethod(light, "activate"));
+    QVERIFY(QMetaObject::invokeMethod(transparent, "activate"));
+    QCOMPARE(themeController.themePreference(), QStringLiteral("light"));
+    QCOMPARE(themeController.shellStyle(), 0);
+
+    QQmlExpression projectedPreference(qmlContext(page), page,
+                                       QStringLiteral("Components.Theme.themePreference"));
+    QQmlExpression projectedShellStyle(qmlContext(page), page,
+                                       QStringLiteral("Components.Theme.shellStyle"));
+    QCOMPARE(projectedPreference.evaluate().toString(), QStringLiteral("light"));
+    QCOMPARE(projectedShellStyle.evaluate().toInt(), 0);
+
+    QFile replacement(themeController.configPath());
+    QVERIFY(replacement.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    replacement.write(QJsonDocument(QJsonObject{
+        {QStringLiteral("theme_preference"), QStringLiteral("dark")},
+        {QStringLiteral("shell_style"), 2},
+    }).toJson(QJsonDocument::Compact));
+    replacement.close();
+
+    QTRY_COMPARE_WITH_TIMEOUT(themeController.themePreference(), QStringLiteral("dark"), 1500);
+    QTRY_COMPARE_WITH_TIMEOUT(themeController.shellStyle(), 2, 1500);
+    QTRY_VERIFY_WITH_TIMEOUT(projectedPreference.evaluate().toString() == QStringLiteral("dark")
+                                 && projectedShellStyle.evaluate().toInt() == 2,
+                             1500);
+    QVERIFY(dark->property("selected").toBool());
+    QVERIFY(!light->property("selected").toBool());
+    QVERIFY(frosted->property("selected").toBool());
+    QVERIFY(!transparent->property("selected").toBool());
+}
+
+void SettingsQmlSmokeTest::appearanceIconChoicesPreserveControllerPropagation()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController(directory.filePath(QStringLiteral("theme.json")), nullptr,
+                                    [] { return Qt::ColorScheme::Dark; });
+    QQmlApplicationEngine engine;
+    QList<QQmlError> qmlWarnings;
+
+    connect(&engine, &QQmlApplicationEngine::warnings, this,
+            [&qmlWarnings](const QList<QQmlError> &warnings) {
+                qmlWarnings.append(warnings);
+            });
+
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("appearance")));
+    QObject *root = engine.rootObjects().constFirst();
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("appearancePage")) != nullptr,
+                             1000);
+    QObject *page = root->findChild<QObject *>(QStringLiteral("appearancePage"));
+    QVERIFY(page != nullptr);
+
+    QObject *defaultAppearance = page->findChild<QObject *>(QStringLiteral("iconAppearance-default"));
+    QObject *monochrome = page->findChild<QObject *>(QStringLiteral("iconAppearance-monochrome"));
+    QObject *tinted = page->findChild<QObject *>(QStringLiteral("iconAppearance-tinted"));
+    QObject *tintedDisplay = page->findChild<QObject *>(
+        QStringLiteral("iconPreview-tinted-display"));
+    QVERIFY(defaultAppearance != nullptr);
+    QVERIFY(monochrome != nullptr);
+    QVERIFY(tinted != nullptr);
+    QVERIFY(tintedDisplay != nullptr);
+    for (const auto choice : {"default", "monochrome", "tinted"}) {
+        for (const auto asset : {"display", "network", "sound"}) {
+            QVERIFY(page->findChild<QObject *>(QStringLiteral("iconPreview-%1-%2")
+                                                   .arg(QString::fromLatin1(choice),
+                                                        QString::fromLatin1(asset)))
+                    != nullptr);
+        }
+    }
+    QCOMPARE(tintedDisplay->property("appearanceOverride").toString(),
+             QStringLiteral("tinted"));
+    QVERIFY(tintedDisplay->property("hasTintColorOverride").toBool());
+    QCOMPARE(tintedDisplay->property("tintColorOverride").value<QColor>(),
+             QColor(QStringLiteral("#0a84ff")));
+
+    QCOMPARE(themeController.iconAppearance(), QStringLiteral("default"));
+    const QString initialThemePreference = themeController.themePreference();
+    const int initialShellStyle = themeController.shellStyle();
+    const QString initialAccent = themeController.accentHex();
+    QVERIFY(defaultAppearance->property("selected").toBool());
+    QVERIFY(!monochrome->property("selected").toBool());
+    QVERIFY(!tinted->property("selected").toBool());
+
+    QQmlExpression projectedAppearance(qmlContext(page), page,
+                                       QStringLiteral("Components.Theme.iconAppearance"));
+    QCOMPARE(projectedAppearance.evaluate().toString(), QStringLiteral("default"));
+
+    QVERIFY(QMetaObject::invokeMethod(monochrome, "activate"));
+    QCOMPARE(themeController.iconAppearance(), QStringLiteral("monochrome"));
+    QVERIFY(QMetaObject::invokeMethod(tinted, "activate"));
+    QCOMPARE(themeController.iconAppearance(), QStringLiteral("tinted"));
+    QVERIFY(QMetaObject::invokeMethod(defaultAppearance, "activate"));
+    QCOMPARE(themeController.iconAppearance(), QStringLiteral("default"));
+    QCOMPARE(themeController.themePreference(), initialThemePreference);
+    QCOMPARE(themeController.shellStyle(), initialShellStyle);
+    QCOMPARE(themeController.accentHex(), initialAccent);
+    QCOMPARE(projectedAppearance.evaluate().toString(), QStringLiteral("default"));
+
+    QFile replacement(themeController.configPath());
+    QVERIFY(replacement.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    replacement.write(QJsonDocument(QJsonObject{
+        {QStringLiteral("icon_appearance"), QStringLiteral("TiNtEd")},
+        {QStringLiteral("accent"), QStringLiteral("#30d158")},
+    }).toJson(QJsonDocument::Compact));
+    replacement.close();
+
+    QTRY_COMPARE_WITH_TIMEOUT(themeController.iconAppearance(), QStringLiteral("tinted"), 1500);
+    QTRY_COMPARE_WITH_TIMEOUT(themeController.accentHex(), QStringLiteral("#30d158"), 1500);
+    QTRY_COMPARE_WITH_TIMEOUT(tintedDisplay->property("tintColorOverride").value<QColor>(),
+                              QColor(QStringLiteral("#30d158")), 1500);
+    QTRY_VERIFY_WITH_TIMEOUT(projectedAppearance.evaluate().toString() == QStringLiteral("tinted"),
+                             1500);
+    QVERIFY(tinted->property("selected").toBool());
+    QVERIFY(!defaultAppearance->property("selected").toBool());
+
+    QVERIFY(replacement.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    replacement.write(QByteArrayLiteral(R"({"accent":"#bf5af2"})"));
+    replacement.close();
+
+    QTRY_COMPARE_WITH_TIMEOUT(themeController.iconAppearance(), QStringLiteral("default"), 1500);
+    QTRY_COMPARE_WITH_TIMEOUT(themeController.accentHex(), QStringLiteral("#bf5af2"), 1500);
+    QTRY_COMPARE_WITH_TIMEOUT(tintedDisplay->property("tintColorOverride").value<QColor>(),
+                              QColor(QStringLiteral("#bf5af2")), 1500);
+    QTRY_VERIFY_WITH_TIMEOUT(projectedAppearance.evaluate().toString() == QStringLiteral("default"),
+                             1500);
+    QVERIFY(defaultAppearance->property("selected").toBool());
+    QVERIFY(!tinted->property("selected").toBool());
+    QVERIFY2(qmlWarnings.isEmpty(),
+             qPrintable(qmlWarnings.isEmpty() ? QString() : qmlWarnings.constFirst().toString()));
+}
+
+void SettingsQmlSmokeTest::appearanceAccentChoicesUpdateController()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController(directory.filePath(QStringLiteral("theme.json")), nullptr,
+                                    [] { return Qt::ColorScheme::Dark; });
+    QQmlApplicationEngine engine;
+
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("appearance")));
+    QObject *root = engine.rootObjects().constFirst();
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("appearancePage")) != nullptr,
+                             1000);
+    QObject *page = root->findChild<QObject *>(QStringLiteral("appearancePage"));
+    QVERIFY(page != nullptr);
+
+    const QList<QPair<const char *, const char *>> accentOptions = {
+        {"accentOption-blue", "#0a84ff"},
+        {"accentOption-purple", "#bf5af2"},
+        {"accentOption-red", "#ff453a"},
+        {"accentOption-orange", "#ff9f0a"},
+        {"accentOption-yellow", "#ffd60a"},
+        {"accentOption-green", "#30d158"},
+        {"accentOption-teal", "#40c8e0"},
+    };
+    QList<QObject *> swatches;
+    for (const auto &[objectName, value] : accentOptions) {
+        QObject *swatch = page->findChild<QObject *>(QString::fromLatin1(objectName));
+        QVERIFY2(swatch != nullptr, objectName);
+        QCOMPARE(swatch->property("accentValue").toString(), QString::fromLatin1(value));
+        swatches.append(swatch);
+    }
+
+    QCOMPARE(themeController.accentHex(), QStringLiteral("#0a84ff"));
+    QCOMPARE(themeController.themePreference(), QStringLiteral("auto"));
+    QCOMPARE(themeController.shellStyle(), 1);
+    QVERIFY(swatches.at(0)->property("selected").toBool());
+    for (int index = 1; index < swatches.size(); ++index)
+        QVERIFY(!swatches.at(index)->property("selected").toBool());
+
+    QVERIFY(QMetaObject::invokeMethod(swatches.at(5), "activate"));
+    QCOMPARE(themeController.accentHex(), QStringLiteral("#30d158"));
+    QCOMPARE(themeController.themePreference(), QStringLiteral("auto"));
+    QCOMPARE(themeController.shellStyle(), 1);
+    QVERIFY(swatches.at(5)->property("selected").toBool());
+    QVERIFY(!swatches.at(0)->property("selected").toBool());
+
+    QVERIFY(QMetaObject::invokeMethod(swatches.at(1), "activate"));
+    QCOMPARE(themeController.accentHex(), QStringLiteral("#bf5af2"));
+    QCOMPARE(themeController.themePreference(), QStringLiteral("auto"));
+    QCOMPARE(themeController.shellStyle(), 1);
+    QVERIFY(swatches.at(1)->property("selected").toBool());
+    QVERIFY(!swatches.at(5)->property("selected").toBool());
+
+    QQmlExpression projectedAccent(qmlContext(page), page,
+                                   QStringLiteral("Components.Theme.accentHex"));
+    QCOMPARE(projectedAccent.evaluate().toString(), QStringLiteral("#bf5af2"));
+
+    QFile replacement(themeController.configPath());
+    QVERIFY(replacement.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    replacement.write(QJsonDocument(QJsonObject{
+        {QStringLiteral("theme_preference"), QStringLiteral("light")},
+        {QStringLiteral("shell_style"), 0},
+        {QStringLiteral("accent"), QStringLiteral("#123456")},
+    }).toJson(QJsonDocument::Compact));
+    replacement.close();
+
+    QTRY_COMPARE_WITH_TIMEOUT(themeController.accentHex(), QStringLiteral("#123456"), 1500);
+    QTRY_COMPARE_WITH_TIMEOUT(themeController.themePreference(), QStringLiteral("light"), 1500);
+    QTRY_COMPARE_WITH_TIMEOUT(themeController.shellStyle(), 0, 1500);
+    QTRY_VERIFY_WITH_TIMEOUT(projectedAccent.evaluate().toString() == QStringLiteral("#123456"),
+                             1500);
+    QTRY_VERIFY_WITH_TIMEOUT([&swatches]() {
+        return std::none_of(swatches.cbegin(), swatches.cend(), [](QObject *swatch) {
+            return swatch->property("selected").toBool();
+        });
+    }(), 1500);
 }
 
 void SettingsQmlSmokeTest::loadsWallpaperRouteFromHubOffscreen()
@@ -312,45 +1012,6 @@ void SettingsQmlSmokeTest::loadsDockRouteFromHubOffscreen()
              settingsController.dock()->property("canUndoRestore").toBool());
     QCOMPARE(undoButton->property("enabled").toBool(),
              settingsController.dock()->property("canUndoRestore").toBool());
-}
-
-void SettingsQmlSmokeTest::dockPreviewUsesFiveIconFootprint()
-{
-    SettingsController settingsController;
-    SettingsTranslationController translationController;
-    ThemeController themeController;
-    QQmlApplicationEngine engine;
-
-    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
-    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
-    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
-    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
-
-    QCOMPARE(engine.rootObjects().size(), 1);
-    QVERIFY(settingsController.navigateTo(QStringLiteral("dock")));
-    QObject *root = engine.rootObjects().constFirst();
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("dockPage")) != nullptr, 1000);
-    auto *page = qobject_cast<QQuickItem *>(
-        root->findChild<QObject *>(QStringLiteral("dockPage")));
-    QVERIFY(page != nullptr);
-    auto *previewCard = qobject_cast<QQuickItem *>(
-        page->findChild<QObject *>(QStringLiteral("dockPreview")));
-    QVERIFY(previewCard != nullptr);
-    QQuickItem *previewSurface = findPreviewSurface(previewCard);
-    QVERIFY(previewSurface != nullptr);
-    QVERIFY(previewSurface->parentItem() != nullptr);
-
-    const qreal iconExtent = previewSurface->property("iconExtent").toReal();
-    const qreal panelPadding = settingsController.dock()->property("panelPadding").toReal();
-    const qreal itemSpacing = settingsController.dock()->property("itemSpacing").toReal();
-    const qreal expectedPrimary = panelPadding * 2 + iconExtent * 5 + itemSpacing * 4;
-    const bool vertical = previewSurface->property("vertical").toBool();
-    const qreal expected = vertical
-        ? qMin(previewSurface->parentItem()->height(), expectedPrimary)
-        : qMin(previewSurface->parentItem()->width() - 40, expectedPrimary);
-    const qreal actual = vertical ? previewSurface->height() : previewSurface->width();
-    QVERIFY2(qAbs(actual - expected) < 0.5,
-             qPrintable(QStringLiteral("expected %1, got %2").arg(expected).arg(actual)));
 }
 
 void SettingsQmlSmokeTest::navigatesBackAndForwardFromHub()

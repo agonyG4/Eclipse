@@ -38,7 +38,7 @@ not link Qt QML, Qt Quick, Quick Controls, LayerShellQt, or a compositor
 library.
 
 `astrea-settings-ui` is the only `Astrea.Settings 1.0` QML module and registers
-40 QML files. The application and QML integration tests consume that same
+42 QML files. The application and QML integration tests consume that same
 target and generated plugin. The application additionally links the existing
 shared core and QML plugin for compositor-independent shared utilities.
 
@@ -49,6 +49,13 @@ Controls type is the preferred base for a new interactive primitive; replace
 its visual delegates and retain the framework's pointer, keyboard, touch,
 focus, range, and RTL behavior instead of implementing a second input state
 machine with `MouseArea`.
+
+`pages/appearance/MaterialPreview.qml` is the reusable preview surface for
+Appearance and Interface Style cards. It consumes the effective wallpaper
+snapshot projected by `SettingsController.wallpaper`, including its preview
+URL and fit mode, and keeps the local material presentation behind a seam for
+a future renderer-owned preview. It does not own wallpaper state, add a new
+transport, or couple Settings to the compositor.
 
 Unit tests link `astrea-settings-core`. Integration tests link both reusable
 production targets. No test target lists a production `.cpp` file owned by the
@@ -116,6 +123,28 @@ owns libc/NSS enumeration; `AdministrativeGroupPolicy` recognizes exactly
 
 `ThemeController` and `SettingsTranslationController` retain their existing
 public QML names and semantics, but live under their service ownership paths.
+
+### Application icon appearance
+
+`ThemeController.iconAppearance` is the canonical global application-icon
+presentation preference. It persists the lowercase `default`, `monochrome`, or
+`tinted` value as `icon_appearance` in the shared theme configuration; missing
+or invalid values resolve to `default`. The Settings `Theme`/`State` proxies
+forward this property to the controller, and the Appearance page mutates it
+through that path rather than binding a projected property directly.
+
+This preference is independent from the legacy Settings-only `iconStyle` and
+`iconTheme` fields. Those fields continue to serve Settings navigation icon
+colorization and Settings resource resolution through `SettingsIconResolver`.
+They do not select the source artwork for application icons. Source artwork is
+still resolved by the shared `AstreaIconTheme`/`AstreaIconProvider` XDG icon
+pipeline. The shared `AstreaAppIcon` then derives the v1 Monochrome and Tinted
+presentations from that resolved artwork, so Dock, Spotlight, and Alt+Tab share
+the same live result and Accent Color changes propagate to Tinted icons.
+
+Dark and Clear app-icon modes are intentionally not supported in v1: they
+require a richer icon-asset representation and are not approximated with
+opacity or darkening filters.
 
 ## Exclusions
 

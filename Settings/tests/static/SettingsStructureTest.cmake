@@ -197,6 +197,8 @@ set(production_source_files
     qml/components/navigation/HubNavigationRow.qml
     qml/components/navigation/Sidebar.qml
     qml/pages/navigation/Hub.qml
+    qml/pages/appearance/Appearance.qml
+    qml/pages/appearance/MaterialPreview.qml
     qml/pages/appearance/Wallpaper.qml
     qml/pages/system/Compositor.qml
     qml/pages/appearance/Dock.qml
@@ -239,6 +241,9 @@ foreach(navigation_required_token IN ITEMS
     "Kind::Hub"
     "sidebarVisible"
     "parentId"
+    "appearance"
+    "Appearance.qml"
+    "settings.nav.appearance.subtitle"
     "childrenForId"
     "firstNavigableSidebarDestination"
     "sidebarAncestorForId"
@@ -247,6 +252,58 @@ foreach(navigation_required_token IN ITEMS
         "${navigation_required_token}" navigation_required_position)
     if(navigation_required_position EQUAL -1)
         message(FATAL_ERROR "Native destination graph is missing '${navigation_required_token}'")
+    endif()
+endforeach()
+
+file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/Appearance.qml" appearance_source)
+foreach(appearance_required_token IN ITEMS
+    "objectName: \"appearancePage\""
+    "objectName: \"appearanceScrollPage\""
+    "objectName: \"appearanceOption-auto\""
+    "objectName: \"appearanceOption-light\""
+    "objectName: \"appearanceOption-dark\""
+    "objectName: \"interfaceStyleOption-default\""
+    "objectName: \"interfaceStyleOption-transparent\""
+    "objectName: \"interfaceStyleOption-frosted\""
+    "objectName: \"accentOption-blue\""
+    "objectName: \"accentOption-purple\""
+    "objectName: \"accentOption-red\""
+    "objectName: \"accentOption-orange\""
+    "objectName: \"accentOption-yellow\""
+    "objectName: \"accentOption-green\""
+    "objectName: \"accentOption-teal\""
+    "objectName: \"iconAppearance-default\""
+    "objectName: \"iconAppearance-monochrome\""
+    "SettingsController.wallpaper"
+    "wallpaperController.effectivePreviewUrl"
+    "wallpaperController.effectiveFit"
+    "wallpaperController.refresh()"
+    "objectName: \"iconAppearance-tinted\""
+    "apps.settings.pages.appearance.text.appearance"
+    "apps.settings.pages.appearance.text.interface_style"
+    "apps.settings.pages.appearance.text.accent_color"
+    "apps.settings.pages.appearance.text.app_icons"
+    "apps.settings.pages.appearance.option.monochrome"
+    "apps.settings.pages.appearance.option.tinted"
+)
+    string(FIND "${appearance_source}" "${appearance_required_token}" appearance_required_position)
+    if(appearance_required_position EQUAL -1)
+        message(FATAL_ERROR "Appearance page is missing '${appearance_required_token}'")
+    endif()
+endforeach()
+
+foreach(appearance_forbidden_token IN ITEMS
+    "interfaceBackdropOpacity"
+    "previewWindow"
+    "previewLightBackground"
+    "previewDarkBackground"
+    "#4d75a8"
+    "#9a62ba"
+    "#2ea4a4"
+)
+    string(FIND "${appearance_source}" "${appearance_forbidden_token}" appearance_forbidden_position)
+    if(NOT appearance_forbidden_position EQUAL -1)
+        message(FATAL_ERROR "Appearance.qml still owns preview rendering token '${appearance_forbidden_token}'")
     endif()
 endforeach()
 
@@ -333,6 +390,28 @@ string(FIND "${app_icon_source}" "image://icon/" wrong_app_icon_provider_positio
 if(NOT wrong_app_icon_provider_position EQUAL -1)
     message(FATAL_ERROR "Settings AppIcon uses the unregistered icon provider")
 endif()
+
+file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/MaterialPreview.qml" material_preview_source)
+foreach(material_preview_required_token IN ITEMS
+    "objectName: \"materialPreview\""
+    "objectName: \"materialPreviewWallpaper\""
+    "objectName: \"materialPreviewShowcase\""
+    "objectName: \"materialPreviewFallback\""
+    "property url wallpaperSource"
+    "property string wallpaperFit"
+    "rendererPreviewReady"
+    "usingRendererPreview"
+    "Image.PreserveAspectCrop"
+    "Image.PreserveAspectFit"
+    "Image.Stretch"
+    "Image.Pad"
+    "Image.Tile"
+)
+    string(FIND "${material_preview_source}" "${material_preview_required_token}" material_preview_token_position)
+    if(material_preview_token_position EQUAL -1)
+        message(FATAL_ERROR "MaterialPreview.qml is missing '${material_preview_required_token}'")
+    endif()
+endforeach()
 
 file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/Wallpaper.qml" wallpaper_source)
 foreach(wallpaper_required_token IN ITEMS
@@ -449,7 +528,7 @@ foreach(relative_path IN LISTS production_source_files)
 endforeach()
 
 list(LENGTH registered_qml_files registered_qml_file_count)
-if(NOT registered_qml_file_count EQUAL 40)
-    message(FATAL_ERROR "Settings module must register exactly 40 QML files, found ${registered_qml_file_count}")
+if(NOT registered_qml_file_count EQUAL 42)
+    message(FATAL_ERROR "Settings module must register exactly 42 QML files, found ${registered_qml_file_count}")
 endif()
 message(STATUS "Settings structure invariants passed (${registered_qml_file_count} registered QML files checked)")

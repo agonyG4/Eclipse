@@ -2,6 +2,7 @@
 #include "services/animation/SettingsTyphonControlClient.hpp"
 
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -9,12 +10,15 @@
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QMutex>
+#include <QSignalSpy>
 #include <QThread>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QWaitCondition>
 
 #include <sys/stat.h>
+
+#include <utility>
 
 namespace {
 
@@ -59,7 +63,9 @@ QJsonObject animationSnapshot(bool enabled, const QString &preset, double speed,
             {QStringLiteral("window.move"), preset == QStringLiteral("macos")
                                                    ? QStringLiteral("geometry.macos")
                                                    : QStringLiteral("geometry.kde")},
-            {QStringLiteral("window.minimize"), QStringLiteral("minimize.lamp")},
+            {QStringLiteral("window.minimize"), preset == QStringLiteral("astrea")
+                                                    ? QStringLiteral("minimize.lamp")
+                                                    : QStringLiteral("none")},
         }},
         {QStringLiteral("effective"), QJsonObject{
             {QStringLiteral("window.move"), preset == QStringLiteral("macos")
@@ -161,10 +167,38 @@ public:
         QMutexLocker locker(&m_mutex);
         m_malformedResponse = true;
     }
+    void setResponseMode(const QByteArray &mode)
+    {
+        QMutexLocker locker(&m_mutex);
+        m_responseMode = mode;
+    }
+    void delayResponses(bool delay)
+    {
+        QMutexLocker locker(&m_mutex);
+        m_delayResponses = delay;
+    }
+    void releaseDelayedResponses()
+    {
+        QMetaObject::invokeMethod(&m_server, [this] {
+            QList<QPair<QLocalSocket *, QByteArray>> delayed;
+            delayed.swap(m_delayedResponses);
+            for (const auto &[socket, response] : delayed) {
+                if (socket->state() == QLocalSocket::ConnectedState) {
+                    socket->write(response);
+                    socket->flush();
+                }
+            }
+        }, Qt::QueuedConnection);
+    }
     qsizetype commandCount() const
     {
         QMutexLocker locker(&m_mutex);
         return m_commands.size();
+    }
+    QJsonObject lastRequest() const
+    {
+        QMutexLocker locker(&m_mutex);
+        return m_lastRequest;
     }
 
 private:
@@ -182,6 +216,7 @@ private:
         QJsonObject response;
         {
             QMutexLocker locker(&m_mutex);
+            m_lastRequest = request;
             m_commands.append(request.value(QStringLiteral("command")).toString());
             if (m_malformedResponse) {
                 m_malformedResponse = false;
@@ -212,7 +247,52 @@ private:
                                         m_snapshot, {});
             }
         }
-        socket->write(QJsonDocument(response).toJson(QJsonDocument::Compact) + '\n');
+        const QByteArray encodedResponse = QJsonDocument(response).toJson(QJsonDocument::Compact)
+            + '\n';
+        QByteArray responseToSend = encodedResponse;
+        bool disconnect = false;
+        {
+            QMutexLocker locker(&m_mutex);
+            const QByteArray responseMode = std::exchange(m_responseMode, {});
+            if (responseMode == QByteArrayLiteral("protocol")) {
+                response[QStringLiteral("protocol")] = QStringLiteral("wrong.protocol");
+                responseToSend = QJsonDocument(response).toJson(QJsonDocument::Compact) + '\n';
+            } else if (responseMode == QByteArrayLiteral("version")) {
+                response[QStringLiteral("version")] = 2;
+                responseToSend = QJsonDocument(response).toJson(QJsonDocument::Compact) + '\n';
+            } else if (responseMode == QByteArrayLiteral("id")) {
+                response[QStringLiteral("id")] = response.value(QStringLiteral("id")).toInteger() + 1;
+                responseToSend = QJsonDocument(response).toJson(QJsonDocument::Compact) + '\n';
+            } else if (responseMode == QByteArrayLiteral("missing-ok")) {
+                response.remove(QStringLiteral("ok"));
+                responseToSend = QJsonDocument(response).toJson(QJsonDocument::Compact) + '\n';
+            } else if (responseMode == QByteArrayLiteral("success-no-result")) {
+                response.remove(QStringLiteral("result"));
+                responseToSend = QJsonDocument(response).toJson(QJsonDocument::Compact) + '\n';
+            } else if (responseMode == QByteArrayLiteral("error-no-error")) {
+                response[QStringLiteral("ok")] = false;
+                response.remove(QStringLiteral("result"));
+                response.remove(QStringLiteral("error"));
+                responseToSend = QJsonDocument(response).toJson(QJsonDocument::Compact) + '\n';
+            } else if (responseMode == QByteArrayLiteral("extra-frame")) {
+                responseToSend.append('\n');
+            } else if (responseMode == QByteArrayLiteral("oversized")) {
+                responseToSend = QByteArray(1024 * 1024 + 1, 'x');
+            } else if (responseMode == QByteArrayLiteral("invalid-json")) {
+                responseToSend = QByteArrayLiteral("not-json\n");
+            } else if (responseMode == QByteArrayLiteral("disconnect")) {
+                disconnect = true;
+            }
+            if (m_delayResponses) {
+                m_delayedResponses.append({socket, responseToSend});
+                return;
+            }
+        }
+        if (disconnect) {
+            socket->disconnectFromServer();
+            return;
+        }
+        socket->write(responseToSend);
         socket->flush();
     }
 
@@ -238,10 +318,14 @@ private:
     QString m_endpoint;
     QByteArray m_request;
     QStringList m_commands;
+    QJsonObject m_lastRequest;
     QJsonObject m_snapshot;
     bool m_listening = false;
     bool m_rejectNextSet = false;
     bool m_malformedResponse = false;
+    QByteArray m_responseMode;
+    bool m_delayResponses = false;
+    QList<QPair<QLocalSocket *, QByteArray>> m_delayedResponses;
 };
 
 } // namespace
@@ -251,7 +335,15 @@ class SettingsAnimationControllerTest final : public QObject {
 
 private slots:
     void controllerUsesAuthoritativeSnapshotsAndRejectsPlannedEffects();
+    void clientStartsAndCompletesAsynchronously();
+    void clientTimeoutDoesNotBlockTheEventLoop();
+    void clientRejectsSecondRequestWhileBusyAndCanBeReused();
     void clientRejectsMalformedResponse();
+    void clientRejectsInvalidResponseShapesAndBounds();
+    void clientHandlesConnectionFailure();
+    void clientRejectsOversizedRequestsImmediately();
+    void clientRejectsAmbiguousAndInsecureDiscovery();
+    void controllerFoldsPendingSpeedIntoNextMutation();
 };
 
 void SettingsAnimationControllerTest::controllerUsesAuthoritativeSnapshotsAndRejectsPlannedEffects()
@@ -262,17 +354,40 @@ void SettingsAnimationControllerTest::controllerUsesAuthoritativeSnapshotsAndRej
     AnimationControlServer server(runtime.path());
 
     SettingsAnimationController controller;
-    QVERIFY2(controller.available(), qPrintable(controller.lastError()));
+    QVERIFY(!controller.available());
+    controller.refresh();
+    QTRY_VERIFY2(controller.available(), qPrintable(controller.lastError()));
     QCOMPARE(controller.preset(), QStringLiteral("astrea"));
     QCOMPARE(controller.speed(), 1.0);
     QVERIFY(!controller.hasOverrides());
     QCOMPARE(controller.presets().size(), 3);
     QVERIFY(!controller.slotCapabilities().isEmpty());
+    const auto slot = [&controller](const QString &id) {
+        for (const QVariant &value : controller.slotCapabilities()) {
+            const QVariantMap candidate = value.toMap();
+            if (candidate.value(QStringLiteral("id")).toString() == id)
+                return candidate;
+        }
+        return QVariantMap{};
+    };
+    const QVariantMap astreaMinimize = slot(QStringLiteral("window.minimize"));
+    QCOMPARE(astreaMinimize.value(QStringLiteral("requested")).toString(),
+             QStringLiteral("minimize.lamp"));
+    QCOMPARE(astreaMinimize.value(QStringLiteral("effective")).toString(), QStringLiteral("none"));
+    QVERIFY(astreaMinimize.value(QStringLiteral("plannedEffects")).toStringList().contains(
+        QStringLiteral("minimize.lamp")));
 
     controller.setEnabled(false);
+    QTRY_VERIFY(!controller.busy());
     QVERIFY(!controller.enabled());
     controller.setPreset(QStringLiteral("macos"));
+    QTRY_VERIFY(!controller.busy());
     QCOMPARE(controller.preset(), QStringLiteral("macos"));
+    const QVariantMap macosMinimize = slot(QStringLiteral("window.minimize"));
+    QCOMPARE(macosMinimize.value(QStringLiteral("requested")).toString(), QStringLiteral("none"));
+    QCOMPARE(macosMinimize.value(QStringLiteral("effective")).toString(), QStringLiteral("none"));
+    QVERIFY(macosMinimize.value(QStringLiteral("plannedEffects")).toStringList().contains(
+        QStringLiteral("minimize.lamp")));
 
     const qsizetype requestsBeforePlanned = server.commandCount();
     controller.setSlotEffect(QStringLiteral("window.minimize"), QStringLiteral("minimize.lamp"));
@@ -281,12 +396,94 @@ void SettingsAnimationControllerTest::controllerUsesAuthoritativeSnapshotsAndRej
 
     controller.setSpeed(1.25);
     controller.flush();
+    QTRY_VERIFY(!controller.busy());
     QCOMPARE(controller.speed(), 1.25);
 
     server.rejectNextSet();
     controller.setPreset(QStringLiteral("kde"));
+    QTRY_VERIFY(!controller.busy());
+    QVERIFY(controller.available());
     QCOMPARE(controller.preset(), QStringLiteral("macos"));
     QVERIFY(!controller.lastError().isEmpty());
+}
+
+void SettingsAnimationControllerTest::clientStartsAndCompletesAsynchronously()
+{
+    QTemporaryDir runtime;
+    QVERIFY(runtime.isValid());
+    EnvironmentGuard environment(runtime.path().toUtf8(), QByteArrayLiteral("test"));
+    AnimationControlServer server(runtime.path());
+    server.delayResponses(true);
+
+    SettingsTyphonControlClient client(nullptr, 500);
+    QSignalSpy finished(&client, &SettingsTyphonControlClient::requestFinished);
+    QElapsedTimer elapsed;
+    elapsed.start();
+    QString startError;
+    QVERIFY(client.startRequest(QStringLiteral("animation.config.get"), {}, &startError));
+    QVERIFY2(elapsed.elapsed() < 100, qPrintable(startError));
+    QCOMPARE(finished.count(), 0);
+
+    QTRY_COMPARE(server.commandCount(), 1);
+    const QJsonObject request = server.lastRequest();
+    QCOMPARE(request.value(QStringLiteral("protocol")).toString(), QStringLiteral("astrea.control"));
+    QCOMPARE(request.value(QStringLiteral("version")).toInt(), 1);
+    QCOMPARE(request.value(QStringLiteral("id")).toInteger(), 1);
+    QCOMPARE(request.value(QStringLiteral("command")).toString(), QStringLiteral("animation.config.get"));
+    QVERIFY(request.value(QStringLiteral("args")).isObject());
+    server.releaseDelayedResponses();
+    QTRY_COMPARE(finished.count(), 1);
+    QCOMPARE(finished.at(0).at(0).toBool(), true);
+    QVERIFY(finished.at(0).at(1).toMap().contains(QStringLiteral("config")));
+    QVERIFY(finished.at(0).at(2).toString().isEmpty());
+}
+
+void SettingsAnimationControllerTest::clientTimeoutDoesNotBlockTheEventLoop()
+{
+    QTemporaryDir runtime;
+    QVERIFY(runtime.isValid());
+    EnvironmentGuard environment(runtime.path().toUtf8(), QByteArrayLiteral("test"));
+    AnimationControlServer server(runtime.path());
+    server.delayResponses(true);
+
+    SettingsTyphonControlClient client(nullptr, 50);
+    QSignalSpy finished(&client, &SettingsTyphonControlClient::requestFinished);
+    int marker = 0;
+    bool markerObservedWhileBusy = false;
+    QTimer::singleShot(0, &client, [&marker, &markerObservedWhileBusy, &client] {
+        markerObservedWhileBusy = client.busy();
+        ++marker;
+    });
+    QString startError;
+    QVERIFY(client.startRequest(QStringLiteral("animation.config.get"), {}, &startError));
+    QTRY_COMPARE(marker, 1);
+    QVERIFY(markerObservedWhileBusy);
+    QTRY_COMPARE(finished.count(), 1);
+    QCOMPARE(finished.at(0).at(0).toBool(), false);
+    QVERIFY(finished.at(0).at(2).toString().contains(QStringLiteral("timeout")));
+}
+
+void SettingsAnimationControllerTest::clientRejectsSecondRequestWhileBusyAndCanBeReused()
+{
+    QTemporaryDir runtime;
+    QVERIFY(runtime.isValid());
+    EnvironmentGuard environment(runtime.path().toUtf8(), QByteArrayLiteral("test"));
+    AnimationControlServer server(runtime.path());
+    server.delayResponses(true);
+
+    SettingsTyphonControlClient client(nullptr, 500);
+    QSignalSpy finished(&client, &SettingsTyphonControlClient::requestFinished);
+    QString error;
+    QVERIFY(client.startRequest(QStringLiteral("animation.config.get"), {}, &error));
+    QVERIFY(!client.startRequest(QStringLiteral("animation.config.get"), {}, &error));
+    QVERIFY(error.contains(QStringLiteral("in flight")));
+    server.releaseDelayedResponses();
+    QTRY_COMPARE(finished.count(), 1);
+
+    server.delayResponses(false);
+    QVERIFY(client.startRequest(QStringLiteral("animation.config.get"), {}, &error));
+    QTRY_COMPARE(finished.count(), 2);
+    QCOMPARE(finished.at(1).at(0).toBool(), true);
 }
 
 void SettingsAnimationControllerTest::clientRejectsMalformedResponse()
@@ -298,10 +495,132 @@ void SettingsAnimationControllerTest::clientRejectsMalformedResponse()
     server.sendMalformedResponse();
 
     SettingsTyphonControlClient client;
-    QVariantMap result;
+    QSignalSpy finished(&client, &SettingsTyphonControlClient::requestFinished);
     QString error;
-    QVERIFY(!client.request(QStringLiteral("animation.config.get"), {}, &result, &error));
-    QVERIFY2(error.contains(QStringLiteral("JSON")), qPrintable(error));
+    QVERIFY(client.startRequest(QStringLiteral("animation.config.get"), {}, &error));
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.at(0).at(2).toString().contains(QStringLiteral("JSON")));
+}
+
+void SettingsAnimationControllerTest::clientRejectsInvalidResponseShapesAndBounds()
+{
+    QTemporaryDir runtime;
+    QVERIFY(runtime.isValid());
+    EnvironmentGuard environment(runtime.path().toUtf8(), QByteArrayLiteral("test"));
+    AnimationControlServer server(runtime.path());
+    SettingsTyphonControlClient client(nullptr, 500);
+    QSignalSpy finished(&client, &SettingsTyphonControlClient::requestFinished);
+    const QList<QByteArray> modes{
+        QByteArrayLiteral("invalid-json"), QByteArrayLiteral("protocol"),
+        QByteArrayLiteral("version"), QByteArrayLiteral("id"),
+        QByteArrayLiteral("missing-ok"), QByteArrayLiteral("success-no-result"),
+        QByteArrayLiteral("error-no-error"), QByteArrayLiteral("extra-frame"),
+        QByteArrayLiteral("oversized"),
+    };
+    for (qsizetype index = 0; index < modes.size(); ++index) {
+        server.setResponseMode(modes.at(index));
+        QString startError;
+        QVERIFY2(client.startRequest(QStringLiteral("animation.config.get"), {}, &startError),
+                 qPrintable(startError));
+        QTRY_COMPARE(finished.count(), index + 1);
+        QCOMPARE(finished.at(index).at(0).toBool(), false);
+        QVERIFY(!finished.at(index).at(2).toString().isEmpty());
+    }
+}
+
+void SettingsAnimationControllerTest::clientHandlesConnectionFailure()
+{
+    QTemporaryDir runtime;
+    QVERIFY(runtime.isValid());
+    EnvironmentGuard environment(runtime.path().toUtf8(), QByteArrayLiteral("test"));
+    AnimationControlServer server(runtime.path());
+    server.setResponseMode(QByteArrayLiteral("disconnect"));
+    SettingsTyphonControlClient client(nullptr, 500);
+    QSignalSpy finished(&client, &SettingsTyphonControlClient::requestFinished);
+    QString startError;
+    QVERIFY(client.startRequest(QStringLiteral("animation.config.get"), {}, &startError));
+    QTRY_COMPARE(finished.count(), 1);
+    QCOMPARE(finished.at(0).at(0).toBool(), false);
+    QVERIFY(finished.at(0).at(2).toString().contains(QStringLiteral("disconnected"))
+            || finished.at(0).at(2).toString().contains(QStringLiteral("transport")));
+}
+
+void SettingsAnimationControllerTest::clientRejectsOversizedRequestsImmediately()
+{
+    QTemporaryDir runtime;
+    QVERIFY(runtime.isValid());
+    EnvironmentGuard environment(runtime.path().toUtf8(), QByteArrayLiteral("test"));
+    AnimationControlServer server(runtime.path());
+    SettingsTyphonControlClient client;
+    const QVariantMap arguments{{QStringLiteral("payload"), QString(70 * 1024, QLatin1Char('x'))}};
+    QString error;
+    QVERIFY(!client.startRequest(QStringLiteral("animation.config.get"), arguments, &error));
+    QVERIFY(error.contains(QStringLiteral("64 KiB")));
+    QCOMPARE(server.commandCount(), 0);
+}
+
+void SettingsAnimationControllerTest::clientRejectsAmbiguousAndInsecureDiscovery()
+{
+    {
+        QTemporaryDir runtime;
+        QVERIFY(runtime.isValid());
+        EnvironmentGuard environment(runtime.path().toUtf8(), QByteArrayLiteral("test"));
+        AnimationControlServer server(runtime.path());
+        qputenv("WAYLAND_DISPLAY", QByteArrayLiteral("missing"));
+        const QString instance = QDir(runtime.path()).filePath(QStringLiteral("astrea/typhon/other"));
+        QVERIFY(QDir().mkpath(instance));
+        QVERIFY(::chmod(QFile::encodeName(instance).constData(), 0700) == 0);
+        const QString endpoint = QDir(instance).filePath(QStringLiteral("control.sock"));
+        QLocalServer other;
+        other.setSocketOptions(QLocalServer::UserAccessOption);
+        QVERIFY(other.listen(endpoint));
+        QVERIFY(::chmod(QFile::encodeName(endpoint).constData(), 0600) == 0);
+        SettingsTyphonControlClient client;
+        QString error;
+        QVERIFY(!client.startRequest(QStringLiteral("animation.config.get"), {}, &error));
+        QVERIFY(error.contains(QStringLiteral("multiple")));
+    }
+
+    QTemporaryDir runtime;
+    QVERIFY(runtime.isValid());
+    EnvironmentGuard environment(runtime.path().toUtf8(), QByteArrayLiteral("missing"));
+    const QString root = QDir(runtime.path()).filePath(QStringLiteral("astrea/typhon"));
+    QVERIFY(QDir().mkpath(root));
+    QVERIFY(::chmod(QFile::encodeName(runtime.path()).constData(), 0700) == 0);
+    QVERIFY(::chmod(QFile::encodeName(QDir(runtime.path()).filePath(QStringLiteral("astrea"))).constData(), 0700) == 0);
+    QVERIFY(::chmod(QFile::encodeName(root).constData(), 0700) == 0);
+    const QString instance = QDir(root).filePath(QStringLiteral("insecure"));
+    QVERIFY(QDir().mkpath(instance));
+    QVERIFY(::chmod(QFile::encodeName(instance).constData(), 0755) == 0);
+    const QString endpoint = QDir(instance).filePath(QStringLiteral("control.sock"));
+    QLocalServer insecure;
+    insecure.setSocketOptions(QLocalServer::UserAccessOption);
+    QVERIFY(insecure.listen(endpoint));
+    QVERIFY(::chmod(QFile::encodeName(endpoint).constData(), 0600) == 0);
+    SettingsTyphonControlClient client;
+    QString error;
+    QVERIFY(!client.startRequest(QStringLiteral("animation.config.get"), {}, &error));
+    QVERIFY(error.contains(QStringLiteral("no secure")));
+}
+
+void SettingsAnimationControllerTest::controllerFoldsPendingSpeedIntoNextMutation()
+{
+    QTemporaryDir runtime;
+    QVERIFY(runtime.isValid());
+    EnvironmentGuard environment(runtime.path().toUtf8(), QByteArrayLiteral("test"));
+    AnimationControlServer server(runtime.path());
+
+    SettingsAnimationController controller;
+    controller.refresh();
+    QTRY_VERIFY(controller.available());
+    const qsizetype before = server.commandCount();
+
+    controller.setSpeed(1.5);
+    controller.setPreset(QStringLiteral("macos"));
+    QTRY_VERIFY(!controller.busy());
+    QCOMPARE(server.commandCount(), before + 1);
+    QCOMPARE(controller.speed(), 1.5);
+    QCOMPARE(controller.preset(), QStringLiteral("macos"));
 }
 
 QTEST_GUILESS_MAIN(SettingsAnimationControllerTest)

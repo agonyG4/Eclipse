@@ -5,7 +5,9 @@
 #include <QVariantList>
 #include <QVariantMap>
 
+#include <functional>
 #include <memory>
+#include <vector>
 
 class SettingsTyphonControlClient;
 
@@ -56,9 +58,14 @@ signals:
     void errorChanged();
 
 private:
-    void applySnapshot(const QVariantMap &snapshot);
+    using ConfigurationMutation = std::function<void(QVariantMap &)>;
+
+    bool applySnapshot(const QVariantMap &snapshot);
     void setError(const QString &message);
     bool submit(const QVariantMap &configuration);
+    void enqueueMutation(ConfigurationMutation mutation);
+    void submitPendingMutations();
+    void handleRequestFinished(bool success, const QVariantMap &result, const QString &error);
     QVariantMap defaultConfiguration() const;
     void rebuildCapabilities();
 
@@ -68,8 +75,10 @@ private:
     QVariantList m_slots;
     QVariantList m_presets;
     QTimer m_speedFlushTimer;
+    std::vector<ConfigurationMutation> m_pendingMutations;
     double m_pendingSpeed = -1.0;
     QString m_lastError;
     bool m_available = false;
     bool m_busy = false;
+    bool m_activeRequestIsRefresh = false;
 };

@@ -31,9 +31,11 @@ Item {
         return labels[id] || id || I18n.tr("apps.settings.pages.animations.effect.unavailable", "Unavailable")
     }
     function plannedText(slot) {
-        if (!slot.plannedEffects || slot.plannedEffects.length === 0)
+        const requested = slot.requested || ""
+        const planned = slot.plannedEffects || []
+        if (!requested || planned.indexOf(requested) < 0)
             return ""
-        return root.effectLabel(slot.plannedEffects[0]) + " — " + I18n.tr("apps.settings.pages.animations.planned", "Planned")
+        return root.effectLabel(requested) + " — " + I18n.tr("apps.settings.pages.animations.planned", "Planned")
     }
     function availableOptions(slot) {
         return (slot.availableEffects || []).map(effect => root.effectLabel(effect))
@@ -91,7 +93,8 @@ Item {
                     from: 0.5
                     to: 2.0
                     stepSize: 0.05
-                    modelValueEnabled: root.controller.available
+                    enabled: root.controller.available && !root.controller.busy
+                    modelValueEnabled: root.controller.available && !root.controller.busy
                     modelValue: root.controller.speed
                     valueText: Number(displayedValue).toFixed(2) + "×"
                     detentEnabled: true

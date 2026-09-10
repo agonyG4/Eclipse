@@ -12,13 +12,12 @@
 #include <sys/stat.h>
 
 #include <cmath>
+#include <utility>
 
 namespace {
 
 constexpr qsizetype kMaxRequestBytes = 64 * 1024;
 constexpr qsizetype kMaxResponseBytes = 1024 * 1024;
-constexpr int kTimeoutMs = 2000;
-
 QString protocolError(const QString &message)
 {
     return QStringLiteral("Typhon control: ") + message;
@@ -26,24 +25,47 @@ QString protocolError(const QString &message)
 
 } // namespace
 
-SettingsTyphonControlClient::SettingsTyphonControlClient(QObject *parent)
+SettingsTyphonControlClient::SettingsTyphonControlClient(QObject *parent, int deadlineMs)
     : QObject(parent)
+    , m_deadlineMs(qMax(1, deadlineMs))
 {
+    connect(&m_socket, &QLocalSocket::connected, this,
+            &SettingsTyphonControlClient::handleConnected);
+    connect(&m_socket, &QLocalSocket::readyRead, this,
+            &SettingsTyphonControlClient::handleReadyRead);
+    connect(&m_socket, &QLocalSocket::errorOccurred, this,
+            &SettingsTyphonControlClient::handleSocketError);
+    connect(&m_socket, &QLocalSocket::disconnected, this,
+            &SettingsTyphonControlClient::handleDisconnected);
+    connect(&m_deadlineTimer, &QTimer::timeout, this,
+            &SettingsTyphonControlClient::handleDeadline);
+    m_deadlineTimer.setSingleShot(true);
 }
 
-bool SettingsTyphonControlClient::request(const QString &command,
-                                          const QVariantMap &arguments,
-                                          QVariantMap *result,
-                                          QString *error)
+bool SettingsTyphonControlClient::startRequest(const QString &command,
+                                               const QVariantMap &arguments,
+                                               QString *startError)
 {
-    if (!result || !error || command.isEmpty())
+    if (startError)
+        startError->clear();
+    if (m_busy) {
+        if (startError)
+            *startError = protocolError(QStringLiteral("a request is already in flight"));
         return false;
-    *result = {};
-    *error = {};
+    }
+    if (command.isEmpty()) {
+        if (startError)
+            *startError = protocolError(QStringLiteral("command is empty"));
+        return false;
+    }
 
-    const QString socketPath = discoverSocket(error);
-    if (socketPath.isEmpty())
+    QString discoveryError;
+    const QString socketPath = discoverSocket(&discoveryError);
+    if (socketPath.isEmpty()) {
+        if (startError)
+            *startError = discoveryError;
         return false;
+    }
 
     const quint64 requestId = m_nextRequestId++;
     QJsonObject request{
@@ -56,39 +78,99 @@ bool SettingsTyphonControlClient::request(const QString &command,
     QByteArray encoded = QJsonDocument(request).toJson(QJsonDocument::Compact);
     encoded.append('\n');
     if (encoded.size() > kMaxRequestBytes) {
-        *error = protocolError(QStringLiteral("request exceeds 64 KiB"));
+        if (startError)
+            *startError = protocolError(QStringLiteral("request exceeds 64 KiB"));
         return false;
     }
 
-    QLocalSocket socket;
-    socket.connectToServer(socketPath);
-    if (!socket.waitForConnected(kTimeoutMs)) {
-        *error = protocolError(QStringLiteral("connection failed"));
-        return false;
-    }
-    if (socket.write(encoded) != encoded.size() || !socket.waitForBytesWritten(kTimeoutMs)) {
-        *error = protocolError(QStringLiteral("request write failed"));
-        return false;
-    }
+    m_socket.abort();
+    m_response.clear();
+    m_encodedRequest = std::move(encoded);
+    m_activeRequestId = requestId;
+    m_lastFailureWasServerRejection = false;
+    m_busy = true;
+    m_deadlineTimer.start(m_deadlineMs);
+    m_socket.connectToServer(socketPath);
+    return true;
+}
 
-    QByteArray response;
-    while (!response.contains('\n')) {
-        if (!socket.waitForReadyRead(kTimeoutMs)) {
-            *error = protocolError(QStringLiteral("response timeout"));
-            return false;
-        }
-        response += socket.read(kMaxResponseBytes + 1 - response.size());
-        if (response.size() > kMaxResponseBytes) {
-            *error = protocolError(QStringLiteral("response exceeds 1 MiB"));
-            return false;
-        }
+void SettingsTyphonControlClient::handleConnected()
+{
+    if (!m_busy)
+        return;
+    if (m_socket.write(m_encodedRequest) != m_encodedRequest.size()) {
+        complete(false, {}, protocolError(QStringLiteral("request write failed")));
     }
-    const qsizetype newline = response.indexOf('\n');
-    const QByteArray line = response.left(newline);
-    if (line.isEmpty() || !response.mid(newline + 1).isEmpty()) {
-        *error = protocolError(QStringLiteral("response framing is invalid"));
-        return false;
+}
+
+void SettingsTyphonControlClient::handleReadyRead()
+{
+    if (!m_busy)
+        return;
+    const qint64 remaining = kMaxResponseBytes - m_response.size();
+    m_response.append(m_socket.read(remaining + 1));
+    if (m_response.size() > kMaxResponseBytes) {
+        complete(false, {}, protocolError(QStringLiteral("response exceeds 1 MiB")));
+        return;
     }
+    const qsizetype newline = m_response.indexOf('\n');
+    if (newline < 0)
+        return;
+    if (newline == 0 || !m_response.mid(newline + 1).isEmpty()) {
+        complete(false, {}, protocolError(QStringLiteral("response framing is invalid")));
+        return;
+    }
+    QVariantMap result;
+    QString error;
+    if (parseResponse(m_response.left(newline), &result, &error))
+        complete(true, result, {});
+    else
+        complete(false, {}, error, m_lastFailureWasServerRejection);
+}
+
+void SettingsTyphonControlClient::handleSocketError(QLocalSocket::LocalSocketError error)
+{
+    Q_UNUSED(error);
+    if (m_busy)
+        complete(false, {}, protocolError(QStringLiteral("socket transport failed")));
+}
+
+void SettingsTyphonControlClient::handleDisconnected()
+{
+    if (!m_busy)
+        return;
+    if (m_socket.bytesAvailable() > 0) {
+        handleReadyRead();
+        if (!m_busy)
+            return;
+    }
+    complete(false, {}, protocolError(QStringLiteral("socket disconnected")));
+}
+
+void SettingsTyphonControlClient::handleDeadline()
+{
+    if (m_busy)
+        complete(false, {}, protocolError(QStringLiteral("response timeout")));
+}
+
+void SettingsTyphonControlClient::complete(bool success, const QVariantMap &result,
+                                            const QString &error, bool serverRejection)
+{
+    if (!m_busy)
+        return;
+    m_deadlineTimer.stop();
+    m_busy = false;
+    m_activeRequestId = 0;
+    m_encodedRequest.clear();
+    m_response.clear();
+    m_lastFailureWasServerRejection = serverRejection;
+    m_socket.abort();
+    emit requestFinished(success, result, error);
+}
+
+bool SettingsTyphonControlClient::parseResponse(const QByteArray &line, QVariantMap *result,
+                                                 QString *error)
+{
     QJsonParseError parseError;
     const QJsonDocument document = QJsonDocument::fromJson(line, &parseError);
     if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
@@ -108,7 +190,7 @@ bool SettingsTyphonControlClient::request(const QString &command,
     const double responseIdNumber = responseId.toDouble();
     if (!responseId.isDouble() || !std::isfinite(responseIdNumber)
         || std::trunc(responseIdNumber) != responseIdNumber
-        || responseId.toInteger() != static_cast<qint64>(requestId)) {
+        || responseId.toInteger() != static_cast<qint64>(m_activeRequestId)) {
         *error = protocolError(QStringLiteral("response id does not match request"));
         return false;
     }
@@ -132,6 +214,7 @@ bool SettingsTyphonControlClient::request(const QString &command,
     const QJsonObject errorObject = responseObject.value(QStringLiteral("error")).toObject();
     const QString message = errorObject.value(QStringLiteral("message")).toString();
     *error = message.isEmpty() ? protocolError(QStringLiteral("server rejected request")) : message;
+    m_lastFailureWasServerRejection = true;
     return false;
 }
 

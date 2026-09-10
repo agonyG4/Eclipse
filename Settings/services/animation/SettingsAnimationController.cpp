@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <utility>
 
 SettingsAnimationController::SettingsAnimationController(QObject *parent)
     : QObject(parent)
@@ -15,7 +16,8 @@ SettingsAnimationController::SettingsAnimationController(QObject *parent)
     m_speedFlushTimer.setSingleShot(true);
     m_speedFlushTimer.setInterval(80);
     connect(&m_speedFlushTimer, &QTimer::timeout, this, &SettingsAnimationController::flush);
-    refresh();
+    connect(m_client.get(), &SettingsTyphonControlClient::requestFinished, this,
+            &SettingsAnimationController::handleRequestFinished);
 }
 
 SettingsAnimationController::~SettingsAnimationController() = default;
@@ -24,44 +26,75 @@ void SettingsAnimationController::refresh()
 {
     if (m_busy)
         return;
-    m_busy = true;
-    emit busyChanged();
-    QVariantMap snapshot;
-    QString error;
-    const bool ok = m_client->request(QStringLiteral("animation.config.get"), {}, &snapshot, &error);
-    m_busy = false;
-    emit busyChanged();
-    if (!ok) {
-        m_available = false;
-        emit availabilityChanged();
-        setError(error);
+    if (m_available && (m_pendingSpeed >= 0.0 || !m_pendingMutations.empty())) {
+        submitPendingMutations();
         return;
     }
-    m_available = true;
-    emit availabilityChanged();
-    applySnapshot(snapshot);
-    setError({});
+
+    m_activeRequestIsRefresh = true;
+    m_busy = true;
+    emit busyChanged();
+    QString error;
+    if (m_client->startRequest(QStringLiteral("animation.config.get"), {}, &error))
+        return;
+
+    m_activeRequestIsRefresh = false;
+    m_busy = false;
+    emit busyChanged();
+    if (m_available) {
+        m_available = false;
+        emit availabilityChanged();
+    }
+    setError(error);
+}
+
+void SettingsAnimationController::handleRequestFinished(bool success,
+                                                         const QVariantMap &result,
+                                                         const QString &error)
+{
+    const bool refresh = m_activeRequestIsRefresh;
+    m_activeRequestIsRefresh = false;
+    if (m_busy) {
+        m_busy = false;
+        emit busyChanged();
+    }
+
+    if (success) {
+        if (!m_available) {
+            m_available = true;
+            emit availabilityChanged();
+        }
+        if (applySnapshot(result))
+            setError({});
+    } else {
+        if (refresh || !m_client->lastFailureWasServerRejection()) {
+            if (m_available) {
+                m_available = false;
+                emit availabilityChanged();
+            }
+        }
+        setError(error);
+    }
+    submitPendingMutations();
 }
 
 void SettingsAnimationController::setEnabled(bool value)
 {
-    flush();
-    QVariantMap configuration = m_config;
-    configuration.insert(QStringLiteral("enabled"), value);
-    submit(configuration);
+    enqueueMutation([value](QVariantMap &configuration) {
+        configuration.insert(QStringLiteral("enabled"), value);
+    });
 }
 
 void SettingsAnimationController::setPreset(const QString &value)
 {
-    flush();
-    QVariantMap configuration = m_config;
-    configuration.insert(QStringLiteral("preset"), value);
-    submit(configuration);
+    enqueueMutation([value](QVariantMap &configuration) {
+        configuration.insert(QStringLiteral("preset"), value);
+    });
 }
 
 void SettingsAnimationController::setSpeed(double value)
 {
-    if (!std::isfinite(value))
+    if (!m_available || !std::isfinite(value))
         return;
     m_pendingSpeed = qBound(0.5, value, 2.0);
     m_speedFlushTimer.start();
@@ -69,8 +102,6 @@ void SettingsAnimationController::setSpeed(double value)
 
 void SettingsAnimationController::setSlotEffect(const QString &slotId, const QString &effectId)
 {
-    flush();
-    const QVariantMap configuration = m_config;
     const QVariantList capabilities = m_snapshot.value(QStringLiteral("catalog")).toMap()
                                           .value(QStringLiteral("slots"))
                                           .toList();
@@ -102,58 +133,87 @@ void SettingsAnimationController::setSlotEffect(const QString &slotId, const QSt
         setError(QStringLiteral("The selected animation is unavailable for this slot."));
         return;
     }
-    QVariantMap updated = configuration;
-    QVariantMap overrides = updated.value(QStringLiteral("overrides")).toMap();
-    overrides.insert(slotId, effectId);
-    updated.insert(QStringLiteral("overrides"), overrides);
-    submit(updated);
+
+    enqueueMutation([slotId, effectId](QVariantMap &configuration) {
+        QVariantMap overrides = configuration.value(QStringLiteral("overrides")).toMap();
+        overrides.insert(slotId, effectId);
+        configuration.insert(QStringLiteral("overrides"), overrides);
+    });
 }
 
 void SettingsAnimationController::clearSlotOverride(const QString &slotId)
 {
-    flush();
-    QVariantMap configuration = m_config;
-    QVariantMap overrides = configuration.value(QStringLiteral("overrides")).toMap();
-    overrides.remove(slotId);
-    configuration.insert(QStringLiteral("overrides"), overrides);
-    submit(configuration);
+    enqueueMutation([slotId](QVariantMap &configuration) {
+        QVariantMap overrides = configuration.value(QStringLiteral("overrides")).toMap();
+        overrides.remove(slotId);
+        configuration.insert(QStringLiteral("overrides"), overrides);
+    });
 }
 
 void SettingsAnimationController::resetOverrides()
 {
-    flush();
-    QVariantMap configuration = m_config;
-    configuration.insert(QStringLiteral("overrides"), QVariantMap{});
-    submit(configuration);
+    enqueueMutation([](QVariantMap &configuration) {
+        configuration.insert(QStringLiteral("overrides"), QVariantMap{});
+    });
 }
 
 void SettingsAnimationController::restoreDefaults()
 {
-    flush();
-    submit(defaultConfiguration());
+    const QVariantMap defaults = defaultConfiguration();
+    enqueueMutation([defaults](QVariantMap &configuration) {
+        configuration = defaults;
+    });
 }
 
 void SettingsAnimationController::flush()
 {
-    if (m_pendingSpeed < 0.0)
-        return;
     m_speedFlushTimer.stop();
-    QVariantMap configuration = m_config;
-    configuration.insert(QStringLiteral("speed"), m_pendingSpeed);
-    m_pendingSpeed = -1.0;
-    submit(configuration);
+    submitPendingMutations();
 }
 
-void SettingsAnimationController::applySnapshot(const QVariantMap &snapshot)
+void SettingsAnimationController::enqueueMutation(ConfigurationMutation mutation)
+{
+    if (!m_available)
+        return;
+    m_pendingMutations.push_back(std::move(mutation));
+    submitPendingMutations();
+}
+
+void SettingsAnimationController::submitPendingMutations()
+{
+    if (m_busy || !m_available
+        || (m_pendingSpeed < 0.0 && m_pendingMutations.empty())) {
+        return;
+    }
+
+    QVariantMap configuration = m_config;
+    for (const ConfigurationMutation &mutation : m_pendingMutations)
+        mutation(configuration);
+    if (m_pendingSpeed >= 0.0)
+        configuration.insert(QStringLiteral("speed"), m_pendingSpeed);
+
+    if (submit(configuration)) {
+        m_pendingMutations.clear();
+        m_pendingSpeed = -1.0;
+        m_speedFlushTimer.stop();
+    } else if (!m_busy) {
+        m_pendingMutations.clear();
+        m_pendingSpeed = -1.0;
+        m_speedFlushTimer.stop();
+    }
+}
+
+bool SettingsAnimationController::applySnapshot(const QVariantMap &snapshot)
 {
     if (!snapshot.contains(QStringLiteral("config"))) {
         setError(QStringLiteral("Typhon returned an incomplete animation snapshot."));
-        return;
+        return false;
     }
     m_snapshot = snapshot;
     m_config = snapshot.value(QStringLiteral("config")).toMap();
     rebuildCapabilities();
     emit snapshotChanged();
+    return true;
 }
 
 void SettingsAnimationController::setError(const QString &message)
@@ -168,22 +228,24 @@ bool SettingsAnimationController::submit(const QVariantMap &configuration)
 {
     if (m_busy || !m_available)
         return false;
-    m_busy = true;
-    emit busyChanged();
+
     QVariantMap arguments = configuration;
     arguments.insert(QStringLiteral("version"), 1);
-    QVariantMap snapshot;
+    m_activeRequestIsRefresh = false;
+    m_busy = true;
+    emit busyChanged();
     QString error;
-    const bool ok = m_client->request(QStringLiteral("animation.config.set"), arguments, &snapshot, &error);
+    if (m_client->startRequest(QStringLiteral("animation.config.set"), arguments, &error))
+        return true;
+
     m_busy = false;
     emit busyChanged();
-    if (!ok) {
-        setError(error);
-        return false;
+    if (m_available) {
+        m_available = false;
+        emit availabilityChanged();
     }
-    applySnapshot(snapshot);
-    setError({});
-    return true;
+    setError(error);
+    return false;
 }
 
 QVariantMap SettingsAnimationController::defaultConfiguration() const

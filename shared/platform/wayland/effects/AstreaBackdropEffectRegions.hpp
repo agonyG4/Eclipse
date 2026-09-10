@@ -3,6 +3,7 @@
 #include "platform/wayland/effects/AstreaBackdropRegion.hpp"
 
 #include <QQuickItem>
+#include <QPointer>
 #include <QVector>
 
 #include <QtQml/QQmlListProperty>
@@ -11,6 +12,7 @@
 #include <memory>
 
 class AstreaBackgroundEffectBinding;
+class QQuickWindow;
 
 class AstreaBackdropEffectRegions : public QQuickItem {
     Q_OBJECT
@@ -39,6 +41,7 @@ signals:
 protected:
     void componentComplete() override;
     void itemChange(ItemChange change, const ItemChangeData &data) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
     static void appendRegion(QQmlListProperty<AstreaBackdropRegion> *property,
@@ -58,6 +61,7 @@ private:
     bool m_syncScheduled = false;
     QVector<AstreaBackdropRegion *> m_regions;
     QVector<QMetaObject::Connection> m_connections;
+    QPointer<QQuickWindow> m_observedWindow;
     std::unique_ptr<AstreaBackgroundEffectBinding> m_binding;
     QVector<QRect> m_lastResolvedRegion;
 };

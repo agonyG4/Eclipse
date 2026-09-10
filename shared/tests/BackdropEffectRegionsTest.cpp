@@ -1,6 +1,27 @@
 #include "platform/wayland/effects/AstreaBackdropRegion.hpp"
+#include "platform/wayland/effects/AstreaBackdropEffectRegions.hpp"
 
+#include <QCoreApplication>
+#include <QQuickItem>
+#include <QQuickWindow>
 #include <QTest>
+
+namespace {
+
+class TestBackdropEffectRegions final : public AstreaBackdropEffectRegions {
+public:
+    using AstreaBackdropEffectRegions::AstreaBackdropEffectRegions;
+
+    void completeForTest() { componentComplete(); }
+};
+
+void drainEvents()
+{
+    QCoreApplication::processEvents();
+    QCoreApplication::processEvents();
+}
+
+} // namespace
 
 class BackdropEffectRegionsTest final : public QObject {
     Q_OBJECT
@@ -19,7 +40,88 @@ private slots:
         region.setEnabled(false);
         QVERIFY(!region.enabled());
     }
+
+    void hiddenWindowResynchronizesWhenShown()
+    {
+        QQuickWindow window;
+        window.resize(320, 180);
+
+        auto *descriptors = new TestBackdropEffectRegions(window.contentItem());
+        auto *item = new QQuickItem(window.contentItem());
+        item->setSize({120.0, 60.0});
+        item->setPosition({20.0, 30.0});
+        auto *region = new AstreaBackdropRegion(descriptors);
+        region->setItem(item);
+        auto list = descriptors->regions();
+        list.append(&list, region);
+        descriptors->completeForTest();
+
+        QVERIFY(!window.isVisible());
+        drainEvents();
+        QVERIFY(descriptors->resolvedRegion().isEmpty());
+
+        window.show();
+        drainEvents();
+        QVERIFY(!descriptors->resolvedRegion().isEmpty());
+    }
+
+    void ancestorTransformAndPlacementResynchronizeOnAnimationTick()
+    {
+        QQuickWindow window;
+        window.resize(320, 180);
+        window.show();
+
+        auto *parent = new QQuickItem(window.contentItem());
+        parent->setPosition({10.0, 15.0});
+        parent->setScale(1.0);
+        auto *descriptors = new TestBackdropEffectRegions(parent);
+        auto *item = new QQuickItem(parent);
+        item->setSize({100.0, 40.0});
+        item->setPosition({20.0, 25.0});
+        auto *region = new AstreaBackdropRegion(descriptors);
+        region->setItem(item);
+        auto list = descriptors->regions();
+        list.append(&list, region);
+        descriptors->completeForTest();
+        drainEvents();
+
+        const auto initial = descriptors->resolvedRegion();
+        QVERIFY(!initial.isEmpty());
+
+        parent->setScale(1.5);
+        QMetaObject::invokeMethod(&window, "afterAnimating", Qt::DirectConnection);
+        drainEvents();
+        const auto scaled = descriptors->resolvedRegion();
+        QVERIFY(!scaled.isEmpty());
+        QVERIFY(scaled != initial);
+
+        parent->setPosition({80.0, 45.0});
+        QMetaObject::invokeMethod(&window, "afterAnimating", Qt::DirectConnection);
+        drainEvents();
+        QVERIFY(descriptors->resolvedRegion() != scaled);
+    }
+
+    void destroyedDynamicItemBecomesNoRegion()
+    {
+        QQuickWindow window;
+        window.resize(320, 180);
+        window.show();
+        auto *descriptors = new TestBackdropEffectRegions(window.contentItem());
+        auto *item = new QQuickItem(window.contentItem());
+        item->setSize({80.0, 40.0});
+        auto *region = new AstreaBackdropRegion(descriptors);
+        region->setItem(item);
+        auto list = descriptors->regions();
+        list.append(&list, region);
+        descriptors->completeForTest();
+        drainEvents();
+        QVERIFY(!descriptors->resolvedRegion().isEmpty());
+
+        delete item;
+        drainEvents();
+        QVERIFY(descriptors->resolvedRegion().isEmpty());
+    }
 };
 
-QTEST_APPLESS_MAIN(BackdropEffectRegionsTest)
+QTEST_MAIN(BackdropEffectRegionsTest)
 #include "BackdropEffectRegionsTest.moc"

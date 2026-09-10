@@ -21,6 +21,7 @@ bool AstreaBackgroundEffectLifecycleState::surfaceAboutToBeDestroyed(const quint
         return false;
     m_surfaceToken = 0;
     m_effectBound = false;
+    m_syncedRegion.clear();
     return true;
 }
 
@@ -33,9 +34,31 @@ bool AstreaBackgroundEffectLifecycleState::bindEffect()
     return true;
 }
 
+bool AstreaBackgroundEffectLifecycleState::recordRegionSync(const QVector<QRect> &region,
+                                                             const bool requestFrame)
+{
+    if (!hasEffect() || m_syncedRegion == region)
+        return false;
+    m_syncedRegion = region;
+    if (requestFrame)
+        ++m_qtFrameRequests;
+    return true;
+}
+
+bool AstreaBackgroundEffectLifecycleState::clearRegion(const bool requestFrame)
+{
+    if (m_syncedRegion.isEmpty())
+        return false;
+    m_syncedRegion.clear();
+    if (requestFrame)
+        ++m_qtFrameRequests;
+    return true;
+}
+
 void AstreaBackgroundEffectLifecycleState::destroyEffect()
 {
     m_effectBound = false;
+    m_syncedRegion.clear();
 }
 
 AstreaBackgroundEffectBinding::AstreaBackgroundEffectBinding(QQuickWindow *window)
@@ -82,10 +105,12 @@ bool AstreaBackgroundEffectBinding::sync(const QVector<QRect> &rectangles,
         return true;
 
     if (!effects->setBlurRegion(window, m_effect, rectangles, requestFrame)) {
+        m_lifecycle.clearRegion(false);
         m_lastRegion.clear();
         m_active = false;
         return false;
     }
+    m_lifecycle.recordRegionSync(rectangles, requestFrame);
     m_lastRegion = rectangles;
     m_active = true;
     return true;
@@ -115,6 +140,7 @@ void AstreaBackgroundEffectBinding::releaseEffect(const bool requestFrame)
     }
     if (auto *effects = AstreaWaylandEffects::instance())
         effects->destroyEffect(m_window.data(), m_effect, requestFrame);
+    m_lifecycle.clearRegion(requestFrame);
     m_effect = nullptr;
     m_lifecycle.destroyEffect();
     m_lastRegion.clear();

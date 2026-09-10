@@ -2,11 +2,14 @@
 
 #include "platform/wayland/effects/AstreaBackgroundEffectBinding.hpp"
 #include "platform/wayland/effects/RoundedEffectRegion.hpp"
+#include "platform/wayland/effects/AstreaWaylandEffects.hpp"
 
 #include <QQuickWindow>
+#include <QPlatformSurfaceEvent>
 #include <QtMath>
 
 #include <algorithm>
+#include <utility>
 
 namespace {
 
@@ -50,7 +53,10 @@ AstreaBackdropEffectRegions::AstreaBackdropEffectRegions(QQuickItem *parent)
 
 AstreaBackdropEffectRegions::~AstreaBackdropEffectRegions()
 {
-    for (const auto &connection : m_connections)
+    if (m_observedWindow)
+        m_observedWindow->removeEventFilter(this);
+    const auto connections = std::exchange(m_connections, {});
+    for (const auto &connection : connections)
         QObject::disconnect(connection);
 }
 
@@ -125,10 +131,31 @@ void AstreaBackdropEffectRegions::connectRegion(AstreaBackdropRegion *region)
 
 void AstreaBackdropEffectRegions::refreshConnections()
 {
-    for (const auto &connection : m_connections)
+    const auto connections = std::exchange(m_connections, {});
+    for (const auto &connection : connections)
         QObject::disconnect(connection);
-    m_connections.clear();
-    for (auto *region : m_regions) {
+    auto *window = this->window();
+    if (m_observedWindow && m_observedWindow != window)
+        m_observedWindow->removeEventFilter(this);
+    m_observedWindow = window;
+    if (window) {
+        window->installEventFilter(this);
+        m_connections.append(connect(window, &QWindow::visibleChanged, this,
+                                     &AstreaBackdropEffectRegions::scheduleSync));
+        m_connections.append(connect(window, &QWindow::widthChanged, this,
+                                     &AstreaBackdropEffectRegions::scheduleSync));
+        m_connections.append(connect(window, &QWindow::heightChanged, this,
+                                     &AstreaBackdropEffectRegions::scheduleSync));
+        m_connections.append(connect(window, &QQuickWindow::afterAnimating, this,
+                                     &AstreaBackdropEffectRegions::scheduleSync));
+        if (auto *effects = AstreaWaylandEffects::instance())
+            m_connections.append(connect(effects, &AstreaWaylandEffects::availableChanged, this,
+                                         &AstreaBackdropEffectRegions::scheduleSync));
+    }
+    const auto *regions = m_regions.constData();
+    const auto regionCount = m_regions.size();
+    for (qsizetype index = 0; index < regionCount; ++index) {
+        auto *region = regions[index];
         if (!region)
             continue;
         m_connections.append(connect(region, &AstreaBackdropRegion::itemChanged, this,
@@ -138,6 +165,9 @@ void AstreaBackdropEffectRegions::refreshConnections()
         m_connections.append(connect(region, &AstreaBackdropRegion::radiusChanged, this,
                                      &AstreaBackdropEffectRegions::scheduleSync));
         if (auto *item = region->item()) {
+            m_connections.append(connect(item, &QObject::destroyed, this, [this] {
+                scheduleSync();
+            }));
             m_connections.append(connect(item, &QQuickItem::xChanged, this,
                                          &AstreaBackdropEffectRegions::scheduleSync));
             m_connections.append(connect(item, &QQuickItem::yChanged, this,
@@ -215,6 +245,23 @@ void AstreaBackdropEffectRegions::itemChange(const ItemChange change,
         scheduleSync();
 }
 
+bool AstreaBackdropEffectRegions::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == m_observedWindow && event
+        && event->type() == QEvent::PlatformSurface) {
+        auto *surfaceEvent = static_cast<QPlatformSurfaceEvent *>(event);
+        if (surfaceEvent->surfaceEventType() == QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed) {
+            if (m_binding)
+                m_binding->surfaceAboutToBeDestroyed();
+        } else if (surfaceEvent->surfaceEventType() == QPlatformSurfaceEvent::SurfaceCreated) {
+            if (m_binding)
+                m_binding->surfaceCreated();
+            scheduleSync();
+        }
+    }
+    return QQuickItem::eventFilter(watched, event);
+}
+
 void AstreaBackdropEffectRegions::scheduleSync()
 {
     if (!m_componentComplete || m_syncScheduled)
@@ -234,5 +281,5 @@ void AstreaBackdropEffectRegions::sync()
         emit resolvedRegionChanged();
     }
     if (m_binding)
-        m_binding->sync(region, m_enabled && !region.isEmpty(), false);
+        m_binding->sync(region, m_enabled && !region.isEmpty(), true);
 }

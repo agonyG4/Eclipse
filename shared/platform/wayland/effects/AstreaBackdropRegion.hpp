@@ -1,10 +1,10 @@
 #pragma once
 
 #include <QObject>
+#include <QPointer>
+#include <QQuickItem>
 
 #include <QtQml/qqmlregistration.h>
-
-class QQuickItem;
 
 class AstreaBackdropRegion : public QObject {
     Q_OBJECT
@@ -29,7 +29,7 @@ signals:
     void radiusChanged();
 
 private:
-    QQuickItem *m_item = nullptr;
+    QPointer<QQuickItem> m_item;
     bool m_enabled = true;
     qreal m_radius = 0.0;
 };

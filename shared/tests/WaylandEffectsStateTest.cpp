@@ -55,6 +55,26 @@ private slots:
         QVERIFY(state.surfaceAboutToBeDestroyed(2));
         QVERIFY(!state.hasSurface());
     }
+
+    void changedRegionRequestsOneQtFrameAndUnchangedRegionRequestsNone()
+    {
+        AstreaEffectSurfaceLifecycleState state;
+        const QVector<QRect> first{{10, 20, 40, 30}};
+        const QVector<QRect> second{{12, 20, 40, 30}};
+
+        QVERIFY(state.surfaceCreated(1));
+        QVERIFY(state.bindEffect());
+        QVERIFY(state.recordRegionSync(first, true));
+        QCOMPARE(state.qtFrameRequests(), quint64(1));
+        QVERIFY(!state.recordRegionSync(first, true));
+        QCOMPARE(state.qtFrameRequests(), quint64(1));
+        QVERIFY(state.recordRegionSync(second, true));
+        QCOMPARE(state.qtFrameRequests(), quint64(2));
+        QVERIFY(state.clearRegion(true));
+        QCOMPARE(state.qtFrameRequests(), quint64(3));
+        QVERIFY(!state.clearRegion(true));
+        QCOMPARE(state.qtFrameRequests(), quint64(3));
+    }
 };
 
 QTEST_APPLESS_MAIN(WaylandEffectsStateTest)

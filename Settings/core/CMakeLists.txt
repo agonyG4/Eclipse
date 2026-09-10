@@ -1,6 +1,10 @@
 add_library(astrea-settings-core STATIC
     SettingsController.cpp
     SettingsController.hpp
+    ../services/animation/SettingsAnimationController.cpp
+    ../services/animation/SettingsAnimationController.hpp
+    ../services/animation/SettingsTyphonControlClient.cpp
+    ../services/animation/SettingsTyphonControlClient.hpp
     ../services/wallpaper/SettingsWallpaperController.cpp
     ../services/wallpaper/SettingsWallpaperController.hpp
     navigation/SettingsNavigationCatalog.cpp

@@ -65,6 +65,7 @@ class SettingsQmlSmokeTest final : public QObject {
 private slots:
     void loadsCompositorRouteOffscreen();
     void loadsCustomizationHubOffscreen();
+    void loadsAnimationsRouteOffscreen();
     void loadsAppearanceRouteFromHubOffscreen();
     void appearancePreviewsUseCurrentWallpaperSnapshot();
     void materialPreviewFrostedGeometryMatchesFallback();
@@ -215,9 +216,7 @@ void SettingsQmlSmokeTest::loadsCompositorRouteOffscreen()
                              1000);
     QObject *page = loadedPage();
     QVERIFY(page != nullptr);
-    QCOMPARE(page->property("animationsEnabled").toBool(), true);
-    page->setProperty("animationsEnabled", false);
-    QCOMPARE(page->property("animationsEnabled").toBool(), false);
+    QVERIFY(!page->property("animationsEnabled").isValid());
 
     QVERIFY(!settingsController.navigateTo(QStringLiteral("system")));
     QCOMPARE(settingsController.currentDestinationId(), QStringLiteral("compositor"));
@@ -229,7 +228,7 @@ void SettingsQmlSmokeTest::loadsCompositorRouteOffscreen()
     QTRY_VERIFY_WITH_TIMEOUT(loadedPage() != nullptr
                                  && loadedPage()->objectName() == QStringLiteral("compositorPage"),
                              1000);
-    QCOMPARE(loadedPage()->property("animationsEnabled").toBool(), true);
+    QVERIFY(!loadedPage()->property("animationsEnabled").isValid());
     QVERIFY2(qmlWarnings.isEmpty(), qPrintable(qmlWarnings.isEmpty() ? QString() : qmlWarnings.constFirst().toString()));
 }
 
@@ -256,11 +255,37 @@ void SettingsQmlSmokeTest::loadsCustomizationHubOffscreen()
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-appearance")) != nullptr);
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-wallpaper")) != nullptr);
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-dock")) != nullptr);
-    QCOMPARE(countVisualItems(hubItem, QRegularExpression(QStringLiteral("^hubNavigationRow-"))), 3);
+    QCOMPARE(countVisualItems(hubItem, QRegularExpression(QStringLiteral("^hubNavigationRow-"))), 4);
     const QVariantList children = settingsController.currentDestinationChildren();
-    QCOMPARE(children.size(), 3);
+    QCOMPARE(children.size(), 4);
     QCOMPARE(children.at(0).toMap().value(QStringLiteral("entryId")).toString(),
              QStringLiteral("appearance"));
+}
+
+void SettingsQmlSmokeTest::loadsAnimationsRouteOffscreen()
+{
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"),
+                                             &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("animations")));
+    QObject *root = engine.rootObjects().constFirst();
+    QObject *loader = root->findChild<QObject *>(QStringLiteral("settingsPageLoader"));
+    QVERIFY(loader != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(loader->property("item").isValid(), 1000);
+    QObject *page = qvariant_cast<QObject *>(loader->property("item"));
+    QVERIFY(page != nullptr);
+    QCOMPARE(page->objectName(), QStringLiteral("animationsPage"));
+    QVERIFY(page->property("controller").isValid());
+    QVERIFY(!page->property("controller").value<QObject *>()->property("available").toBool());
 }
 
 void SettingsQmlSmokeTest::loadsAppearanceRouteFromHubOffscreen()

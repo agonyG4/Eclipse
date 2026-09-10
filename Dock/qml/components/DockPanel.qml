@@ -64,6 +64,8 @@ Item {
     property string outputKey: ""
     property int outputWidth: 1
     property int outputHeight: 1
+    property int outputOriginX: 0
+    property int outputOriginY: 0
     property string draggedDesktopFileName: ""
     property int draggedSourceIndex: -1
     property int dragTargetIndex: -1
@@ -145,8 +147,16 @@ Item {
                 id: appRepeater
                 model: DockController.appModel
                 onCountChanged: root.updateHoverEffect()
-                onItemAdded: root.updateHoverEffect()
-                onItemRemoved: root.updateHoverEffect()
+                onItemAdded: {
+                    root.updateHoverEffect()
+                    root.scheduleMinimizeAnchorPublication()
+                }
+                onItemRemoved: function(index, item) {
+                    if (item && item.desktopFileName)
+                        DockController.clearMinimizeAnchor(item.desktopFileName)
+                    root.updateHoverEffect()
+                    root.scheduleMinimizeAnchorPublication()
+                }
 
                 delegate: DockAppDelegate {
                     dockPanel: root
@@ -156,6 +166,8 @@ Item {
                     contextMenuController: root.contextMenuController
                     dockSurfaceGeometry: root.dockSurfaceGeometry
                     outputKey: root.outputKey
+                    outputOriginX: root.outputOriginX
+                    outputOriginY: root.outputOriginY
                     pinned: model.pinned
                     pointerTarget: dockPanel.pointerTargetDesktopFileName === desktopFileName
                     onActivated: function(key) { DockController.launchByDesktopFileName(key) }
@@ -209,6 +221,7 @@ Item {
                 Qt.callLater(function() {
                     root.updateHoverEffect()
                     root.updateInputRegion()
+                    root.scheduleMinimizeAnchorPublication()
                 })
             })
         }
@@ -223,6 +236,12 @@ Item {
 
     Connections {
         target: DockController
+        function onConfigChanged() {
+            root.scheduleMinimizeAnchorPublication()
+        }
+        function onModelChanged() {
+            root.scheduleMinimizeAnchorPublication()
+        }
         function onRevealedChanged() {
             root.updateHoverEffect()
             root.scheduleInputRegionUpdate()
@@ -230,6 +249,33 @@ Item {
         function onSurfacePlacementChanged() {
             root.updateHoverEffect()
             root.scheduleInputRegionUpdate()
+        }
+    }
+
+    onOutputKeyChanged: root.scheduleMinimizeAnchorPublication()
+    onOutputWidthChanged: root.scheduleMinimizeAnchorPublication()
+    onOutputHeightChanged: root.scheduleMinimizeAnchorPublication()
+    onOutputOriginXChanged: root.scheduleMinimizeAnchorPublication()
+    onOutputOriginYChanged: root.scheduleMinimizeAnchorPublication()
+
+    function scheduleMinimizeAnchorPublication() {
+        Qt.callLater(root.publishMinimizeAnchors)
+    }
+
+    function publishMinimizeAnchors() {
+        if (!root.dockSurfaceGeometry || root.outputKey === "")
+            return
+        for (var index = 0; index < appRepeater.count; ++index) {
+            const item = appRepeater.itemAt(index)
+            if (!item)
+                continue
+            const rect = root.dockSurfaceGeometry.restingIconRectInGlobal(
+                root.outputWidth, root.outputHeight, root.surfaceWidth, root.surfaceHeight,
+                root.outputOriginX, root.outputOriginY, DockController.position,
+                DockController.layerShellEdgeMargin, root.surfaceCrossInset, DockController.iconSize,
+                DockController.delegateWidth, DockController.delegateHeight,
+                DockController.itemSpacing, DockController.panelPadding, index, appRepeater.count)
+            DockController.setMinimizeAnchor(item.desktopFileName, rect)
         }
     }
 
@@ -554,7 +600,13 @@ Item {
         updateHoverEffect()
         scheduleInputRegionUpdate()
     }
-    onWidthChanged: updateHoverEffect()
-    onHeightChanged: updateHoverEffect()
+    onWidthChanged: {
+        updateHoverEffect()
+        scheduleMinimizeAnchorPublication()
+    }
+    onHeightChanged: {
+        updateHoverEffect()
+        scheduleMinimizeAnchorPublication()
+    }
     onConfiguredHoverEffectChanged: updateHoverEffect()
 }

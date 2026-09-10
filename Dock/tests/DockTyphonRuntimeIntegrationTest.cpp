@@ -34,6 +34,7 @@ public:
     void stop() override { ++stops; }
     bool isAvailable() const override { return true; }
     TyphonActionCapabilityState actionCapability() const override { return capability; }
+    quint32 managerVersion() const override { return 3; }
     std::optional<ToplevelActionError> requestAction(
         quint64 handleToken, TyphonActionToken token, ToplevelAction action) override
     {
@@ -41,6 +42,17 @@ public:
             return ToplevelActionError::ToplevelNotLive;
         actionRequests.append({handleToken, token, action});
         return requestError;
+    }
+    std::optional<ToplevelActionError> setMinimizeAnchor(
+        quint64 handleToken, const QRect &rect) override
+    {
+        anchorRequests.append({handleToken, rect});
+        return anchorError;
+    }
+    std::optional<ToplevelActionError> clearMinimizeAnchor(quint64 handleToken) override
+    {
+        clearedAnchorHandles.append(handleToken);
+        return anchorError;
     }
 
     void advertiseManager() { emit registryDiscovered(true); }
@@ -80,6 +92,13 @@ public:
     };
     QVector<ActionRequest> actionRequests;
     QSet<quint64> staleHandleTokens;
+    struct AnchorRequest {
+        quint64 handleToken = 0;
+        QRect rect;
+    };
+    QVector<AnchorRequest> anchorRequests;
+    QVector<quint64> clearedAnchorHandles;
+    std::optional<ToplevelActionError> anchorError;
 };
 
 static std::shared_ptr<DesktopEntrySnapshot> makeCatalog()
@@ -115,6 +134,7 @@ private slots:
     void staleExactTargetNeverRetargetsOrLaunches();
     void nonPinnedMinimizedApplicationAppearsActivatesAndCloses();
     void connectionLossRemovesDynamicRowsButKeepsPinsUnknown();
+    void cachedAnchorProjectsToExistingAndNewWindows();
 };
 
 void DockTyphonRuntimeIntegrationTest::authoritativeSnapshotDrivesDockRuntimeRoles()
@@ -152,6 +172,52 @@ void DockTyphonRuntimeIntegrationTest::authoritativeSnapshotDrivesDockRuntimeRol
     QVERIFY(!controller.runtimeKnown());
     QVERIFY(!item.data(DockAppModel::RuntimeKnownRole).toBool());
     QVERIFY(!item.data(DockAppModel::RunningRole).toBool());
+}
+
+void DockTyphonRuntimeIntegrationTest::cachedAnchorProjectsToExistingAndNewWindows()
+{
+    auto *adapter = new FakeTyphonAdapter;
+    TyphonToplevelConnection connection(adapter);
+    DockController controller;
+    controller.setCatalogSnapshot(makeCatalog());
+    DockConfig config = DockConfig::defaults();
+    config.pins = {QStringLiteral("one.desktop")};
+    controller.applyConfig(config);
+    controller.attachTyphonConnection(&connection);
+
+    connection.start();
+    adapter->advertiseManager();
+    adapter->create(1);
+    adapter->id(1, QStringLiteral("1"));
+    adapter->app(1, QStringLiteral("one"));
+    adapter->title(1, QStringLiteral("One"));
+    adapter->pid(1, 100);
+    adapter->kind(1, ToplevelKind::XdgToplevel);
+    adapter->state(1, ToplevelStates{});
+    adapter->focus(1, 1);
+    adapter->handleDone(1, 1);
+    adapter->managerDone(1, 1);
+
+    const QRect anchor(123, -45, 48, 48);
+    QVERIFY(controller.setMinimizeAnchor(QStringLiteral("one.desktop"), anchor));
+    QCOMPARE(adapter->anchorRequests.size(), 1);
+    QCOMPARE(adapter->anchorRequests.first().handleToken, quint64(1));
+    QCOMPARE(adapter->anchorRequests.first().rect, anchor);
+
+    adapter->create(4);
+    adapter->id(4, QStringLiteral("4"));
+    adapter->app(4, QStringLiteral("one"));
+    adapter->title(4, QStringLiteral("One second"));
+    adapter->pid(4, 101);
+    adapter->kind(4, ToplevelKind::XdgToplevel);
+    adapter->state(4, ToplevelStates{});
+    adapter->focus(4, 2);
+    adapter->handleDone(4, 2);
+    adapter->managerDone(2, 2);
+
+    QCOMPARE(adapter->anchorRequests.size(), 2);
+    QCOMPARE(adapter->anchorRequests.last().handleToken, quint64(4));
+    QCOMPARE(adapter->anchorRequests.last().rect, anchor);
 }
 
 void DockTyphonRuntimeIntegrationTest::runningApplicationActivatesMostRecentExactWindow()

@@ -3,6 +3,7 @@
 #include "platform/typhon/TyphonProtocolTypes.hpp"
 
 #include <QObject>
+#include <QRect>
 
 #include <optional>
 
@@ -34,6 +35,19 @@ public:
         Q_UNUSED(handleToken);
         Q_UNUSED(token);
         Q_UNUSED(action);
+        return Astrea::Typhon::ToplevelActionError::UnsupportedProtocol;
+    }
+    virtual std::optional<Astrea::Typhon::ToplevelActionError> setMinimizeAnchor(
+        quint64 handleToken, const QRect &rect)
+    {
+        Q_UNUSED(handleToken);
+        Q_UNUSED(rect);
+        return Astrea::Typhon::ToplevelActionError::UnsupportedProtocol;
+    }
+    virtual std::optional<Astrea::Typhon::ToplevelActionError> clearMinimizeAnchor(
+        quint64 handleToken)
+    {
+        Q_UNUSED(handleToken);
         return Astrea::Typhon::ToplevelActionError::UnsupportedProtocol;
     }
 

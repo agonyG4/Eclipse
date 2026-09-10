@@ -3,6 +3,7 @@
 #include "core/navigation/SettingsNavigationModel.hpp"
 #include "services/assets/SettingsIconResolver.hpp"
 #include "services/dock/SettingsDockController.hpp"
+#include "services/animation/SettingsAnimationController.hpp"
 #include "services/profile/SettingsUserProfile.hpp"
 #include "services/wallpaper/SettingsWallpaperController.hpp"
 
@@ -30,6 +31,7 @@ class SettingsController final : public QObject {
     Q_PROPERTY(bool isSudo READ isSudo CONSTANT)
     Q_PROPERTY(SettingsWallpaperController *wallpaper READ wallpaper CONSTANT)
     Q_PROPERTY(SettingsDockController *dock READ dock CONSTANT)
+    Q_PROPERTY(SettingsAnimationController *animations READ animations CONSTANT)
 
 public:
     explicit SettingsController(QObject *parent = nullptr);
@@ -52,6 +54,7 @@ public:
     bool isSudo() const;
     SettingsWallpaperController *wallpaper() const { return m_wallpaperController.get(); }
     SettingsDockController *dock() const { return m_dockController.get(); }
+    SettingsAnimationController *animations() const { return m_animationController.get(); }
 
     Q_INVOKABLE bool navigateTo(const QString &id);
     Q_INVOKABLE void goBack();
@@ -73,6 +76,7 @@ private:
     const SettingsIconResolver m_iconResolver;
     std::unique_ptr<SettingsWallpaperController> m_wallpaperController;
     std::unique_ptr<SettingsDockController> m_dockController;
+    std::unique_ptr<SettingsAnimationController> m_animationController;
     QString m_currentDestinationId;
     QString m_selectedSidebarId;
     QVector<QString> m_history;

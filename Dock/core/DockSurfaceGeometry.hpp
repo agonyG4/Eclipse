@@ -31,8 +31,21 @@ public:
     static QRect delegateRectInOutput(const QSize &outputSize, const QSize &surfaceSize,
                                       const QString &position, int edgeMargin,
                                       const QRectF &delegateRect);
+    static QRect restingIconRectInGlobal(const QSize &outputSize, const QSize &surfaceSize,
+                                         const QPoint &outputOrigin, const QString &position,
+                                         int edgeMargin, int chromeEdgeInset, int iconSize,
+                                         int delegateWidth, int delegateHeight, int itemSpacing,
+                                         int panelPadding, int index, int count);
     Q_INVOKABLE QRect outputLocalDelegateRect(int outputWidth, int outputHeight,
                                                int surfaceWidth, int surfaceHeight,
                                                const QString &position, int edgeMargin,
                                                const QRectF &delegateRect) const;
+    Q_INVOKABLE QRect restingIconRectInGlobal(int outputWidth, int outputHeight,
+                                              int surfaceWidth, int surfaceHeight,
+                                              int outputOriginX, int outputOriginY,
+                                              const QString &position, int edgeMargin,
+                                              int chromeEdgeInset, int iconSize,
+                                              int delegateWidth, int delegateHeight,
+                                              int itemSpacing, int panelPadding, int index,
+                                              int count) const;
 };

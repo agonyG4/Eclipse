@@ -5,6 +5,7 @@
 #include "platform/typhon/TyphonToplevelModel.hpp"
 
 #include <QObject>
+#include <QRect>
 #include <QTimer>
 
 class TyphonSharedConnection;
@@ -45,6 +46,10 @@ public:
     { return m_adapter ? m_adapter->managerVersion() : 0; }
     std::optional<Astrea::Typhon::ToplevelActionError> requestAction(
         const QString &windowId, Astrea::Typhon::ToplevelAction action, quint64 consumerToken);
+    std::optional<Astrea::Typhon::ToplevelActionError> setMinimizeAnchor(
+        const QString &windowId, const QRect &rect);
+    std::optional<Astrea::Typhon::ToplevelActionError> clearMinimizeAnchor(
+        const QString &windowId);
 
 signals:
     void stateChanged(TyphonConnectionState state);

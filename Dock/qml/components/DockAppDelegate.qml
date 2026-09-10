@@ -25,6 +25,8 @@ Item {
     property var contextMenuController: null
     property var dockSurfaceGeometry: null
     property string outputKey: ""
+    property int outputOriginX: 0
+    property int outputOriginY: 0
     property bool pointerTarget: false
     property real magnificationScale: 1.0
     property real visualOffsetX: 0

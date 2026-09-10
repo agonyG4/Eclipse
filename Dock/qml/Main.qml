@@ -30,6 +30,8 @@ Window {
         outputKey: window.outputKey
         outputWidth: window.outputWidth
         outputHeight: window.outputHeight
+        outputOriginX: window.outputOriginX
+        outputOriginY: window.outputOriginY
         onReorderRequested: function(desktopFileName, targetPinIndex) {
             DockController.movePinned(desktopFileName, targetPinIndex)
         }

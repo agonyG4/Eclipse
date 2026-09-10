@@ -8,7 +8,6 @@ Item {
     id: root
     objectName: "compositorPage"
 
-    property bool animationsEnabled: true
     property bool blurEnabled: true
     property bool shadowsEnabled: true
     property int vrrModeIndex: 0
@@ -78,10 +77,16 @@ Item {
             Form.SettingRow {
                 label: I18n.tr("apps.settings.pages.system.compositor.label.animations", "Animations")
                 sublabel: I18n.tr("apps.settings.pages.system.compositor.sublabel.animations", "Animate window movement, workspace transitions, and compositor effects")
+                clickable: true
+                controlBlocksRowClick: false
+                onClicked: SettingsController.navigateTo("animations")
 
-                Controls.ToggleSwitch {
-                    checked: root.animationsEnabled
-                    onToggled: targetChecked => root.animationsEnabled = targetChecked
+                Text {
+                    text: I18n.tr("apps.settings.pages.system.compositor.status.configure", "Configure")
+                    color: Components.Theme.accent
+                    font.family: Components.Theme.fontFamily
+                    font.pixelSize: Components.Theme.fontSizeSmall
+                    font.weight: Components.Theme.fontWeightMedium
                 }
             }
 

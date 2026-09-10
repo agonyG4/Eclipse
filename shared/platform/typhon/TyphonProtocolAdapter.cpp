@@ -151,6 +151,47 @@ public:
         return std::nullopt;
     }
 
+    std::optional<ToplevelActionError> setMinimizeAnchor(quint64 handleToken,
+                                                          const QRect &rect) override
+    {
+        if (!m_running || !m_manager)
+            return ToplevelActionError::Disconnected;
+        if (m_managerVersion < 3)
+            return ToplevelActionError::UnsupportedProtocol;
+        if (!m_authenticated || m_actionCapability != TyphonActionCapabilityState::ActionReadyV2)
+            return ToplevelActionError::NotAuthenticated;
+        if (rect.width() <= 0 || rect.height() <= 0)
+            return ToplevelActionError::InvalidRequest;
+        const auto it = m_handles.constFind(handleToken);
+        if (it == m_handles.constEnd() || !it.value() || it.value()->closed || !it.value()->proxy
+            || astrea_toplevel_v1_get_version(it.value()->proxy) < 3)
+            return ToplevelActionError::ToplevelNotLive;
+        astrea_toplevel_v1_set_minimize_anchor(it.value()->proxy, rect.x(), rect.y(),
+                                               static_cast<uint32_t>(rect.width()),
+                                               static_cast<uint32_t>(rect.height()));
+        if (!m_display->flush())
+            return ToplevelActionError::Disconnected;
+        return std::nullopt;
+    }
+
+    std::optional<ToplevelActionError> clearMinimizeAnchor(quint64 handleToken) override
+    {
+        if (!m_running || !m_manager)
+            return ToplevelActionError::Disconnected;
+        if (m_managerVersion < 3)
+            return ToplevelActionError::UnsupportedProtocol;
+        if (!m_authenticated || m_actionCapability != TyphonActionCapabilityState::ActionReadyV2)
+            return ToplevelActionError::NotAuthenticated;
+        const auto it = m_handles.constFind(handleToken);
+        if (it == m_handles.constEnd() || !it.value() || it.value()->closed || !it.value()->proxy
+            || astrea_toplevel_v1_get_version(it.value()->proxy) < 3)
+            return ToplevelActionError::ToplevelNotLive;
+        astrea_toplevel_v1_clear_minimize_anchor(it.value()->proxy);
+        if (!m_display->flush())
+            return ToplevelActionError::Disconnected;
+        return std::nullopt;
+    }
+
 private:
     struct HandleState {
         GeneratedTyphonProtocolAdapter *owner = nullptr;
@@ -167,7 +208,7 @@ private:
             || qstrcmp(interfaceName, "astrea_toplevel_manager_v1") != 0 || version < 1) {
             return;
         }
-        self->m_managerVersion = qMin(version, 2u);
+        self->m_managerVersion = qMin(version, 3u);
         self->m_manager = static_cast<astrea_toplevel_manager_v1 *>(
             wl_registry_bind(registry, name, &astrea_toplevel_manager_v1_interface,
                              self->m_managerVersion));

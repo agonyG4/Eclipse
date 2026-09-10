@@ -257,6 +257,7 @@ void DockController::clearTyphonRuntime()
     m_runtimeKnown = false;
     m_runtimeSnapshot.reset();
     m_runtimeStates.clear();
+    m_publishedMinimizeAnchors.clear();
     m_model.clearRuntimeProjection();
     updateAutoHidePolicy();
     if (changed)
@@ -265,6 +266,33 @@ void DockController::clearTyphonRuntime()
         emit surfacePlacementChanged();
     if (previousReservation != exclusiveZone())
         emit reservationChanged();
+}
+
+bool DockController::setMinimizeAnchor(const QString &desktopFileName, const QRect &rect)
+{
+    if (desktopFileName.isEmpty() || rect.width() <= 0 || rect.height() <= 0)
+        return false;
+    const auto existing = m_minimizeAnchors.constFind(desktopFileName);
+    if (existing != m_minimizeAnchors.constEnd() && existing.value() == rect) {
+        publishMinimizeAnchor(desktopFileName);
+        return true;
+    }
+    m_minimizeAnchors.insert(desktopFileName, rect);
+    publishMinimizeAnchor(desktopFileName);
+    return true;
+}
+
+void DockController::clearMinimizeAnchor(const QString &desktopFileName)
+{
+    m_minimizeAnchors.remove(desktopFileName);
+    const auto state = m_runtimeStates.constFind(desktopFileName);
+    if (state != m_runtimeStates.constEnd()) {
+        for (const QString &windowId : state->windowIds) {
+            if (m_typhonConnection)
+                m_typhonConnection->clearMinimizeAnchor(windowId);
+            m_publishedMinimizeAnchors.remove(windowId);
+        }
+    }
 }
 
 void DockController::setPointerInside(bool inside)
@@ -643,6 +671,7 @@ void DockController::updateVisibility()
 void DockController::projectRuntime()
 {
     if (!m_runtimeKnown || !m_runtimeSnapshot.has_value()) {
+        m_publishedMinimizeAnchors.clear();
         m_runtimeStates.clear();
         m_model.clearRuntimeProjection();
         return;
@@ -650,8 +679,49 @@ void DockController::projectRuntime()
 
     const Astrea::Typhon::DockApplicationRuntimeProjection projection =
         m_runtimeProjector.project(*m_runtimeSnapshot, m_catalogSnapshot);
+    QSet<QString> liveWindowIds;
+    for (auto it = projection.states.cbegin(); it != projection.states.cend(); ++it) {
+        for (const QString &windowId : it.value().windowIds)
+            liveWindowIds.insert(windowId);
+    }
+    clearPublishedMinimizeAnchors(liveWindowIds);
     m_runtimeStates = projection.states;
     m_model.applyRuntimeProjection(projection, true);
+    publishAllMinimizeAnchors();
+}
+
+void DockController::publishMinimizeAnchor(const QString &desktopFileName)
+{
+    if (!m_typhonConnection)
+        return;
+    const auto anchor = m_minimizeAnchors.constFind(desktopFileName);
+    const auto state = m_runtimeStates.constFind(desktopFileName);
+    if (anchor == m_minimizeAnchors.constEnd() || state == m_runtimeStates.constEnd())
+        return;
+    for (const QString &windowId : state->windowIds) {
+        if (m_publishedMinimizeAnchors.value(windowId) == anchor.value())
+            continue;
+        if (!m_typhonConnection->setMinimizeAnchor(windowId, anchor.value()).has_value())
+            m_publishedMinimizeAnchors.insert(windowId, anchor.value());
+    }
+}
+
+void DockController::publishAllMinimizeAnchors()
+{
+    for (auto it = m_minimizeAnchors.cbegin(); it != m_minimizeAnchors.cend(); ++it)
+        publishMinimizeAnchor(it.key());
+}
+
+void DockController::clearPublishedMinimizeAnchors(const QSet<QString> &liveWindowIds)
+{
+    const auto published = m_publishedMinimizeAnchors;
+    for (auto it = published.cbegin(); it != published.cend(); ++it) {
+        if (liveWindowIds.contains(it.key()))
+            continue;
+        if (m_typhonConnection)
+            m_typhonConnection->clearMinimizeAnchor(it.key());
+        m_publishedMinimizeAnchors.remove(it.key());
+    }
 }
 
 void DockController::reconcileTyphonActionFailure(Astrea::Typhon::ToplevelActionError error)

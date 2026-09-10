@@ -10,6 +10,7 @@
 
 #include <QHash>
 #include <QObject>
+#include <QRect>
 #include <QSet>
 #include <QTimer>
 
@@ -126,6 +127,8 @@ public:
     Q_INVOKABLE bool closeWindow(const QString &desktopFileName, const QString &windowId);
     Q_INVOKABLE bool setPinned(const QString &desktopFileName, bool pinned);
     Q_INVOKABLE bool movePinned(const QString &desktopFileName, int targetPinIndex);
+    Q_INVOKABLE bool setMinimizeAnchor(const QString &desktopFileName, const QRect &rect);
+    Q_INVOKABLE void clearMinimizeAnchor(const QString &desktopFileName);
     Q_INVOKABLE void show();
     Q_INVOKABLE void hide();
 
@@ -157,6 +160,9 @@ private:
     bool autoHideActive() const;
     void setRevealed(bool revealed);
     void projectRuntime();
+    void publishMinimizeAnchor(const QString &desktopFileName);
+    void publishAllMinimizeAnchors();
+    void clearPublishedMinimizeAnchors(const QSet<QString> &liveWindowIds);
     void reconcileTyphonActionFailure(Astrea::Typhon::ToplevelActionError error);
     void launchItem(const DockAppInfo &item, bool activateRunning = true);
     bool requestExactWindowAction(const QString &desktopFileName, const QString &windowId,
@@ -178,6 +184,8 @@ private:
     bool m_revealed = true;
     std::optional<Astrea::Typhon::Snapshot> m_runtimeSnapshot;
     QHash<QString, Astrea::Typhon::DockApplicationRuntimeState> m_runtimeStates;
+    QHash<QString, QRect> m_minimizeAnchors;
+    QHash<QString, QRect> m_publishedMinimizeAnchors;
     QHash<quint64, QString> m_pendingActivations;
     struct PendingWindowAction {
         QString desktopFileName;

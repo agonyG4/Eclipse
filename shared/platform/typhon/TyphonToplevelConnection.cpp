@@ -318,6 +318,36 @@ std::optional<ToplevelActionError> TyphonToplevelConnection::requestAction(
     return std::nullopt;
 }
 
+std::optional<ToplevelActionError> TyphonToplevelConnection::setMinimizeAnchor(
+    const QString &windowId, const QRect &rect)
+{
+    if (!m_started || !m_adapter)
+        return ToplevelActionError::Disconnected;
+    if (m_adapter->managerVersion() < 3)
+        return ToplevelActionError::UnsupportedProtocol;
+    if (m_actionCapability != TyphonActionCapabilityState::ActionReadyV2)
+        return ToplevelActionError::NotAuthenticated;
+    const auto handleToken = m_model.handleTokenForWindowId(windowId);
+    if (!handleToken.has_value())
+        return ToplevelActionError::ToplevelNotLive;
+    return m_adapter->setMinimizeAnchor(*handleToken, rect);
+}
+
+std::optional<ToplevelActionError> TyphonToplevelConnection::clearMinimizeAnchor(
+    const QString &windowId)
+{
+    if (!m_started || !m_adapter)
+        return ToplevelActionError::Disconnected;
+    if (m_adapter->managerVersion() < 3)
+        return ToplevelActionError::UnsupportedProtocol;
+    if (m_actionCapability != TyphonActionCapabilityState::ActionReadyV2)
+        return ToplevelActionError::NotAuthenticated;
+    const auto handleToken = m_model.handleTokenForWindowId(windowId);
+    if (!handleToken.has_value())
+        return ToplevelActionError::ToplevelNotLive;
+    return m_adapter->clearMinimizeAnchor(*handleToken);
+}
+
 void TyphonToplevelConnection::disconnectAdapterSignals()
 {
     for (const QMetaObject::Connection &connection : std::as_const(m_adapterConnections))

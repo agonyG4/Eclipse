@@ -37,6 +37,7 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     pages/appearance/MaterialPreview.qml
     pages/appearance/MaterialShowcase.qml
     pages/appearance/Dock.qml
+    pages/appearance/Animations.qml
     pages/appearance/Wallpaper.qml
     theme/Apps.qml
     theme/Shell.qml
@@ -56,6 +57,7 @@ set(ASTREA_SETTINGS_ASSET_RELATIVE_FILES
     icons/settings/sound.svg
     icons/settings/theme.svg
     icons/settings/wallpaper.svg
+    icons/settings/animations.svg
     icons/settings/themes/bluetooth.svg
     icons/settings/themes/dark/audio.svg
     icons/settings/themes/dark/apps.svg

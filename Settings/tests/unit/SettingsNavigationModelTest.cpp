@@ -102,11 +102,17 @@ void SettingsNavigationModelTest::exposesNativePageRoutes()
         QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Wallpaper.qml"));
     const QUrl dockRoute(
         QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Dock.qml"));
+    const QUrl appearanceRoute(
+        QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Appearance.qml"));
+    const QUrl animationsRoute(
+        QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Animations.qml"));
 
     QCOMPARE(model.pageSourceForId(QStringLiteral("compositor")), compositorRoute);
     QCOMPARE(model.pageSourceForId(QStringLiteral("customization")), customizationRoute);
     QCOMPARE(model.pageSourceForId(QStringLiteral("wallpaper")), wallpaperRoute);
     QCOMPARE(model.pageSourceForId(QStringLiteral("dock")), dockRoute);
+    QCOMPARE(model.pageSourceForId(QStringLiteral("appearance")), appearanceRoute);
+    QCOMPARE(model.pageSourceForId(QStringLiteral("animations")), animationsRoute);
     QCOMPARE(model.pageSourceForId(QStringLiteral("system")), QUrl());
     QCOMPARE(model.pageSourceForId(QStringLiteral("missing")), QUrl());
 }
@@ -120,20 +126,28 @@ void SettingsNavigationModelTest::exposesHubChildrenAndAncestorLookups()
     QCOMPARE(customization->kind, SettingsNavigationEntry::Kind::Hub);
 
     const QVector<SettingsNavigationEntry> children = model.childrenForId(QStringLiteral("customization"));
-    QCOMPARE(children.size(), 2);
-    QCOMPARE(children.at(0).id, QStringLiteral("wallpaper"));
-    QCOMPARE(children.at(1).id, QStringLiteral("dock"));
+    QCOMPARE(children.size(), 4);
+    QCOMPARE(children.at(0).id, QStringLiteral("appearance"));
+    QCOMPARE(children.at(1).id, QStringLiteral("wallpaper"));
+    QCOMPARE(children.at(2).id, QStringLiteral("dock"));
+    QCOMPARE(children.at(3).id, QStringLiteral("animations"));
 
     const QVariantList childDescriptors = model.childDescriptorsForId(QStringLiteral("customization"));
-    QCOMPARE(childDescriptors.size(), 2);
+    QCOMPARE(childDescriptors.size(), 4);
     QCOMPARE(childDescriptors.at(0).toMap().value(QStringLiteral("entryId")).toString(),
-             QStringLiteral("wallpaper"));
+             QStringLiteral("appearance"));
     QCOMPARE(childDescriptors.at(1).toMap().value(QStringLiteral("entryId")).toString(),
+             QStringLiteral("wallpaper"));
+    QCOMPARE(childDescriptors.at(2).toMap().value(QStringLiteral("entryId")).toString(),
              QStringLiteral("dock"));
+    QCOMPARE(childDescriptors.at(3).toMap().value(QStringLiteral("entryId")).toString(),
+             QStringLiteral("animations"));
 
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("customization")), QStringLiteral("customization"));
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("wallpaper")), QStringLiteral("customization"));
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("dock")), QStringLiteral("customization"));
+    QCOMPARE(model.sidebarAncestorForId(QStringLiteral("appearance")), QStringLiteral("customization"));
+    QCOMPARE(model.sidebarAncestorForId(QStringLiteral("animations")), QStringLiteral("customization"));
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("compositor")), QStringLiteral("compositor"));
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("missing")), QString());
 }
@@ -153,6 +167,8 @@ void SettingsNavigationModelTest::appliesPageAndHubNavigabilityRules()
     QVERIFY(model.containsNavigableId(QStringLiteral("customization")));
     QVERIFY(model.containsNavigableId(QStringLiteral("wallpaper")));
     QVERIFY(model.containsNavigableId(QStringLiteral("dock")));
+    QVERIFY(model.containsNavigableId(QStringLiteral("appearance")));
+    QVERIFY(model.containsNavigableId(QStringLiteral("animations")));
     QVERIFY(!model.containsNavigableId(QStringLiteral("system")));
     QVERIFY(!model.containsNavigableId(QStringLiteral("performance")));
     QVERIFY(!model.containsNavigableId(QStringLiteral("more-settings")));

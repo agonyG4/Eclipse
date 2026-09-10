@@ -75,22 +75,6 @@ Item {
             Layout.bottomMargin: 24
 
             Form.SettingRow {
-                label: I18n.tr("apps.settings.pages.system.compositor.label.animations", "Animations")
-                sublabel: I18n.tr("apps.settings.pages.system.compositor.sublabel.animations", "Animate window movement, workspace transitions, and compositor effects")
-                clickable: true
-                controlBlocksRowClick: false
-                onClicked: SettingsController.navigateTo("animations")
-
-                Text {
-                    text: I18n.tr("apps.settings.pages.system.compositor.status.configure", "Configure")
-                    color: Components.Theme.accent
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeSmall
-                    font.weight: Components.Theme.fontWeightMedium
-                }
-            }
-
-            Form.SettingRow {
                 label: I18n.tr("apps.settings.pages.system.compositor.label.background_blur", "Background blur")
                 sublabel: I18n.tr("apps.settings.pages.system.compositor.sublabel.background_blur", "Blur transparent application and shell surfaces")
 

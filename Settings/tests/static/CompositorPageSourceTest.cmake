@@ -35,7 +35,6 @@ foreach(token IN LISTS forbidden_tokens)
 endforeach()
 
 set(required_tokens
-    "property bool animationsEnabled: true"
     "property bool blurEnabled: true"
     "property bool shadowsEnabled: true"
     "property int vrrModeIndex: 0"

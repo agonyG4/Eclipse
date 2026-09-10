@@ -13,6 +13,14 @@
 
 namespace {
 
+constexpr int maxClientRegionRectangles = 96;
+constexpr int defaultCornerSegments = 16;
+
+struct RegionGeometry {
+    QRect bounds;
+    qreal radius;
+};
+
 bool itemIsVisible(const QQuickItem *item)
 {
     qreal opacity = 1.0;
@@ -147,7 +155,8 @@ void AstreaBackdropEffectRegions::refreshConnections()
         m_connections.append(connect(window, &QWindow::heightChanged, this,
                                      &AstreaBackdropEffectRegions::scheduleSync));
         m_connections.append(connect(window, &QQuickWindow::afterAnimating, this,
-                                     &AstreaBackdropEffectRegions::scheduleSync));
+                                     &AstreaBackdropEffectRegions::syncForCurrentAnimationFrame,
+                                     Qt::DirectConnection));
         if (auto *effects = AstreaWaylandEffects::instance())
             m_connections.append(connect(effects, &AstreaWaylandEffects::availableChanged, this,
                                          &AstreaBackdropEffectRegions::scheduleSync));
@@ -196,7 +205,7 @@ QVector<QRect> AstreaBackdropEffectRegions::resolvedRegion() const
         return {};
 
     const QRect surfaceBounds(QPoint(0, 0), window->size());
-    QVector<QRect> result;
+    QVector<RegionGeometry> geometries;
     for (const auto *region : m_regions) {
         auto *item = region ? region->item() : nullptr;
         if (!region || !region->enabled() || !item || !itemIsVisible(item))
@@ -209,23 +218,49 @@ QVector<QRect> AstreaBackdropEffectRegions::resolvedRegion() const
         qreal radius = region->radius();
         if (item->width() > 0.0)
             radius *= qMax<qreal>(0.0, bounds.width() / item->width());
-        const auto decomposition = AstreaRoundedEffectRegion::rectangles(bounds.size(), radius);
-        for (const auto &rectangle : decomposition) {
-            const QRect translated = rectangle.translated(bounds.topLeft()).intersected(surfaceBounds);
-            if (!translated.isEmpty())
-                result.append(translated);
-        }
+        geometries.append({bounds, radius});
     }
-    std::sort(result.begin(), result.end(), [](const QRect &left, const QRect &right) {
-        if (left.y() != right.y())
-            return left.y() < right.y();
-        if (left.x() != right.x())
-            return left.x() < right.x();
-        if (left.width() != right.width())
-            return left.width() < right.width();
-        return left.height() < right.height();
-    });
-    result.erase(std::unique(result.begin(), result.end()), result.end());
+
+    QVector<int> segmentLimits(geometries.size(), defaultCornerSegments);
+    const auto buildRegion = [&] {
+        QVector<QRect> result;
+        for (qsizetype index = 0; index < geometries.size(); ++index) {
+            const auto &geometry = geometries.at(index);
+            const auto decomposition = AstreaRoundedEffectRegion::rectangles(
+                geometry.bounds.size(), geometry.radius, segmentLimits.at(index));
+            for (const auto &rectangle : decomposition) {
+                const QRect translated = rectangle.translated(geometry.bounds.topLeft())
+                                             .intersected(surfaceBounds);
+                if (!translated.isEmpty())
+                    result.append(translated);
+            }
+        }
+        std::sort(result.begin(), result.end(), [](const QRect &left, const QRect &right) {
+            if (left.y() != right.y())
+                return left.y() < right.y();
+            if (left.x() != right.x())
+                return left.x() < right.x();
+            if (left.width() != right.width())
+                return left.width() < right.width();
+            return left.height() < right.height();
+        });
+        result.erase(std::unique(result.begin(), result.end()), result.end());
+        return result;
+    };
+
+    auto result = buildRegion();
+    while (result.size() > maxClientRegionRectangles) {
+        qsizetype selected = -1;
+        for (qsizetype index = 0; index < segmentLimits.size(); ++index) {
+            if (segmentLimits.at(index) > 1
+                && (selected < 0 || segmentLimits.at(index) > segmentLimits.at(selected)))
+                selected = index;
+        }
+        if (selected < 0)
+            break;
+        --segmentLimits[selected];
+        result = buildRegion();
+    }
     return result;
 }
 
@@ -275,11 +310,23 @@ void AstreaBackdropEffectRegions::scheduleSync()
 
 void AstreaBackdropEffectRegions::sync()
 {
+    sync(true);
+}
+
+void AstreaBackdropEffectRegions::syncForCurrentAnimationFrame()
+{
+    if (!m_componentComplete)
+        return;
+    sync(false);
+}
+
+void AstreaBackdropEffectRegions::sync(const bool requestFrame)
+{
     const auto region = resolvedRegion();
     if (region != m_lastResolvedRegion) {
         m_lastResolvedRegion = region;
         emit resolvedRegionChanged();
     }
     if (m_binding)
-        m_binding->sync(region, m_enabled && !region.isEmpty(), true);
+        m_binding->sync(region, m_enabled && !region.isEmpty(), requestFrame);
 }

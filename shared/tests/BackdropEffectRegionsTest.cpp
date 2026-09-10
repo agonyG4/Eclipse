@@ -4,7 +4,10 @@
 #include <QCoreApplication>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QSignalSpy>
 #include <QTest>
+
+#include <algorithm>
 
 namespace {
 
@@ -19,6 +22,13 @@ void drainEvents()
 {
     QCoreApplication::processEvents();
     QCoreApplication::processEvents();
+}
+
+bool covered(const QVector<QRect> &rectangles, const QPoint point)
+{
+    return std::any_of(rectangles.cbegin(), rectangles.cend(), [point](const QRect &rectangle) {
+        return rectangle.contains(point);
+    });
 }
 
 } // namespace
@@ -99,6 +109,72 @@ private slots:
         QMetaObject::invokeMethod(&window, "afterAnimating", Qt::DirectConnection);
         drainEvents();
         QVERIFY(descriptors->resolvedRegion() != scaled);
+    }
+
+    void animationTickSynchronizesImmediatelyAndDeduplicates()
+    {
+        QQuickWindow window;
+        window.resize(320, 180);
+        window.show();
+
+        auto *parent = new QQuickItem(window.contentItem());
+        auto *descriptors = new TestBackdropEffectRegions(parent);
+        auto *item = new QQuickItem(parent);
+        item->setSize({100.0, 40.0});
+        item->setPosition({20.0, 25.0});
+        auto *region = new AstreaBackdropRegion(descriptors);
+        region->setItem(item);
+        auto list = descriptors->regions();
+        list.append(&list, region);
+        descriptors->completeForTest();
+        drainEvents();
+
+        QSignalSpy changes(descriptors, &AstreaBackdropEffectRegions::resolvedRegionChanged);
+        const auto initial = descriptors->resolvedRegion();
+
+        parent->setScale(1.5);
+        QMetaObject::invokeMethod(&window, "afterAnimating", Qt::DirectConnection);
+        QCOMPARE(changes.count(), 1);
+        QVERIFY(descriptors->resolvedRegion() != initial);
+
+        changes.clear();
+        QMetaObject::invokeMethod(&window, "afterAnimating", Qt::DirectConnection);
+        QCOMPARE(changes.count(), 0);
+
+        parent->setPosition({80.0, 45.0});
+        QMetaObject::invokeMethod(&window, "afterAnimating", Qt::DirectConnection);
+        QCOMPARE(changes.count(), 1);
+    }
+
+    void aggregateRegionBudgetPreservesSeparateHighRadiusCards()
+    {
+        QQuickWindow window;
+        window.resize(320, 280);
+        window.show();
+        auto *descriptors = new TestBackdropEffectRegions(window.contentItem());
+        const QVector<QPoint> positions = {
+            {10, 10}, {170, 10}, {10, 160}, {170, 160},
+        };
+        for (const auto position : positions) {
+            auto *item = new QQuickItem(window.contentItem());
+            item->setSize({120.0, 100.0});
+            item->setPosition(position);
+            auto *region = new AstreaBackdropRegion(descriptors);
+            region->setItem(item);
+            region->setRadius(40.0);
+            auto list = descriptors->regions();
+            list.append(&list, region);
+        }
+        descriptors->completeForTest();
+        drainEvents();
+
+        const auto rectangles = descriptors->resolvedRegion();
+        QVERIFY(rectangles.size() <= 96);
+        for (const auto position : positions)
+            QVERIFY(covered(rectangles, position + QPoint(60, 50)));
+        QVERIFY(!covered(rectangles, {150, 60}));
+        QVERIFY(!covered(rectangles, {150, 210}));
+        QVERIFY(!covered(rectangles, {70, 135}));
     }
 
     void destroyedDynamicItemBecomesNoRegion()

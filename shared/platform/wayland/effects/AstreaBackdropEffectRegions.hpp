@@ -54,7 +54,9 @@ private:
     void connectRegion(AstreaBackdropRegion *region);
     void refreshConnections();
     void scheduleSync();
+    void syncForCurrentAnimationFrame();
     void sync();
+    void sync(bool requestFrame);
 
     bool m_enabled = true;
     bool m_componentComplete = false;

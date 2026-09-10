@@ -4,6 +4,13 @@
 
 QVector<QRect> AstreaRoundedEffectRegion::rectangles(const QSize &size, qreal radius)
 {
+    return rectangles(size, radius, 16);
+}
+
+QVector<QRect> AstreaRoundedEffectRegion::rectangles(const QSize &size,
+                                                    qreal radius,
+                                                    const int maxSegmentsPerCorner)
+{
     if (size.width() <= 0 || size.height() <= 0)
         return {};
 
@@ -12,8 +19,7 @@ QVector<QRect> AstreaRoundedEffectRegion::rectangles(const QSize &size, qreal ra
     if (clippedRadius == 0)
         return {QRect(QPoint(0, 0), size)};
 
-    constexpr int maxSegmentsPerCorner = 16;
-    const int segments = qBound(1, clippedRadius, maxSegmentsPerCorner);
+    const int segments = qBound(1, clippedRadius, qMax(1, maxSegmentsPerCorner));
     QVector<QRect> result;
     result.reserve(2 * segments + 1);
 

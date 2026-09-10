@@ -7,4 +7,5 @@
 class AstreaRoundedEffectRegion final {
 public:
     static QVector<QRect> rectangles(const QSize &size, qreal radius);
+    static QVector<QRect> rectangles(const QSize &size, qreal radius, int maxSegmentsPerCorner);
 };

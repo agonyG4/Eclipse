@@ -7,8 +7,11 @@
 #include <QQuickWindow>
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QQmlExtensionPlugin>
 #include <QSignalSpy>
 #include <QTest>
+
+Q_IMPORT_QML_PLUGIN(Astrea_EffectsPlugin)
 
 #include <utility>
 

@@ -16,6 +16,7 @@
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
+#include <QQmlExtensionPlugin>
 #include <QQmlProperty>
 #include <QQuickItem>
 #include <QQuickWindow>
@@ -24,6 +25,8 @@
 #include <QTemporaryDir>
 #include <QUrl>
 #include <QVariantMap>
+
+Q_IMPORT_QML_PLUGIN(Astrea_EffectsPlugin)
 
 class FakeAudioService final : public QObject {
     Q_OBJECT
@@ -428,6 +431,7 @@ void BarQmlSmokeTest::barSegmentUsesBorealisInteractionTokens()
     QTemporaryDir directory;
     QVERIFY(directory.isValid());
     ThemeController controller(directory.filePath(QStringLiteral("missing-theme.json")));
+    controller.setShellStyle(0);
     QQmlEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &controller);
     QQmlComponent component(&engine,
@@ -918,6 +922,8 @@ void BarQmlSmokeTest::barPaletteFollowsSharedThemeState()
                  : component.errors().constFirst().toString()));
     QObject *theme = component.create();
     QVERIFY(theme != nullptr);
+    controller.setShellStyle(0);
+    QCoreApplication::processEvents();
 
     const QColor darkDefault = theme->property("shellTextMain").value<QColor>();
     const QColor darkSurface = theme->property("shellSurface").value<QColor>();

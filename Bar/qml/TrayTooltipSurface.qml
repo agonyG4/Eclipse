@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Window
+import Astrea.Effects
 import "components"
 
 Window {
@@ -26,6 +27,18 @@ Window {
     height: 28
 
     ShellBarTheme { id: theme }
+
+    BackdropEffectRegions {
+        id: backdropRegions
+        anchors.fill: parent
+        enabled: theme.isFrosted
+
+        BackdropRegion {
+            item: tooltipCard
+            enabled: tooltipCard.visible
+            radius: tooltipCard.radius
+        }
+    }
 
     function showTooltip(key, x) {
         itemKey = key

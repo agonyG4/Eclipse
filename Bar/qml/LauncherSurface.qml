@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Window
+import Astrea.Effects
 import "components"
 
 Window {
@@ -25,6 +26,18 @@ Window {
     height: barGeometry ? barGeometry.pillHeight : 36
 
     ShellBarTheme { id: theme }
+
+    BackdropEffectRegions {
+        id: backdropRegions
+        anchors.fill: parent
+        enabled: theme.isFrosted
+
+        BackdropRegion {
+            item: launcherPill
+            enabled: launcherPill.visible
+            radius: launcherPill.radius
+        }
+    }
 
     BarSegment {
         id: launcherPill

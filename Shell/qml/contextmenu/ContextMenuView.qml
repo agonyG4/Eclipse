@@ -12,6 +12,9 @@ Item {
     property int outputHeight: 1
     property bool rootView: true
     property var parentMenuView: null
+    readonly property Item backdropItem: card
+    readonly property Item submenuBackdropItem: submenuLoader.item
+        ? submenuLoader.item.backdropItem : null
     property int activeIndex: -1
     property int submenuIndex: -1
     property int rowHeight: theme.contextMenuNormalRowHeight

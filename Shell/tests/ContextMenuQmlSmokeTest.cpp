@@ -3,9 +3,12 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
+#include <QQmlExtensionPlugin>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QtTest/QtTest>
+
+Q_IMPORT_QML_PLUGIN(Astrea_EffectsPlugin)
 
 using Astrea::Shell::ContextMenuController;
 using Astrea::Shell::ContextMenuAnchor;

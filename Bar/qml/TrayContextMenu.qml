@@ -48,6 +48,7 @@ PopupCard {
     readonly property real cascadeHeight: cascadeLoader.height
     readonly property real cascadeX: cascadeLoader.x
     readonly property real cascadeY: cascadeLoader.y
+    readonly property Item backdropCascadeItem: cascadeLoader.item
     focus: visible
     cardPadding: 12
     contentSpacing: 4

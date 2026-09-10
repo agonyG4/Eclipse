@@ -7,6 +7,7 @@ Item {
     id: root
 
     readonly property bool open: AltTabController.open
+    readonly property Item backdropItem: panel
 
     width: Math.min(Math.max(220, appRow.implicitWidth + 34), (parent ? parent.width : 1920) - 120)
     height: 116

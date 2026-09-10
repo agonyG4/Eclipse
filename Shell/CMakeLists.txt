@@ -124,6 +124,8 @@ target_include_directories(astrea-shell PRIVATE
 target_link_libraries(astrea-shell PRIVATE
     astrea-shell-runtime
     astrea-shared-coreplugin
+    astrea-shared-wayland-effects
+    astrea-shared-wayland-effectsplugin
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Network Qt6::Core5Compat
     dl pthread
 )
@@ -232,6 +234,8 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     )
     target_link_libraries(context-menu-qml-smoke-test PRIVATE
         astrea-shell-runtime
+        astrea-shared-wayland-effects
+        astrea-shared-wayland-effectsplugin
         Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test
     )
     shell_enable_sanitizers(context-menu-qml-smoke-test)
@@ -258,6 +262,8 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     )
     target_link_libraries(context-menu-qml-interaction-test PRIVATE
         astrea-shell-runtime
+        astrea-shared-wayland-effects
+        astrea-shared-wayland-effectsplugin
         Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test
     )
     shell_enable_sanitizers(context-menu-qml-interaction-test)
@@ -358,6 +364,8 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     astrea_add_bar_qml_resources(bar-qml-smoke-test)
     target_link_libraries(bar-qml-smoke-test PRIVATE
         astrea-shell-runtime
+        astrea-shared-wayland-effects
+        astrea-shared-wayland-effectsplugin
         Qt6::Qml Qt6::Quick Qt6::Test
     )
     shell_enable_sanitizers(bar-qml-smoke-test)

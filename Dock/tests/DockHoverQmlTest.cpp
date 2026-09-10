@@ -12,12 +12,15 @@
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
+#include <QQmlExtensionPlugin>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QPointingDevice>
 #include <QTemporaryDir>
 #include <QSignalSpy>
 #include <QTest>
+
+Q_IMPORT_QML_PLUGIN(Astrea_EffectsPlugin)
 
 #include <functional>
 

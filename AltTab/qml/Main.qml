@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Window
+import Astrea.Effects
 import "components"
 
 Window {
@@ -15,6 +16,19 @@ Window {
     x: Screen.virtualX
     y: Screen.virtualY
     opacity: 1.0
+
+    BackdropEffectRegions {
+        id: backdropRegions
+        anchors.fill: parent
+        enabled: typeof ThemeController !== "undefined" && ThemeController
+                 && ThemeController.shellStyle === 2
+
+        BackdropRegion {
+            item: altTabPanel.backdropItem
+            enabled: altTabPanel.visible && altTabPanel.opacity > 0.001
+            radius: altTabPanel.backdropItem ? altTabPanel.backdropItem.radius : 0
+        }
+    }
 
     property bool hadActiveFocus: false
     property bool focusPending: false

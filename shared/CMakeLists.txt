@@ -247,6 +247,12 @@ endif()
 astrea_shared_enable_sanitizers(astrea-shared-layer-shell)
 
 add_library(astrea-shared-wayland-effects STATIC
+    platform/wayland/effects/AstreaBackgroundEffectBinding.cpp
+    platform/wayland/effects/AstreaBackgroundEffectBinding.hpp
+    platform/wayland/effects/AstreaBackdropEffectRegions.cpp
+    platform/wayland/effects/AstreaBackdropEffectRegions.hpp
+    platform/wayland/effects/AstreaBackdropRegion.cpp
+    platform/wayland/effects/AstreaBackdropRegion.hpp
     platform/wayland/effects/AstreaEffectChildWindow.cpp
     platform/wayland/effects/AstreaEffectChildWindow.hpp
     platform/wayland/effects/AstreaEffectSurfaceController.cpp
@@ -261,6 +267,9 @@ add_library(astrea-shared-wayland-effects STATIC
 
 target_include_directories(astrea-shared-wayland-effects PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_include_directories(astrea-shared-wayland-effects PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/platform/wayland/effects"
 )
 target_link_libraries(astrea-shared-wayland-effects PUBLIC
     Qt6::Core
@@ -321,7 +330,9 @@ qt_add_qml_module(astrea-shared-wayland-effects
     VERSION 1.0
     OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Astrea/Effects"
     SOURCES
-        AstreaEffectChildWindow.hpp
+        platform/wayland/effects/AstreaBackdropEffectRegions.hpp
+        platform/wayland/effects/AstreaBackdropRegion.hpp
+        platform/wayland/effects/AstreaEffectChildWindow.hpp
     QML_FILES
         qml/effects/BackdropEffectSurface.qml
 )
@@ -652,6 +663,19 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     )
     astrea_shared_enable_sanitizers(wayland-effects-state-test)
     add_test(NAME wayland-effects-state-test COMMAND wayland-effects-state-test)
+
+    add_executable(backdrop-effect-regions-test
+        tests/BackdropEffectRegionsTest.cpp
+    )
+    target_include_directories(backdrop-effect-regions-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_link_libraries(backdrop-effect-regions-test PRIVATE
+        astrea-shared-wayland-effects
+        Qt6::Test
+    )
+    astrea_shared_enable_sanitizers(backdrop-effect-regions-test)
+    add_test(NAME backdrop-effect-regions-test COMMAND backdrop-effect-regions-test)
 
     function(add_typhon_shared_test TEST_NAME TEST_FILE)
         add_executable(${TEST_NAME}

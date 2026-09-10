@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Window
+import Astrea.Effects
 import "components"
 
 Window {
@@ -27,6 +28,18 @@ Window {
     height: outputHeight
 
     ShellBarTheme { id: theme }
+
+    BackdropEffectRegions {
+        id: backdropRegions
+        anchors.fill: parent
+        enabled: theme.isFrosted
+
+        BackdropRegion {
+            item: window.activePopup
+            enabled: window.activePopup !== null && window.activePopup.visible
+            radius: window.activePopup ? window.activePopup.radius : 0
+        }
+    }
 
     MouseArea {
         objectName: "popupClickShield"

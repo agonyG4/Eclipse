@@ -57,7 +57,7 @@ public:
 
     bool createEffect(wl_surface *surface, ext_background_effect_surface_v1 **effect);
     bool setBlurRegion(QQuickWindow *window, ext_background_effect_surface_v1 *effect,
-                       const QVector<QRect> &rectangles);
+                       const QVector<QRect> &rectangles, bool requestFrame = true);
     void destroyEffect(QQuickWindow *window, ext_background_effect_surface_v1 *effect,
                        bool requestFrame);
 

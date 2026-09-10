@@ -153,7 +153,7 @@ bool AstreaWaylandEffects::createEffect(
 
 bool AstreaWaylandEffects::setBlurRegion(
     QQuickWindow *window, ext_background_effect_surface_v1 *effect,
-    const QVector<QRect> &rectangles)
+    const QVector<QRect> &rectangles, const bool requestFrame)
 {
     if (!window || !effect || !initialize() || !m_available)
         return false;
@@ -179,7 +179,8 @@ bool AstreaWaylandEffects::setBlurRegion(
     ext_background_effect_surface_v1_set_blur_region(effect, region);
     if (region)
         wl_region_destroy(region);
-    requestQtFrame(window);
+    if (requestFrame)
+        requestQtFrame(window);
     if (wl_display_flush(m_display) < 0 && errno != EAGAIN)
         return false;
     return true;

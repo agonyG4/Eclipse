@@ -1,11 +1,24 @@
 import QtQuick
 import QtQuick.Window
+import Astrea.Effects
 import "components"
 
 Window {
     id: window
 
     ShellBarTheme { id: theme }
+
+    BackdropEffectRegions {
+        id: backdropRegions
+        anchors.fill: parent
+        enabled: theme.isFrosted
+
+        BackdropRegion {
+            item: statusPill
+            enabled: statusPill.visible
+            radius: statusPill.radius
+        }
+    }
 
     property var clockService: null
     property var audioService: null

@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Window
+import Astrea.Effects
 
 Window {
     id: root
@@ -25,6 +26,39 @@ Window {
     // is sent to the compositor by ContextMenuSurfaceBundle.
     width: outputWidth
     height: outputHeight
+
+    BackdropEffectRegions {
+        id: backdropRegions
+        anchors.fill: parent
+        enabled: typeof ThemeController !== "undefined" && ThemeController
+                 && ThemeController.shellStyle === 2
+
+        BackdropRegion {
+            item: menuView.backdropItem
+            enabled: menuView.visible && menuView.opacity > 0.001
+            radius: menuView.backdropItem ? menuView.backdropItem.radius : 0
+        }
+        BackdropRegion {
+            item: menuView.submenuBackdropItem
+            enabled: menuView.submenuBackdropItem !== null
+                     && menuView.submenuBackdropItem.visible
+            radius: menuView.submenuBackdropItem ? menuView.submenuBackdropItem.radius : 0
+        }
+        BackdropRegion {
+            item: trayMenuLoader.item
+            enabled: trayMenuLoader.item !== null && trayMenuLoader.item.visible
+                     && trayMenuLoader.opacity > 0.001
+            radius: trayMenuLoader.item ? trayMenuLoader.item.radius : 0
+        }
+        BackdropRegion {
+            item: trayMenuLoader.item && trayMenuLoader.item.backdropCascadeItem
+            enabled: trayMenuLoader.item !== null
+                     && trayMenuLoader.item.backdropCascadeItem !== null
+                     && trayMenuLoader.item.backdropCascadeItem.visible
+            radius: trayMenuLoader.item && trayMenuLoader.item.backdropCascadeItem
+                ? trayMenuLoader.item.backdropCascadeItem.radius : 0
+        }
+    }
 
     function debugGeometry(stage) {
         if (!root.debugEnabled || !root.contextMenuController

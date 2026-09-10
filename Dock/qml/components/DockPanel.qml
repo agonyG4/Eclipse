@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import Astrea.Effects
 
 Item {
     id: root
@@ -166,6 +167,19 @@ Item {
                     onDragCanceled: function(key) { root.cancelReorder(key) }
                 }
             }
+        }
+    }
+
+    BackdropEffectRegions {
+        id: backdropRegions
+        anchors.fill: parent
+        enabled: typeof ThemeController !== "undefined" && ThemeController
+                 && ThemeController.shellStyle === 2
+
+        BackdropRegion {
+            item: dockChrome
+            enabled: dockChrome.visible
+            radius: dockChrome.radius
         }
     }
 

@@ -177,6 +177,34 @@ private slots:
         QVERIFY(!covered(rectangles, {70, 135}));
     }
 
+    void aggregateRegionBudgetRefusesUnrepresentableLayout()
+    {
+        QQuickWindow window;
+        window.resize(800, 380);
+        window.show();
+        auto *descriptors = new TestBackdropEffectRegions(window.contentItem());
+
+        for (int row = 0; row < 3; ++row) {
+            for (int column = 0; column < 11; ++column) {
+                auto *item = new QQuickItem(window.contentItem());
+                item->setSize({50.0, 100.0});
+                item->setPosition({10.0 + column * 70.0, 10.0 + row * 120.0});
+                auto *region = new AstreaBackdropRegion(descriptors);
+                region->setItem(item);
+                region->setRadius(25.0);
+                auto list = descriptors->regions();
+                list.append(&list, region);
+            }
+        }
+
+        descriptors->completeForTest();
+        drainEvents();
+
+        const auto rectangles = descriptors->resolvedRegion();
+        QVERIFY(rectangles.size() <= 96);
+        QVERIFY(rectangles.isEmpty());
+    }
+
     void destroyedDynamicItemBecomesNoRegion()
     {
         QQuickWindow window;

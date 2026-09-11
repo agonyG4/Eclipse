@@ -4,11 +4,13 @@
 #include "platform/wayland/effects/RoundedEffectRegion.hpp"
 #include "platform/wayland/effects/AstreaWaylandEffects.hpp"
 
+#include <QDebug>
 #include <QQuickWindow>
 #include <QPlatformSurfaceEvent>
 #include <QtMath>
 
 #include <algorithm>
+#include <mutex>
 #include <utility>
 
 namespace {
@@ -256,8 +258,14 @@ QVector<QRect> AstreaBackdropEffectRegions::resolvedRegion() const
                 && (selected < 0 || segmentLimits.at(index) > segmentLimits.at(selected)))
                 selected = index;
         }
-        if (selected < 0)
-            break;
+        if (selected < 0) {
+            static std::once_flag warningOnce;
+            std::call_once(warningOnce, [&] {
+                qWarning() << "Backdrop effect region budget cannot represent" << result.size()
+                           << "rectangles; disabling this update";
+            });
+            return {};
+        }
         --segmentLimits[selected];
         result = buildRegion();
     }

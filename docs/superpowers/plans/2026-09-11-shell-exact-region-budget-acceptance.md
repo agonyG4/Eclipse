@@ -35,18 +35,18 @@ Add this private slot after the existing four-card budget test:
 void aggregateRegionBudgetRefusesUnrepresentableLayout()
 {
     QQuickWindow window;
-    window.resize(720, 240);
+    window.resize(800, 380);
     window.show();
     auto *descriptors = new TestBackdropEffectRegions(window.contentItem());
 
     for (int row = 0; row < 3; ++row) {
         for (int column = 0; column < 11; ++column) {
             auto *item = new QQuickItem(window.contentItem());
-            item->setSize({40.0, 40.0});
-            item->setPosition({20.0 + column * 60.0, 20.0 + row * 60.0});
+            item->setSize({50.0, 100.0});
+            item->setPosition({10.0 + column * 70.0, 10.0 + row * 120.0});
             auto *region = new AstreaBackdropRegion(descriptors);
             region->setItem(item);
-            region->setRadius(20.0);
+            region->setRadius(25.0);
             auto list = descriptors->regions();
             list.append(&list, region);
         }

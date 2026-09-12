@@ -23,7 +23,9 @@
 namespace {
 
 QJsonObject animationSnapshot(bool enabled, const QString &preset, double speed,
-                              const QJsonObject &overrides = {})
+                              const QJsonObject &overrides = {},
+                              const QString &lampAvailability = QStringLiteral("planned"),
+                              const QString &lampEffective = QStringLiteral("none"))
 {
     const QJsonArray presets{
         QJsonObject{{QStringLiteral("id"), QStringLiteral("astrea")}},
@@ -47,7 +49,7 @@ QJsonObject animationSnapshot(bool enabled, const QString &preset, double speed,
         QJsonObject{{QStringLiteral("id"), QStringLiteral("geometry.macos")},
                     {QStringLiteral("availability"), QStringLiteral("available")}},
         QJsonObject{{QStringLiteral("id"), QStringLiteral("minimize.lamp")},
-                    {QStringLiteral("availability"), QStringLiteral("planned")}},
+                    {QStringLiteral("availability"), lampAvailability}},
     };
     return {
         {QStringLiteral("generation"), 4},
@@ -71,7 +73,7 @@ QJsonObject animationSnapshot(bool enabled, const QString &preset, double speed,
             {QStringLiteral("window.move"), preset == QStringLiteral("macos")
                                                    ? QStringLiteral("geometry.macos")
                                                    : QStringLiteral("geometry.kde")},
-            {QStringLiteral("window.minimize"), QStringLiteral("none")},
+            {QStringLiteral("window.minimize"), lampEffective},
         }},
         {QStringLiteral("catalog"), QJsonObject{
             {QStringLiteral("presets"), presets},
@@ -176,6 +178,11 @@ public:
     {
         QMutexLocker locker(&m_mutex);
         m_delayResponses = delay;
+    }
+    void setSnapshot(const QJsonObject &snapshot)
+    {
+        QMutexLocker locker(&m_mutex);
+        m_snapshot = snapshot;
     }
     void releaseDelayedResponses()
     {
@@ -335,6 +342,7 @@ class SettingsAnimationControllerTest final : public QObject {
 
 private slots:
     void controllerUsesAuthoritativeSnapshotsAndRejectsPlannedEffects();
+    void controllerProjectsUnavailableEffectsSeparately();
     void clientStartsAndCompletesAsynchronously();
     void clientTimeoutDoesNotBlockTheEventLoop();
     void clientRejectsSecondRequestWhileBusyAndCanBeReused();
@@ -405,6 +413,46 @@ void SettingsAnimationControllerTest::controllerUsesAuthoritativeSnapshotsAndRej
     QVERIFY(controller.available());
     QCOMPARE(controller.preset(), QStringLiteral("macos"));
     QVERIFY(!controller.lastError().isEmpty());
+}
+
+void SettingsAnimationControllerTest::controllerProjectsUnavailableEffectsSeparately()
+{
+    QTemporaryDir runtime;
+    QVERIFY(runtime.isValid());
+    EnvironmentGuard environment(runtime.path().toUtf8(), QByteArrayLiteral("test"));
+    AnimationControlServer server(runtime.path());
+
+    SettingsAnimationController controller;
+    server.setSnapshot(animationSnapshot(true, QStringLiteral("astrea"), 1.0, {},
+                                        QStringLiteral("available"), QStringLiteral("minimize.lamp")));
+    controller.refresh();
+    QTRY_VERIFY2(controller.available(), qPrintable(controller.lastError()));
+    auto slot = [&controller] {
+        for (const QVariant &value : controller.slotCapabilities()) {
+            const QVariantMap candidate = value.toMap();
+            if (candidate.value(QStringLiteral("id")).toString() == QStringLiteral("window.minimize"))
+                return candidate;
+        }
+        return QVariantMap{};
+    };
+    QCOMPARE(slot().value(QStringLiteral("availableEffects")).toStringList(),
+             QStringList({QStringLiteral("none"), QStringLiteral("minimize.lamp")}));
+    QVERIFY(slot().value(QStringLiteral("plannedEffects")).toStringList().isEmpty());
+    QVERIFY(slot().value(QStringLiteral("unavailableEffects")).toStringList().isEmpty());
+
+    server.setSnapshot(animationSnapshot(true, QStringLiteral("astrea"), 1.0, {},
+                                        QStringLiteral("unavailable"), QStringLiteral("none")));
+    controller.refresh();
+    QTRY_VERIFY(!controller.busy());
+    const QVariantMap unavailable = slot();
+    QVERIFY(unavailable.value(QStringLiteral("availableEffects")).toStringList().contains(
+        QStringLiteral("none")));
+    QVERIFY(unavailable.value(QStringLiteral("plannedEffects")).toStringList().isEmpty());
+    QVERIFY(unavailable.value(QStringLiteral("unavailableEffects")).toStringList().contains(
+        QStringLiteral("minimize.lamp")));
+    QCOMPARE(unavailable.value(QStringLiteral("requested")).toString(),
+             QStringLiteral("minimize.lamp"));
+    QCOMPARE(unavailable.value(QStringLiteral("effective")).toString(), QStringLiteral("none"));
 }
 
 void SettingsAnimationControllerTest::clientStartsAndCompletesAsynchronously()

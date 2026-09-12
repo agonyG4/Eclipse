@@ -269,6 +269,7 @@ void SettingsAnimationController::rebuildCapabilities()
         const QString id = slot.value(QStringLiteral("id")).toString();
         QStringList available;
         QStringList planned;
+        QStringList unavailable;
         for (const QVariant &effectValue : slot.value(QStringLiteral("compatibleEffects")).toList()) {
             const QString effectId = effectValue.toString();
             QString availability;
@@ -279,10 +280,16 @@ void SettingsAnimationController::rebuildCapabilities()
                     break;
                 }
             }
-            (availability == QStringLiteral("available") ? available : planned).append(effectId);
+            if (availability == QStringLiteral("available"))
+                available.append(effectId);
+            else if (availability == QStringLiteral("unavailable"))
+                unavailable.append(effectId);
+            else
+                planned.append(effectId);
         }
         slot.insert(QStringLiteral("availableEffects"), available);
         slot.insert(QStringLiteral("plannedEffects"), planned);
+        slot.insert(QStringLiteral("unavailableEffects"), unavailable);
         slot.insert(QStringLiteral("requested"), requested.value(id));
         slot.insert(QStringLiteral("effective"), effective.value(id));
         slot.insert(QStringLiteral("override"), overrides.value(id));

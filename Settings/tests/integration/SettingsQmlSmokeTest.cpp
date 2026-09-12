@@ -67,6 +67,7 @@ private slots:
     void loadsCustomizationHubOffscreen();
     void loadsAnimationsRouteOffscreen();
     void plannedEffectTextUsesRequestedEffect();
+    void unavailableEffectTextUsesRequestedEffect();
     void loadsAppearanceRouteFromHubOffscreen();
     void appearancePreviewsUseCurrentWallpaperSnapshot();
     void materialPreviewFrostedGeometryMatchesFallback();
@@ -297,6 +298,16 @@ void SettingsQmlSmokeTest::plannedEffectTextUsesRequestedEffect()
     const QString contents = QString::fromUtf8(source.readAll());
     QVERIFY(contents.contains(QStringLiteral("planned.indexOf(requested)")));
     QVERIFY(!contents.contains(QStringLiteral("slot.plannedEffects[0]")));
+}
+
+void SettingsQmlSmokeTest::unavailableEffectTextUsesRequestedEffect()
+{
+    QFile source(QStringLiteral(ASTREA_ECLIPSE_SOURCE_DIR
+                                "/Settings/qml/pages/appearance/Animations.qml"));
+    QVERIFY(source.open(QIODevice::ReadOnly | QIODevice::Text));
+    const QString contents = QString::fromUtf8(source.readAll());
+    QVERIFY(contents.contains(QStringLiteral("unavailable.indexOf(requested)")));
+    QVERIFY(contents.contains(QStringLiteral("unavailableText")));
 }
 
 void SettingsQmlSmokeTest::loadsAppearanceRouteFromHubOffscreen()

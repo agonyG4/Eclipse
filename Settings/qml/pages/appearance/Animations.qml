@@ -37,6 +37,13 @@ Item {
             return ""
         return root.effectLabel(requested) + " — " + I18n.tr("apps.settings.pages.animations.planned", "Planned")
     }
+    function unavailableText(slot) {
+        const requested = slot.requested || ""
+        const unavailable = slot.unavailableEffects || []
+        if (!requested || unavailable.indexOf(requested) < 0)
+            return ""
+        return root.effectLabel(requested) + " — " + I18n.tr("apps.settings.pages.animations.unavailable", "Unavailable")
+    }
     function availableOptions(slot) {
         return (slot.availableEffects || []).map(effect => root.effectLabel(effect))
     }
@@ -122,7 +129,7 @@ Item {
                     required property int index
                     readonly property var slotData: root.slot(modelData)
                     label: modelData === "window.open" ? I18n.tr("apps.settings.pages.animations.slot.open", "Open") : modelData === "window.close" ? I18n.tr("apps.settings.pages.animations.slot.close", "Close") : modelData === "window.minimize" ? I18n.tr("apps.settings.pages.animations.slot.minimize", "Minimize") : I18n.tr("apps.settings.pages.animations.slot.restore", "Restore")
-                    sublabel: root.plannedText(slotData) || root.effectLabel(slotData.effective)
+                    sublabel: root.plannedText(slotData) || root.unavailableText(slotData) || root.effectLabel(slotData.effective)
                     isLast: index === 3
                     Controls.SelectButton {
                         width: 180

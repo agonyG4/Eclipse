@@ -449,6 +449,10 @@ string(FIND "${wayland_effects_source}" "wl_surface_commit(" raw_wayland_commit_
 if(NOT raw_wayland_commit_position EQUAL -1)
     message(FATAL_ERROR "Public Wayland effects must not commit Qt-owned wl_surface objects")
 endif()
+string(FIND "${wayland_effects_source}" "wl_display_connect(" raw_wayland_display_connect_position)
+if(NOT raw_wayland_display_connect_position EQUAL -1)
+    message(FATAL_ERROR "Public Wayland effects must reuse Qt's existing display connection")
+endif()
 string(FIND "${wayland_effects_source}" "m_surfaces" global_surface_map_position)
 if(NOT global_surface_map_position EQUAL -1)
     message(FATAL_ERROR "Per-surface effect proxies must not be owned by the application manager")
@@ -485,6 +489,14 @@ string(FIND "${settings_cmake_source}"
     settings_qt_floor_position)
 if(settings_qt_floor_position EQUAL -1)
     message(FATAL_ERROR "Standalone Settings must require Qt 6.8 or newer")
+endif()
+
+file(READ "${SETTINGS_SOURCE_DIR}/../shared/CMakeLists.txt" shared_cmake_source)
+string(FIND "${shared_cmake_source}"
+    "find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick DBus ShaderTools)"
+    shared_qt_floor_position)
+if(shared_qt_floor_position EQUAL -1)
+    message(FATAL_ERROR "Shared Wayland effects must require Qt 6.8 or newer for WindowContainer")
 endif()
 
 file(READ "${SETTINGS_SOURCE_DIR}/../shared/platform/wayland/effects/AstreaEffectChildWindow.cpp"

@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick DBus ShaderTools)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick DBus ShaderTools)
 if(NOT TARGET PkgConfig::ASTREA_PIPEWIRE)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(ASTREA_PIPEWIRE REQUIRED IMPORTED_TARGET libpipewire-0.3)

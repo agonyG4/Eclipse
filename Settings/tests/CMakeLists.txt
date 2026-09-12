@@ -73,10 +73,26 @@ add_test(NAME compositor-page-source-test
         -P ${CMAKE_CURRENT_SOURCE_DIR}/static/CompositorPageSourceTest.cmake
 )
 
+get_target_property(_wayland_effects_target_sources astrea-shared-wayland-effects SOURCES)
+set(_wayland_effects_production_sources)
+foreach(_source IN LISTS _wayland_effects_target_sources)
+    if(_source MATCHES "^platform/wayland/effects/.*\\.(cpp|hpp)$")
+        list(APPEND _wayland_effects_production_sources
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../shared/${_source}")
+    endif()
+endforeach()
+list(REMOVE_DUPLICATES _wayland_effects_production_sources)
+if(NOT _wayland_effects_production_sources)
+    message(FATAL_ERROR "The public Wayland-effects target has no production sources")
+endif()
+string(JOIN "|" _wayland_effects_production_source_argument
+    ${_wayland_effects_production_sources})
+
 string(JOIN "|" _settings_qml_paths ${ASTREA_SETTINGS_QML_RELATIVE_FILES})
 add_test(NAME settings-structure-test
     COMMAND ${CMAKE_COMMAND}
         -DSETTINGS_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/..
         -DSETTINGS_QML_FILES=${_settings_qml_paths}
+        -DWAYLAND_EFFECTS_SOURCE_FILES=${_wayland_effects_production_source_argument}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/static/SettingsStructureTest.cmake
 )

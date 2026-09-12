@@ -4,6 +4,9 @@ endif()
 if(NOT DEFINED SETTINGS_QML_FILES)
     message(FATAL_ERROR "SETTINGS_QML_FILES is required")
 endif()
+if(NOT DEFINED WAYLAND_EFFECTS_SOURCE_FILES)
+    message(FATAL_ERROR "WAYLAND_EFFECTS_SOURCE_FILES is required")
+endif()
 
 string(REPLACE "|" ";" registered_qml_files "${SETTINGS_QML_FILES}")
 
@@ -445,18 +448,31 @@ list(LENGTH wayland_effects_returns wayland_effects_return_count)
 if(wayland_effects_return_count LESS 2)
     message(FATAL_ERROR "Wayland effects initialization must return actual availability")
 endif()
-string(FIND "${wayland_effects_source}" "wl_surface_commit(" raw_wayland_commit_position)
-if(NOT raw_wayland_commit_position EQUAL -1)
-    message(FATAL_ERROR "Public Wayland effects must not commit Qt-owned wl_surface objects")
-endif()
-string(FIND "${wayland_effects_source}" "wl_display_connect(" raw_wayland_display_connect_position)
-if(NOT raw_wayland_display_connect_position EQUAL -1)
-    message(FATAL_ERROR "Public Wayland effects must reuse Qt's existing display connection")
-endif()
 string(FIND "${wayland_effects_source}" "m_surfaces" global_surface_map_position)
 if(NOT global_surface_map_position EQUAL -1)
     message(FATAL_ERROR "Per-surface effect proxies must not be owned by the application manager")
 endif()
+
+string(REPLACE "|" ";" wayland_effects_production_sources
+    "${WAYLAND_EFFECTS_SOURCE_FILES}")
+foreach(production_source IN LISTS wayland_effects_production_sources)
+    if(NOT EXISTS "${production_source}")
+        message(FATAL_ERROR "Public Wayland-effects production source is missing: ${production_source}")
+    endif()
+    file(READ "${production_source}" production_source_text)
+    foreach(forbidden_wayland_operation IN ITEMS
+        "wl_display_connect("
+        "wl_surface_commit("
+    )
+        string(FIND "${production_source_text}" "${forbidden_wayland_operation}"
+            forbidden_wayland_operation_position)
+        if(NOT forbidden_wayland_operation_position EQUAL -1)
+            message(FATAL_ERROR
+                "Public Wayland-effects production source must not call '${forbidden_wayland_operation}'"
+                ": ${production_source}")
+        endif()
+    endforeach()
+endforeach()
 foreach(wayland_effects_required_token IN ITEMS
     "wl_display_roundtrip(m_display)"
     "updateCapabilities(flags)"
@@ -493,9 +509,20 @@ endif()
 
 file(READ "${SETTINGS_SOURCE_DIR}/../shared/CMakeLists.txt" shared_cmake_source)
 string(FIND "${shared_cmake_source}"
-    "find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick DBus ShaderTools)"
-    shared_qt_floor_position)
-if(shared_qt_floor_position EQUAL -1)
+    "add_library(astrea-shared-wayland-effects STATIC" shared_effects_target_position)
+if(shared_effects_target_position EQUAL -1)
+    message(FATAL_ERROR "Shared Wayland-effects target declaration is missing")
+endif()
+string(SUBSTRING "${shared_cmake_source}" 0 "${shared_effects_target_position}"
+    shared_effects_config_source)
+string(REGEX MATCH
+    "find_package\\([ \\t\\r\\n]*Qt6[ \\t\\r\\n]+([0-9]+\\.[0-9]+)[ \\t\\r\\n]+REQUIRED"
+    shared_qt_floor_match "${shared_effects_config_source}")
+if(NOT shared_qt_floor_match)
+    message(FATAL_ERROR "Shared Wayland effects must declare a versioned Qt requirement")
+endif()
+set(shared_qt_floor "${CMAKE_MATCH_1}")
+if(shared_qt_floor VERSION_LESS "6.8")
     message(FATAL_ERROR "Shared Wayland effects must require Qt 6.8 or newer for WindowContainer")
 endif()
 

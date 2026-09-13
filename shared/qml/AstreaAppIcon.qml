@@ -30,7 +30,45 @@ Item {
     property color fallbackTextColor: "#E8FFFFFF"
     property int fallbackBorderWidth: 0
     property int fallbackFontSize: 20
+    property string appearanceOverride: ""
+    property color tintColorOverride: "#0a84ff"
+    property bool hasTintColorOverride: false
     property bool ready: iconImage.status === Image.Ready
+
+    readonly property bool hasThemeController:
+        typeof ThemeController !== "undefined" && ThemeController !== null
+
+    readonly property string effectiveAppearance: {
+        var override = String(root.appearanceOverride).trim().toLowerCase()
+        if (override.length > 0) {
+            if (override === "default" || override === "monochrome" || override === "tinted")
+                return override
+            return "default"
+        }
+        if (root.hasThemeController) {
+            var configured = String(ThemeController.iconAppearance).trim().toLowerCase()
+            if (configured === "default" || configured === "monochrome"
+                    || configured === "tinted")
+                return configured
+        }
+        return "default"
+    }
+
+    readonly property color effectiveTintColor: {
+        if (root.hasTintColorOverride)
+            return root.tintColorOverride
+        if (root.hasThemeController && ThemeController.accentHex)
+            return ThemeController.accentHex
+        return "#0a84ff"
+    }
+
+    readonly property real presentationMode: {
+        if (root.effectiveAppearance === "monochrome")
+            return 1.0
+        if (root.effectiveAppearance === "tinted")
+            return 2.0
+        return 0.0
+    }
 
     readonly property real effectiveDevicePixelRatio: {
         var value = devicePixelRatioOverride > 0
@@ -128,6 +166,7 @@ Item {
         // only while the shader owns the draw, so rounded mode cannot render
         // the source twice.
         visible: status === Image.Ready && root.iconRadius <= 0
+            && root.effectiveAppearance === "default"
 
         onStatusChanged: {
             if (status === Image.Error && root.retryCount < root.maxRetries)
@@ -139,13 +178,16 @@ Item {
         id: roundedEffectLoader
         objectName: "roundedIconEffectLoader"
         anchors.fill: iconImage
-        active: iconImage.status === Image.Ready && root.iconRadius > 0
+        active: iconImage.status === Image.Ready
+            && (root.iconRadius > 0 || root.effectiveAppearance !== "default")
         sourceComponent: ShaderEffect {
             objectName: "roundedIconEffect"
             anchors.fill: parent
             property variant source: iconImage
             property real roundedRadius: root.iconRadius
                 / Math.min(width, height)
+            property real presentationMode: root.presentationMode
+            property color tintColor: root.effectiveTintColor
             // Keep qt_TexCoord0 in the local [0, 1] range. Qt detaches an
             // atlas texture when necessary, which preserves correct sampling
             // for this non-linear UV-space mask.

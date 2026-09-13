@@ -12,17 +12,21 @@ Item {
     readonly property bool loaded: Borealis.State.loaded
 
     property int themeMode: Borealis.State.themeMode
+    property string themePreference: Borealis.State.themePreference
     property int shellStyle: Borealis.State.shellStyle
     property int iconStyle: Borealis.State.iconStyle
     property string iconTheme: Borealis.State.iconTheme
+    property string iconAppearance: Borealis.State.iconAppearance
     property string accentHex: Borealis.State.accentHex
     property int audioOsdStyle: Borealis.State.audioOsdStyle
     property int persistedShellStyle: Borealis.State.persistedShellStyle
 
     onThemeModeChanged: if (Borealis.State.themeMode !== themeMode) Borealis.State.themeMode = themeMode
+    onThemePreferenceChanged: if (Borealis.State.themePreference !== themePreference) Borealis.State.themePreference = themePreference
     onShellStyleChanged: if (Borealis.State.shellStyle !== shellStyle) Borealis.State.shellStyle = shellStyle
     onIconStyleChanged: if (Borealis.State.iconStyle !== iconStyle) Borealis.State.iconStyle = iconStyle
     onIconThemeChanged: if (Borealis.State.iconTheme !== iconTheme) Borealis.State.iconTheme = iconTheme
+    onIconAppearanceChanged: if (Borealis.State.iconAppearance !== iconAppearance) Borealis.State.iconAppearance = iconAppearance
     onAccentHexChanged: if (Borealis.State.accentHex !== accentHex) Borealis.State.accentHex = accentHex
     onAudioOsdStyleChanged: if (Borealis.State.audioOsdStyle !== audioOsdStyle) Borealis.State.audioOsdStyle = audioOsdStyle
     onPersistedShellStyleChanged: if (Borealis.State.persistedShellStyle !== persistedShellStyle) Borealis.State.persistedShellStyle = persistedShellStyle
@@ -30,9 +34,11 @@ Item {
     Connections {
         target: Borealis.State
         function onThemeModeChanged() { if (theme.themeMode !== Borealis.State.themeMode) theme.themeMode = Borealis.State.themeMode }
+        function onThemePreferenceChanged() { if (theme.themePreference !== Borealis.State.themePreference) theme.themePreference = Borealis.State.themePreference }
         function onShellStyleChanged() { if (theme.shellStyle !== Borealis.State.shellStyle) theme.shellStyle = Borealis.State.shellStyle }
         function onIconStyleChanged() { if (theme.iconStyle !== Borealis.State.iconStyle) theme.iconStyle = Borealis.State.iconStyle }
         function onIconThemeChanged() { if (theme.iconTheme !== Borealis.State.iconTheme) theme.iconTheme = Borealis.State.iconTheme }
+        function onIconAppearanceChanged() { if (theme.iconAppearance !== Borealis.State.iconAppearance) theme.iconAppearance = Borealis.State.iconAppearance }
         function onAccentHexChanged() { if (theme.accentHex !== Borealis.State.accentHex) theme.accentHex = Borealis.State.accentHex }
         function onAudioOsdStyleChanged() { if (theme.audioOsdStyle !== Borealis.State.audioOsdStyle) theme.audioOsdStyle = Borealis.State.audioOsdStyle }
         function onPersistedShellStyleChanged() { if (theme.persistedShellStyle !== Borealis.State.persistedShellStyle) theme.persistedShellStyle = Borealis.State.persistedShellStyle }
@@ -40,6 +46,22 @@ Item {
 
     function applyConfig(cfg) {
         Borealis.State.applyConfig(cfg)
+    }
+
+    function setThemePreference(value) {
+        Borealis.State.setThemePreference(value)
+    }
+
+    function setShellStyle(value) {
+        Borealis.State.setShellStyle(value)
+    }
+
+    function setAccentHex(value) {
+        Borealis.State.setAccentHex(value)
+    }
+
+    function setIconAppearance(value) {
+        Borealis.State.setIconAppearance(value)
     }
 
     function save() {

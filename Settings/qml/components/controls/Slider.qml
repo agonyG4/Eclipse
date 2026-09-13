@@ -73,11 +73,14 @@ QQC2.Slider {
     property bool tooltipVisible: false
     property bool keyboardEditPending: false
 
-    Binding {
-        target: root
-        property: "value"
-        value: root.modelValue
-        when: root.modelValueEnabled && !root.pressed && !root.keyboardEditPending
+    function syncNativeValueFromModel() {
+        if (!root.modelValueEnabled || root.pressed || root.keyboardEditPending)
+            return
+
+        if (Math.abs(root.value - root.modelValue) <= 0.000001)
+            return
+
+        root.value = root.modelValue
     }
 
     function handleNativeMove() {
@@ -106,6 +109,13 @@ QQC2.Slider {
     }
 
     onMoved: root.handleNativeMove()
+    onModelValueChanged: root.syncNativeValueFromModel()
+    onModelValueEnabledChanged: {
+        if (modelValueEnabled)
+            root.syncNativeValueFromModel()
+        else
+            detentLatched = false
+    }
     onDetentEnabledChanged: if (!detentEnabled) detentLatched = false
     onPressedChanged: {
         if (pressed) {
@@ -116,8 +126,10 @@ QQC2.Slider {
         } else {
             tooltipVisible = false
         }
-        if (!pressed)
+        if (!pressed) {
             detentLatched = false
+            root.syncNativeValueFromModel()
+        }
     }
     onHoveredChanged: {
         if (!hovered) {
@@ -153,7 +165,10 @@ QQC2.Slider {
         id: keyboardEditReset
         interval: 0
         repeat: false
-        onTriggered: root.keyboardEditPending = false
+        onTriggered: {
+            root.keyboardEditPending = false
+            root.syncNativeValueFromModel()
+        }
     }
 
     Timer {

@@ -22,6 +22,9 @@ private slots:
     void sliderDetentUsesHysteresis();
     void sliderDetentPulseIsOneShotPerEntry();
     void sliderControlledBindingSurvivesDetent();
+    void sliderControlledPressWithoutMoveDoesNotJump();
+    void sliderControlledKeyboardEditStartsFromModelValue();
+    void sliderControlledModelChangeDuringDragDefersNativeSync();
     void sliderLatchClearsOnReleaseAndRearmsSnap();
     void sliderKeyboardCrossesDefaultDetent();
     void sliderMarkerUsesMirroredTrackGeometry();
@@ -94,6 +97,7 @@ Item {
     width: 216
     height: 32
     property real backendValue: 2
+    property bool controlledMode: false
 
     Settings.Slider {
         objectName: "sliderRegressionControl"
@@ -101,7 +105,8 @@ Item {
         from: 0
         to: 10
         stepSize: 0.1
-        modelValueEnabled: true
+        value: 0
+        modelValueEnabled: parent.controlledMode
         modelValue: parent.backendValue
         detentEnabled: true
         detentValue: 5
@@ -126,6 +131,7 @@ Item {
         }
         rootItem->setProperty("backendValue", initialValue);
         rootItem->setParentItem(window.contentItem());
+        rootItem->setProperty("controlledMode", true);
         slider = rootItem->findChild<QQuickItem *>(QStringLiteral("sliderRegressionControl"));
         if (!slider) {
             *error = QStringLiteral("failed to find controlled slider");
@@ -418,8 +424,105 @@ void SettingsComponentSmokeTest::sliderControlledBindingSurvivesDetent()
     fixture.fixtureRoot->setProperty("backendValue", 7.0);
     QTRY_VERIFY_WITH_TIMEOUT(qAbs(fixture.slider->property("value").toReal() - 7.0) < 0.001,
                              100);
+    QCOMPARE(fixture.slider->property("modelValue").toReal(), 7.0);
     QCOMPARE(fixture.slider->property("displayedValue").toReal(), 7.0);
     QCOMPARE(fixture.slider->property("valueText").toString(), QStringLiteral("7.0"));
+    QVERIFY(!fixture.slider->property("detentLatched").toBool());
+    const QPoint expectedHandleCenter = fixture.pointForVisualPosition(0.7);
+    const QPoint actualHandleCenter = fixture.renderedHandleCenter();
+    QVERIFY2(qAbs(actualHandleCenter.x() - expectedHandleCenter.x()) <= 1
+                 && qAbs(actualHandleCenter.y() - expectedHandleCenter.y()) <= 1,
+             qPrintable(QStringLiteral("expected (%1, %2), got (%3, %4)")
+                            .arg(expectedHandleCenter.x())
+                            .arg(expectedHandleCenter.y())
+                            .arg(actualHandleCenter.x())
+                            .arg(actualHandleCenter.y())));
+}
+
+void SettingsComponentSmokeTest::sliderControlledPressWithoutMoveDoesNotJump()
+{
+    SliderFixture fixture;
+    QVERIFY(fixture.directory.isValid());
+
+    QString error;
+    QVERIFY2(fixture.createControlled(7, &error), qPrintable(error));
+    QVERIFY(fixture.fixtureRoot != nullptr);
+    QCOMPARE(fixture.fixtureRoot->property("backendValue").toReal(), 7.0);
+    QCOMPARE(fixture.slider->property("modelValue").toReal(), 7.0);
+    QCOMPARE(fixture.slider->property("value").toReal(), 7.0);
+    QCOMPARE(fixture.slider->property("displayedValue").toReal(), 7.0);
+    const QPoint handleCenter = fixture.renderedHandleCenter();
+    QSignalSpy nativeValueChanges(fixture.slider, SIGNAL(valueChanged()));
+    QVERIFY(nativeValueChanges.isValid());
+
+    QTest::mousePress(&fixture.window, Qt::LeftButton, Qt::NoModifier, handleCenter);
+    QCoreApplication::processEvents();
+
+    QVERIFY(fixture.slider->property("pressed").toBool());
+    QVERIFY2(nativeValueChanges.isEmpty(),
+             qPrintable(QStringLiteral("native value changed %1 times on press")
+                            .arg(nativeValueChanges.count())));
+    QCOMPARE(fixture.fixtureRoot->property("backendValue").toReal(), 7.0);
+    QCOMPARE(fixture.slider->property("value").toReal(), 7.0);
+    QCOMPARE(fixture.slider->property("displayedValue").toReal(), 7.0);
+    QCOMPARE(fixture.renderedHandleCenter(), handleCenter);
+
+    QTest::mouseRelease(&fixture.window, Qt::LeftButton, Qt::NoModifier, handleCenter);
+    QCoreApplication::processEvents();
+
+    QCOMPARE(fixture.fixtureRoot->property("backendValue").toReal(), 7.0);
+    QCOMPARE(fixture.slider->property("value").toReal(), 7.0);
+    QCOMPARE(fixture.slider->property("displayedValue").toReal(), 7.0);
+    QCOMPARE(fixture.renderedHandleCenter(), handleCenter);
+}
+
+void SettingsComponentSmokeTest::sliderControlledKeyboardEditStartsFromModelValue()
+{
+    SliderFixture fixture;
+    QVERIFY(fixture.directory.isValid());
+
+    QString error;
+    QVERIFY2(fixture.createControlled(7, &error), qPrintable(error));
+    fixture.slider->forceActiveFocus();
+    QVERIFY(fixture.slider->property("activeFocus").toBool());
+
+    QTest::keyClick(&fixture.window, Qt::Key_Right);
+    QCoreApplication::processEvents();
+
+    QVERIFY2(qAbs(fixture.fixtureRoot->property("backendValue").toReal() - 7.1) < 0.001,
+             qPrintable(QStringLiteral("backend=%1")
+                            .arg(fixture.fixtureRoot->property("backendValue").toReal())));
+    QVERIFY2(qAbs(fixture.slider->property("value").toReal() - 7.1) < 0.001,
+             qPrintable(QStringLiteral("value=%1").arg(fixture.slider->property("value").toReal())));
+}
+
+void SettingsComponentSmokeTest::sliderControlledModelChangeDuringDragDefersNativeSync()
+{
+    SliderFixture fixture;
+    QVERIFY(fixture.directory.isValid());
+
+    QString error;
+    QVERIFY2(fixture.createControlled(2, &error), qPrintable(error));
+    const QPoint dragPoint = fixture.pointForVisualPosition(0.3);
+
+    QTest::mousePress(&fixture.window, Qt::LeftButton, Qt::NoModifier,
+                      fixture.renderedHandleCenter());
+    QTest::mouseMove(&fixture.window, dragPoint);
+    QCoreApplication::processEvents();
+    QVERIFY(fixture.slider->property("pressed").toBool());
+    QVERIFY(fixture.slider->property("value").toReal() < 4.0);
+
+    fixture.fixtureRoot->setProperty("backendValue", 8.0);
+    QCoreApplication::processEvents();
+    QVERIFY2(qAbs(fixture.slider->property("value").toReal() - 8.0) > 0.5,
+             qPrintable(QStringLiteral("value was forced to %1 during drag")
+                            .arg(fixture.slider->property("value").toReal())));
+
+    QTest::mouseRelease(&fixture.window, Qt::LeftButton, Qt::NoModifier, dragPoint);
+    QTRY_VERIFY_WITH_TIMEOUT(!fixture.slider->property("pressed").toBool(), 100);
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(fixture.slider->property("value").toReal() - 8.0) < 0.001,
+                             100);
+    QCOMPARE(fixture.slider->property("modelValue").toReal(), 8.0);
 }
 
 void SettingsComponentSmokeTest::sliderLatchClearsOnReleaseAndRearmsSnap()
@@ -444,7 +547,7 @@ void SettingsComponentSmokeTest::sliderLatchClearsOnReleaseAndRearmsSnap()
     QTest::mouseRelease(&fixture.window, Qt::LeftButton, Qt::NoModifier,
                         fixture.pointForVisualPosition(0.475));
     QVERIFY(!fixture.slider->property("detentLatched").toBool());
-    QVERIFY(marker->property("opacity").toReal() < 0.8);
+    QTRY_VERIFY_WITH_TIMEOUT(marker->property("opacity").toReal() < 0.8, 200);
 
     QTest::mousePress(&fixture.window, Qt::LeftButton, Qt::NoModifier,
                       fixture.renderedHandleCenter());

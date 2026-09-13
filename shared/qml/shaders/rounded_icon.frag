@@ -7,6 +7,8 @@ layout(std140, binding = 0) uniform buf {
     mat4 qt_Matrix;
     float qt_Opacity;
     float roundedRadius;
+    float presentationMode;
+    vec4 tintColor;
 };
 
 layout(binding = 1) uniform sampler2D source;
@@ -24,5 +26,22 @@ void main()
                                              antialiasWidth,
                                              signedDistance);
     const vec4 pixel = texture(source, qt_TexCoord0);
-    fragColor = vec4(pixel.rgb * coverage, pixel.a * coverage) * qt_Opacity;
+    const float alpha = pixel.a;
+    const float epsilon = 0.00001;
+    vec3 presented = alpha > epsilon ? pixel.rgb : vec3(0.0);
+    if (alpha > epsilon && presentationMode > 0.5) {
+        const vec3 straightRgb = pixel.rgb / alpha;
+        const float luma = dot(straightRgb, vec3(0.2126, 0.7152, 0.0722));
+        vec3 straightPresented;
+        if (presentationMode < 1.5) {
+            straightPresented = vec3(luma);
+        } else {
+            const vec3 straightTint = tintColor.a > epsilon
+                ? tintColor.rgb / tintColor.a : vec3(0.0);
+            const vec3 darkAccent = straightTint * 0.24;
+            straightPresented = mix(darkAccent, straightTint, clamp(luma, 0.0, 1.0));
+        }
+        presented = straightPresented * alpha;
+    }
+    fragColor = vec4(presented * coverage, pixel.a * coverage) * qt_Opacity;
 }

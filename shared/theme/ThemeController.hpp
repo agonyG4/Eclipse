@@ -16,6 +16,7 @@ class ThemeController final : public QObject {
     Q_PROPERTY(int shellStyle READ shellStyle WRITE setShellStyle NOTIFY shellStyleChanged)
     Q_PROPERTY(int iconStyle READ iconStyle WRITE setIconStyle NOTIFY iconStyleChanged)
     Q_PROPERTY(QString iconTheme READ iconTheme WRITE setIconTheme NOTIFY iconThemeChanged)
+    Q_PROPERTY(QString iconAppearance READ iconAppearance WRITE setIconAppearance NOTIFY iconAppearanceChanged)
     Q_PROPERTY(QString accentHex READ accentHex WRITE setAccentHex NOTIFY accentHexChanged)
     Q_PROPERTY(int audioOsdStyle READ audioOsdStyle WRITE setAudioOsdStyle NOTIFY audioOsdStyleChanged)
     Q_PROPERTY(QString configPath READ configPath CONSTANT)
@@ -37,6 +38,8 @@ public:
     void setIconStyle(int value);
     QString iconTheme() const;
     void setIconTheme(const QString &value);
+    QString iconAppearance() const;
+    void setIconAppearance(const QString &value);
     QString accentHex() const;
     void setAccentHex(const QString &value);
     int audioOsdStyle() const;
@@ -54,6 +57,7 @@ signals:
     void shellStyleChanged();
     void iconStyleChanged();
     void iconThemeChanged();
+    void iconAppearanceChanged();
     void accentHexChanged();
     void audioOsdStyleChanged();
 
@@ -63,6 +67,8 @@ private slots:
 private:
     static QString normalizedThemePreference(const QString &value);
     static bool isValidThemePreference(const QString &value);
+    static QString normalizedIconAppearance(const QString &value);
+    static bool isValidIconAppearance(const QString &value);
     void updateEffectiveThemeMode();
     void setEffectiveThemeMode(int value);
     Qt::ColorScheme platformColorScheme() const;
@@ -78,6 +84,7 @@ private:
     int m_shellStyle = 1;
     int m_iconStyle = 0;
     QString m_iconTheme = QStringLiteral("dark");
+    QString m_iconAppearance = QStringLiteral("default");
     QString m_accentHex = QStringLiteral("#0a84ff");
     int m_audioOsdStyle = 0;
     bool m_loaded = false;

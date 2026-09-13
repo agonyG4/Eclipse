@@ -99,10 +99,8 @@ Item {
                     readonly property bool vertical: root.controller.position !== "bottom"
                     readonly property real iconExtent: Math.min(34, root.controller.iconSize * 0.58)
                     readonly property real panelExtent: root.controller.panelPadding + iconExtent
-                    readonly property real primaryExtent: root.controller.panelPadding * 2
-                        + iconExtent * 5 + root.controller.itemSpacing * 4
-                    width: vertical ? panelExtent : Math.min(parent.width - 40, primaryExtent)
-                    height: vertical ? Math.min(parent.height, primaryExtent) : panelExtent
+                    width: vertical ? panelExtent : Math.min(parent.width - 40, panelExtent * 5 + root.controller.itemSpacing * 4)
+                    height: vertical ? Math.min(parent.height, panelExtent * 5 + root.controller.itemSpacing * 4) : panelExtent
                     x: vertical && root.controller.position === "right"
                        ? parent.width - width - 20
                        : vertical ? 20 : (parent.width - width) / 2

@@ -86,6 +86,17 @@ void ThemeController::setIconTheme(const QString &value)
     emit iconThemeChanged();
 }
 
+QString ThemeController::iconAppearance() const { return m_iconAppearance; }
+
+void ThemeController::setIconAppearance(const QString &value)
+{
+    const QString next = normalizedIconAppearance(value);
+    if (m_iconAppearance == next)
+        return;
+    m_iconAppearance = next;
+    emit iconAppearanceChanged();
+}
+
 QString ThemeController::accentHex() const { return m_accentHex; }
 
 void ThemeController::setAccentHex(const QString &value)
@@ -114,40 +125,33 @@ bool ThemeController::loaded() const { return m_loaded; }
 void ThemeController::applyConfig(const QVariantMap &config)
 {
     const auto value = [&config](const QString &key) { return config.value(key); };
-    bool themePreferenceApplied = false;
+    QString resolvedThemePreference = QStringLiteral("auto");
     const QString configuredPreference = value(QStringLiteral("theme_preference")).toString();
     if (isValidThemePreference(configuredPreference)) {
-        setThemePreference(configuredPreference);
-        themePreferenceApplied = true;
-    }
-
-    if (!themePreferenceApplied) {
+        resolvedThemePreference = configuredPreference;
+    } else {
         const QString legacyTheme = value(QStringLiteral("theme")).toString();
         if (legacyTheme.compare(QStringLiteral("light"), Qt::CaseInsensitive) == 0) {
-            setThemePreference(QStringLiteral("light"));
-            themePreferenceApplied = true;
+            resolvedThemePreference = QStringLiteral("light");
         } else if (legacyTheme.compare(QStringLiteral("dark"), Qt::CaseInsensitive) == 0) {
-            setThemePreference(QStringLiteral("dark"));
-            themePreferenceApplied = true;
+            resolvedThemePreference = QStringLiteral("dark");
+        } else {
+            bool ok = false;
+            const int legacyMode = value(QStringLiteral("theme_mode")).toInt(&ok);
+            if (ok && (legacyMode == 0 || legacyMode == 1))
+                resolvedThemePreference = legacyMode == 1 ? QStringLiteral("light") : QStringLiteral("dark");
         }
     }
+    setThemePreference(resolvedThemePreference);
 
-    if (!themePreferenceApplied) {
-        bool ok = false;
-        const int legacyMode = value(QStringLiteral("theme_mode")).toInt(&ok);
-        if (ok && (legacyMode == 0 || legacyMode == 1))
-            setThemePreference(legacyMode == 1 ? QStringLiteral("light") : QStringLiteral("dark"));
-    }
-
-    if (value(QStringLiteral("shell_style")).isValid()) {
-        bool ok = false;
-        const int shellStyle = value(QStringLiteral("shell_style")).toInt(&ok);
-        setShellStyle(ok ? shellStyle : 1);
-    }
+    bool shellStyleOk = false;
+    const int shellStyle = value(QStringLiteral("shell_style")).toInt(&shellStyleOk);
+    setShellStyle(shellStyleOk ? shellStyle : 1);
     if (value(QStringLiteral("icon_style")).isValid())
         setIconStyle(value(QStringLiteral("icon_style")).toInt());
     if (value(QStringLiteral("icon_theme")).isValid())
         setIconTheme(value(QStringLiteral("icon_theme")).toString());
+    setIconAppearance(value(QStringLiteral("icon_appearance")).toString());
     if (value(QStringLiteral("accent")).isValid())
         setAccentHex(value(QStringLiteral("accent")).toString());
     if (value(QStringLiteral("audio_osd_style")).isValid())
@@ -184,6 +188,7 @@ void ThemeController::save()
         {QStringLiteral("accent"), m_accentHex},
         {QStringLiteral("icon_style"), m_iconStyle},
         {QStringLiteral("icon_theme"), m_iconTheme},
+        {QStringLiteral("icon_appearance"), m_iconAppearance},
         {QStringLiteral("audio_osd_style"), m_audioOsdStyle},
     };
     file.write(QJsonDocument(object).toJson(QJsonDocument::Indented));
@@ -202,6 +207,20 @@ bool ThemeController::isValidThemePreference(const QString &value)
     return normalized == QStringLiteral("auto")
         || normalized == QStringLiteral("light")
         || normalized == QStringLiteral("dark");
+}
+
+QString ThemeController::normalizedIconAppearance(const QString &value)
+{
+    const QString normalized = value.trimmed().toLower();
+    return isValidIconAppearance(normalized) ? normalized : QStringLiteral("default");
+}
+
+bool ThemeController::isValidIconAppearance(const QString &value)
+{
+    const QString normalized = value.trimmed().toLower();
+    return normalized == QStringLiteral("default")
+        || normalized == QStringLiteral("monochrome")
+        || normalized == QStringLiteral("tinted");
 }
 
 void ThemeController::updateEffectiveThemeMode()

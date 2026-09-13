@@ -17,6 +17,7 @@
 #include <memory>
 
 #include "icons/AstreaIconProvider.hpp"
+#include "theme/ThemeController.hpp"
 
 Q_IMPORT_QML_PLUGIN(Astrea_SharedPlugin)
 
@@ -194,6 +195,25 @@ bool transparentCornersAreClean(const QImage &capture, const QRect &bounds)
     return true;
 }
 
+struct PremultipliedPixel {
+    qreal red = 0.0;
+    qreal green = 0.0;
+    qreal blue = 0.0;
+    qreal alpha = 0.0;
+};
+
+PremultipliedPixel readPremultipliedPixel(const QImage &image, const QPoint point)
+{
+    const QImage premultiplied = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    const QRgb pixel = premultiplied.pixel(point);
+    return {
+        qRed(pixel) / 255.0,
+        qGreen(pixel) / 255.0,
+        qBlue(pixel) / 255.0,
+        qAlpha(pixel) / 255.0,
+    };
+}
+
 std::unique_ptr<QQuickItem> createLegacyOpacityMaskIcon(QQmlEngine &engine,
                                                          const QString &source,
                                                          const int sourcePixels)
@@ -258,6 +278,14 @@ private slots:
     void roundedAlphaMathPreservesInteriorDetail();
     void opacityMaskPreservesInteriorDetailAtMaximumScale();
     void roundedPathPreservesFallbackAndDirectImage();
+    void defaultAppearanceKeepsDirectImageFastPath();
+    void nonDefaultAppearanceActivatesSingleShader();
+    void presentationKeepsSourceQualityStable();
+    void missingThemeControllerFallsBackToDefault();
+    void appearanceOverrideDoesNotMutateController();
+    void liveControllerAppearanceAndAccentUpdate();
+    void presentationPixelsPreserveAlphaContrastAndTint();
+    void presentationPixelsPreservePartialAlphaPremultiplication();
 };
 
 static std::unique_ptr<QQuickItem> createIcon(QQmlEngine &engine)
@@ -644,6 +672,325 @@ void AstreaAppIconQmlTest::roundedPathPreservesFallbackAndDirectImage()
     QObject *fallback = findObjectByName(icon.get(), QStringLiteral("fallbackSurface"));
     QVERIFY(fallback);
     QVERIFY(fallback->property("visible").toBool());
+}
+
+void AstreaAppIconQmlTest::defaultAppearanceKeepsDirectImageFastPath()
+{
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    const QString svgPath = temporary.path() + QStringLiteral("/default.svg");
+    QVERIFY(writeHighFrequencySvg(svgPath));
+
+    QQmlEngine engine;
+    auto icon = createIcon(engine);
+    QVERIFY(icon);
+    icon->setProperty("iconPath", svgPath);
+    icon->setProperty("iconRadius", 0);
+    icon->setProperty("showFallbackText", false);
+    QTRY_VERIFY_WITH_TIMEOUT(icon->property("ready").toBool(), 3000);
+
+    QCOMPARE(icon->property("effectiveAppearance").toString(), QStringLiteral("default"));
+    QVERIFY(!findObjectByName(icon.get(), QStringLiteral("roundedIconEffect")));
+}
+
+void AstreaAppIconQmlTest::nonDefaultAppearanceActivatesSingleShader()
+{
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    const QString svgPath = temporary.path() + QStringLiteral("/presentation.svg");
+    QVERIFY(writeHighFrequencySvg(svgPath));
+
+    QQmlEngine engine;
+    auto icon = createIcon(engine);
+    QVERIFY(icon);
+    icon->setProperty("iconPath", svgPath);
+    icon->setProperty("iconRadius", 0);
+    icon->setProperty("appearanceOverride", QStringLiteral("monochrome"));
+    icon->setProperty("showFallbackText", false);
+    QTRY_VERIFY_WITH_TIMEOUT(icon->property("ready").toBool(), 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        findObjectByName(icon.get(), QStringLiteral("roundedIconEffect")), 3000);
+
+    QCOMPARE(icon->property("effectiveAppearance").toString(), QStringLiteral("monochrome"));
+    QVERIFY(findObjectByName(icon.get(), QStringLiteral("roundedIconEffect")));
+    QVERIFY(!findObjectByName(icon.get(), QStringLiteral("roundedIconEffect_2")));
+}
+
+void AstreaAppIconQmlTest::presentationKeepsSourceQualityStable()
+{
+    QQmlEngine engine;
+    auto icon = createIcon(engine);
+    QVERIFY(icon);
+    icon->setProperty("iconName", QStringLiteral("test-icon"));
+    icon->setProperty("iconSize", 48);
+    icon->setProperty("maximumPresentationLogicalSize", 84.0);
+    icon->setProperty("devicePixelRatioOverride", 2.0);
+    QCoreApplication::processEvents();
+
+    const QString source = icon->property("resolvedSource").toString();
+    const int sourcePixels = icon->property("effectiveSourcePixelSize").toInt();
+    icon->setProperty("appearanceOverride", QStringLiteral("tinted"));
+    icon->setProperty("scale", 1.6);
+    QCoreApplication::processEvents();
+
+    QCOMPARE(icon->property("resolvedSource").toString(), source);
+    QCOMPARE(icon->property("effectiveSourcePixelSize").toInt(), sourcePixels);
+    QCOMPARE(icon->property("effectiveMaximumLogicalSize").toInt(), 84);
+    QCOMPARE(icon->property("scale").toReal(), 1.6);
+}
+
+void AstreaAppIconQmlTest::missingThemeControllerFallsBackToDefault()
+{
+    QQmlEngine engine;
+    auto icon = createIcon(engine);
+    QVERIFY(icon);
+
+    QCOMPARE(icon->property("effectiveAppearance").toString(), QStringLiteral("default"));
+    QCOMPARE(icon->property("effectiveTintColor").value<QColor>(), QColor("#0a84ff"));
+}
+
+void AstreaAppIconQmlTest::appearanceOverrideDoesNotMutateController()
+{
+    QQmlEngine engine;
+    ThemeController controller(QStringLiteral("/tmp/astrea-settings-missing-theme.json"));
+    controller.setIconAppearance(QStringLiteral("tinted"));
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &controller);
+
+    auto icon = createIcon(engine);
+    QVERIFY(icon);
+    icon->setProperty("appearanceOverride", QStringLiteral("unsupported"));
+    QCoreApplication::processEvents();
+    QCOMPARE(icon->property("effectiveAppearance").toString(), QStringLiteral("default"));
+    icon->setProperty("appearanceOverride", QStringLiteral("monochrome"));
+    QCoreApplication::processEvents();
+
+    QCOMPARE(icon->property("effectiveAppearance").toString(), QStringLiteral("monochrome"));
+    QCOMPARE(controller.iconAppearance(), QStringLiteral("tinted"));
+}
+
+void AstreaAppIconQmlTest::liveControllerAppearanceAndAccentUpdate()
+{
+    QQmlEngine engine;
+    ThemeController controller(QStringLiteral("/tmp/astrea-settings-missing-theme.json"));
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &controller);
+
+    auto icon = createIcon(engine);
+    QVERIFY(icon);
+    QCOMPARE(icon->property("effectiveAppearance").toString(), QStringLiteral("default"));
+
+    controller.setIconAppearance(QStringLiteral("monochrome"));
+    QTRY_COMPARE_WITH_TIMEOUT(icon->property("effectiveAppearance").toString(),
+                              QStringLiteral("monochrome"), 1000);
+
+    controller.setIconAppearance(QStringLiteral("tinted"));
+    controller.setAccentHex(QStringLiteral("#30d158"));
+    QTRY_COMPARE_WITH_TIMEOUT(icon->property("effectiveAppearance").toString(),
+                              QStringLiteral("tinted"), 1000);
+    QCOMPARE(icon->property("effectiveTintColor").value<QColor>(), QColor("#30d158"));
+}
+
+void AstreaAppIconQmlTest::presentationPixelsPreserveAlphaContrastAndTint()
+{
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    const QString svgPath = temporary.path() + QStringLiteral("/presentation-pixels.svg");
+    QFile svg(svgPath);
+    QVERIFY(svg.open(QIODevice::WriteOnly | QIODevice::Text));
+    const QByteArray content = QByteArrayLiteral(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"96\" height=\"96\">"
+        "<rect x=\"8\" y=\"8\" width=\"32\" height=\"80\" fill=\"#ff0000\"/>"
+        "<rect x=\"56\" y=\"8\" width=\"32\" height=\"80\" fill=\"#ffffff\"/>"
+        "</svg>");
+    QCOMPARE(svg.write(content), content.size());
+    svg.close();
+
+    QQmlEngine engine;
+    auto icon = createIcon(engine);
+    QVERIFY(icon);
+    icon->setWidth(96);
+    icon->setHeight(96);
+    icon->setX(32);
+    icon->setY(32);
+    icon->setProperty("iconPath", svgPath);
+    icon->setProperty("iconSize", 96);
+    icon->setProperty("maximumPresentationLogicalSize", 96.0);
+    icon->setProperty("devicePixelRatioOverride", 1.0);
+    icon->setProperty("iconRadius", 0);
+    icon->setProperty("showFallbackText", false);
+
+    QQuickWindow window;
+    window.setColor(Qt::transparent);
+    window.resize(160, 160);
+    icon->setParentItem(window.contentItem());
+    window.show();
+    QTRY_VERIFY_WITH_TIMEOUT(icon->property("ready").toBool(), 3000);
+
+    const CapturedFrame source = captureFrame(window, icon.get());
+    if (source.image.isNull() || source.bounds.width() < 80 || source.bounds.height() < 80)
+        QSKIP("Qt Quick did not produce a capturable presentation frame on this platform");
+
+    const QPoint left = source.bounds.topLeft() + QPoint(24, 48);
+    const QPoint right = source.bounds.topLeft() + QPoint(72, 48);
+    const QPoint transparent = source.bounds.topLeft() + QPoint(2, 2);
+    QVERIFY(source.image.rect().contains(left));
+    QVERIFY(source.image.rect().contains(right));
+    QVERIFY(source.image.rect().contains(transparent));
+    const QColor sourceLeft = source.image.pixelColor(left);
+    const QColor sourceRight = source.image.pixelColor(right);
+    QCOMPARE(source.image.pixelColor(transparent).alpha(), 0);
+    QVERIFY(sourceLeft.red() > sourceLeft.green() * 2);
+    QVERIFY(sourceRight.red() > 200 && sourceRight.green() > 200 && sourceRight.blue() > 200);
+
+    icon->setProperty("appearanceOverride", QStringLiteral("monochrome"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        findObjectByName(icon.get(), QStringLiteral("roundedIconEffect")), 3000);
+    const CapturedFrame monochrome = captureFrame(window, icon.get());
+    const QColor monochromeLeft = monochrome.image.pixelColor(left);
+    const QColor monochromeRight = monochrome.image.pixelColor(right);
+    QCOMPARE(monochrome.image.pixelColor(transparent).alpha(), 0);
+    QVERIFY(qAbs(monochromeLeft.red() - monochromeLeft.green()) <= 4);
+    QVERIFY(qAbs(monochromeLeft.green() - monochromeLeft.blue()) <= 4);
+    QVERIFY(qAbs(monochromeRight.red() - monochromeRight.green()) <= 4);
+    QVERIFY(qAbs(monochromeRight.green() - monochromeRight.blue()) <= 4);
+    QVERIFY(monochromeRight.red() - monochromeLeft.red() > 30);
+
+    icon->setProperty("appearanceOverride", QStringLiteral("tinted"));
+    icon->setProperty("tintColorOverride", QColor(QStringLiteral("#30d158")));
+    icon->setProperty("hasTintColorOverride", true);
+    const CapturedFrame tinted = captureFrame(window, icon.get());
+    const QColor tintedLeft = tinted.image.pixelColor(left);
+    const QColor tintedRight = tinted.image.pixelColor(right);
+    QCOMPARE(tinted.image.pixelColor(transparent).alpha(), 0);
+    QVERIFY(tintedLeft.green() > tintedLeft.red() + 25);
+    QVERIFY(tintedLeft.green() > tintedLeft.blue() + 10);
+    QVERIFY(tintedRight.green() > tintedLeft.green());
+}
+
+void AstreaAppIconQmlTest::presentationPixelsPreservePartialAlphaPremultiplication()
+{
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    const QString svgPath = temporary.path() + QStringLiteral("/partial-alpha.svg");
+    QFile svg(svgPath);
+    QVERIFY(svg.open(QIODevice::WriteOnly | QIODevice::Text));
+    const QByteArray content = QByteArrayLiteral(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"96\" height=\"96\">"
+        "<rect x=\"8\" y=\"8\" width=\"80\" height=\"24\" fill=\"#ffffff\"/>"
+        "<rect x=\"8\" y=\"36\" width=\"80\" height=\"24\" fill=\"#ffffff\" fill-opacity=\"0.5\"/>"
+        "<rect x=\"8\" y=\"64\" width=\"80\" height=\"24\" fill=\"#ffffff\" fill-opacity=\"0.25\"/>"
+        "</svg>");
+    QCOMPARE(svg.write(content), content.size());
+    svg.close();
+
+    QQmlEngine engine;
+    auto icon = createIcon(engine);
+    QVERIFY(icon);
+    icon->setWidth(96);
+    icon->setHeight(96);
+    icon->setX(32);
+    icon->setY(32);
+    icon->setProperty("iconPath", svgPath);
+    icon->setProperty("iconSize", 96);
+    icon->setProperty("maximumPresentationLogicalSize", 96.0);
+    icon->setProperty("devicePixelRatioOverride", 1.0);
+    icon->setProperty("iconRadius", 0);
+    icon->setProperty("showFallbackText", false);
+    icon->setProperty("appearanceOverride", QStringLiteral("tinted"));
+    icon->setProperty("tintColorOverride", QColor(QStringLiteral("#30d158")));
+    icon->setProperty("hasTintColorOverride", true);
+
+    QQuickWindow window;
+    window.setColor(Qt::transparent);
+    window.resize(160, 160);
+    icon->setParentItem(window.contentItem());
+    window.show();
+    QTRY_VERIFY_WITH_TIMEOUT(icon->property("ready").toBool(), 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        findObjectByName(icon.get(), QStringLiteral("roundedIconEffect")), 3000);
+
+    const CapturedFrame tinted = captureFrame(window, icon.get());
+    if (tinted.image.isNull() || tinted.bounds.width() < 80 || tinted.bounds.height() < 80)
+        QSKIP("Qt Quick did not produce a capturable partial-alpha frame on this platform");
+
+    const auto sample = [&tinted](const int y) {
+        return readPremultipliedPixel(
+            tinted.image, tinted.bounds.topLeft() + QPoint(48, y));
+    };
+    const PremultipliedPixel tintedOpaque = sample(20);
+    const PremultipliedPixel tintedHalf = sample(48);
+    const PremultipliedPixel tintedQuarter = sample(76);
+    const PremultipliedPixel tintedTransparent = readPremultipliedPixel(
+        tinted.image, tinted.bounds.topLeft() + QPoint(2, 2));
+
+    QVERIFY(qAbs(tintedOpaque.alpha - 1.0) < 0.06);
+    QVERIFY(qAbs(tintedHalf.alpha - 0.5) < 0.06);
+    QVERIFY(qAbs(tintedQuarter.alpha - 0.25) < 0.06);
+    QVERIFY(tintedTransparent.alpha < 0.01);
+    QVERIFY(tintedTransparent.red < 0.01);
+    QVERIFY(tintedTransparent.green < 0.01);
+    QVERIFY(tintedTransparent.blue < 0.01);
+    QVERIFY(tintedOpaque.red <= tintedOpaque.alpha + 0.01);
+    QVERIFY(tintedOpaque.green <= tintedOpaque.alpha + 0.01);
+    QVERIFY(tintedOpaque.blue <= tintedOpaque.alpha + 0.01);
+    QVERIFY(tintedHalf.red <= tintedHalf.alpha + 0.01);
+    QVERIFY(tintedHalf.green <= tintedHalf.alpha + 0.01);
+    QVERIFY(tintedHalf.blue <= tintedHalf.alpha + 0.01);
+    QVERIFY(tintedQuarter.red <= tintedQuarter.alpha + 0.01);
+    QVERIFY(tintedQuarter.green <= tintedQuarter.alpha + 0.01);
+    QVERIFY(tintedQuarter.blue <= tintedQuarter.alpha + 0.01);
+
+    const auto straightChannel = [](const PremultipliedPixel &pixel, const qreal channel) {
+        return pixel.alpha > 0.05 ? channel / pixel.alpha : 0.0;
+    };
+    for (int channel = 0; channel < 3; ++channel) {
+        const auto channelValue = [channel](const PremultipliedPixel &pixel) {
+            if (channel == 0)
+                return pixel.red;
+            if (channel == 1)
+                return pixel.green;
+            return pixel.blue;
+        };
+        const qreal opaqueStraight = straightChannel(tintedOpaque, channelValue(tintedOpaque));
+        const qreal halfStraight = straightChannel(tintedHalf, channelValue(tintedHalf));
+        const qreal quarterStraight = straightChannel(tintedQuarter, channelValue(tintedQuarter));
+        QVERIFY(qAbs(opaqueStraight - halfStraight) < 0.08);
+        QVERIFY(qAbs(opaqueStraight - quarterStraight) < 0.08);
+        QVERIFY(qAbs(tintedHalf.red - tintedOpaque.red * 0.5) < 0.08);
+        QVERIFY(qAbs(tintedHalf.green - tintedOpaque.green * 0.5) < 0.08);
+        QVERIFY(qAbs(tintedHalf.blue - tintedOpaque.blue * 0.5) < 0.08);
+        QVERIFY(qAbs(tintedQuarter.red - tintedOpaque.red * 0.25) < 0.08);
+        QVERIFY(qAbs(tintedQuarter.green - tintedOpaque.green * 0.25) < 0.08);
+        QVERIFY(qAbs(tintedQuarter.blue - tintedOpaque.blue * 0.25) < 0.08);
+    }
+
+    icon->setProperty("appearanceOverride", QStringLiteral("monochrome"));
+    const CapturedFrame monochrome = captureFrame(window, icon.get());
+    const auto monochromeSample = [&monochrome](const int y) {
+        return readPremultipliedPixel(
+            monochrome.image, monochrome.bounds.topLeft() + QPoint(48, y));
+    };
+    const PremultipliedPixel monochromeOpaque = monochromeSample(20);
+    const PremultipliedPixel monochromeHalf = monochromeSample(48);
+    const PremultipliedPixel monochromeQuarter = monochromeSample(76);
+    const PremultipliedPixel monochromeTransparent = readPremultipliedPixel(
+        monochrome.image, monochrome.bounds.topLeft() + QPoint(2, 2));
+    for (const PremultipliedPixel &pixel : {monochromeOpaque, monochromeHalf,
+                                            monochromeQuarter}) {
+        QVERIFY(qAbs(pixel.red - pixel.green) < 0.03);
+        QVERIFY(qAbs(pixel.green - pixel.blue) < 0.03);
+        QVERIFY(pixel.red <= pixel.alpha + 0.01);
+        QVERIFY(pixel.green <= pixel.alpha + 0.01);
+        QVERIFY(pixel.blue <= pixel.alpha + 0.01);
+    }
+    QVERIFY(qAbs(monochromeOpaque.alpha - 1.0) < 0.06);
+    QVERIFY(qAbs(monochromeHalf.alpha - 0.5) < 0.06);
+    QVERIFY(qAbs(monochromeQuarter.alpha - 0.25) < 0.06);
+    QVERIFY(monochromeTransparent.alpha < 0.01);
+    QVERIFY(monochromeTransparent.red < 0.01);
+    QVERIFY(monochromeTransparent.green < 0.01);
+    QVERIFY(monochromeTransparent.blue < 0.01);
+    QVERIFY(qAbs(monochromeHalf.red - monochromeOpaque.red * 0.5) < 0.08);
+    QVERIFY(qAbs(monochromeQuarter.red - monochromeOpaque.red * 0.25) < 0.08);
 }
 
 int main(int argc, char **argv)

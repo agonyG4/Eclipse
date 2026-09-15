@@ -220,6 +220,7 @@ void ScreenshotThumbnailQmlTest::nativeFileDragExportsCanonicalCopyMetadata()
              int(Qt::CopyAction));
     QCOMPARE(object->property("nativeDragProposedAction").toInt(),
              int(Qt::CopyAction));
+    QVERIFY(object->property("nativeDragUsesManualStart").toBool());
 }
 
 void ScreenshotThumbnailQmlTest::thumbnailInteractionTransitions()

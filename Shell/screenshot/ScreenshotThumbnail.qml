@@ -38,6 +38,7 @@ Window {
     readonly property var nativeDragMimeData: card.Drag.mimeData
     readonly property int nativeDragSupportedActions: card.Drag.supportedActions
     readonly property int nativeDragProposedAction: card.Drag.proposedAction
+    readonly property bool nativeDragUsesManualStart: card.Drag.dragType === Drag.None
 
     function decideGesture(dx, dy) {
         if (dx >= dismissThreshold)
@@ -93,7 +94,6 @@ Window {
 
         card.Drag.active = true
         card.Drag.startDrag(Qt.CopyAction)
-        card.Drag.active = false
     }
 
     function finishNativeFileDrag(dropAction) {
@@ -190,7 +190,7 @@ Window {
             cache: false
         }
 
-        Drag.dragType: Drag.Automatic
+        Drag.dragType: Drag.None
         Drag.supportedActions: Qt.CopyAction
         Drag.proposedAction: Qt.CopyAction
         Drag.mimeData: ({

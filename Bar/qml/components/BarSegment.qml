@@ -8,6 +8,7 @@ Item {
     default property alias contentData: content.data
     property bool interactive: false
     property bool active: false
+    readonly property real surfaceRadius: theme.shellRadiusLarge - 2
     property int segmentHeight: theme.pillHeight
     property int fixedWidth: 0
     property int horizontalPadding: 10
@@ -27,9 +28,10 @@ Item {
     HoverHandler { id: hoverHandler }
 
     Rectangle {
+        id: segmentSurface
         objectName: "barSegmentSurface"
         anchors.fill: parent
-        radius: theme.shellRadiusLarge - 2
+        radius: root.surfaceRadius
         color: theme.shellBackground
         border.color: hoverHandler.hovered ? theme.shellBorderHover : theme.shellBorder
         border.width: 1

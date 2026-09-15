@@ -16,7 +16,7 @@ Window {
         BackdropRegion {
             item: statusPill
             enabled: statusPill.visible
-            radius: statusPill.radius
+            radius: statusPill.surfaceRadius
         }
     }
 

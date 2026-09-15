@@ -15,6 +15,7 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQmlExtensionPlugin>
+#include <QQmlProperty>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QPointingDevice>
@@ -181,6 +182,7 @@ private slots:
     void windowDprMatchesScreenDprForDockIcon();
     void surfaceEnvelopeRemainsStableDuringMagnification();
     void backdropRegionRemainsStableDuringMagnification();
+    void dockMaterialFollowsShellThemeState();
     void pointerCenterRemainsStableForPracticalMagnificationTargets();
     void inputMaskTracksCenteredChromeAndMagnifiedIcon();
     void visualHeadroomKeepsIconsInBoundsForEveryIconSize();
@@ -467,6 +469,55 @@ void DockHoverQmlTest::backdropRegionRemainsStableDuringMagnification()
     QTest::qWait(60);
     QCOMPARE(descriptors->resolvedRegion(), before);
     delete panel;
+}
+
+void DockHoverQmlTest::dockMaterialFollowsShellThemeState()
+{
+    struct ExpectedMaterial {
+        int themeMode;
+        int shellStyle;
+        QColor background;
+        QColor border;
+    };
+    const auto rgba = [](qreal red, qreal green, qreal blue, qreal alpha) {
+        return QColor::fromRgbF(red, green, blue, alpha);
+    };
+    const QList<ExpectedMaterial> expected{
+        {0, 1, rgba(0.10, 0.10, 0.11, 0.96), rgba(1, 1, 1, 0.11)},
+        {0, 2, rgba(0, 0, 0, 0.06), rgba(1, 1, 1, 0.14)},
+        {1, 1, rgba(0.985, 0.987, 0.994, 0.92), rgba(0, 0, 0, 0.12)},
+        {1, 2, rgba(0.96, 0.985, 1, 0.30), rgba(0, 0, 0, 0.10)},
+    };
+
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    ThemeController theme(temporary.filePath(QStringLiteral("missing-theme.json")));
+    DockController controller;
+    controller.applyConfig(configFor(QStringLiteral("none"), {QStringLiteral("one.desktop")}));
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &theme);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready,
+             qPrintable(component.errorString()));
+
+    for (const ExpectedMaterial &values : expected) {
+        theme.setThemeMode(values.themeMode);
+        theme.setShellStyle(values.shellStyle);
+        QCoreApplication::processEvents();
+        auto *panel = qobject_cast<QQuickItem *>(component.create());
+        QVERIFY2(panel, qPrintable(component.errorString()));
+        auto *chrome = childWithObjectName(panel, QStringLiteral("dockChrome"));
+        QVERIFY(chrome != nullptr);
+        QCOMPARE(chrome->property("color").value<QColor>(), values.background);
+        QCOMPARE(QQmlProperty(chrome, QStringLiteral("border.color")).read().value<QColor>(),
+                 values.border);
+        if (values.themeMode == 0 && values.shellStyle == 2)
+            QVERIFY(chrome->property("color").value<QColor>() != QColor(QStringLiteral("#80343434")));
+        delete panel;
+    }
 }
 
 void DockHoverQmlTest::pointerCenterRemainsStableForPracticalMagnificationTargets()

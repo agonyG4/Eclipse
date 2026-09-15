@@ -485,8 +485,11 @@ void BarQmlSmokeTest::launcherAndStatusBackdropUseVisiblePillRadius()
     QVERIFY(launcherPill != nullptr);
     auto *launcherBackdrop = backdropFor(launcher, launcherPill);
     QVERIFY(launcherBackdrop != nullptr);
+    auto *launcherSurface = launcherPill->findChild<QQuickItem *>(
+        QStringLiteral("barSegmentSurface"));
+    QVERIFY(launcherSurface != nullptr);
     QVERIFY(launcherPill->property("surfaceRadius").toReal() > 0.0);
-    QCOMPARE(launcherBackdrop->radius(), launcherPill->property("radius").toReal());
+    QCOMPARE(launcherBackdrop->radius(), launcherSurface->property("radius").toReal());
     QCOMPARE(launcherBackdrop->radius(), launcherPill->property("surfaceRadius").toReal());
     delete launcher;
 
@@ -504,8 +507,11 @@ void BarQmlSmokeTest::launcherAndStatusBackdropUseVisiblePillRadius()
     QVERIFY(statusPill != nullptr);
     auto *statusBackdrop = backdropFor(status, statusPill);
     QVERIFY(statusBackdrop != nullptr);
+    auto *statusSurface = statusPill->findChild<QQuickItem *>(
+        QStringLiteral("barSegmentSurface"));
+    QVERIFY(statusSurface != nullptr);
     QVERIFY(statusPill->property("surfaceRadius").toReal() > 0.0);
-    QCOMPARE(statusBackdrop->radius(), statusPill->property("radius").toReal());
+    QCOMPARE(statusBackdrop->radius(), statusSurface->property("radius").toReal());
     QCOMPARE(statusBackdrop->radius(), statusPill->property("surfaceRadius").toReal());
     delete status;
 }

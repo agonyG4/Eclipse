@@ -35,7 +35,7 @@ Window {
         BackdropRegion {
             item: launcherPill
             enabled: launcherPill.visible
-            radius: launcherPill.radius
+            radius: launcherPill.surfaceRadius
         }
     }
 

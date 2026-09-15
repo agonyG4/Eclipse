@@ -186,6 +186,7 @@ qt_add_qml_module(astrea-shared-core
     OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Astrea/Shared"
     QML_FILES
         qml/AstreaAppIcon.qml
+        qml/ShellMaterialTheme.qml
 )
 
 qt_add_shaders(astrea-shared-core astrea_shared_core_shaders

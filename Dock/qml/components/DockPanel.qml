@@ -2,9 +2,12 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import Astrea.Effects
+import Astrea.Shared as Shared
 
 Item {
     id: root
+
+    Shared.ShellMaterialTheme { id: shellMaterial }
 
     readonly property bool vertical: DockController.vertical
     readonly property bool growsPositiveCross: DockController.position === "left"
@@ -51,8 +54,6 @@ Item {
     // headroom structurally instead of resizing as the pointer moves.
     readonly property real visualHeadroom: surfaceHeadroom
     readonly property real animationSpeed: Math.max(0.25, DockController.animationSpeed)
-    property real magnificationWidth: 0
-    property real magnificationHeight: 0
     // pointerX remains the relative pointer coordinate for the current primary
     // axis. For Bottom this is the historical centered X coordinate.
     property real pointerX: 0
@@ -107,11 +108,11 @@ Item {
                          : (parent.width - width) / 2
         y: root.vertical ? (parent.height - height) / 2
                          : parent.height - height - root.surfaceCrossInset
-        width: root.vertical ? root.restingWidth : root.restingWidth + root.magnificationWidth
-        height: root.vertical ? root.restingHeight + root.magnificationHeight : root.restingHeight
+        width: root.restingWidth
+        height: root.restingHeight
         radius: DockController.cornerRadius
-        color: "#80343434"
-        border.color: "#33FFFFFF"
+        color: shellMaterial.background
+        border.color: shellMaterial.border
         border.width: 1
         visible: DockController.revealed
 
@@ -125,12 +126,6 @@ Item {
         onHeightChanged: root.scheduleInputRegionUpdate()
         onXChanged: root.scheduleInputRegionUpdate()
         onYChanged: root.scheduleInputRegionUpdate()
-
-        Rectangle {
-            anchors.fill: parent
-            radius: parent.radius
-            color: "#10000000"
-        }
 
         Grid {
             id: appRow
@@ -185,8 +180,7 @@ Item {
     BackdropEffectRegions {
         id: backdropRegions
         anchors.fill: parent
-        enabled: typeof ThemeController !== "undefined" && ThemeController
-                 && ThemeController.shellStyle === 2
+        enabled: shellMaterial.isFrosted
 
         BackdropRegion {
             item: dockChrome
@@ -471,8 +465,6 @@ Item {
         const targetIndex = magnificationActive ? closestIndex : hoveredIndex
         const targetItem = targetIndex >= 0 ? appRepeater.itemAt(targetIndex) : null
         pointerTargetDesktopFileName = targetItem ? targetItem.objectName : ""
-        magnificationWidth = !vertical && magnificationActive ? totalExtra : 0
-        magnificationHeight = vertical && magnificationActive ? totalExtra : 0
         const liftedItem = liftActive && hoveredIndex >= 0 ? appRepeater.itemAt(hoveredIndex) : null
         updateDelegateTransforms(totalExtra, slotPitch,
                                  liftedItem ? liftedItem.objectName : "",

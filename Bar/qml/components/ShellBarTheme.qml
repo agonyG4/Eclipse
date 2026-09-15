@@ -1,41 +1,23 @@
 import QtQuick
+import Astrea.Shared as Shared
 
 QtObject {
-    readonly property var state: typeof ThemeController === "undefined" ? null : ThemeController
-    readonly property bool isLight: state && state.themeMode === 1
-    readonly property bool isTransparent: !state || state.shellStyle === 0
-    readonly property bool isDefault: state && state.shellStyle === 1
-    readonly property bool isFrosted: state && state.shellStyle === 2
+    readonly property QtObject material: Shared.ShellMaterialTheme {}
 
-    readonly property color shellBackground: isLight
-        ? (isDefault ? Qt.rgba(0.985, 0.987, 0.994, 0.92)
-            : isFrosted ? Qt.rgba(0.96, 0.985, 1, 0.30)
-            : Qt.rgba(1, 1, 1, 0.16))
-        : (isDefault ? Qt.rgba(0.10, 0.10, 0.11, 0.96)
-            : Qt.rgba(0, 0, 0, 0.06))
-    readonly property color shellSurface: isLight
-        ? (isDefault ? Qt.rgba(1, 1, 1, 0.86)
-            : isFrosted ? Qt.rgba(0.98, 0.99, 1, 0.38)
-            : Qt.rgba(1, 1, 1, 0.22))
-        : (isDefault ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(1, 1, 1, 0.06))
-    readonly property color shellSurfaceElevated: isLight
-        ? (isDefault ? Qt.rgba(0.98, 0.98, 0.99, 1)
-            : Qt.rgba(0.98, 0.98, 0.99, 0.92))
-        : (isDefault ? Qt.rgba(0.11, 0.11, 0.12, 1)
-            : Qt.rgba(0.11, 0.11, 0.12, 0.92))
-    readonly property color shellBorder: isLight
-        ? (isDefault ? Qt.rgba(0, 0, 0, 0.12)
-            : isFrosted ? Qt.rgba(0, 0, 0, 0.10)
-            : Qt.rgba(0, 0, 0, 0.08))
-        : (isDefault ? Qt.rgba(1, 1, 1, 0.11) : Qt.rgba(1, 1, 1, 0.14))
-    readonly property color shellBorderHover: isLight
-        ? Qt.rgba(0, 0, 0, 0.20) : Qt.rgba(1, 1, 1, 0.28)
-    readonly property color shellHover: isLight
-        ? Qt.rgba(0, 0, 0, 0.055) : Qt.rgba(1, 1, 1, 0.08)
-    readonly property color shellPressed: isLight
-        ? Qt.rgba(0, 0, 0, 0.085) : Qt.rgba(1, 1, 1, 0.12)
-    readonly property color shellActive: isLight
-        ? Qt.rgba(0, 122, 255, 0.14) : Qt.rgba(1, 1, 1, 0.15)
+    readonly property var state: material.state
+    readonly property bool isLight: material.isLight
+    readonly property bool isTransparent: material.isTransparent
+    readonly property bool isDefault: material.isDefault
+    readonly property bool isFrosted: material.isFrosted
+
+    readonly property color shellBackground: material.background
+    readonly property color shellSurface: material.surface
+    readonly property color shellSurfaceElevated: material.surfaceElevated
+    readonly property color shellBorder: material.border
+    readonly property color shellBorderHover: material.borderHover
+    readonly property color shellHover: material.hover
+    readonly property color shellPressed: material.pressed
+    readonly property color shellActive: material.active
     readonly property color shellTextMain: isLight ? Qt.rgba(0.05, 0.06, 0.07, 0.94) : "#f5f5f7"
     readonly property color shellTextSecondary: isLight ? Qt.rgba(0.13, 0.15, 0.18, 0.68) : Qt.rgba(1, 1, 1, 0.60)
     readonly property color shellTextLight: isLight ? Qt.rgba(0.08, 0.09, 0.11, 0.86) : "#e0e0e5"
@@ -46,9 +28,7 @@ QtObject {
     readonly property color shellIconMuted: isLight ? Qt.rgba(0.13, 0.15, 0.18, 0.32) : Qt.rgba(1, 1, 1, 0.25)
     readonly property color shellIconWarning: "#ff375f"
     readonly property color shellIconAccent: state && state.accentHex ? state.accentHex : "#60aaff"
-    readonly property color shellSeparator: isLight
-        ? (isDefault ? Qt.rgba(0, 0, 0, 0.055) : Qt.rgba(0, 0, 0, 0.065))
-        : Qt.rgba(1, 1, 1, 0.08)
+    readonly property color shellSeparator: material.separator
 
     // Borealis semantic aliases.  ThemeController remains the shared state
     // authority; these names keep the reference QML vocabulary intact.
@@ -74,8 +54,8 @@ QtObject {
     readonly property color popupBackground: background
     readonly property color popupBorder: border
 
-    readonly property real shellRadiusLarge: 14
-    readonly property real shellRadiusMedium: 8
+    readonly property real shellRadiusLarge: material.radiusLarge
+    readonly property real shellRadiusMedium: material.radiusMedium
     readonly property real shellRadiusSmall: 6
     readonly property real shellControlRadius: 10
     readonly property real shellTileRadius: 12

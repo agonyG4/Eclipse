@@ -1,16 +1,33 @@
 #pragma once
 
-#include "AltTab/core/AltTabShortcutRouter.hpp"
+#include "platform/typhon/TyphonShortcutClient.hpp"
 
 #include <QString>
 
 class AltTabController;
 class SpotlightController;
+class ScreenshotController;
+
+enum class ShellShortcutAction {
+    Ignore,
+    AltTabNext,
+    AltTabPrevious,
+    AltTabCommit,
+    SpotlightToggle,
+    ScreenshotQuick,
+    ScreenshotRegionFrozen,
+    ScreenshotRegionLive,
+};
+Q_DECLARE_METATYPE(ShellShortcutAction)
+
+ShellShortcutAction mapTyphonShellShortcut(const QString &namespaceName, const QString &name,
+                                           TyphonShortcutPhase phase);
 
 class ShellShortcutDispatcher final {
 public:
     ShellShortcutDispatcher(AltTabController *altTabController,
-                            SpotlightController *spotlightController);
+                            SpotlightController *spotlightController,
+                            ScreenshotController *screenshotController = nullptr);
 
     void setAltTabEnabled(bool enabled) { m_altTabEnabled = enabled; }
     void setSpotlightEnabled(bool enabled) { m_spotlightEnabled = enabled; }
@@ -23,6 +40,7 @@ public:
 private:
     AltTabController *m_altTabController = nullptr;
     SpotlightController *m_spotlightController = nullptr;
+    ScreenshotController *m_screenshotController = nullptr;
     bool m_altTabEnabled = false;
     bool m_spotlightEnabled = false;
 };

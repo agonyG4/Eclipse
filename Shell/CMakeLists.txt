@@ -53,6 +53,10 @@ add_library(astrea-shell-runtime STATIC
     runtime/ShellRuntime.hpp
     platform/shortcut/ShellShortcutDispatcher.cpp
     platform/shortcut/ShellShortcutDispatcher.hpp
+    screenshot/ScreenshotController.cpp
+    screenshot/ScreenshotController.hpp
+    screenshot/ScreenshotUiBarrier.cpp
+    screenshot/ScreenshotUiBarrier.hpp
     platform/ipc/ShellIpcServer.cpp
     platform/ipc/ShellIpcServer.hpp
     ../Dock/core/DockAppInfo.cpp
@@ -92,6 +96,7 @@ target_link_libraries(astrea-shell-runtime PUBLIC
     astrea-shared-system
     astrea-shared-typhon
     astrea-shared-layer-shell
+    astrea-shared-wayland-effects
     astrea_spotlight_backend
 )
 shell_enable_sanitizers(astrea-shell-runtime)
@@ -112,6 +117,10 @@ qt_add_executable(astrea-shell
     platform/wayland/ContextMenuSurfaceBundle.hpp
     platform/wayland/ContextMenuSurfaceManager.cpp
     platform/wayland/ContextMenuSurfaceManager.hpp
+    screenshot/ScreenshotImageProvider.cpp
+    screenshot/ScreenshotImageProvider.hpp
+    screenshot/ScreenshotInputRegionBridge.cpp
+    screenshot/ScreenshotInputRegionBridge.hpp
 )
 target_include_directories(astrea-shell PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -146,6 +155,9 @@ set(_shell_qml_files
     "${CMAKE_CURRENT_SOURCE_DIR}/../Spotlight/qml/components/SpotlightResultsList.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Spotlight/qml/components/SpotlightWeatherChip.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Spotlight/qml/components/AstreaAppIcon.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/screenshot/ScreenshotOverlay.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/screenshot/ScreenshotThumbnail.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/screenshot/ScreenshotPreview.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuCard.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuItem.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuSeparator.qml"
@@ -179,6 +191,12 @@ set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../Spotlight/qml/compon
     PROPERTIES QT_RESOURCE_ALIAS "Spotlight/qml/components/SpotlightWeatherChip.qml")
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../Spotlight/qml/components/AstreaAppIcon.qml"
     PROPERTIES QT_RESOURCE_ALIAS "Spotlight/qml/components/AstreaAppIcon.qml")
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/screenshot/ScreenshotOverlay.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Screenshot/ScreenshotOverlay.qml")
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/screenshot/ScreenshotThumbnail.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Screenshot/ScreenshotThumbnail.qml")
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/screenshot/ScreenshotPreview.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Screenshot/ScreenshotPreview.qml")
 set_source_files_properties(
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuCard.qml"
     PROPERTIES QT_RESOURCE_ALIAS "ContextMenu/qml/ContextMenuCard.qml")
@@ -241,6 +259,66 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     shell_enable_sanitizers(context-menu-qml-smoke-test)
     add_test(NAME context-menu-qml-smoke-test COMMAND context-menu-qml-smoke-test)
 
+    add_executable(screenshot-overlay-qml-smoke-test
+        tests/ScreenshotOverlayQmlSmokeTest.cpp
+        screenshot/ScreenshotImageProvider.cpp
+    )
+    qt_add_resources(screenshot-overlay-qml-smoke-test astrea_screenshot_overlay_test_resources
+        PREFIX "/qt/qml/Astrea/Shell"
+        FILES
+            ${CMAKE_CURRENT_SOURCE_DIR}/screenshot/ScreenshotOverlay.qml
+    )
+    target_include_directories(screenshot-overlay-qml-smoke-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/.."
+    )
+    target_link_libraries(screenshot-overlay-qml-smoke-test PRIVATE
+        astrea-shell-runtime
+        Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test
+    )
+    shell_enable_sanitizers(screenshot-overlay-qml-smoke-test)
+    add_test(NAME screenshot-overlay-qml-smoke-test COMMAND screenshot-overlay-qml-smoke-test)
+
+    add_executable(screenshot-ui-barrier-test
+        tests/ScreenshotUiBarrierTest.cpp
+    )
+    target_include_directories(screenshot-ui-barrier-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/.."
+    )
+    target_link_libraries(screenshot-ui-barrier-test PRIVATE
+        astrea-shell-runtime
+        Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test
+    )
+    shell_enable_sanitizers(screenshot-ui-barrier-test)
+    add_test(NAME screenshot-ui-barrier-test COMMAND screenshot-ui-barrier-test)
+    set_tests_properties(screenshot-ui-barrier-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    add_executable(screenshot-thumbnail-qml-test
+        tests/ScreenshotThumbnailQmlTest.cpp
+        screenshot/ScreenshotImageProvider.cpp
+        screenshot/ScreenshotInputRegionBridge.cpp
+    )
+    qt_add_resources(screenshot-thumbnail-qml-test astrea_screenshot_thumbnail_test_resources
+        PREFIX "/qt/qml/Astrea/Shell"
+        FILES
+            ${CMAKE_CURRENT_SOURCE_DIR}/screenshot/ScreenshotThumbnail.qml
+            ${CMAKE_CURRENT_SOURCE_DIR}/screenshot/ScreenshotPreview.qml
+    )
+    target_include_directories(screenshot-thumbnail-qml-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/.."
+    )
+    target_link_libraries(screenshot-thumbnail-qml-test PRIVATE
+        astrea-shell-runtime
+        Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test
+    )
+    shell_enable_sanitizers(screenshot-thumbnail-qml-test)
+    add_test(NAME screenshot-thumbnail-qml-test COMMAND screenshot-thumbnail-qml-test)
+    set_tests_properties(screenshot-thumbnail-qml-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
     add_executable(context-menu-qml-interaction-test
         tests/ContextMenuQmlInteractionTest.cpp
     )
@@ -269,7 +347,7 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     shell_enable_sanitizers(context-menu-qml-interaction-test)
     add_test(NAME context-menu-qml-interaction-test COMMAND context-menu-qml-interaction-test)
     set_tests_properties(
-        context-menu-qml-smoke-test context-menu-qml-interaction-test
+        context-menu-qml-smoke-test screenshot-overlay-qml-smoke-test context-menu-qml-interaction-test
         PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     )
 endif()
@@ -408,6 +486,22 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     )
     shell_enable_sanitizers(shell-shortcut-dispatcher-test)
     add_test(NAME shell-shortcut-dispatcher-test COMMAND shell-shortcut-dispatcher-test)
+
+    add_executable(screenshot-controller-test
+        tests/ScreenshotControllerTest.cpp
+    )
+    target_include_directories(screenshot-controller-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/.."
+    )
+    target_link_libraries(screenshot-controller-test PRIVATE
+        astrea-shell-runtime
+        Qt6::Gui Qt6::Test
+    )
+    shell_enable_sanitizers(screenshot-controller-test)
+    add_test(NAME screenshot-controller-test COMMAND screenshot-controller-test)
+    set_tests_properties(screenshot-controller-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
     if(ASTREA_TYPHON_WAYLAND_AVAILABLE AND ASTREA_WAYLAND_SERVER_FOUND)
         add_executable(shell-unified-runtime-integration-test

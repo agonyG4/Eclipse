@@ -28,7 +28,9 @@ class SpotlightConfigWatcher;
 class SpotlightController;
 class ShellIpcServer;
 class ShellShortcutDispatcher;
+class ScreenshotController;
 class TyphonShortcutClient;
+class TyphonScreenCaptureClient;
 class TyphonSharedConnection;
 class TyphonToplevelConnection;
 class TyphonWorkspaceClient;
@@ -69,6 +71,8 @@ public:
     TyphonSharedConnection *typhonSession() const { return m_typhonSession.get(); }
     TyphonToplevelConnection *typhonToplevelConnection() const { return m_typhonToplevel.get(); }
     TyphonShortcutClient *shortcutClient() const { return m_shortcutClient.get(); }
+    TyphonScreenCaptureClient *screenCaptureClient() const { return m_screenCaptureClient.get(); }
+    ScreenshotController *screenshotController() const { return m_screenshotController.get(); }
     TyphonWorkspaceClient *workspaceClient() const { return m_workspaceClient.get(); }
     TyphonWorkspaceController *workspaceController() const { return m_workspaceController.get(); }
     CompositorBackend *windowBackend() const { return m_windowBackend.get(); }
@@ -117,6 +121,7 @@ private:
     std::unique_ptr<TyphonSharedConnection> m_typhonSession;
     std::unique_ptr<TyphonToplevelConnection> m_typhonToplevel;
     std::unique_ptr<TyphonShortcutClient> m_shortcutClient;
+    std::unique_ptr<TyphonScreenCaptureClient> m_screenCaptureClient;
     std::unique_ptr<TyphonWorkspaceClient> m_workspaceClient;
     std::unique_ptr<TyphonWorkspaceController> m_workspaceController;
     std::unique_ptr<CompositorBackend> m_windowBackend;
@@ -129,6 +134,7 @@ private:
     std::unique_ptr<ThemeController> m_themeController;
     std::unique_ptr<WorkspaceModel> m_workspaceModel;
     std::unique_ptr<ShellShortcutDispatcher> m_shortcutDispatcher;
+    std::unique_ptr<ScreenshotController> m_screenshotController;
     std::unique_ptr<ShellIpcServer> m_ipcServer;
     std::unique_ptr<Paper::WallpaperService> m_wallpaperService;
     std::unique_ptr<Paper::WallpaperControlServer> m_wallpaperControlServer;

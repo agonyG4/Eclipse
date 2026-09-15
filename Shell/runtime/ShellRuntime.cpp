@@ -24,10 +24,12 @@
 #include "launch/ApplicationLauncher.hpp"
 #include "platform/ipc/ShellIpcServer.hpp"
 #include "platform/shortcut/ShellShortcutDispatcher.hpp"
+#include "platform/typhon/TyphonScreenCaptureClient.hpp"
 #include "platform/typhon/TyphonSharedConnection.hpp"
 #include "platform/typhon/TyphonShortcutClient.hpp"
 #include "platform/typhon/TyphonToplevelConnection.hpp"
 #include "platform/typhon/TyphonWorkspaceClient.hpp"
+#include "screenshot/ScreenshotController.hpp"
 #include "Paper/core/WallpaperPersistence.hpp"
 #include "Paper/core/WallpaperCatalog.hpp"
 #include "Paper/core/WallpaperResolver.hpp"
@@ -70,11 +72,13 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
 
     m_typhonSession = std::make_unique<TyphonSharedConnection>();
     m_shortcutClient = std::make_unique<TyphonShortcutClient>(m_typhonSession.get());
+    m_screenCaptureClient = std::make_unique<TyphonScreenCaptureClient>(m_typhonSession.get());
     m_workspaceClient = std::make_unique<TyphonWorkspaceClient>(m_typhonSession.get());
     m_workspaceController = std::make_unique<TyphonWorkspaceController>(m_workspaceClient.get());
 
     if (!createBackend(backendName, errorOut)) {
         m_shortcutClient.reset();
+        m_screenCaptureClient.reset();
         m_workspaceController.reset();
         m_workspaceClient.reset();
         m_typhonSession.reset();
@@ -93,6 +97,8 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
                                                               m_identityResolver.get());
     m_spotlightController = std::make_unique<SpotlightController>(
         spotlightPaths, m_catalog.get(), m_launcher.get());
+    m_screenshotController = std::make_unique<ScreenshotController>(
+        m_screenCaptureClient.get());
     m_workspaceModel = std::make_unique<WorkspaceModel>();
     connect(m_workspaceClient.get(), &TyphonWorkspaceClient::snapshotChanged, this,
             [this](QVector<TyphonWorkspaceRecord> workspaces) {
@@ -110,8 +116,8 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
                                                        m_spotlightController.get(),
                                                        m_workspaceModel.get());
     m_barController->setWorkspaceController(m_workspaceController.get());
-    m_shortcutDispatcher = std::make_unique<ShellShortcutDispatcher>(m_altTabController.get(),
-                                                                       m_spotlightController.get());
+    m_shortcutDispatcher = std::make_unique<ShellShortcutDispatcher>(
+        m_altTabController.get(), m_spotlightController.get(), m_screenshotController.get());
     m_ipcServer = std::make_unique<ShellIpcServer>();
     const auto wallpaperResolver = Paper::WallpaperResolver();
     auto wallpaperCatalog = std::make_shared<Paper::WallpaperCatalog>(wallpaperResolver);
@@ -298,6 +304,7 @@ void ShellRuntime::start()
     if (m_windowBackend)
         m_windowBackend->start();
     m_shortcutClient->start();
+    m_screenCaptureClient->start();
     m_gameMode->start();
     m_barClock->start();
     m_audioService->start();
@@ -324,6 +331,7 @@ void ShellRuntime::stop()
         m_audioService->stop();
     m_gameMode->stop();
     m_shortcutClient->stop();
+    m_screenCaptureClient->stop();
     m_workspaceClient->stop();
     if (m_barClock)
         m_barClock->stop();

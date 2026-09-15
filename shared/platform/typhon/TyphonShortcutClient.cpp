@@ -151,6 +151,9 @@ constexpr ShortcutSpec kShortcutSpecs[] = {
     {"alt_tab_previous", "Reverse the native Alt+Tab selection"},
     {"alt_tab_commit", "Commit the native Alt+Tab selection"},
     {"spotlight_toggle", "Toggle the Astrea Spotlight shell surface"},
+    {"screenshot_quick", "Capture the compositor-published screen"},
+    {"screenshot_region_frozen", "Select a region from a frozen screenshot"},
+    {"screenshot_region_live", "Select a region from the live desktop"},
 };
 
 } // namespace

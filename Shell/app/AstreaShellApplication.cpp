@@ -23,6 +23,9 @@
 #include "icons/AstreaIconTheme.hpp"
 #include "statusnotifier/StatusNotifierIconProvider.hpp"
 #include "statusnotifier/StatusNotifierService.hpp"
+#include "screenshot/ScreenshotController.hpp"
+#include "screenshot/ScreenshotInputRegionBridge.hpp"
+#include "screenshot/ScreenshotImageProvider.hpp"
 #include "theme/ThemeController.hpp"
 #include "system/audio/AudioService.hpp"
 #include "system/network/NetworkService.hpp"
@@ -170,6 +173,8 @@ bool AstreaShellApplication::initializeQml()
     auto *trayIconProvider = new Astrea::StatusNotifier::StatusNotifierIconProvider(
         m_runtime->statusNotifier()->iconStore());
     m_engine->addImageProvider(QStringLiteral("astrea-tray"), trayIconProvider);
+    auto *screenshotProvider = new ScreenshotImageProvider(m_runtime->screenshotController());
+    m_engine->addImageProvider(QStringLiteral("astrea-screenshot"), screenshotProvider);
     context->setContextProperty(QStringLiteral("DockController"), m_runtime->dockController());
     context->setContextProperty(QStringLiteral("DockSurfaceGeometry"),
                                 static_cast<QObject *>(m_runtime->dockSurfaceGeometry()));
@@ -182,6 +187,13 @@ bool AstreaShellApplication::initializeQml()
                                 m_runtime->altTabController()->windowModel());
     context->setContextProperty(QStringLiteral("SpotlightController"),
                                 m_runtime->spotlightController());
+    context->setContextProperty(QStringLiteral("ScreenshotController"),
+                                static_cast<QObject *>(m_runtime->screenshotController()));
+    m_screenshotInputRegion = std::make_unique<ScreenshotInputRegionBridge>();
+    context->setContextProperty(QStringLiteral("ScreenshotInputRegion"),
+                                static_cast<QObject *>(m_screenshotInputRegion.get()));
+    m_screenshotUiBarrier = std::make_unique<ScreenshotWaylandUiBarrier>();
+    m_runtime->screenshotController()->setUiBarrier(m_screenshotUiBarrier.get());
     context->setContextProperty(QStringLiteral("AstreaI18n"), m_i18n.get());
     context->setContextProperty(QStringLiteral("BarController"),
                                 static_cast<QObject *>(m_runtime->barController()));
@@ -224,6 +236,36 @@ bool AstreaShellApplication::initializeQml()
     } else {
         m_spotlightWindow = window;
     }
+
+    if (!loadSurface(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Screenshot/ScreenshotOverlay.qml")),
+                     &window)) {
+        qCritical("Astrea shell screenshot surface failed to load");
+        return false;
+    } else {
+        m_screenshotWindow = window;
+    }
+
+    if (!loadSurface(QUrl(QStringLiteral(
+                         "qrc:/qt/qml/Astrea/Shell/Screenshot/ScreenshotThumbnail.qml")),
+                     &window)) {
+        qCritical("Astrea shell screenshot thumbnail surface failed to load");
+        return false;
+    } else {
+        m_screenshotThumbnailWindow = window;
+        m_screenshotInputRegion->setWindow(m_screenshotThumbnailWindow);
+    }
+
+    if (!loadSurface(QUrl(QStringLiteral(
+                         "qrc:/qt/qml/Astrea/Shell/Screenshot/ScreenshotPreview.qml")),
+                     &window)) {
+        qCritical("Astrea shell screenshot preview surface failed to load");
+        return false;
+    } else {
+        m_screenshotPreviewWindow = window;
+    }
+
+    m_screenshotUiBarrier->setTrackedWindows(
+        {m_screenshotWindow, m_screenshotThumbnailWindow, m_screenshotPreviewWindow});
 
     if (!configureSurfaces())
         return false;
@@ -308,6 +350,53 @@ bool AstreaShellApplication::configureSurfaces()
         return false;
     }
     m_spotlightLayerConfigurationRequested = true;
+
+    if (!m_screenshotWindow) {
+        qCritical("Astrea shell screenshot surface is unavailable");
+        return false;
+    }
+    if (!m_screenshotThumbnailWindow || !m_screenshotPreviewWindow) {
+        qCritical("Astrea shell screenshot auxiliary surfaces are unavailable");
+        return false;
+    }
+    AstreaLayerShellConfig screenshotConfig;
+    screenshotConfig.scope = QStringLiteral("astrea-screenshot");
+    screenshotConfig.layer = AstreaLayerShellConfig::Layer::Overlay;
+    screenshotConfig.keyboardInteractivity =
+        AstreaLayerShellConfig::KeyboardInteractivity::Exclusive;
+    screenshotConfig.anchorTop = true;
+    screenshotConfig.anchorBottom = true;
+    screenshotConfig.anchorLeft = true;
+    screenshotConfig.anchorRight = true;
+    screenshotConfig.exclusiveZone = -1;
+    screenshotConfig.screen = QGuiApplication::primaryScreen();
+    error.clear();
+    if (!AstreaLayerShellHelper::configure(m_screenshotWindow, screenshotConfig, &error)) {
+        qCritical("Astrea shell screenshot Layer Shell setup failed: %s", qPrintable(error));
+        return false;
+    }
+    m_screenshotLayerConfigurationRequested = true;
+
+    AstreaLayerShellConfig thumbnailConfig = screenshotConfig;
+    thumbnailConfig.scope = QStringLiteral("astrea-screenshot-thumbnail");
+    thumbnailConfig.keyboardInteractivity = AstreaLayerShellConfig::KeyboardInteractivity::None;
+    error.clear();
+    if (!AstreaLayerShellHelper::configure(m_screenshotThumbnailWindow, thumbnailConfig, &error)) {
+        qCritical("Astrea shell screenshot thumbnail Layer Shell setup failed: %s",
+                  qPrintable(error));
+        return false;
+    }
+    m_screenshotThumbnailLayerConfigurationRequested = true;
+
+    AstreaLayerShellConfig previewConfig = screenshotConfig;
+    previewConfig.scope = QStringLiteral("astrea-screenshot-preview");
+    error.clear();
+    if (!AstreaLayerShellHelper::configure(m_screenshotPreviewWindow, previewConfig, &error)) {
+        qCritical("Astrea shell screenshot preview Layer Shell setup failed: %s",
+                  qPrintable(error));
+        return false;
+    }
+    m_screenshotPreviewLayerConfigurationRequested = true;
     return true;
 }
 

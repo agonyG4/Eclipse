@@ -15,6 +15,7 @@ class ShellShortcutDispatcherTest final : public QObject {
 private slots:
     void spotlightToggleIsIndependentFromAltTabGate();
     void altTabToggleIsIndependentFromSpotlightGate();
+    void screenshotActionsAreShellWideAndPressOnly();
 };
 
 void ShellShortcutDispatcherTest::spotlightToggleIsIndependentFromAltTabGate()
@@ -66,6 +67,28 @@ void ShellShortcutDispatcherTest::altTabToggleIsIndependentFromSpotlightGate()
     dispatcher.dispatch(QStringLiteral("astrea-shell"), QStringLiteral("spotlight_toggle"),
                          TyphonShortcutPhase::Pressed);
     QVERIFY(!spotlight.isOpen());
+}
+
+void ShellShortcutDispatcherTest::screenshotActionsAreShellWideAndPressOnly()
+{
+    const QList<QPair<QString, ShellShortcutAction>> actions = {
+        {QStringLiteral("screenshot_quick"), ShellShortcutAction::ScreenshotQuick},
+        {QStringLiteral("screenshot_region_frozen"), ShellShortcutAction::ScreenshotRegionFrozen},
+        {QStringLiteral("screenshot_region_live"), ShellShortcutAction::ScreenshotRegionLive},
+    };
+    for (const auto &[name, action] : actions) {
+        QCOMPARE(mapTyphonShellShortcut(QStringLiteral("astrea-shell"), name,
+                                         TyphonShortcutPhase::Pressed), action);
+        QCOMPARE(mapTyphonShellShortcut(QStringLiteral("astrea-shell"), name,
+                                         TyphonShortcutPhase::Repeated),
+                 ShellShortcutAction::Ignore);
+        QCOMPARE(mapTyphonShellShortcut(QStringLiteral("astrea-shell"), name,
+                                         TyphonShortcutPhase::Released),
+                 ShellShortcutAction::Ignore);
+        QCOMPARE(mapTyphonShellShortcut(QStringLiteral("other"), name,
+                                         TyphonShortcutPhase::Pressed),
+                 ShellShortcutAction::Ignore);
+    }
 }
 
 QTEST_GUILESS_MAIN(ShellShortcutDispatcherTest)

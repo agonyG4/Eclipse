@@ -357,6 +357,8 @@ add_library(astrea-shared-typhon STATIC
     platform/typhon/TyphonWaylandDisplay.hpp
     platform/typhon/TyphonShortcutClient.cpp
     platform/typhon/TyphonShortcutClient.hpp
+    platform/typhon/TyphonScreenCaptureClient.cpp
+    platform/typhon/TyphonScreenCaptureClient.hpp
     platform/typhon/TyphonToplevelConnection.cpp
     platform/typhon/TyphonToplevelConnection.hpp
     platform/typhon/TyphonToplevelModel.cpp
@@ -375,7 +377,7 @@ if(NOT MSVC)
     target_compile_options(astrea-shared-typhon PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-target_link_libraries(astrea-shared-typhon PUBLIC Qt6::Core)
+target_link_libraries(astrea-shared-typhon PUBLIC Qt6::Core Qt6::Gui)
 if(ASTREA_TYPHON_WAYLAND_AVAILABLE)
     set(ASTREA_TYPHON_PROTOCOL_XML
         "${CMAKE_CURRENT_SOURCE_DIR}/platform/typhon/protocols/astrea-toplevel-management-v1.xml")
@@ -408,6 +410,16 @@ if(ASTREA_TYPHON_WAYLAND_AVAILABLE)
         "${ASTREA_TYPHON_GENERATED_DIR}/astrea-shell-auth-v1-server-protocol.h")
     set(ASTREA_SHELL_AUTH_SERVER_GENERATED_SOURCE
         "${ASTREA_TYPHON_GENERATED_DIR}/astrea-shell-auth-v1-server-protocol.c")
+    set(ASTREA_SCREEN_CAPTURE_PROTOCOL_XML
+        "${CMAKE_CURRENT_SOURCE_DIR}/platform/typhon/protocols/astrea-screen-capture-v1.xml")
+    set(ASTREA_SCREEN_CAPTURE_GENERATED_HEADER
+        "${ASTREA_TYPHON_GENERATED_DIR}/astrea-screen-capture-v1-client-protocol.h")
+    set(ASTREA_SCREEN_CAPTURE_GENERATED_SOURCE
+        "${ASTREA_TYPHON_GENERATED_DIR}/astrea-screen-capture-v1-client-protocol.c")
+    set(ASTREA_SCREEN_CAPTURE_SERVER_GENERATED_HEADER
+        "${ASTREA_TYPHON_GENERATED_DIR}/astrea-screen-capture-v1-server-protocol.h")
+    set(ASTREA_SCREEN_CAPTURE_SERVER_GENERATED_SOURCE
+        "${ASTREA_TYPHON_GENERATED_DIR}/astrea-screen-capture-v1-server-protocol.c")
     set(ASTREA_EXT_WORKSPACE_PROTOCOL_XML
         "${CMAKE_CURRENT_SOURCE_DIR}/platform/typhon/protocols/ext-workspace-v1.xml")
     set(ASTREA_EXT_WORKSPACE_GENERATED_HEADER
@@ -421,6 +433,8 @@ if(ASTREA_TYPHON_WAYLAND_AVAILABLE)
                "${ASTREA_SHORTCUT_SERVER_GENERATED_HEADER}" "${ASTREA_SHORTCUT_SERVER_GENERATED_SOURCE}"
                "${ASTREA_SHELL_AUTH_GENERATED_HEADER}" "${ASTREA_SHELL_AUTH_GENERATED_SOURCE}"
                "${ASTREA_SHELL_AUTH_SERVER_GENERATED_HEADER}" "${ASTREA_SHELL_AUTH_SERVER_GENERATED_SOURCE}"
+               "${ASTREA_SCREEN_CAPTURE_GENERATED_HEADER}" "${ASTREA_SCREEN_CAPTURE_GENERATED_SOURCE}"
+               "${ASTREA_SCREEN_CAPTURE_SERVER_GENERATED_HEADER}" "${ASTREA_SCREEN_CAPTURE_SERVER_GENERATED_SOURCE}"
                "${ASTREA_EXT_WORKSPACE_GENERATED_HEADER}" "${ASTREA_EXT_WORKSPACE_GENERATED_SOURCE}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${ASTREA_TYPHON_GENERATED_DIR}"
         COMMAND "${ASTREA_WAYLAND_SCANNER}" client-header
@@ -448,11 +462,20 @@ if(ASTREA_TYPHON_WAYLAND_AVAILABLE)
         COMMAND "${ASTREA_WAYLAND_SCANNER}" private-code
                 "${ASTREA_SHELL_AUTH_PROTOCOL_XML}" "${ASTREA_SHELL_AUTH_SERVER_GENERATED_SOURCE}"
         COMMAND "${ASTREA_WAYLAND_SCANNER}" client-header
+                "${ASTREA_SCREEN_CAPTURE_PROTOCOL_XML}" "${ASTREA_SCREEN_CAPTURE_GENERATED_HEADER}"
+        COMMAND "${ASTREA_WAYLAND_SCANNER}" private-code
+                "${ASTREA_SCREEN_CAPTURE_PROTOCOL_XML}" "${ASTREA_SCREEN_CAPTURE_GENERATED_SOURCE}"
+        COMMAND "${ASTREA_WAYLAND_SCANNER}" server-header
+                "${ASTREA_SCREEN_CAPTURE_PROTOCOL_XML}" "${ASTREA_SCREEN_CAPTURE_SERVER_GENERATED_HEADER}"
+        COMMAND "${ASTREA_WAYLAND_SCANNER}" private-code
+                "${ASTREA_SCREEN_CAPTURE_PROTOCOL_XML}" "${ASTREA_SCREEN_CAPTURE_SERVER_GENERATED_SOURCE}"
+        COMMAND "${ASTREA_WAYLAND_SCANNER}" client-header
                 "${ASTREA_EXT_WORKSPACE_PROTOCOL_XML}" "${ASTREA_EXT_WORKSPACE_GENERATED_HEADER}"
         COMMAND "${ASTREA_WAYLAND_SCANNER}" private-code
                 "${ASTREA_EXT_WORKSPACE_PROTOCOL_XML}" "${ASTREA_EXT_WORKSPACE_GENERATED_SOURCE}"
         DEPENDS "${ASTREA_TYPHON_PROTOCOL_XML}" "${ASTREA_SHORTCUT_PROTOCOL_XML}"
-                "${ASTREA_SHELL_AUTH_PROTOCOL_XML}" "${ASTREA_EXT_WORKSPACE_PROTOCOL_XML}"
+                "${ASTREA_SHELL_AUTH_PROTOCOL_XML}" "${ASTREA_SCREEN_CAPTURE_PROTOCOL_XML}"
+                "${ASTREA_EXT_WORKSPACE_PROTOCOL_XML}"
         VERBATIM
     )
     set_source_files_properties("${ASTREA_TYPHON_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
@@ -461,6 +484,8 @@ if(ASTREA_TYPHON_WAYLAND_AVAILABLE)
     set_source_files_properties("${ASTREA_SHORTCUT_SERVER_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
     set_source_files_properties("${ASTREA_SHELL_AUTH_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
     set_source_files_properties("${ASTREA_SHELL_AUTH_SERVER_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
+    set_source_files_properties("${ASTREA_SCREEN_CAPTURE_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
+    set_source_files_properties("${ASTREA_SCREEN_CAPTURE_SERVER_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
     set_source_files_properties("${ASTREA_EXT_WORKSPACE_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
     target_sources(astrea-shared-typhon PRIVATE
         "${ASTREA_TYPHON_GENERATED_HEADER}"
@@ -471,6 +496,10 @@ if(ASTREA_TYPHON_WAYLAND_AVAILABLE)
         "${ASTREA_SHELL_AUTH_GENERATED_SOURCE}"
         "${ASTREA_SHELL_AUTH_SERVER_GENERATED_HEADER}"
         "${ASTREA_SHELL_AUTH_SERVER_GENERATED_SOURCE}"
+        "${ASTREA_SCREEN_CAPTURE_GENERATED_HEADER}"
+        "${ASTREA_SCREEN_CAPTURE_GENERATED_SOURCE}"
+        "${ASTREA_SCREEN_CAPTURE_SERVER_GENERATED_HEADER}"
+        "${ASTREA_SCREEN_CAPTURE_SERVER_GENERATED_SOURCE}"
         "${ASTREA_EXT_WORKSPACE_GENERATED_HEADER}"
         "${ASTREA_EXT_WORKSPACE_GENERATED_SOURCE}"
     )
@@ -523,6 +552,13 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     )
     target_link_libraries(typhon-toplevel-protocol-contract-test PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME typhon-toplevel-protocol-contract-test COMMAND typhon-toplevel-protocol-contract-test)
+
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME astrea-screen-capture-protocol-consistency-test
+        COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_astrea_screen_capture_protocol.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/platform/typhon/protocols/astrea-screen-capture-v1.xml"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../Typhon/protocols/astrea-screen-capture-v1.xml")
 
     add_executable(desktop-entry-catalog-test
         tests/DesktopEntryCatalogTest.cpp
@@ -722,6 +758,24 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     endif()
 
     if(ASTREA_TYPHON_WAYLAND_AVAILABLE AND ASTREA_WAYLAND_SERVER_FOUND)
+        add_executable(typhon-screen-capture-protocol-integration-test
+            tests/TyphonScreenCaptureProtocolIntegrationTest.cpp
+            "${ASTREA_SCREEN_CAPTURE_SERVER_GENERATED_SOURCE}"
+            "${ASTREA_SHELL_AUTH_SERVER_GENERATED_SOURCE}"
+        )
+        target_include_directories(typhon-screen-capture-protocol-integration-test PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+            "${ASTREA_TYPHON_GENERATED_DIR}"
+        )
+        target_link_libraries(typhon-screen-capture-protocol-integration-test PRIVATE
+            astrea-shared-typhon
+            Qt6::Test
+            PkgConfig::ASTREA_WAYLAND_SERVER
+        )
+        astrea_shared_enable_sanitizers(typhon-screen-capture-protocol-integration-test)
+        add_test(NAME typhon-screen-capture-protocol-integration-test
+                 COMMAND typhon-screen-capture-protocol-integration-test)
+
         add_executable(typhon-shortcut-protocol-integration-test
             tests/TyphonShortcutProtocolIntegrationTest.cpp
             "${ASTREA_SHORTCUT_SERVER_GENERATED_SOURCE}"
@@ -757,6 +811,7 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
             typhon-protocol-client-test
             typhon-action-state-test
             typhon-protocol-integration-test
+            typhon-screen-capture-protocol-integration-test
             typhon-shortcut-protocol-integration-test
             PROPERTIES
             ENVIRONMENT

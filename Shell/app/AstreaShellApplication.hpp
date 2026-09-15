@@ -17,6 +17,8 @@ class ShellRuntime;
 class BarSurfaceManager;
 class ContextMenuSurfaceManager;
 class DockInputRegionBridge;
+class ScreenshotInputRegionBridge;
+class ScreenshotWaylandUiBarrier;
 
 namespace Paper {
 class WallpaperSurfaceManager;
@@ -49,11 +51,16 @@ private:
     std::unique_ptr<AstreaI18n> m_i18n;
     std::unique_ptr<QQmlApplicationEngine> m_engine;
     std::unique_ptr<DockInputRegionBridge> m_dockInputRegion;
+    std::unique_ptr<ScreenshotInputRegionBridge> m_screenshotInputRegion;
+    std::unique_ptr<ScreenshotWaylandUiBarrier> m_screenshotUiBarrier;
     QPointer<QQuickWindow> m_dockWindow;
     QPointer<QScreen> m_dockScreen;
     QMetaObject::Connection m_dockGeometryConnection;
     QPointer<QQuickWindow> m_altTabWindow;
     QPointer<QQuickWindow> m_spotlightWindow;
+    QPointer<QQuickWindow> m_screenshotWindow;
+    QPointer<QQuickWindow> m_screenshotThumbnailWindow;
+    QPointer<QQuickWindow> m_screenshotPreviewWindow;
     std::unique_ptr<BarSurfaceManager> m_barSurfaceManager;
     std::unique_ptr<ContextMenuSurfaceManager> m_contextMenuSurfaceManager;
     std::unique_ptr<Paper::WallpaperSurfaceManager> m_wallpaperSurfaceManager;
@@ -62,4 +69,7 @@ private:
     bool m_dockLayerConfigurationRequested = false;
     bool m_altTabLayerConfigurationRequested = false;
     bool m_spotlightLayerConfigurationRequested = false;
+    bool m_screenshotLayerConfigurationRequested = false;
+    bool m_screenshotThumbnailLayerConfigurationRequested = false;
+    bool m_screenshotPreviewLayerConfigurationRequested = false;
 };

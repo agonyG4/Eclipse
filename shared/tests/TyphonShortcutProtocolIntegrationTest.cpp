@@ -340,10 +340,13 @@ void TyphonShortcutProtocolIntegrationTest::registersReservedShortcutsAndDeliver
 
     client.start();
     QVERIFY(compositor.pumpUntil([&client] { return client.isReady(); }));
-    QCOMPARE(client.registeredShortcutCount(), 4);
+    QCOMPARE(client.registeredShortcutCount(), 7);
     QCOMPARE(compositor.registrationNames(),
              QStringList({QStringLiteral("alt_tab_commit"), QStringLiteral("alt_tab_next"),
                           QStringLiteral("alt_tab_previous"),
+                          QStringLiteral("screenshot_quick"),
+                          QStringLiteral("screenshot_region_frozen"),
+                          QStringLiteral("screenshot_region_live"),
                           QStringLiteral("spotlight_toggle")}));
 
     compositor.sendPressed(QStringLiteral("alt_tab_next"), 11, 101);
@@ -374,8 +377,8 @@ void TyphonShortcutProtocolIntegrationTest::cancellationDoesNotReregister()
     QVERIFY(compositor.pumpUntil([&eventSpy] { return eventSpy.count() == 1; }));
     QCOMPARE(qvariant_cast<TyphonShortcutPhase>(eventSpy.at(0).at(2)),
              TyphonShortcutPhase::Cancelled);
-    QCOMPARE(client.registeredShortcutCount(), 3);
-    QCOMPARE(compositor.registrationNames().size(), 3);
+    QCOMPARE(client.registeredShortcutCount(), 6);
+    QCOMPARE(compositor.registrationNames().size(), 6);
 }
 
 void TyphonShortcutProtocolIntegrationTest::sharedSessionOwnsShortcutTransport()
@@ -407,7 +410,7 @@ void TyphonShortcutProtocolIntegrationTest::sharedSessionRestoresShortcutOwnersh
     client.start();
     QVERIFY(compositor.pumpUntil([&client] { return client.isReady(); }));
     QCOMPARE(session.connectionGeneration(), quint64(1));
-    QCOMPARE(client.registeredShortcutCount(), 4);
+    QCOMPARE(client.registeredShortcutCount(), 7);
 
     compositor.disconnectClients();
     QVERIFY(compositor.pumpUntil([&session] {
@@ -422,9 +425,9 @@ void TyphonShortcutProtocolIntegrationTest::sharedSessionRestoresShortcutOwnersh
             return client.isReady()
                 && client.connectionGeneration() == static_cast<quint64>(expectedGeneration);
         }));
-        QCOMPARE(client.registeredShortcutCount(), 4);
+        QCOMPARE(client.registeredShortcutCount(), 7);
         QCOMPARE(compositor.clientCount(), 1);
-        QCOMPARE(compositor.registrationNames().size(), 4);
+        QCOMPARE(compositor.registrationNames().size(), 7);
 
         eventSpy.clear();
         compositor.sendPressed(QStringLiteral("spotlight_toggle"), expectedGeneration, 1);

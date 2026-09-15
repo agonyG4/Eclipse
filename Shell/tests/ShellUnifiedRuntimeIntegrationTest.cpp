@@ -93,7 +93,7 @@ void ShellUnifiedRuntimeIntegrationTest::unifiedRuntimeLifecycleAndStress()
     }));
     QCOMPARE(compositor.authenticationCount(), 1);
     QCOMPARE(compositor.clientCount(), 1);
-    QCOMPARE(runtime.shortcutClient()->registeredShortcutCount(), 4);
+    QCOMPARE(runtime.shortcutClient()->registeredShortcutCount(), 7);
     publishUnifiedWindow(compositor, QStringLiteral("1"), 1);
     QVERIFY(waitForSnapshot(compositor, runtime));
     QCOMPARE(runtime.typhonToplevelConnection()->snapshot().windows.size(), 1);
@@ -148,7 +148,7 @@ void ShellUnifiedRuntimeIntegrationTest::unifiedRuntimeLifecycleAndStress()
         runtime.spotlightController()->close();
         QVERIFY(!runtime.spotlightController()->isOpen());
     }
-    QCOMPARE(runtime.shortcutClient()->registeredShortcutCount(), 4);
+    QCOMPARE(runtime.shortcutClient()->registeredShortcutCount(), 7);
     QCOMPARE(runtime.typhonSession()->connectionGeneration(), quint64(1));
 
     compositor.disconnectClients();
@@ -168,7 +168,7 @@ void ShellUnifiedRuntimeIntegrationTest::unifiedRuntimeLifecycleAndStress()
     QCOMPARE(runtime.typhonSession()->connectionGeneration(), quint64(2));
     QCOMPARE(compositor.authenticationCount(), 2);
     QCOMPARE(compositor.clientCount(), 1);
-    QCOMPARE(runtime.shortcutClient()->registeredShortcutCount(), 4);
+    QCOMPARE(runtime.shortcutClient()->registeredShortcutCount(), 7);
     publishUnifiedWindow(compositor, QStringLiteral("2"), 2);
     QVERIFY(waitForSnapshot(compositor, runtime));
     QCOMPARE(runtime.typhonToplevelConnection()->snapshot().windows.first().id,

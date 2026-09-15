@@ -177,6 +177,29 @@ private slots:
         QVERIFY(!covered(rectangles, {70, 135}));
     }
 
+    void roundedPillPreservesCornerCutout()
+    {
+        QQuickWindow window;
+        window.resize(140, 80);
+        window.show();
+        auto *descriptors = new TestBackdropEffectRegions(window.contentItem());
+        auto *item = new QQuickItem(window.contentItem());
+        item->setSize({88.0, 36.0});
+        item->setPosition({20.0, 20.0});
+        auto *region = new AstreaBackdropRegion(descriptors);
+        region->setItem(item);
+        region->setRadius(12.0);
+        auto list = descriptors->regions();
+        list.append(&list, region);
+        descriptors->completeForTest();
+        drainEvents();
+
+        const auto rectangles = descriptors->resolvedRegion();
+        QVERIFY(rectangles.size() > 1);
+        QVERIFY(covered(rectangles, {64, 38}));
+        QVERIFY(!covered(rectangles, {20, 20}));
+    }
+
     void aggregateRegionBudgetRefusesUnrepresentableLayout()
     {
         QQuickWindow window;

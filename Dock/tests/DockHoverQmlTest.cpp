@@ -1,8 +1,10 @@
 #include "core/DockController.hpp"
 #include "core/DockSurfaceGeometry.hpp"
 #include "platform/wayland/DockInputRegionBridge.hpp"
+#include "platform/wayland/effects/AstreaBackdropEffectRegions.hpp"
 #include "services/DockConfigPersistence.hpp"
 #include "icons/AstreaIconProvider.hpp"
+#include "theme/ThemeController.hpp"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -178,6 +180,7 @@ private slots:
     void iconSourceQualityRemainsStableDuringHover();
     void windowDprMatchesScreenDprForDockIcon();
     void surfaceEnvelopeRemainsStableDuringMagnification();
+    void backdropRegionRemainsStableDuringMagnification();
     void pointerCenterRemainsStableForPracticalMagnificationTargets();
     void inputMaskTracksCenteredChromeAndMagnifiedIcon();
     void visualHeadroomKeepsIconsInBoundsForEveryIconSize();
@@ -394,7 +397,7 @@ void DockHoverQmlTest::surfaceEnvelopeRemainsStableDuringMagnification()
         panel, center->width() / 2.0, center->height() / 2.0).x();
     QVERIFY(QMetaObject::invokeMethod(panel, "updatePointer",
                                       Q_ARG(QVariant, QVariant(centerX))));
-    QTRY_VERIFY_WITH_TIMEOUT(chrome->width() > restingWidth, 1500);
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(chrome->width() - restingWidth) < 0.1, 1500);
     QTRY_VERIFY_WITH_TIMEOUT(center->property("magnificationScale").toReal() > 1.0, 1500);
     QVERIFY2(qAbs(panel->width() - initialSurfaceWidth) < 0.1,
              "hover must not resize the Layer Shell surface width");
@@ -410,6 +413,59 @@ void DockHoverQmlTest::surfaceEnvelopeRemainsStableDuringMagnification()
     QVERIFY2(qAbs(panel->height() - initialSurfaceHeight) < 0.1,
              "hover exit must not resize the Layer Shell surface height");
 
+    delete panel;
+}
+
+void DockHoverQmlTest::backdropRegionRemainsStableDuringMagnification()
+{
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    ThemeController theme(temporary.filePath(QStringLiteral("missing-theme.json")));
+    theme.setShellStyle(2);
+
+    DockController controller;
+    const QStringList pins{
+        QStringLiteral("one.desktop"), QStringLiteral("two.desktop"),
+        QStringLiteral("three.desktop"), QStringLiteral("four.desktop"),
+        QStringLiteral("five.desktop")};
+    controller.applyConfig(configFor(QStringLiteral("magnification"), pins));
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &theme);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready,
+             qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    QQuickWindow window;
+    panel->setParentItem(window.contentItem());
+    window.resize(900, 220);
+    panel->setX((window.width() - panel->width()) / 2.0);
+    window.show();
+    QTest::qWait(60);
+
+    const auto regions = panel->findChildren<AstreaBackdropEffectRegions *>();
+    QCOMPARE(regions.size(), 1);
+    auto *descriptors = regions.constFirst();
+    const auto before = descriptors->resolvedRegion();
+    QVERIFY(!before.isEmpty());
+
+    QQuickItem *center = delegate(panel, QStringLiteral("three.desktop"));
+    QVERIFY(center != nullptr);
+    const qreal centerX = center->mapToItem(
+        panel, center->width() / 2.0, center->height() / 2.0).x();
+    QVERIFY(QMetaObject::invokeMethod(panel, "updatePointer",
+                                      Q_ARG(QVariant, QVariant(centerX))));
+    QTRY_VERIFY_WITH_TIMEOUT(center->property("magnificationScale").toReal() > 1.0, 1500);
+    QTest::qWait(60);
+    QCOMPARE(descriptors->resolvedRegion(), before);
+
+    QVERIFY(QMetaObject::invokeMethod(panel, "setPointerInside",
+                                      Q_ARG(QVariant, QVariant(false))));
+    QTest::qWait(60);
+    QCOMPARE(descriptors->resolvedRegion(), before);
     delete panel;
 }
 
@@ -526,7 +582,7 @@ void DockHoverQmlTest::inputMaskTracksCenteredChromeAndMagnifiedIcon()
     QVERIFY(magnifiedIconRect.top() < chromeRect.top());
     QVERIFY(!window.mask().contains(QPoint(qRound(surfaceRect.left() + 1.0),
                                            qRound(surfaceRect.top() + 1.0))));
-    QVERIFY(chrome->width() > panel->property("restingWidth").toReal());
+    QVERIFY(qAbs(chrome->width() - panel->property("restingWidth").toReal()) < 0.1);
 
     delete panel;
 }
@@ -834,7 +890,7 @@ void DockHoverQmlTest::dragGeometryRemainsStableDuringMagnificationCollapse()
         QQuickItem *chrome = childWithObjectName(panel, QStringLiteral("dockChrome"));
         QVERIFY(chrome);
         QVERIFY(surfaceWidth > restingWidth);
-        QTRY_VERIFY_WITH_TIMEOUT(chrome->width() > restingWidth, 1000);
+        QTRY_VERIFY_WITH_TIMEOUT(qAbs(chrome->width() - restingWidth) < 0.1, 1000);
 
         QTRY_VERIFY_WITH_TIMEOUT(propertyReal(source, "magnificationScale") > 1.1, 2000);
         if (sourceIndex == 0 || sourceIndex == pins.size() - 1) {
@@ -1603,6 +1659,10 @@ void DockHoverQmlTest::verticalPositionsReusePrimaryAxisGeometry()
 
         const qreal initialSurfaceWidth = panel->width();
         const qreal initialSurfaceHeight = panel->height();
+        QQuickItem *chrome = childWithObjectName(panel, QStringLiteral("dockChrome"));
+        QVERIFY(chrome);
+        QCOMPARE(chrome->width(), panel->property("restingWidth").toReal());
+        QCOMPARE(chrome->height(), panel->property("restingHeight").toReal());
         const QPointF middlePoint = middle->mapToItem(
             panel, middle->width() / 2.0, middle->height() / 2.0);
         QVERIFY(QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
@@ -1613,6 +1673,8 @@ void DockHoverQmlTest::verticalPositionsReusePrimaryAxisGeometry()
                  "vertical hover must not resize the fixed surface width");
         QVERIFY2(qAbs(panel->height() - initialSurfaceHeight) < 0.1,
                  "vertical hover must not resize the fixed surface height");
+        QCOMPARE(chrome->width(), panel->property("restingWidth").toReal());
+        QCOMPARE(chrome->height(), panel->property("restingHeight").toReal());
 
         const QRectF iconRect = middleIcon->mapRectToItem(
             panel, QRectF(0, 0, middleIcon->width(), middleIcon->height()));

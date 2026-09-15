@@ -7,6 +7,7 @@
 #include "statusnotifier/StatusNotifierIconProvider.hpp"
 #include "statusnotifier/StatusNotifierIconStore.hpp"
 #include "statusnotifier/StatusNotifierTypes.hpp"
+#include "platform/wayland/effects/AstreaBackdropRegion.hpp"
 
 #include <QAbstractListModel>
 #include <QGuiApplication>
@@ -283,6 +284,8 @@ class BarQmlSmokeTest final : public QObject {
 private slots:
     void loadsAllProductionSurfaces();
     void barPaletteMatchesBorealisForAllSixCombinations();
+    void barSegmentExposesAuthoritativeSurfaceRadius();
+    void launcherAndStatusBackdropUseVisiblePillRadius();
     void barSegmentUsesBorealisInteractionTokens();
     void statusSurfaceUsesProductionGeometryAuthority();
     void statusSurfaceUsesInjectedSystemServices();
@@ -313,6 +316,15 @@ private slots:
 private:
     void loadsProductionSurface(const QString &fileName);
 };
+
+AstreaBackdropRegion *backdropFor(QObject *owner, QQuickItem *item)
+{
+    for (auto *region : owner->findChildren<AstreaBackdropRegion *>()) {
+        if (region->item() == item)
+            return region;
+    }
+    return nullptr;
+}
 
 void BarQmlSmokeTest::loadsProductionSurface(const QString &fileName)
 {
@@ -424,6 +436,78 @@ void BarQmlSmokeTest::barPaletteMatchesBorealisForAllSixCombinations()
         QCOMPARE(theme->property("shellSeparator").value<QColor>(), values.separator);
     }
     delete theme;
+}
+
+void BarQmlSmokeTest::barSegmentExposesAuthoritativeSurfaceRadius()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    ThemeController controller(directory.filePath(QStringLiteral("missing-theme.json")));
+    QQmlEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &controller);
+    QQmlComponent component(&engine,
+                            QUrl(QStringLiteral(
+                                "qrc:/qt/qml/Astrea/Shell/Bar/qml/components/BarSegment.qml")));
+    QVERIFY(component.status() == QQmlComponent::Ready);
+    auto *segment = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY(segment != nullptr);
+    auto *surface = segment->findChild<QQuickItem *>(QStringLiteral("barSegmentSurface"));
+    QVERIFY(surface != nullptr);
+
+    QVERIFY(segment->property("surfaceRadius").isValid());
+    QVERIFY(segment->property("surfaceRadius").toReal() > 0.0);
+    QCOMPARE(surface->property("radius").toReal(),
+             segment->property("surfaceRadius").toReal());
+    delete segment;
+}
+
+void BarQmlSmokeTest::launcherAndStatusBackdropUseVisiblePillRadius()
+{
+    QQmlEngine engine;
+    BarLayoutMetrics metrics;
+    BarPopupController popup;
+    WorkspaceModel workspaceModel;
+    workspaceModel.replaceWorkspaces({
+        {QStringLiteral("1"), true, true, false, {}},
+        {QStringLiteral("2"), false, false, false, {}},
+    });
+
+    QQmlComponent launcherComponent(
+        &engine, QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Bar/qml/LauncherSurface.qml")));
+    auto *launcher = launcherComponent.createWithInitialProperties({
+        {QStringLiteral("barGeometry"), QVariant::fromValue(&metrics)},
+        {QStringLiteral("popupController"), QVariant::fromValue(&popup)},
+        {QStringLiteral("workspaceModel"), QVariant::fromValue(&workspaceModel)},
+    });
+    QVERIFY2(launcher != nullptr, qPrintable(launcherComponent.errorString()));
+    auto *launcherPill = qobject_cast<QQuickItem *>(launcher->findChild<QObject *>(
+        QStringLiteral("launcherPill")));
+    QVERIFY(launcherPill != nullptr);
+    auto *launcherBackdrop = backdropFor(launcher, launcherPill);
+    QVERIFY(launcherBackdrop != nullptr);
+    QVERIFY(launcherPill->property("surfaceRadius").toReal() > 0.0);
+    QCOMPARE(launcherBackdrop->radius(), launcherPill->property("radius").toReal());
+    QCOMPARE(launcherBackdrop->radius(), launcherPill->property("surfaceRadius").toReal());
+    delete launcher;
+
+    QQmlComponent statusComponent(
+        &engine, QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Bar/qml/StatusSurface.qml")));
+    auto *status = statusComponent.createWithInitialProperties({
+        {QStringLiteral("barGeometry"), QVariant::fromValue(&metrics)},
+        {QStringLiteral("clockService"), QVariant::fromValue(new BarClockService(&engine))},
+        {QStringLiteral("outputWidth"), 800},
+        {QStringLiteral("launcherWidth"), 100},
+    });
+    QVERIFY2(status != nullptr, qPrintable(statusComponent.errorString()));
+    auto *statusPill = qobject_cast<QQuickItem *>(status->findChild<QObject *>(
+        QStringLiteral("statusPill")));
+    QVERIFY(statusPill != nullptr);
+    auto *statusBackdrop = backdropFor(status, statusPill);
+    QVERIFY(statusBackdrop != nullptr);
+    QVERIFY(statusPill->property("surfaceRadius").toReal() > 0.0);
+    QCOMPARE(statusBackdrop->radius(), statusPill->property("radius").toReal());
+    QCOMPARE(statusBackdrop->radius(), statusPill->property("surfaceRadius").toReal());
+    delete status;
 }
 
 void BarQmlSmokeTest::barSegmentUsesBorealisInteractionTokens()

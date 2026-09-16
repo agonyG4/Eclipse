@@ -9,7 +9,14 @@
 namespace Astrea::Typhon {
 
 struct DockApplicationRuntimeState {
+    QString taskKey;
+    QString appId;
     QString desktopFileName;
+    QString desktopId;
+    QString displayName;
+    QString iconName;
+    QString iconPath;
+    bool identityPending = false;
     bool running = false;
     bool active = false;
     int windowCount = 0;

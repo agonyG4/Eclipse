@@ -395,6 +395,8 @@ add_library(astrea-shared-typhon STATIC
     platform/typhon/TyphonToplevelModel.hpp
     platform/typhon/TyphonAppMatcher.cpp
     platform/typhon/TyphonAppMatcher.hpp
+    platform/typhon/RuntimeTaskIdentityTracker.cpp
+    platform/typhon/RuntimeTaskIdentityTracker.hpp
     platform/typhon/DockApplicationStateProjector.cpp
     platform/typhon/DockApplicationStateProjector.hpp
 )

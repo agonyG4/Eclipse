@@ -33,7 +33,8 @@ class DockApplicationStateProjector final {
 public:
     DockApplicationRuntimeProjection project(
         const Snapshot &snapshot,
-        const std::shared_ptr<const DesktopEntrySnapshot> &desktopEntries) const;
+        const std::shared_ptr<const DesktopEntrySnapshot> &desktopEntries,
+        const QHash<QString, QString> &taskKeysByWindowId = {}) const;
 };
 
 } // namespace Astrea::Typhon

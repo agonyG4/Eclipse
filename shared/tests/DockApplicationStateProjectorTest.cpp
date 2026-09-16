@@ -375,8 +375,8 @@ void DockApplicationStateProjectorTest::newWindowJoinsExistingAppCohort()
 
     const QString key = QStringLiteral("app:late-app");
     QCOMPARE(changed.states.size(), 1);
-    QCOMPARE(changed.states.value(key).windowIds,
-             QVector<QString>{QStringLiteral("first"), QStringLiteral("second")});
+    const QVector<QString> expectedWindowIds{QStringLiteral("first"), QStringLiteral("second")};
+    QCOMPARE(changed.states.value(key).windowIds, expectedWindowIds);
     QCOMPARE(changed.states.value(key).desktopFileName, QStringLiteral("late.desktop"));
 }
 

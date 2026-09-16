@@ -268,6 +268,7 @@ void DockController::clearTyphonRuntime()
     m_runtimeKnown = false;
     m_runtimeSnapshot.reset();
     m_runtimeStates.clear();
+    m_runtimeTaskIdentityTracker.reset();
     m_publishedMinimizeAnchors.clear();
     m_model.clearRuntimeProjection();
     updateAutoHidePolicy();
@@ -707,8 +708,10 @@ void DockController::projectRuntime()
         return;
     }
 
+    const QHash<QString, QString> taskKeysByWindowId =
+        m_runtimeTaskIdentityTracker.update(*m_runtimeSnapshot, m_catalogSnapshot);
     const Astrea::Typhon::DockApplicationRuntimeProjection projection =
-        m_runtimeProjector.project(*m_runtimeSnapshot, m_catalogSnapshot);
+        m_runtimeProjector.project(*m_runtimeSnapshot, m_catalogSnapshot, taskKeysByWindowId);
     QSet<QString> liveWindowIds;
     for (auto it = projection.states.cbegin(); it != projection.states.cend(); ++it) {
         for (const QString &windowId : it.value().windowIds)

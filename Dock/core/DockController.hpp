@@ -8,6 +8,7 @@
 #include "apps/DesktopEntryCatalog.hpp"
 #include "apps/ApplicationIdentity.hpp"
 #include "launch/ApplicationLauncher.hpp"
+#include "platform/typhon/RuntimeTaskIdentityTracker.hpp"
 
 #include <QHash>
 #include <QObject>
@@ -205,6 +206,7 @@ private:
     TyphonToplevelConnection *m_typhonConnection = nullptr;
     QVector<QMetaObject::Connection> m_typhonConnections;
     Astrea::Typhon::DockApplicationStateProjector m_runtimeProjector;
+    Astrea::Typhon::RuntimeTaskIdentityTracker m_runtimeTaskIdentityTracker;
     QString m_lastError;
     QTimer m_autoHideTimer;
 };

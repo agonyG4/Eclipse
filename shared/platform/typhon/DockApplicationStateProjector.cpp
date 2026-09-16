@@ -35,13 +35,15 @@ QString fallbackDisplayName(const Toplevel &window)
 
 DockApplicationRuntimeProjection DockApplicationStateProjector::project(
     const Snapshot &snapshot,
-    const std::shared_ptr<const DesktopEntrySnapshot> &desktopEntries) const
+    const std::shared_ptr<const DesktopEntrySnapshot> &desktopEntries,
+    const QHash<QString, QString> &taskKeysByWindowId) const
 {
     DockApplicationRuntimeProjection result;
     TyphonAppMatcher matcher(desktopEntries);
     for (const Toplevel &window : snapshot.windows) {
         const TyphonAppMatch app = matcher.match({window.appId, window.title, window.pid, window.kind});
-        const QString taskKey = taskKeyFor(window, app);
+        const QString assignedTaskKey = taskKeysByWindowId.value(window.id);
+        const QString taskKey = assignedTaskKey.isEmpty() ? taskKeyFor(window, app) : assignedTaskKey;
 
         if (!result.states.contains(taskKey))
             result.encounterOrder.append(taskKey);

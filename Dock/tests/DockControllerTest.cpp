@@ -743,6 +743,11 @@ void DockControllerTest::catalogLossWhilePinnedKeepsOneStableLiveRow()
     controller.setCatalogSnapshot(makeLateCatalog());
     QVERIFY(controller.setPinned(QStringLiteral("late.desktop"), true));
 
+    const auto resolvedWindows =
+        controller.windowsForDesktopFileName(QStringLiteral("late.desktop"));
+    QCOMPARE(resolvedWindows.size(), 1);
+    QCOMPARE(resolvedWindows.first().id, QStringLiteral("late-window"));
+
     QSignalSpy insertedSpy(controller.appModel(), &QAbstractItemModel::rowsInserted);
     QSignalSpy removedSpy(controller.appModel(), &QAbstractItemModel::rowsRemoved);
     controller.setCatalogSnapshot(std::make_shared<DesktopEntrySnapshot>());
@@ -754,6 +759,14 @@ void DockControllerTest::catalogLossWhilePinnedKeepsOneStableLiveRow()
     QVERIFY(controller.appModel()->index(0, 0).data(DockAppModel::RunningRole).toBool());
     QCOMPARE(insertedSpy.count(), 0);
     QCOMPARE(removedSpy.count(), 0);
+
+    const auto cataloglessWindows =
+        controller.windowsForDesktopFileName(QStringLiteral("late.desktop"));
+    QCOMPARE(cataloglessWindows.size(), 1);
+    QCOMPARE(cataloglessWindows.first().id, QStringLiteral("late-window"));
+
+    controller.applyTyphonSnapshot(runtimeSnapshot(1, {}));
+    QVERIFY(controller.windowsForDesktopFileName(QStringLiteral("late.desktop")).isEmpty());
 }
 
 void DockControllerTest::runtimeMetadataChangeKeepsStableTaskKey()

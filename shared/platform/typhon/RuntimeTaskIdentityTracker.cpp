@@ -64,6 +64,12 @@ QHash<QString, QString> RuntimeTaskIdentityTracker::update(
         const auto existing = m_windowTaskKeys.constFind(window.id);
         if (existing != m_windowTaskKeys.constEnd()) {
             taskKey = existing.value();
+            const QString appId = normalizedAppId(window);
+            if (!appId.isEmpty() && !m_appTaskKeys.contains(appId)) {
+                // The first live task to claim an app ID owns the alias. A
+                // conflicting live claim must not move either existing task.
+                m_appTaskKeys.insert(appId, taskKey);
+            }
         } else {
             const QString appId = normalizedAppId(window);
             if (!appId.isEmpty())

@@ -383,11 +383,9 @@ QVector<Astrea::Typhon::Toplevel> DockController::windowsForTaskKey(
 QVector<Astrea::Typhon::Toplevel> DockController::windowsForDesktopFileName(
     const QString &desktopFileName) const
 {
-    for (auto it = m_runtimeStates.cbegin(); it != m_runtimeStates.cend(); ++it) {
-        if (it->running && it->desktopFileName == desktopFileName)
-            return windowsForTaskKey(it.key());
-    }
-    return {};
+    const QString taskKey = m_model.runtimeTaskKeyForDesktopFileName(desktopFileName);
+    return taskKey.isEmpty() ? QVector<Astrea::Typhon::Toplevel>{}
+                             : windowsForTaskKey(taskKey);
 }
 
 bool DockController::requestExactWindowAction(const QString &taskKey,

@@ -95,6 +95,7 @@ private slots:
     void catalogGainKeepsLiveTaskKey();
     void catalogLossKeepsLiveTaskKey();
     void metadataChangeKeepsLiveTaskKey();
+    void metadataChangeAliasesNewWindowIntoExistingTask();
     void newWindowJoinsExistingAppCohort();
     void generationChangeStartsFreshTaskLifetime();
     void authorityResetStartsFreshTaskLifetime();
@@ -356,6 +357,42 @@ void DockApplicationStateProjectorTest::metadataChangeKeepsLiveTaskKey()
                                            tracker.update(changedSnapshot, empty));
 
     QCOMPARE(changed.states.keys(), QStringList{QStringLiteral("app:before-app")});
+}
+
+void DockApplicationStateProjectorTest::metadataChangeAliasesNewWindowIntoExistingTask()
+{
+    DockApplicationStateProjector projector;
+    RuntimeTaskIdentityTracker tracker;
+    const auto empty = std::make_shared<DesktopEntrySnapshot>();
+    const auto firstSnapshot = snapshot(
+        1, {window(QStringLiteral("first"), QStringLiteral("before-app"))});
+    const auto firstAssignments = tracker.update(firstSnapshot, empty);
+    QCOMPARE(firstAssignments.value(QStringLiteral("first")), QStringLiteral("app:before-app"));
+
+    const auto changedSnapshot = snapshot(
+        1, {window(QStringLiteral("first"), QStringLiteral("after-app"))});
+    const auto changedAssignments = tracker.update(changedSnapshot, empty);
+    QCOMPARE(changedAssignments.value(QStringLiteral("first")), QStringLiteral("app:before-app"));
+
+    const auto twoWindowsSnapshot = snapshot(
+        1,
+        {window(QStringLiteral("first"), QStringLiteral("after-app")),
+         window(QStringLiteral("second"), QStringLiteral("after-app"))});
+    const auto twoWindows = projector.project(
+        twoWindowsSnapshot, empty, tracker.update(twoWindowsSnapshot, empty));
+    QCOMPARE(twoWindows.states.size(), 1);
+    const QString taskKey = QStringLiteral("app:before-app");
+    QVERIFY(twoWindows.states.contains(taskKey));
+    const QVector<QString> expectedWindowIds{QStringLiteral("first"), QStringLiteral("second")};
+    QCOMPARE(twoWindows.states.value(taskKey).windowIds, expectedWindowIds);
+    QVERIFY(!twoWindows.states.contains(QStringLiteral("app:after-app")));
+
+    const auto endedSnapshot = snapshot(1, {});
+    tracker.update(endedSnapshot, empty);
+    const auto nextLifetimeSnapshot = snapshot(
+        1, {window(QStringLiteral("third"), QStringLiteral("after-app"))});
+    const auto nextLifetimeAssignments = tracker.update(nextLifetimeSnapshot, empty);
+    QCOMPARE(nextLifetimeAssignments.value(QStringLiteral("third")), QStringLiteral("app:after-app"));
 }
 
 void DockApplicationStateProjectorTest::newWindowJoinsExistingAppCohort()

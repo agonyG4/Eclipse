@@ -47,6 +47,7 @@ public:
     QString taskKeyAt(int row) const;
     int rowForDesktopFileName(const QString &desktopFileName) const;
     int rowForTaskKey(const QString &taskKey) const;
+    QString runtimeTaskKeyForDesktopFileName(const QString &desktopFileName) const;
     const DockAppInfo *itemAt(int row) const;
 
     bool setLaunching(const QString &desktopFileName, bool launching);
@@ -64,7 +65,6 @@ private:
     static QList<int> changedRoles(const DockAppInfo &before, const DockAppInfo &after);
     static QString desktopTaskKey(const QString &desktopFileName);
     static QString desktopFileNameForTaskKey(const QString &taskKey);
-    QString runtimeTaskKeyForDesktopFileName(const QString &desktopFileName) const;
     bool isPinnedTaskKey(const QString &taskKey) const;
 
     QVector<DockAppInfo> m_items;

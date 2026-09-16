@@ -225,7 +225,7 @@ void ShellRuntime::connectServices()
             || m_contextMenuController->target().kind
                    != Astrea::Shell::ContextMenuTarget::Kind::DockApplication)
             return;
-        if (m_dockController->appModel()->rowForDesktopFileName(
+        if (m_dockController->appModel()->rowForTaskKey(
                 m_contextMenuController->target().identity) < 0)
             m_contextMenuController->invalidateTarget();
     });

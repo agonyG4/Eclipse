@@ -53,6 +53,7 @@ private slots:
     void invalidOrRuntimeOnlySourceIsRejected();
     void persistenceFailureLeavesOrderUnchanged();
     void runtimeOnlyOrderingRemainsUnchangedAfterPinMove();
+    void runtimeOnlyTaskUsesTaskKeyAndRejectsLauncherActions();
     void personalizationPropertiesPropagateAndUnchangedConfigIsQuiet();
     void autoHidePolicyKeepsSurfaceMappedAndReservationBounded();
     void runtimeObstructionUpdatesSurfacePlacement();
@@ -563,6 +564,29 @@ void DockControllerTest::runtimeOnlyOrderingRemainsUnchangedAfterPinMove()
 
     QCOMPARE(controller.appModel()->desktopFileNameAt(2), QStringLiteral("runtime-a.desktop"));
     QCOMPARE(controller.appModel()->desktopFileNameAt(3), QStringLiteral("runtime-b.desktop"));
+}
+
+void DockControllerTest::runtimeOnlyTaskUsesTaskKeyAndRejectsLauncherActions()
+{
+    DockController controller;
+    controller.setCatalogSnapshot(makeCatalog());
+
+    Astrea::Typhon::Snapshot snapshot;
+    snapshot.connectionGeneration = 1;
+    snapshot.revision = 1;
+    Astrea::Typhon::Toplevel window;
+    window.id = QStringLiteral("runtime-window");
+    window.appId = QStringLiteral("steam_app_1091500");
+    window.title = QStringLiteral("Cyberpunk 2077");
+    window.focusSerial = 9;
+    snapshot.windows.append(window);
+    controller.applyTyphonSnapshot(snapshot);
+
+    const QString taskKey = QStringLiteral("app:steam_app_1091500");
+    QCOMPARE(controller.appModel()->rowForTaskKey(taskKey), 0);
+    QCOMPARE(controller.windowsForTaskKey(taskKey).size(), 1);
+    QVERIFY(!controller.launchNewWindow(taskKey));
+    QVERIFY(!controller.setPinned(taskKey, true));
 }
 
 void DockControllerTest::personalizationPropertiesPropagateAndUnchangedConfigIsQuiet()

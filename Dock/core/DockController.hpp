@@ -121,14 +121,16 @@ public:
     Q_INVOKABLE void launch(int row);
     Q_INVOKABLE void launchByDesktopFileName(const QString &desktopFileName);
     Q_INVOKABLE bool launchNewWindow(const QString &desktopFileName);
+    QVector<Astrea::Typhon::Toplevel> windowsForTaskKey(const QString &taskKey) const;
     QVector<Astrea::Typhon::Toplevel> windowsForDesktopFileName(
         const QString &desktopFileName) const;
-    Q_INVOKABLE bool activateWindow(const QString &desktopFileName, const QString &windowId);
-    Q_INVOKABLE bool closeWindow(const QString &desktopFileName, const QString &windowId);
+    Q_INVOKABLE bool activateWindow(const QString &taskKey, const QString &windowId);
+    Q_INVOKABLE bool closeWindow(const QString &taskKey, const QString &windowId);
+    Q_INVOKABLE void activateOrLaunchTask(const QString &taskKey);
     Q_INVOKABLE bool setPinned(const QString &desktopFileName, bool pinned);
     Q_INVOKABLE bool movePinned(const QString &desktopFileName, int targetPinIndex);
-    Q_INVOKABLE bool setMinimizeAnchor(const QString &desktopFileName, const QRect &rect);
-    Q_INVOKABLE void clearMinimizeAnchor(const QString &desktopFileName);
+    Q_INVOKABLE bool setMinimizeAnchor(const QString &taskKey, const QRect &rect);
+    Q_INVOKABLE void clearMinimizeAnchor(const QString &taskKey);
     Q_INVOKABLE void show();
     Q_INVOKABLE void hide();
 
@@ -160,12 +162,12 @@ private:
     bool autoHideActive() const;
     void setRevealed(bool revealed);
     void projectRuntime();
-    void publishMinimizeAnchor(const QString &desktopFileName);
+    void publishMinimizeAnchor(const QString &taskKey);
     void publishAllMinimizeAnchors();
     void clearPublishedMinimizeAnchors(const QSet<QString> &liveWindowIds);
     void reconcileTyphonActionFailure(Astrea::Typhon::ToplevelActionError error);
     void launchItem(const DockAppInfo &item, bool activateRunning = true);
-    bool requestExactWindowAction(const QString &desktopFileName, const QString &windowId,
+    bool requestExactWindowAction(const QString &taskKey, const QString &windowId,
                                   Astrea::Typhon::ToplevelAction action);
 
     DockAppModel m_model;
@@ -188,7 +190,7 @@ private:
     QHash<QString, QRect> m_publishedMinimizeAnchors;
     QHash<quint64, QString> m_pendingActivations;
     struct PendingWindowAction {
-        QString desktopFileName;
+        QString taskKey;
         QString windowId;
         Astrea::Typhon::ToplevelAction action = Astrea::Typhon::ToplevelAction::Activate;
     };

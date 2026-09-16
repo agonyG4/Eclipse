@@ -268,24 +268,24 @@ void DockController::clearTyphonRuntime()
         emit reservationChanged();
 }
 
-bool DockController::setMinimizeAnchor(const QString &desktopFileName, const QRect &rect)
+bool DockController::setMinimizeAnchor(const QString &taskKey, const QRect &rect)
 {
-    if (desktopFileName.isEmpty() || rect.width() <= 0 || rect.height() <= 0)
+    if (taskKey.isEmpty() || rect.width() <= 0 || rect.height() <= 0)
         return false;
-    const auto existing = m_minimizeAnchors.constFind(desktopFileName);
+    const auto existing = m_minimizeAnchors.constFind(taskKey);
     if (existing != m_minimizeAnchors.constEnd() && existing.value() == rect) {
-        publishMinimizeAnchor(desktopFileName);
+        publishMinimizeAnchor(taskKey);
         return true;
     }
-    m_minimizeAnchors.insert(desktopFileName, rect);
-    publishMinimizeAnchor(desktopFileName);
+    m_minimizeAnchors.insert(taskKey, rect);
+    publishMinimizeAnchor(taskKey);
     return true;
 }
 
-void DockController::clearMinimizeAnchor(const QString &desktopFileName)
+void DockController::clearMinimizeAnchor(const QString &taskKey)
 {
-    m_minimizeAnchors.remove(desktopFileName);
-    const auto state = m_runtimeStates.constFind(desktopFileName);
+    m_minimizeAnchors.remove(taskKey);
+    const auto state = m_runtimeStates.constFind(taskKey);
     if (state != m_runtimeStates.constEnd()) {
         for (const QString &windowId : state->windowIds) {
             if (m_typhonConnection)
@@ -339,11 +339,20 @@ bool DockController::launchNewWindow(const QString &desktopFileName)
     return true;
 }
 
-QVector<Astrea::Typhon::Toplevel> DockController::windowsForDesktopFileName(
-    const QString &desktopFileName) const
+void DockController::activateOrLaunchTask(const QString &taskKey)
+{
+    const int row = m_model.rowForTaskKey(taskKey);
+    const DockAppInfo *item = m_model.itemAt(row);
+    if (!item || !m_enabled)
+        return;
+    launchItem(*item);
+}
+
+QVector<Astrea::Typhon::Toplevel> DockController::windowsForTaskKey(
+    const QString &taskKey) const
 {
     QVector<Astrea::Typhon::Toplevel> result;
-    const auto state = m_runtimeStates.constFind(desktopFileName);
+    const auto state = m_runtimeStates.constFind(taskKey);
     if (state == m_runtimeStates.constEnd() || !m_runtimeSnapshot.has_value())
         return result;
 
@@ -359,12 +368,18 @@ QVector<Astrea::Typhon::Toplevel> DockController::windowsForDesktopFileName(
     return result;
 }
 
-bool DockController::requestExactWindowAction(const QString &desktopFileName,
+QVector<Astrea::Typhon::Toplevel> DockController::windowsForDesktopFileName(
+    const QString &desktopFileName) const
+{
+    return windowsForTaskKey(QStringLiteral("desktop:") + desktopFileName);
+}
+
+bool DockController::requestExactWindowAction(const QString &taskKey,
                                               const QString &windowId,
                                               Astrea::Typhon::ToplevelAction action)
 {
-    const auto state = m_runtimeStates.constFind(desktopFileName);
-    const auto windows = windowsForDesktopFileName(desktopFileName);
+    const auto state = m_runtimeStates.constFind(taskKey);
+    const auto windows = windowsForTaskKey(taskKey);
     const bool exactWindowIsLive = std::any_of(windows.cbegin(), windows.cend(),
                                                [&windowId](const auto &window) {
         return window.id == windowId;
@@ -380,7 +395,7 @@ bool DockController::requestExactWindowAction(const QString &desktopFileName,
     }
 
     const quint64 token = ++m_nextActivationToken;
-    m_pendingWindowActions.insert(token, PendingWindowAction{desktopFileName, windowId, action});
+    m_pendingWindowActions.insert(token, PendingWindowAction{taskKey, windowId, action});
     const auto error = m_typhonConnection->requestAction(windowId, action, token);
     if (error.has_value()) {
         m_pendingWindowActions.remove(token);
@@ -390,15 +405,15 @@ bool DockController::requestExactWindowAction(const QString &desktopFileName,
     return true;
 }
 
-bool DockController::activateWindow(const QString &desktopFileName, const QString &windowId)
+bool DockController::activateWindow(const QString &taskKey, const QString &windowId)
 {
-    return requestExactWindowAction(desktopFileName, windowId,
+    return requestExactWindowAction(taskKey, windowId,
                                     Astrea::Typhon::ToplevelAction::Activate);
 }
 
-bool DockController::closeWindow(const QString &desktopFileName, const QString &windowId)
+bool DockController::closeWindow(const QString &taskKey, const QString &windowId)
 {
-    return requestExactWindowAction(desktopFileName, windowId,
+    return requestExactWindowAction(taskKey, windowId,
                                     Astrea::Typhon::ToplevelAction::Close);
 }
 
@@ -478,23 +493,23 @@ void DockController::launchItem(const DockAppInfo &item, bool activateRunning)
     if (!m_enabled)
         return;
 
-    const QString key = item.desktopFileName;
+    const QString taskKey = item.taskKey;
     if (activateRunning && item.runtimeKnown && item.running) {
-        const auto state = m_runtimeStates.constFind(key);
+        const auto state = m_runtimeStates.constFind(taskKey);
         if (state == m_runtimeStates.constEnd() || state->windowIds.isEmpty()) {
             qInfo("Dock activation suppressed for running application '%s' without a live target",
-                  qPrintable(key));
+                  qPrintable(taskKey));
             return;
         }
         if (!m_typhonConnection) {
             qInfo("Dock activation suppressed for running application '%s' without Typhon actions",
-                  qPrintable(key));
+                  qPrintable(taskKey));
             return;
         }
 
         const quint64 activationToken = ++m_nextActivationToken;
         const QString targetWindowId = state->windowIds.constFirst();
-        m_pendingActivations.insert(activationToken, key);
+        m_pendingActivations.insert(activationToken, taskKey);
         const auto error = m_typhonConnection->requestAction(
             targetWindowId, Astrea::Typhon::ToplevelAction::Activate, activationToken);
         if (error.has_value()) {
@@ -502,10 +517,14 @@ void DockController::launchItem(const DockAppInfo &item, bool activateRunning)
             reconcileTyphonActionFailure(error.value());
         } else {
             qInfo("Dock activating exact Typhon window '%s' for '%s'",
-                  qPrintable(targetWindowId), qPrintable(key));
+                  qPrintable(targetWindowId), qPrintable(taskKey));
         }
         return;
     }
+    if (item.desktopFileName.isEmpty())
+        return;
+
+    const QString key = item.desktopFileName;
     if (m_pendingLaunches.contains(key))
         return;
 
@@ -690,12 +709,12 @@ void DockController::projectRuntime()
     publishAllMinimizeAnchors();
 }
 
-void DockController::publishMinimizeAnchor(const QString &desktopFileName)
+void DockController::publishMinimizeAnchor(const QString &taskKey)
 {
     if (!m_typhonConnection)
         return;
-    const auto anchor = m_minimizeAnchors.constFind(desktopFileName);
-    const auto state = m_runtimeStates.constFind(desktopFileName);
+    const auto anchor = m_minimizeAnchors.constFind(taskKey);
+    const auto state = m_runtimeStates.constFind(taskKey);
     if (anchor == m_minimizeAnchors.constEnd() || state == m_runtimeStates.constEnd())
         return;
     for (const QString &windowId : state->windowIds) {

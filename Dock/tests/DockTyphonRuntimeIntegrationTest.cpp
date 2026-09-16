@@ -133,6 +133,8 @@ private slots:
     void unavailableActivationNeverLaunchesSameClick();
     void staleExactTargetNeverRetargetsOrLaunches();
     void nonPinnedMinimizedApplicationAppearsActivatesAndCloses();
+    void runtimeOnlyTaskActivatesAndClosesExactWindow();
+    void runtimeOnlyTaskAnchorTargetsAllWindows();
     void connectionLossRemovesDynamicRowsButKeepsPinsUnknown();
     void cachedAnchorProjectsToExistingAndNewWindows();
 };
@@ -199,7 +201,7 @@ void DockTyphonRuntimeIntegrationTest::cachedAnchorProjectsToExistingAndNewWindo
     adapter->managerDone(1, 1);
 
     const QRect anchor(123, -45, 48, 48);
-    QVERIFY(controller.setMinimizeAnchor(QStringLiteral("one.desktop"), anchor));
+    QVERIFY(controller.setMinimizeAnchor(QStringLiteral("desktop:one.desktop"), anchor));
     QCOMPARE(adapter->anchorRequests.size(), 1);
     QCOMPARE(adapter->anchorRequests.first().handleToken, quint64(1));
     QCOMPARE(adapter->anchorRequests.first().rect, anchor);
@@ -379,6 +381,75 @@ void DockTyphonRuntimeIntegrationTest::nonPinnedMinimizedApplicationAppearsActiv
     adapter->managerDone(2, 0);
     QTRY_COMPARE_WITH_TIMEOUT(controller.appModel()->rowCount(), 1, 1000);
     QCOMPARE(controller.appModel()->desktopFileNameAt(0), QStringLiteral("one.desktop"));
+}
+
+void DockTyphonRuntimeIntegrationTest::runtimeOnlyTaskActivatesAndClosesExactWindow()
+{
+    auto *adapter = new FakeTyphonAdapter;
+    TyphonToplevelConnection connection(adapter);
+    FakeLauncher launcher;
+    DockController controller(&launcher);
+    controller.attachTyphonConnection(&connection);
+
+    connection.start();
+    adapter->advertiseManager();
+    adapter->create(7);
+    adapter->id(7, QStringLiteral("7"));
+    adapter->app(7, QStringLiteral("steam_app_1091500"));
+    adapter->title(7, QStringLiteral("Cyberpunk 2077"));
+    adapter->pid(7, 700);
+    adapter->kind(7, ToplevelKind::XdgToplevel);
+    adapter->state(7, ToplevelStates{ToplevelStateFlag::Minimized});
+    adapter->focus(7, 42);
+    adapter->handleDone(7, 1);
+    adapter->managerDone(1, 1);
+
+    const QString taskKey = QStringLiteral("app:steam_app_1091500");
+    QCOMPARE(controller.appModel()->rowForTaskKey(taskKey), 0);
+    QVERIFY(controller.activateWindow(taskKey, QStringLiteral("7")));
+    QCOMPARE(adapter->actionRequests.size(), 1);
+    QCOMPARE(adapter->actionRequests.last().handleToken, quint64(7));
+    QCOMPARE(adapter->actionRequests.last().action, ToplevelAction::Activate);
+    adapter->completeAction(ToplevelActionResult::Accepted);
+
+    QVERIFY(controller.closeWindow(taskKey, QStringLiteral("7")));
+    QCOMPARE(adapter->actionRequests.size(), 1);
+    QCOMPARE(adapter->actionRequests.last().handleToken, quint64(7));
+    QCOMPARE(adapter->actionRequests.last().action, ToplevelAction::Close);
+    QCOMPARE(launcher.requests.size(), 0);
+}
+
+void DockTyphonRuntimeIntegrationTest::runtimeOnlyTaskAnchorTargetsAllWindows()
+{
+    auto *adapter = new FakeTyphonAdapter;
+    TyphonToplevelConnection connection(adapter);
+    DockController controller;
+    controller.attachTyphonConnection(&connection);
+
+    connection.start();
+    adapter->advertiseManager();
+    for (const auto &window : QVector<QPair<quint64, quint64>>{{8, 10}, {9, 20}}) {
+        adapter->create(window.first);
+        adapter->id(window.first, QString::number(window.first));
+        adapter->app(window.first, QStringLiteral("steam_app_1091500"));
+        adapter->title(window.first, QStringLiteral("Cyberpunk 2077"));
+        adapter->pid(window.first, static_cast<quint32>(window.first * 10));
+        adapter->kind(window.first, ToplevelKind::XdgToplevel);
+        adapter->state(window.first, ToplevelStates{});
+        adapter->focus(window.first, window.second);
+        adapter->handleDone(window.first, 1);
+    }
+    adapter->managerDone(1, 2);
+
+    const QString taskKey = QStringLiteral("app:steam_app_1091500");
+    const QRect anchor(11, 12, 48, 48);
+    QVERIFY(controller.setMinimizeAnchor(taskKey, anchor));
+    QCOMPARE(adapter->anchorRequests.size(), 2);
+    QCOMPARE(adapter->anchorRequests.at(0).rect, anchor);
+    QCOMPARE(adapter->anchorRequests.at(1).rect, anchor);
+
+    controller.clearMinimizeAnchor(taskKey);
+    QCOMPARE(adapter->clearedAnchorHandles.size(), 2);
 }
 
 void DockTyphonRuntimeIntegrationTest::connectionLossRemovesDynamicRowsButKeepsPinsUnknown()

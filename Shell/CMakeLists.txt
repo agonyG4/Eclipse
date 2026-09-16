@@ -91,6 +91,7 @@ target_link_libraries(astrea-shell-runtime PUBLIC
     astrea-alttab-core
     astrea-paper-core
     astrea-shared-core
+    astrea-shared-appidentity
     astrea-shared-dock
     astrea-shared-statusnotifier
     astrea-shared-system

@@ -26,34 +26,22 @@ add_library(astrea-alttab-types STATIC
     platform/compositor/CompositorBackend.cpp
 )
 target_include_directories(astrea-alttab-types PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
-target_link_libraries(astrea-alttab-types PUBLIC Qt6::Core Qt6::Gui)
+target_link_libraries(astrea-alttab-types PUBLIC Qt6::Core Qt6::Gui astrea-shared-core)
 astrea_enable_warnings(astrea-alttab-types)
 astrea_enable_sanitizers(astrea-alttab-types)
 
-# 2. Identity Library
-add_library(astrea-alttab-identity STATIC
-    services/AppIdentityResolver.cpp
-    services/appidentity/ProcessInspector.cpp
-    services/appidentity/SteamMetadataIndex.cpp
-    services/appidentity/WineExecutableResolver.cpp
-)
-target_include_directories(astrea-alttab-identity PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
-target_link_libraries(astrea-alttab-identity PUBLIC Qt6::Core Qt6::Gui astrea-shared-core astrea-alttab-types)
-astrea_enable_warnings(astrea-alttab-identity)
-astrea_enable_sanitizers(astrea-alttab-identity)
-
-# 3. Hyprland Backend Library
+# 2. Hyprland Backend Library
 add_library(astrea-alttab-hyprland STATIC
     platform/hyprland/HyprlandCommand.cpp
     platform/hyprland/HyprlandWindowSource.cpp
     platform/hyprland/HyprlandSocket.cpp
 )
 target_include_directories(astrea-alttab-hyprland PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
-target_link_libraries(astrea-alttab-hyprland PUBLIC Qt6::Core Qt6::Network astrea-alttab-identity)
+target_link_libraries(astrea-alttab-hyprland PUBLIC Qt6::Core Qt6::Network astrea-shared-appidentity)
 astrea_enable_warnings(astrea-alttab-hyprland)
 astrea_enable_sanitizers(astrea-alttab-hyprland)
 
-# 4. Core Library
+# 3. Core Library
 add_library(astrea-alttab-core STATIC
     core/AltTabController.cpp
     core/AltTabShortcutRouter.cpp
@@ -73,7 +61,7 @@ target_include_directories(astrea-alttab-core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR
 target_link_libraries(astrea-alttab-core PUBLIC
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Network
     astrea-alttab-types
-    astrea-alttab-identity
+    astrea-shared-appidentity
     astrea-alttab-hyprland
     astrea-shared-typhon
     astrea-shared-layer-shell
@@ -127,6 +115,7 @@ if(BUILD_TESTING AND ASTREA_ALT_TAB_BUILD_TESTS)
         target_include_directories(${TEST_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
         target_link_libraries(${TEST_NAME} PRIVATE
             astrea-alttab-core
+            astrea-shared-appidentity
             Qt6::Test
         )
         astrea_enable_sanitizers(${TEST_NAME})

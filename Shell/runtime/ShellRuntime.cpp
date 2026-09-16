@@ -35,7 +35,7 @@
 #include "Paper/core/WallpaperResolver.hpp"
 #include "Paper/core/WallpaperService.hpp"
 #include "Paper/platform/ipc/WallpaperControlServer.hpp"
-#include "services/AppIdentityResolver.hpp"
+#include "apps/appidentity/AppIdentityResolver.hpp"
 #include "theme/ThemeController.hpp"
 #include "system/audio/AudioService.hpp"
 #include "system/network/NetworkService.hpp"

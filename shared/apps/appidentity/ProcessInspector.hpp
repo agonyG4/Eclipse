@@ -1,6 +1,7 @@
 #pragma once
-#include <QString>
+
 #include <QHash>
+#include <QString>
 #include <QVector>
 
 class ProcessInspector {

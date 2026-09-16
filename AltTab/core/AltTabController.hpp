@@ -2,7 +2,7 @@
 
 #include "core/AltTabWindowModel.hpp"
 #include "platform/compositor/CompositorBackend.hpp"
-#include "services/AppIdentityResolver.hpp"
+#include "apps/appidentity/AppIdentityResolver.hpp"
 
 #include <QBasicTimer>
 #include <QObject>

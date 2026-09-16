@@ -77,6 +77,35 @@ endfunction()
 
 astrea_shared_enable_sanitizers(astrea-shared-core)
 
+add_library(astrea-shared-appidentity STATIC
+    apps/appidentity/AppIdentityResolver.cpp
+    apps/appidentity/AppIdentityResolver.hpp
+    apps/appidentity/IdentityCache.hpp
+    apps/appidentity/ProcessInspector.cpp
+    apps/appidentity/ProcessInspector.hpp
+    apps/appidentity/SteamMetadataIndex.cpp
+    apps/appidentity/SteamMetadataIndex.hpp
+    apps/appidentity/WineExecutableResolver.cpp
+    apps/appidentity/WineExecutableResolver.hpp
+    apps/ApplicationIdentity.hpp
+)
+
+target_include_directories(astrea-shared-appidentity PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(astrea-shared-appidentity PUBLIC
+    astrea-shared-core
+    Qt6::Core
+    Qt6::Gui
+)
+
+if(NOT MSVC)
+    target_compile_options(astrea-shared-appidentity PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+astrea_shared_enable_sanitizers(astrea-shared-appidentity)
+
 add_library(astrea-shared-dock STATIC
     dock/DockConfig.cpp
     dock/DockConfig.hpp

@@ -1,6 +1,7 @@
 #pragma once
 
-#include "core/WindowInfo.hpp"
+#include "apps/ApplicationIdentity.hpp"
+
 #include <QHash>
 #include <QReadWriteLock>
 
@@ -20,9 +21,8 @@ public:
 
     void insert(const QString &key, const AppIdentity &identity) {
         QWriteLocker locker(&m_lock);
-        if (m_cache.size() >= m_maxSize) {
+        if (m_cache.size() >= m_maxSize)
             m_cache.clear();
-        }
         m_cache.insert(key, identity);
     }
 

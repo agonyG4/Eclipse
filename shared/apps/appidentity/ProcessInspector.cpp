@@ -1,9 +1,9 @@
-#include "services/appidentity/ProcessInspector.hpp"
-#include <QFile>
-#include <QTextStream>
-#include <QFileInfo>
+#include "apps/appidentity/ProcessInspector.hpp"
+
 #include <QDir>
-#include <QDebug>
+#include <QFile>
+#include <QFileInfo>
+#include <QTextStream>
 
 ProcessInspector::ProcInfo ProcessInspector::inspectProcess(qint64 pid, const QString &procRoot) {
     ProcInfo info;
@@ -16,7 +16,6 @@ ProcessInspector::ProcInfo ProcessInspector::inspectProcess(qint64 pid, const QS
     if (!QDir(pidDir).exists())
         return info;
 
-    // 1. PPid from status
     QFile statusFile(pidDir + QStringLiteral("/status"));
     if (statusFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
         QTextStream ts(&statusFile);
@@ -30,23 +29,20 @@ ProcessInspector::ProcInfo ProcessInspector::inspectProcess(qint64 pid, const QS
         statusFile.close();
     }
 
-    // 2. Cmdline
     QFile cmdlineFile(pidDir + QStringLiteral("/cmdline"));
     if (cmdlineFile.open(QIODevice::ReadOnly)) {
-        QByteArray data = cmdlineFile.read(4096); // Bounded size
+        QByteArray data = cmdlineFile.read(4096);
         cmdlineFile.close();
         if (!data.isEmpty()) {
-            // Replace null bytes with space
             QByteArray clean = data;
             clean.replace('\0', ' ');
             info.cmdline = QString::fromUtf8(clean).trimmed();
         }
     }
 
-    // 3. Env
     QFile envFile(pidDir + QStringLiteral("/environ"));
     if (envFile.open(QIODevice::ReadOnly)) {
-        QByteArray data = envFile.read(32768); // Bounded size
+        QByteArray data = envFile.read(32768);
         envFile.close();
         int start = 0;
         for (int i = 0; i < data.size(); ++i) {
@@ -65,11 +61,9 @@ ProcessInspector::ProcInfo ProcessInspector::inspectProcess(qint64 pid, const QS
         }
     }
 
-    // 4. Cwd symlink target
     QFileInfo cwdLink(pidDir + QStringLiteral("/cwd"));
-    if (cwdLink.exists() && cwdLink.isSymLink()) {
+    if (cwdLink.exists() && cwdLink.isSymLink())
         info.cwd = cwdLink.symLinkTarget();
-    }
 
     return info;
 }

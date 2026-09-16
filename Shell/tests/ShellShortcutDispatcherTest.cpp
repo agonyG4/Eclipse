@@ -4,7 +4,7 @@
 #include "AltTab/core/AltTabController.hpp"
 #include "AltTab/core/WindowInfo.hpp"
 #include "AltTab/platform/compositor/FakeBackend.hpp"
-#include "AltTab/services/AppIdentityResolver.hpp"
+#include "apps/appidentity/AppIdentityResolver.hpp"
 #include "Spotlight/core/SpotlightController.hpp"
 #include "Spotlight/platform/runtime/SpotlightRuntimePaths.hpp"
 #include "platform/shortcut/ShellShortcutDispatcher.hpp"

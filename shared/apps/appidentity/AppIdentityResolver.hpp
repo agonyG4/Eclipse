@@ -1,11 +1,13 @@
 #pragma once
 
-#include "core/WindowInfo.hpp"
-#include "services/appidentity/IdentityCache.hpp"
-#include "services/appidentity/DesktopEntryIndex.hpp"
-#include "services/appidentity/SteamMetadataIndex.hpp"
+#include "apps/ApplicationIdentity.hpp"
+#include "apps/DesktopEntryCatalog.hpp"
+#include "apps/appidentity/IdentityCache.hpp"
+#include "apps/appidentity/SteamMetadataIndex.hpp"
+
 #include <QObject>
 #include <QThreadPool>
+
 #include <atomic>
 
 class AppIdentityResolver : public QObject {
@@ -19,8 +21,6 @@ public:
 
     AppIdentity resolveSync(const WindowIdentityInput &input);
     void resolveAsync(const WindowIdentityInput &input, quint64 generation);
-
-    // Exposed for deep resolution runner
     AppIdentity resolveDeep(const WindowIdentityInput &input);
 
     int themeRevision() const { return m_themeRevision.load(std::memory_order_acquire); }
@@ -41,7 +41,7 @@ private:
     AppIdentity resolveDesktopEntry(const WindowIdentityInput &input);
 
     IdentityCache m_cache;
-    DesktopEntryIndex *m_desktopIndex = nullptr;
+    DesktopEntryCatalog *m_desktopIndex = nullptr;
     bool m_ownsDesktopIndex = false;
     SteamMetadataIndex *m_steamIndex = nullptr;
     std::atomic<int> m_themeRevision{0};

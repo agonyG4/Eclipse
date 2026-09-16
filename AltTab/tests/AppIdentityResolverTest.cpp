@@ -4,7 +4,7 @@
 #include <QTemporaryDir>
 #include <QSignalSpy>
 
-#include "services/AppIdentityResolver.hpp"
+#include "apps/appidentity/AppIdentityResolver.hpp"
 
 class TestAppIdentityResolver : public QObject {
     Q_OBJECT

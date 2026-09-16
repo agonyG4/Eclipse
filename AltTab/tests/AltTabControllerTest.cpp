@@ -12,7 +12,7 @@
 #include "core/WindowInfo.hpp"
 #include "platform/compositor/FakeBackend.hpp"
 #include "platform/typhon/TyphonWindowSource.hpp"
-#include "services/AppIdentityResolver.hpp"
+#include "apps/appidentity/AppIdentityResolver.hpp"
 
 using namespace Astrea::Typhon;
 

@@ -1,12 +1,14 @@
-#include "services/AppIdentityResolver.hpp"
-#include "services/appidentity/ProcessInspector.hpp"
-#include "services/appidentity/WineExecutableResolver.hpp"
-#include <QRunnable>
-#include <QIcon>
-#include <QFileInfo>
+#include "apps/appidentity/AppIdentityResolver.hpp"
+
+#include "apps/appidentity/ProcessInspector.hpp"
+#include "apps/appidentity/WineExecutableResolver.hpp"
+
 #include <QDir>
-#include <QDebug>
+#include <QFileInfo>
 #include <QRegularExpression>
+#include <QRunnable>
+
+#include <algorithm>
 
 class ResolveTask : public QRunnable {
 public:
@@ -19,7 +21,7 @@ public:
                                   Qt::QueuedConnection,
                                   Q_ARG(WindowIdentityInput, m_input),
                                   Q_ARG(AppIdentity, identity),
-                                   Q_ARG(quint64, m_generation));
+                                  Q_ARG(quint64, m_generation));
     }
 
 private:
@@ -43,7 +45,7 @@ AppIdentityResolver::~AppIdentityResolver() {
 void AppIdentityResolver::initialize(const QString &customHome, const QString &customProc) {
     m_procRoot = customProc.isEmpty() ? QStringLiteral("/proc") : customProc;
     if (!m_desktopIndex || !m_ownsDesktopIndex) {
-        m_desktopIndex = new DesktopEntryIndex(this);
+        m_desktopIndex = new DesktopEntryCatalog(this);
         m_ownsDesktopIndex = true;
     }
     m_desktopIndex->initialize(customHome);
@@ -69,9 +71,8 @@ AppIdentity AppIdentityResolver::resolveSync(const WindowIdentityInput &input) {
                               + QLatin1Char(':') + QString::number(input.desktopIndexRevision)
                               + QLatin1Char(':') + QString::number(input.steamIndexRevision);
     AppIdentity identity;
-    if (m_cache.lookup(cacheKey, identity)) {
+    if (m_cache.lookup(cacheKey, identity))
         return identity;
-    }
 
     identity = resolveFast(input);
     identity.windowId = input.address;
@@ -81,20 +82,17 @@ AppIdentity AppIdentityResolver::resolveSync(const WindowIdentityInput &input) {
     identity.themeRevision = input.themeRevision;
     identity.desktopIndexRevision = input.desktopIndexRevision;
     identity.steamIndexRevision = input.steamIndexRevision;
-    if (!identity.iconPending) {
+    if (!identity.iconPending)
         m_cache.insert(cacheKey, identity);
-    }
     return identity;
 }
 
 void AppIdentityResolver::resolveAsync(const WindowIdentityInput &input, quint64 generation) {
     AppIdentity identity = resolveSync(input);
-    if (identity.iconPending) {
-        // Run deep resolution in worker pool
+    if (identity.iconPending)
         QThreadPool::globalInstance()->start(new ResolveTask(this, input, generation));
-    } else {
+    else
         emit identityResolved(input.address, identity);
-    }
 }
 
 AppIdentity AppIdentityResolver::resolveFast(const WindowIdentityInput &input) {
@@ -103,21 +101,18 @@ AppIdentity AppIdentityResolver::resolveFast(const WindowIdentityInput &input) {
     result.showFallbackText = true;
     result.source = QStringLiteral("fallback");
 
-    // 1. Check aliases
     result = resolveAliases(input);
     if (!result.iconName.isEmpty()) {
         result.source = QStringLiteral("alias");
         return result;
     }
 
-    // 2. Check Steam AppID fast matching (e.g. class is steam_app_X)
     result = resolveSteamAppId(input);
     if (!result.iconName.isEmpty()) {
         result.source = QStringLiteral("steam-appid");
         return result;
     }
 
-    // 3. Detect if deep resolution is needed (Wine, Proton, Steam pending, etc.)
     const QString checkText = (input.className + QLatin1Char(' ') + input.initialClass
                                + QLatin1Char(' ') + input.title + QLatin1Char(' ') + input.initialTitle).toLower();
     const bool needsDeep = checkText.contains(QStringLiteral(".exe"))
@@ -134,20 +129,17 @@ AppIdentity AppIdentityResolver::resolveFast(const WindowIdentityInput &input) {
         return result;
     }
 
-    // 4. Desktop entry matching
     result = resolveDesktopEntry(input);
     if (!result.iconName.isEmpty()) {
         result.source = QStringLiteral("desktop-entry");
         return result;
     }
 
-    // 5. Fallback theme
     result = resolveThemeFallback(input);
     if (!result.iconName.isEmpty()) {
         result.source = QStringLiteral("theme");
         return result;
     }
-
     return result;
 }
 
@@ -164,23 +156,17 @@ AppIdentity AppIdentityResolver::resolveDeep(const WindowIdentityInput &input) {
     result.showFallbackText = true;
     result.source = QStringLiteral("deep-resolved");
 
-    // Gather info from Proc
     ProcessInspector::ProcInfo proc = ProcessInspector::inspectProcess(input.pid, m_procRoot);
     QVector<qint64> ancestors = ProcessInspector::getAncestors(input.pid, 5, m_procRoot);
 
-    // 1. Try to find Steam AppID from env / cmdline / cwd / ancestors
     QString steamAppId;
-    
-    // Check main process env
-    if (proc.env.contains(QStringLiteral("SteamAppId"))) {
+    if (proc.env.contains(QStringLiteral("SteamAppId")))
         steamAppId = proc.env.value(QStringLiteral("SteamAppId"));
-    } else if (proc.env.contains(QStringLiteral("SteamGameId"))) {
+    else if (proc.env.contains(QStringLiteral("SteamGameId")))
         steamAppId = proc.env.value(QStringLiteral("SteamGameId"));
-    } else if (proc.env.contains(QStringLiteral("STEAM_COMPAT_APP_ID"))) {
+    else if (proc.env.contains(QStringLiteral("STEAM_COMPAT_APP_ID")))
         steamAppId = proc.env.value(QStringLiteral("STEAM_COMPAT_APP_ID"));
-    }
 
-    // Check ancestors env if empty
     if (steamAppId.isEmpty()) {
         for (qint64 apid : ancestors) {
             auto ainfo = ProcessInspector::inspectProcess(apid, m_procRoot);
@@ -191,25 +177,20 @@ AppIdentity AppIdentityResolver::resolveDeep(const WindowIdentityInput &input) {
         }
     }
 
-    // Check cmdline
     if (steamAppId.isEmpty()) {
         static const QRegularExpression appidRe(QStringLiteral("steam://rungameid/(\\d+)"));
-        auto m = appidRe.match(proc.cmdline);
-        if (m.hasMatch()) {
-            steamAppId = m.captured(1);
-        }
+        auto match = appidRe.match(proc.cmdline);
+        if (match.hasMatch())
+            steamAppId = match.captured(1);
     }
 
-    // Check cwd path for steamapps/compatdata/
     if (steamAppId.isEmpty() && !proc.cwd.isEmpty()) {
         static const QRegularExpression compatRe(QStringLiteral("steamapps/compatdata/(\\d+)"));
-        auto m = compatRe.match(proc.cwd);
-        if (m.hasMatch()) {
-            steamAppId = m.captured(1);
-        }
+        auto match = compatRe.match(proc.cwd);
+        if (match.hasMatch())
+            steamAppId = match.captured(1);
     }
 
-    // 2. Fetch Steam metadata if AppId found
     if (!steamAppId.isEmpty()) {
         auto steamApp = m_steamIndex->getAppInfo(steamAppId);
         if (steamApp) {
@@ -222,10 +203,8 @@ AppIdentity AppIdentityResolver::resolveDeep(const WindowIdentityInput &input) {
         }
     }
 
-    // 3. Wine executable resolution
     QString exeStem = WineExecutableResolver::parseExeStem(proc.cmdline, input.className);
     if (!exeStem.isEmpty()) {
-        // Try matching with desktop files
         const auto desktopSnap = m_desktopIndex ? m_desktopIndex->getEntries() : nullptr;
         if (desktopSnap) {
             for (const auto &entry : desktopSnap->entries) {
@@ -245,7 +224,6 @@ AppIdentity AppIdentityResolver::resolveDeep(const WindowIdentityInput &input) {
         return result;
     }
 
-    // 4. Desktop entry matching (deep search)
     {
         AppIdentity deResult = resolveDesktopEntry(input);
         if (!deResult.iconName.isEmpty()) {
@@ -256,7 +234,6 @@ AppIdentity AppIdentityResolver::resolveDeep(const WindowIdentityInput &input) {
         }
     }
 
-    // 5. Normal fallbacks (theme)
     {
         AppIdentity fbResult = resolveThemeFallback(input);
         result.iconName = fbResult.iconName;
@@ -286,7 +263,6 @@ void AppIdentityResolver::onDeepResolved(const WindowIdentityInput &input, const
                              + QLatin1Char(':') + QString::number(input.desktopIndexRevision)
                              + QLatin1Char(':') + QString::number(input.steamIndexRevision);
     m_cache.insert(cacheKey, identity);
-
     emit identityResolved(input.address, identity);
 }
 
@@ -294,7 +270,6 @@ AppIdentity AppIdentityResolver::resolveAliases(const WindowIdentityInput &input
     AppIdentity result;
     const QString cls = input.className.toLower().trimmed();
     const QString initCls = input.initialClass.toLower().trimmed();
-    const QString title = input.title.toLower().trimmed();
 
     if (cls == QStringLiteral("org.vinegarhq.sober") || initCls == QStringLiteral("org.vinegarhq.sober")) {
         result.iconName = QStringLiteral("org.vinegarhq.Sober");
@@ -308,8 +283,8 @@ AppIdentity AppIdentityResolver::resolveAliases(const WindowIdentityInput &input
         result.iconName = QStringLiteral("kitty");
         return result;
     }
-    if (cls.contains(QStringLiteral("code")) || cls.contains(QStringLiteral("cursor")) ||
-        initCls.contains(QStringLiteral("code")) || initCls.contains(QStringLiteral("cursor"))) {
+    if (cls.contains(QStringLiteral("code")) || cls.contains(QStringLiteral("cursor"))
+        || initCls.contains(QStringLiteral("code")) || initCls.contains(QStringLiteral("cursor"))) {
         result.iconName = QStringLiteral("visual-studio-code");
         return result;
     }
@@ -321,8 +296,8 @@ AppIdentity AppIdentityResolver::resolveAliases(const WindowIdentityInput &input
         result.iconName = QStringLiteral("discord");
         return result;
     }
-    if ((cls.contains(QStringLiteral("obs")) && !cls.contains(QStringLiteral("obsidian"))) ||
-        cls == QStringLiteral("obsproject") || cls == QStringLiteral("obs-studio")) {
+    if ((cls.contains(QStringLiteral("obs")) && !cls.contains(QStringLiteral("obsidian")))
+        || cls == QStringLiteral("obsproject") || cls == QStringLiteral("obs-studio")) {
         result.iconName = QStringLiteral("com.obsproject.Studio");
         return result;
     }
@@ -348,13 +323,10 @@ AppIdentity AppIdentityResolver::resolveSteamAppId(const WindowIdentityInput &in
         const QString appId = match.captured(1);
         result.iconName = QStringLiteral("steam_icon_") + appId;
         result.iconPath = m_steamIndex->findIconPath(appId);
-        if (!result.iconPath.isEmpty()) {
+        if (!result.iconPath.isEmpty())
             result.showFallbackText = false;
-        }
-        // Use the window title as the display name for Steam games
-        if (!input.title.isEmpty()) {
+        if (!input.title.isEmpty())
             result.displayName = input.title;
-        }
         return result;
     }
     return result;
@@ -368,7 +340,6 @@ AppIdentity AppIdentityResolver::resolveDesktopEntry(const WindowIdentityInput &
     const QString cls = input.className.toLower();
     const QString initCls = input.initialClass.toLower();
     const QString title = input.title.toLower();
-
     int bestScore = 0;
     QString bestIcon;
     QString bestName;
@@ -382,22 +353,16 @@ AppIdentity AppIdentityResolver::resolveDesktopEntry(const WindowIdentityInput &
         const QString entryName = entry.name.toLower();
         const QString wmClass = entry.startupWmClass.toLower();
 
-        if (!wmClass.isEmpty()) {
-            if (wmClass == cls || wmClass == initCls) {
-                score = 10;
-            }
-        }
-        if (cls == entryId || initCls == entryId) {
+        if (!wmClass.isEmpty() && (wmClass == cls || wmClass == initCls))
+            score = 10;
+        if (cls == entryId || initCls == entryId)
             score = std::max(score, 8);
-        }
-        if (!entryName.isEmpty() && (cls.contains(entryName) || initCls.contains(entryName) ||
-                                      (!cls.isEmpty() && entryName.contains(cls)) ||
-                                      (!initCls.isEmpty() && entryName.contains(initCls)))) {
+        if (!entryName.isEmpty() && (cls.contains(entryName) || initCls.contains(entryName)
+                                      || (!cls.isEmpty() && entryName.contains(cls))
+                                      || (!initCls.isEmpty() && entryName.contains(initCls))))
             score = std::max(score, 5);
-        }
-        if (input.className == QStringLiteral("org.quickshell") && !title.isEmpty() && entryName == title) {
+        if (input.className == QStringLiteral("org.quickshell") && !title.isEmpty() && entryName == title)
             score = std::max(score, 7);
-        }
 
         if (score > bestScore) {
             bestScore = score;
@@ -416,22 +381,19 @@ AppIdentity AppIdentityResolver::resolveDesktopEntry(const WindowIdentityInput &
 AppIdentity AppIdentityResolver::resolveThemeFallback(const WindowIdentityInput &input) {
     AppIdentity result;
     const QString cls = input.className;
-
     if (cls == QStringLiteral("org.quickshell")) {
         result.iconName = QStringLiteral("application-x-executable");
         return result;
     }
-
-    if (cls.contains(QStringLiteral("steam"), Qt::CaseInsensitive) && !cls.contains(QStringLiteral("steam_app_"))) {
+    if (cls.contains(QStringLiteral("steam"), Qt::CaseInsensitive)
+        && !cls.contains(QStringLiteral("steam_app_"))) {
         result.iconName = QStringLiteral("steam");
         return result;
     }
-
     if (!cls.isEmpty()) {
         result.iconName = cls.toLower();
         return result;
     }
-
     if (!input.title.isEmpty()) {
         result.iconName = input.title.toLower().replace(QLatin1Char(' '), QLatin1Char('-'));
         return result;

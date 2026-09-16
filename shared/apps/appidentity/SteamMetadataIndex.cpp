@@ -1,12 +1,12 @@
-#include "services/appidentity/SteamMetadataIndex.hpp"
+#include "apps/appidentity/SteamMetadataIndex.hpp"
+
 #include <QDir>
 #include <QFile>
-#include <QTextStream>
 #include <QFileInfo>
 #include <QReadLocker>
-#include <QWriteLocker>
 #include <QRegularExpression>
-#include <QDebug>
+#include <QTextStream>
+#include <QWriteLocker>
 
 SteamMetadataIndex::SteamMetadataIndex(QObject *parent)
     : QObject(parent), m_snapshot(std::make_shared<const SteamAppSnapshot>())
@@ -23,19 +23,16 @@ void SteamMetadataIndex::initialize(const QString &customHome) {
 std::optional<SteamAppInfo> SteamMetadataIndex::getAppInfo(const QString &appId) const {
     QReadLocker lock(&m_snapshotLock);
     auto it = m_snapshot->apps.find(appId);
-    if (it != m_snapshot->apps.end()) {
+    if (it != m_snapshot->apps.end())
         return it.value();
-    }
     return std::nullopt;
 }
 
 QString SteamMetadataIndex::findIconPath(const QString &appId) const {
-    // 1. Check client hicolor apps theme path
     QString iconThemePath = QStringLiteral("/usr/share/icons/hicolor/48x48/apps/steam_icon_") + appId + QStringLiteral(".png");
     if (QFileInfo::exists(iconThemePath))
         return iconThemePath;
 
-    // 2. Check librarycache paths from snapshot
     QStringList candidates;
     QString steamRoot;
     QString homeDir;
@@ -44,16 +41,15 @@ QString SteamMetadataIndex::findIconPath(const QString &appId) const {
         steamRoot = m_snapshot->steamRoot;
         homeDir = m_snapshot->homeDir;
     }
-    if (!steamRoot.isEmpty()) {
+    if (!steamRoot.isEmpty())
         candidates << steamRoot + QStringLiteral("/appcache/librarycache/") + appId + QStringLiteral("/icon.png");
-    }
     candidates << homeDir + QStringLiteral("/.steam/steam/appcache/librarycache/") + appId + QStringLiteral("/icon.png")
                << homeDir + QStringLiteral("/.steam/root/appcache/librarycache/") + appId + QStringLiteral("/icon.png")
                << homeDir + QStringLiteral("/.local/share/Steam/appcache/librarycache/") + appId + QStringLiteral("/icon.png");
 
-    for (const auto &c : candidates) {
-        if (QFileInfo::exists(c))
-            return c;
+    for (const auto &candidate : candidates) {
+        if (QFileInfo::exists(candidate))
+            return candidate;
     }
     return {};
 }
@@ -74,9 +70,9 @@ void SteamMetadataIndex::scanSteam() {
         m_homeDir + QStringLiteral("/.local/share/Steam")
     };
 
-    for (const auto &r : roots) {
-        if (QDir(r).exists()) {
-            snap->steamRoot = r;
+    for (const auto &root : roots) {
+        if (QDir(root).exists()) {
+            snap->steamRoot = root;
             break;
         }
     }
@@ -89,10 +85,8 @@ void SteamMetadataIndex::scanSteam() {
 
     snap->libraryPaths << snap->steamRoot;
     parseLibraryFolders(snap->steamRoot, *snap);
-
-    for (const auto &lib : snap->libraryPaths) {
-        scanLibrary(lib, *snap);
-    }
+    for (const auto &library : snap->libraryPaths)
+        scanLibrary(library, *snap);
 
     {
         QWriteLocker lock(&m_snapshotLock);
@@ -113,9 +107,8 @@ void SteamMetadataIndex::parseLibraryFolders(const QString &steamPath, SteamAppS
         auto match = re.match(line);
         if (match.hasMatch()) {
             QString path = match.captured(1);
-            if (QDir(path).exists() && !snap.libraryPaths.contains(path)) {
+            if (QDir(path).exists() && !snap.libraryPaths.contains(path))
                 snap.libraryPaths << path;
-            }
         }
     }
 }
@@ -127,11 +120,9 @@ void SteamMetadataIndex::scanLibrary(const QString &libPath, SteamAppSnapshot &s
         return;
 
     m_watcher->addPath(appsDir);
-
     const auto files = dir.entryList({QStringLiteral("appmanifest_*.acf")}, QDir::Files);
-    for (const auto &f : files) {
-        parseManifest(dir.absoluteFilePath(f), libPath, snap);
-    }
+    for (const auto &file : files)
+        parseManifest(dir.absoluteFilePath(file), libPath, snap);
 }
 
 void SteamMetadataIndex::parseManifest(const QString &manifestPath, const QString &libPath, SteamAppSnapshot &snap) {
@@ -160,15 +151,12 @@ void SteamMetadataIndex::parseManifest(const QString &manifestPath, const QStrin
             continue;
         }
         auto mDir = dirRe.match(line);
-        if (mDir.hasMatch()) {
+        if (mDir.hasMatch())
             app.installDir = mDir.captured(1);
-            continue;
-        }
     }
 
-    if (!app.appId.isEmpty()) {
+    if (!app.appId.isEmpty())
         snap.apps.insert(app.appId, app);
-    }
 }
 
 void SteamMetadataIndex::onDirectoryChanged(const QString &path) {

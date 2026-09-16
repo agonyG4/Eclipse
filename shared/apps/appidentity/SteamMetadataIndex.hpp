@@ -1,13 +1,13 @@
 #pragma once
-#include <QObject>
-#include <QString>
-#include <QHash>
-#include <QStringList>
+
 #include <QFileSystemWatcher>
+#include <QHash>
+#include <QObject>
 #include <QReadWriteLock>
+#include <QStringList>
+
 #include <memory>
 #include <optional>
-#include <atomic>
 
 struct SteamAppInfo {
     QString appId;

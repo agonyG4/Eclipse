@@ -59,6 +59,7 @@ private slots:
     void staleIdentityEnrichmentIsRejectedAtControllerBoundary();
     void catalogGainWhileLiveKeepsStableTaskKeyAndAvoidsRowChurn();
     void catalogLossWhileLiveKeepsStableTaskKey();
+    void catalogLossWhilePinnedKeepsOneStableLiveRow();
     void runtimeMetadataChangeKeepsStableTaskKey();
     void newSameAppWindowJoinsStableTaskAfterCatalogGain();
     void lateResolvedRuntimeCanBePinnedWithoutDuplicate();
@@ -726,6 +727,31 @@ void DockControllerTest::catalogLossWhileLiveKeepsStableTaskKey()
     QCOMPARE(controller.appModel()->rowCount(), 1);
     QCOMPARE(controller.appModel()->taskKeyAt(0), stableKey);
     QCOMPARE(controller.appModel()->desktopFileNameAt(0), QStringLiteral("late.desktop"));
+    QCOMPARE(insertedSpy.count(), 0);
+    QCOMPARE(removedSpy.count(), 0);
+}
+
+void DockControllerTest::catalogLossWhilePinnedKeepsOneStableLiveRow()
+{
+    CountingPersistence persistence;
+    DockController controller(nullptr, nullptr, &persistence);
+    controller.setCatalogSnapshot(std::make_shared<DesktopEntrySnapshot>());
+    Astrea::Typhon::Toplevel window;
+    window.id = QStringLiteral("late-window");
+    window.appId = QStringLiteral("late-app");
+    controller.applyTyphonSnapshot(runtimeSnapshot(1, {window}));
+    controller.setCatalogSnapshot(makeLateCatalog());
+    QVERIFY(controller.setPinned(QStringLiteral("late.desktop"), true));
+
+    QSignalSpy insertedSpy(controller.appModel(), &QAbstractItemModel::rowsInserted);
+    QSignalSpy removedSpy(controller.appModel(), &QAbstractItemModel::rowsRemoved);
+    controller.setCatalogSnapshot(std::make_shared<DesktopEntrySnapshot>());
+
+    QCOMPARE(controller.appModel()->rowCount(), 1);
+    QCOMPARE(controller.appModel()->taskKeyAt(0), QStringLiteral("app:late-app"));
+    QCOMPARE(controller.appModel()->desktopFileNameAt(0), QStringLiteral("late.desktop"));
+    QVERIFY(controller.appModel()->index(0, 0).data(DockAppModel::PinnedRole).toBool());
+    QVERIFY(controller.appModel()->index(0, 0).data(DockAppModel::RunningRole).toBool());
     QCOMPARE(insertedSpy.count(), 0);
     QCOMPARE(removedSpy.count(), 0);
 }

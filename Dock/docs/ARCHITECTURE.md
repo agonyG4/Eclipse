@@ -9,17 +9,20 @@ Shell; `qml/` presents state and emits interaction requests. The
 compositor-independent schema, parser, validator, and atomic known-field
 writer live in `shared/dock/` and are consumed by both Dock and Settings.
 
-`DockAppModel` uses the full desktop filename as its stable row key. Its visible
-rows are the ordered union of configured pins and resolved applications with
+`DockAppModel` uses an explicit runtime `taskKey` as its stable row key. The
+projected visible rows are the ordered union of raw configured desktop-file pins
+(`desktop:<desktopFileName>`) and running `app:`/`window:` runtime tasks with
 live Typhon toplevels. Configured pins retain their exact configuration order;
 runtime-only rows append in first-observed order and do not move when focus
 changes. Pinned rows can remain visible while stopped, while a runtime-only row
 is removed when its last live window disappears. Structural insert, remove, and
-move signals preserve stable QML delegates.
+move signals preserve stable QML delegates. Launcher metadata is optional and
+does not determine whether a task is admitted.
 
 `DockController` applies config, coordinates the model, tracks pending launches
-independently per identity, and retains the runtime state needed for
-exact-window activation. It is also the only owner of a completed pinned reorder:
+by launcher identity, and retains the runtime state needed for exact-window
+activation. Generic runtime operations use `taskKey`; exact compositor actions
+also validate the selected `WindowId`. It is also the only owner of a completed pinned reorder:
 it validates the stable `desktopFileName`, asks `DockConfigPersistence` to write
 the new pins, and updates the model only after that write succeeds. `pinCount`
 describes configured pins, not the total visible row count; `resolvedPinCount`
@@ -109,11 +112,14 @@ places it there; an ignored Dock activation alone is not proof that the
 application received the click.
 
 Typhon is the authoritative source for task-relevant toplevels. The projector
-matches each published client `app_id` through the immutable desktop catalog,
-groups multiple windows into one application state, and retains exact stable
-WindowIds ordered by focus serial. Titles, PIDs, process state, and launch
-success are never application identity or proof that a window exists. A first-
-party application must publish its canonical desktop application ID itself.
+matches each published client `app_id` through the immutable desktop catalog
+when possible, then derives the synchronous `desktop:`, case-folded `app:`, or
+`window:` task key. It groups multiple windows into one task state and retains
+exact stable WindowIds ordered by focus serial. Titles, PIDs, process state, and
+launch success are never task identity or proof that a window exists. The shared
+`astrea-shared-appidentity` target supplies the existing AltTab resolver to Dock
+for representative-window presentation enrichment; its asynchronous results
+are generation- and fingerprint-validated and cannot re-key a task.
 
 When Typhon is authoritative, pinned rows missing from the projection are
 known stopped (`runtimeKnown=true`, `running=false`). When authority is lost,

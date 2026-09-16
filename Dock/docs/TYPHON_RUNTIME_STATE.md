@@ -15,33 +15,49 @@ window exists.
 4. Exact `StartupWMClass`.
 5. Case-insensitive `StartupWMClass`.
 6. Normalized reverse-DNS desktop ID.
-7. Unresolved.
+7. Unresolved launcher metadata.
 
-Titles and PIDs are never used as identity. First-party applications must set
+Titles and PIDs are never used as identity. First-party applications should set
 their canonical desktop ID, for example Explorer publishes `astrea-explorer`
-for `astrea-explorer.desktop`. Unresolved windows do not enter the Dock
-projection.
+for `astrea-explorer.desktop`, but launcher resolution is enrichment rather than
+task admission. Every eligible Typhon toplevel enters the projection.
 
-Resolved windows are grouped into one state per desktop filename. Minimized
-windows remain running, active is true when any grouped window is active, and
-duplicate PIDs remain separate windows. `windowIds` are ordered by descending
-Typhon focus serial, so the first ID is the exact activation candidate.
+The projector assigns one immutable runtime task key synchronously:
+
+```text
+desktop:<desktopFileName>       deterministic desktop match
+app:<case-folded trimmed appId>  otherwise when app_id is non-empty
+window:<WindowId>               otherwise
+```
+
+Case-folding groups equivalent app IDs; punctuation such as `_` is not rewritten
+to `-`. PIDs and titles are never task keys, and asynchronous identity
+resolution never changes a live task key. A task uses title, app ID, then
+`Application` for fallback presentation until the shared application-identity
+resolver supplies richer display or icon metadata.
+
+Windows are grouped into one state per task key. Minimized windows remain
+running, active is true when any grouped window is active, and duplicate PIDs
+remain separate windows. `windowIds` are ordered by descending Typhon focus
+serial, so the first ID is the exact activation candidate. `desktopFileName` and
+`desktopId` are optional launcher metadata, not runtime identity.
 
 ## Model membership and ordering
 
 The model owns two inputs:
 
 ```text
-configured pins + resolved running runtime-only applications
+configured pins + running runtime-only task keys
 ```
 
-Pins retain configured order. The projector's `encounterOrder` appends newly
-observed runtime-only applications to a model-owned dynamic order. Focus-only
-updates change runtime roles but do not reorder existing dynamic rows. A
-runtime-only application becomes one pinned row when configured, and a running
-pin becomes a dynamic row when unpinned; neither transition duplicates or loses
-its runtime state. A runtime-only row is removed after its last live window
-closes. A pinned row remains with `runtimeKnown=true` and stopped values.
+Pins remain persisted as raw desktop filenames and map to
+`desktop:<desktopFileName>`. The projector's `encounterOrder` appends newly
+observed runtime-only tasks to a model-owned dynamic order. Focus-only updates
+change runtime roles but do not reorder existing dynamic rows. A resolved
+runtime state naturally merges with its configured pin; an `app:` or `window:`
+task disappears after its last live window closes. `resolved=false` is valid
+alongside `runtimeKnown=true` and `running=true`. Runtime-only tasks cannot be
+pinned because they have no real launcher identity.
 
 ## Authority and activation
 
@@ -52,6 +68,10 @@ runtime-only rows are removed. Stale runtime-only order is never retained.
 
 When `runtimeKnown && running` is true, a click uses the retained exact
 `WindowId` and sends Typhon `Activate`, including for minimized and multi-window
-applications. Accepted and no-change results do not launch. Unavailable or
-failed actions reconcile the snapshot and never launch a duplicate application
-on that same click.
+applications. Otherwise a real desktop launcher is required to launch; a
+runtime-only task has no launch fallback. Exact activate/close operations first
+validate that the requested `WindowId` still belongs to the task key.
+Accepted and no-change results do not launch. Unavailable or failed actions
+reconcile the snapshot and never launch a duplicate application on that same
+click. Minimize anchors are stored by task key and published to every live
+WindowId in the group.

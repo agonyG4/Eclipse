@@ -7,13 +7,14 @@ startup
   -> desktop-entry catalog
   -> model (configured pins)
   -> one Typhon toplevel connection
-  -> authoritative runtime projection (pins + live resolved apps)
+  -> authoritative runtime projection (pins + every eligible live task)
+  -> shared application-identity enrichment for presentation
   -> QML
   -> QWindow input region (chrome + transformed interaction targets)
   -> position-aware Layer Shell mapping at resting cross-axis reservation
   -> configured none/lift/magnification hover effect or pinned drag preview
   -> click or one identity-based reorder request
-  -> exact Typhon activation or shared launcher
+  -> exact Typhon activation or launcher-backed desktop entry
   -> Typhon shell-control launch path
 ```
 
@@ -53,14 +54,15 @@ Configuration and component toggles are debounced and re-applied without
 restarting the process. A Layer
 Shell setup or mapping failure is reported as a shell failure; the Dock is
 never shown as an ordinary Qt window. A click calls
-`DockController::launchByDesktopFileName`. If authoritative Typhon
-runtime state identifies a live window, the controller submits one exact
+`DockController::activateOrLaunchTask` with the model task key. If authoritative
+Typhon runtime state identifies a live window, the controller submits one exact
 `activate` action for the most recent focus-serial candidate, including
 minimized windows. The shared Typhon connection owns authentication, pending
 state, completion, and generation cleanup. If no live window is known, the
-existing controller and shared supervised launcher path is used. An
-unavailable or failed action is reconciled without launching on that same
-click.
+existing controller and shared supervised launcher path is used only when the
+row has a real desktop launcher. Runtime-only `app:` and `window:` rows do not
+launch. An unavailable or failed action is reconciled without launching on that
+same click.
 
 Each QML geometry update also reports the actual mapped `dockChrome` rectangle
 and the exact current transformed interaction-target rectangles to
@@ -119,11 +121,13 @@ Runtime-only rows remain after the pin section and retain their deterministic
 first-observed order.
 
 The Dock owns one Typhon toplevel connection. After the initial snapshot
-commits, `DockApplicationStateProjector` emits only resolved live applications
-and a deterministic encounter order. `DockAppModel` unions that projection
-with configured pins: pins remain first, and new runtime-only applications
-append without focus-driven reordering. A missing runtime entry removes a
-runtime-only row but leaves a configured pin as a known stopped row.
+commits, `DockApplicationStateProjector` emits every eligible live task and a
+deterministic encounter order. `DockAppModel` unions that projection with
+configured pins: pins remain first, and new runtime-only tasks append without
+focus-driven reordering. A missing runtime entry removes an `app:` or `window:`
+row but leaves a configured pin as a known stopped row. The shared resolver
+enriches the representative, focus-ranked window in place and never changes
+the task key or row count.
 
 If the connection is unavailable, each pinned item exposes
 `runtimeKnown=false` and neutral runtime booleans; runtime-only rows are

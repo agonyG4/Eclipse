@@ -121,15 +121,21 @@ Runtime-only rows remain after the pin section and retain their deterministic
 first-observed order.
 
 The Dock owns one Typhon toplevel connection. After the initial snapshot
-commits, `DockApplicationStateProjector` emits every eligible live task and a
-deterministic encounter order. `DockAppModel` unions that projection with
-configured pins: pins remain first, and new runtime-only tasks append without
-focus-driven reordering. A missing runtime entry removes an `app:` or `window:`
-row but leaves a configured pin as a known stopped row. The shared resolver
-enriches the representative, focus-ranked window in place and never changes
-the task key or row count.
+commits, `RuntimeTaskIdentityTracker` assigns each live `WindowId` a sticky
+task key for that connection generation, and the pure
+`DockApplicationStateProjector` emits every eligible live task with a
+deterministic encounter order and current launcher metadata. Catalog rebuilds
+and mutable window metadata therefore enrich or change fields without re-keying
+a live task; new windows with the same non-empty runtime app ID join its live
+cohort. `DockAppModel` places a live task with a matching launcher filename at
+the configured pin position, avoiding a synthetic duplicate. A missing runtime
+entry ends that live lifetime: a pinned task may return to
+`desktop:<desktopFileName>`, while an unpinned runtime-only row disappears.
+The shared resolver enriches the representative, focus-ranked window in place
+and never changes the task key or row count.
 
-If the connection is unavailable, each pinned item exposes
+If the connection is unavailable, the runtime identity tracker is reset and
+each pinned item exposes
 `runtimeKnown=false` and neutral runtime booleans; runtime-only rows are
 removed. A resolved running item uses exact Typhon activation rather than a
 duplicate launch; stale or unavailable targets reconcile state and never fall

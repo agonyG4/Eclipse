@@ -22,7 +22,8 @@ their canonical desktop ID, for example Explorer publishes `astrea-explorer`
 for `astrea-explorer.desktop`, but launcher resolution is enrichment rather than
 task admission. Every eligible Typhon toplevel enters the projection.
 
-The projector assigns one immutable runtime task key synchronously:
+The runtime identity tracker assigns one sticky runtime task key per live
+`WindowId` and Typhon connection generation. Its initial candidate is:
 
 ```text
 desktop:<desktopFileName>       deterministic desktop match
@@ -31,10 +32,16 @@ window:<WindowId>               otherwise
 ```
 
 Case-folding groups equivalent app IDs; punctuation such as `_` is not rewritten
-to `-`. PIDs and titles are never task keys, and asynchronous identity
-resolution never changes a live task key. A task uses title, app ID, then
-`Application` for fallback presentation until the shared application-identity
-resolver supplies richer display or icon metadata.
+to `-`. Once assigned, a live window keeps its key through catalog rebuilds,
+launcher appearance/disappearance, app-ID changes, title/PID changes, and
+repeated snapshots. Newly observed windows with the same normalized non-empty
+app ID join an existing live cohort; empty app IDs never create a shared
+cohort. A generation change or authority loss clears the assignments, so a
+later connection or lifetime may choose a new initial key. PIDs and titles are
+never task keys, and asynchronous identity resolution never changes a live
+task key. A task uses title, app ID, then `Application` for fallback
+presentation until the shared application-identity resolver supplies richer
+display or icon metadata.
 
 Windows are grouped into one state per task key. Minimized windows remain
 running, active is true when any grouped window is active, and duplicate PIDs
@@ -50,14 +57,15 @@ The model owns two inputs:
 configured pins + running runtime-only task keys
 ```
 
-Pins remain persisted as raw desktop filenames and map to
+Pins remain persisted as raw desktop filenames. While a matching live runtime
+state exists, its stable key occupies the configured pin position; only after
+the last live window closes does the row transition to
 `desktop:<desktopFileName>`. The projector's `encounterOrder` appends newly
 observed runtime-only tasks to a model-owned dynamic order. Focus-only updates
-change runtime roles but do not reorder existing dynamic rows. A resolved
-runtime state naturally merges with its configured pin; an `app:` or `window:`
-task disappears after its last live window closes. `resolved=false` is valid
-alongside `runtimeKnown=true` and `running=true`. Runtime-only tasks cannot be
-pinned because they have no real launcher identity.
+change runtime roles but do not reorder existing dynamic rows. `resolved=false`
+is valid alongside `runtimeKnown=true` and `running=true`. Runtime-only tasks
+without a real launcher identity cannot be pinned; acquiring a launcher makes
+them pinnable without changing their live key or persistence format.
 
 ## Authority and activation
 

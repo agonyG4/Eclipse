@@ -31,6 +31,7 @@ private slots:
     void unknownRuntimeStateDoesNotClaimStopped();
     void unresolvedRuntimeTaskAppearsWithoutLauncher();
     void resolvedPinnedRuntimeTaskMergesWithoutDuplication();
+    void identityEnrichmentKeepsTaskKeyAndRowCount();
 };
 
 static std::shared_ptr<DesktopEntrySnapshot> makeSnapshot(const QStringList &names)
@@ -440,6 +441,30 @@ void DockAppModelTest::resolvedPinnedRuntimeTaskMergesWithoutDuplication()
     QCOMPARE(model.rowCount(), 1);
     QCOMPARE(model.rowForTaskKey(QStringLiteral("desktop:steam.desktop")), 0);
     QVERIFY(model.index(0, 0).data(DockAppModel::PinnedRole).toBool());
+    QVERIFY(model.index(0, 0).data(DockAppModel::RunningRole).toBool());
+}
+
+void DockAppModelTest::identityEnrichmentKeepsTaskKeyAndRowCount()
+{
+    DockAppModel model;
+    Astrea::Typhon::DockApplicationRuntimeState state;
+    state.taskKey = QStringLiteral("app:steam_app_1091500");
+    state.appId = QStringLiteral("steam_app_1091500");
+    state.displayName = QStringLiteral("Cyberpunk 2077");
+    state.running = true;
+    state.windowCount = 1;
+    model.applyRuntimeProjection(runtimeProjection({state}));
+
+    AppIdentity identity;
+    identity.displayName = QStringLiteral("Cyberpunk 2077");
+    identity.iconName = QStringLiteral("steam_icon_1091500");
+    identity.iconPending = false;
+    QVERIFY(model.applyIdentityEnrichment(state.taskKey, identity));
+
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(model.taskKeyAt(0), state.taskKey);
+    QCOMPARE(model.index(0, 0).data(DockAppModel::IconNameRole).toString(),
+             QStringLiteral("steam_icon_1091500"));
     QVERIFY(model.index(0, 0).data(DockAppModel::RunningRole).toBool());
 }
 

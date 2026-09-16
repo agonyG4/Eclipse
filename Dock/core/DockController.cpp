@@ -1,5 +1,6 @@
 #include "core/DockController.hpp"
 
+#include "apps/appidentity/AppIdentityResolver.hpp"
 #include "platform/typhon/TyphonToplevelConnection.hpp"
 #include "services/DockConfigValidation.hpp"
 
@@ -41,6 +42,11 @@ DockConfig normalizedConfig(const DockConfig &config)
     return normalized;
 }
 
+QString identityFingerprint(const Astrea::Typhon::Toplevel &window)
+{
+    return window.appId + QLatin1Char('|') + window.title;
+}
+
 } // namespace
 
 DockController::DockController(ApplicationLauncher *launcher, DesktopEntryCatalog *catalog,
@@ -49,6 +55,11 @@ DockController::DockController(ApplicationLauncher *launcher, DesktopEntryCatalo
     : QObject(parent), m_launcher(launcher), m_persistence(persistence), m_catalog(catalog),
       m_catalogSnapshot(std::make_shared<const DesktopEntrySnapshot>())
 {
+    m_identityResolver = new AppIdentityResolver(this);
+    m_identityResolver->initialize(m_catalog);
+    connect(m_identityResolver, &AppIdentityResolver::identityResolved,
+            this, &DockController::onIdentityResolved);
+
     m_autoHideTimer.setSingleShot(true);
     m_autoHideTimer.setInterval(180);
     connect(&m_autoHideTimer, &QTimer::timeout, this, [this] {
@@ -707,6 +718,72 @@ void DockController::projectRuntime()
     m_runtimeStates = projection.states;
     m_model.applyRuntimeProjection(projection, true);
     publishAllMinimizeAnchors();
+    resolveTaskIdentities();
+}
+
+void DockController::resolveTaskIdentities()
+{
+    if (!m_identityResolver || !m_runtimeSnapshot.has_value())
+        return;
+
+    const Astrea::Typhon::Snapshot &snapshot = m_runtimeSnapshot.value();
+    for (auto it = m_runtimeStates.cbegin(); it != m_runtimeStates.cend(); ++it) {
+        const Astrea::Typhon::DockApplicationRuntimeState &state = it.value();
+        if (state.windowIds.isEmpty())
+            continue;
+
+        const QString &windowId = state.windowIds.constFirst();
+        const auto window = std::find_if(snapshot.windows.cbegin(), snapshot.windows.cend(),
+                                         [&windowId](const auto &candidate) {
+            return candidate.id == windowId;
+        });
+        if (window == snapshot.windows.cend())
+            continue;
+
+        WindowIdentityInput input;
+        input.address = window->id;
+        input.pid = window->pid;
+        input.className = window->appId;
+        input.initialClass = window->appId;
+        input.title = window->title;
+        input.initialTitle = window->title;
+        input.openGeneration = snapshot.connectionGeneration;
+        input.metadataFingerprint = identityFingerprint(*window);
+        input.themeRevision = m_identityResolver->themeRevision();
+        input.desktopIndexRevision = m_identityResolver->desktopIndexRevision();
+        input.steamIndexRevision = m_identityResolver->steamIndexRevision();
+
+        const AppIdentity fast = m_identityResolver->resolveSync(input);
+        if (fast.iconPending && m_model.applyIdentityEnrichment(state.taskKey, fast))
+            emit modelChanged();
+        m_identityResolver->resolveAsync(input, snapshot.connectionGeneration);
+    }
+}
+
+void DockController::onIdentityResolved(const QString &address, const AppIdentity &identity)
+{
+    if (!m_runtimeSnapshot.has_value() || identity.windowId != address)
+        return;
+
+    const Astrea::Typhon::Toplevel *currentWindow = nullptr;
+    for (const auto &window : m_runtimeSnapshot->windows) {
+        if (window.id == address) {
+            currentWindow = &window;
+            break;
+        }
+    }
+    if (!currentWindow || identity.pid != currentWindow->pid
+        || identity.openGeneration != m_runtimeSnapshot->connectionGeneration
+        || identity.metadataFingerprint != identityFingerprint(*currentWindow))
+        return;
+
+    for (auto it = m_runtimeStates.cbegin(); it != m_runtimeStates.cend(); ++it) {
+        if (!it->windowIds.contains(address))
+            continue;
+        if (m_model.applyIdentityEnrichment(it.key(), identity))
+            emit modelChanged();
+        return;
+    }
 }
 
 void DockController::publishMinimizeAnchor(const QString &taskKey)

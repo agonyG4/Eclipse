@@ -86,7 +86,8 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     )
     target_include_directories(dock-controller-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
     target_link_libraries(dock-controller-test PRIVATE
-        astrea-shared-core astrea-shared-dock astrea-shared-typhon Qt6::Core Qt6::Gui Qt6::Test)
+        astrea-shared-core astrea-shared-appidentity astrea-shared-dock astrea-shared-typhon
+        Qt6::Core Qt6::Gui Qt6::Test)
     dock_enable_sanitizers(dock-controller-test)
     add_test(NAME dock-controller-test COMMAND dock-controller-test)
 
@@ -102,7 +103,8 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     target_include_directories(dock-typhon-runtime-integration-test PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
     target_link_libraries(dock-typhon-runtime-integration-test PRIVATE
-        astrea-shared-core astrea-shared-dock astrea-shared-typhon Qt6::Core Qt6::Gui Qt6::Test)
+        astrea-shared-core astrea-shared-appidentity astrea-shared-dock astrea-shared-typhon
+        Qt6::Core Qt6::Gui Qt6::Test)
     dock_enable_sanitizers(dock-typhon-runtime-integration-test)
     add_test(NAME dock-typhon-runtime-integration-test
              COMMAND dock-typhon-runtime-integration-test)
@@ -166,7 +168,8 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     target_include_directories(dock-hover-qml-test PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
     target_link_libraries(dock-hover-qml-test PRIVATE
-        astrea-shared-core astrea-shared-coreplugin astrea-shared-dock astrea-shared-typhon
+        astrea-shared-core astrea-shared-coreplugin astrea-shared-appidentity astrea-shared-dock
+        astrea-shared-typhon
         astrea-shared-wayland-effects astrea-shared-wayland-effectsplugin
         Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
     dock_enable_sanitizers(dock-hover-qml-test)

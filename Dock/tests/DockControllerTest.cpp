@@ -6,6 +6,7 @@
 #include <QPersistentModelIndex>
 
 #include "core/DockController.hpp"
+#include "apps/appidentity/AppIdentityResolver.hpp"
 #include "services/DockConfigPersistence.hpp"
 
 class FakeLauncher final : public ApplicationLauncher {
@@ -54,6 +55,8 @@ private slots:
     void persistenceFailureLeavesOrderUnchanged();
     void runtimeOnlyOrderingRemainsUnchangedAfterPinMove();
     void runtimeOnlyTaskUsesTaskKeyAndRejectsLauncherActions();
+    void runtimeIdentityEnrichmentKeepsTaskKeyStable();
+    void staleIdentityEnrichmentIsRejectedAtControllerBoundary();
     void personalizationPropertiesPropagateAndUnchangedConfigIsQuiet();
     void autoHidePolicyKeepsSurfaceMappedAndReservationBounded();
     void runtimeObstructionUpdatesSurfacePlacement();
@@ -587,6 +590,62 @@ void DockControllerTest::runtimeOnlyTaskUsesTaskKeyAndRejectsLauncherActions()
     QCOMPARE(controller.windowsForTaskKey(taskKey).size(), 1);
     QVERIFY(!controller.launchNewWindow(taskKey));
     QVERIFY(!controller.setPinned(taskKey, true));
+}
+
+void DockControllerTest::runtimeIdentityEnrichmentKeepsTaskKeyStable()
+{
+    DockController controller;
+    Astrea::Typhon::Snapshot snapshot;
+    snapshot.connectionGeneration = 4;
+    snapshot.revision = 1;
+    Astrea::Typhon::Toplevel window;
+    window.id = QStringLiteral("9");
+    window.appId = QStringLiteral("steam_app_1091500");
+    window.title = QStringLiteral("Cyberpunk 2077");
+    snapshot.windows.append(window);
+
+    controller.applyTyphonSnapshot(snapshot);
+
+    QCOMPARE(controller.appModel()->rowCount(), 1);
+    QCOMPARE(controller.appModel()->taskKeyAt(0),
+             QStringLiteral("app:steam_app_1091500"));
+    QCOMPARE(controller.appModel()->data(controller.appModel()->index(0, 0),
+                                         DockAppModel::IconNameRole).toString(),
+             QStringLiteral("steam_icon_1091500"));
+}
+
+void DockControllerTest::staleIdentityEnrichmentIsRejectedAtControllerBoundary()
+{
+    DockController controller;
+    Astrea::Typhon::Snapshot first;
+    first.connectionGeneration = 4;
+    first.revision = 1;
+    Astrea::Typhon::Toplevel firstWindow;
+    firstWindow.id = QStringLiteral("9");
+    firstWindow.appId = QStringLiteral("example-app");
+    firstWindow.title = QStringLiteral("Old title");
+    firstWindow.pid = 100;
+    first.windows.append(firstWindow);
+    controller.applyTyphonSnapshot(first);
+
+    Astrea::Typhon::Snapshot current = first;
+    current.revision = 2;
+    current.windows.first().title = QStringLiteral("New title");
+    controller.applyTyphonSnapshot(current);
+
+    AppIdentity stale;
+    stale.windowId = QStringLiteral("9");
+    stale.pid = 100;
+    stale.openGeneration = 3;
+    stale.metadataFingerprint = QStringLiteral("example-app|Old title");
+    stale.iconName = QStringLiteral("stale-icon");
+    emit controller.identityResolver()->identityResolved(QStringLiteral("9"), stale);
+
+    QCOMPARE(controller.appModel()->rowCount(), 1);
+    QCOMPARE(controller.appModel()->taskKeyAt(0), QStringLiteral("app:example-app"));
+    QVERIFY(controller.appModel()->data(controller.appModel()->index(0, 0),
+                                        DockAppModel::IconNameRole).toString()
+             != QStringLiteral("stale-icon"));
 }
 
 void DockControllerTest::personalizationPropertiesPropagateAndUnchangedConfigIsQuiet()

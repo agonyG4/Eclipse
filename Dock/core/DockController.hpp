@@ -6,6 +6,7 @@
 #include "services/DockConfigWatcher.hpp"
 #include "services/DockConfigPersistence.hpp"
 #include "apps/DesktopEntryCatalog.hpp"
+#include "apps/ApplicationIdentity.hpp"
 #include "launch/ApplicationLauncher.hpp"
 
 #include <QHash>
@@ -17,6 +18,7 @@
 #include <optional>
 
 class TyphonToplevelConnection;
+class AppIdentityResolver;
 
 class DockController final : public QObject {
     Q_OBJECT
@@ -75,6 +77,7 @@ public:
     bool runtimeKnown() const { return m_runtimeKnown; }
     DesktopEntryCatalog *catalog() const { return m_catalog; }
     ApplicationLauncher *launcher() const { return m_launcher; }
+    AppIdentityResolver *identityResolver() const { return m_identityResolver; }
     int iconSize() const { return m_config.iconSize; }
     int edgeMargin() const { return m_config.edgeMargin; }
     int effectiveEdgeMargin() const { return m_config.effectiveEdgeMargin(); }
@@ -152,6 +155,7 @@ private slots:
                                 Astrea::Typhon::ToplevelActionResult result);
     void onTyphonActionFailed(quint64 token, Astrea::Typhon::ToplevelAction action,
                               Astrea::Typhon::ToplevelActionError error);
+    void onIdentityResolved(const QString &address, const AppIdentity &identity);
 
 private:
     QString keyForLaunchId(const QString &desktopId) const;
@@ -166,6 +170,7 @@ private:
     void publishAllMinimizeAnchors();
     void clearPublishedMinimizeAnchors(const QSet<QString> &liveWindowIds);
     void reconcileTyphonActionFailure(Astrea::Typhon::ToplevelActionError error);
+    void resolveTaskIdentities();
     void launchItem(const DockAppInfo &item, bool activateRunning = true);
     bool requestExactWindowAction(const QString &taskKey, const QString &windowId,
                                   Astrea::Typhon::ToplevelAction action);
@@ -175,6 +180,7 @@ private:
     ApplicationLauncher *m_launcher = nullptr;
     DockConfigPersistence *m_persistence = nullptr;
     DesktopEntryCatalog *m_catalog = nullptr;
+    AppIdentityResolver *m_identityResolver = nullptr;
     std::shared_ptr<const DesktopEntrySnapshot> m_catalogSnapshot;
     QHash<QString, QString> m_pendingLaunches;
     bool m_enabled = true;

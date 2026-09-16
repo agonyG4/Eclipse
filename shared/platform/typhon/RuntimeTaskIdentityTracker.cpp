@@ -59,30 +59,45 @@ QHash<QString, QString> RuntimeTaskIdentityTracker::update(
 
     TyphonAppMatcher matcher(desktopEntries);
     QHash<QString, QString> assignments;
+
+    // Preserve every existing window before allowing a new window to claim an
+    // alias. If several existing tasks expose a previously unseen app ID at
+    // once, the smallest sticky task key owns it so focus order cannot choose
+    // the owner. An established alias always wins over these candidates.
+    QHash<QString, QString> unclaimedAliasOwners;
     for (const Toplevel &window : snapshot.windows) {
-        QString taskKey;
         const auto existing = m_windowTaskKeys.constFind(window.id);
-        if (existing != m_windowTaskKeys.constEnd()) {
-            taskKey = existing.value();
-            const QString appId = normalizedAppId(window);
-            if (!appId.isEmpty() && !m_appTaskKeys.contains(appId)) {
-                // The first live task to claim an app ID owns the alias. A
-                // conflicting live claim must not move either existing task.
-                m_appTaskKeys.insert(appId, taskKey);
-            }
-        } else {
-            const QString appId = normalizedAppId(window);
+        if (existing == m_windowTaskKeys.constEnd())
+            continue;
+
+        const QString taskKey = existing.value();
+        assignments.insert(window.id, taskKey);
+
+        const QString appId = normalizedAppId(window);
+        if (appId.isEmpty() || m_appTaskKeys.contains(appId))
+            continue;
+
+        const auto candidate = unclaimedAliasOwners.constFind(appId);
+        if (candidate == unclaimedAliasOwners.constEnd() || taskKey < candidate.value())
+            unclaimedAliasOwners.insert(appId, taskKey);
+    }
+    for (auto it = unclaimedAliasOwners.cbegin(); it != unclaimedAliasOwners.cend(); ++it)
+        m_appTaskKeys.insert(it.key(), it.value());
+
+    for (const Toplevel &window : snapshot.windows) {
+        if (m_windowTaskKeys.contains(window.id))
+            continue;
+
+        const QString appId = normalizedAppId(window);
+        QString taskKey = appId.isEmpty() ? QString() : m_appTaskKeys.value(appId);
+        if (taskKey.isEmpty()) {
+            const TyphonAppMatch match = matcher.match(
+                {window.appId, window.title, window.pid, window.kind});
+            taskKey = initialTaskKeyFor(window, match);
             if (!appId.isEmpty())
-                taskKey = m_appTaskKeys.value(appId);
-            if (taskKey.isEmpty()) {
-                const TyphonAppMatch match = matcher.match(
-                    {window.appId, window.title, window.pid, window.kind});
-                taskKey = initialTaskKeyFor(window, match);
-                if (!appId.isEmpty())
-                    m_appTaskKeys.insert(appId, taskKey);
-            }
-            m_windowTaskKeys.insert(window.id, taskKey);
+                m_appTaskKeys.insert(appId, taskKey);
         }
+        m_windowTaskKeys.insert(window.id, taskKey);
         assignments.insert(window.id, taskKey);
     }
     return assignments;

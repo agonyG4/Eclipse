@@ -96,6 +96,7 @@ private slots:
     void catalogLossKeepsLiveTaskKey();
     void metadataChangeKeepsLiveTaskKey();
     void metadataChangeAliasesNewWindowIntoExistingTask();
+    void metadataChangeAliasIsIndependentOfWindowOrder();
     void newWindowJoinsExistingAppCohort();
     void generationChangeStartsFreshTaskLifetime();
     void authorityResetStartsFreshTaskLifetime();
@@ -393,6 +394,49 @@ void DockApplicationStateProjectorTest::metadataChangeAliasesNewWindowIntoExisti
         1, {window(QStringLiteral("third"), QStringLiteral("after-app"))});
     const auto nextLifetimeAssignments = tracker.update(nextLifetimeSnapshot, empty);
     QCOMPARE(nextLifetimeAssignments.value(QStringLiteral("third")), QStringLiteral("app:after-app"));
+}
+
+void DockApplicationStateProjectorTest::metadataChangeAliasIsIndependentOfWindowOrder()
+{
+    DockApplicationStateProjector projector;
+    const auto empty = std::make_shared<DesktopEntrySnapshot>();
+    const QString taskKey = QStringLiteral("app:before-app");
+    const auto initialSnapshot = snapshot(
+        1, {window(QStringLiteral("first"), QStringLiteral("before-app"))});
+
+    RuntimeTaskIdentityTracker existingFirstTracker;
+    existingFirstTracker.update(initialSnapshot, empty);
+    const auto existingFirstSnapshot = snapshot(
+        1,
+        {window(QStringLiteral("first"), QStringLiteral("after-app"), false, false, 1, 10),
+         window(QStringLiteral("second"), QStringLiteral("after-app"), false, false, 1, 20)});
+    const auto existingFirstAssignments =
+        existingFirstTracker.update(existingFirstSnapshot, empty);
+    QCOMPARE(existingFirstAssignments.value(QStringLiteral("first")), taskKey);
+    QCOMPARE(existingFirstAssignments.value(QStringLiteral("second")), taskKey);
+    const auto existingFirstProjection =
+        projector.project(existingFirstSnapshot, empty, existingFirstAssignments);
+    QCOMPARE(existingFirstProjection.states.size(), 1);
+    QVERIFY(existingFirstProjection.states.contains(taskKey));
+    QVERIFY(!existingFirstProjection.states.contains(QStringLiteral("app:after-app")));
+    QVERIFY(existingFirstProjection.states.value(taskKey).windowIds.contains(QStringLiteral("first")));
+    QVERIFY(existingFirstProjection.states.value(taskKey).windowIds.contains(QStringLiteral("second")));
+
+    RuntimeTaskIdentityTracker newFirstTracker;
+    newFirstTracker.update(initialSnapshot, empty);
+    const auto newFirstSnapshot = snapshot(
+        1,
+        {window(QStringLiteral("second"), QStringLiteral("after-app"), false, false, 1, 20),
+         window(QStringLiteral("first"), QStringLiteral("after-app"), false, false, 1, 10)});
+    const auto newFirstAssignments = newFirstTracker.update(newFirstSnapshot, empty);
+    QCOMPARE(newFirstAssignments.value(QStringLiteral("first")), taskKey);
+    QCOMPARE(newFirstAssignments.value(QStringLiteral("second")), taskKey);
+    const auto newFirstProjection = projector.project(newFirstSnapshot, empty, newFirstAssignments);
+    QCOMPARE(newFirstProjection.states.size(), 1);
+    QVERIFY(newFirstProjection.states.contains(taskKey));
+    QVERIFY(!newFirstProjection.states.contains(QStringLiteral("app:after-app")));
+    QVERIFY(newFirstProjection.states.value(taskKey).windowIds.contains(QStringLiteral("first")));
+    QVERIFY(newFirstProjection.states.value(taskKey).windowIds.contains(QStringLiteral("second")));
 }
 
 void DockApplicationStateProjectorTest::newWindowJoinsExistingAppCohort()

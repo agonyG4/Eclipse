@@ -100,7 +100,7 @@ public:
     void setBarPopupCloser(std::function<void()> closer) { m_barPopupCloser = std::move(closer); }
 
     Q_INVOKABLE bool presentDesktop(int x, int y, const QString &outputKey);
-    Q_INVOKABLE bool presentDock(const QString &desktopFileName, int x, int y,
+    Q_INVOKABLE bool presentDock(const QString &taskKey, int x, int y,
                                  int width, int height, const QString &outputKey);
     Q_INVOKABLE bool presentTray(const QString &itemKey, int x, int y,
                                  int width, int height, int preferredTop,

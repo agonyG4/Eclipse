@@ -113,11 +113,11 @@ bool ContextMenuController::presentDesktop(int x, int y, const QString &outputKe
     return m_desktopProvider->present(this, QPoint(x, y), outputKey);
 }
 
-bool ContextMenuController::presentDock(const QString &desktopFileName, int x, int y,
+bool ContextMenuController::presentDock(const QString &taskKey, int x, int y,
                                         int width, int height, const QString &outputKey)
 {
     logContextMenuDebug(QStringLiteral("dock-anchor-input"), {
-        {QStringLiteral("targetIdentity"), desktopFileName},
+        {QStringLiteral("targetIdentity"), taskKey},
         {QStringLiteral("outputKey"), outputKey},
         {QStringLiteral("anchorX"), x},
         {QStringLiteral("anchorY"), y},
@@ -126,7 +126,7 @@ bool ContextMenuController::presentDock(const QString &desktopFileName, int x, i
     });
     if (!m_dockProvider)
         return false;
-    return m_dockProvider->present(this, desktopFileName, QRect(x, y, width, height), outputKey);
+    return m_dockProvider->present(this, taskKey, QRect(x, y, width, height), outputKey);
 }
 
 bool ContextMenuController::presentTray(const QString &itemKey, int x, int y, int width,

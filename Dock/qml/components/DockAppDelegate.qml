@@ -7,6 +7,7 @@ Item {
 
     required property int index
     required property var model
+    required property string taskKey
     required property string desktopFileName
     required property string displayName
     required property string iconName
@@ -46,7 +47,7 @@ Item {
     property int dragLifecycle: 0
 
     property int iconSize: 48
-    signal activated(string desktopFileName)
+    signal activated(string taskKey)
     signal dragStarted(string desktopFileName)
     signal dragMoved(string desktopFileName, real translationX, real sceneX, real sceneY)
     signal dragFinished(string desktopFileName)
@@ -106,7 +107,7 @@ Item {
 
     function isPointerTarget() {
         return !root.dockPanel
-            || root.dockPanel.pointerTargetDesktopFileName === root.desktopFileName
+            || root.dockPanel.pointerTargetTaskKey === root.taskKey
     }
 
     function isPointerTargetAt(eventPoint) {
@@ -119,7 +120,7 @@ Item {
         return root.isPointerTarget()
     }
 
-    objectName: desktopFileName
+    objectName: taskKey
     width: slotWidth
     height: slotHeight
 
@@ -166,7 +167,7 @@ Item {
 
     Item {
         id: interactionTarget
-        objectName: "interactionTarget-" + root.desktopFileName
+        objectName: "interactionTarget-" + (root.desktopFileName || root.taskKey)
         parent: root.dockPanel || root
         width: root.iconSize * root.visualScale
         height: root.iconSize * root.visualScale
@@ -211,7 +212,7 @@ Item {
                 const wasDrag = root.dragWasActive
                 root.dragWasActive = false
                 if (!wasDrag && root.isPointerTargetAt(eventPoint))
-                    root.activated(root.desktopFileName)
+                    root.activated(root.taskKey)
             }
         }
 
@@ -232,7 +233,7 @@ Item {
                 if (root.contextMenuController.debugEnabled) {
                     console.log("astrea.context-menu " + JSON.stringify({
                         stage: "dock-anchor-resolved",
-                        targetIdentity: root.desktopFileName,
+                        targetIdentity: root.taskKey,
                         outputKey: root.outputKey,
                         outputWidth: root.dockPanel.outputWidth,
                         outputHeight: root.dockPanel.outputHeight,
@@ -248,7 +249,7 @@ Item {
                         outputRectHeight: outputRect.height
                     }))
                 }
-                root.contextMenuController.presentDock(root.desktopFileName,
+                root.contextMenuController.presentDock(root.taskKey,
                     outputRect.x, outputRect.y, outputRect.width, outputRect.height,
                     root.outputKey)
             }

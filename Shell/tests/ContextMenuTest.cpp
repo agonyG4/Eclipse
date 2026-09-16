@@ -4,6 +4,9 @@
 #include "core/ContextMenuProviders.hpp"
 #include "core/ContextMenuSurfacePolicy.hpp"
 #include "core/ContextMenuSurfaceMapping.hpp"
+#include "Dock/core/DockController.hpp"
+#include "apps/DesktopEntryCatalog.hpp"
+#include "launch/ApplicationLauncher.hpp"
 #include "statusnotifier/DBusMenuModel.hpp"
 #include "statusnotifier/StatusNotifierService.hpp"
 
@@ -30,6 +33,7 @@ private slots:
     void controllerSettlesWhenOutputIsRemoved();
     void overlayMappingIsOutputScoped();
     void controllerShutdownCleansUpActivePresentation();
+    void dockRuntimeOnlyMenuIsCapabilityBased();
     void modelNormalizesSeparatorsAndExposesRoles();
     void modelPresentationMetricsAreExactAndContentAware();
     void modelRejectsDepthAndNodeBounds();
@@ -305,6 +309,48 @@ void ContextMenuTest::controllerShutdownCleansUpActivePresentation()
     controller.close();
     controller.completeClose();
     QCOMPARE(controller.lifecycle(), ContextMenuController::Lifecycle::Closed);
+}
+
+void ContextMenuTest::dockRuntimeOnlyMenuIsCapabilityBased()
+{
+    DockController dock;
+    Astrea::Typhon::Snapshot snapshot;
+    snapshot.connectionGeneration = 1;
+    snapshot.revision = 1;
+    Astrea::Typhon::Toplevel window;
+    window.id = QStringLiteral("9");
+    window.appId = QStringLiteral("steam_app_1091500");
+    window.title = QStringLiteral("Cyberpunk 2077");
+    snapshot.windows.append(window);
+    dock.applyTyphonSnapshot(snapshot);
+
+    DesktopEntryCatalog catalog;
+    ApplicationLauncher launcher(QStringLiteral("/nonexistent/astrea-launch"));
+    Astrea::Shell::DockContextMenuProvider provider(&dock, &catalog, &launcher);
+    ContextMenuController menu;
+    const QString taskKey = QStringLiteral("app:steam_app_1091500");
+    QVERIFY(provider.present(&menu, taskKey, QRect(10, 20, 48, 48),
+                            QStringLiteral("output-1")));
+
+    QStringList tokens;
+    int openWindowsRow = -1;
+    for (int row = 0; row < menu.model()->rowCount(); ++row) {
+        const QModelIndex index = menu.model()->index(row, 0);
+        tokens.append(index.data(ContextMenuModel::TokenRole).toString());
+        if (index.data(ContextMenuModel::LabelRole).toString() == QStringLiteral("Open Windows"))
+            openWindowsRow = row;
+    }
+    QVERIFY(openWindowsRow >= 0);
+    const QModelIndex openWindows = menu.model()->index(openWindowsRow, 0);
+    QCOMPARE(menu.model()->rowCount(openWindows), 1);
+    QCOMPARE(menu.model()->index(0, 0, openWindows)
+                 .data(ContextMenuModel::TokenRole).toString(),
+             QStringLiteral("dock.window.9"));
+    QVERIFY(tokens.contains(QStringLiteral("dock.close")));
+    QVERIFY(!tokens.contains(QStringLiteral("dock.new-window")));
+    QVERIFY(!tokens.contains(QStringLiteral("dock.pin")));
+    QVERIFY(!tokens.contains(QStringLiteral("dock.unpin")));
+    QCOMPARE(menu.targetIdentity(), taskKey);
 }
 
 void ContextMenuTest::modelNormalizesSeparatorsAndExposesRoles()

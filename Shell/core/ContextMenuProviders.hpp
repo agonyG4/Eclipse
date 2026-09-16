@@ -38,7 +38,7 @@ public:
     {
     }
 
-    bool present(ContextMenuController *controller, const QString &desktopFileName,
+    bool present(ContextMenuController *controller, const QString &taskKey,
                  const QRect &itemRectangle, const QString &outputKey) const;
 
 private:

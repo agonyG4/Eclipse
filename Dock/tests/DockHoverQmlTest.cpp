@@ -92,14 +92,16 @@ const QString kDockPanelPath = QString::fromUtf8(
     DOCK_SOURCE_DIR "/qml/components/DockPanel.qml");
 const QString kDockMainPath = QString::fromUtf8(DOCK_SOURCE_DIR "/qml/Main.qml");
 
-QQuickItem *delegate(QQuickItem *panel, const QString &desktopFileName)
+QQuickItem *delegate(QQuickItem *panel, const QString &identity)
 {
+    const QString taskKey = identity.startsWith(QStringLiteral("desktop:"))
+        ? identity : QStringLiteral("desktop:") + identity;
     QQuickItem *result = nullptr;
-    std::function<void(QQuickItem *)> visit = [&result, &desktopFileName,
+    std::function<void(QQuickItem *)> visit = [&result, &identity, &taskKey,
                                                &visit](QQuickItem *item) {
         if (result || !item)
             return;
-        if (item->objectName() == desktopFileName) {
+        if (item->objectName() == identity || item->objectName() == taskKey) {
             result = item;
             return;
         }
@@ -195,6 +197,7 @@ private slots:
     void modelMoveRefreshesHoverGeometryAndIdentity();
     void releasePointerRestoresMagnificationTarget();
     void reorderLiftsOnlyTheDraggedDelegate();
+    void runtimeOnlyQmlUsesTaskKeyForIdentityAndContextTarget();
     void magnifiedVisualRegionAcceptsContextMenu();
     void mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen();
     void magnifiedInteractionTargetMatchesVisualBounds();
@@ -1391,6 +1394,64 @@ void DockHoverQmlTest::magnifiedInteractionRegionsResolveByVisualStacking()
     delete panel;
 }
 
+void DockHoverQmlTest::runtimeOnlyQmlUsesTaskKeyForIdentityAndContextTarget()
+{
+    DockController controller;
+    Astrea::Typhon::Snapshot snapshot;
+    snapshot.connectionGeneration = 1;
+    snapshot.revision = 1;
+    Astrea::Typhon::Toplevel window;
+    window.id = QStringLiteral("9");
+    window.appId = QStringLiteral("Steam_App_1091500");
+    window.title = QStringLiteral("Cyberpunk 2077");
+    window.focusSerial = 1;
+    snapshot.windows.append(window);
+    controller.applyTyphonSnapshot(snapshot);
+
+    const QString taskKey = QStringLiteral("app:steam_app_1091500");
+    QCOMPARE(controller.appModel()->rowForTaskKey(taskKey), 0);
+
+    FakeContextMenuController contextMenuController;
+    DockSurfaceGeometry surfaceGeometry;
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready,
+             qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    panel->setProperty("contextMenuController", QVariant::fromValue(
+                                                    static_cast<QObject *>(&contextMenuController)));
+    panel->setProperty("dockSurfaceGeometry", QVariant::fromValue(
+                                                  static_cast<QObject *>(&surfaceGeometry)));
+    panel->setProperty("outputKey", QStringLiteral("output-1"));
+    panel->setProperty("outputWidth", 400);
+    panel->setProperty("outputHeight", 120);
+
+    QQuickWindow qmlWindow;
+    qmlWindow.resize(400, 120);
+    panel->setParentItem(qmlWindow.contentItem());
+    qmlWindow.show();
+    QTest::qWait(20);
+
+    QQuickItem *delegateItem = delegate(panel, taskKey);
+    QVERIFY(delegateItem);
+    QCOMPARE(delegateItem->objectName(), taskKey);
+    QSignalSpy activationSpy(delegateItem, SIGNAL(activated(QString)));
+    QVERIFY(activationSpy.isValid());
+    const QPoint center = itemCenter(qmlWindow, delegateItem);
+    QTest::mouseClick(&qmlWindow, Qt::LeftButton, Qt::NoModifier, center);
+    QTRY_COMPARE_WITH_TIMEOUT(activationSpy.count(), 1, 1000);
+    QCOMPARE(activationSpy.at(0).at(0).toString(), taskKey);
+
+    QTest::mouseClick(&qmlWindow, Qt::RightButton, Qt::NoModifier, center);
+    QTRY_COMPARE_WITH_TIMEOUT(contextMenuController.presentCount, 1, 1000);
+    QCOMPARE(contextMenuController.lastDesktopFileName, taskKey);
+
+    delete panel;
+}
+
 void DockHoverQmlTest::magnifiedVisualRegionAcceptsContextMenu()
 {
     DockController dockController;
@@ -1457,7 +1518,7 @@ void DockHoverQmlTest::magnifiedVisualRegionAcceptsContextMenu()
 
     QTest::mouseClick(&window, Qt::RightButton, Qt::NoModifier, outsideRestingInsideVisual);
     QTRY_COMPARE_WITH_TIMEOUT(contextMenuController.presentCount, 1, 1000);
-    QCOMPARE(contextMenuController.lastDesktopFileName, QStringLiteral("one.desktop"));
+    QCOMPARE(contextMenuController.lastDesktopFileName, QStringLiteral("desktop:one.desktop"));
     QCOMPARE(contextMenuController.lastOutputKey, QStringLiteral("output-1"));
     QVERIFY(contextMenuController.lastRectangle.width() > 0);
     QVERIFY(contextMenuController.lastRectangle.height() > 0);

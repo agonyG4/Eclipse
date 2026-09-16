@@ -58,7 +58,10 @@ Item {
     // axis. For Bottom this is the historical centered X coordinate.
     property real pointerX: 0
     property bool pointerInside: false
-    property string pointerTargetDesktopFileName: ""
+    property string pointerTargetTaskKey: ""
+    readonly property string pointerTargetDesktopFileName:
+        pointerTargetTaskKey.startsWith("desktop:")
+            ? pointerTargetTaskKey.substring("desktop:".length) : pointerTargetTaskKey
     property var contextMenuController: null
     property var dockSurfaceGeometry: null
     property var inputRegionBridge: null
@@ -147,8 +150,8 @@ Item {
                     root.scheduleMinimizeAnchorPublication()
                 }
                 onItemRemoved: function(index, item) {
-                    if (item && item.desktopFileName)
-                        DockController.clearMinimizeAnchor(item.desktopFileName)
+                    if (item && item.taskKey)
+                        DockController.clearMinimizeAnchor(item.taskKey)
                     root.updateHoverEffect()
                     root.scheduleMinimizeAnchorPublication()
                 }
@@ -164,8 +167,8 @@ Item {
                     outputOriginX: root.outputOriginX
                     outputOriginY: root.outputOriginY
                     pinned: model.pinned
-                    pointerTarget: dockPanel.pointerTargetDesktopFileName === desktopFileName
-                    onActivated: function(key) { DockController.launchByDesktopFileName(key) }
+                    pointerTarget: dockPanel.pointerTargetTaskKey === taskKey
+                    onActivated: function(key) { DockController.activateOrLaunchTask(key) }
                     onDragStarted: function(key) { root.beginReorder(key) }
                     onDragMoved: function(key, translationX, sceneX, sceneY) {
                         root.updateReorder(key, translationX, sceneX, sceneY)
@@ -269,7 +272,7 @@ Item {
                 DockController.layerShellEdgeMargin, root.surfaceCrossInset, DockController.iconSize,
                 DockController.delegateWidth, DockController.delegateHeight,
                 DockController.itemSpacing, DockController.panelPadding, index, appRepeater.count)
-            DockController.setMinimizeAnchor(item.desktopFileName, rect)
+            DockController.setMinimizeAnchor(item.taskKey, rect)
         }
     }
 
@@ -464,7 +467,7 @@ Item {
 
         const targetIndex = magnificationActive ? closestIndex : hoveredIndex
         const targetItem = targetIndex >= 0 ? appRepeater.itemAt(targetIndex) : null
-        pointerTargetDesktopFileName = targetItem ? targetItem.objectName : ""
+        pointerTargetTaskKey = targetItem ? targetItem.taskKey : ""
         const liftedItem = liftActive && hoveredIndex >= 0 ? appRepeater.itemAt(hoveredIndex) : null
         updateDelegateTransforms(totalExtra, slotPitch,
                                  liftedItem ? liftedItem.objectName : "",
@@ -526,7 +529,7 @@ Item {
         var source = -1
         for (var i = 0; i < Math.min(DockController.pinCount, appRepeater.count); ++i) {
             const item = appRepeater.itemAt(i)
-            if (item && item.objectName === key) {
+            if (item && item.desktopFileName === key) {
                 source = i
                 break
             }
@@ -571,7 +574,7 @@ Item {
         dragTargetIndex = -1
         dragOriginCenterRelativeX = 0
         dragCenterRelativeX = 0
-        pointerTargetDesktopFileName = ""
+        pointerTargetTaskKey = ""
         updateHoverEffect()
         if (source >= 0 && target >= 0 && source !== target)
             reorderRequested(key, target)

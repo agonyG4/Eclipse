@@ -81,26 +81,30 @@ bool DesktopContextMenuProvider::present(ContextMenuController *controller, cons
 }
 
 bool DockContextMenuProvider::present(ContextMenuController *controller,
-                                      const QString &desktopFileName,
+                                      const QString &taskKey,
                                       const QRect &itemRectangle,
                                       const QString &outputKey) const
 {
     if (!controller || !m_dock)
         return false;
-    const int row = m_dock->appModel()->rowForDesktopFileName(desktopFileName);
+    const int row = m_dock->appModel()->rowForTaskKey(taskKey);
     const DockAppInfo *item = m_dock->appModel()->itemAt(row);
     if (!item)
         return false;
+    const QString desktopFileName = item->desktopFileName;
+    const bool hasLauncher = !desktopFileName.isEmpty();
 
     QVector<ContextMenuModel::NodeSpec> nodes;
-    nodes.append(ContextMenuModel::NodeSpec{
-        .token = QStringLiteral("dock.new-window"),
-        .label = QStringLiteral("New Window"),
-        .icon = item->iconName
-    });
+    if (hasLauncher) {
+        nodes.append(ContextMenuModel::NodeSpec{
+            .token = QStringLiteral("dock.new-window"),
+            .label = QStringLiteral("New Window"),
+            .icon = item->iconName
+        });
+    }
 
     const QVector<Astrea::Typhon::Toplevel> windows =
-        m_dock->windowsForDesktopFileName(desktopFileName);
+        m_dock->windowsForTaskKey(taskKey);
     QHash<QString, QString> windowActions;
     if (!windows.isEmpty()) {
         ContextMenuModel::NodeSpec openWindows;
@@ -122,7 +126,7 @@ bool DockContextMenuProvider::present(ContextMenuController *controller,
     }
 
     QHash<QString, DesktopEntryAction> desktopActions;
-    if (m_catalog) {
+    if (hasLauncher && m_catalog) {
         const auto record = m_catalog->findByDesktopFileName(desktopFileName);
         if (record) {
             for (int index = 0; index < record->actions.size(); ++index) {
@@ -151,26 +155,31 @@ bool DockContextMenuProvider::present(ContextMenuController *controller,
 
     nodes.append(ContextMenuModel::NodeSpec{.kind = ContextMenuModel::NodeKind::Separator});
     const bool pinned = item->pinned;
-    nodes.append(ContextMenuModel::NodeSpec{
-        .token = pinned ? QStringLiteral("dock.unpin") : QStringLiteral("dock.pin"),
-        .label = pinned ? QStringLiteral("Unpin from Dock") : QStringLiteral("Pin to Dock"),
-        .icon = pinned ? QStringLiteral("list-remove") : QStringLiteral("list-add")
-    });
+    if (hasLauncher) {
+        nodes.append(ContextMenuModel::NodeSpec{
+            .token = pinned ? QStringLiteral("dock.unpin") : QStringLiteral("dock.pin"),
+            .label = pinned ? QStringLiteral("Unpin from Dock") : QStringLiteral("Pin to Dock"),
+            .icon = pinned ? QStringLiteral("list-remove") : QStringLiteral("list-add")
+        });
+    }
 
     const ContextMenuTarget target{ContextMenuTarget::Kind::DockApplication,
-                                   desktopFileName, outputKey};
-    const auto validator = [this, desktopFileName] {
-        return m_dock && m_dock->appModel()->rowForDesktopFileName(desktopFileName) >= 0;
+                                   taskKey, outputKey};
+    const auto validator = [this, taskKey] {
+        return m_dock && m_dock->appModel()->rowForTaskKey(taskKey) >= 0;
     };
     return controller->present(target, rectangleAnchor(itemRectangle), nodes,
-                               [this, controller, desktopFileName, windows, windowActions,
-                                desktopActions, pinned](const QString &token) {
+                               [this, controller, taskKey, desktopFileName, windows, windowActions,
+                                desktopActions, pinned, hasLauncher](const QString &token) {
         if (!m_dock)
             return false;
         if (token == QStringLiteral("dock.new-window"))
+            if (!hasLauncher)
+                return false;
+        if (token == QStringLiteral("dock.new-window"))
             return m_dock->launchNewWindow(desktopFileName);
         if (windowActions.contains(token)) {
-            const bool accepted = m_dock->activateWindow(desktopFileName, windowActions.value(token));
+            const bool accepted = m_dock->activateWindow(taskKey, windowActions.value(token));
             if (!accepted)
                 controller->invalidateTarget();
             return accepted;
@@ -178,7 +187,7 @@ bool DockContextMenuProvider::present(ContextMenuController *controller,
         if (token == QStringLiteral("dock.close")) {
             bool accepted = false;
             for (const auto &window : windows)
-                accepted = m_dock->closeWindow(desktopFileName, window.id) || accepted;
+                accepted = m_dock->closeWindow(taskKey, window.id) || accepted;
             if (!accepted)
                 controller->invalidateTarget();
             return accepted;
@@ -203,6 +212,9 @@ bool DockContextMenuProvider::present(ContextMenuController *controller,
             m_launcher->launchDesktop(request);
             return true;
         }
+        if (token == (pinned ? QStringLiteral("dock.unpin") : QStringLiteral("dock.pin")))
+            if (!hasLauncher)
+                return false;
         if (token == (pinned ? QStringLiteral("dock.unpin") : QStringLiteral("dock.pin")))
             return m_dock->setPinned(desktopFileName, !pinned);
         return false;

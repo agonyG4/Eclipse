@@ -57,6 +57,13 @@ private slots:
     void runtimeOnlyTaskUsesTaskKeyAndRejectsLauncherActions();
     void runtimeIdentityEnrichmentKeepsTaskKeyStable();
     void staleIdentityEnrichmentIsRejectedAtControllerBoundary();
+    void catalogGainWhileLiveKeepsStableTaskKeyAndAvoidsRowChurn();
+    void catalogLossWhileLiveKeepsStableTaskKey();
+    void runtimeMetadataChangeKeepsStableTaskKey();
+    void newSameAppWindowJoinsStableTaskAfterCatalogGain();
+    void lateResolvedRuntimeCanBePinnedWithoutDuplicate();
+    void newLifecycleCanUseDesktopKeyAfterOldTaskEnds();
+    void desktopFilenameLookupFindsStableRuntimeTask();
     void personalizationPropertiesPropagateAndUnchangedConfigIsQuiet();
     void autoHidePolicyKeepsSurfaceMappedAndReservationBounded();
     void runtimeObstructionUpdatesSurfacePlacement();
@@ -104,6 +111,32 @@ static std::shared_ptr<DesktopEntrySnapshot> makeCatalog()
         snapshot->byDesktopFileName.insert(fileName, index);
         snapshot->byDesktopId.insert(record.id, index);
     }
+    return snapshot;
+}
+
+static std::shared_ptr<DesktopEntrySnapshot> makeLateCatalog()
+{
+    auto snapshot = makeCatalog();
+    DesktopEntryRecord record;
+    record.desktopFileName = QStringLiteral("late.desktop");
+    record.id = QStringLiteral("late-app");
+    record.name = QStringLiteral("Late App");
+    record.icon = QStringLiteral("late-icon");
+    record.exec = QStringLiteral("late-app");
+    const int index = snapshot->entries.size();
+    snapshot->entries.append(record);
+    snapshot->byDesktopFileName.insert(record.desktopFileName, index);
+    snapshot->byDesktopId.insert(record.id, index);
+    return snapshot;
+}
+
+static Astrea::Typhon::Snapshot runtimeSnapshot(
+    quint64 generation, std::initializer_list<Astrea::Typhon::Toplevel> windows)
+{
+    Astrea::Typhon::Snapshot snapshot;
+    snapshot.connectionGeneration = generation;
+    snapshot.windows = QVector<Astrea::Typhon::Toplevel>(windows);
+    snapshot.total = snapshot.windows.size();
     return snapshot;
 }
 
@@ -646,6 +679,148 @@ void DockControllerTest::staleIdentityEnrichmentIsRejectedAtControllerBoundary()
     QVERIFY(controller.appModel()->data(controller.appModel()->index(0, 0),
                                         DockAppModel::IconNameRole).toString()
              != QStringLiteral("stale-icon"));
+}
+
+void DockControllerTest::catalogGainWhileLiveKeepsStableTaskKeyAndAvoidsRowChurn()
+{
+    DockController controller;
+    const auto empty = std::make_shared<DesktopEntrySnapshot>();
+    controller.setCatalogSnapshot(empty);
+    Astrea::Typhon::Toplevel window;
+    window.id = QStringLiteral("late-window");
+    window.appId = QStringLiteral("late-app");
+    window.title = QStringLiteral("Late");
+    controller.applyTyphonSnapshot(runtimeSnapshot(1, {window}));
+
+    QCOMPARE(controller.appModel()->rowCount(), 1);
+    QCOMPARE(controller.appModel()->taskKeyAt(0), QStringLiteral("app:late-app"));
+    QVERIFY(controller.appModel()->desktopFileNameAt(0).isEmpty());
+
+    QSignalSpy insertedSpy(controller.appModel(), &QAbstractItemModel::rowsInserted);
+    QSignalSpy removedSpy(controller.appModel(), &QAbstractItemModel::rowsRemoved);
+    controller.setCatalogSnapshot(makeLateCatalog());
+
+    QCOMPARE(controller.appModel()->rowCount(), 1);
+    QCOMPARE(controller.appModel()->taskKeyAt(0), QStringLiteral("app:late-app"));
+    QCOMPARE(controller.appModel()->desktopFileNameAt(0), QStringLiteral("late.desktop"));
+    QVERIFY(controller.appModel()->index(0, 0).data(DockAppModel::ResolvedRole).toBool());
+    QCOMPARE(insertedSpy.count(), 0);
+    QCOMPARE(removedSpy.count(), 0);
+}
+
+void DockControllerTest::catalogLossWhileLiveKeepsStableTaskKey()
+{
+    DockController controller;
+    controller.setCatalogSnapshot(makeLateCatalog());
+    Astrea::Typhon::Toplevel window;
+    window.id = QStringLiteral("late-window");
+    window.appId = QStringLiteral("late-app");
+    controller.applyTyphonSnapshot(runtimeSnapshot(1, {window}));
+    const QString stableKey = controller.appModel()->taskKeyAt(0);
+
+    QSignalSpy insertedSpy(controller.appModel(), &QAbstractItemModel::rowsInserted);
+    QSignalSpy removedSpy(controller.appModel(), &QAbstractItemModel::rowsRemoved);
+    controller.setCatalogSnapshot(std::make_shared<DesktopEntrySnapshot>());
+
+    QCOMPARE(stableKey, QStringLiteral("desktop:late.desktop"));
+    QCOMPARE(controller.appModel()->rowCount(), 1);
+    QCOMPARE(controller.appModel()->taskKeyAt(0), stableKey);
+    QCOMPARE(controller.appModel()->desktopFileNameAt(0), QStringLiteral("late.desktop"));
+    QCOMPARE(insertedSpy.count(), 0);
+    QCOMPARE(removedSpy.count(), 0);
+}
+
+void DockControllerTest::runtimeMetadataChangeKeepsStableTaskKey()
+{
+    DockController controller;
+    const auto empty = std::make_shared<DesktopEntrySnapshot>();
+    controller.setCatalogSnapshot(empty);
+    Astrea::Typhon::Toplevel first;
+    first.id = QStringLiteral("stable-window");
+    first.appId = QStringLiteral("before-app");
+    first.title = QStringLiteral("Before");
+    controller.applyTyphonSnapshot(runtimeSnapshot(1, {first}));
+
+    Astrea::Typhon::Toplevel changed = first;
+    changed.appId = QStringLiteral("after-app");
+    changed.title = QStringLiteral("After");
+    controller.applyTyphonSnapshot(runtimeSnapshot(1, {changed}));
+
+    QCOMPARE(controller.appModel()->rowCount(), 1);
+    QCOMPARE(controller.appModel()->taskKeyAt(0), QStringLiteral("app:before-app"));
+    QCOMPARE(controller.windowsForTaskKey(QStringLiteral("app:before-app")).first().title,
+             QStringLiteral("After"));
+}
+
+void DockControllerTest::newSameAppWindowJoinsStableTaskAfterCatalogGain()
+{
+    DockController controller;
+    controller.setCatalogSnapshot(std::make_shared<DesktopEntrySnapshot>());
+    Astrea::Typhon::Toplevel first;
+    first.id = QStringLiteral("first");
+    first.appId = QStringLiteral("late-app");
+    controller.applyTyphonSnapshot(runtimeSnapshot(1, {first}));
+    controller.setCatalogSnapshot(makeLateCatalog());
+
+    Astrea::Typhon::Toplevel second = first;
+    second.id = QStringLiteral("second");
+    controller.applyTyphonSnapshot(runtimeSnapshot(1, {first, second}));
+
+    QCOMPARE(controller.appModel()->rowCount(), 1);
+    QCOMPARE(controller.appModel()->taskKeyAt(0), QStringLiteral("app:late-app"));
+    QCOMPARE(controller.appModel()->index(0, 0).data(DockAppModel::WindowCountRole).toInt(), 2);
+    QVERIFY(controller.appModel()->rowForTaskKey(QStringLiteral("desktop:late.desktop")) < 0);
+}
+
+void DockControllerTest::lateResolvedRuntimeCanBePinnedWithoutDuplicate()
+{
+    CountingPersistence persistence;
+    DockController controller(nullptr, nullptr, &persistence);
+    controller.setCatalogSnapshot(std::make_shared<DesktopEntrySnapshot>());
+    Astrea::Typhon::Toplevel window;
+    window.id = QStringLiteral("late-window");
+    window.appId = QStringLiteral("late-app");
+    controller.applyTyphonSnapshot(runtimeSnapshot(1, {window}));
+    controller.setCatalogSnapshot(makeLateCatalog());
+
+    QVERIFY(controller.setPinned(QStringLiteral("late.desktop"), true));
+    QCOMPARE(persistence.lastPins, QStringList{QStringLiteral("late.desktop")});
+    QCOMPARE(controller.appModel()->rowCount(), 1);
+    QCOMPARE(controller.appModel()->taskKeyAt(0), QStringLiteral("app:late-app"));
+    QVERIFY(controller.appModel()->index(0, 0).data(DockAppModel::PinnedRole).toBool());
+    QVERIFY(controller.appModel()->rowForTaskKey(QStringLiteral("desktop:late.desktop")) < 0);
+}
+
+void DockControllerTest::newLifecycleCanUseDesktopKeyAfterOldTaskEnds()
+{
+    DockController controller;
+    controller.setCatalogSnapshot(std::make_shared<DesktopEntrySnapshot>());
+    Astrea::Typhon::Toplevel window;
+    window.id = QStringLiteral("late-window");
+    window.appId = QStringLiteral("late-app");
+    controller.applyTyphonSnapshot(runtimeSnapshot(1, {window}));
+    QCOMPARE(controller.appModel()->taskKeyAt(0), QStringLiteral("app:late-app"));
+    controller.applyTyphonSnapshot(runtimeSnapshot(1, {}));
+    controller.setCatalogSnapshot(makeLateCatalog());
+    controller.applyTyphonSnapshot(runtimeSnapshot(1, {window}));
+
+    QCOMPARE(controller.appModel()->rowCount(), 1);
+    QCOMPARE(controller.appModel()->taskKeyAt(0), QStringLiteral("desktop:late.desktop"));
+}
+
+void DockControllerTest::desktopFilenameLookupFindsStableRuntimeTask()
+{
+    DockController controller;
+    controller.setCatalogSnapshot(std::make_shared<DesktopEntrySnapshot>());
+    Astrea::Typhon::Toplevel window;
+    window.id = QStringLiteral("late-window");
+    window.appId = QStringLiteral("late-app");
+    controller.applyTyphonSnapshot(runtimeSnapshot(1, {window}));
+    controller.setCatalogSnapshot(makeLateCatalog());
+
+    const auto windows = controller.windowsForDesktopFileName(QStringLiteral("late.desktop"));
+    QCOMPARE(windows.size(), 1);
+    QCOMPARE(windows.first().id, QStringLiteral("late-window"));
 }
 
 void DockControllerTest::personalizationPropertiesPropagateAndUnchangedConfigIsQuiet()

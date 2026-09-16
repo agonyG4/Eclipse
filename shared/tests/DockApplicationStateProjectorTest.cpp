@@ -2,6 +2,7 @@
 
 #include "apps/DesktopEntryCatalog.hpp"
 #include "platform/typhon/DockApplicationStateProjector.hpp"
+#include "platform/typhon/RuntimeTaskIdentityTracker.hpp"
 
 using namespace Astrea::Typhon;
 
@@ -46,6 +47,28 @@ Snapshot snapshot(std::initializer_list<Toplevel> windows)
     return result;
 }
 
+Snapshot snapshot(quint64 generation, std::initializer_list<Toplevel> windows)
+{
+    Snapshot result = snapshot(windows);
+    result.connectionGeneration = generation;
+    return result;
+}
+
+std::shared_ptr<DesktopEntrySnapshot> lateCatalog()
+{
+    auto result = catalog();
+    DesktopEntryRecord entry;
+    entry.desktopFileName = QStringLiteral("late.desktop");
+    entry.id = QStringLiteral("late-app");
+    entry.name = QStringLiteral("Late App");
+    entry.icon = QStringLiteral("late-icon");
+    const int index = result->entries.size();
+    result->entries.append(entry);
+    result->byDesktopFileName.insert(entry.desktopFileName, index);
+    result->byDesktopId.insert(entry.id, index);
+    return result;
+}
+
 } // namespace
 
 class DockApplicationStateProjectorTest final : public QObject {
@@ -69,6 +92,13 @@ private slots:
     void focusSerialOrdersExactActivationTargets();
     void countsAreClampedToInt();
     void stress100ProjectionCycles();
+    void catalogGainKeepsLiveTaskKey();
+    void catalogLossKeepsLiveTaskKey();
+    void metadataChangeKeepsLiveTaskKey();
+    void newWindowJoinsExistingAppCohort();
+    void generationChangeStartsFreshTaskLifetime();
+    void authorityResetStartsFreshTaskLifetime();
+    void emptyAppIdWindowsRemainSeparate();
 };
 
 void DockApplicationStateProjectorTest::zeroWindowsProducesClearedPinnedState()
@@ -269,6 +299,140 @@ void DockApplicationStateProjectorTest::stress100ProjectionCycles()
                  QVector<QString>{id});
         QVERIFY(!projection.states.contains(QStringLiteral("desktop:two.desktop")));
     }
+}
+
+void DockApplicationStateProjectorTest::catalogGainKeepsLiveTaskKey()
+{
+    DockApplicationStateProjector projector;
+    RuntimeTaskIdentityTracker tracker;
+    const auto empty = std::make_shared<DesktopEntrySnapshot>();
+    const auto firstSnapshot = snapshot(
+        1, {window(QStringLiteral("late-window"), QStringLiteral("late-app"))});
+    const auto first = projector.project(firstSnapshot, empty,
+                                         tracker.update(firstSnapshot, empty));
+    const auto secondSnapshot = snapshot(
+        1, {window(QStringLiteral("late-window"), QStringLiteral("late-app"))});
+    const auto afterCatalog = projector.project(secondSnapshot, lateCatalog(),
+                                                tracker.update(secondSnapshot, lateCatalog()));
+
+    QCOMPARE(first.states.keys(), QStringList{QStringLiteral("app:late-app")});
+    QCOMPARE(afterCatalog.states.keys(), QStringList{QStringLiteral("app:late-app")});
+    QCOMPARE(afterCatalog.states.value(QStringLiteral("app:late-app")).desktopFileName,
+             QStringLiteral("late.desktop"));
+}
+
+void DockApplicationStateProjectorTest::catalogLossKeepsLiveTaskKey()
+{
+    DockApplicationStateProjector projector;
+    RuntimeTaskIdentityTracker tracker;
+    const auto matched = lateCatalog();
+    const auto firstSnapshot = snapshot(
+        1, {window(QStringLiteral("late-window"), QStringLiteral("late-app"))});
+    const auto first = projector.project(firstSnapshot, matched,
+                                         tracker.update(firstSnapshot, matched));
+    const auto secondSnapshot = snapshot(
+        1, {window(QStringLiteral("late-window"), QStringLiteral("late-app"))});
+    const auto afterCatalog = projector.project(secondSnapshot,
+                                                std::make_shared<DesktopEntrySnapshot>(),
+                                                tracker.update(secondSnapshot,
+                                                               std::make_shared<DesktopEntrySnapshot>()));
+
+    QCOMPARE(first.states.keys(), QStringList{QStringLiteral("desktop:late.desktop")});
+    QCOMPARE(afterCatalog.states.keys(), QStringList{QStringLiteral("desktop:late.desktop")});
+}
+
+void DockApplicationStateProjectorTest::metadataChangeKeepsLiveTaskKey()
+{
+    DockApplicationStateProjector projector;
+    RuntimeTaskIdentityTracker tracker;
+    const auto empty = std::make_shared<DesktopEntrySnapshot>();
+    const auto firstSnapshot = snapshot(
+        1, {window(QStringLiteral("stable-window"), QStringLiteral("before-app"))});
+    projector.project(firstSnapshot, empty, tracker.update(firstSnapshot, empty));
+
+    const auto changedSnapshot = snapshot(
+        1, {window(QStringLiteral("stable-window"), QStringLiteral("after-app"))});
+    const auto changed = projector.project(changedSnapshot, empty,
+                                           tracker.update(changedSnapshot, empty));
+
+    QCOMPARE(changed.states.keys(), QStringList{QStringLiteral("app:before-app")});
+}
+
+void DockApplicationStateProjectorTest::newWindowJoinsExistingAppCohort()
+{
+    DockApplicationStateProjector projector;
+    RuntimeTaskIdentityTracker tracker;
+    const auto empty = std::make_shared<DesktopEntrySnapshot>();
+    const auto firstSnapshot = snapshot(
+        1, {window(QStringLiteral("first"), QStringLiteral("late-app"))});
+    projector.project(firstSnapshot, empty, tracker.update(firstSnapshot, empty));
+
+    const auto changedSnapshot = snapshot(
+        1, {window(QStringLiteral("first"), QStringLiteral("late-app")),
+            window(QStringLiteral("second"), QStringLiteral("late-app"))});
+    const auto changed = projector.project(changedSnapshot, lateCatalog(),
+                                           tracker.update(changedSnapshot, lateCatalog()));
+
+    const QString key = QStringLiteral("app:late-app");
+    QCOMPARE(changed.states.size(), 1);
+    QCOMPARE(changed.states.value(key).windowIds,
+             QVector<QString>{QStringLiteral("first"), QStringLiteral("second")});
+    QCOMPARE(changed.states.value(key).desktopFileName, QStringLiteral("late.desktop"));
+}
+
+void DockApplicationStateProjectorTest::generationChangeStartsFreshTaskLifetime()
+{
+    DockApplicationStateProjector projector;
+    RuntimeTaskIdentityTracker tracker;
+    const auto matched = lateCatalog();
+    const auto firstSnapshot = snapshot(
+        1, {window(QStringLiteral("reused"), QStringLiteral("late-app"))});
+    const auto first = projector.project(firstSnapshot, matched,
+                                         tracker.update(firstSnapshot, matched));
+    const auto secondSnapshot = snapshot(
+        2, {window(QStringLiteral("reused"), QStringLiteral("late-app"))});
+    const auto second = projector.project(secondSnapshot,
+                                          std::make_shared<DesktopEntrySnapshot>(),
+                                          tracker.update(secondSnapshot,
+                                                         std::make_shared<DesktopEntrySnapshot>()));
+
+    QCOMPARE(first.states.keys(), QStringList{QStringLiteral("desktop:late.desktop")});
+    QCOMPARE(second.states.keys(), QStringList{QStringLiteral("app:late-app")});
+}
+
+void DockApplicationStateProjectorTest::authorityResetStartsFreshTaskLifetime()
+{
+    DockApplicationStateProjector projector;
+    RuntimeTaskIdentityTracker tracker;
+    const auto matched = lateCatalog();
+    const auto firstSnapshot = snapshot(
+        1, {window(QStringLiteral("reused"), QStringLiteral("late-app"))});
+    const auto first = projector.project(firstSnapshot, matched,
+                                         tracker.update(firstSnapshot, matched));
+    tracker.reset();
+    const auto secondSnapshot = snapshot(
+        1, {window(QStringLiteral("reused"), QStringLiteral("late-app"))});
+    const auto second = projector.project(secondSnapshot,
+                                          std::make_shared<DesktopEntrySnapshot>(),
+                                          tracker.update(secondSnapshot,
+                                                         std::make_shared<DesktopEntrySnapshot>()));
+
+    QCOMPARE(first.states.keys(), QStringList{QStringLiteral("desktop:late.desktop")});
+    QCOMPARE(second.states.keys(), QStringList{QStringLiteral("app:late-app")});
+}
+
+void DockApplicationStateProjectorTest::emptyAppIdWindowsRemainSeparate()
+{
+    DockApplicationStateProjector projector;
+    RuntimeTaskIdentityTracker tracker;
+    const auto empty = std::make_shared<DesktopEntrySnapshot>();
+    const auto input = snapshot(
+        1, {window(QStringLiteral("one"), QString()), window(QStringLiteral("two"), QString())});
+    const auto projection = projector.project(input, empty, tracker.update(input, empty));
+
+    QCOMPARE(projection.states.size(), 2);
+    QVERIFY(projection.states.contains(QStringLiteral("window:one")));
+    QVERIFY(projection.states.contains(QStringLiteral("window:two")));
 }
 
 QTEST_MAIN(DockApplicationStateProjectorTest)

@@ -32,6 +32,9 @@ private slots:
     void unresolvedRuntimeTaskAppearsWithoutLauncher();
     void resolvedPinnedRuntimeTaskMergesWithoutDuplication();
     void identityEnrichmentKeepsTaskKeyAndRowCount();
+    void configuredPinUsesLiveStableRuntimeKey();
+    void livePinnedRuntimeFallsBackToDesktopKeyAfterLastWindow();
+    void unpinnedStableRuntimeDisappearsAfterLastWindow();
 };
 
 static std::shared_ptr<DesktopEntrySnapshot> makeSnapshot(const QStringList &names)
@@ -466,6 +469,61 @@ void DockAppModelTest::identityEnrichmentKeepsTaskKeyAndRowCount()
     QCOMPARE(model.index(0, 0).data(DockAppModel::IconNameRole).toString(),
              QStringLiteral("steam_icon_1091500"));
     QVERIFY(model.index(0, 0).data(DockAppModel::RunningRole).toBool());
+}
+
+void DockAppModelTest::configuredPinUsesLiveStableRuntimeKey()
+{
+    DockAppModel model;
+    model.setPins({QStringLiteral("late.desktop")});
+
+    Astrea::Typhon::DockApplicationRuntimeState state;
+    state.taskKey = QStringLiteral("app:late-app");
+    state.appId = QStringLiteral("late-app");
+    state.desktopFileName = QStringLiteral("late.desktop");
+    state.running = true;
+    state.windowCount = 1;
+    model.applyRuntimeProjection(runtimeProjection({state}));
+
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(model.taskKeyAt(0), QStringLiteral("app:late-app"));
+    QCOMPARE(model.desktopFileNameAt(0), QStringLiteral("late.desktop"));
+    QVERIFY(model.index(0, 0).data(DockAppModel::PinnedRole).toBool());
+    QVERIFY(model.rowForTaskKey(QStringLiteral("desktop:late.desktop")) < 0);
+}
+
+void DockAppModelTest::livePinnedRuntimeFallsBackToDesktopKeyAfterLastWindow()
+{
+    DockAppModel model;
+    model.setPins({QStringLiteral("late.desktop")});
+
+    Astrea::Typhon::DockApplicationRuntimeState state;
+    state.taskKey = QStringLiteral("app:late-app");
+    state.appId = QStringLiteral("late-app");
+    state.desktopFileName = QStringLiteral("late.desktop");
+    state.running = true;
+    state.windowCount = 1;
+    model.applyRuntimeProjection(runtimeProjection({state}));
+    model.applyRuntimeProjection({});
+
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(model.taskKeyAt(0), QStringLiteral("desktop:late.desktop"));
+    QVERIFY(model.index(0, 0).data(DockAppModel::PinnedRole).toBool());
+    QVERIFY(!model.index(0, 0).data(DockAppModel::RunningRole).toBool());
+}
+
+void DockAppModelTest::unpinnedStableRuntimeDisappearsAfterLastWindow()
+{
+    DockAppModel model;
+    Astrea::Typhon::DockApplicationRuntimeState state;
+    state.taskKey = QStringLiteral("app:late-app");
+    state.appId = QStringLiteral("late-app");
+    state.desktopFileName = QStringLiteral("late.desktop");
+    state.running = true;
+    state.windowCount = 1;
+    model.applyRuntimeProjection(runtimeProjection({state}));
+    model.applyRuntimeProjection({});
+
+    QCOMPARE(model.rowCount(), 0);
 }
 
 QTEST_MAIN(DockAppModelTest)

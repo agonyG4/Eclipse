@@ -137,6 +137,7 @@ private slots:
     void runtimeOnlyTaskAnchorTargetsAllWindows();
     void connectionLossRemovesDynamicRowsButKeepsPinsUnknown();
     void cachedAnchorProjectsToExistingAndNewWindows();
+    void catalogRebuildKeepsExactActionsAndMinimizeAnchorOnStableTask();
 };
 
 void DockTyphonRuntimeIntegrationTest::authoritativeSnapshotDrivesDockRuntimeRoles()
@@ -484,6 +485,54 @@ void DockTyphonRuntimeIntegrationTest::connectionLossRemovesDynamicRowsButKeepsP
     QCOMPARE(controller.appModel()->rowCount(), 1);
     QCOMPARE(controller.appModel()->desktopFileNameAt(0), QStringLiteral("one.desktop"));
     QVERIFY(!controller.appModel()->index(0, 0).data(DockAppModel::RuntimeKnownRole).toBool());
+}
+
+void DockTyphonRuntimeIntegrationTest::catalogRebuildKeepsExactActionsAndMinimizeAnchorOnStableTask()
+{
+    auto *adapter = new FakeTyphonAdapter;
+    TyphonToplevelConnection connection(adapter);
+    DockController controller;
+    controller.setCatalogSnapshot(std::make_shared<DesktopEntrySnapshot>());
+    controller.attachTyphonConnection(&connection);
+
+    connection.start();
+    adapter->advertiseManager();
+    adapter->create(7);
+    adapter->id(7, QStringLiteral("7"));
+    adapter->app(7, QStringLiteral("late-app"));
+    adapter->title(7, QStringLiteral("Late"));
+    adapter->pid(7, 700);
+    adapter->kind(7, ToplevelKind::XdgToplevel);
+    adapter->state(7, ToplevelStates{});
+    adapter->focus(7, 42);
+    adapter->handleDone(7, 1);
+    adapter->managerDone(1, 1);
+
+    const QString oldKey = QStringLiteral("app:late-app");
+    const QRect anchor(11, 12, 48, 48);
+    QVERIFY(controller.setMinimizeAnchor(oldKey, anchor));
+    QCOMPARE(adapter->anchorRequests.size(), 1);
+    controller.setCatalogSnapshot([&] {
+        auto snapshot = std::make_shared<DesktopEntrySnapshot>();
+        DesktopEntryRecord record;
+        record.desktopFileName = QStringLiteral("late.desktop");
+        record.id = QStringLiteral("late-app");
+        record.name = QStringLiteral("Late App");
+        const int index = snapshot->entries.size();
+        snapshot->entries.append(record);
+        snapshot->byDesktopFileName.insert(record.desktopFileName, index);
+        snapshot->byDesktopId.insert(record.id, index);
+        return snapshot;
+    }());
+
+    QCOMPARE(controller.appModel()->rowCount(), 1);
+    QCOMPARE(controller.appModel()->taskKeyAt(0), oldKey);
+    QVERIFY(controller.windowsForTaskKey(oldKey).size() == 1);
+    QVERIFY(controller.activateWindow(oldKey, QStringLiteral("7")));
+    QVERIFY(controller.closeWindow(oldKey, QStringLiteral("7")));
+    QVERIFY(!controller.activateWindow(QStringLiteral("app:other"), QStringLiteral("7")));
+    QVERIFY(!controller.closeWindow(QStringLiteral("app:other"), QStringLiteral("7")));
+    QCOMPARE(adapter->anchorRequests.last().handleToken, quint64(7));
 }
 
 QTEST_GUILESS_MAIN(DockTyphonRuntimeIntegrationTest)

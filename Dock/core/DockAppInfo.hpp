@@ -3,6 +3,8 @@
 #include <QString>
 
 struct DockAppInfo {
+    QString taskKey;
+    QString runtimeAppId;
     QString desktopFileName;
     QString desktopId;
     QString displayName;
@@ -10,6 +12,7 @@ struct DockAppInfo {
     QString iconPath;
     QString iconUrl;
     bool resolved = false;
+    bool identityPending = false;
     bool launching = false;
     QString launchError;
     bool pinned = false;
@@ -21,13 +24,16 @@ struct DockAppInfo {
 
 inline bool operator==(const DockAppInfo &left, const DockAppInfo &right)
 {
-    return left.desktopFileName == right.desktopFileName
+    return left.taskKey == right.taskKey
+        && left.runtimeAppId == right.runtimeAppId
+        && left.desktopFileName == right.desktopFileName
         && left.desktopId == right.desktopId
         && left.displayName == right.displayName
         && left.iconName == right.iconName
         && left.iconPath == right.iconPath
         && left.iconUrl == right.iconUrl
         && left.resolved == right.resolved
+        && left.identityPending == right.identityPending
         && left.launching == right.launching
         && left.launchError == right.launchError
         && left.pinned == right.pinned

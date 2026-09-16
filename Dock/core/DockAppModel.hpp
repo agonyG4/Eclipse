@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/DockAppInfo.hpp"
+#include "apps/ApplicationIdentity.hpp"
 #include "apps/DesktopEntryCatalog.hpp"
 #include "platform/typhon/DockApplicationStateProjector.hpp"
 
@@ -14,12 +15,15 @@ class DockAppModel final : public QAbstractListModel {
 public:
     enum Role {
         DesktopFileNameRole = Qt::UserRole + 1,
+        TaskKeyRole,
+        RuntimeAppIdRole,
         DesktopIdRole,
         DisplayNameRole,
         IconNameRole,
         IconPathRole,
         IconUrlRole,
         ResolvedRole,
+        IdentityPendingRole,
         LaunchingRole,
         LaunchErrorRole,
         PinnedRole,
@@ -40,7 +44,9 @@ public:
     void setCatalogSnapshot(std::shared_ptr<const DesktopEntrySnapshot> snapshot);
 
     QString desktopFileNameAt(int row) const;
+    QString taskKeyAt(int row) const;
     int rowForDesktopFileName(const QString &desktopFileName) const;
+    int rowForTaskKey(const QString &taskKey) const;
     const DockAppInfo *itemAt(int row) const;
 
     bool setLaunching(const QString &desktopFileName, bool launching);
@@ -49,16 +55,21 @@ public:
         const Astrea::Typhon::DockApplicationRuntimeProjection &projection,
         bool authoritative = true);
     void clearRuntimeProjection();
+    bool applyIdentityEnrichment(const QString &taskKey, const AppIdentity &identity);
 
 private:
-    DockAppInfo makeItem(const QString &desktopFileName, const DockAppInfo *previous = nullptr) const;
+    DockAppInfo makeItem(const QString &taskKey, const DockAppInfo *previous = nullptr) const;
     void updateItem(int row, const DockAppInfo &next);
     void reconcileRows();
     static QList<int> changedRoles(const DockAppInfo &before, const DockAppInfo &after);
+    static QString desktopTaskKey(const QString &desktopFileName);
+    static QString desktopFileNameForTaskKey(const QString &taskKey);
+    bool isPinnedTaskKey(const QString &taskKey) const;
 
     QVector<DockAppInfo> m_items;
     QStringList m_pins;
     QHash<QString, Astrea::Typhon::DockApplicationRuntimeState> m_runtimeStates;
+    QHash<QString, AppIdentity> m_identityEnrichments;
     QStringList m_dynamicOrder;
     bool m_runtimeAuthoritative = false;
     std::shared_ptr<const DesktopEntrySnapshot> m_catalog;

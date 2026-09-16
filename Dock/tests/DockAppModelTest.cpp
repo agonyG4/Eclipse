@@ -29,6 +29,8 @@ private slots:
     void runtimeStatePreservesLaunchState();
     void runtimeStateDisappearsWhenWindowCloses();
     void unknownRuntimeStateDoesNotClaimStopped();
+    void unresolvedRuntimeTaskAppearsWithoutLauncher();
+    void resolvedPinnedRuntimeTaskMergesWithoutDuplication();
 };
 
 static std::shared_ptr<DesktopEntrySnapshot> makeSnapshot(const QStringList &names)
@@ -53,6 +55,7 @@ static Astrea::Typhon::DockApplicationRuntimeState runtimeState(
     bool running = true)
 {
     Astrea::Typhon::DockApplicationRuntimeState state;
+    state.taskKey = QStringLiteral("desktop:") + desktopFileName;
     state.desktopFileName = desktopFileName;
     state.running = running;
     state.active = active;
@@ -66,9 +69,9 @@ static Astrea::Typhon::DockApplicationRuntimeProjection runtimeProjection(
 {
     Astrea::Typhon::DockApplicationRuntimeProjection projection;
     for (const auto &state : states) {
-        projection.states.insert(state.desktopFileName, state);
-        if (!encounterOrder.contains(state.desktopFileName))
-            projection.encounterOrder.append(state.desktopFileName);
+        projection.states.insert(state.taskKey, state);
+        if (!encounterOrder.contains(state.taskKey))
+            projection.encounterOrder.append(state.taskKey);
     }
     for (const QString &key : encounterOrder) {
         if (!projection.encounterOrder.contains(key))
@@ -341,6 +344,7 @@ void DockAppModelTest::runtimeStatePreservesLaunchState()
     QVERIFY(model.setLaunchError(QStringLiteral("one.desktop"), QStringLiteral("pending")));
 
     Astrea::Typhon::DockApplicationRuntimeState state;
+    state.taskKey = QStringLiteral("desktop:one.desktop");
     state.desktopFileName = QStringLiteral("one.desktop");
     state.running = true;
     state.active = true;
@@ -363,6 +367,7 @@ void DockAppModelTest::unknownRuntimeStateDoesNotClaimStopped()
     model.setPins({QStringLiteral("one.desktop")});
 
     Astrea::Typhon::DockApplicationRuntimeState state;
+    state.taskKey = QStringLiteral("desktop:one.desktop");
     state.desktopFileName = QStringLiteral("one.desktop");
     state.running = true;
     state.windowCount = 1;
@@ -380,6 +385,7 @@ void DockAppModelTest::runtimeStateDisappearsWhenWindowCloses()
     DockAppModel model;
     model.setPins({QStringLiteral("one.desktop"), QStringLiteral("two.desktop")});
     Astrea::Typhon::DockApplicationRuntimeState state;
+    state.taskKey = QStringLiteral("desktop:one.desktop");
     state.desktopFileName = QStringLiteral("one.desktop");
     state.running = true;
     state.active = true;
@@ -393,6 +399,48 @@ void DockAppModelTest::runtimeStateDisappearsWhenWindowCloses()
         QVERIFY(!index.data(DockAppModel::ActiveRole).toBool());
         QCOMPARE(index.data(DockAppModel::WindowCountRole).toInt(), 0);
     }
+}
+
+void DockAppModelTest::unresolvedRuntimeTaskAppearsWithoutLauncher()
+{
+    DockAppModel model;
+    Astrea::Typhon::DockApplicationRuntimeState state;
+    state.taskKey = QStringLiteral("app:steam_app_1091500");
+    state.appId = QStringLiteral("steam_app_1091500");
+    state.displayName = QStringLiteral("Cyberpunk 2077");
+    state.running = true;
+    state.windowCount = 1;
+
+    model.applyRuntimeProjection(runtimeProjection({state}));
+
+    QCOMPARE(model.rowCount(), 1);
+    const QModelIndex index = model.index(0, 0);
+    QCOMPARE(index.data(DockAppModel::TaskKeyRole).toString(),
+             QStringLiteral("app:steam_app_1091500"));
+    QVERIFY(index.data(DockAppModel::DesktopFileNameRole).toString().isEmpty());
+    QVERIFY(!index.data(DockAppModel::ResolvedRole).toBool());
+    QVERIFY(index.data(DockAppModel::RuntimeKnownRole).toBool());
+    QVERIFY(index.data(DockAppModel::RunningRole).toBool());
+}
+
+void DockAppModelTest::resolvedPinnedRuntimeTaskMergesWithoutDuplication()
+{
+    DockAppModel model;
+    model.setCatalogSnapshot(makeSnapshot({QStringLiteral("steam.desktop")}));
+    model.setPins({QStringLiteral("steam.desktop")});
+
+    Astrea::Typhon::DockApplicationRuntimeState state;
+    state.taskKey = QStringLiteral("desktop:steam.desktop");
+    state.desktopFileName = QStringLiteral("steam.desktop");
+    state.desktopId = QStringLiteral("steam");
+    state.running = true;
+    state.windowCount = 1;
+    model.applyRuntimeProjection(runtimeProjection({state}));
+
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(model.rowForTaskKey(QStringLiteral("desktop:steam.desktop")), 0);
+    QVERIFY(model.index(0, 0).data(DockAppModel::PinnedRole).toBool());
+    QVERIFY(model.index(0, 0).data(DockAppModel::RunningRole).toBool());
 }
 
 QTEST_MAIN(DockAppModelTest)

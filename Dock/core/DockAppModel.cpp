@@ -77,12 +77,11 @@ void DockAppModel::setPins(const QStringList &pins)
             m_dynamicOrder.removeAt(index);
     }
     if (m_runtimeAuthoritative) {
-        for (const DockAppInfo &item : std::as_const(m_items)) {
-            const auto it = m_runtimeStates.constFind(item.taskKey);
+        for (const QString &key : std::as_const(m_runtimeEncounterOrder)) {
+            const auto it = m_runtimeStates.constFind(key);
             if (it != m_runtimeStates.constEnd() && it->running
-                && !isPinnedTaskKey(item.taskKey)
-                && !m_dynamicOrder.contains(item.taskKey)) {
-                m_dynamicOrder.append(item.taskKey);
+                && !isPinnedTaskKey(key) && !m_dynamicOrder.contains(key)) {
+                m_dynamicOrder.append(key);
             }
         }
     }
@@ -165,7 +164,23 @@ void DockAppModel::applyRuntimeProjection(
     }
 
     m_runtimeAuthoritative = true;
+    m_runtimeEncounterOrder = projection.encounterOrder;
     m_runtimeStates = projection.states;
+    for (auto it = m_runtimeStates.begin(); it != m_runtimeStates.end(); ++it) {
+        if (!it->desktopFileName.isEmpty()) {
+            m_runtimeDesktopFileNames.insert(it.key(), it->desktopFileName);
+        } else {
+            const auto cached = m_runtimeDesktopFileNames.constFind(it.key());
+            if (cached != m_runtimeDesktopFileNames.constEnd())
+                it->desktopFileName = cached.value();
+        }
+    }
+    for (auto it = m_runtimeDesktopFileNames.begin(); it != m_runtimeDesktopFileNames.end();) {
+        if (!m_runtimeStates.contains(it.key()))
+            it = m_runtimeDesktopFileNames.erase(it);
+        else
+            ++it;
+    }
     for (const QString &key : projection.encounterOrder) {
         const auto it = m_runtimeStates.constFind(key);
         if (it != m_runtimeStates.constEnd() && it->running
@@ -185,8 +200,10 @@ void DockAppModel::applyRuntimeProjection(
 void DockAppModel::clearRuntimeProjection()
 {
     m_runtimeStates.clear();
+    m_runtimeDesktopFileNames.clear();
     m_identityEnrichments.clear();
     m_dynamicOrder.clear();
+    m_runtimeEncounterOrder.clear();
     m_runtimeAuthoritative = false;
     reconcileRows();
 }
@@ -195,8 +212,12 @@ void DockAppModel::reconcileRows()
 {
     QStringList desired;
     desired.reserve(m_pins.size() + m_dynamicOrder.size());
-    for (const QString &pin : std::as_const(m_pins))
-        desired.append(desktopTaskKey(pin));
+    for (const QString &pin : std::as_const(m_pins)) {
+        const QString runtimeKey = runtimeTaskKeyForDesktopFileName(pin);
+        const QString key = runtimeKey.isEmpty() ? desktopTaskKey(pin) : runtimeKey;
+        if (!desired.contains(key))
+            desired.append(key);
+    }
     for (const QString &key : std::as_const(m_dynamicOrder)) {
         const auto it = m_runtimeStates.constFind(key);
         if (it != m_runtimeStates.constEnd() && it->running && !desired.contains(key))
@@ -346,10 +367,30 @@ QString DockAppModel::desktopFileNameForTaskKey(const QString &taskKey)
     return taskKey.mid(prefix.size());
 }
 
+QString DockAppModel::runtimeTaskKeyForDesktopFileName(const QString &desktopFileName) const
+{
+    for (const QString &key : std::as_const(m_runtimeEncounterOrder)) {
+        const auto state = m_runtimeStates.constFind(key);
+        if (state != m_runtimeStates.constEnd() && state->running
+            && state->desktopFileName == desktopFileName)
+            return key;
+    }
+    for (auto it = m_runtimeStates.cbegin(); it != m_runtimeStates.cend(); ++it) {
+        if (it->running && it->desktopFileName == desktopFileName)
+            return it.key();
+    }
+    return {};
+}
+
 bool DockAppModel::isPinnedTaskKey(const QString &taskKey) const
 {
     const QString desktopFileName = desktopFileNameForTaskKey(taskKey);
-    return !desktopFileName.isEmpty() && m_pins.contains(desktopFileName);
+    if (!desktopFileName.isEmpty() && m_pins.contains(desktopFileName))
+        return true;
+    const auto runtime = m_runtimeStates.constFind(taskKey);
+    return runtime != m_runtimeStates.constEnd() && runtime->running
+        && !runtime->desktopFileName.isEmpty()
+        && m_pins.contains(runtime->desktopFileName);
 }
 
 bool DockAppModel::applyIdentityEnrichment(const QString &taskKey, const AppIdentity &identity)

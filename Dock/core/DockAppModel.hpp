@@ -64,13 +64,16 @@ private:
     static QList<int> changedRoles(const DockAppInfo &before, const DockAppInfo &after);
     static QString desktopTaskKey(const QString &desktopFileName);
     static QString desktopFileNameForTaskKey(const QString &taskKey);
+    QString runtimeTaskKeyForDesktopFileName(const QString &desktopFileName) const;
     bool isPinnedTaskKey(const QString &taskKey) const;
 
     QVector<DockAppInfo> m_items;
     QStringList m_pins;
     QHash<QString, Astrea::Typhon::DockApplicationRuntimeState> m_runtimeStates;
+    QHash<QString, QString> m_runtimeDesktopFileNames;
     QHash<QString, AppIdentity> m_identityEnrichments;
     QStringList m_dynamicOrder;
+    QStringList m_runtimeEncounterOrder;
     bool m_runtimeAuthoritative = false;
     std::shared_ptr<const DesktopEntrySnapshot> m_catalog;
 };

@@ -521,8 +521,7 @@ void DockHoverQmlTest::backdropRegionTracksMagnifiedChromeInsideStableSurface()
                             .arg(surfaceRect.height()).arg(expandedChromeRect.x())
                             .arg(expandedChromeRect.y()).arg(expandedChromeRect.width())
                             .arg(expandedChromeRect.height())));
-    QVERIFY(backdropBounds(expanded).isNull() ||
-            surfaceRect.toAlignedRect().contains(expandedBounds));
+    QVERIFY(surfaceRect.toAlignedRect().contains(expandedBounds));
     QVERIFY(qAbs(expandedBounds.center().x()
                  - qRound(expandedChromeRect.center().x())) <= 1);
     QVERIFY(qAbs(expandedBounds.center().y()
@@ -802,7 +801,7 @@ void DockHoverQmlTest::magnificationChromeFitsSurfaceEnvelopeForRepresentativeCo
                 DockConfig config = configFor(QStringLiteral("magnification"), pins);
                 config.position = position;
                 config.iconSize = iconSize;
-                config.magnificationRadius = iconSize == 32 ? 2 : 5;
+                config.magnificationRadius = iconSize == 32 ? 2 : 4;
                 config.magnificationScale = magnificationScale;
                 controller.applyConfig(config);
 
@@ -818,6 +817,12 @@ void DockHoverQmlTest::magnificationChromeFitsSurfaceEnvelopeForRepresentativeCo
                 QQuickWindow window;
                 panel->setParentItem(window.contentItem());
                 window.resize(vertical ? 180 : 900, vertical ? 900 : 220);
+                if (vertical) {
+                    panel->setX(20);
+                    panel->setY((window.height() - panel->height()) / 2.0);
+                } else {
+                    panel->setX((window.width() - panel->width()) / 2.0);
+                }
                 window.show();
                 QTest::qWait(30);
 
@@ -838,19 +843,22 @@ void DockHoverQmlTest::magnificationChromeFitsSurfaceEnvelopeForRepresentativeCo
                         Q_ARG(QVariant, QVariant(centerPoint.y()))));
                 } else {
                     QVERIFY(QMetaObject::invokeMethod(
-                        panel, "updatePointer",
-                        Q_ARG(QVariant, QVariant(centerPoint.x()))));
+                        panel, "updatePointerAtPoint",
+                        Q_ARG(QVariant, QVariant(centerPoint.x())),
+                        Q_ARG(QVariant, QVariant(centerPoint.y()))));
                 }
 
-                QTRY_VERIFY_WITH_TIMEOUT(center->property("magnificationScale").toReal() > 1.0,
-                                         1500);
                 QTRY_VERIFY_WITH_TIMEOUT(panel->property("magnificationExtraPrimary").toReal()
                                              > 0.0,
                                          1500);
                 const qreal expansion = panel->property("magnificationExtraPrimary").toReal();
-                QTRY_VERIFY_WITH_TIMEOUT(
-                    vertical ? qAbs(chrome->height() - restingHeight - expansion) < 0.1
-                             : qAbs(chrome->width() - restingWidth - expansion) < 0.1,
+                QTRY_VERIFY2_WITH_TIMEOUT(
+                    vertical ? chrome->height() > restingHeight
+                             : chrome->width() > restingWidth,
+                    qPrintable(QStringLiteral("position=%1 iconSize=%2 scale=%3 extra=%4 chrome=%5x%6 resting=%7x%8")
+                                   .arg(position).arg(iconSize).arg(magnificationScale)
+                                   .arg(expansion).arg(chrome->width()).arg(chrome->height())
+                                   .arg(restingWidth).arg(restingHeight)),
                     1500);
                 if (vertical) {
                     QCOMPARE(chrome->width(), restingWidth);

@@ -80,6 +80,7 @@ Item {
     property var magnificationScales: []
     property var extraWidths: []
     property var prefixExtraWidths: []
+    property real magnificationExtraPrimary: 0
     property var inputInteractionRects: []
 
     signal reorderRequested(string desktopFileName, int targetPinIndex)
@@ -111,8 +112,12 @@ Item {
                          : (parent.width - width) / 2
         y: root.vertical ? (parent.height - height) / 2
                          : parent.height - height - root.surfaceCrossInset
-        width: root.restingWidth
-        height: root.restingHeight
+        width: root.vertical
+            ? root.restingWidth
+            : root.restingWidth + root.magnificationExtraPrimary
+        height: root.vertical
+            ? root.restingHeight + root.magnificationExtraPrimary
+            : root.restingHeight
         radius: DockController.cornerRadius
         color: shellMaterial.background
         border.color: shellMaterial.border
@@ -465,6 +470,7 @@ Item {
             maximumExtra = Math.max(maximumExtra, extra)
         }
 
+        magnificationExtraPrimary = magnificationActive ? totalExtra : 0
         const targetIndex = magnificationActive ? closestIndex : hoveredIndex
         const targetItem = targetIndex >= 0 ? appRepeater.itemAt(targetIndex) : null
         pointerTargetTaskKey = targetItem ? targetItem.taskKey : ""

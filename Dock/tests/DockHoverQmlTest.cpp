@@ -19,6 +19,7 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QPointingDevice>
+#include <QRect>
 #include <QTemporaryDir>
 #include <QSignalSpy>
 #include <QTest>
@@ -165,6 +166,23 @@ double propertyReal(QQuickItem *item, const char *name)
     return item->property(name).toDouble();
 }
 
+QRect backdropBounds(const QVector<QRect> &rectangles)
+{
+    QRect result;
+    for (const QRect &rectangle : rectangles)
+        result = result.isNull() ? rectangle : result.united(rectangle);
+    return result;
+}
+
+bool backdropContains(const QVector<QRect> &rectangles, const QPoint &point)
+{
+    for (const QRect &rectangle : rectangles) {
+        if (rectangle.contains(point))
+            return true;
+    }
+    return false;
+}
+
 DockConfig configFor(const QString &hoverEffect, const QStringList &pins)
 {
     DockConfig config = DockConfig::defaults();
@@ -183,11 +201,12 @@ private slots:
     void iconSourceQualityRemainsStableDuringHover();
     void windowDprMatchesScreenDprForDockIcon();
     void surfaceEnvelopeRemainsStableDuringMagnification();
-    void backdropRegionRemainsStableDuringMagnification();
+    void backdropRegionTracksMagnifiedChromeInsideStableSurface();
     void dockMaterialFollowsShellThemeState();
     void pointerCenterRemainsStableForPracticalMagnificationTargets();
     void inputMaskTracksCenteredChromeAndMagnifiedIcon();
     void visualHeadroomKeepsIconsInBoundsForEveryIconSize();
+    void magnificationChromeFitsSurfaceEnvelopeForRepresentativeConfigurations();
     void hoverModesAndTransitions();
     void reorderPreviewWorksForEveryHoverMode();
     void pointerHandlersActivateAndReorderExactlyOnce();
@@ -402,8 +421,15 @@ void DockHoverQmlTest::surfaceEnvelopeRemainsStableDuringMagnification()
         panel, center->width() / 2.0, center->height() / 2.0).x();
     QVERIFY(QMetaObject::invokeMethod(panel, "updatePointer",
                                       Q_ARG(QVariant, QVariant(centerX))));
-    QTRY_VERIFY_WITH_TIMEOUT(qAbs(chrome->width() - restingWidth) < 0.1, 1500);
     QTRY_VERIFY_WITH_TIMEOUT(center->property("magnificationScale").toReal() > 1.0, 1500);
+    QTRY_VERIFY_WITH_TIMEOUT(panel->property("magnificationExtraPrimary").toReal() > 0.0,
+                             1500);
+    QTRY_VERIFY_WITH_TIMEOUT(chrome->width() > restingWidth, 1500);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        qAbs(chrome->width() - restingWidth
+             - panel->property("magnificationExtraPrimary").toReal()) < 0.1,
+        1500);
+    QCOMPARE(chrome->height(), panel->property("restingHeight").toReal());
     QVERIFY2(qAbs(panel->width() - initialSurfaceWidth) < 0.1,
              "hover must not resize the Layer Shell surface width");
     QVERIFY2(qAbs(panel->height() - initialSurfaceHeight) < 0.1,
@@ -412,6 +438,8 @@ void DockHoverQmlTest::surfaceEnvelopeRemainsStableDuringMagnification()
 
     QVERIFY(QMetaObject::invokeMethod(panel, "setPointerInside",
                                       Q_ARG(QVariant, QVariant(false))));
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(panel->property("magnificationExtraPrimary").toReal()) < 0.1,
+                             1500);
     QTRY_VERIFY_WITH_TIMEOUT(qAbs(chrome->width() - restingWidth) < 0.1, 1500);
     QVERIFY2(qAbs(panel->width() - initialSurfaceWidth) < 0.1,
              "hover exit must not resize the Layer Shell surface width");
@@ -421,7 +449,7 @@ void DockHoverQmlTest::surfaceEnvelopeRemainsStableDuringMagnification()
     delete panel;
 }
 
-void DockHoverQmlTest::backdropRegionRemainsStableDuringMagnification()
+void DockHoverQmlTest::backdropRegionTracksMagnifiedChromeInsideStableSurface()
 {
     QTemporaryDir temporary;
     QVERIFY(temporary.isValid());
@@ -456,6 +484,11 @@ void DockHoverQmlTest::backdropRegionRemainsStableDuringMagnification()
     auto *descriptors = regions.constFirst();
     const auto before = descriptors->resolvedRegion();
     QVERIFY(!before.isEmpty());
+    const QRect beforeBounds = backdropBounds(before);
+    const QRectF surfaceRect = panel->mapRectToItem(
+        window.contentItem(), QRectF(0, 0, panel->width(), panel->height()));
+    const qreal initialSurfaceWidth = panel->width();
+    const qreal initialSurfaceHeight = panel->height();
 
     QQuickItem *center = delegate(panel, QStringLiteral("three.desktop"));
     QVERIFY(center != nullptr);
@@ -464,13 +497,52 @@ void DockHoverQmlTest::backdropRegionRemainsStableDuringMagnification()
     QVERIFY(QMetaObject::invokeMethod(panel, "updatePointer",
                                       Q_ARG(QVariant, QVariant(centerX))));
     QTRY_VERIFY_WITH_TIMEOUT(center->property("magnificationScale").toReal() > 1.0, 1500);
-    QTest::qWait(60);
-    QCOMPARE(descriptors->resolvedRegion(), before);
+    QTRY_VERIFY_WITH_TIMEOUT(panel->property("magnificationExtraPrimary").toReal() > 0.0,
+                             1500);
+    QTRY_VERIFY_WITH_TIMEOUT(childWithObjectName(panel, QStringLiteral("dockChrome"))->width()
+                                 > panel->property("restingWidth").toReal(),
+                             1500);
+    QTRY_VERIFY_WITH_TIMEOUT(descriptors->resolvedRegion() != before, 1500);
+
+    auto *chrome = childWithObjectName(panel, QStringLiteral("dockChrome"));
+    QVERIFY(chrome);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        qAbs(chrome->width() - panel->property("restingWidth").toReal()
+             - panel->property("magnificationExtraPrimary").toReal()) < 0.1,
+        1500);
+    const auto expanded = descriptors->resolvedRegion();
+    const QRect expandedBounds = backdropBounds(expanded);
+    const QRectF expandedChromeRect = chrome->mapRectToItem(
+        window.contentItem(), QRectF(0, 0, chrome->width(), chrome->height()));
+    QVERIFY(expandedBounds.width() > beforeBounds.width());
+    QVERIFY2(surfaceRect.contains(expandedChromeRect),
+             qPrintable(QStringLiteral("surface=%1,%2 %3x%4 chrome=%5,%6 %7x%8")
+                            .arg(surfaceRect.x()).arg(surfaceRect.y()).arg(surfaceRect.width())
+                            .arg(surfaceRect.height()).arg(expandedChromeRect.x())
+                            .arg(expandedChromeRect.y()).arg(expandedChromeRect.width())
+                            .arg(expandedChromeRect.height())));
+    QVERIFY(backdropBounds(expanded).isNull() ||
+            surfaceRect.toAlignedRect().contains(expandedBounds));
+    QVERIFY(qAbs(expandedBounds.center().x()
+                 - qRound(expandedChromeRect.center().x())) <= 1);
+    QVERIFY(qAbs(expandedBounds.center().y()
+                 - qRound(expandedChromeRect.center().y())) <= 1);
+    QVERIFY(!backdropContains(expanded,
+                              QPoint(qRound(expandedChromeRect.left()),
+                                     qRound(expandedChromeRect.top()))));
+    QVERIFY(qAbs(panel->width() - initialSurfaceWidth) < 0.1);
+    QVERIFY(qAbs(panel->height() - initialSurfaceHeight) < 0.1);
 
     QVERIFY(QMetaObject::invokeMethod(panel, "setPointerInside",
                                       Q_ARG(QVariant, QVariant(false))));
-    QTest::qWait(60);
-    QCOMPARE(descriptors->resolvedRegion(), before);
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(panel->property("magnificationExtraPrimary").toReal()) < 0.1,
+                             1500);
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(chrome->width()
+                                  - panel->property("restingWidth").toReal()) < 0.1,
+                             1500);
+    QTRY_VERIFY_WITH_TIMEOUT(descriptors->resolvedRegion() == before, 1500);
+    QVERIFY(qAbs(panel->width() - initialSurfaceWidth) < 0.1);
+    QVERIFY(qAbs(panel->height() - initialSurfaceHeight) < 0.1);
     delete panel;
 }
 
@@ -625,6 +697,10 @@ void DockHoverQmlTest::inputMaskTracksCenteredChromeAndMagnifiedIcon()
     QVERIFY(QMetaObject::invokeMethod(panel, "updatePointer",
                                       Q_ARG(QVariant, QVariant(centerX))));
     QTRY_VERIFY_WITH_TIMEOUT(icon->scale() > 1.0, 1500);
+    QTRY_VERIFY_WITH_TIMEOUT(panel->property("magnificationExtraPrimary").toReal() > 0.0,
+                             1500);
+    QTRY_VERIFY_WITH_TIMEOUT(chrome->width() > panel->property("restingWidth").toReal(),
+                             1500);
     QTRY_VERIFY_WITH_TIMEOUT(window.mask().contains(
                                  icon->mapRectToItem(window.contentItem(),
                                                      QRectF(0, 0, icon->width(), icon->height()))
@@ -633,10 +709,14 @@ void DockHoverQmlTest::inputMaskTracksCenteredChromeAndMagnifiedIcon()
 
     const QRectF magnifiedIconRect = icon->mapRectToItem(
         window.contentItem(), QRectF(0, 0, icon->width(), icon->height()));
-    QVERIFY(magnifiedIconRect.top() < chromeRect.top());
+    const QRectF expandedChromeRect = chrome->mapRectToItem(
+        window.contentItem(), QRectF(0, 0, chrome->width(), chrome->height()));
+    QVERIFY(expandedChromeRect.width() > chromeRect.width());
+    QVERIFY(qAbs(expandedChromeRect.center().x() - surfaceRect.center().x()) < 0.1);
+    QVERIFY(window.mask().contains(expandedChromeRect.center().toPoint()));
+    QVERIFY(magnifiedIconRect.top() < expandedChromeRect.top());
     QVERIFY(!window.mask().contains(QPoint(qRound(surfaceRect.left() + 1.0),
                                            qRound(surfaceRect.top() + 1.0))));
-    QVERIFY(qAbs(chrome->width() - panel->property("restingWidth").toReal()) < 0.1);
 
     delete panel;
 }
@@ -704,6 +784,102 @@ void DockHoverQmlTest::visualHeadroomKeepsIconsInBoundsForEveryIconSize()
         QVERIFY(QMetaObject::invokeMethod(panel, "cancelReorder",
                                           Q_ARG(QVariant, QVariant(QStringLiteral("one.desktop")))));
         delete panel;
+    }
+}
+
+void DockHoverQmlTest::magnificationChromeFitsSurfaceEnvelopeForRepresentativeConfigurations()
+{
+    const QStringList pins{
+        QStringLiteral("one.desktop"), QStringLiteral("two.desktop"),
+        QStringLiteral("three.desktop"), QStringLiteral("four.desktop"),
+        QStringLiteral("five.desktop")};
+    for (const QString &position : {QStringLiteral("bottom"), QStringLiteral("left"),
+                                    QStringLiteral("right")}) {
+        const bool vertical = position != QStringLiteral("bottom");
+        for (const int iconSize : {32, 64}) {
+            for (const double magnificationScale : {1.25, 2.0}) {
+                DockController controller;
+                DockConfig config = configFor(QStringLiteral("magnification"), pins);
+                config.position = position;
+                config.iconSize = iconSize;
+                config.magnificationRadius = iconSize == 32 ? 2 : 5;
+                config.magnificationScale = magnificationScale;
+                controller.applyConfig(config);
+
+                QQmlEngine engine;
+                engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+                engine.rootContext()->setContextProperty(QStringLiteral("DockController"),
+                                                         &controller);
+                QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+                QVERIFY2(component.status() == QQmlComponent::Ready,
+                         qPrintable(component.errorString()));
+                auto *panel = qobject_cast<QQuickItem *>(component.create());
+                QVERIFY2(panel, qPrintable(component.errorString()));
+                QQuickWindow window;
+                panel->setParentItem(window.contentItem());
+                window.resize(vertical ? 180 : 900, vertical ? 900 : 220);
+                window.show();
+                QTest::qWait(30);
+
+                auto *chrome = childWithObjectName(panel, QStringLiteral("dockChrome"));
+                auto *center = delegate(panel, QStringLiteral("three.desktop"));
+                auto *centerIcon = iconItem(center);
+                QVERIFY(chrome && center && centerIcon);
+                const qreal initialSurfaceWidth = panel->width();
+                const qreal initialSurfaceHeight = panel->height();
+                const qreal restingWidth = panel->property("restingWidth").toReal();
+                const qreal restingHeight = panel->property("restingHeight").toReal();
+                const QPointF centerPoint = center->mapToItem(
+                    panel, center->width() / 2.0, center->height() / 2.0);
+                if (vertical) {
+                    QVERIFY(QMetaObject::invokeMethod(
+                        panel, "updatePointerAtPoint",
+                        Q_ARG(QVariant, QVariant(centerPoint.x())),
+                        Q_ARG(QVariant, QVariant(centerPoint.y()))));
+                } else {
+                    QVERIFY(QMetaObject::invokeMethod(
+                        panel, "updatePointer",
+                        Q_ARG(QVariant, QVariant(centerPoint.x()))));
+                }
+
+                QTRY_VERIFY_WITH_TIMEOUT(center->property("magnificationScale").toReal() > 1.0,
+                                         1500);
+                QTRY_VERIFY_WITH_TIMEOUT(panel->property("magnificationExtraPrimary").toReal()
+                                             > 0.0,
+                                         1500);
+                const qreal expansion = panel->property("magnificationExtraPrimary").toReal();
+                QTRY_VERIFY_WITH_TIMEOUT(
+                    vertical ? qAbs(chrome->height() - restingHeight - expansion) < 0.1
+                             : qAbs(chrome->width() - restingWidth - expansion) < 0.1,
+                    1500);
+                if (vertical) {
+                    QCOMPARE(chrome->width(), restingWidth);
+                    QVERIFY(chrome->height() > restingHeight);
+                } else {
+                    QVERIFY(chrome->width() > restingWidth);
+                    QCOMPARE(chrome->height(), restingHeight);
+                }
+                QVERIFY2(expansion <= panel->property("maximumMagnificationExtraPrimary")
+                                         .toReal() + 0.1,
+                         qPrintable(QStringLiteral("position=%1 iconSize=%2 scale=%3 extra=%4 max=%5")
+                                        .arg(position).arg(iconSize).arg(magnificationScale)
+                                        .arg(expansion)
+                                        .arg(panel->property("maximumMagnificationExtraPrimary")
+                                                 .toReal())));
+                QVERIFY(qAbs(panel->width() - initialSurfaceWidth) < 0.1);
+                QVERIFY(qAbs(panel->height() - initialSurfaceHeight) < 0.1);
+
+                const QRectF surfaceRect = panel->mapRectToItem(
+                    window.contentItem(), QRectF(0, 0, panel->width(), panel->height()));
+                const QRectF chromeRect = chrome->mapRectToItem(
+                    window.contentItem(), QRectF(0, 0, chrome->width(), chrome->height()));
+                QVERIFY(chromeRect.left() >= surfaceRect.left() - 0.1);
+                QVERIFY(chromeRect.top() >= surfaceRect.top() - 0.1);
+                QVERIFY(chromeRect.right() <= surfaceRect.right() + 0.1);
+                QVERIFY(chromeRect.bottom() <= surfaceRect.bottom() + 0.1);
+                delete panel;
+            }
+        }
     }
 }
 
@@ -944,7 +1120,9 @@ void DockHoverQmlTest::dragGeometryRemainsStableDuringMagnificationCollapse()
         QQuickItem *chrome = childWithObjectName(panel, QStringLiteral("dockChrome"));
         QVERIFY(chrome);
         QVERIFY(surfaceWidth > restingWidth);
-        QTRY_VERIFY_WITH_TIMEOUT(qAbs(chrome->width() - restingWidth) < 0.1, 1000);
+        QTRY_VERIFY_WITH_TIMEOUT(panel->property("magnificationExtraPrimary").toReal() > 0.0,
+                                 1000);
+        QTRY_VERIFY_WITH_TIMEOUT(chrome->width() > restingWidth, 1000);
 
         QTRY_VERIFY_WITH_TIMEOUT(propertyReal(source, "magnificationScale") > 1.1, 2000);
         if (sourceIndex == 0 || sourceIndex == pins.size() - 1) {
@@ -957,6 +1135,10 @@ void DockHoverQmlTest::dragGeometryRemainsStableDuringMagnificationCollapse()
         QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, start);
         QTest::mouseMove(&window, start + QPoint(10, 0), 30);
         QTRY_VERIFY_WITH_TIMEOUT(source->property("dragging").toBool(), 1000);
+        QTRY_VERIFY_WITH_TIMEOUT(qAbs(panel->property("magnificationExtraPrimary").toReal())
+                                     < 0.1,
+                                 1000);
+        QTRY_VERIFY_WITH_TIMEOUT(qAbs(chrome->width() - restingWidth) < 0.1, 1000);
         const qreal centerAfterGrab = visualCenter(window, icon).x();
         const int targetDuringCollapse = panel->property("dragTargetIndex").toInt();
         QVERIFY2(qAbs(centerAfterGrab - initialCenterX) < 1.0,
@@ -1606,6 +1788,9 @@ void DockHoverQmlTest::hoverModesAndTransitions()
     QCoreApplication::processEvents();
     QVERIFY(panel->width() > 0);
 
+    QQuickItem *chrome = childWithObjectName(panel, QStringLiteral("dockChrome"));
+    QVERIFY(chrome);
+
     QVERIFY(QMetaObject::invokeMethod(panel, "updatePointer",
                                       Q_ARG(QVariant, QVariant(panel->width() / 2.0))));
 
@@ -1617,6 +1802,10 @@ void DockHoverQmlTest::hoverModesAndTransitions()
     QVERIFY(farLeft && nearLeft && center && nearRight && farRight);
     QTRY_VERIFY_WITH_TIMEOUT(propertyReal(center, "magnificationScale")
                                  > propertyReal(nearLeft, "magnificationScale"),
+                             1000);
+    QTRY_VERIFY_WITH_TIMEOUT(panel->property("magnificationExtraPrimary").toReal() > 0.0,
+                             1000);
+    QTRY_VERIFY_WITH_TIMEOUT(chrome->width() > panel->property("restingWidth").toReal(),
                              1000);
     QCOMPARE(propertyReal(nearLeft, "magnificationScale"),
              propertyReal(nearRight, "magnificationScale"));
@@ -1653,6 +1842,9 @@ void DockHoverQmlTest::hoverModesAndTransitions()
     controller.applyConfig(configFor(QStringLiteral("lift"), pins));
     QTRY_VERIFY_WITH_TIMEOUT(qAbs(panel->width() - surfaceWidth) < 0.1, 1000);
     QTRY_VERIFY_WITH_TIMEOUT(qAbs(panel->height() - surfaceHeight) < 0.1, 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(panel->property("magnificationExtraPrimary").toReal()) < 0.1,
+                             1000);
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(chrome->width() - restingWidth) < 0.1, 1000);
     QTRY_COMPARE_WITH_TIMEOUT(propertyReal(center, "magnificationScale"), 1.1, 1000);
     QCOMPARE(propertyReal(farLeft, "magnificationScale"), 1.0);
     QCOMPARE(propertyReal(farRight, "magnificationScale"), 1.0);
@@ -1665,6 +1857,9 @@ void DockHoverQmlTest::hoverModesAndTransitions()
     controller.applyConfig(configFor(QStringLiteral("none"), pins));
     QTRY_VERIFY_WITH_TIMEOUT(qAbs(panel->width() - surfaceWidth) < 0.1, 1000);
     QTRY_VERIFY_WITH_TIMEOUT(qAbs(panel->height() - surfaceHeight) < 0.1, 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(panel->property("magnificationExtraPrimary").toReal()) < 0.1,
+                             1000);
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(chrome->width() - restingWidth) < 0.1, 1000);
     QTRY_COMPARE_WITH_TIMEOUT(propertyReal(center, "magnificationScale"), 1.0, 1000);
     QCOMPARE(propertyReal(center, "visualOffsetY"), 0.0);
     QCOMPARE(propertyReal(center, "visualOffsetX"), 0.0);
@@ -1673,6 +1868,9 @@ void DockHoverQmlTest::hoverModesAndTransitions()
 
     QVERIFY(QMetaObject::invokeMethod(panel, "setPointerInside",
                                       Q_ARG(QVariant, QVariant(false))));
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(panel->property("magnificationExtraPrimary").toReal()) < 0.1,
+                             1000);
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(chrome->width() - restingWidth) < 0.1, 1000);
     QTRY_VERIFY_WITH_TIMEOUT(qAbs(panel->width() - surfaceWidth) < 0.1, 1000);
     QTRY_VERIFY_WITH_TIMEOUT(qAbs(panel->height() - surfaceHeight) < 0.1, 1000);
     QTRY_COMPARE_WITH_TIMEOUT(propertyReal(center, "magnificationScale"), 1.0, 1000);
@@ -1773,20 +1971,25 @@ void DockHoverQmlTest::verticalPositionsReusePrimaryAxisGeometry()
         const qreal initialSurfaceHeight = panel->height();
         QQuickItem *chrome = childWithObjectName(panel, QStringLiteral("dockChrome"));
         QVERIFY(chrome);
-        QCOMPARE(chrome->width(), panel->property("restingWidth").toReal());
-        QCOMPARE(chrome->height(), panel->property("restingHeight").toReal());
+        const qreal restingWidth = panel->property("restingWidth").toReal();
+        const qreal restingHeight = panel->property("restingHeight").toReal();
+        QCOMPARE(chrome->width(), restingWidth);
+        QCOMPARE(chrome->height(), restingHeight);
         const QPointF middlePoint = middle->mapToItem(
             panel, middle->width() / 2.0, middle->height() / 2.0);
         QVERIFY(QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
                                           Q_ARG(QVariant, QVariant(middlePoint.x())),
                                           Q_ARG(QVariant, QVariant(middlePoint.y()))));
         QTRY_VERIFY_WITH_TIMEOUT(middleIcon->scale() > 1.0, 1500);
+        QTRY_VERIFY_WITH_TIMEOUT(panel->property("magnificationExtraPrimary").toReal() > 0.0,
+                                 1500);
+        QTRY_VERIFY_WITH_TIMEOUT(chrome->height() > restingHeight, 1500);
         QVERIFY2(qAbs(panel->width() - initialSurfaceWidth) < 0.1,
                  "vertical hover must not resize the fixed surface width");
         QVERIFY2(qAbs(panel->height() - initialSurfaceHeight) < 0.1,
                  "vertical hover must not resize the fixed surface height");
-        QCOMPARE(chrome->width(), panel->property("restingWidth").toReal());
-        QCOMPARE(chrome->height(), panel->property("restingHeight").toReal());
+        QCOMPARE(chrome->width(), restingWidth);
+        QVERIFY(chrome->height() > restingHeight);
 
         const QRectF iconRect = middleIcon->mapRectToItem(
             panel, QRectF(0, 0, middleIcon->width(), middleIcon->height()));
@@ -1812,6 +2015,17 @@ void DockHoverQmlTest::verticalPositionsReusePrimaryAxisGeometry()
                                           Q_ARG(QVariant, QVariant(lastPoint.y()))));
         QTRY_VERIFY_WITH_TIMEOUT(iconItem(last)->scale() > 1.0, 1500);
         QTRY_VERIFY_WITH_TIMEOUT(iconItem(last)->scale() >= iconItem(middle)->scale(), 1500);
+
+        QVERIFY(QMetaObject::invokeMethod(panel, "setPointerInside",
+                                          Q_ARG(QVariant, QVariant(false))));
+        QTRY_VERIFY_WITH_TIMEOUT(qAbs(panel->property("magnificationExtraPrimary").toReal())
+                                     < 0.1,
+                                 1500);
+        QTRY_VERIFY_WITH_TIMEOUT(qAbs(chrome->height() - restingHeight) < 0.1, 1500);
+        QVERIFY2(qAbs(panel->width() - initialSurfaceWidth) < 0.1,
+                 "vertical hover exit must not resize the fixed surface width");
+        QVERIFY2(qAbs(panel->height() - initialSurfaceHeight) < 0.1,
+                 "vertical hover exit must not resize the fixed surface height");
 
         delete panel;
     }

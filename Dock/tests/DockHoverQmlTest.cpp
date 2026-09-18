@@ -414,6 +414,8 @@ void DockHoverQmlTest::surfaceEnvelopeRemainsStableDuringMagnification()
              "the Layer Shell envelope must reserve horizontal magnification headroom");
     QVERIFY2(initialSurfaceHeight > panel->property("restingHeight").toReal(),
              "the Layer Shell envelope must reserve vertical magnification headroom");
+    QCOMPARE(chrome->width(), restingWidth);
+    QCOMPARE(chrome->height(), panel->property("restingHeight").toReal());
     QVERIFY(chrome->width() <= initialSurfaceWidth);
     QVERIFY(chrome->height() == panel->property("restingHeight").toReal());
 
@@ -434,6 +436,7 @@ void DockHoverQmlTest::surfaceEnvelopeRemainsStableDuringMagnification()
              "hover must not resize the Layer Shell surface width");
     QVERIFY2(qAbs(panel->height() - initialSurfaceHeight) < 0.1,
              "hover must not resize the Layer Shell surface height");
+    QVERIFY(chrome->height() <= panel->height());
     QVERIFY(chrome->width() <= panel->width());
 
     QVERIFY(QMetaObject::invokeMethod(panel, "setPointerInside",
@@ -441,6 +444,9 @@ void DockHoverQmlTest::surfaceEnvelopeRemainsStableDuringMagnification()
     QTRY_VERIFY_WITH_TIMEOUT(qAbs(panel->property("magnificationExtraPrimary").toReal()) < 0.1,
                              1500);
     QTRY_VERIFY_WITH_TIMEOUT(qAbs(chrome->width() - restingWidth) < 0.1, 1500);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        qAbs(chrome->height() - panel->property("restingHeight").toReal()) < 0.1,
+        1500);
     QVERIFY2(qAbs(panel->width() - initialSurfaceWidth) < 0.1,
              "hover exit must not resize the Layer Shell surface width");
     QVERIFY2(qAbs(panel->height() - initialSurfaceHeight) < 0.1,
@@ -713,6 +719,12 @@ void DockHoverQmlTest::inputMaskTracksCenteredChromeAndMagnifiedIcon()
     QVERIFY(expandedChromeRect.width() > chromeRect.width());
     QVERIFY(qAbs(expandedChromeRect.center().x() - surfaceRect.center().x()) < 0.1);
     QVERIFY(window.mask().contains(expandedChromeRect.center().toPoint()));
+    const QPoint expandedLeftEdge(qRound(expandedChromeRect.left() + 1.0),
+                                  qRound(expandedChromeRect.center().y()));
+    const QPoint expandedRightEdge(qRound(expandedChromeRect.right() - 1.0),
+                                   qRound(expandedChromeRect.center().y()));
+    QVERIFY(window.mask().contains(expandedLeftEdge));
+    QVERIFY(window.mask().contains(expandedRightEdge));
     QVERIFY(magnifiedIconRect.top() < expandedChromeRect.top());
     QVERIFY(!window.mask().contains(QPoint(qRound(surfaceRect.left() + 1.0),
                                            qRound(surfaceRect.top() + 1.0))));
@@ -2030,6 +2042,7 @@ void DockHoverQmlTest::verticalPositionsReusePrimaryAxisGeometry()
                                      < 0.1,
                                  1500);
         QTRY_VERIFY_WITH_TIMEOUT(qAbs(chrome->height() - restingHeight) < 0.1, 1500);
+        QCOMPARE(chrome->width(), restingWidth);
         QVERIFY2(qAbs(panel->width() - initialSurfaceWidth) < 0.1,
                  "vertical hover exit must not resize the fixed surface width");
         QVERIFY2(qAbs(panel->height() - initialSurfaceHeight) < 0.1,

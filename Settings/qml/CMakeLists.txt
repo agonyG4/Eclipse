@@ -72,14 +72,16 @@ set(ASTREA_SETTINGS_ASSET_RELATIVE_FILES
 
 set(ASTREA_SETTINGS_QML_FILES)
 foreach(qml_file IN LISTS ASTREA_SETTINGS_QML_RELATIVE_FILES)
-    set(qml_source "${CMAKE_CURRENT_SOURCE_DIR}/../qml/${qml_file}")
+    get_filename_component(qml_source
+        "${CMAKE_CURRENT_SOURCE_DIR}/../qml/${qml_file}" ABSOLUTE)
     set_source_files_properties(${qml_source} PROPERTIES QT_RESOURCE_ALIAS "qml/${qml_file}")
     list(APPEND ASTREA_SETTINGS_QML_FILES "${qml_source}")
 endforeach()
 
 set(ASTREA_SETTINGS_ASSET_FILES)
 foreach(asset_file IN LISTS ASTREA_SETTINGS_ASSET_RELATIVE_FILES)
-    set(asset_source "${CMAKE_CURRENT_SOURCE_DIR}/../assets/${asset_file}")
+    get_filename_component(asset_source
+        "${CMAKE_CURRENT_SOURCE_DIR}/../assets/${asset_file}" ABSOLUTE)
     set_source_files_properties(${asset_source} PROPERTIES QT_RESOURCE_ALIAS "assets/${asset_file}")
     list(APPEND ASTREA_SETTINGS_ASSET_FILES "${asset_source}")
 endforeach()

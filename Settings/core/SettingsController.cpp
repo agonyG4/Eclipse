@@ -1,7 +1,6 @@
 #include "core/SettingsController.hpp"
 
 #include "services/dock/SettingsDockController.hpp"
-#include "services/animation/SettingsAnimationController.hpp"
 #include "services/wallpaper/SettingsWallpaperController.hpp"
 
 #include <utility>
@@ -38,7 +37,7 @@ SettingsController::SettingsController(std::unique_ptr<SettingsNavigationModel> 
 
     m_wallpaperController = std::make_unique<SettingsWallpaperController>(QString(), this);
     m_dockController = std::make_unique<SettingsDockController>(QString(), this);
-    m_animationController = std::make_unique<SettingsAnimationController>(this);
+    m_animationController = std::make_unique<SettingsAnimationController>();
 }
 
 SettingsNavigationModel *SettingsController::navigationModel()

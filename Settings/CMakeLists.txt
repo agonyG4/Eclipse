@@ -12,6 +12,23 @@ option(ASTREA_SETTINGS_BUILD_TESTS "Build Settings unit tests" ON)
 
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Core5Compat Gui Network Qml Quick QuickControls2)
 
+include(FetchContent)
+FetchContent_Declare(cxx_qt_cmake
+    GIT_REPOSITORY https://github.com/KDAB/cxx-qt-cmake.git
+    GIT_TAG 0.10.0
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(cxx_qt_cmake)
+include("${cxx_qt_cmake_SOURCE_DIR}/cmake/CxxQt.cmake")
+
+find_program(ASTREA_SETTINGS_QMAKE NAMES qmake6 qmake REQUIRED)
+cxx_qt_import_crate(
+    MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/backend/Cargo.toml"
+    CXX_QT_EXPORT_DIR "${CMAKE_CURRENT_BINARY_DIR}/cxxqt"
+    QMAKE "${ASTREA_SETTINGS_QMAKE}"
+    QT_MODULES Qt6::Core Qt6::Network
+)
+
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/SettingsWarnings.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/SettingsSanitizers.cmake)
 

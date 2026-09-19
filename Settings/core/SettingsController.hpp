@@ -3,9 +3,10 @@
 #include "core/navigation/SettingsNavigationModel.hpp"
 #include "services/assets/SettingsIconResolver.hpp"
 #include "services/dock/SettingsDockController.hpp"
-#include "services/animation/SettingsAnimationController.hpp"
 #include "services/profile/SettingsUserProfile.hpp"
 #include "services/wallpaper/SettingsWallpaperController.hpp"
+
+#include <astrea_settings_backend/src/animation/qobject.cxxqt.h>
 
 #include <QObject>
 #include <QString>

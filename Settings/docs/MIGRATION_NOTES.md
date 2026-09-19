@@ -33,9 +33,26 @@ shell.
 - wallpaper presentation/controller boundary: `qml/pages/appearance/Wallpaper.qml`
   and `services/wallpaper/SettingsWallpaperController.*`;
 - libc/NSS and Linux account policy: `platform/linux/`;
-- presentation and interaction: `qml/`.
+- presentation and interaction: `qml/`;
+- Animations backend domain, protocol, discovery, transport, and QObject
+  projection: `backend/`.
 
 No service or platform construction occurs in QML.
+
+## Incremental Rust backend migration
+
+Animations is the first production Settings backend migrated from manually
+maintained C++ to Rust through CXX-Qt. `Animations.qml` and
+`SettingsController.animations` remain unchanged at the behavior boundary.
+The generated QObject is deliberately thin: it projects the existing
+properties, notify signals, and invokables and queues worker completions onto
+the QObject's Qt thread. The Rust crate owns typed animation state, validation,
+capability projection, the version-1 `astrea.control` protocol, secure Typhon
+endpoint discovery, and bounded Unix-socket transport.
+
+This does not migrate Theme, Dock, Wallpaper, navigation, Shell services,
+Audio, Bluetooth, Network, Typhon itself, or the preview-only Compositor page.
+Those remain follow-up work under the incremental migration strategy.
 
 ## Routing Policy
 

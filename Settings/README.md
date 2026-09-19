@@ -61,15 +61,26 @@ Paper-managed user wallpaper. Active wallpapers are rejected, and the original
 import source is never deleted. QML does not construct filesystem URLs or own
 wallpaper removal policy.
 
-The Compositor preview intentionally has no compositor integration. Settings
-does not use shell commands, Quickshell, LayerShellQt, Hyprland, or Typhon.
-Existing ThemeController configuration is separate from the Compositor preview
-state.
+The Animations page is backed by the public Astrea `astrea.control` Typhon
+socket. Its `SettingsController.animations` property remains the stable QML
+API, while the implementation is a generated CXX-Qt QObject backed by the
+focused `Settings/backend` Rust crate. QML / Qt Quick remains presentation; the
+CXX-Qt QObject is a thin property, signal, and invokable boundary; Rust owns
+animation state, validation, capability projection, protocol handling, secure
+endpoint discovery, and bounded socket transport; C++ remains the existing
+composition and Qt-specific code during this incremental migration.
+
+The Compositor preview intentionally has no compositor integration or Typhon
+transport. Existing ThemeController configuration is separate from the
+Compositor preview state. This phase migrates only Animations; Theme, Dock,
+Wallpaper, navigation, Shell services, and shared Audio, Bluetooth, and
+Network services remain on their existing implementations.
 
 The Settings application links `astrea-shared-core` and its QML plugin only for
 compositor-independent shared utilities. `astrea-settings-core` publicly
 exposes Qt Core and the shared Dock configuration boundary, keeps Qt Network
-private, and includes the Paper protocol header directly. Layer Shell code is isolated in
+private, links the generated Settings Rust backend needed by its public
+QObject header, and includes the Paper protocol header directly. Layer Shell code is isolated in
 `astrea-shared-layer-shell`, which is linked only by Dock, Spotlight, and
 AltTab. Administrative-group detection does not spawn subprocesses.
 

@@ -77,6 +77,7 @@ foreach(relative_path IN LISTS deleted_migration_paths)
 endforeach()
 
 file(READ "${SETTINGS_SOURCE_DIR}/core/CMakeLists.txt" settings_core_cmake)
+file(READ "${SETTINGS_SOURCE_DIR}/CMakeLists.txt" settings_root_cmake)
 file(READ "${SETTINGS_SOURCE_DIR}/tests/CMakeLists.txt" settings_tests_cmake)
 file(READ "${SETTINGS_SOURCE_DIR}/app/SettingsApplication.cpp" settings_application_source)
 if(settings_tests_cmake MATCHES "qt_add_qml_module")
@@ -96,6 +97,30 @@ foreach(core_boundary_token IN ITEMS
     string(FIND "${settings_core_cmake}" "${core_boundary_token}" core_boundary_position)
     if(core_boundary_position EQUAL -1)
         message(FATAL_ERROR "Settings core dependency boundary is missing '${core_boundary_token}'")
+    endif()
+endforeach()
+foreach(rust_boundary_token IN ITEMS
+    "cxx_qt_import_crate"
+    "backend/Cargo.toml"
+    "astrea_settings_backend"
+    "QMAKE"
+)
+    string(FIND "${settings_root_cmake}${settings_core_cmake}" "${rust_boundary_token}" rust_boundary_position)
+    if(rust_boundary_position EQUAL -1)
+        message(FATAL_ERROR "Settings Rust/CXX-Qt boundary is missing '${rust_boundary_token}'")
+    endif()
+endforeach()
+foreach(superseded_animation_path IN ITEMS
+    services/animation/SettingsAnimationController.cpp
+    services/animation/SettingsAnimationController.hpp
+    services/animation/SettingsTyphonControlClient.cpp
+    services/animation/SettingsTyphonControlClient.hpp
+)
+    if(EXISTS "${SETTINGS_SOURCE_DIR}/${superseded_animation_path}")
+        message(FATAL_ERROR "Superseded C++ animation implementation remains: ${superseded_animation_path}")
+    endif()
+    if(settings_core_cmake MATCHES "${superseded_animation_path}")
+        message(FATAL_ERROR "Superseded C++ animation implementation remains in the production target: ${superseded_animation_path}")
     endif()
 endforeach()
 if(settings_core_cmake MATCHES "target_link_libraries\\(astrea-settings-core PUBLIC[^)]*Qt6::Network")
@@ -170,6 +195,17 @@ foreach(window_invariant IN ITEMS
 endforeach()
 
 set(production_source_files
+    backend/Cargo.toml
+    backend/Cargo.lock
+    backend/build.rs
+    backend/src/lib.rs
+    backend/src/animation/mod.rs
+    backend/src/animation/state.rs
+    backend/src/animation/qobject.rs
+    backend/src/typhon/mod.rs
+    backend/src/typhon/protocol.rs
+    backend/src/typhon/discovery.rs
+    backend/src/typhon/client.rs
     core/SettingsController.cpp
     core/SettingsController.hpp
     services/wallpaper/SettingsWallpaperController.hpp
@@ -643,11 +679,14 @@ set(forbidden_production_tokens
     "system("
     "popen("
     "pageIndex"
-    "Typhon"
 )
 foreach(relative_path IN LISTS production_source_files)
     file(READ "${SETTINGS_SOURCE_DIR}/${relative_path}" source_text)
-    foreach(token IN LISTS forbidden_production_tokens)
+    set(source_forbidden_tokens ${forbidden_production_tokens})
+    if(NOT relative_path MATCHES "^backend/")
+        list(APPEND source_forbidden_tokens "Typhon")
+    endif()
+    foreach(token IN LISTS source_forbidden_tokens)
         string(FIND "${source_text}" "${token}" token_position)
         if(NOT token_position EQUAL -1)
             message(FATAL_ERROR "Forbidden token '${token}' found in production source ${relative_path}")

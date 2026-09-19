@@ -8,6 +8,12 @@ cd -- "$project_root"
 rustc --version
 cargo --version
 
-cargo fmt --manifest-path Spotlight/backend/Cargo.toml -- --check
-cargo clippy --locked --manifest-path Spotlight/backend/Cargo.toml --all-targets -- -D warnings
-cargo test --locked --manifest-path Spotlight/backend/Cargo.toml
+run_rust_gate() {
+    local manifest="$1"
+    cargo fmt --manifest-path "$manifest" -- --check
+    cargo clippy --locked --manifest-path "$manifest" --all-targets -- -D warnings
+    cargo test --locked --manifest-path "$manifest"
+}
+
+run_rust_gate Spotlight/backend/Cargo.toml
+run_rust_gate Settings/backend/Cargo.toml

@@ -1,10 +1,6 @@
 add_library(astrea-settings-core STATIC
     SettingsController.cpp
     SettingsController.hpp
-    ../services/animation/SettingsAnimationController.cpp
-    ../services/animation/SettingsAnimationController.hpp
-    ../services/animation/SettingsTyphonControlClient.cpp
-    ../services/animation/SettingsTyphonControlClient.hpp
     ../services/wallpaper/SettingsWallpaperController.cpp
     ../services/wallpaper/SettingsWallpaperController.hpp
     navigation/SettingsNavigationCatalog.cpp
@@ -37,6 +33,7 @@ target_include_directories(astrea-settings-core PRIVATE
 target_link_libraries(astrea-settings-core PUBLIC
     Qt6::Core
     astrea-shared-dock
+    astrea_settings_backend
 )
 target_link_libraries(astrea-settings-core PRIVATE
     Qt6::Network

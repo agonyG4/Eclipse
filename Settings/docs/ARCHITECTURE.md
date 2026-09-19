@@ -19,6 +19,9 @@ SettingsIconResolver
 ThemeController
 SettingsTranslationController
 SettingsDockController -> shared DockConfigStore
+SettingsController.animations
+  -> CXX-Qt SettingsAnimationController QObject
+      -> Rust animation state and typed Typhon client
 QQmlApplicationEngine
 ```
 
@@ -33,9 +36,19 @@ exactly-one-root validation.
 `astrea-settings-core` is a reusable static native library. Its public link
 interface is `Qt6::Core` and `astrea-shared-dock`; `Qt6::Network` is private.
 The core contains the controller, navigation, services, and Linux account
-implementation, and includes the header-only Paper protocol directly. It does
-not link Qt QML, Qt Quick, Quick Controls, LayerShellQt, or a compositor
-library.
+implementation, includes the header-only Paper protocol directly, and links
+the generated `astrea_settings_backend` target through the public QObject
+header. The Rust target is
+built by the supported CXX-Qt CMake integration; its generated QObject header
+is consumed by the C++ composition root. It does not link Qt QML, Qt Quick,
+Quick Controls, LayerShellQt, or a compositor library.
+
+`Settings/backend` is intentionally focused. The CXX-Qt QObject only projects
+typed Rust state into Qt-compatible properties, emits the existing notify
+signals, accepts the existing invokables, and queues completion onto its Qt
+thread. Pure Rust owns configuration mutation semantics, capability projection,
+typed serde protocol structures, secure endpoint discovery, and one bounded
+worker for Unix-socket I/O. JSON is used only at the Typhon wire boundary.
 
 `astrea-settings-ui` is the only `Astrea.Settings 1.0` QML module and registers
 43 QML files. The application and QML integration tests consume that same
@@ -72,6 +85,8 @@ app -> qml context properties
 qml -> presentation and interaction
 tests -> production targets and explicit fakes
 shared -> compositor-independent utilities and capability-gated Wayland effects
+Rust backend -> typed animation state, Typhon protocol, secure discovery, bounded transport
+CXX-Qt QObject -> queued Qt-facing projection of the Rust backend
 ```
 
 QML has no filesystem, process, IPC, DBus, or compositor API. Platform access
@@ -127,6 +142,16 @@ owns libc/NSS enumeration; `AdministrativeGroupPolicy` recognizes exactly
 `ThemeController` and `SettingsTranslationController` retain their existing
 public QML names and semantics, but live under their service ownership paths.
 
+### Animations backend migration
+
+`SettingsController.animations` remains the authoritative QML-facing property.
+`Animations.qml` does not know whether its backend is C++ or Rust. The first
+production migration replaces the hand-maintained C++ animation controller and
+Typhon client with a stable CXX-Qt 0.10 QObject backed by `Settings/backend`.
+This is an incremental migration pattern, not an all-at-once C++ rewrite:
+QML stays presentation, CXX-Qt stays thin, Rust owns the migrated backend
+logic, and the remaining C++ composition and unrelated services are deferred.
+
 ### Application icon appearance
 
 `ThemeController.iconAppearance` is the canonical global application-icon
@@ -152,8 +177,9 @@ opacity or darkening filters.
 ## Exclusions
 
 Settings has no Quickshell import, LayerShellQt dependency, Hyprland command,
-Typhon-private protocol, compositor backend, IPC boundary, persistence for the
-Compositor preview, or shell command execution. The shared public Wayland
+Typhon-private protocol, compositor backend, persistence for the Compositor
+preview, or shell command execution. The Animations page does have the public
+Astrea `astrea.control` Typhon IPC boundary described above. The shared public Wayland
 effects module is a narrow Qt-owned child-surface bridge; it is independent of
 Typhon and falls back cleanly when unsupported. The Dock page is a native route
 under the Customization hub and its preview is presentation-only; it does not

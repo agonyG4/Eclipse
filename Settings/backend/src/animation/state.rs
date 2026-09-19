@@ -43,11 +43,16 @@ pub struct AnimationSnapshot {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct AnimationCatalog {
     #[serde(default)]
-    pub presets: Vec<String>,
+    pub presets: Vec<AnimationPreset>,
     #[serde(default)]
     pub slots: Vec<AnimationSlot>,
     #[serde(default)]
     pub effects: Vec<AnimationEffect>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct AnimationPreset {
+    pub id: String,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -168,6 +173,10 @@ impl AnimationState {
 
     pub fn set_unavailable(&mut self) {
         self.available = false;
+    }
+
+    pub fn set_available(&mut self) {
+        self.available = true;
     }
 
     pub fn validate_slot_effect(
@@ -379,7 +388,17 @@ mod tests {
                 .into_iter()
                 .collect(),
             catalog: AnimationCatalog {
-                presets: vec!["astrea".to_owned(), "kde".to_owned(), "macos".to_owned()],
+                presets: vec![
+                    AnimationPreset {
+                        id: "astrea".to_owned(),
+                    },
+                    AnimationPreset {
+                        id: "kde".to_owned(),
+                    },
+                    AnimationPreset {
+                        id: "macos".to_owned(),
+                    },
+                ],
                 slots: vec![AnimationSlot {
                     id: "window.minimize".to_owned(),
                     compatible_effects: vec!["none".to_owned(), "minimize.lamp".to_owned()],

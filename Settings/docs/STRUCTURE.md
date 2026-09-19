@@ -28,6 +28,13 @@ Settings/
 │   ├── profile/
 │   └── wallpaper/
 ├── platform/linux/
+├── backend/
+│   ├── Cargo.toml
+│   ├── Cargo.lock
+│   ├── build.rs
+│   └── src/
+│       ├── animation/       # typed state and thin CXX-Qt QObject
+│       └── typhon/          # typed protocol, discovery, and transport
 ├── qml/
 │   ├── CMakeLists.txt
 │   ├── Main.qml
@@ -55,7 +62,9 @@ Settings/
 
 ```text
 astrea-settings-core  -> PUBLIC Qt6::Core, astrea-shared-dock;
-                         PRIVATE Qt6::Network; direct Paper protocol include
+                         PUBLIC astrea_settings_backend;
+                         PRIVATE Qt6::Network;
+                         direct Paper protocol include
 astrea-settings-ui    -> Qt6::Core, Core5Compat, Gui, Qml, Quick, QuickControls2
 astrea-settings       -> astrea-settings-core, astrea-settings-ui,
                           astrea-settings-uiplugin,
@@ -72,6 +81,7 @@ app -> core -> services -> platform/linux
 qml -> context properties supplied by app
 tests -> public production targets -> explicit fake boundaries
 shared -> compositor-independent utilities only
+astrea_settings_backend -> CXX-Qt generated QObject and Rust animation backend
 ```
 
 The core target deliberately has no Qt QML, Qt Quick, Quick Controls,
@@ -122,4 +132,6 @@ Do not add a route condition to `Main.qml` and do not add a numeric page index.
    controller API to QML.
 4. Keep QML responsible for presentation and interaction only.
 5. Add unit tests against the service boundary and integration coverage for the
-   QML-facing behavior without invoking private shell protocols.
+   QML-facing behavior without invoking private shell protocols. For a Rust
+   backend, keep domain and protocol cases Qt-independent and add one Qt test
+   for the generated QObject's queued, non-blocking boundary.

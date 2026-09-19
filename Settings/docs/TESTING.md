@@ -27,6 +27,27 @@ the full application QML route, disabled deferred Wallpaper controls,
 representative registered QML components, AppIcon provider ownership,
 Compositor source policy, and structural ownership invariants.
 
+The Settings Animations test also exercises the Rust-backed CXX-Qt QObject from
+the application's perspective: authoritative snapshots, planned and
+unavailable effect rejection, server rejection availability, timeout/event-loop
+responsiveness, one in-flight request behavior, malformed responses, endpoint
+security failures, oversized mutations, pending-speed folding, and destruction
+while a request is outstanding. Protocol and secure-discovery cases that do
+not need Qt live in `Settings/backend` Rust unit tests.
+
+The Settings Rust gate uses the crate's lockfile and runs:
+
+```bash
+cargo fmt --manifest-path Settings/backend/Cargo.toml -- --check
+cargo clippy --manifest-path Settings/backend/Cargo.toml --locked --all-targets -- -D warnings
+cargo test --manifest-path Settings/backend/Cargo.toml --locked
+```
+
+The CXX-Qt integration uses the stable 0.10.0 release and the qmake selected
+by CMake. A normal Settings CMake build owns Cargo, generated CXX-Qt headers,
+and the Rust static library in the active CMake build tree; no separate manual
+Cargo build is required before CMake.
+
 Wallpaper correctness is covered by `paper-catalog-test`,
 `paper-service-test`, `paper-control-server-test`, and
 `settings-wallpaper-controller-test`. These tests exercise native preview URL

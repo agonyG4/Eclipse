@@ -1,5 +1,5 @@
 use crate::animation::state::{AnimationConfiguration, AnimationSnapshot};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Number;
 
 pub const MAX_REQUEST_BYTES: usize = 64 * 1024;
@@ -59,21 +59,6 @@ struct SetArguments {
     overrides: std::collections::BTreeMap<String, String>,
 }
 
-#[derive(Deserialize)]
-struct WireResponse {
-    protocol: Option<String>,
-    version: Option<f64>,
-    id: Option<Number>,
-    ok: Option<serde_json::Value>,
-    result: Option<AnimationSnapshot>,
-    error: Option<WireError>,
-}
-
-#[derive(Deserialize)]
-struct WireError {
-    message: Option<String>,
-}
-
 pub fn encode_request(id: u64, request: AnimationRequest) -> Result<Vec<u8>, ProtocolError> {
     let (command, args) = match request {
         AnimationRequest::Get => ("animation.config.get", WireArguments::Get(GetArguments {})),
@@ -122,41 +107,40 @@ pub fn decode_response(bytes: &[u8], expected_id: u64) -> Result<ProtocolOutcome
     let Some(object) = value.as_object() else {
         return Err(ProtocolError::InvalidJson);
     };
-    if object
-        .get("result")
-        .is_some_and(|result| !result.is_object() && !result.is_null())
-        || object
-            .get("error")
-            .is_some_and(|error| !error.is_object() && !error.is_null())
-    {
-        return Err(ProtocolError::InvalidJson);
-    }
-    let response: WireResponse =
-        serde_json::from_value(value).map_err(|_| ProtocolError::InvalidJson)?;
-    if response.protocol.as_deref() != Some(PROTOCOL) || response.version != Some(1.0) {
+    let protocol = object.get("protocol").and_then(serde_json::Value::as_str);
+    let version = object.get("version").and_then(serde_json::Value::as_f64);
+    if protocol != Some(PROTOCOL) || version != Some(1.0) {
         return Err(ProtocolError::Incompatible);
     }
-    if response.id.as_ref().and_then(integral_id) != Some(expected_id) {
+    let response_id = object
+        .get("id")
+        .and_then(serde_json::Value::as_number)
+        .and_then(integral_id);
+    if response_id != Some(expected_id) {
         return Err(ProtocolError::MismatchedId);
     }
-    let Some(ok) = response.ok else {
+    let Some(ok) = object.get("ok") else {
         return Err(ProtocolError::InvalidSuccessFlag);
     };
     let Some(ok) = ok.as_bool() else {
         return Err(ProtocolError::InvalidSuccessFlag);
     };
     if ok {
-        response
-            .result
-            .map(ProtocolOutcome::Success)
-            .ok_or(ProtocolError::MissingResult)
+        let Some(result) = object.get("result").filter(|result| result.is_object()) else {
+            return Err(ProtocolError::MissingResult);
+        };
+        let snapshot =
+            serde_json::from_value(result.clone()).map_err(|_| ProtocolError::InvalidJson)?;
+        Ok(ProtocolOutcome::Success(snapshot))
     } else {
-        let Some(error) = response.error else {
+        let Some(error) = object.get("error").and_then(serde_json::Value::as_object) else {
             return Err(ProtocolError::MissingError);
         };
         let message = error
-            .message
+            .get("message")
+            .and_then(serde_json::Value::as_str)
             .filter(|message| !message.is_empty())
+            .map(str::to_owned)
             .unwrap_or_else(|| String::from("Typhon control: server rejected request"));
         Ok(ProtocolOutcome::ServerRejected(message))
     }
@@ -274,7 +258,7 @@ mod tests {
         let response = response_with_invalid_result();
         assert_eq!(
             decode_response(&response, 1),
-            Err(ProtocolError::InvalidJson)
+            Err(ProtocolError::MissingResult)
         );
     }
 

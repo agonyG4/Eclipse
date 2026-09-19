@@ -1,8 +1,6 @@
-#include "services/animation/SettingsAnimationController.hpp"
-#include "services/animation/SettingsTyphonControlClient.hpp"
+#include "core/SettingsController.hpp"
 
 #include <QDir>
-#include <QElapsedTimer>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -10,7 +8,6 @@
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QMutex>
-#include <QSignalSpy>
 #include <QThread>
 #include <QTemporaryDir>
 #include <QTest>
@@ -343,14 +340,14 @@ class SettingsAnimationControllerTest final : public QObject {
 private slots:
     void controllerUsesAuthoritativeSnapshotsAndRejectsPlannedEffects();
     void controllerProjectsUnavailableEffectsSeparately();
-    void clientStartsAndCompletesAsynchronously();
-    void clientTimeoutDoesNotBlockTheEventLoop();
-    void clientRejectsSecondRequestWhileBusyAndCanBeReused();
-    void clientRejectsMalformedResponse();
-    void clientRejectsInvalidResponseShapesAndBounds();
-    void clientHandlesConnectionFailure();
-    void clientRejectsOversizedRequestsImmediately();
-    void clientRejectsAmbiguousAndInsecureDiscovery();
+    void controllerTimeoutDoesNotBlockTheEventLoop();
+    void controllerRejectsSecondRequestWhileBusy();
+    void controllerRejectsMalformedResponse();
+    void controllerRejectsMalformedResponseShapesAndBounds();
+    void controllerHandlesConnectionFailure();
+    void controllerRejectsOversizedMutation();
+    void controllerRejectsAmbiguousAndInsecureDiscovery();
+    void controllerCanBeDestroyedWithRequestOutstanding();
     void controllerFoldsPendingSpeedIntoNextMutation();
 };
 
@@ -368,10 +365,10 @@ void SettingsAnimationControllerTest::controllerUsesAuthoritativeSnapshotsAndRej
     QCOMPARE(controller.preset(), QStringLiteral("astrea"));
     QCOMPARE(controller.speed(), 1.0);
     QVERIFY(!controller.hasOverrides());
-    QCOMPARE(controller.presets().size(), 3);
-    QVERIFY(!controller.slotCapabilities().isEmpty());
+    QCOMPARE(controller.presets().toList().size(), 3);
+    QVERIFY(!controller.slotCapabilities().toList().isEmpty());
     const auto slot = [&controller](const QString &id) {
-        for (const QVariant &value : controller.slotCapabilities()) {
+        for (const QVariant &value : controller.slotCapabilities().toList()) {
             const QVariantMap candidate = value.toMap();
             if (candidate.value(QStringLiteral("id")).toString() == id)
                 return candidate;
@@ -428,7 +425,7 @@ void SettingsAnimationControllerTest::controllerProjectsUnavailableEffectsSepara
     controller.refresh();
     QTRY_VERIFY2(controller.available(), qPrintable(controller.lastError()));
     auto slot = [&controller] {
-        for (const QVariant &value : controller.slotCapabilities()) {
+        for (const QVariant &value : controller.slotCapabilities().toList()) {
             const QVariantMap candidate = value.toMap();
             if (candidate.value(QStringLiteral("id")).toString() == QStringLiteral("window.minimize"))
                 return candidate;
@@ -455,7 +452,7 @@ void SettingsAnimationControllerTest::controllerProjectsUnavailableEffectsSepara
     QCOMPARE(unavailable.value(QStringLiteral("effective")).toString(), QStringLiteral("none"));
 }
 
-void SettingsAnimationControllerTest::clientStartsAndCompletesAsynchronously()
+void SettingsAnimationControllerTest::controllerTimeoutDoesNotBlockTheEventLoop()
 {
     QTemporaryDir runtime;
     QVERIFY(runtime.isValid());
@@ -463,55 +460,22 @@ void SettingsAnimationControllerTest::clientStartsAndCompletesAsynchronously()
     AnimationControlServer server(runtime.path());
     server.delayResponses(true);
 
-    SettingsTyphonControlClient client(nullptr, 500);
-    QSignalSpy finished(&client, &SettingsTyphonControlClient::requestFinished);
-    QElapsedTimer elapsed;
-    elapsed.start();
-    QString startError;
-    QVERIFY(client.startRequest(QStringLiteral("animation.config.get"), {}, &startError));
-    QVERIFY2(elapsed.elapsed() < 100, qPrintable(startError));
-    QCOMPARE(finished.count(), 0);
-
-    QTRY_COMPARE(server.commandCount(), 1);
-    const QJsonObject request = server.lastRequest();
-    QCOMPARE(request.value(QStringLiteral("protocol")).toString(), QStringLiteral("astrea.control"));
-    QCOMPARE(request.value(QStringLiteral("version")).toInt(), 1);
-    QCOMPARE(request.value(QStringLiteral("id")).toInteger(), 1);
-    QCOMPARE(request.value(QStringLiteral("command")).toString(), QStringLiteral("animation.config.get"));
-    QVERIFY(request.value(QStringLiteral("args")).isObject());
-    server.releaseDelayedResponses();
-    QTRY_COMPARE(finished.count(), 1);
-    QCOMPARE(finished.at(0).at(0).toBool(), true);
-    QVERIFY(finished.at(0).at(1).toMap().contains(QStringLiteral("config")));
-    QVERIFY(finished.at(0).at(2).toString().isEmpty());
-}
-
-void SettingsAnimationControllerTest::clientTimeoutDoesNotBlockTheEventLoop()
-{
-    QTemporaryDir runtime;
-    QVERIFY(runtime.isValid());
-    EnvironmentGuard environment(runtime.path().toUtf8(), QByteArrayLiteral("test"));
-    AnimationControlServer server(runtime.path());
-    server.delayResponses(true);
-
-    SettingsTyphonControlClient client(nullptr, 50);
-    QSignalSpy finished(&client, &SettingsTyphonControlClient::requestFinished);
+    SettingsAnimationController controller;
     int marker = 0;
     bool markerObservedWhileBusy = false;
-    QTimer::singleShot(0, &client, [&marker, &markerObservedWhileBusy, &client] {
-        markerObservedWhileBusy = client.busy();
+    QTimer::singleShot(0, &controller, [&marker, &markerObservedWhileBusy, &controller] {
+        markerObservedWhileBusy = controller.busy();
         ++marker;
     });
-    QString startError;
-    QVERIFY(client.startRequest(QStringLiteral("animation.config.get"), {}, &startError));
+    controller.refresh();
     QTRY_COMPARE(marker, 1);
     QVERIFY(markerObservedWhileBusy);
-    QTRY_COMPARE(finished.count(), 1);
-    QCOMPARE(finished.at(0).at(0).toBool(), false);
-    QVERIFY(finished.at(0).at(2).toString().contains(QStringLiteral("timeout")));
+    QTRY_VERIFY(!controller.busy());
+    QVERIFY(!controller.available());
+    QVERIFY(controller.lastError().contains(QStringLiteral("timeout")));
 }
 
-void SettingsAnimationControllerTest::clientRejectsSecondRequestWhileBusyAndCanBeReused()
+void SettingsAnimationControllerTest::controllerRejectsSecondRequestWhileBusy()
 {
     QTemporaryDir runtime;
     QVERIFY(runtime.isValid());
@@ -519,22 +483,16 @@ void SettingsAnimationControllerTest::clientRejectsSecondRequestWhileBusyAndCanB
     AnimationControlServer server(runtime.path());
     server.delayResponses(true);
 
-    SettingsTyphonControlClient client(nullptr, 500);
-    QSignalSpy finished(&client, &SettingsTyphonControlClient::requestFinished);
-    QString error;
-    QVERIFY(client.startRequest(QStringLiteral("animation.config.get"), {}, &error));
-    QVERIFY(!client.startRequest(QStringLiteral("animation.config.get"), {}, &error));
-    QVERIFY(error.contains(QStringLiteral("in flight")));
+    SettingsAnimationController controller;
+    controller.refresh();
+    controller.refresh();
+    QTRY_COMPARE(server.commandCount(), 1);
     server.releaseDelayedResponses();
-    QTRY_COMPARE(finished.count(), 1);
-
-    server.delayResponses(false);
-    QVERIFY(client.startRequest(QStringLiteral("animation.config.get"), {}, &error));
-    QTRY_COMPARE(finished.count(), 2);
-    QCOMPARE(finished.at(1).at(0).toBool(), true);
+    QTRY_VERIFY(!controller.busy());
+    QVERIFY(controller.available());
 }
 
-void SettingsAnimationControllerTest::clientRejectsMalformedResponse()
+void SettingsAnimationControllerTest::controllerRejectsMalformedResponse()
 {
     QTemporaryDir runtime;
     QVERIFY(runtime.isValid());
@@ -542,22 +500,18 @@ void SettingsAnimationControllerTest::clientRejectsMalformedResponse()
     AnimationControlServer server(runtime.path());
     server.sendMalformedResponse();
 
-    SettingsTyphonControlClient client;
-    QSignalSpy finished(&client, &SettingsTyphonControlClient::requestFinished);
-    QString error;
-    QVERIFY(client.startRequest(QStringLiteral("animation.config.get"), {}, &error));
-    QTRY_COMPARE(finished.count(), 1);
-    QVERIFY(finished.at(0).at(2).toString().contains(QStringLiteral("JSON")));
+    SettingsAnimationController controller;
+    controller.refresh();
+    QTRY_VERIFY(!controller.busy());
+    QVERIFY(controller.lastError().contains(QStringLiteral("JSON")));
 }
 
-void SettingsAnimationControllerTest::clientRejectsInvalidResponseShapesAndBounds()
+void SettingsAnimationControllerTest::controllerRejectsMalformedResponseShapesAndBounds()
 {
     QTemporaryDir runtime;
     QVERIFY(runtime.isValid());
     EnvironmentGuard environment(runtime.path().toUtf8(), QByteArrayLiteral("test"));
     AnimationControlServer server(runtime.path());
-    SettingsTyphonControlClient client(nullptr, 500);
-    QSignalSpy finished(&client, &SettingsTyphonControlClient::requestFinished);
     const QList<QByteArray> modes{
         QByteArrayLiteral("invalid-json"), QByteArrayLiteral("protocol"),
         QByteArrayLiteral("version"), QByteArrayLiteral("id"),
@@ -565,49 +519,45 @@ void SettingsAnimationControllerTest::clientRejectsInvalidResponseShapesAndBound
         QByteArrayLiteral("error-no-error"), QByteArrayLiteral("extra-frame"),
         QByteArrayLiteral("oversized"),
     };
-    for (qsizetype index = 0; index < modes.size(); ++index) {
-        server.setResponseMode(modes.at(index));
-        QString startError;
-        QVERIFY2(client.startRequest(QStringLiteral("animation.config.get"), {}, &startError),
-                 qPrintable(startError));
-        QTRY_COMPARE(finished.count(), index + 1);
-        QCOMPARE(finished.at(index).at(0).toBool(), false);
-        QVERIFY(!finished.at(index).at(2).toString().isEmpty());
+    for (const QByteArray &mode : modes) {
+        SettingsAnimationController controller;
+        server.setResponseMode(mode);
+        controller.refresh();
+        QTRY_VERIFY(!controller.busy());
+        QVERIFY(!controller.lastError().isEmpty());
     }
 }
 
-void SettingsAnimationControllerTest::clientHandlesConnectionFailure()
+void SettingsAnimationControllerTest::controllerHandlesConnectionFailure()
 {
     QTemporaryDir runtime;
     QVERIFY(runtime.isValid());
     EnvironmentGuard environment(runtime.path().toUtf8(), QByteArrayLiteral("test"));
     AnimationControlServer server(runtime.path());
     server.setResponseMode(QByteArrayLiteral("disconnect"));
-    SettingsTyphonControlClient client(nullptr, 500);
-    QSignalSpy finished(&client, &SettingsTyphonControlClient::requestFinished);
-    QString startError;
-    QVERIFY(client.startRequest(QStringLiteral("animation.config.get"), {}, &startError));
-    QTRY_COMPARE(finished.count(), 1);
-    QCOMPARE(finished.at(0).at(0).toBool(), false);
-    QVERIFY(finished.at(0).at(2).toString().contains(QStringLiteral("disconnected"))
-            || finished.at(0).at(2).toString().contains(QStringLiteral("transport")));
+    SettingsAnimationController controller;
+    controller.refresh();
+    QTRY_VERIFY(!controller.busy());
+    QVERIFY(controller.lastError().contains(QStringLiteral("disconnected"))
+            || controller.lastError().contains(QStringLiteral("transport")));
 }
 
-void SettingsAnimationControllerTest::clientRejectsOversizedRequestsImmediately()
+void SettingsAnimationControllerTest::controllerRejectsOversizedMutation()
 {
     QTemporaryDir runtime;
     QVERIFY(runtime.isValid());
     EnvironmentGuard environment(runtime.path().toUtf8(), QByteArrayLiteral("test"));
     AnimationControlServer server(runtime.path());
-    SettingsTyphonControlClient client;
-    const QVariantMap arguments{{QStringLiteral("payload"), QString(70 * 1024, QLatin1Char('x'))}};
-    QString error;
-    QVERIFY(!client.startRequest(QStringLiteral("animation.config.get"), arguments, &error));
-    QVERIFY(error.contains(QStringLiteral("64 KiB")));
-    QCOMPARE(server.commandCount(), 0);
+    SettingsAnimationController controller;
+    controller.refresh();
+    QTRY_VERIFY(controller.available());
+    controller.setPreset(QString(70 * 1024, QLatin1Char('x')));
+    QTRY_VERIFY(!controller.busy());
+    QVERIFY(controller.lastError().contains(QStringLiteral("64 KiB")));
+    QCOMPARE(server.commandCount(), 1);
 }
 
-void SettingsAnimationControllerTest::clientRejectsAmbiguousAndInsecureDiscovery()
+void SettingsAnimationControllerTest::controllerRejectsAmbiguousAndInsecureDiscovery()
 {
     {
         QTemporaryDir runtime;
@@ -623,10 +573,10 @@ void SettingsAnimationControllerTest::clientRejectsAmbiguousAndInsecureDiscovery
         other.setSocketOptions(QLocalServer::UserAccessOption);
         QVERIFY(other.listen(endpoint));
         QVERIFY(::chmod(QFile::encodeName(endpoint).constData(), 0600) == 0);
-        SettingsTyphonControlClient client;
-        QString error;
-        QVERIFY(!client.startRequest(QStringLiteral("animation.config.get"), {}, &error));
-        QVERIFY(error.contains(QStringLiteral("multiple")));
+        SettingsAnimationController controller;
+        controller.refresh();
+        QTRY_VERIFY(!controller.busy());
+        QVERIFY(controller.lastError().contains(QStringLiteral("multiple")));
     }
 
     QTemporaryDir runtime;
@@ -645,10 +595,25 @@ void SettingsAnimationControllerTest::clientRejectsAmbiguousAndInsecureDiscovery
     insecure.setSocketOptions(QLocalServer::UserAccessOption);
     QVERIFY(insecure.listen(endpoint));
     QVERIFY(::chmod(QFile::encodeName(endpoint).constData(), 0600) == 0);
-    SettingsTyphonControlClient client;
-    QString error;
-    QVERIFY(!client.startRequest(QStringLiteral("animation.config.get"), {}, &error));
-    QVERIFY(error.contains(QStringLiteral("no secure")));
+    SettingsAnimationController controller;
+    controller.refresh();
+    QTRY_VERIFY(!controller.busy());
+    QVERIFY(controller.lastError().contains(QStringLiteral("no secure")));
+}
+
+void SettingsAnimationControllerTest::controllerCanBeDestroyedWithRequestOutstanding()
+{
+    QTemporaryDir runtime;
+    QVERIFY(runtime.isValid());
+    EnvironmentGuard environment(runtime.path().toUtf8(), QByteArrayLiteral("test"));
+    AnimationControlServer server(runtime.path());
+    server.delayResponses(true);
+
+    auto *controller = new SettingsAnimationController;
+    controller->refresh();
+    QTRY_COMPARE(server.commandCount(), 1);
+    delete controller;
+    QTest::qWait(50);
 }
 
 void SettingsAnimationControllerTest::controllerFoldsPendingSpeedIntoNextMutation()

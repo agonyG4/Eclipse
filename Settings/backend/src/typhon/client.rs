@@ -6,8 +6,7 @@ use std::fmt::{Display, Formatter};
 use std::io::{ErrorKind, Read, Write};
 use std::os::fd::{FromRawFd, IntoRawFd, OwnedFd};
 use std::os::unix::net::UnixStream;
-use std::sync::mpsc::{Receiver, SyncSender, TrySendError, sync_channel};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -80,13 +79,20 @@ enum WorkerMessage {
     DebounceElapsed { token: u64 },
 }
 
-struct DebounceState {
-    deadline: Mutex<Option<(Instant, u64)>>,
+struct WorkerState {
+    pending: Option<WorkerMessage>,
+    deadline: Option<(Instant, u64)>,
+    shutdown: bool,
+}
+
+struct WorkerControl {
+    state: Mutex<WorkerState>,
+    wake: Condvar,
+    wait_observer: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 pub struct ClientWorker {
-    sender: SyncSender<WorkerMessage>,
-    debounce: Arc<DebounceState>,
+    control: Arc<WorkerControl>,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -102,58 +108,90 @@ impl ClientWorker {
     where
         F: Fn(WorkerEvent) + Send + Sync + 'static,
     {
-        let (sender, receiver) = sync_channel(1);
-        let debounce = Arc::new(DebounceState {
-            deadline: Mutex::new(None),
+        Self::new_internal(deadline, completion, None)
+    }
+
+    #[cfg(test)]
+    fn new_with_wait_observer<F, O>(observer: O, completion: F) -> Result<Self, ClientError>
+    where
+        F: Fn(WorkerEvent) + Send + Sync + 'static,
+        O: Fn() + Send + Sync + 'static,
+    {
+        Self::new_internal(DEFAULT_DEADLINE, completion, Some(Arc::new(observer)))
+    }
+
+    fn new_internal<F>(
+        deadline: Duration,
+        completion: F,
+        wait_observer: Option<Arc<dyn Fn() + Send + Sync>>,
+    ) -> Result<Self, ClientError>
+    where
+        F: Fn(WorkerEvent) + Send + Sync + 'static,
+    {
+        let control = Arc::new(WorkerControl {
+            state: Mutex::new(WorkerState {
+                pending: None,
+                deadline: None,
+                shutdown: false,
+            }),
+            wake: Condvar::new(),
+            wait_observer,
         });
-        let worker_debounce = Arc::clone(&debounce);
+        let worker_control = Arc::clone(&control);
         let completion = Arc::new(completion);
         let worker_completion = Arc::clone(&completion);
         let thread = thread::Builder::new()
             .name(String::from("astrea-settings-typhon"))
-            .spawn(move || worker_loop(receiver, worker_debounce, worker_completion, deadline))
+            .spawn(move || worker_loop(worker_control, worker_completion, deadline))
             .map_err(|_| ClientError::WorkerUnavailable)?;
         Ok(Self {
-            sender,
-            debounce,
+            control,
             thread: Some(thread),
         })
     }
 
     pub fn submit(&self, id: u64, request: AnimationRequest) -> Result<(), ClientError> {
-        self.sender
-            .try_send(WorkerMessage::Request { id, request })
-            .map_err(|error| match error {
-                TrySendError::Full(_) => ClientError::WorkerUnavailable,
-                TrySendError::Disconnected(_) => ClientError::WorkerUnavailable,
-            })
+        let mut state = self
+            .control
+            .state
+            .lock()
+            .map_err(|_| ClientError::WorkerUnavailable)?;
+        if state.shutdown || state.pending.is_some() {
+            return Err(ClientError::WorkerUnavailable);
+        }
+        state.pending = Some(WorkerMessage::Request { id, request });
+        drop(state);
+        self.control.wake.notify_one();
+        Ok(())
     }
 
     pub fn schedule_debounce(&self, token: u64) {
-        if let Ok(mut deadline) = self.debounce.deadline.lock() {
-            *deadline = Some((Instant::now() + DEBOUNCE, token));
+        if let Ok(mut state) = self.control.state.lock()
+            && !state.shutdown
+        {
+            state.deadline = Some((Instant::now() + DEBOUNCE, token));
+            drop(state);
+            self.control.wake.notify_one();
         }
     }
 }
 
 impl Drop for ClientWorker {
     fn drop(&mut self) {
-        if let Some(thread) = self.thread.take() {
-            drop(thread);
+        if let Ok(mut state) = self.control.state.lock() {
+            state.shutdown = true;
         }
+        self.control.wake.notify_one();
+        let _ = self.thread.take();
     }
 }
 
-fn worker_loop<F>(
-    receiver: Receiver<WorkerMessage>,
-    debounce: Arc<DebounceState>,
-    completion: Arc<F>,
-    deadline: Duration,
-) where
+fn worker_loop<F>(control: Arc<WorkerControl>, completion: Arc<F>, deadline: Duration)
+where
     F: Fn(WorkerEvent) + Send + Sync + 'static,
 {
     loop {
-        let message = next_message(&receiver, &debounce);
+        let message = next_message(&control);
         let Some(message) = message else {
             return;
         };
@@ -172,36 +210,49 @@ fn worker_loop<F>(
     }
 }
 
-fn next_message(
-    receiver: &Receiver<WorkerMessage>,
-    debounce: &DebounceState,
-) -> Option<WorkerMessage> {
-    const POLL_INTERVAL: Duration = Duration::from_millis(10);
+fn next_message(control: &WorkerControl) -> Option<WorkerMessage> {
+    let mut state = control.state.lock().ok()?;
     loop {
-        let deadline = debounce.deadline.lock().ok()?.to_owned();
-        let Some((deadline, token)) = deadline else {
-            match receiver.recv_timeout(POLL_INTERVAL) {
-                Ok(message) => return Some(message),
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
-                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return None,
-            }
-        };
-        let remaining = deadline
-            .saturating_duration_since(Instant::now())
-            .min(POLL_INTERVAL);
-        match receiver.recv_timeout(remaining) {
-            Ok(message) => return Some(message),
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                let mut current = debounce.deadline.lock().ok()?;
-                if current.is_some_and(|(current_deadline, current_token)| {
-                    current_token == token && current_deadline <= Instant::now()
-                }) {
-                    *current = None;
-                    return Some(WorkerMessage::DebounceElapsed { token });
-                }
-            }
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return None,
+        if state.shutdown {
+            return None;
         }
+        if let Some(message) = state.pending.take() {
+            return Some(message);
+        }
+
+        let Some((deadline, token)) = state.deadline else {
+            observe_wait(control);
+            state = control.wake.wait(state).ok()?;
+            continue;
+        };
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            if state.deadline == Some((deadline, token)) {
+                state.deadline = None;
+                return Some(WorkerMessage::DebounceElapsed { token });
+            }
+            continue;
+        }
+
+        observe_wait(control);
+        let (next_state, timeout) = control.wake.wait_timeout(state, remaining).ok()?;
+        state = next_state;
+        if timeout.timed_out()
+            && state
+                .deadline
+                .is_some_and(|(current_deadline, current_token)| {
+                    current_token == token && current_deadline <= Instant::now()
+                })
+        {
+            state.deadline = None;
+            return Some(WorkerMessage::DebounceElapsed { token });
+        }
+    }
+}
+
+fn observe_wait(control: &WorkerControl) {
+    if let Some(observer) = &control.wait_observer {
+        observer();
     }
 }
 
@@ -462,6 +513,43 @@ mod tests {
             transport_or_timeout(std::io::Error::from(ErrorKind::BrokenPipe), future),
             ClientError::Transport(_)
         ));
+    }
+
+    #[test]
+    fn idle_worker_waits_for_a_wakeup_instead_of_polling() {
+        let (wait_started, wait_started_receive) = channel();
+        let worker = ClientWorker::new_with_wait_observer(
+            move || {
+                let _ = wait_started.send(());
+            },
+            |_| {},
+        )
+        .unwrap();
+
+        wait_started_receive
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap();
+        assert!(
+            wait_started_receive
+                .recv_timeout(Duration::from_millis(50))
+                .is_err()
+        );
+
+        drop(worker);
+    }
+
+    #[test]
+    fn rescheduled_debounce_emits_only_the_latest_token() {
+        let (events, receive) = channel();
+        let worker = ClientWorker::new(move |event| events.send(event).unwrap()).unwrap();
+
+        worker.schedule_debounce(1);
+        thread::sleep(DEBOUNCE / 2);
+        worker.schedule_debounce(2);
+
+        let event = receive.recv_timeout(DEBOUNCE * 3).unwrap();
+        assert!(matches!(event, WorkerEvent::DebounceElapsed { token: 2 }));
+        assert!(receive.recv_timeout(DEBOUNCE / 2).is_err());
     }
 
     fn assert_request_succeeded(receive: &Receiver<WorkerEvent>, expected_id: u64) {

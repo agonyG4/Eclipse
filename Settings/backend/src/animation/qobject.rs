@@ -150,6 +150,88 @@ impl Default for SettingsAnimationControllerRust {
     }
 }
 
+#[derive(Default)]
+struct WorkerEventEffects {
+    busy_changed: bool,
+    availability_changed: bool,
+    snapshot_changed: bool,
+    error_changed: bool,
+    submit_pending: bool,
+}
+
+impl SettingsAnimationControllerRust {
+    fn handle_worker_event(&mut self, event: WorkerEvent) -> Option<WorkerEventEffects> {
+        match event {
+            WorkerEvent::DebounceElapsed { token } => {
+                (self.debounce_token == token).then(|| WorkerEventEffects {
+                    submit_pending: true,
+                    ..WorkerEventEffects::default()
+                })
+            }
+            WorkerEvent::RequestFinished { id, result } => {
+                self.handle_request_finished(id, *result)
+            }
+        }
+    }
+
+    fn handle_request_finished(
+        &mut self,
+        id: u64,
+        result: Result<ProtocolOutcome, crate::typhon::client::ClientError>,
+    ) -> Option<WorkerEventEffects> {
+        let refresh = self.requests.finish(id)?;
+        self.busy = false;
+        let mut effects = WorkerEventEffects {
+            busy_changed: true,
+            submit_pending: true,
+            ..WorkerEventEffects::default()
+        };
+        match result {
+            Ok(ProtocolOutcome::Success(snapshot)) => {
+                let was_available = self.state.available();
+                self.state.set_available();
+                effects.availability_changed = !was_available;
+                match self.state.apply_snapshot(snapshot) {
+                    Ok(()) => {
+                        effects.snapshot_changed = true;
+                        effects.error_changed = self.set_error_value(String::new());
+                    }
+                    Err(StateError::IncompleteSnapshot) => {
+                        effects.error_changed = self.set_error_value(String::from(
+                            "Typhon returned an incomplete animation snapshot.",
+                        ));
+                    }
+                }
+            }
+            Ok(ProtocolOutcome::ServerRejected(error)) => {
+                if refresh && self.state.available() {
+                    self.state.set_unavailable();
+                    effects.availability_changed = true;
+                }
+                effects.error_changed = self.set_error_value(error);
+            }
+            Err(error) => {
+                let should_mark_unavailable = refresh
+                    || !matches!(error, crate::typhon::client::ClientError::WorkerUnavailable);
+                if should_mark_unavailable && self.state.available() {
+                    self.state.set_unavailable();
+                    effects.availability_changed = true;
+                }
+                effects.error_changed = self.set_error_value(error.to_string());
+            }
+        }
+        Some(effects)
+    }
+
+    fn set_error_value(&mut self, error: String) -> bool {
+        if self.last_error == error {
+            return false;
+        }
+        self.last_error = error;
+        true
+    }
+}
+
 impl qobject::SettingsAnimationController {
     fn available(&self) -> bool {
         self.rust().state.available()
@@ -372,66 +454,30 @@ impl qobject::SettingsAnimationController {
     }
 
     fn handle_worker_event(mut self: Pin<&mut Self>, event: WorkerEvent) {
-        match event {
-            WorkerEvent::DebounceElapsed { token } => {
-                if self.rust().debounce_token == token {
-                    self.submit_pending();
-                }
-            }
-            WorkerEvent::RequestFinished { id, result } => {
-                let Some(refresh) = self.as_mut().rust_mut().requests.finish(id) else {
-                    return;
-                };
-                self.as_mut().rust_mut().busy = false;
-                self.as_mut().busy_changed();
-                match *result {
-                    Ok(ProtocolOutcome::Success(snapshot)) => {
-                        let was_available = self.rust().state.available();
-                        self.as_mut().rust_mut().state.set_available();
-                        if !was_available {
-                            self.as_mut().availability_changed();
-                        }
-                        match self.as_mut().rust_mut().state.apply_snapshot(snapshot) {
-                            Ok(()) => {
-                                self.as_mut().snapshot_changed();
-                                self.as_mut().set_error(String::new());
-                            }
-                            Err(StateError::IncompleteSnapshot) => self.as_mut().set_error(
-                                String::from("Typhon returned an incomplete animation snapshot."),
-                            ),
-                        }
-                    }
-                    Ok(ProtocolOutcome::ServerRejected(error)) => {
-                        if refresh && self.rust().state.available() {
-                            self.as_mut().rust_mut().state.set_unavailable();
-                            self.as_mut().availability_changed();
-                        }
-                        self.as_mut().set_error(error);
-                    }
-                    Err(error) => {
-                        let should_mark_unavailable = refresh
-                            || !matches!(
-                                error,
-                                crate::typhon::client::ClientError::WorkerUnavailable
-                            );
-                        if should_mark_unavailable && self.rust().state.available() {
-                            self.as_mut().rust_mut().state.set_unavailable();
-                            self.as_mut().availability_changed();
-                        }
-                        self.as_mut().set_error(error.to_string());
-                    }
-                }
-                self.as_mut().submit_pending();
-            }
+        let Some(effects) = self.as_mut().rust_mut().handle_worker_event(event) else {
+            return;
+        };
+        if effects.busy_changed {
+            self.as_mut().busy_changed();
+        }
+        if effects.availability_changed {
+            self.as_mut().availability_changed();
+        }
+        if effects.snapshot_changed {
+            self.as_mut().snapshot_changed();
+        }
+        if effects.error_changed {
+            self.as_mut().error_changed();
+        }
+        if effects.submit_pending {
+            self.as_mut().submit_pending();
         }
     }
 
     fn set_error(mut self: Pin<&mut Self>, error: String) {
-        if self.rust().last_error == error {
-            return;
+        if self.as_mut().rust_mut().set_error_value(error) {
+            self.error_changed();
         }
-        self.as_mut().rust_mut().last_error = error;
-        self.error_changed();
     }
 }
 
@@ -477,8 +523,10 @@ fn insert_optional_string(
 
 #[cfg(test)]
 mod tests {
-    use super::RequestState;
+    use super::{RequestState, SettingsAnimationControllerRust};
     use crate::animation::state::{AnimationCatalog, AnimationConfiguration, AnimationSnapshot};
+    use crate::typhon::client::WorkerEvent;
+    use crate::typhon::protocol::ProtocolOutcome;
 
     #[test]
     fn stale_operation_token_cannot_mutate_newer_state() {
@@ -502,6 +550,35 @@ mod tests {
         state.apply_snapshot(snapshot("newer")).unwrap();
         assert!(state.available());
         assert_eq!(state.configuration().preset, "newer");
+    }
+
+    #[test]
+    fn stale_request_finished_event_is_ignored_by_controller_state_machine() {
+        let mut controller = SettingsAnimationControllerRust::default();
+        controller
+            .state
+            .apply_snapshot(snapshot("initial"))
+            .unwrap();
+        controller.busy = true;
+        let first = controller.requests.start(true);
+        let second = controller.requests.start(false);
+        controller.busy = true;
+        controller.state.apply_snapshot(snapshot("newer")).unwrap();
+        controller.state.set_speed(1.5);
+        controller.last_error = String::from("newer error");
+
+        let effects = controller.handle_worker_event(WorkerEvent::RequestFinished {
+            id: first,
+            result: Box::new(Ok(ProtocolOutcome::Success(snapshot("stale")))),
+        });
+
+        assert!(effects.is_none());
+        assert!(controller.busy);
+        assert_eq!(controller.state.configuration().preset, "newer");
+        assert!(controller.state.available());
+        assert_eq!(controller.last_error, "newer error");
+        assert!(controller.state.pending_configuration().is_some());
+        assert_eq!(controller.requests.active_id, Some(second));
     }
 
     fn snapshot(preset: &str) -> AnimationSnapshot {

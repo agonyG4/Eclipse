@@ -30,6 +30,7 @@ pub struct AnimationSnapshot {
     pub generation: u64,
     #[serde(default)]
     pub source: String,
+    #[serde(default)]
     pub config: Option<AnimationConfiguration>,
     #[serde(default)]
     pub requested: BTreeMap<String, String>,

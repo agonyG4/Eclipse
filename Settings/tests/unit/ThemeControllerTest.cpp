@@ -39,6 +39,7 @@ private slots:
     void iconAppearanceRejectsInvalidValues();
     void iconAppearanceResetsOnCompleteReplacement();
     void iconAppearancePersistsWithoutChangingLegacyFields();
+    void savePreservesRustAndUnknownKeys();
     void legacyIconFieldsDoNotMigrateToAppearance();
     void iconAppearancePreservesUnrelatedThemeState();
     void loadsLegacyConfigValues();
@@ -148,6 +149,27 @@ void ThemeControllerTest::iconAppearancePersistsWithoutChangingLegacyFields()
     QCOMPARE(saved.value(QStringLiteral("shell_style")).toInt(), 2);
     QCOMPARE(saved.value(QStringLiteral("accent")).toString(), QStringLiteral("#30d158"));
     QCOMPARE(saved.value(QStringLiteral("audio_osd_style")).toInt(), 1);
+}
+
+void ThemeControllerTest::savePreservesRustAndUnknownKeys()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = writeConfig(
+        directory,
+        R"({"system_icon_theme":"Breeze","future_setting":{"enabled":true},"icon_theme":"legacy"})");
+    QVERIFY(!path.isEmpty());
+
+    ThemeController controller(path);
+    controller.setAccentHex(QStringLiteral("#30d158"));
+    controller.save();
+
+    const QJsonObject saved = readConfig(path);
+    QCOMPARE(saved.value(QStringLiteral("system_icon_theme")).toString(), QStringLiteral("Breeze"));
+    QCOMPARE(saved.value(QStringLiteral("future_setting")).toObject().value(QStringLiteral("enabled")),
+             QJsonValue(true));
+    QCOMPARE(saved.value(QStringLiteral("icon_theme")).toString(), QStringLiteral("legacy"));
+    QCOMPARE(saved.value(QStringLiteral("accent")).toString(), QStringLiteral("#30d158"));
 }
 
 void ThemeControllerTest::legacyIconFieldsDoNotMigrateToAppearance()

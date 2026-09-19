@@ -1,6 +1,7 @@
 pub mod catalog;
 pub mod config;
 pub mod icon_lookup;
+pub mod qobject;
 pub mod state;
 pub mod worker;
 
@@ -123,5 +124,28 @@ mod tests {
         let result = ThemePreferenceStore::new(path.clone()).save_selected("theme");
         assert!(result.is_err());
         assert_eq!(fs::read(&path).unwrap(), original);
+    }
+
+    #[test]
+    fn atomic_replacement_leaves_no_temporary_file() {
+        let directory = TempDir::new().unwrap();
+        let path = directory.path().join("theme.json");
+        ThemePreferenceStore::new(path.clone())
+            .save_selected("theme")
+            .unwrap();
+
+        let temporary_files = fs::read_dir(directory.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .contains(".theme.json.tmp-")
+            })
+            .count();
+        assert_eq!(temporary_files, 0);
+        let saved: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+        assert_eq!(saved["system_icon_theme"], "theme");
     }
 }

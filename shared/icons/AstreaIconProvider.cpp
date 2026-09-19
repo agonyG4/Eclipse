@@ -92,7 +92,7 @@ QStringList AstreaIconProvider::watchedConfigFiles() const {
     const QString configHome = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation);
     return {
         configHome + QStringLiteral("/qt6ct/qt6ct.conf"),
-        configHome + QStringLiteral("/AstreaOS/ui/theme.json"),
+        QDir::homePath() + QStringLiteral("/.config/AstreaOS/ui/theme.json"),
     };
 }
 

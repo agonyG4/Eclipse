@@ -110,10 +110,16 @@ impl ThemePreferenceStore {
             .write(true)
             .open(&temporary_path)
             .map_err(|error| ConfigError::Io(error.to_string()))?;
-        let result = write_and_sync(&mut file, object).and_then(|()| {
-            fs::rename(&temporary_path, &self.path)
-                .map_err(|error| ConfigError::Io(error.to_string()))
-        });
+        let result = write_and_sync(&mut file, object)
+            .and_then(|()| {
+                fs::rename(&temporary_path, &self.path)
+                    .map_err(|error| ConfigError::Io(error.to_string()))
+            })
+            .and_then(|()| {
+                File::open(parent)
+                    .and_then(|directory| directory.sync_all())
+                    .map_err(|error| ConfigError::Io(error.to_string()))
+            });
         if result.is_err() {
             let _ = fs::remove_file(&temporary_path);
         }

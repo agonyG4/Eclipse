@@ -1,6 +1,15 @@
+set(ASTREA_SETTINGS_BACKEND_CXXQT_HEADERS
+    "${CMAKE_CURRENT_BINARY_DIR}/../cxxqt/crates/astrea_settings_backend/include/astrea_settings_backend/src/animation/qobject.cxxqt.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/../cxxqt/crates/astrea_settings_backend/include/astrea_settings_backend/src/themes/qobject.cxxqt.h"
+)
+set_source_files_properties(${ASTREA_SETTINGS_BACKEND_CXXQT_HEADERS}
+    PROPERTIES GENERATED TRUE
+)
+
 add_library(astrea-settings-core STATIC
     SettingsController.cpp
     SettingsController.hpp
+    ${ASTREA_SETTINGS_BACKEND_CXXQT_HEADERS}
     ../services/wallpaper/SettingsWallpaperController.cpp
     ../services/wallpaper/SettingsWallpaperController.hpp
     navigation/SettingsNavigationCatalog.cpp

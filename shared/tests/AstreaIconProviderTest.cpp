@@ -132,6 +132,19 @@ bool writeSvg(const QString &path)
     return svg.write(content) == content.size();
 }
 
+bool writePersistedTheme(const QString &configHome, const QString &theme)
+{
+    const QString directory = configHome + QStringLiteral("/AstreaOS/ui");
+    if (!QDir().mkpath(directory))
+        return false;
+    QFile file(directory + QStringLiteral("/theme.json"));
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
+        return false;
+    const QByteArray value = QByteArrayLiteral("{\"system_icon_theme\":\"")
+        + theme.toUtf8() + QByteArrayLiteral("\"}");
+    return file.write(value) == value.size();
+}
+
 bool writeHighFrequencySvg(const QString &path)
 {
     QFile svg(path);
@@ -150,6 +163,19 @@ bool writeHighFrequencySvg(const QString &path)
 QString prepareTheme(QTemporaryDir &temporary, const QString &themeName)
 {
     const QString themeRoot = temporary.path() + QStringLiteral("/") + themeName;
+    if (!QDir().mkpath(themeRoot + QStringLiteral("/48x48/apps"))
+        || !QDir().mkpath(themeRoot + QStringLiteral("/96x96/apps"))
+        || !QDir().mkpath(themeRoot + QStringLiteral("/128x128/apps"))
+        || !QDir().mkpath(themeRoot + QStringLiteral("/scalable/apps"))
+        || !writeThemeIndex(themeRoot)) {
+        return {};
+    }
+    return themeRoot;
+}
+
+QString prepareThemeAt(const QString &parent, const QString &themeName)
+{
+    const QString themeRoot = parent + QStringLiteral("/") + themeName;
     if (!QDir().mkpath(themeRoot + QStringLiteral("/48x48/apps"))
         || !QDir().mkpath(themeRoot + QStringLiteral("/96x96/apps"))
         || !QDir().mkpath(themeRoot + QStringLiteral("/128x128/apps"))
@@ -191,6 +217,10 @@ private slots:
     void providerInvalidatesPositiveAndNegativeCachesOnThemeChange();
     void providerSurvivesConcurrentThemeInvalidation();
     void searchPathsPreservePriorityAndDeduplicate();
+    void persistedThemeParticipatesInResolution();
+    void environmentThemesOverridePersistedTheme();
+    void invalidPersistedThemeFallsThrough();
+    void providerInvalidatesAfterPersistedConfigChange();
     void applyPreservesSplitThemeMetadataPriority();
     void applyPreservesDuplicateContentRootPriority();
     void applyMergesExistingQtSearchPaths();
@@ -693,6 +723,114 @@ void AstreaIconProviderTest::searchPathsPreservePriorityAndDeduplicate()
     QVERIFY(paths.contains(fakeHome.path() + QStringLiteral("/.icons")));
     QVERIFY(paths.contains(fakeHome.path()
                            + QStringLiteral("/.local/share/flatpak/exports/share/icons")));
+}
+
+void AstreaIconProviderTest::persistedThemeParticipatesInResolution()
+{
+    ScopedEnvironment environment;
+    QTemporaryDir fakeHome;
+    QTemporaryDir configHome;
+    QVERIFY(fakeHome.isValid());
+    QVERIFY(configHome.isValid());
+    const QString theme = prepareThemeAt(fakeHome.path() + QStringLiteral("/.icons"),
+                                         QStringLiteral("persisted-theme"));
+    QVERIFY(!theme.isEmpty());
+
+    environment.set("HOME", fakeHome.path().toUtf8());
+    environment.set("XDG_CONFIG_HOME", configHome.path().toUtf8());
+    environment.set("ASTREA_ICON_THEME", QByteArray());
+    environment.set("QS_ICON_THEME", QByteArray());
+    QVERIFY(writePersistedTheme(fakeHome.path() + QStringLiteral("/.config"),
+                                QStringLiteral("persisted-theme")));
+
+    const auto result = AstreaIconTheme::resolveWithSource();
+    QCOMPARE(result.theme, QStringLiteral("persisted-theme"));
+    QCOMPARE(result.source, QStringLiteral("persisted"));
+}
+
+void AstreaIconProviderTest::environmentThemesOverridePersistedTheme()
+{
+    ScopedEnvironment environment;
+    QTemporaryDir fakeHome;
+    QTemporaryDir configHome;
+    QVERIFY(fakeHome.isValid());
+    QVERIFY(configHome.isValid());
+    QVERIFY(!prepareThemeAt(fakeHome.path() + QStringLiteral("/.icons"),
+                            QStringLiteral("persisted-theme")).isEmpty());
+    QVERIFY(!prepareThemeAt(fakeHome.path() + QStringLiteral("/.icons"),
+                            QStringLiteral("astrea-theme")).isEmpty());
+    QVERIFY(!prepareThemeAt(fakeHome.path() + QStringLiteral("/.icons"),
+                            QStringLiteral("qs-theme")).isEmpty());
+
+    environment.set("HOME", fakeHome.path().toUtf8());
+    environment.set("XDG_CONFIG_HOME", configHome.path().toUtf8());
+    QVERIFY(writePersistedTheme(fakeHome.path() + QStringLiteral("/.config"),
+                                QStringLiteral("persisted-theme")));
+
+    environment.set("ASTREA_ICON_THEME", QByteArrayLiteral("astrea-theme"));
+    environment.set("QS_ICON_THEME", QByteArrayLiteral("qs-theme"));
+    auto result = AstreaIconTheme::resolveWithSource();
+    QCOMPARE(result.theme, QStringLiteral("astrea-theme"));
+    QCOMPARE(result.source, QStringLiteral("ASTREA_ICON_THEME"));
+
+    environment.set("ASTREA_ICON_THEME", QByteArray());
+    result = AstreaIconTheme::resolveWithSource();
+    QCOMPARE(result.theme, QStringLiteral("qs-theme"));
+    QCOMPARE(result.source, QStringLiteral("QS_ICON_THEME"));
+}
+
+void AstreaIconProviderTest::invalidPersistedThemeFallsThrough()
+{
+    ScopedIconState state;
+    ScopedEnvironment environment;
+    QTemporaryDir fakeHome;
+    QTemporaryDir configHome;
+    QVERIFY(fakeHome.isValid());
+    QVERIFY(configHome.isValid());
+    QVERIFY(!prepareThemeAt(fakeHome.path() + QStringLiteral("/.icons"),
+                            QStringLiteral("platform-theme")).isEmpty());
+
+    environment.set("HOME", fakeHome.path().toUtf8());
+    environment.set("XDG_CONFIG_HOME", configHome.path().toUtf8());
+    environment.set("ASTREA_ICON_THEME", QByteArray());
+    environment.set("QS_ICON_THEME", QByteArray());
+    QVERIFY(writePersistedTheme(fakeHome.path() + QStringLiteral("/.config"),
+                                QStringLiteral("missing-theme")));
+    QIcon::setThemeName(QStringLiteral("platform-theme"));
+    QIcon::setThemeSearchPaths({fakeHome.path()});
+
+    const auto result = AstreaIconTheme::resolveWithSource();
+    QCOMPARE(result.theme, QStringLiteral("platform-theme"));
+    QCOMPARE(result.source, QStringLiteral("platform"));
+}
+
+void AstreaIconProviderTest::providerInvalidatesAfterPersistedConfigChange()
+{
+    ScopedIconState state;
+    ScopedEnvironment environment;
+    QTemporaryDir fakeHome;
+    QTemporaryDir configHome;
+    QVERIFY(fakeHome.isValid());
+    QVERIFY(configHome.isValid());
+    QVERIFY(!prepareThemeAt(fakeHome.path() + QStringLiteral("/.icons"),
+                            QStringLiteral("first-theme")).isEmpty());
+    QVERIFY(!prepareThemeAt(fakeHome.path() + QStringLiteral("/.icons"),
+                            QStringLiteral("second-theme")).isEmpty());
+
+    environment.set("HOME", fakeHome.path().toUtf8());
+    environment.set("XDG_CONFIG_HOME", configHome.path().toUtf8());
+    environment.set("ASTREA_ICON_THEME", QByteArray());
+    environment.set("QS_ICON_THEME", QByteArray());
+    QVERIFY(writePersistedTheme(fakeHome.path() + QStringLiteral("/.config"),
+                                QStringLiteral("first-theme")));
+
+    AstreaIconProvider provider;
+    QCOMPARE(AstreaIconTheme::resolve(), QStringLiteral("first-theme"));
+    const int initialRevision = provider.themeRevision();
+    QVERIFY(writePersistedTheme(fakeHome.path() + QStringLiteral("/.config"),
+                                QStringLiteral("second-theme")));
+    QTRY_VERIFY_WITH_TIMEOUT(provider.themeRevision() > initialRevision, 1500);
+    QCOMPARE(AstreaIconTheme::resolve(), QStringLiteral("second-theme"));
 }
 
 void AstreaIconProviderTest::applyPreservesSplitThemeMetadataPriority()

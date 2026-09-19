@@ -99,7 +99,7 @@ impl ThemeCatalog {
                     }
                 };
 
-                if metadata.hidden {
+                if metadata.hidden && id != "hicolor" {
                     if root_index_is_first(&catalog, &id) {
                         first_hidden.insert(id.clone());
                     }

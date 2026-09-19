@@ -80,23 +80,27 @@ fn resolve_in_root(
 }
 
 fn directory_score(directory: &DirectorySpec, size: u32) -> u32 {
+    let scale = directory.scale.max(1);
+    let effective_size = directory.size.saturating_mul(scale);
+    let effective_min = directory.min_size.saturating_mul(scale);
+    let effective_max = directory.max_size.saturating_mul(scale);
     match directory.kind {
         DirectoryType::Fixed => {
-            if directory.size == size {
+            if effective_size == size {
                 0
             } else {
-                1000 + directory.size.abs_diff(size)
+                1000 + effective_size.abs_diff(size)
             }
         }
         DirectoryType::Scalable => {
-            if size >= directory.min_size && size <= directory.max_size {
+            if size >= effective_min && size <= effective_max {
                 0
             } else {
-                1000 + size.abs_diff(directory.min_size.min(directory.max_size))
+                1000 + size.abs_diff(effective_min.min(effective_max))
             }
         }
         DirectoryType::Threshold => {
-            let distance = directory.size.abs_diff(size);
+            let distance = effective_size.abs_diff(size);
             if distance <= directory.threshold {
                 distance
             } else {

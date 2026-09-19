@@ -17,6 +17,7 @@ endfunction()
 
 add_settings_unit_test(settings-controller-test unit/SettingsControllerTest.cpp)
 add_settings_unit_test(settings-animation-controller-test unit/SettingsAnimationControllerTest.cpp)
+add_settings_unit_test(settings-themes-controller-test unit/SettingsThemesControllerTest.cpp)
 add_settings_unit_test(settings-dock-controller-test unit/SettingsDockControllerTest.cpp)
 add_settings_unit_test(settings-wallpaper-controller-test unit/SettingsWallpaperControllerTest.cpp)
 add_settings_unit_test(settings-navigation-model-test unit/SettingsNavigationModelTest.cpp)

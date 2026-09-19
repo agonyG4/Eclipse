@@ -69,6 +69,7 @@ private slots:
     void plannedEffectTextUsesRequestedEffect();
     void unavailableEffectTextUsesRequestedEffect();
     void loadsAppearanceRouteFromHubOffscreen();
+    void loadsThemesRouteOffscreen();
     void appearancePreviewsUseCurrentWallpaperSnapshot();
     void materialPreviewFrostedGeometryMatchesFallback();
     void materialShowcaseIdentityNamesAreDistinct();
@@ -152,6 +153,29 @@ public:
             qputenv("XDG_RUNTIME_DIR", m_previous);
         else
             qunsetenv("XDG_RUNTIME_DIR");
+    }
+
+private:
+    QByteArray m_previous;
+    bool m_hadPrevious = false;
+};
+
+class HomeEnvironmentGuard final
+{
+public:
+    explicit HomeEnvironmentGuard(const QString &homePath)
+        : m_previous(qgetenv("HOME"))
+        , m_hadPrevious(qEnvironmentVariableIsSet("HOME"))
+    {
+        qputenv("HOME", homePath.toUtf8());
+    }
+
+    ~HomeEnvironmentGuard()
+    {
+        if (m_hadPrevious)
+            qputenv("HOME", m_previous);
+        else
+            qunsetenv("HOME");
     }
 
 private:
@@ -255,13 +279,16 @@ void SettingsQmlSmokeTest::loadsCustomizationHubOffscreen()
     QQuickItem *hubItem = qobject_cast<QQuickItem *>(hub);
     QVERIFY(hubItem != nullptr);
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-appearance")) != nullptr);
+    QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-themes")) != nullptr);
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-wallpaper")) != nullptr);
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-dock")) != nullptr);
-    QCOMPARE(countVisualItems(hubItem, QRegularExpression(QStringLiteral("^hubNavigationRow-"))), 4);
+    QCOMPARE(countVisualItems(hubItem, QRegularExpression(QStringLiteral("^hubNavigationRow-"))), 5);
     const QVariantList children = settingsController.currentDestinationChildren();
-    QCOMPARE(children.size(), 4);
+    QCOMPARE(children.size(), 5);
     QCOMPARE(children.at(0).toMap().value(QStringLiteral("entryId")).toString(),
              QStringLiteral("appearance"));
+    QCOMPARE(children.at(1).toMap().value(QStringLiteral("entryId")).toString(),
+             QStringLiteral("themes"));
 }
 
 void SettingsQmlSmokeTest::loadsAnimationsRouteOffscreen()
@@ -350,6 +377,62 @@ void SettingsQmlSmokeTest::loadsAppearanceRouteFromHubOffscreen()
                             "interfaceStyleOption-transparent", "interfaceStyleOption-frosted"}) {
         QVERIFY2(page->findChild<QObject *>(QString::fromLatin1(name)) != nullptr, name);
     }
+    QVERIFY2(qmlWarnings.isEmpty(),
+             qPrintable(qmlWarnings.isEmpty() ? QString() : qmlWarnings.constFirst().toString()));
+}
+
+void SettingsQmlSmokeTest::loadsThemesRouteOffscreen()
+{
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+    HomeEnvironmentGuard homeGuard(home.path());
+
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+    QList<QQmlError> qmlWarnings;
+    connect(&engine, &QQmlApplicationEngine::warnings, this,
+            [&qmlWarnings](const QList<QQmlError> &warnings) { qmlWarnings.append(warnings); });
+
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("themes")));
+    auto *root = engine.rootObjects().constFirst();
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("themesPage")) != nullptr,
+                             1000);
+    auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(QStringLiteral("themesPage")));
+    QVERIFY(page != nullptr);
+
+    QTRY_VERIFY_WITH_TIMEOUT(findVisualItem(page, QStringLiteral("themeCard-system-default"))
+                                 != nullptr,
+                             1500);
+    auto *systemCard = findVisualItem(page, QStringLiteral("themeCard-system-default"));
+    QVERIFY(systemCard != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(systemCard->property("selected").toBool(), 1500);
+    QVERIFY(QMetaObject::invokeMethod(systemCard, "activate"));
+
+    page->setProperty("searchQuery", QStringLiteral("does-not-match-any-installed-theme"));
+    QTRY_COMPARE_WITH_TIMEOUT(page->property("cards").toList().size(), 1, 1000);
+    page->setProperty("searchQuery", QString());
+
+    auto *window = qobject_cast<QQuickWindow *>(root);
+    QVERIFY(window != nullptr);
+    QVERIFY(QMetaObject::invokeMethod(systemCard, "forceActiveFocus"));
+    QTest::keyClick(window, Qt::Key_Space);
+    QVERIFY(systemCard->property("selected").toBool());
+
+    QFile themesSource(QStringLiteral(ASTREA_ECLIPSE_SOURCE_DIR
+                                     "/Settings/qml/pages/appearance/Themes.qml"));
+    QVERIFY(themesSource.open(QIODevice::ReadOnly | QIODevice::Text));
+    const QString source = QString::fromUtf8(themesSource.readAll());
+    QVERIFY(source.contains(QStringLiteral("controller.busy")));
+    QVERIFY(source.contains(QStringLiteral("controller.lastError")));
+    QVERIFY(source.contains(QStringLiteral("No installed themes match your search.")));
     QVERIFY2(qmlWarnings.isEmpty(),
              qPrintable(qmlWarnings.isEmpty() ? QString() : qmlWarnings.constFirst().toString()));
 }

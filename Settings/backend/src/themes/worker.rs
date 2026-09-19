@@ -1,14 +1,30 @@
 use super::catalog::{ThemeCatalog, default_search_roots};
+use super::icon_lookup::PreviewResolver;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
+pub const PREVIEW_ICON_NAMES: [&str; 5] = [
+    "folder",
+    "utilities-terminal",
+    "preferences-system",
+    "web-browser",
+    "audio-card",
+];
+
 #[derive(Debug)]
 pub struct WorkerResult {
     pub generation: u64,
-    pub catalog: Result<ThemeCatalog, String>,
+    pub snapshot: Result<ThemeSnapshot, String>,
+}
+
+#[derive(Debug)]
+pub struct ThemeSnapshot {
+    pub catalog: ThemeCatalog,
+    pub previews: HashMap<String, Vec<Option<PathBuf>>>,
 }
 
 struct WorkerState {
@@ -19,12 +35,33 @@ struct WorkerState {
 pub struct ThemeWorker {
     state: Arc<(Mutex<WorkerState>, Condvar)>,
     next_generation: AtomicU64,
-    results: mpsc::Receiver<WorkerResult>,
+    results: Option<mpsc::Receiver<WorkerResult>>,
     thread: Option<JoinHandle<()>>,
 }
 
 impl ThemeWorker {
     pub fn new(search_roots: Vec<PathBuf>) -> Self {
+        let (sender, results) = mpsc::sync_channel(1);
+        Self::spawn(search_roots, Some(results), move |result| {
+            let _ = sender.try_send(result);
+        })
+    }
+
+    pub fn new_with_callback<F>(search_roots: Vec<PathBuf>, callback: F) -> Self
+    where
+        F: Fn(WorkerResult) + Send + 'static,
+    {
+        Self::spawn(search_roots, None, callback)
+    }
+
+    fn spawn<F>(
+        search_roots: Vec<PathBuf>,
+        results: Option<mpsc::Receiver<WorkerResult>>,
+        callback: F,
+    ) -> Self
+    where
+        F: Fn(WorkerResult) + Send + 'static,
+    {
         let state = Arc::new((
             Mutex::new(WorkerState {
                 pending: None,
@@ -33,10 +70,9 @@ impl ThemeWorker {
             Condvar::new(),
         ));
         let worker_state = Arc::clone(&state);
-        let (sender, results) = mpsc::sync_channel(1);
         let thread = thread::Builder::new()
             .name(String::from("astrea-settings-themes"))
-            .spawn(move || worker_loop(worker_state, sender, search_roots))
+            .spawn(move || worker_loop(worker_state, callback, search_roots))
             .expect("failed to create Settings Themes worker");
         Self {
             state,
@@ -46,7 +82,7 @@ impl ThemeWorker {
         }
     }
 
-    pub fn default() -> Self {
+    pub fn with_default_roots() -> Self {
         Self::new(default_search_roots())
     }
 
@@ -61,11 +97,15 @@ impl ThemeWorker {
     }
 
     pub fn try_receive(&self) -> Option<WorkerResult> {
-        self.results.try_recv().ok()
+        self.results.as_ref()?.try_recv().ok()
     }
 
     pub fn recv_timeout(&self, timeout: Duration) -> Result<WorkerResult, mpsc::RecvTimeoutError> {
-        self.results.recv_timeout(timeout)
+        self.results
+            .as_ref()
+            .map_or(Err(mpsc::RecvTimeoutError::Disconnected), |results| {
+                results.recv_timeout(timeout)
+            })
     }
 
     pub fn pending_capacity(&self) -> usize {
@@ -89,11 +129,13 @@ impl Drop for ThemeWorker {
     }
 }
 
-fn worker_loop(
+fn worker_loop<F>(
     state: Arc<(Mutex<WorkerState>, Condvar)>,
-    sender: mpsc::SyncSender<WorkerResult>,
+    callback: F,
     search_roots: Vec<PathBuf>,
-) {
+) where
+    F: Fn(WorkerResult),
+{
     loop {
         let generation = {
             let (lock, wake) = &*state;
@@ -112,14 +154,27 @@ fn worker_loop(
             }
             state.pending.take().unwrap_or(0)
         };
-        let result = ThemeCatalog::discover(&search_roots).map_err(|error| error.to_string());
-        let output = WorkerResult {
+        let snapshot = ThemeCatalog::discover(&search_roots)
+            .map(|catalog| {
+                let resolver = PreviewResolver::new(catalog.clone());
+                let previews = catalog
+                    .user_visible()
+                    .into_iter()
+                    .map(|theme| {
+                        let values = PREVIEW_ICON_NAMES
+                            .into_iter()
+                            .map(|icon| resolver.resolve(&theme.id, icon, 48))
+                            .collect();
+                        (theme.id.clone(), values)
+                    })
+                    .collect();
+                ThemeSnapshot { catalog, previews }
+            })
+            .map_err(|error| error.to_string());
+        callback(WorkerResult {
             generation,
-            catalog: result,
-        };
-        if let Err(mpsc::TrySendError::Full(output)) = sender.try_send(output) {
-            let _ = sender.try_send(output);
-        }
+            snapshot,
+        });
     }
 }
 
@@ -139,5 +194,6 @@ mod tests {
         assert!(worker.pending_capacity() <= 1);
         let result = worker.recv_timeout(Duration::from_secs(1)).unwrap();
         assert!(result.generation > 0);
+        assert!(result.snapshot.is_ok());
     }
 }

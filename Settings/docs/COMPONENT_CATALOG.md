@@ -1,6 +1,6 @@
 # Registered QML Components
 
-The `astrea-settings-ui` module registers 44 QML files. The canonical legacy
+The `astrea-settings-ui` module registers 45 QML files. The canonical legacy
 source column points to the corresponding Astrea source where one exists.
 
 Component ownership is intentional: `controls/` contains reusable interactive
@@ -47,6 +47,7 @@ interaction with a raw `MouseArea`.
 | `qml/pages/system/Compositor.qml` | `Compositor` | page | native Settings preview source | `Main` Loader | shell-critical |
 | `qml/pages/navigation/Hub.qml` | `Hub` | page | native Settings hub navigation | `Main` Loader | shell-critical |
 | `qml/pages/appearance/Appearance.qml` | `Appearance` | page | native Settings appearance route | `Main` Loader | native route |
+| `qml/pages/appearance/Themes.qml` | `Themes` | page | native installed Freedesktop icon-theme picker | `Main` Loader | Rust/CXX-Qt route |
 | `qml/pages/appearance/MaterialPreview.qml` | `MaterialPreview` | page primitive | native Settings appearance preview | `Appearance` | page primitive |
 | `qml/pages/appearance/MaterialShowcase.qml` | `MaterialShowcase` | page primitive | native Settings appearance showcase | `Appearance` | page primitive |
 | `qml/pages/appearance/Animations.qml` | `Animations` | page | native Settings Animations/Typhon route | `Main` Loader | migrated Rust/CXX-Qt route |

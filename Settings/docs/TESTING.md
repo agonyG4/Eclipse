@@ -27,6 +27,15 @@ the full application QML route, disabled deferred Wallpaper controls,
 representative registered QML components, AppIcon provider ownership,
 Compositor source policy, and structural ownership invariants.
 
+Themes coverage includes Rust catalog priority/deduplication, hidden metadata,
+split roots, inheritance and bounded preview lookup, conservative atomic
+preference persistence, invalid selection rejection, and worker coalescing.
+Settings tests cover the generated `SettingsThemesController` projection, the
+stable `themes` route, page construction, System Default selection, keyboard
+activation, filtering, and bounded loading/error/empty presentation. Shared
+icon tests cover persisted-preference precedence, environment overrides,
+invalid fallback, and watcher-driven provider invalidation.
+
 The Settings Animations test also exercises the Rust-backed CXX-Qt QObject from
 the application's perspective: authoritative snapshots, planned and
 unavailable effect rejection, server rejection availability, timeout/event-loop
@@ -60,7 +69,7 @@ qualifies a Git-based archive in an isolated temporary repository.
 
 ## QML Registration and Lint
 
-The authoritative QML list is in `qml/CMakeLists.txt`. It contains 44 files and
+The authoritative QML list is in `qml/CMakeLists.txt`. It contains 45 files and
 is registered once by `astrea-settings-ui`. The application and integration
 tests consume the same module and generated plugin.
 

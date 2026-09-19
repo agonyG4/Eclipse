@@ -29,6 +29,8 @@ shell.
 - stable QML facade: `core/SettingsController.*`;
 - profile value and provider: `services/profile/`;
 - icon URL resolution: `services/assets/`;
+- installed icon Themes domain: `backend/src/themes/` through the generated
+  `SettingsThemesController` QObject;
 - shared theme and Settings translations: `shared/theme/` and `services/i18n/`;
 - wallpaper presentation/controller boundary: `qml/pages/appearance/Wallpaper.qml`
   and `services/wallpaper/SettingsWallpaperController.*`;
@@ -53,6 +55,20 @@ endpoint discovery, and bounded Unix-socket transport.
 This does not migrate Theme, Dock, Wallpaper, navigation, Shell services,
 Audio, Bluetooth, Network, Typhon itself, or the preview-only Compositor page.
 Those remain follow-up work under the incremental migration strategy.
+
+## Themes Ownership
+
+The v1 Themes destination manages installed Freedesktop icon themes only.
+QML is limited to filtering, card presentation, focus, and immediate
+selection. Rust owns discovery, metadata parsing, validation, preview lookup,
+background scanning, error state, and atomic `system_icon_theme` persistence.
+CXX-Qt is a thin QObject projection. Shared C++ owns only Qt/QIcon rendering
+integration and the existing watcher/cache invalidation path.
+
+`icon_theme` remains the legacy Settings navigation/resource preference used by
+`SettingsIconResolver`; `system_icon_theme` is the canonical system icon-pack
+preference. They must not be merged, and `iconAppearance` remains the separate
+Default/Monochrome/Tinted presentation setting.
 
 ## Routing Policy
 

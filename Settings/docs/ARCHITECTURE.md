@@ -24,6 +24,9 @@ SettingsDockController -> shared DockConfigStore
 SettingsController.animations
   -> CXX-Qt SettingsAnimationController QObject
       -> Rust animation state and typed Typhon client
+SettingsController.themes
+  -> CXX-Qt SettingsThemesController QObject
+      -> Rust icon-theme catalog, persistence, selection, and previews
 QQmlApplicationEngine
 ```
 
@@ -52,8 +55,16 @@ thread. Pure Rust owns configuration mutation semantics, capability projection,
 typed serde protocol structures, secure endpoint discovery, and one bounded
 worker for Unix-socket I/O. JSON is used only at the Typhon wire boundary.
 
+The Themes domain follows the same boundary with a narrower purpose: QML owns
+presentation and interaction; Rust owns Freedesktop discovery, `index.theme`
+metadata, validation, selection, `theme.json` persistence, preview lookup, and
+the bounded filesystem worker; CXX-Qt is only the Qt property/signal/invokable
+projection. Shared C++ icon code remains the Qt/QIcon rendering integration
+and live cache-invalidation layer. The legacy Settings-only `icon_theme` key
+and the Rust-owned `system_icon_theme` key are intentionally different.
+
 `astrea-settings-ui` is the only `Astrea.Settings 1.0` QML module and registers
-44 QML files. The application and QML integration tests consume that same
+45 QML files. The application and QML integration tests consume that same
 target and generated plugin. The application additionally links the existing
 shared core and QML plugin for compositor-independent shared utilities.
 
@@ -112,6 +123,7 @@ index and no QML route-ID condition. The current routable descriptors are:
 ```text
 qrc:/qt/qml/Astrea/Settings/qml/pages/system/Compositor.qml
 qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Appearance.qml
+qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Themes.qml
 qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Animations.qml
 qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Wallpaper.qml
 qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Dock.qml
@@ -178,6 +190,17 @@ the same live result and Accent Color changes propagate to Tinted icons.
 Dark and Clear app-icon modes are intentionally not supported in v1: they
 require a richer icon-asset representation and are not approximated with
 opacity or darkening filters.
+
+### Icon Themes
+
+`Themes.qml` is a presentation-only installed-theme picker. It consumes the
+projected `SettingsController.themes` descriptor list and never reads the
+filesystem, environment, or theme metadata itself. Selecting a card writes
+only `system_icon_theme` in `~/.config/AstreaOS/ui/theme.json`; System Default
+removes that key. `AstreaIconTheme` applies the preference after explicit
+`ASTREA_ICON_THEME` and `QS_ICON_THEME` overrides, while `AstreaIconProvider`
+continues to own watcher-driven QIcon reapplication, cache invalidation, and
+the shared `themeRevision` update used by Shell, Dock, Alt+Tab, and Settings.
 
 ## Exclusions
 

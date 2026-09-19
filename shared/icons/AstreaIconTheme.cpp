@@ -3,6 +3,9 @@
 #include <QIcon>
 #include <QDir>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QSet>
@@ -104,6 +107,20 @@ static bool themeExistsInHighestPriorityDataHome(const QString &themeName) {
         QStringLiteral("icons/") + themeName + QStringLiteral("/index.theme")));
 }
 
+static QString persistedIconTheme()
+{
+    const QString configPath = QDir::homePath()
+        + QStringLiteral("/.config/AstreaOS/ui/theme.json");
+    QFile file(configPath);
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    QJsonParseError error;
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &error);
+    if (error.error != QJsonParseError::NoError || !document.isObject())
+        return {};
+    return document.object().value(QStringLiteral("system_icon_theme")).toString().trimmed();
+}
+
 AstreaIconTheme::ResolveResult AstreaIconTheme::resolveWithSource()
 {
     QMutexLocker lock(&qIconMutex());
@@ -125,6 +142,13 @@ AstreaIconTheme::ResolveResult AstreaIconTheme::resolveWithSourceUnlocked()
     if (!env.isEmpty() && themeExists(env)) {
         result.theme = env;
         result.source = QStringLiteral("QS_ICON_THEME");
+        return result;
+    }
+
+    const QString persisted = persistedIconTheme();
+    if (!persisted.isEmpty() && themeExists(persisted)) {
+        result.theme = persisted;
+        result.source = QStringLiteral("persisted");
         return result;
     }
 

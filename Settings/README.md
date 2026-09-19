@@ -30,12 +30,12 @@ The native application includes:
 - catalogue-owned flat navigation with stable IDs, hub metadata, and native
   session history;
 - twelve sidebar rows including the non-selectable spacer, with Page, Hub, and
-  Spacer semantics; Wallpaper and Dock are nested catalogue destinations;
+  Spacer semantics; Themes, Wallpaper, and Dock are nested catalogue destinations;
 - native theme configuration, translations, icon resolution, and user-profile
   services; Linux libc/NSS administrative-group detection recognizes only
   `wheel` and `sudo`;
-- five implemented page routes: `Compositor`, immediately after `Services`,
-  plus the native `Appearance`, `Animations`, `Wallpaper`, and `Dock` routes
+  - six implemented page routes: `Compositor`, immediately after `Services`,
+  plus the native `Appearance`, `Themes`, `Animations`, `Wallpaper`, and `Dock` routes
   under the `Customization` hub;
   unavailable catalogue entries remain visible but cannot select an empty
   content route;
@@ -70,6 +70,14 @@ interaction; CXX-Qt is a thin generated Qt boundary for the migrated backend;
 Rust owns migrated animation/Typhon domain, protocol, discovery, and transport
 logic; C++ remains application composition and the remaining unmigrated
 Qt/system services.
+
+The Themes page is backed by `SettingsController.themes`, a thin CXX-Qt
+projection over the Rust Themes domain. Rust discovers installed Freedesktop
+icon themes, parses metadata, validates selection, resolves bounded previews,
+and atomically persists `system_icon_theme`. QML only presents and filters the
+projected descriptors. The shared Qt icon provider keeps ownership of global
+QIcon rendering and watcher-driven invalidation; the legacy `icon_theme` key
+continues to retain its Settings-only meaning.
 
 The Compositor preview intentionally has no compositor integration or Typhon
 transport. Existing ThemeController configuration is separate from the

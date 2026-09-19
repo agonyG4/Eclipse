@@ -177,20 +177,34 @@ void ThemeController::reload()
 void ThemeController::save()
 {
     QDir().mkpath(QFileInfo(m_configPath).absolutePath());
+
+    QJsonObject object;
+    if (QFileInfo::exists(m_configPath)) {
+        QFile existing(m_configPath);
+        if (!existing.open(QIODevice::ReadOnly))
+            return;
+        QJsonParseError error;
+        const QJsonDocument document = QJsonDocument::fromJson(existing.readAll(), &error);
+        if (error.error != QJsonParseError::NoError || !document.isObject())
+            return;
+        object = document.object();
+    }
+
+    // ThemeController owns the legacy appearance keys only. Keep newer or
+    // domain-specific keys, including Rust-owned system_icon_theme, intact.
+    object.insert(QStringLiteral("theme_preference"), m_themePreference);
+    object.insert(QStringLiteral("theme"), m_themeMode == 1 ? QStringLiteral("light") : QStringLiteral("dark"));
+    object.insert(QStringLiteral("theme_mode"), m_themeMode);
+    object.insert(QStringLiteral("shell_style"), m_shellStyle);
+    object.insert(QStringLiteral("accent"), m_accentHex);
+    object.insert(QStringLiteral("icon_style"), m_iconStyle);
+    object.insert(QStringLiteral("icon_theme"), m_iconTheme);
+    object.insert(QStringLiteral("icon_appearance"), m_iconAppearance);
+    object.insert(QStringLiteral("audio_osd_style"), m_audioOsdStyle);
+
     QFile file(m_configPath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
         return;
-    const QJsonObject object{
-        {QStringLiteral("theme_preference"), m_themePreference},
-        {QStringLiteral("theme"), m_themeMode == 1 ? QStringLiteral("light") : QStringLiteral("dark")},
-        {QStringLiteral("theme_mode"), m_themeMode},
-        {QStringLiteral("shell_style"), m_shellStyle},
-        {QStringLiteral("accent"), m_accentHex},
-        {QStringLiteral("icon_style"), m_iconStyle},
-        {QStringLiteral("icon_theme"), m_iconTheme},
-        {QStringLiteral("icon_appearance"), m_iconAppearance},
-        {QStringLiteral("audio_osd_style"), m_audioOsdStyle},
-    };
     file.write(QJsonDocument(object).toJson(QJsonDocument::Indented));
     updateWatchPaths();
 }

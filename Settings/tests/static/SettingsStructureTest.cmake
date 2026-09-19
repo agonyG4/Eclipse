@@ -21,6 +21,10 @@ list(FIND registered_qml_files "pages/appearance/Animations.qml" animations_qml_
 if(animations_qml_index EQUAL -1)
     message(FATAL_ERROR "Animations.qml is not registered in the Settings QML module")
 endif()
+list(FIND registered_qml_files "pages/appearance/Themes.qml" themes_qml_index)
+if(themes_qml_index EQUAL -1)
+    message(FATAL_ERROR "Themes.qml is not registered in the Settings QML module")
+endif()
 
 set(settings_desktop_file "${SETTINGS_SOURCE_DIR}/packaging/applications/astrea-settings.desktop")
 if(NOT EXISTS "${settings_desktop_file}")
@@ -221,6 +225,13 @@ set(production_source_files
     backend/src/animation/mod.rs
     backend/src/animation/state.rs
     backend/src/animation/qobject.rs
+    backend/src/themes/mod.rs
+    backend/src/themes/catalog.rs
+    backend/src/themes/config.rs
+    backend/src/themes/icon_lookup.rs
+    backend/src/themes/state.rs
+    backend/src/themes/worker.rs
+    backend/src/themes/qobject.rs
     backend/src/typhon/mod.rs
     backend/src/typhon/protocol.rs
     backend/src/typhon/discovery.rs
@@ -259,6 +270,7 @@ set(production_source_files
     qml/pages/appearance/MaterialPreview.qml
     qml/pages/appearance/MaterialShowcase.qml
     qml/pages/appearance/Animations.qml
+    qml/pages/appearance/Themes.qml
     qml/pages/appearance/Wallpaper.qml
     qml/pages/system/Compositor.qml
     qml/pages/appearance/Dock.qml
@@ -304,6 +316,8 @@ foreach(navigation_required_token IN ITEMS
     "appearance"
     "Appearance.qml"
     "Animations.qml"
+    "themes"
+    "Themes.qml"
     "animations"
     "settings.nav.appearance.subtitle"
     "childrenForId"
@@ -314,6 +328,25 @@ foreach(navigation_required_token IN ITEMS
         "${navigation_required_token}" navigation_required_position)
     if(navigation_required_position EQUAL -1)
         message(FATAL_ERROR "Native destination graph is missing '${navigation_required_token}'")
+    endif()
+endforeach()
+
+file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/Themes.qml" themes_source)
+foreach(themes_required_token IN ITEMS
+    "objectName: \"themesPage\""
+    "SettingsController.themes"
+    "Controls.SearchField"
+    "selectedIconTheme"
+    "setIconTheme"
+    "useSystemDefault"
+    "controller.busy"
+    "controller.lastError"
+    "Keys.onPressed"
+    "system-default"
+)
+    string(FIND "${themes_source}" "${themes_required_token}" themes_required_position)
+    if(themes_required_position EQUAL -1)
+        message(FATAL_ERROR "Themes page is missing '${themes_required_token}'")
     endif()
 endforeach()
 

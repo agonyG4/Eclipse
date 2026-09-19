@@ -12,6 +12,8 @@ pub mod qobject {
         type QString = cxx_qt_lib::QString;
         include!("cxx-qt-lib/qvariant.h");
         type QVariant = cxx_qt_lib::QVariant;
+        include!("cxx-qt-lib/core/qlist/qlist_QVariant.h");
+        type QList_QVariant = cxx_qt_lib::QList<QVariant>;
     }
 
     extern "RustQt" {
@@ -24,8 +26,8 @@ pub mod qobject {
         #[qproperty(u64, generation, READ = generation, NOTIFY = snapshot_changed)]
         #[qproperty(QString, source, READ = source, NOTIFY = snapshot_changed)]
         #[qproperty(bool, has_overrides, cxx_name = "hasOverrides", READ = has_overrides, NOTIFY = snapshot_changed)]
-        #[qproperty(QVariant, slot_capabilities, cxx_name = "slots", READ = slot_capabilities, NOTIFY = snapshot_changed)]
-        #[qproperty(QVariant, presets, READ = presets, NOTIFY = snapshot_changed)]
+        #[qproperty(QList_QVariant, slot_capabilities, cxx_name = "slots", READ = slot_capabilities, NOTIFY = snapshot_changed)]
+        #[qproperty(QList_QVariant, presets, READ = presets, NOTIFY = snapshot_changed)]
         #[qproperty(QString, last_error, cxx_name = "lastError", READ = last_error, NOTIFY = error_changed)]
         type SettingsAnimationController = super::SettingsAnimationControllerRust;
     }
@@ -41,8 +43,8 @@ pub mod qobject {
         #[cxx_name = "hasOverrides"]
         fn has_overrides(self: &SettingsAnimationController) -> bool;
         #[cxx_name = "slotCapabilities"]
-        fn slot_capabilities(self: &SettingsAnimationController) -> QVariant;
-        fn presets(self: &SettingsAnimationController) -> QVariant;
+        fn slot_capabilities(self: &SettingsAnimationController) -> QList_QVariant;
+        fn presets(self: &SettingsAnimationController) -> QList_QVariant;
         #[cxx_name = "lastError"]
         fn last_error(self: &SettingsAnimationController) -> QString;
 
@@ -97,12 +99,39 @@ pub mod qobject {
 pub struct SettingsAnimationControllerRust {
     state: AnimationState,
     worker: Option<ClientWorker>,
-    next_request_id: u64,
-    active_request_id: Option<u64>,
-    active_request_is_refresh: bool,
+    requests: RequestState,
     busy: bool,
     last_error: String,
     debounce_token: u64,
+}
+
+#[derive(Default)]
+struct RequestState {
+    next_id: u64,
+    active_id: Option<u64>,
+    active_is_refresh: bool,
+}
+
+impl RequestState {
+    fn start(&mut self, is_refresh: bool) -> u64 {
+        let id = self.next_id;
+        self.next_id = self.next_id.wrapping_add(1).max(1);
+        self.active_id = Some(id);
+        self.active_is_refresh = is_refresh;
+        id
+    }
+
+    fn finish(&mut self, id: u64) -> Option<bool> {
+        if self.active_id != Some(id) {
+            return None;
+        }
+        self.active_id = None;
+        Some(self.active_is_refresh)
+    }
+
+    fn cancel(&mut self) {
+        self.active_id = None;
+    }
 }
 
 impl Default for SettingsAnimationControllerRust {
@@ -110,9 +139,10 @@ impl Default for SettingsAnimationControllerRust {
         Self {
             state: AnimationState::default(),
             worker: None,
-            next_request_id: 1,
-            active_request_id: None,
-            active_request_is_refresh: false,
+            requests: RequestState {
+                next_id: 1,
+                ..RequestState::default()
+            },
             busy: false,
             last_error: String::new(),
             debounce_token: 0,
@@ -159,7 +189,7 @@ impl qobject::SettingsAnimationController {
         self.rust().state.has_overrides()
     }
 
-    fn slot_capabilities(&self) -> QVariant {
+    fn slot_capabilities(&self) -> QList<QVariant> {
         let mut slots = QList::default();
         for capability in self.rust().state.slot_capabilities() {
             let mut slot = QMap::default();
@@ -189,24 +219,24 @@ impl qobject::SettingsAnimationController {
             insert_optional_string(&mut slot, "override", capability.override_effect.as_deref());
             slots.append(QVariant::from(&slot));
         }
-        QVariant::from(&slots)
+        slots
     }
 
-    fn presets(&self) -> QVariant {
+    fn presets(&self) -> QList<QVariant> {
         let mut presets = QList::default();
         if let Some(snapshot) = self.rust().state.snapshot() {
             for preset in &snapshot.catalog.presets {
                 presets.append(QVariant::from(&QString::from(&preset.id)));
             }
         }
-        QVariant::from(&presets)
+        presets
     }
 
     fn last_error(&self) -> QString {
         QString::from(&self.rust().last_error)
     }
 
-    fn refresh(mut self: Pin<&mut Self>) {
+    fn refresh(self: Pin<&mut Self>) {
         if self.rust().busy {
             return;
         }
@@ -214,8 +244,7 @@ impl qobject::SettingsAnimationController {
             self.submit_pending();
             return;
         }
-        self.as_mut().rust_mut().active_request_is_refresh = true;
-        self.start_request(AnimationRequest::Get);
+        self.start_request(AnimationRequest::Get, true);
     }
 
     fn set_enabled(mut self: Pin<&mut Self>, value: bool) {
@@ -296,12 +325,10 @@ impl qobject::SettingsAnimationController {
         self.submit_pending();
     }
 
-    fn start_request(mut self: Pin<&mut Self>, request: AnimationRequest) {
+    fn start_request(mut self: Pin<&mut Self>, request: AnimationRequest, is_refresh: bool) {
         let (id, worker_available) = {
             let mut rust = self.as_mut().rust_mut();
-            let id = rust.next_request_id;
-            rust.next_request_id = rust.next_request_id.wrapping_add(1).max(1);
-            rust.active_request_id = Some(id);
+            let id = rust.requests.start(is_refresh);
             rust.busy = true;
             (id, rust.worker.is_some())
         };
@@ -322,7 +349,7 @@ impl qobject::SettingsAnimationController {
 
     fn complete_start_failure(mut self: Pin<&mut Self>, error: String) {
         let was_available = self.rust().state.available();
-        self.as_mut().rust_mut().active_request_id = None;
+        self.as_mut().rust_mut().requests.cancel();
         self.as_mut().rust_mut().busy = false;
         self.as_mut().busy_changed();
         if was_available {
@@ -339,9 +366,8 @@ impl qobject::SettingsAnimationController {
         let Some(configuration) = self.rust().state.pending_configuration() else {
             return;
         };
-        self.as_mut().rust_mut().active_request_is_refresh = false;
         self.as_mut()
-            .start_request(AnimationRequest::Set(configuration));
+            .start_request(AnimationRequest::Set(configuration), false);
         self.as_mut().rust_mut().state.mark_submitted();
     }
 
@@ -353,11 +379,9 @@ impl qobject::SettingsAnimationController {
                 }
             }
             WorkerEvent::RequestFinished { id, result } => {
-                if self.rust().active_request_id != Some(id) {
+                let Some(refresh) = self.as_mut().rust_mut().requests.finish(id) else {
                     return;
-                }
-                let refresh = self.rust().active_request_is_refresh;
-                self.as_mut().rust_mut().active_request_id = None;
+                };
                 self.as_mut().rust_mut().busy = false;
                 self.as_mut().busy_changed();
                 match *result {
@@ -378,6 +402,10 @@ impl qobject::SettingsAnimationController {
                         }
                     }
                     Ok(ProtocolOutcome::ServerRejected(error)) => {
+                        if refresh && self.rust().state.available() {
+                            self.as_mut().rust_mut().state.set_unavailable();
+                            self.as_mut().availability_changed();
+                        }
                         self.as_mut().set_error(error);
                     }
                     Err(error) => {
@@ -445,4 +473,48 @@ fn insert_optional_string(
         QVariant::from(&QString::from(value))
     });
     insert_variant(map, key, variant);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RequestState;
+    use crate::animation::state::{AnimationCatalog, AnimationConfiguration, AnimationSnapshot};
+
+    #[test]
+    fn stale_operation_token_cannot_mutate_newer_state() {
+        let mut requests = RequestState {
+            next_id: 1,
+            ..RequestState::default()
+        };
+        let mut state = super::AnimationState::default();
+        state.apply_snapshot(snapshot("initial")).unwrap();
+        let first = requests.start(true);
+        assert_eq!(requests.finish(first), Some(true));
+        let second = requests.start(false);
+
+        let stale_snapshot = snapshot("stale");
+        if requests.finish(first).is_some() {
+            state.apply_snapshot(stale_snapshot).unwrap();
+        }
+        assert_eq!(state.configuration().preset, "initial");
+        assert_eq!(requests.finish(first), None);
+        assert_eq!(requests.finish(second), Some(false));
+        state.apply_snapshot(snapshot("newer")).unwrap();
+        assert!(state.available());
+        assert_eq!(state.configuration().preset, "newer");
+    }
+
+    fn snapshot(preset: &str) -> AnimationSnapshot {
+        AnimationSnapshot {
+            generation: 0,
+            source: String::from("test"),
+            config: Some(AnimationConfiguration {
+                preset: preset.to_owned(),
+                ..AnimationConfiguration::default()
+            }),
+            requested: Default::default(),
+            effective: Default::default(),
+            catalog: AnimationCatalog::default(),
+        }
+    }
 }

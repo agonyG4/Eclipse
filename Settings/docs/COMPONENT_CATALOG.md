@@ -1,6 +1,6 @@
 # Registered QML Components
 
-The `astrea-settings-ui` module registers 40 QML files. The canonical legacy
+The `astrea-settings-ui` module registers 44 QML files. The canonical legacy
 source column points to the corresponding Astrea source where one exists.
 
 Component ownership is intentional: `controls/` contains reusable interactive
@@ -46,6 +46,10 @@ interaction with a raw `MouseArea`.
 | `qml/components/typography/TextLabel.qml` | `TextLabel` | typography | `src/Core/components/typography/TextLabel.qml` | future pages | page primitive |
 | `qml/pages/system/Compositor.qml` | `Compositor` | page | native Settings preview source | `Main` Loader | shell-critical |
 | `qml/pages/navigation/Hub.qml` | `Hub` | page | native Settings hub navigation | `Main` Loader | shell-critical |
+| `qml/pages/appearance/Appearance.qml` | `Appearance` | page | native Settings appearance route | `Main` Loader | native route |
+| `qml/pages/appearance/MaterialPreview.qml` | `MaterialPreview` | page primitive | native Settings appearance preview | `Appearance` | page primitive |
+| `qml/pages/appearance/MaterialShowcase.qml` | `MaterialShowcase` | page primitive | native Settings appearance showcase | `Appearance` | page primitive |
+| `qml/pages/appearance/Animations.qml` | `Animations` | page | native Settings Animations/Typhon route | `Main` Loader | migrated Rust/CXX-Qt route |
 | `qml/pages/appearance/Wallpaper.qml` | `Wallpaper` | page | `src/Apps/Settings/pages/paper/Wallpaper.qml` | `Main` Loader | native Paper-backed route |
 | `qml/pages/appearance/Dock.qml` | `Dock` | page | native Settings Dock personalization | `Main` Loader | native shared-config route |
 | `qml/theme/Apps.qml` | `Apps` | singleton theme | `src/Core/components/theme/Borealis/Apps.qml` | `Theme` | shell-critical |

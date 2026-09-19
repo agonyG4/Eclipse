@@ -95,6 +95,13 @@ impl ClientWorker {
     where
         F: Fn(WorkerEvent) + Send + Sync + 'static,
     {
+        Self::new_with_deadline(DEFAULT_DEADLINE, completion)
+    }
+
+    fn new_with_deadline<F>(deadline: Duration, completion: F) -> Result<Self, ClientError>
+    where
+        F: Fn(WorkerEvent) + Send + Sync + 'static,
+    {
         let (sender, receiver) = sync_channel(1);
         let debounce = Arc::new(DebounceState {
             deadline: Mutex::new(None),
@@ -104,7 +111,7 @@ impl ClientWorker {
         let worker_completion = Arc::clone(&completion);
         let thread = thread::Builder::new()
             .name(String::from("astrea-settings-typhon"))
-            .spawn(move || worker_loop(receiver, worker_debounce, worker_completion))
+            .spawn(move || worker_loop(receiver, worker_debounce, worker_completion, deadline))
             .map_err(|_| ClientError::WorkerUnavailable)?;
         Ok(Self {
             sender,
@@ -141,6 +148,7 @@ fn worker_loop<F>(
     receiver: Receiver<WorkerMessage>,
     debounce: Arc<DebounceState>,
     completion: Arc<F>,
+    deadline: Duration,
 ) where
     F: Fn(WorkerEvent) + Send + Sync + 'static,
 {
@@ -151,7 +159,7 @@ fn worker_loop<F>(
         };
         match message {
             WorkerMessage::Request { id, request } => {
-                let result = execute_request(id, request, DEFAULT_DEADLINE);
+                let result = execute_request(id, request, deadline);
                 completion(WorkerEvent::RequestFinished {
                     id,
                     result: Box::new(result),
@@ -268,9 +276,8 @@ fn remaining(deadline: Instant) -> Result<Duration, ClientError> {
 }
 
 fn transport_or_timeout(error: std::io::Error, deadline: Instant) -> ClientError {
-    if (error.kind() == ErrorKind::TimedOut || error.kind() == ErrorKind::WouldBlock)
-        && Instant::now() >= deadline
-    {
+    if matches!(error.kind(), ErrorKind::TimedOut | ErrorKind::WouldBlock) {
+        let _ = deadline;
         return ClientError::Timeout;
     }
     let _ = error;
@@ -279,4 +286,286 @@ fn transport_or_timeout(error: std::io::Error, deadline: Instant) -> ClientError
 
 fn transport_failure() -> ClientError {
     ClientError::Transport(String::from("socket transport failed"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{BufRead, BufReader, Write};
+    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::net::{UnixListener, UnixStream};
+    use std::path::Path;
+    use std::sync::mpsc::{Receiver, channel, sync_channel};
+    use std::sync::{
+        MutexGuard, OnceLock,
+        atomic::{AtomicBool, Ordering},
+    };
+    use std::thread::{self, JoinHandle};
+    use tempfile::{TempDir, tempdir};
+
+    static ENVIRONMENT_LOCK: OnceLock<std::sync::Mutex<()>> = OnceLock::new();
+
+    #[test]
+    fn successful_request_completes_on_the_worker_thread() {
+        let (_environment_lock, runtime) = test_runtime();
+        let listener = runtime.listener().try_clone().unwrap();
+        let server = serve_requests(listener, 1, |_| {});
+        let caller = thread::current().id();
+        let (events, receive) = channel();
+        let worker = ClientWorker::new(move |event| {
+            events.send((thread::current().id(), event)).unwrap();
+        })
+        .unwrap();
+
+        worker.submit(1, AnimationRequest::Get).unwrap();
+        let (callback_thread, event) = receive.recv_timeout(DEFAULT_DEADLINE * 2).unwrap();
+        assert_ne!(callback_thread, caller);
+        assert!(
+            matches!(event, WorkerEvent::RequestFinished { id: 1, result } if matches!(*result, Ok(ProtocolOutcome::Success(_))))
+        );
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn response_timeout_is_reported_by_the_transport_path() {
+        let (_environment_lock, runtime) = test_runtime();
+        let listener = runtime.listener().try_clone().unwrap();
+        let server = thread::spawn(move || {
+            let (_stream, _) = listener.accept().unwrap();
+            thread::sleep(Duration::from_millis(100));
+        });
+
+        let result = execute_request(1, AnimationRequest::Get, Duration::from_millis(20));
+        assert!(matches!(result, Err(ClientError::Timeout)));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn connection_failure_is_not_reported_as_a_timeout() {
+        let (_environment_lock, mut runtime) = test_runtime();
+        drop(runtime.take_listener());
+
+        let result = execute_request(1, AnimationRequest::Get, Duration::from_millis(100));
+        assert!(matches!(result, Err(ClientError::Transport(_))));
+    }
+
+    #[test]
+    fn request_lane_rejects_submission_when_the_worker_and_queue_are_busy() {
+        let (_environment_lock, runtime) = test_runtime();
+        let listener = runtime.listener().try_clone().unwrap();
+        let (accepted, accepted_receive) = sync_channel(0);
+        let (release, release_receive) = sync_channel(0);
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            read_request(&mut stream);
+            accepted.send(()).unwrap();
+            release_receive.recv().unwrap();
+            stream.write_all(&success_response(1)).unwrap();
+        });
+        let (events, receive) = channel();
+        let worker = ClientWorker::new(move |event| events.send(event).unwrap()).unwrap();
+
+        worker.submit(1, AnimationRequest::Get).unwrap();
+        accepted_receive
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap();
+        worker.submit(2, AnimationRequest::Get).unwrap();
+        assert!(matches!(
+            worker.submit(3, AnimationRequest::Get),
+            Err(ClientError::WorkerUnavailable)
+        ));
+
+        release.send(()).unwrap();
+        let event = receive.recv_timeout(DEFAULT_DEADLINE * 2).unwrap();
+        assert!(
+            matches!(event, WorkerEvent::RequestFinished { id: 1, result } if matches!(*result, Ok(ProtocolOutcome::Success(_))))
+        );
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn worker_can_be_reused_after_a_completed_request() {
+        let (_environment_lock, runtime) = test_runtime();
+        let listener = runtime.listener().try_clone().unwrap();
+        let server = serve_requests(listener, 2, |_| {});
+        let (events, receive) = channel();
+        let worker = ClientWorker::new(move |event| events.send(event).unwrap()).unwrap();
+
+        worker.submit(1, AnimationRequest::Get).unwrap();
+        assert_request_succeeded(&receive, 1);
+        worker.submit(2, AnimationRequest::Get).unwrap();
+        assert_request_succeeded(&receive, 2);
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn dropping_worker_with_outstanding_io_is_safe() {
+        let (_environment_lock, runtime) = test_runtime();
+        let listener = runtime.listener().try_clone().unwrap();
+        let (accepted, accepted_receive) = sync_channel(0);
+        let server = thread::spawn(move || {
+            let (_stream, _) = listener.accept().unwrap();
+            accepted.send(()).unwrap();
+            thread::sleep(Duration::from_millis(100));
+        });
+        let completed = std::sync::Arc::new(AtomicBool::new(false));
+        let completion_flag = std::sync::Arc::clone(&completed);
+        let (events, receive) = channel();
+        let worker = ClientWorker::new_with_deadline(Duration::from_millis(20), move |event| {
+            completion_flag.store(true, Ordering::Release);
+            events.send(event).unwrap();
+        })
+        .unwrap();
+
+        worker.submit(1, AnimationRequest::Get).unwrap();
+        accepted_receive
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap();
+        drop(worker);
+        let _ = receive.recv_timeout(Duration::from_secs(1));
+        assert!(completed.load(Ordering::Acquire));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn response_size_limit_is_enforced_after_transport_read() {
+        let (_environment_lock, runtime) = test_runtime();
+        let listener = runtime.listener().try_clone().unwrap();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            read_request(&mut stream);
+            stream
+                .write_all(&vec![b'x'; super::super::protocol::MAX_RESPONSE_BYTES + 1])
+                .unwrap();
+        });
+
+        let result = execute_request(1, AnimationRequest::Get, Duration::from_secs(1));
+        assert!(matches!(
+            result,
+            Err(ClientError::Request(ProtocolError::ResponseTooLarge))
+        ));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn timeout_form_socket_errors_are_classified_as_timeouts_at_the_deadline_boundary() {
+        let future = Instant::now() + Duration::from_secs(1);
+        assert!(matches!(
+            transport_or_timeout(std::io::Error::from(ErrorKind::TimedOut), future),
+            ClientError::Timeout
+        ));
+        assert!(matches!(
+            transport_or_timeout(std::io::Error::from(ErrorKind::WouldBlock), future),
+            ClientError::Timeout
+        ));
+        assert!(matches!(
+            transport_or_timeout(std::io::Error::from(ErrorKind::BrokenPipe), future),
+            ClientError::Transport(_)
+        ));
+    }
+
+    fn assert_request_succeeded(receive: &Receiver<WorkerEvent>, expected_id: u64) {
+        let event = receive.recv_timeout(DEFAULT_DEADLINE * 2).unwrap();
+        assert!(
+            matches!(event, WorkerEvent::RequestFinished { id, result } if id == expected_id && matches!(*result, Ok(ProtocolOutcome::Success(_))))
+        );
+    }
+
+    fn serve_requests<F>(listener: UnixListener, count: usize, after_read: F) -> JoinHandle<()>
+    where
+        F: Fn(usize) + Send + Sync + 'static,
+    {
+        thread::spawn(move || {
+            for index in 0..count {
+                let (mut stream, _) = listener.accept().unwrap();
+                read_request(&mut stream);
+                after_read(index);
+                stream
+                    .write_all(&success_response(index as u64 + 1))
+                    .unwrap();
+            }
+        })
+    }
+
+    fn read_request(stream: &mut UnixStream) {
+        let mut request = Vec::new();
+        BufReader::new(stream.try_clone().unwrap())
+            .read_until(b'\n', &mut request)
+            .unwrap();
+        assert!(request.ends_with(b"\n"));
+    }
+
+    fn success_response(id: u64) -> Vec<u8> {
+        let response = serde_json::json!({
+            "protocol": "astrea.control",
+            "version": 1,
+            "id": id,
+            "ok": true,
+            "result": {
+                "config": {"enabled": true, "preset": "astrea", "speed": 1.0}
+            }
+        });
+        serde_json::to_vec(&response)
+            .unwrap()
+            .into_iter()
+            .chain(std::iter::once(b'\n'))
+            .collect()
+    }
+
+    fn test_runtime() -> (MutexGuard<'static, ()>, TestRuntime) {
+        let lock = ENVIRONMENT_LOCK
+            .get_or_init(|| std::sync::Mutex::new(()))
+            .lock()
+            .unwrap();
+        let runtime = TestRuntime::new();
+        // SAFETY: tests serialize changes to these process-wide variables with the mutex above.
+        unsafe {
+            std::env::set_var("XDG_RUNTIME_DIR", runtime.path());
+            std::env::set_var("WAYLAND_DISPLAY", "test");
+        }
+        (lock, runtime)
+    }
+
+    struct TestRuntime {
+        directory: TempDir,
+        listener: Option<UnixListener>,
+    }
+
+    impl TestRuntime {
+        fn new() -> Self {
+            let directory = tempdir().unwrap();
+            let runtime = directory.path();
+            std::fs::create_dir(runtime.join("astrea")).unwrap();
+            std::fs::create_dir(runtime.join("astrea/typhon")).unwrap();
+            let instance = runtime.join("astrea/typhon/test");
+            std::fs::create_dir(&instance).unwrap();
+            set_mode(runtime, 0o700);
+            set_mode(&runtime.join("astrea"), 0o700);
+            set_mode(&runtime.join("astrea/typhon"), 0o700);
+            set_mode(&instance, 0o700);
+            let socket_path = instance.join("control.sock");
+            let listener = UnixListener::bind(&socket_path).unwrap();
+            set_mode(&socket_path, 0o600);
+            Self {
+                directory,
+                listener: Some(listener),
+            }
+        }
+
+        fn listener(&self) -> &UnixListener {
+            self.listener.as_ref().unwrap()
+        }
+
+        fn take_listener(&mut self) -> UnixListener {
+            self.listener.take().unwrap()
+        }
+
+        fn path(&self) -> &Path {
+            self.directory.path()
+        }
+    }
+
+    fn set_mode(path: &Path, mode: u32) {
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).unwrap();
+    }
 }

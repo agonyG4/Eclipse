@@ -185,7 +185,7 @@ class LayerShellContractTests(unittest.TestCase):
         self.assertIn("AstreaLayerShellConfig::Layer::Top", dock)
         self.assertIn("AstreaLayerShellConfig::KeyboardInteractivity::None", dock)
         self.assertIn("layerConfig.anchorBottom = true", dock)
-        self.assertIn("layerWindow->setExclusiveZone(mapped ? qMax(0, window->height()) : 0)", dock)
+        self.assertIn("layerWindow->setExclusiveZone(exclusiveZoneForMapping(mapped, exclusiveZoneHeight))", dock)
         self.assertIn('QStringLiteral("astrea-alt-tab")', alt_tab)
         self.assertIn("AstreaLayerShellConfig::Layer::Overlay", alt_tab)
         self.assertIn("AstreaLayerShellConfig::KeyboardInteractivity::Exclusive", alt_tab)
@@ -216,8 +216,9 @@ class LayerShellContractTests(unittest.TestCase):
         dock_panel = (REPOSITORY_ROOT / "Dock" / "qml" / "components" / "DockPanel.qml").read_text(
             encoding="utf-8"
         )
-        self.assertNotIn("Behavior on width", dock_panel)
-        self.assertNotIn("NumberAnimation { duration: 135", dock_panel)
+        self.assertIn("width: surfaceWidth", dock_panel)
+        physical_surface = dock_panel.split("id: dockChrome", 1)[0]
+        self.assertNotIn("Behavior on width", physical_surface)
 
 
 if __name__ == "__main__":

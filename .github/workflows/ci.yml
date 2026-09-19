@@ -75,6 +75,24 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+      # jurplel/install-qt-action v4.3.1
+      - uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          modules: qt5compat qtshadertools qtwayland
+          install-deps: true
+          cache: false
+      - name: Verify Qt installation for CXX-Qt Rust gate
+        run: |
+          test "$(qtpaths --qt-version)" = "$QT_VERSION"
+          qmake_path="$(qtpaths --query QT_HOST_BINS)/qmake"
+          test -x "$qmake_path"
+          test "$("$qmake_path" -query QT_VERSION)" = "$QT_VERSION"
+          test -n "$("$qmake_path" -query QT_INSTALL_PREFIX)"
+          echo "QMAKE=$qmake_path" >> "$GITHUB_ENV"
       - name: Install stable Rust with quality components
         run: |
           rustup toolchain install stable --profile minimal --component rustfmt --component clippy

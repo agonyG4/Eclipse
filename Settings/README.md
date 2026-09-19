@@ -34,8 +34,9 @@ The native application includes:
 - native theme configuration, translations, icon resolution, and user-profile
   services; Linux libc/NSS administrative-group detection recognizes only
   `wheel` and `sudo`;
-- three real page routes: `Compositor`, immediately after `Services`, plus the
-  native `Wallpaper` and `Dock` routes under the `Customization` hub;
+- five implemented page routes: `Compositor`, immediately after `Services`,
+  plus the native `Appearance`, `Animations`, `Wallpaper`, and `Dock` routes
+  under the `Customization` hub;
   unavailable catalogue entries remain visible but cannot select an empty
   content route;
 - a generic `Hub` page and Astrea-native Back/Forward toolbar backed by a
@@ -64,11 +65,11 @@ wallpaper removal policy.
 The Animations page is backed by the public Astrea `astrea.control` Typhon
 socket. Its `SettingsController.animations` property remains the stable QML
 API, while the implementation is a generated CXX-Qt QObject backed by the
-focused `Settings/backend` Rust crate. QML / Qt Quick remains presentation; the
-CXX-Qt QObject is a thin property, signal, and invokable boundary; Rust owns
-animation state, validation, capability projection, protocol handling, secure
-endpoint discovery, and bounded socket transport; C++ remains the existing
-composition and Qt-specific code during this incremental migration.
+focused `Settings/backend` Rust crate. QML / Qt Quick owns presentation and
+interaction; CXX-Qt is a thin generated Qt boundary for the migrated backend;
+Rust owns migrated animation/Typhon domain, protocol, discovery, and transport
+logic; C++ remains application composition and the remaining unmigrated
+Qt/system services.
 
 The Compositor preview intentionally has no compositor integration or Typhon
 transport. Existing ThemeController configuration is separate from the

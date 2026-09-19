@@ -7,6 +7,8 @@
 #include <QJsonObject>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QMetaProperty>
+#include <QMetaType>
 #include <QMutex>
 #include <QThread>
 #include <QTemporaryDir>
@@ -161,6 +163,11 @@ public:
         QMutexLocker locker(&m_mutex);
         m_rejectNextSet = true;
     }
+    void rejectNextGet()
+    {
+        QMutexLocker locker(&m_mutex);
+        m_rejectNextGet = true;
+    }
     void sendMalformedResponse()
     {
         QMutexLocker locker(&m_mutex);
@@ -246,6 +253,10 @@ private:
                     response = makeResponse(request.value(QStringLiteral("id")).toInteger(), true,
                                             m_snapshot, {});
                 }
+            } else if (m_rejectNextGet) {
+                m_rejectNextGet = false;
+                response = makeResponse(request.value(QStringLiteral("id")).toInteger(), false,
+                                        {}, QStringLiteral("refresh rejected"));
             } else {
                 response = makeResponse(request.value(QStringLiteral("id")).toInteger(), true,
                                         m_snapshot, {});
@@ -326,6 +337,7 @@ private:
     QJsonObject m_snapshot;
     bool m_listening = false;
     bool m_rejectNextSet = false;
+    bool m_rejectNextGet = false;
     bool m_malformedResponse = false;
     QByteArray m_responseMode;
     bool m_delayResponses = false;
@@ -338,7 +350,10 @@ class SettingsAnimationControllerTest final : public QObject {
     Q_OBJECT
 
 private slots:
+    void generatedPropertiesRetainQVariantListTypes();
     void controllerUsesAuthoritativeSnapshotsAndRejectsPlannedEffects();
+    void serverRejectedMutationKeepsControllerAvailable();
+    void serverRejectedRefreshClearsControllerAvailability();
     void controllerProjectsUnavailableEffectsSeparately();
     void controllerTimeoutDoesNotBlockTheEventLoop();
     void controllerRejectsSecondRequestWhileBusy();
@@ -349,7 +364,19 @@ private slots:
     void controllerRejectsAmbiguousAndInsecureDiscovery();
     void controllerCanBeDestroyedWithRequestOutstanding();
     void controllerFoldsPendingSpeedIntoNextMutation();
+    void repeatedSpeedEditsUseOneEffectiveDebounceDeadline();
 };
+
+void SettingsAnimationControllerTest::generatedPropertiesRetainQVariantListTypes()
+{
+    const QMetaObject &metaObject = SettingsAnimationController::staticMetaObject;
+    const QMetaProperty slotsProperty = metaObject.property(metaObject.indexOfProperty("slots"));
+    const QMetaProperty presetsProperty = metaObject.property(metaObject.indexOfProperty("presets"));
+    QVERIFY(slotsProperty.isValid());
+    QVERIFY(presetsProperty.isValid());
+    QCOMPARE(slotsProperty.metaType(), QMetaType::fromType<QVariantList>());
+    QCOMPARE(presetsProperty.metaType(), QMetaType::fromType<QVariantList>());
+}
 
 void SettingsAnimationControllerTest::controllerUsesAuthoritativeSnapshotsAndRejectsPlannedEffects()
 {
@@ -365,10 +392,10 @@ void SettingsAnimationControllerTest::controllerUsesAuthoritativeSnapshotsAndRej
     QCOMPARE(controller.preset(), QStringLiteral("astrea"));
     QCOMPARE(controller.speed(), 1.0);
     QVERIFY(!controller.hasOverrides());
-    QCOMPARE(controller.presets().toList().size(), 3);
-    QVERIFY(!controller.slotCapabilities().toList().isEmpty());
+    QCOMPARE(controller.presets().size(), 3);
+    QVERIFY(!controller.slotCapabilities().isEmpty());
     const auto slot = [&controller](const QString &id) {
-        for (const QVariant &value : controller.slotCapabilities().toList()) {
+        for (const QVariant &value : controller.slotCapabilities()) {
             const QVariantMap candidate = value.toMap();
             if (candidate.value(QStringLiteral("id")).toString() == id)
                 return candidate;
@@ -412,6 +439,42 @@ void SettingsAnimationControllerTest::controllerUsesAuthoritativeSnapshotsAndRej
     QVERIFY(!controller.lastError().isEmpty());
 }
 
+void SettingsAnimationControllerTest::serverRejectedMutationKeepsControllerAvailable()
+{
+    QTemporaryDir runtime;
+    QVERIFY(runtime.isValid());
+    EnvironmentGuard environment(runtime.path().toUtf8(), QByteArrayLiteral("test"));
+    AnimationControlServer server(runtime.path());
+
+    SettingsAnimationController controller;
+    controller.refresh();
+    QTRY_VERIFY(controller.available());
+
+    server.rejectNextSet();
+    controller.setPreset(QStringLiteral("macos"));
+    QTRY_VERIFY(!controller.busy());
+    QVERIFY(controller.available());
+    QCOMPARE(controller.lastError(), QStringLiteral("rejected"));
+}
+
+void SettingsAnimationControllerTest::serverRejectedRefreshClearsControllerAvailability()
+{
+    QTemporaryDir runtime;
+    QVERIFY(runtime.isValid());
+    EnvironmentGuard environment(runtime.path().toUtf8(), QByteArrayLiteral("test"));
+    AnimationControlServer server(runtime.path());
+
+    SettingsAnimationController controller;
+    controller.refresh();
+    QTRY_VERIFY(controller.available());
+
+    server.rejectNextGet();
+    controller.refresh();
+    QTRY_VERIFY(!controller.busy());
+    QVERIFY(!controller.available());
+    QCOMPARE(controller.lastError(), QStringLiteral("refresh rejected"));
+}
+
 void SettingsAnimationControllerTest::controllerProjectsUnavailableEffectsSeparately()
 {
     QTemporaryDir runtime;
@@ -425,7 +488,7 @@ void SettingsAnimationControllerTest::controllerProjectsUnavailableEffectsSepara
     controller.refresh();
     QTRY_VERIFY2(controller.available(), qPrintable(controller.lastError()));
     auto slot = [&controller] {
-        for (const QVariant &value : controller.slotCapabilities().toList()) {
+        for (const QVariant &value : controller.slotCapabilities()) {
             const QVariantMap candidate = value.toMap();
             if (candidate.value(QStringLiteral("id")).toString() == QStringLiteral("window.minimize"))
                 return candidate;
@@ -634,6 +697,29 @@ void SettingsAnimationControllerTest::controllerFoldsPendingSpeedIntoNextMutatio
     QCOMPARE(server.commandCount(), before + 1);
     QCOMPARE(controller.speed(), 1.5);
     QCOMPARE(controller.preset(), QStringLiteral("macos"));
+}
+
+void SettingsAnimationControllerTest::repeatedSpeedEditsUseOneEffectiveDebounceDeadline()
+{
+    QTemporaryDir runtime;
+    QVERIFY(runtime.isValid());
+    EnvironmentGuard environment(runtime.path().toUtf8(), QByteArrayLiteral("test"));
+    AnimationControlServer server(runtime.path());
+
+    SettingsAnimationController controller;
+    controller.refresh();
+    QTRY_VERIFY(controller.available());
+    const qsizetype before = server.commandCount();
+
+    controller.setSpeed(1.1);
+    controller.setSpeed(1.3);
+    controller.setSpeed(1.7);
+    QTest::qWait(30);
+    QCOMPARE(server.commandCount(), before);
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.busy(), 1000);
+    QTest::qWait(100);
+    QCOMPARE(server.commandCount(), before + 1);
+    QCOMPARE(controller.speed(), 1.7);
 }
 
 QTEST_GUILESS_MAIN(SettingsAnimationControllerTest)

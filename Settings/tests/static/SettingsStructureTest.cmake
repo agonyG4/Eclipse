@@ -9,6 +9,18 @@ if(NOT DEFINED WAYLAND_EFFECTS_SOURCE_FILES)
 endif()
 
 string(REPLACE "|" ";" registered_qml_files "${SETTINGS_QML_FILES}")
+file(STRINGS "${SETTINGS_SOURCE_DIR}/qml/CMakeLists.txt" authoritative_qml_entries
+    REGEX "^[ \t]+[^ \t()]+\\.qml[ \t]*$")
+list(LENGTH registered_qml_files registered_qml_count)
+list(LENGTH authoritative_qml_entries authoritative_qml_count)
+if(NOT registered_qml_count EQUAL authoritative_qml_count)
+    message(FATAL_ERROR
+        "Registered QML count ${registered_qml_count} does not match authoritative list count ${authoritative_qml_count}")
+endif()
+list(FIND registered_qml_files "pages/appearance/Animations.qml" animations_qml_index)
+if(animations_qml_index EQUAL -1)
+    message(FATAL_ERROR "Animations.qml is not registered in the Settings QML module")
+endif()
 
 set(settings_desktop_file "${SETTINGS_SOURCE_DIR}/packaging/applications/astrea-settings.desktop")
 if(NOT EXISTS "${settings_desktop_file}")
@@ -78,6 +90,7 @@ endforeach()
 
 file(READ "${SETTINGS_SOURCE_DIR}/core/CMakeLists.txt" settings_core_cmake)
 file(READ "${SETTINGS_SOURCE_DIR}/CMakeLists.txt" settings_root_cmake)
+file(READ "${SETTINGS_SOURCE_DIR}/cmake/RustBackend.cmake" settings_rust_backend_cmake)
 file(READ "${SETTINGS_SOURCE_DIR}/tests/CMakeLists.txt" settings_tests_cmake)
 file(READ "${SETTINGS_SOURCE_DIR}/app/SettingsApplication.cpp" settings_application_source)
 if(settings_tests_cmake MATCHES "qt_add_qml_module")
@@ -100,12 +113,17 @@ foreach(core_boundary_token IN ITEMS
     endif()
 endforeach()
 foreach(rust_boundary_token IN ITEMS
+    "find_package(CxxQt QUIET)"
     "cxx_qt_import_crate"
     "backend/Cargo.toml"
     "astrea_settings_backend"
+    "LOCKED"
+    "CRATES astrea_settings_backend"
     "QMAKE"
+    "Qt6Core_DIR"
+    "QT_INSTALL_PREFIX"
 )
-    string(FIND "${settings_root_cmake}${settings_core_cmake}" "${rust_boundary_token}" rust_boundary_position)
+    string(FIND "${settings_root_cmake}${settings_core_cmake}${settings_rust_backend_cmake}" "${rust_boundary_token}" rust_boundary_position)
     if(rust_boundary_position EQUAL -1)
         message(FATAL_ERROR "Settings Rust/CXX-Qt boundary is missing '${rust_boundary_token}'")
     endif()
@@ -198,6 +216,7 @@ set(production_source_files
     backend/Cargo.toml
     backend/Cargo.lock
     backend/build.rs
+    cmake/RustBackend.cmake
     backend/src/lib.rs
     backend/src/animation/mod.rs
     backend/src/animation/state.rs
@@ -239,6 +258,7 @@ set(production_source_files
     qml/pages/appearance/Appearance.qml
     qml/pages/appearance/MaterialPreview.qml
     qml/pages/appearance/MaterialShowcase.qml
+    qml/pages/appearance/Animations.qml
     qml/pages/appearance/Wallpaper.qml
     qml/pages/system/Compositor.qml
     qml/pages/appearance/Dock.qml
@@ -283,6 +303,8 @@ foreach(navigation_required_token IN ITEMS
     "parentId"
     "appearance"
     "Appearance.qml"
+    "Animations.qml"
+    "animations"
     "settings.nav.appearance.subtitle"
     "childrenForId"
     "firstNavigableSidebarDestination"
@@ -694,8 +716,4 @@ foreach(relative_path IN LISTS production_source_files)
     endforeach()
 endforeach()
 
-list(LENGTH registered_qml_files registered_qml_file_count)
-if(NOT registered_qml_file_count EQUAL 44)
-    message(FATAL_ERROR "Settings module must register exactly 44 QML files, found ${registered_qml_file_count}")
-endif()
-message(STATUS "Settings structure invariants passed (${registered_qml_file_count} registered QML files checked)")
+message(STATUS "Settings structure invariants passed (${registered_qml_count} registered QML files checked)")

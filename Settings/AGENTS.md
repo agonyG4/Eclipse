@@ -2,7 +2,9 @@
 
 - Work directly on `main`; do not create a branch, worktree, or temporary branch.
 - Preserve the source-approved legacy Settings design and current visuals.
-- C++ owns system access, persistence, models, services, and backends.
+- C++ owns application composition and remaining unmigrated system access,
+  persistence, models, services, and backends; migrated backends such as
+  Animations/Typhon use Rust behind the thin CXX-Qt boundary.
 - QML owns presentation and interaction.
 - Do not put shell commands, filesystem access, process access, IPC, or DBus in QML.
 - Do not add Quickshell, LayerShellQt, Hyprland, or Typhon-private runtime dependencies.

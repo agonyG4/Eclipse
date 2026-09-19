@@ -1,8 +1,10 @@
 # Astrea Settings Architecture
 
 `astrea-settings` is a native Qt 6 application and a normal frameless Wayland
-toplevel. C++ owns lifecycle and system-facing state. QML owns the approved
-Astrea Settings presentation and interaction.
+toplevel. QML / Qt Quick owns presentation and interaction. CXX-Qt is a thin
+generated Qt boundary for migrated backends. Rust owns migrated backend,
+domain, and system logic such as Animations/Typhon. C++ owns application
+composition and remaining unmigrated Qt/system services.
 
 ## Composition Root
 
@@ -51,7 +53,7 @@ typed serde protocol structures, secure endpoint discovery, and one bounded
 worker for Unix-socket I/O. JSON is used only at the Typhon wire boundary.
 
 `astrea-settings-ui` is the only `Astrea.Settings 1.0` QML module and registers
-43 QML files. The application and QML integration tests consume that same
+44 QML files. The application and QML integration tests consume that same
 target and generated plugin. The application additionally links the existing
 shared core and QML plugin for compositor-independent shared utilities.
 
@@ -85,12 +87,13 @@ app -> qml context properties
 qml -> presentation and interaction
 tests -> production targets and explicit fakes
 shared -> compositor-independent utilities and capability-gated Wayland effects
-Rust backend -> typed animation state, Typhon protocol, secure discovery, bounded transport
-CXX-Qt QObject -> queued Qt-facing projection of the Rust backend
+Rust -> migrated backend/domain/system logic such as typed animation state, Typhon protocol, secure discovery, and bounded transport
+CXX-Qt -> thin generated Qt boundary and queued projection of migrated Rust backends
+C++ -> application composition and remaining unmigrated Qt/system services
 ```
 
 QML has no filesystem, process, IPC, DBus, or compositor API. Platform access
-is implemented in focused C++ services and platform classes.
+is implemented in the owning Rust or C++ backend boundary.
 
 ## Navigation and Routing
 
@@ -108,6 +111,8 @@ index and no QML route-ID condition. The current routable descriptors are:
 
 ```text
 qrc:/qt/qml/Astrea/Settings/qml/pages/system/Compositor.qml
+qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Appearance.qml
+qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Animations.qml
 qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Wallpaper.qml
 qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Dock.qml
 ```

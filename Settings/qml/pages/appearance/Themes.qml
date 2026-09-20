@@ -26,7 +26,7 @@ Item {
             name: I18n.tr("apps.settings.pages.themes.system_default", "System Default"),
             comment: I18n.tr("apps.settings.pages.themes.system_default_comment", "Use the active desktop icon theme"),
             source: "system",
-            previewUrls: ["", "", "", "", ""]
+            previewUrls: ["image://astrea-icon/folder"]
         }]
         for (let index = 0; index < root.filteredThemes.length; ++index)
             values.push(root.filteredThemes[index])
@@ -231,6 +231,19 @@ Item {
         }
 
         Text {
+            objectName: "themes-empty-installed-catalog"
+            visible: !root.controller.busy && root.controller.lastError === ""
+                && root.controller.themes.length === 0 && root.searchQuery.trim() === ""
+            text: I18n.tr("apps.settings.pages.themes.empty_catalog", "No icon themes are installed.")
+            color: Components.Theme.textSecondary
+            font.family: Components.Theme.fontFamily
+            font.pixelSize: Components.Theme.fontSizeNormal
+            Layout.fillWidth: true
+            Layout.bottomMargin: 12
+        }
+
+        Text {
+            objectName: "themes-empty-search-results"
             visible: !root.controller.busy && root.controller.lastError === ""
                 && root.filteredThemes.length === 0 && root.searchQuery.trim() !== ""
             text: I18n.tr("apps.settings.pages.themes.empty_search", "No installed themes match your search.")

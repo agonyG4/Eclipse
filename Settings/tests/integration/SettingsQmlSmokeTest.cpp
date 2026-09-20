@@ -1,11 +1,13 @@
 #include "core/SettingsController.hpp"
 #include "services/i18n/SettingsTranslationController.hpp"
 #include "theme/ThemeController.hpp"
+#include "icons/AstreaIconProvider.hpp"
 
 #include <QGuiApplication>
 #include <QImage>
 #include <QColor>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -70,6 +72,8 @@ private slots:
     void unavailableEffectTextUsesRequestedEffect();
     void loadsAppearanceRouteFromHubOffscreen();
     void loadsThemesRouteOffscreen();
+    void themesPageShowsInstalledCatalogAndSearchEmptyStates();
+    void themesPageReconcilesExternalPersistedSelectionOnRefresh();
     void appearancePreviewsUseCurrentWallpaperSnapshot();
     void materialPreviewFrostedGeometryMatchesFallback();
     void materialShowcaseIdentityNamesAreDistinct();
@@ -97,6 +101,48 @@ QString writeWallpaperImage(const QString &path, const QColor &color)
     if (!image.save(path))
         qFatal("Could not create wallpaper fixture at %s", qPrintable(path));
     return path;
+}
+
+void writeIconTheme(const QString &iconsRoot, const QString &themeId, const QString &name)
+{
+    const auto directory = QDir(iconsRoot).filePath(themeId);
+    if (!QDir().mkpath(QDir(directory).filePath(QStringLiteral("48x48/apps"))))
+        qFatal("Could not create icon theme fixture at %s", qPrintable(directory));
+    QFile indexTheme(QDir(directory).filePath(QStringLiteral("index.theme")));
+    if (!indexTheme.open(QIODevice::WriteOnly | QIODevice::Text))
+        qFatal("Could not write icon theme fixture at %s", qPrintable(indexTheme.fileName()));
+    const auto metadata = QStringLiteral(
+        "[Icon Theme]\nName=%1\nDirectories=48x48/apps\n\n[48x48/apps]\nSize=48\nType=Fixed\n")
+                              .arg(name);
+    if (indexTheme.write(metadata.toUtf8()) < 0)
+        qFatal("Could not write icon theme metadata at %s", qPrintable(indexTheme.fileName()));
+}
+
+void writeHicolorFolderPreview(const QString &iconsRoot)
+{
+    writeIconTheme(iconsRoot, QStringLiteral("hicolor"), QStringLiteral("hicolor"));
+    const auto iconPath = QDir(iconsRoot).filePath(
+        QStringLiteral("hicolor/48x48/apps/folder.png"));
+    QImage icon(16, 16, QImage::Format_ARGB32);
+    icon.fill(QColor(52, 120, 220));
+    if (!icon.save(iconPath))
+        qFatal("Could not create hicolor preview fixture at %s", qPrintable(iconPath));
+}
+
+void writeSystemIconThemePreference(const QString &path, const QString &themeId)
+{
+    QJsonObject object;
+    if (!themeId.isEmpty())
+        object.insert(QStringLiteral("system_icon_theme"), themeId);
+    object.insert(QStringLiteral("unknown"), 42);
+    const QFileInfo info(path);
+    if (!QDir().mkpath(info.absolutePath()))
+        qFatal("Could not create theme preference directory at %s", qPrintable(info.absolutePath()));
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+        qFatal("Could not write theme preference at %s", qPrintable(path));
+    if (file.write(QJsonDocument(object).toJson(QJsonDocument::Indented)) < 0)
+        qFatal("Could not write theme preference at %s", qPrintable(path));
 }
 
 QJsonObject appearanceWallpaperSnapshot(const QString &previewSource,
@@ -181,6 +227,39 @@ public:
 private:
     QByteArray m_previous;
     bool m_hadPrevious = false;
+};
+
+class XdgDataDirectoriesGuard final
+{
+public:
+    explicit XdgDataDirectoriesGuard(const QString &directory)
+        : m_previousDataHome(qgetenv("XDG_DATA_HOME"))
+        , m_previousDataDirs(qgetenv("XDG_DATA_DIRS"))
+        , m_hadDataHome(qEnvironmentVariableIsSet("XDG_DATA_HOME"))
+        , m_hadDataDirs(qEnvironmentVariableIsSet("XDG_DATA_DIRS"))
+    {
+        const QByteArray path = directory.toUtf8();
+        qputenv("XDG_DATA_HOME", path);
+        qputenv("XDG_DATA_DIRS", path);
+    }
+
+    ~XdgDataDirectoriesGuard()
+    {
+        if (m_hadDataHome)
+            qputenv("XDG_DATA_HOME", m_previousDataHome);
+        else
+            qunsetenv("XDG_DATA_HOME");
+        if (m_hadDataDirs)
+            qputenv("XDG_DATA_DIRS", m_previousDataDirs);
+        else
+            qunsetenv("XDG_DATA_DIRS");
+    }
+
+private:
+    QByteArray m_previousDataHome;
+    QByteArray m_previousDataDirs;
+    bool m_hadDataHome = false;
+    bool m_hadDataDirs = false;
 };
 
 class DelayedMaterialPreviewProvider final : public QQuickImageProvider
@@ -386,6 +465,10 @@ void SettingsQmlSmokeTest::loadsThemesRouteOffscreen()
     QTemporaryDir home;
     QVERIFY(home.isValid());
     HomeEnvironmentGuard homeGuard(home.path());
+    const auto xdgData = QDir(home.path()).filePath(QStringLiteral("xdg-data"));
+    QVERIFY(QDir().mkpath(xdgData));
+    XdgDataDirectoriesGuard dataGuard(xdgData);
+    writeHicolorFolderPreview(QDir(xdgData).filePath(QStringLiteral("icons")));
 
     SettingsController settingsController;
     SettingsTranslationController translationController;
@@ -398,6 +481,7 @@ void SettingsQmlSmokeTest::loadsThemesRouteOffscreen()
     engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
     engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
     engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
     engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
 
     QCOMPARE(engine.rootObjects().size(), 1);
@@ -418,7 +502,11 @@ void SettingsQmlSmokeTest::loadsThemesRouteOffscreen()
 
     page->setProperty("searchQuery", QStringLiteral("does-not-match-any-installed-theme"));
     QTRY_COMPARE_WITH_TIMEOUT(page->property("cards").toList().size(), 1, 1000);
+    auto *emptySearch = findVisualItem(page, QStringLiteral("themes-empty-search-results"));
+    QVERIFY(emptySearch != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(emptySearch->property("visible").toBool(), 1000);
     page->setProperty("searchQuery", QString());
+    QTRY_VERIFY_WITH_TIMEOUT(!emptySearch->property("visible").toBool(), 1000);
 
     auto *window = qobject_cast<QQuickWindow *>(root);
     QVERIFY(window != nullptr);
@@ -435,6 +523,143 @@ void SettingsQmlSmokeTest::loadsThemesRouteOffscreen()
     QVERIFY(source.contains(QStringLiteral("No installed themes match your search.")));
     QVERIFY2(qmlWarnings.isEmpty(),
              qPrintable(qmlWarnings.isEmpty() ? QString() : qmlWarnings.constFirst().toString()));
+}
+
+void SettingsQmlSmokeTest::themesPageShowsInstalledCatalogAndSearchEmptyStates()
+{
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+    HomeEnvironmentGuard homeGuard(home.path());
+    const auto emptyData = QDir(home.path()).filePath(QStringLiteral("empty-xdg-data"));
+    QVERIFY(QDir().mkpath(emptyData));
+    XdgDataDirectoriesGuard dataGuard(emptyData);
+    writeHicolorFolderPreview(QDir(emptyData).filePath(QStringLiteral("icons")));
+
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+    QList<QQmlError> qmlWarnings;
+    connect(&engine, &QQmlApplicationEngine::warnings, this,
+            [&qmlWarnings](const QList<QQmlError> &warnings) { qmlWarnings.append(warnings); });
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("themes")));
+    auto *root = engine.rootObjects().constFirst();
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("themesPage")) != nullptr,
+                             1000);
+    auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(QStringLiteral("themesPage")));
+    QVERIFY(page != nullptr);
+    auto *emptyCatalog = findVisualItem(page, QStringLiteral("themes-empty-installed-catalog"));
+    auto *emptySearch = findVisualItem(page, QStringLiteral("themes-empty-search-results"));
+    QVERIFY(emptyCatalog != nullptr);
+    QVERIFY(emptySearch != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(emptyCatalog->property("visible").toBool(), 2000);
+    QVERIFY(!emptySearch->property("visible").toBool());
+
+    const auto cards = page->property("cards").toList();
+    QCOMPARE(cards.size(), 1);
+    const auto defaultCard = cards.constFirst().toMap();
+    const auto defaultPreviews = defaultCard.value(QStringLiteral("previewUrls")).toList();
+    QVERIFY(!defaultPreviews.isEmpty());
+    QCOMPARE(defaultPreviews.constFirst().toString(), QStringLiteral("image://astrea-icon/folder"));
+
+    page->setProperty("searchQuery", QStringLiteral("no-such-theme"));
+    QTRY_VERIFY_WITH_TIMEOUT(emptySearch->property("visible").toBool(), 1000);
+    QVERIFY(!emptyCatalog->property("visible").toBool());
+    page->setProperty("searchQuery", QString());
+    QTRY_VERIFY_WITH_TIMEOUT(emptyCatalog->property("visible").toBool(), 1000);
+    QVERIFY(!emptySearch->property("visible").toBool());
+    QVERIFY2(qmlWarnings.isEmpty(),
+             qPrintable(qmlWarnings.isEmpty() ? QString() : qmlWarnings.constFirst().toString()));
+}
+
+void SettingsQmlSmokeTest::themesPageReconcilesExternalPersistedSelectionOnRefresh()
+{
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+    HomeEnvironmentGuard homeGuard(home.path());
+    const auto xdgData = QDir(home.path()).filePath(QStringLiteral("xdg-data"));
+    QVERIFY(QDir().mkpath(xdgData));
+    XdgDataDirectoriesGuard dataGuard(xdgData);
+    const auto iconsRoot = QDir(home.path()).filePath(QStringLiteral(".icons"));
+    writeHicolorFolderPreview(QDir(xdgData).filePath(QStringLiteral("icons")));
+    const auto themeA = QStringLiteral("theme-a");
+    const auto themeB = QStringLiteral("theme-b");
+    writeIconTheme(iconsRoot, themeA, QStringLiteral("Theme A"));
+    writeIconTheme(iconsRoot, themeB, QStringLiteral("Theme B"));
+    const auto preferencePath = QDir(home.path()).filePath(
+        QStringLiteral(".config/AstreaOS/ui/theme.json"));
+    writeSystemIconThemePreference(preferencePath, themeA);
+
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("themes")));
+    auto *root = engine.rootObjects().constFirst();
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("themesPage")) != nullptr,
+                             1000);
+    auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(QStringLiteral("themesPage")));
+    QVERIFY(page != nullptr);
+    auto *controller = settingsController.themes();
+    const auto selectedTheme = [controller] {
+        return controller->property("selectedIconTheme").toString();
+    };
+    const auto refresh = [controller] {
+        return QMetaObject::invokeMethod(controller, "refresh");
+    };
+
+    QTRY_COMPARE_WITH_TIMEOUT(selectedTheme(), themeA, 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(!controller->property("busy").toBool(), 2000);
+    auto *cardA = findVisualItem(page, QStringLiteral("themeCard-theme-a"));
+    QVERIFY(cardA != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(cardA->property("selected").toBool(), 1000);
+
+    writeSystemIconThemePreference(preferencePath, themeB);
+    QVERIFY(refresh());
+    QTRY_COMPARE_WITH_TIMEOUT(selectedTheme(), themeB, 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(!controller->property("busy").toBool(), 2000);
+    auto *cardB = findVisualItem(page, QStringLiteral("themeCard-theme-b"));
+    QVERIFY(cardB != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(cardB->property("selected").toBool(), 1000);
+
+    QVERIFY(QDir(QDir(iconsRoot).filePath(themeB)).removeRecursively());
+    QVERIFY(refresh());
+    QTRY_COMPARE_WITH_TIMEOUT(selectedTheme(), QString(), 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(!controller->property("busy").toBool(), 2000);
+    QFile persistedPreference(preferencePath);
+    QVERIFY(persistedPreference.open(QIODevice::ReadOnly | QIODevice::Text));
+    auto persisted = QJsonDocument::fromJson(persistedPreference.readAll()).object();
+    QCOMPARE(persisted.value(QStringLiteral("system_icon_theme")).toString(), themeB);
+    QCOMPARE(persisted.value(QStringLiteral("unknown")).toInt(), 42);
+    persistedPreference.close();
+
+    writeIconTheme(iconsRoot, themeB, QStringLiteral("Theme B"));
+    QVERIFY(refresh());
+    QTRY_COMPARE_WITH_TIMEOUT(selectedTheme(), themeB, 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(!controller->property("busy").toBool(), 2000);
+
+    writeSystemIconThemePreference(preferencePath, QString());
+    QVERIFY(refresh());
+    QTRY_COMPARE_WITH_TIMEOUT(selectedTheme(), QString(), 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(!controller->property("busy").toBool(), 2000);
+    QVERIFY(persistedPreference.open(QIODevice::ReadOnly | QIODevice::Text));
+    persisted = QJsonDocument::fromJson(persistedPreference.readAll()).object();
+    QVERIFY(!persisted.contains(QStringLiteral("system_icon_theme")));
+    QCOMPARE(persisted.value(QStringLiteral("unknown")).toInt(), 42);
 }
 
 void SettingsQmlSmokeTest::appearancePreviewsUseCurrentWallpaperSnapshot()

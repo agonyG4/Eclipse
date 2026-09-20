@@ -63,8 +63,11 @@ impl std::error::Error for ThemeError {}
 
 impl ThemeCatalog {
     pub fn discover(search_roots: &[PathBuf]) -> Result<Self, ThemeError> {
-        let mut catalog = Self::default();
-        let mut first_hidden = HashSet::new();
+        let mut theme_order = Vec::new();
+        let mut roots_by_id = HashMap::<String, Vec<PathBuf>>::new();
+        let mut user_by_id = HashMap::<String, bool>::new();
+        let mut metadata_by_id = HashMap::<String, ParsedTheme>::new();
+        let mut indexed_ids = HashSet::new();
         for (root_index, root) in search_roots.iter().enumerate() {
             let entries = match fs::read_dir(root) {
                 Ok(entries) => entries,
@@ -85,33 +88,51 @@ impl ThemeCatalog {
                 if !valid_theme_id(&id) {
                     continue;
                 }
+                let roots = roots_by_id.entry(id.clone()).or_insert_with(|| {
+                    theme_order.push(id.clone());
+                    user_by_id.insert(id.clone(), root_index == 0 || is_user_path(root));
+                    Vec::new()
+                });
+                if !roots.contains(&path) {
+                    roots.push(path.clone());
+                }
+                if indexed_ids.contains(&id) {
+                    continue;
+                }
                 let index_path = path.join("index.theme");
                 if !index_path.is_file() {
                     continue;
                 }
                 let metadata = match parse_theme(&index_path, &id) {
                     Ok(metadata) => metadata,
-                    Err(error) => {
-                        if root_index_is_malformed(&error) {
-                            continue;
-                        }
-                        return Err(error);
-                    }
+                    Err(error) if root_index_is_malformed(&error) => continue,
+                    Err(error) => return Err(error),
                 };
-
-                if metadata.hidden && id != "hicolor" {
-                    if root_index_is_first(&catalog, &id) {
-                        first_hidden.insert(id.clone());
-                    }
-                    continue;
+                indexed_ids.insert(id.clone());
+                if !metadata.hidden || id == "hicolor" {
+                    metadata_by_id.insert(id, metadata);
                 }
-                if first_hidden.contains(&id) {
-                    continue;
-                }
-
-                let user = root_index == 0 || is_user_path(root);
-                catalog.merge(id, path, metadata, user);
             }
+        }
+
+        let mut catalog = Self::default();
+        for id in theme_order {
+            let Some(metadata) = metadata_by_id.remove(&id) else {
+                continue;
+            };
+            let roots = roots_by_id.remove(&id).unwrap_or_default();
+            let theme = ThemeDescriptor {
+                id: id.clone(),
+                name: metadata.name,
+                comment: metadata.comment,
+                inherits: metadata.inherits,
+                directories: metadata.directories,
+                roots,
+                example: metadata.example,
+                user: user_by_id.remove(&id).unwrap_or(false),
+            };
+            catalog.indexes.insert(id, catalog.themes.len());
+            catalog.themes.push(theme);
         }
         Ok(catalog)
     }
@@ -123,10 +144,18 @@ impl ThemeCatalog {
     }
 
     pub fn user_visible(&self) -> Vec<&ThemeDescriptor> {
-        self.themes
+        let mut themes = self
+            .themes
             .iter()
             .filter(|theme| theme.id != "hicolor")
-            .collect()
+            .collect::<Vec<_>>();
+        themes.sort_by(|left, right| {
+            left.name
+                .to_lowercase()
+                .cmp(&right.name.to_lowercase())
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        themes
     }
 
     pub fn themes(&self) -> &[ThemeDescriptor] {
@@ -135,34 +164,6 @@ impl ThemeCatalog {
 
     pub fn contains_visible(&self, id: &str) -> bool {
         id != "hicolor" && self.theme(id).is_some()
-    }
-
-    fn merge(&mut self, id: String, root: PathBuf, metadata: ParsedTheme, user: bool) {
-        if let Some(index) = self.indexes.get(&id).copied() {
-            let descriptor = &mut self.themes[index];
-            if !descriptor.roots.contains(&root) {
-                descriptor.roots.push(root);
-            }
-            for directory in metadata.directories {
-                if !descriptor.directories.contains(&directory) {
-                    descriptor.directories.push(directory);
-                }
-            }
-            return;
-        }
-
-        let descriptor = ThemeDescriptor {
-            id: id.clone(),
-            name: metadata.name,
-            comment: metadata.comment,
-            inherits: metadata.inherits,
-            directories: metadata.directories,
-            roots: vec![root],
-            example: metadata.example,
-            user,
-        };
-        self.indexes.insert(id, self.themes.len());
-        self.themes.push(descriptor);
     }
 }
 
@@ -287,9 +288,11 @@ fn parse_directory(
         .map(|value| value.to_ascii_lowercase())
         .as_deref()
     {
+        None => DirectoryType::Threshold,
+        Some("fixed") => DirectoryType::Fixed,
         Some("scalable") => DirectoryType::Scalable,
         Some("threshold") => DirectoryType::Threshold,
-        _ => DirectoryType::Fixed,
+        Some(_) => return None,
     };
     if !matches!(kind, DirectoryType::Scalable) && size.is_none() {
         return None;
@@ -376,10 +379,6 @@ fn valid_theme_id(id: &str) -> bool {
 fn is_user_path(path: &Path) -> bool {
     let home = std::env::var_os("HOME").map(PathBuf::from);
     home.is_some_and(|home| path.starts_with(home))
-}
-
-fn root_index_is_first(catalog: &ThemeCatalog, id: &str) -> bool {
-    catalog.theme(id).is_none()
 }
 
 fn root_index_is_malformed(error: &ThemeError) -> bool {

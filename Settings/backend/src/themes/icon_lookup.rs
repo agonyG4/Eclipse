@@ -57,9 +57,6 @@ impl PreviewResolver {
             return Some(path);
         }
         for inherited in &theme.inherits {
-            if inherited == "hicolor" {
-                continue;
-            }
             if let Some(path) =
                 self.resolve_theme(inherited, icon_name, size, scale, depth + 1, visited)
             {
@@ -233,7 +230,7 @@ mod tests {
         write_theme(
             root.path(),
             "preview-theme",
-            "[Icon Theme]\nName=Preview\nDirectories=48x48/apps,threshold/apps,scalable/apps\nScaledDirectories=24x24/apps\n\n[48x48/apps]\nSize=48\nType=Fixed\n\n[threshold/apps]\nSize=32\nType=Threshold\nThreshold=4\n\n[scalable/apps]\nMinSize=16\nMaxSize=128\nType=Scalable\n\n[24x24/apps]\nSize=24\nScale=2\nType=Fixed\n",
+            "[Icon Theme]\nName=Preview\nDirectories=48x48/apps,threshold/apps,scalable/apps\nScaledDirectories=24x24/apps\n\n[48x48/apps]\nSize=48\nType=Fixed\n\n[threshold/apps]\nSize=32\nType=Threshold\nThreshold=4\n\n[scalable/apps]\nSize=48\nMinSize=16\nMaxSize=128\nType=Scalable\n\n[24x24/apps]\nSize=24\nScale=2\nType=Fixed\n",
         );
         write_theme(
             root.path(),
@@ -315,13 +312,41 @@ mod tests {
     }
 
     #[test]
+    fn explicit_hicolor_inheritance_precedes_later_parents() {
+        let root = TempDir::new().unwrap();
+        write_theme(
+            root.path(),
+            "child",
+            "[Icon Theme]\nName=Child\nInherits=hicolor,OtherTheme\nDirectories=48x48/apps\n\n[48x48/apps]\nSize=48\nType=Fixed\n",
+        );
+        write_theme(
+            root.path(),
+            "hicolor",
+            "[Icon Theme]\nName=hicolor\nDirectories=48x48/apps\n\n[48x48/apps]\nSize=48\nType=Fixed\n",
+        );
+        write_theme(
+            root.path(),
+            "OtherTheme",
+            "[Icon Theme]\nName=Other Theme\nDirectories=48x48/apps\n\n[48x48/apps]\nSize=48\nType=Fixed\n",
+        );
+        write_icon(root.path(), "hicolor", "48x48/apps", "folder.png");
+        write_icon(root.path(), "OtherTheme", "48x48/apps", "folder.png");
+
+        let catalog = ThemeCatalog::discover(&[root.path().into()]).unwrap();
+        let path = PreviewResolver::new(catalog)
+            .resolve("child", "folder", 48, 1)
+            .unwrap();
+        assert!(path.starts_with(root.path().join("hicolor")));
+    }
+
+    #[test]
     fn exact_phase_checks_every_declared_directory_before_closest_fallback() {
         let user = TempDir::new().unwrap();
         let system = TempDir::new().unwrap();
         write_theme(
             user.path(),
             "ordered-theme",
-            "[Icon Theme]\nName=Ordered\nDirectories=scalable/apps,48x48/apps\n\n[scalable/apps]\nMinSize=16\nMaxSize=32\nType=Scalable\n\n[48x48/apps]\nSize=48\nType=Fixed\n",
+            "[Icon Theme]\nName=Ordered\nDirectories=scalable/apps,48x48/apps\n\n[scalable/apps]\nSize=24\nMinSize=16\nMaxSize=32\nType=Scalable\n\n[48x48/apps]\nSize=48\nType=Fixed\n",
         );
         write_theme(
             system.path(),

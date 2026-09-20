@@ -276,11 +276,9 @@ fn parse_directory(
     scaled: bool,
 ) -> Option<DirectorySpec> {
     let section = section?;
-    let size = parse_u32(section.get("Size"));
-    let min_size = parse_u32(section.get("MinSize")).or(size).unwrap_or(0);
-    let max_size = parse_u32(section.get("MaxSize"))
-        .or(size)
-        .unwrap_or(min_size);
+    let size = parse_u32(section.get("Size"))?;
+    let min_size = parse_u32(section.get("MinSize")).unwrap_or(size);
+    let max_size = parse_u32(section.get("MaxSize")).unwrap_or(size);
     let threshold = parse_u32(section.get("Threshold")).unwrap_or(2);
     let scale = parse_u32(section.get("Scale")).unwrap_or(1).max(1);
     let kind = match section
@@ -294,13 +292,10 @@ fn parse_directory(
         Some("threshold") => DirectoryType::Threshold,
         Some(_) => return None,
     };
-    if !matches!(kind, DirectoryType::Scalable) && size.is_none() {
-        return None;
-    }
     if scaled || section.contains_key("Scale") {
         return Some(DirectorySpec {
             path: name.to_owned(),
-            size: size.unwrap_or(min_size),
+            size,
             min_size,
             max_size,
             threshold,
@@ -310,7 +305,7 @@ fn parse_directory(
     }
     Some(DirectorySpec {
         path: name.to_owned(),
-        size: size.unwrap_or(min_size),
+        size,
         min_size,
         max_size,
         threshold,
@@ -373,7 +368,14 @@ fn parse_u32(value: Option<&String>) -> Option<u32> {
 }
 
 fn valid_theme_id(id: &str) -> bool {
-    !id.is_empty() && id != "." && id != ".." && !id.contains('/') && !id.contains('\\')
+    !id.is_empty()
+        && id.is_ascii()
+        && !id.contains(',')
+        && !id.chars().any(char::is_whitespace)
+        && id != "."
+        && id != ".."
+        && !id.contains('/')
+        && !id.contains('\\')
 }
 
 fn is_user_path(path: &Path) -> bool {
@@ -383,4 +385,64 @@ fn is_user_path(path: &Path) -> bool {
 
 fn root_index_is_malformed(error: &ThemeError) -> bool {
     matches!(error, ThemeError::InvalidMetadata { .. })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DirectoryType, parse_directory, valid_theme_id};
+    use std::collections::HashMap;
+
+    #[test]
+    fn freedesktop_theme_ids_follow_internal_name_constraints() {
+        for id in ["Adwaita", "High-Contrast_2.0", "Oasis", "oasis"] {
+            assert!(valid_theme_id(id), "expected {id:?} to be valid");
+        }
+
+        for id in [
+            "",
+            ".",
+            "..",
+            "with,comma",
+            "with space",
+            "with\ttab",
+            "with\nnewline",
+            "café",
+            "with/slash",
+            "with\\backslash",
+        ] {
+            assert!(!valid_theme_id(id), "expected {id:?} to be invalid");
+        }
+    }
+
+    #[test]
+    fn scalable_directories_require_size_and_keep_optional_defaults() {
+        let malformed = HashMap::from([
+            (String::from("Type"), String::from("Scalable")),
+            (String::from("MinSize"), String::from("16")),
+            (String::from("MaxSize"), String::from("256")),
+        ]);
+        assert!(parse_directory("scalable/apps", Some(&malformed), false).is_none());
+
+        let valid = HashMap::from([
+            (String::from("Size"), String::from("48")),
+            (String::from("Type"), String::from("Scalable")),
+            (String::from("MinSize"), String::from("16")),
+            (String::from("MaxSize"), String::from("256")),
+        ]);
+        let directory = parse_directory("scalable/apps", Some(&valid), false).unwrap();
+        assert_eq!(directory.size, 48);
+        assert_eq!(directory.min_size, 16);
+        assert_eq!(directory.max_size, 256);
+        assert_eq!(directory.scale, 1);
+        assert_eq!(directory.threshold, 2);
+        assert_eq!(directory.kind, DirectoryType::Scalable);
+
+        let defaults = HashMap::from([(String::from("Size"), String::from("32"))]);
+        let directory = parse_directory("32x32/apps", Some(&defaults), false).unwrap();
+        assert_eq!(directory.min_size, 32);
+        assert_eq!(directory.max_size, 32);
+        assert_eq!(directory.scale, 1);
+        assert_eq!(directory.threshold, 2);
+        assert_eq!(directory.kind, DirectoryType::Threshold);
+    }
 }

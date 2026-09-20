@@ -78,6 +78,8 @@ bool SettingsApplication::initializeQml()
                                                 m_translationController.get());
     m_engine->rootContext()->setContextProperty(QStringLiteral("ThemeController"),
                                                 m_themeController.get());
+    m_engine->rootContext()->setContextProperty(QStringLiteral("AstreaIconProvider"),
+                                                m_iconProvider);
 
     m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
     if (m_engine->rootObjects().size() != 1) {

@@ -3,9 +3,21 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSaveFile>
 #include <QTemporaryDir>
 #include <QTextStream>
 #include <QtTest>
+
+#include <algorithm>
+#include <chrono>
+#include <csignal>
+#include <future>
+#include <thread>
+
+#include <fcntl.h>
+#include <sys/file.h>
+#include <sys/resource.h>
+#include <unistd.h>
 
 namespace {
 
@@ -27,6 +39,40 @@ QJsonObject readConfig(const QString &path)
     return QJsonDocument::fromJson(file.readAll()).object();
 }
 
+bool writeConfigAtomically(const QString &path, const QJsonObject &object)
+{
+    QSaveFile file(path);
+    file.setDirectWriteFallback(false);
+    if (!file.open(QIODevice::WriteOnly))
+        return false;
+    const QByteArray bytes = QJsonDocument(object).toJson(QJsonDocument::Indented);
+    if (file.write(bytes) != bytes.size()) {
+        file.cancelWriting();
+        return false;
+    }
+    return file.commit();
+}
+
+int acquireConfigLock(const QString &path)
+{
+    const QByteArray lockPath = QFile::encodeName(path + QStringLiteral(".lock"));
+    const int descriptor = ::open(lockPath.constData(), O_CREAT | O_RDWR | O_CLOEXEC, 0666);
+    if (descriptor < 0)
+        return -1;
+    if (::flock(descriptor, LOCK_EX) == 0)
+        return descriptor;
+    ::close(descriptor);
+    return -1;
+}
+
+void releaseConfigLock(int descriptor)
+{
+    if (descriptor >= 0) {
+        ::flock(descriptor, LOCK_UN);
+        ::close(descriptor);
+    }
+}
+
 } // namespace
 
 class ThemeControllerTest final : public QObject {
@@ -40,6 +86,9 @@ private slots:
     void iconAppearanceResetsOnCompleteReplacement();
     void iconAppearancePersistsWithoutChangingLegacyFields();
     void savePreservesRustAndUnknownKeys();
+    void saveWaitsForRustTransactionAndPreservesBothUpdates();
+    void saveDoesNotOverwriteMalformedConfig();
+    void failedAtomicSaveLeavesPreviousConfigIntact();
     void legacyIconFieldsDoNotMigrateToAppearance();
     void iconAppearancePreservesUnrelatedThemeState();
     void loadsLegacyConfigValues();
@@ -157,7 +206,7 @@ void ThemeControllerTest::savePreservesRustAndUnknownKeys()
     QVERIFY(directory.isValid());
     const QString path = writeConfig(
         directory,
-        R"({"system_icon_theme":"Breeze","future_setting":{"enabled":true},"icon_theme":"legacy"})");
+        R"({"accent":"#123456","theme_preference":"auto","icon_appearance":"default","system_icon_theme":"Breeze","future_setting":{"enabled":true},"icon_theme":"legacy"})");
     QVERIFY(!path.isEmpty());
 
     ThemeController controller(path);
@@ -166,10 +215,111 @@ void ThemeControllerTest::savePreservesRustAndUnknownKeys()
 
     const QJsonObject saved = readConfig(path);
     QCOMPARE(saved.value(QStringLiteral("system_icon_theme")).toString(), QStringLiteral("Breeze"));
+    QCOMPARE(saved.value(QStringLiteral("theme_preference")).toString(), QStringLiteral("auto"));
+    QCOMPARE(saved.value(QStringLiteral("icon_appearance")).toString(), QStringLiteral("default"));
     QCOMPARE(saved.value(QStringLiteral("future_setting")).toObject().value(QStringLiteral("enabled")),
              QJsonValue(true));
     QCOMPARE(saved.value(QStringLiteral("icon_theme")).toString(), QStringLiteral("legacy"));
     QCOMPARE(saved.value(QStringLiteral("accent")).toString(), QStringLiteral("#30d158"));
+}
+
+void ThemeControllerTest::saveWaitsForRustTransactionAndPreservesBothUpdates()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = writeConfig(
+        directory,
+        R"({"accent":"#123456","theme_preference":"auto","icon_appearance":"default","system_icon_theme":"Before","future_setting":{"enabled":true}})");
+    QVERIFY(!path.isEmpty());
+
+    // The test-owned lock and read model Rust holding the common advisory lock.
+    const int lock = acquireConfigLock(path);
+    QVERIFY(lock >= 0);
+    QJsonObject rustObject = readConfig(path);
+    QCOMPARE(rustObject.value(QStringLiteral("system_icon_theme")).toString(),
+             QStringLiteral("Before"));
+
+    std::promise<void> saveAttempted;
+    std::promise<void> saveCompleted;
+    auto completed = saveCompleted.get_future();
+    std::thread cppWriter([&] {
+        ThemeController controller(path);
+        controller.setThemePreference(QStringLiteral("light"));
+        controller.setIconAppearance(QStringLiteral("monochrome"));
+        controller.setAccentHex(QStringLiteral("#30d158"));
+        saveAttempted.set_value();
+        controller.save();
+        saveCompleted.set_value();
+    });
+
+    saveAttempted.get_future().wait();
+    const bool completedWhileRustHeldLock =
+        completed.wait_for(std::chrono::milliseconds(250)) == std::future_status::ready;
+
+    rustObject.insert(QStringLiteral("system_icon_theme"), QStringLiteral("Nordic"));
+    const bool rustCommitSucceeded = writeConfigAtomically(path, rustObject);
+    releaseConfigLock(lock);
+    cppWriter.join();
+
+    QVERIFY(rustCommitSucceeded);
+    QVERIFY(!completedWhileRustHeldLock);
+    const QJsonObject saved = readConfig(path);
+    QCOMPARE(saved.value(QStringLiteral("accent")).toString(), QStringLiteral("#30d158"));
+    QCOMPARE(saved.value(QStringLiteral("theme_preference")).toString(), QStringLiteral("light"));
+    QCOMPARE(saved.value(QStringLiteral("icon_appearance")).toString(), QStringLiteral("monochrome"));
+    QCOMPARE(saved.value(QStringLiteral("system_icon_theme")).toString(), QStringLiteral("Nordic"));
+    QCOMPARE(saved.value(QStringLiteral("future_setting")).toObject()
+                 .value(QStringLiteral("enabled")), QJsonValue(true));
+}
+
+void ThemeControllerTest::saveDoesNotOverwriteMalformedConfig()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QByteArray malformed = QByteArrayLiteral("{ malformed");
+    const QString path = writeConfig(directory, malformed);
+    QVERIFY(!path.isEmpty());
+
+    ThemeController controller(path);
+    controller.setAccentHex(QStringLiteral("#30d158"));
+    controller.save();
+
+    QFile saved(path);
+    QVERIFY(saved.open(QIODevice::ReadOnly));
+    QCOMPARE(saved.readAll(), malformed);
+}
+
+void ThemeControllerTest::failedAtomicSaveLeavesPreviousConfigIntact()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QByteArray original = QByteArrayLiteral(R"({"system_icon_theme":"Before"})");
+    const QString path = writeConfig(directory, original);
+    QVERIFY(!path.isEmpty());
+
+    struct rlimit previousLimit {};
+    if (::getrlimit(RLIMIT_FSIZE, &previousLimit) != 0)
+        QSKIP("RLIMIT_FSIZE is unavailable");
+    const auto oldSignalHandler = std::signal(SIGXFSZ, SIG_IGN);
+    struct rlimit limited = previousLimit;
+    const rlim_t targetLimit = 64;
+    limited.rlim_cur = previousLimit.rlim_max == RLIM_INFINITY
+        ? targetLimit : std::min(targetLimit, previousLimit.rlim_max);
+    if (::setrlimit(RLIMIT_FSIZE, &limited) != 0) {
+        std::signal(SIGXFSZ, oldSignalHandler);
+        QSKIP("Could not set a small file-size limit");
+    }
+
+    ThemeController controller(path);
+    controller.setAccentHex(QStringLiteral("#30d158"));
+    controller.save();
+
+    const int restoreResult = ::setrlimit(RLIMIT_FSIZE, &previousLimit);
+    std::signal(SIGXFSZ, oldSignalHandler);
+    QVERIFY(restoreResult == 0);
+    QFile saved(path);
+    QVERIFY(saved.open(QIODevice::ReadOnly));
+    QCOMPARE(saved.readAll(), original);
 }
 
 void ThemeControllerTest::legacyIconFieldsDoNotMigrateToAppearance()

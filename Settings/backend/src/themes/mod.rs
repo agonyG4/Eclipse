@@ -264,6 +264,37 @@ mod tests {
     }
 
     #[test]
+    fn catalog_omits_scalable_directory_without_required_size() {
+        let root = TempDir::new().unwrap();
+        write_theme(
+            root.path(),
+            "scalable-metadata",
+            "[Icon Theme]\nName=Scalable Metadata\nDirectories=scalable/apps,valid-scalable/apps\n\n[scalable/apps]\nType=Scalable\nMinSize=16\nMaxSize=256\n\n[valid-scalable/apps]\nSize=48\nType=Scalable\nMinSize=16\nMaxSize=256\n",
+        );
+
+        let catalog = ThemeCatalog::discover(&[root.path().into()]).unwrap();
+        let directories = &catalog.theme("scalable-metadata").unwrap().directories;
+        assert_eq!(directories.len(), 1);
+        assert_eq!(directories[0].path, "valid-scalable/apps");
+        assert_eq!(directories[0].size, 48);
+        assert_eq!(directories[0].min_size, 16);
+        assert_eq!(directories[0].max_size, 256);
+    }
+
+    #[test]
+    fn catalog_keeps_theme_ids_case_sensitive() {
+        let root = TempDir::new().unwrap();
+        let metadata = "[Icon Theme]\nDirectories=48/apps\n\n[48/apps]\nSize=48\nType=Fixed\n";
+        write_theme(root.path(), "Oasis", metadata);
+        write_theme(root.path(), "oasis", metadata);
+
+        let catalog = ThemeCatalog::discover(&[root.path().into()]).unwrap();
+        assert_eq!(catalog.theme("Oasis").unwrap().id, "Oasis");
+        assert_eq!(catalog.theme("oasis").unwrap().id, "oasis");
+        assert_eq!(catalog.themes().len(), 2);
+    }
+
+    #[test]
     fn config_updates_preserve_unrelated_keys_and_clear_only_selection() {
         let directory = TempDir::new().unwrap();
         let path = directory.path().join("theme.json");

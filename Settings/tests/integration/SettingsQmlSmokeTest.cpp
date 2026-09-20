@@ -474,6 +474,7 @@ void SettingsQmlSmokeTest::loadsThemesRouteOffscreen()
     SettingsTranslationController translationController;
     ThemeController themeController;
     QQmlApplicationEngine engine;
+    auto *iconProvider = new AstreaIconProvider;
     QList<QQmlError> qmlWarnings;
     connect(&engine, &QQmlApplicationEngine::warnings, this,
             [&qmlWarnings](const QList<QQmlError> &warnings) { qmlWarnings.append(warnings); });
@@ -481,7 +482,8 @@ void SettingsQmlSmokeTest::loadsThemesRouteOffscreen()
     engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
     engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
     engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
-    engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+    engine.rootContext()->setContextProperty(QStringLiteral("AstreaIconProvider"), iconProvider);
+    engine.addImageProvider(QStringLiteral("astrea-icon"), iconProvider);
     engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
 
     QCOMPARE(engine.rootObjects().size(), 1);
@@ -539,13 +541,15 @@ void SettingsQmlSmokeTest::themesPageShowsInstalledCatalogAndSearchEmptyStates()
     SettingsTranslationController translationController;
     ThemeController themeController;
     QQmlApplicationEngine engine;
+    auto *iconProvider = new AstreaIconProvider;
     QList<QQmlError> qmlWarnings;
     connect(&engine, &QQmlApplicationEngine::warnings, this,
             [&qmlWarnings](const QList<QQmlError> &warnings) { qmlWarnings.append(warnings); });
     engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
     engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
     engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
-    engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+    engine.rootContext()->setContextProperty(QStringLiteral("AstreaIconProvider"), iconProvider);
+    engine.addImageProvider(QStringLiteral("astrea-icon"), iconProvider);
     engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
 
     QCOMPARE(engine.rootObjects().size(), 1);
@@ -567,7 +571,19 @@ void SettingsQmlSmokeTest::themesPageShowsInstalledCatalogAndSearchEmptyStates()
     const auto defaultCard = cards.constFirst().toMap();
     const auto defaultPreviews = defaultCard.value(QStringLiteral("previewUrls")).toList();
     QVERIFY(!defaultPreviews.isEmpty());
-    QCOMPARE(defaultPreviews.constFirst().toString(), QStringLiteral("image://astrea-icon/folder"));
+    const QString initialPreview = defaultPreviews.constFirst().toString();
+    QCOMPARE(initialPreview,
+             QStringLiteral("image://astrea-icon/folder?revision=%1")
+                 .arg(iconProvider->themeRevision()));
+
+    iconProvider->clearCache();
+    const QString refreshedPreview = QStringLiteral("image://astrea-icon/folder?revision=%1")
+                                         .arg(iconProvider->themeRevision());
+    QVERIFY(refreshedPreview != initialPreview);
+    QTRY_COMPARE_WITH_TIMEOUT(
+        page->property("cards").toList().constFirst().toMap()
+            .value(QStringLiteral("previewUrls")).toList().constFirst().toString(),
+        refreshedPreview, 1000);
 
     page->setProperty("searchQuery", QStringLiteral("no-such-theme"));
     QTRY_VERIFY_WITH_TIMEOUT(emptySearch->property("visible").toBool(), 1000);
@@ -601,10 +617,12 @@ void SettingsQmlSmokeTest::themesPageReconcilesExternalPersistedSelectionOnRefre
     SettingsTranslationController translationController;
     ThemeController themeController;
     QQmlApplicationEngine engine;
+    auto *iconProvider = new AstreaIconProvider;
     engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
     engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
     engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
-    engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+    engine.rootContext()->setContextProperty(QStringLiteral("AstreaIconProvider"), iconProvider);
+    engine.addImageProvider(QStringLiteral("astrea-icon"), iconProvider);
     engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
 
     QCOMPARE(engine.rootObjects().size(), 1);

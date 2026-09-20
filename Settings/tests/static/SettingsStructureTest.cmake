@@ -150,11 +150,19 @@ if(settings_core_cmake MATCHES "target_link_libraries\\(astrea-settings-core PUB
 endif()
 foreach(redundant_context_property IN ITEMS
     "setContextProperty(QStringLiteral(\"WallpaperController\")"
-    "setContextProperty(QStringLiteral(\"AstreaIconProvider\")"
 )
     string(FIND "${settings_application_source}" "${redundant_context_property}" context_property_position)
     if(NOT context_property_position EQUAL -1)
         message(FATAL_ERROR "Redundant Settings context property returned: ${redundant_context_property}")
+    endif()
+endforeach()
+foreach(required_icon_provider_binding IN ITEMS
+    "addImageProvider(QStringLiteral(\"astrea-icon\"), m_iconProvider)"
+    "setContextProperty(QStringLiteral(\"AstreaIconProvider\")"
+)
+    string(FIND "${settings_application_source}" "${required_icon_provider_binding}" binding_position)
+    if(binding_position EQUAL -1)
+        message(FATAL_ERROR "Settings must expose its existing AstreaIconProvider: ${required_icon_provider_binding}")
     endif()
 endforeach()
 

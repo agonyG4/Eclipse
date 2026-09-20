@@ -10,6 +10,11 @@ Item {
     objectName: "themesPage"
 
     readonly property var controller: SettingsController.themes
+    readonly property int iconThemeRevision: {
+        if (typeof AstreaIconProvider !== "undefined" && AstreaIconProvider)
+            return AstreaIconProvider.themeRevision
+        return 0
+    }
     property string searchQuery: ""
     readonly property var filteredThemes: {
         const query = root.searchQuery.trim().toLowerCase()
@@ -26,7 +31,7 @@ Item {
             name: I18n.tr("apps.settings.pages.themes.system_default", "System Default"),
             comment: I18n.tr("apps.settings.pages.themes.system_default_comment", "Use the active desktop icon theme"),
             source: "system",
-            previewUrls: ["image://astrea-icon/folder"]
+            previewUrls: ["image://astrea-icon/folder?revision=" + root.iconThemeRevision]
         }]
         for (let index = 0; index < root.filteredThemes.length; ++index)
             values.push(root.filteredThemes[index])

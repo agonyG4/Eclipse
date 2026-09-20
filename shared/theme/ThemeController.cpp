@@ -7,8 +7,53 @@
 #include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSaveFile>
 
+#include <cerrno>
+#include <fcntl.h>
+#include <sys/file.h>
+#include <unistd.h>
 #include <utility>
+
+namespace {
+
+class ConfigFileLock final {
+public:
+    explicit ConfigFileLock(const QString &configPath)
+    {
+        const QByteArray lockPath = QFile::encodeName(configPath + QStringLiteral(".lock"));
+        m_descriptor = ::open(lockPath.constData(), O_CREAT | O_RDWR | O_CLOEXEC, 0666);
+        if (m_descriptor < 0)
+            return;
+
+        int result = -1;
+        do {
+            result = ::flock(m_descriptor, LOCK_EX);
+        } while (result < 0 && errno == EINTR);
+        if (result < 0) {
+            ::close(m_descriptor);
+            m_descriptor = -1;
+        }
+    }
+
+    ~ConfigFileLock()
+    {
+        if (m_descriptor >= 0) {
+            ::flock(m_descriptor, LOCK_UN);
+            ::close(m_descriptor);
+        }
+    }
+
+    ConfigFileLock(const ConfigFileLock &) = delete;
+    ConfigFileLock &operator=(const ConfigFileLock &) = delete;
+
+    bool isLocked() const { return m_descriptor >= 0; }
+
+private:
+    int m_descriptor = -1;
+};
+
+} // namespace
 
 ThemeController::ThemeController(const QString &configPath, QObject *parent,
                                  ColorSchemeProvider colorSchemeProvider)
@@ -176,36 +221,50 @@ void ThemeController::reload()
 
 void ThemeController::save()
 {
-    QDir().mkpath(QFileInfo(m_configPath).absolutePath());
-
-    QJsonObject object;
-    if (QFileInfo::exists(m_configPath)) {
-        QFile existing(m_configPath);
-        if (!existing.open(QIODevice::ReadOnly))
-            return;
-        QJsonParseError error;
-        const QJsonDocument document = QJsonDocument::fromJson(existing.readAll(), &error);
-        if (error.error != QJsonParseError::NoError || !document.isObject())
-            return;
-        object = document.object();
-    }
-
-    // ThemeController owns the legacy appearance keys only. Keep newer or
-    // domain-specific keys, including Rust-owned system_icon_theme, intact.
-    object.insert(QStringLiteral("theme_preference"), m_themePreference);
-    object.insert(QStringLiteral("theme"), m_themeMode == 1 ? QStringLiteral("light") : QStringLiteral("dark"));
-    object.insert(QStringLiteral("theme_mode"), m_themeMode);
-    object.insert(QStringLiteral("shell_style"), m_shellStyle);
-    object.insert(QStringLiteral("accent"), m_accentHex);
-    object.insert(QStringLiteral("icon_style"), m_iconStyle);
-    object.insert(QStringLiteral("icon_theme"), m_iconTheme);
-    object.insert(QStringLiteral("icon_appearance"), m_iconAppearance);
-    object.insert(QStringLiteral("audio_osd_style"), m_audioOsdStyle);
-
-    QFile file(m_configPath);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+    if (!QDir().mkpath(QFileInfo(m_configPath).absolutePath()))
         return;
-    file.write(QJsonDocument(object).toJson(QJsonDocument::Indented));
+
+    {
+        const ConfigFileLock lock(m_configPath);
+        if (!lock.isLocked())
+            return;
+
+        QJsonObject object;
+        if (QFileInfo::exists(m_configPath)) {
+            QFile existing(m_configPath);
+            if (!existing.open(QIODevice::ReadOnly))
+                return;
+            QJsonParseError error;
+            const QJsonDocument document = QJsonDocument::fromJson(existing.readAll(), &error);
+            if (error.error != QJsonParseError::NoError || !document.isObject())
+                return;
+            object = document.object();
+        }
+
+        // ThemeController owns the legacy appearance keys only. Keep newer or
+        // domain-specific keys, including Rust-owned system_icon_theme, intact.
+        object.insert(QStringLiteral("theme_preference"), m_themePreference);
+        object.insert(QStringLiteral("theme"), m_themeMode == 1 ? QStringLiteral("light") : QStringLiteral("dark"));
+        object.insert(QStringLiteral("theme_mode"), m_themeMode);
+        object.insert(QStringLiteral("shell_style"), m_shellStyle);
+        object.insert(QStringLiteral("accent"), m_accentHex);
+        object.insert(QStringLiteral("icon_style"), m_iconStyle);
+        object.insert(QStringLiteral("icon_theme"), m_iconTheme);
+        object.insert(QStringLiteral("icon_appearance"), m_iconAppearance);
+        object.insert(QStringLiteral("audio_osd_style"), m_audioOsdStyle);
+
+        QSaveFile file(m_configPath);
+        file.setDirectWriteFallback(false);
+        if (!file.open(QIODevice::WriteOnly))
+            return;
+        const QByteArray bytes = QJsonDocument(object).toJson(QJsonDocument::Indented);
+        if (file.write(bytes) != bytes.size()) {
+            file.cancelWriting();
+            return;
+        }
+        if (!file.commit())
+            return;
+    }
     updateWatchPaths();
 }
 

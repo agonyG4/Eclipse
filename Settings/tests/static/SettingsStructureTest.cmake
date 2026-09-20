@@ -95,6 +95,10 @@ endforeach()
 file(READ "${SETTINGS_SOURCE_DIR}/core/CMakeLists.txt" settings_core_cmake)
 file(READ "${SETTINGS_SOURCE_DIR}/CMakeLists.txt" settings_root_cmake)
 file(READ "${SETTINGS_SOURCE_DIR}/cmake/RustBackend.cmake" settings_rust_backend_cmake)
+set(shared_cxxqt_backend_cmake "")
+if(EXISTS "${SETTINGS_SOURCE_DIR}/../cmake/AstreaCxxQtBackend.cmake")
+    file(READ "${SETTINGS_SOURCE_DIR}/../cmake/AstreaCxxQtBackend.cmake" shared_cxxqt_backend_cmake)
+endif()
 file(READ "${SETTINGS_SOURCE_DIR}/tests/CMakeLists.txt" settings_tests_cmake)
 file(READ "${SETTINGS_SOURCE_DIR}/app/SettingsApplication.cpp" settings_application_source)
 if(settings_tests_cmake MATCHES "qt_add_qml_module")
@@ -122,16 +126,37 @@ foreach(rust_boundary_token IN ITEMS
     "backend/Cargo.toml"
     "astrea_settings_backend"
     "LOCKED"
-    "CRATES astrea_settings_backend"
     "QMAKE"
     "Qt6Core_DIR"
     "QT_INSTALL_PREFIX"
 )
-    string(FIND "${settings_root_cmake}${settings_core_cmake}${settings_rust_backend_cmake}" "${rust_boundary_token}" rust_boundary_position)
+    string(FIND "${settings_root_cmake}${settings_core_cmake}${settings_rust_backend_cmake}${shared_cxxqt_backend_cmake}" "${rust_boundary_token}" rust_boundary_position)
     if(rust_boundary_position EQUAL -1)
         message(FATAL_ERROR "Settings Rust/CXX-Qt boundary is missing '${rust_boundary_token}'")
     endif()
 endforeach()
+string(FIND "${settings_rust_backend_cmake}" "CRATES astrea_settings_backend" direct_settings_crate_position)
+if(direct_settings_crate_position EQUAL -1)
+    foreach(settings_crate_token IN ITEMS
+        "astrea_add_cxx_qt_crate("
+        "CRATE_NAME astrea_settings_backend"
+    )
+        string(FIND "${settings_rust_backend_cmake}" "${settings_crate_token}" settings_crate_position)
+        if(settings_crate_position EQUAL -1)
+            message(FATAL_ERROR "Settings CXX-Qt crate registration is missing '${settings_crate_token}'")
+        endif()
+    endforeach()
+    foreach(shared_crate_token IN ITEMS
+        "cxx_qt_import_crate("
+        "CRATES"
+        "args_CRATE_NAME"
+    )
+        string(FIND "${shared_cxxqt_backend_cmake}" "${shared_crate_token}" shared_crate_position)
+        if(shared_crate_position EQUAL -1)
+            message(FATAL_ERROR "Shared CXX-Qt crate helper is missing '${shared_crate_token}'")
+        endif()
+    endforeach()
+endif()
 foreach(superseded_animation_path IN ITEMS
     services/animation/SettingsAnimationController.cpp
     services/animation/SettingsAnimationController.hpp

@@ -23,6 +23,7 @@ pub mod qobject {
         #[qproperty(QList_QVariant, themes, READ = themes, NOTIFY = themes_changed)]
         #[qproperty(QString, selected_icon_theme, cxx_name = "selectedIconTheme", READ = selected_icon_theme, NOTIFY = selected_icon_theme_changed)]
         #[qproperty(bool, busy, READ = busy, NOTIFY = busy_changed)]
+        #[qproperty(bool, refreshing, READ = refreshing, NOTIFY = refreshing_changed)]
         #[qproperty(QString, last_error, cxx_name = "lastError", READ = last_error, NOTIFY = error_changed)]
         type SettingsThemesController = super::SettingsThemesControllerRust;
     }
@@ -32,6 +33,7 @@ pub mod qobject {
         #[cxx_name = "selectedIconTheme"]
         fn selected_icon_theme(self: &SettingsThemesController) -> QString;
         fn busy(self: &SettingsThemesController) -> bool;
+        fn refreshing(self: &SettingsThemesController) -> bool;
         #[cxx_name = "lastError"]
         fn last_error(self: &SettingsThemesController) -> QString;
 
@@ -44,6 +46,9 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "busyChanged"]
         fn busy_changed(self: Pin<&mut SettingsThemesController>);
+        #[qsignal]
+        #[cxx_name = "refreshingChanged"]
+        fn refreshing_changed(self: Pin<&mut SettingsThemesController>);
         #[qsignal]
         #[cxx_name = "errorChanged"]
         fn error_changed(self: Pin<&mut SettingsThemesController>);
@@ -86,6 +91,7 @@ struct PendingSelection {
 #[derive(Default)]
 struct ControllerEffects {
     busy_changed: bool,
+    refreshing_changed: bool,
     themes_changed: bool,
     selected_icon_theme_changed: bool,
     error_changed: bool,
@@ -111,6 +117,13 @@ impl Default for SettingsThemesControllerRust {
 }
 
 impl SettingsThemesControllerRust {
+    fn effective_selected(&self) -> Option<&str> {
+        match self.pending_selection.as_ref() {
+            Some(pending) => pending.selected.as_deref(),
+            None => self.selection.selected(),
+        }
+    }
+
     fn reconcile_configured_selection(&mut self, configured: Option<String>) {
         self.configured_selection = configured.clone();
         if let Some(configured) = configured
@@ -134,7 +147,9 @@ impl SettingsThemesControllerRust {
                 if generation < self.generation {
                     return effects;
                 }
+                let was_refreshing = self.refresh_busy;
                 self.refresh_busy = false;
+                effects.refreshing_changed = was_refreshing;
                 effects.busy_changed = self.update_busy();
                 match snapshot {
                     Ok(ThemeSnapshot {
@@ -142,7 +157,7 @@ impl SettingsThemesControllerRust {
                         previews,
                         configured_selection,
                     }) => {
-                        let previous = self.selection.selected().map(str::to_owned);
+                        let previous = self.effective_selected().map(str::to_owned);
                         self.selection.replace_catalog(catalog);
                         self.previews = previews;
                         let preference_error = if self.pending_selection.is_none() {
@@ -161,7 +176,7 @@ impl SettingsThemesControllerRust {
                         } else {
                             None
                         };
-                        let current = self.selection.selected().map(str::to_owned);
+                        let current = self.effective_selected().map(str::to_owned);
                         effects.selected_icon_theme_changed = previous != current;
                         if self.pending_selection.is_none() {
                             effects.error_changed = if let Some(error) = preference_error {
@@ -188,12 +203,12 @@ impl SettingsThemesControllerRust {
                 if !matches_pending {
                     return effects;
                 }
+                let previous = self.effective_selected().map(str::to_owned);
                 let Some(pending) = self.pending_selection.take() else {
                     return effects;
                 };
                 match result {
                     Ok(()) => {
-                        let previous = self.selection.selected().map(str::to_owned);
                         let selected_is_valid = match selected.as_deref() {
                             Some(theme_id) => match self.selection.select(theme_id) {
                                 Ok(()) => true,
@@ -214,8 +229,6 @@ impl SettingsThemesControllerRust {
                         if selected_is_valid {
                             self.configured_selection = selected;
                         }
-                        let current = self.selection.selected().map(str::to_owned);
-                        effects.selected_icon_theme_changed = previous != current;
                         if self.error_revision == pending.error_revision {
                             effects.error_changed |= self.clear_error_value();
                         }
@@ -225,6 +238,8 @@ impl SettingsThemesControllerRust {
                     }
                     Err(_) => {}
                 }
+                let current = self.effective_selected().map(str::to_owned);
+                effects.selected_icon_theme_changed = previous != current;
                 effects.busy_changed |= self.update_busy();
             }
         }
@@ -294,13 +309,16 @@ impl qobject::SettingsThemesController {
 
     fn selected_icon_theme(&self) -> QString {
         self.rust()
-            .selection
-            .selected()
+            .effective_selected()
             .map_or_else(QString::default, QString::from)
     }
 
     fn busy(&self) -> bool {
         self.rust().busy
+    }
+
+    fn refreshing(&self) -> bool {
+        self.rust().refresh_busy
     }
 
     fn last_error(&self) -> QString {
@@ -324,6 +342,7 @@ impl qobject::SettingsThemesController {
         };
         self.as_mut().rust_mut().generation = generation;
         self.as_mut().rust_mut().refresh_busy = true;
+        self.as_mut().refreshing_changed();
         self.as_mut().update_busy();
     }
 
@@ -345,6 +364,9 @@ impl qobject::SettingsThemesController {
         if effects.busy_changed {
             self.as_mut().busy_changed();
         }
+        if effects.refreshing_changed {
+            self.as_mut().refreshing_changed();
+        }
         if effects.themes_changed {
             self.as_mut().themes_changed();
         }
@@ -357,6 +379,10 @@ impl qobject::SettingsThemesController {
     }
 
     fn queue_selection_persistence(mut self: Pin<&mut Self>, selected: Option<String>) {
+        let previous = self.rust().effective_selected().map(str::to_owned);
+        if previous == selected {
+            return;
+        }
         let generation = self.rust().selection_generation.wrapping_add(1);
         let error_revision = self.rust().error_revision;
         self.as_mut().rust_mut().selection_generation = generation;
@@ -366,6 +392,7 @@ impl qobject::SettingsThemesController {
             error_revision,
         });
         self.as_mut().update_busy();
+        self.as_mut().selected_icon_theme_changed();
 
         let submission = self
             .rust()
@@ -377,11 +404,13 @@ impl qobject::SettingsThemesController {
             Some(Err(error)) => {
                 self.as_mut().rust_mut().pending_selection = None;
                 self.as_mut().update_busy();
+                self.as_mut().selected_icon_theme_changed();
                 self.set_error(error.to_string());
             }
             None => {
                 self.as_mut().rust_mut().pending_selection = None;
                 self.as_mut().update_busy();
+                self.as_mut().selected_icon_theme_changed();
                 self.set_error(String::from("The icon theme worker is unavailable."));
             }
         }
@@ -562,6 +591,95 @@ mod tests {
     }
 
     #[test]
+    fn pending_selection_projects_newest_value_and_stale_completion_cannot_revert_it() {
+        let directory = TempDir::new().unwrap();
+        let mut controller = controller_with_catalog(directory.path());
+        assert_eq!(controller.effective_selected(), Some("theme-a"));
+
+        controller.pending_selection = Some(PendingSelection {
+            generation: 2,
+            selected: Some(String::from("theme-b")),
+            error_revision: controller.error_revision,
+        });
+        assert_eq!(controller.effective_selected(), Some("theme-b"));
+
+        controller.pending_selection = Some(PendingSelection {
+            generation: 3,
+            selected: Some(String::from("theme-c")),
+            error_revision: controller.error_revision,
+        });
+        controller.selection_generation = 3;
+        let effects = controller.handle_worker_result(WorkerResult::Persistence {
+            generation: 1,
+            selected: Some(String::from("theme-b")),
+            result: Ok(()),
+        });
+
+        assert!(!effects.selected_icon_theme_changed);
+        assert_eq!(controller.selection.selected(), Some("theme-a"));
+        assert_eq!(controller.effective_selected(), Some("theme-c"));
+        assert_eq!(
+            controller
+                .pending_selection
+                .as_ref()
+                .map(|pending| pending.generation),
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn matching_persistence_failure_rolls_back_projected_selection() {
+        let directory = TempDir::new().unwrap();
+        let mut controller = controller_with_catalog(directory.path());
+        controller.pending_selection = Some(PendingSelection {
+            generation: 4,
+            selected: Some(String::from("theme-c")),
+            error_revision: controller.error_revision,
+        });
+        controller.selection_generation = 4;
+        controller.busy = true;
+
+        let effects = controller.handle_worker_result(WorkerResult::Persistence {
+            generation: 4,
+            selected: Some(String::from("theme-c")),
+            result: Err(String::from("persistence blocked")),
+        });
+
+        assert!(effects.selected_icon_theme_changed);
+        assert!(effects.error_changed);
+        assert_eq!(controller.selection.selected(), Some("theme-a"));
+        assert_eq!(controller.effective_selected(), Some("theme-a"));
+        assert!(controller.pending_selection.is_none());
+        assert_eq!(controller.last_error, "persistence blocked");
+        assert!(!controller.busy);
+    }
+
+    #[test]
+    fn matching_persistence_success_does_not_duplicate_projected_selection_signal() {
+        let directory = TempDir::new().unwrap();
+        let mut controller = controller_with_catalog(directory.path());
+        controller.pending_selection = Some(PendingSelection {
+            generation: 5,
+            selected: Some(String::from("theme-c")),
+            error_revision: controller.error_revision,
+        });
+        controller.selection_generation = 5;
+        controller.busy = true;
+
+        let effects = controller.handle_worker_result(WorkerResult::Persistence {
+            generation: 5,
+            selected: Some(String::from("theme-c")),
+            result: Ok(()),
+        });
+
+        assert!(!effects.selected_icon_theme_changed);
+        assert_eq!(controller.selection.selected(), Some("theme-c"));
+        assert_eq!(controller.effective_selected(), Some("theme-c"));
+        assert!(controller.pending_selection.is_none());
+        assert!(!controller.busy);
+    }
+
+    #[test]
     fn newest_persistence_completion_updates_selected_theme_and_busy_state() {
         let directory = TempDir::new().unwrap();
         let mut controller = controller_with_catalog(directory.path());
@@ -580,7 +698,7 @@ mod tests {
         });
 
         assert!(effects.busy_changed);
-        assert!(effects.selected_icon_theme_changed);
+        assert!(!effects.selected_icon_theme_changed);
         assert_eq!(controller.selection.selected(), Some("theme-c"));
         assert_eq!(controller.configured_selection.as_deref(), Some("theme-c"));
         assert!(!controller.busy);

@@ -10,6 +10,7 @@ Item {
     objectName: "themesPage"
 
     readonly property var controller: SettingsController.themes
+    readonly property bool catalogLoading: root.controller.busy && root.controller.refreshing
     readonly property int iconThemeRevision: {
         if (typeof AstreaIconProvider !== "undefined" && AstreaIconProvider)
             return AstreaIconProvider.themeRevision
@@ -215,7 +216,7 @@ Item {
         }
 
         Text {
-            visible: root.controller.busy
+            visible: root.catalogLoading
             text: I18n.tr("apps.settings.pages.themes.loading", "Loading installed themes…")
             color: Components.Theme.textSecondary
             font.family: Components.Theme.fontFamily
@@ -225,7 +226,7 @@ Item {
         }
 
         Text {
-            visible: !root.controller.busy && root.controller.lastError !== ""
+            visible: !root.catalogLoading && root.controller.lastError !== ""
             text: root.controller.lastError
             color: Components.Theme.errorColor
             font.family: Components.Theme.fontFamily
@@ -237,7 +238,7 @@ Item {
 
         Text {
             objectName: "themes-empty-installed-catalog"
-            visible: !root.controller.busy && root.controller.lastError === ""
+            visible: !root.catalogLoading && root.controller.lastError === ""
                 && root.controller.themes.length === 0 && root.searchQuery.trim() === ""
             text: I18n.tr("apps.settings.pages.themes.empty_catalog", "No icon themes are installed.")
             color: Components.Theme.textSecondary
@@ -249,7 +250,7 @@ Item {
 
         Text {
             objectName: "themes-empty-search-results"
-            visible: !root.controller.busy && root.controller.lastError === ""
+            visible: !root.catalogLoading && root.controller.lastError === ""
                 && root.filteredThemes.length === 0 && root.searchQuery.trim() !== ""
             text: I18n.tr("apps.settings.pages.themes.empty_search", "No installed themes match your search.")
             color: Components.Theme.textSecondary

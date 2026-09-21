@@ -190,6 +190,7 @@ private slots:
     void exposesThemesControllerThroughSettingsController();
     void selectionCompletesOffTheQtCallerThreadAndSystemDefaultPersists();
     void staleSelectionCompletionCannotReplaceTheNewestRequest();
+    void persistenceFailureRollsBackProjectedSelection();
     void destroyingControllerDuringPersistenceDoesNotWaitForWorker();
 };
 
@@ -204,13 +205,14 @@ void SettingsThemesControllerTest::exposesThemesControllerThroughSettingsControl
     QVERIFY(controller.property("themes").value<QObject *>() == themes);
 
     const QMetaObject *metaObject = themes->metaObject();
-    for (const char *name : {"themes", "selectedIconTheme", "busy", "lastError"})
+    for (const char *name : {"themes", "selectedIconTheme", "busy", "refreshing", "lastError"})
         QVERIFY(metaObject->indexOfProperty(name) >= 0);
     for (const char *method : {"refresh()", "setIconTheme(QString)", "useSystemDefault()"})
         QVERIFY(metaObject->indexOfMethod(method) >= 0);
     for (const char *signal : {"themesChanged()",
                                "selectedIconThemeChanged()",
                                "busyChanged()",
+                               "refreshingChanged()",
                                "errorChanged()"}) {
         QVERIFY(metaObject->indexOfSignal(signal) >= 0);
     }
@@ -236,8 +238,9 @@ void SettingsThemesControllerTest::selectionCompletesOffTheQtCallerThreadAndSyst
     QTRY_VERIFY_WITH_TIMEOUT(writer.readerConnected(), 3000);
     QTRY_VERIFY_WITH_TIMEOUT(timerFired.load(), 1000);
     QVERIFY(themes.property("busy").toBool());
-    QVERIFY(themes.property("selectedIconTheme").toString().isEmpty());
-    QCOMPARE(selectedThemeSpy.count(), 0);
+    QVERIFY(!themes.property("refreshing").toBool());
+    QCOMPARE(themes.property("selectedIconTheme").toString(), QStringLiteral("theme-c"));
+    QCOMPARE(selectedThemeSpy.count(), 1);
     writer.release();
     writer.join();
     QVERIFY(writer.timerWasFired());
@@ -246,9 +249,23 @@ void SettingsThemesControllerTest::selectionCompletesOffTheQtCallerThreadAndSyst
     QVERIFY(themes.property("lastError").toString().isEmpty());
     QCOMPARE(selectedThemeSpy.count(), 1);
 
+    QVERIFY(QFile::remove(configPath));
+    QVERIFY(createThemeConfigFifo(configPath));
+    FifoGateWriter defaultWriter(configPath);
     QVERIFY(QMetaObject::invokeMethod(&themes, "useSystemDefault", Qt::DirectConnection));
+    QTRY_VERIFY_WITH_TIMEOUT(defaultWriter.readerConnected(), 3000);
+    QVERIFY(themes.property("busy").toBool());
+    QVERIFY(!themes.property("refreshing").toBool());
+    QVERIFY(themes.property("selectedIconTheme").toString().isEmpty());
+    QCOMPARE(selectedThemeSpy.count(), 2);
+    defaultWriter.release();
+    defaultWriter.join();
     QTRY_VERIFY_WITH_TIMEOUT(!themes.property("busy").toBool(), 5000);
     QVERIFY(themes.property("selectedIconTheme").toString().isEmpty());
+    QCOMPARE(selectedThemeSpy.count(), 2);
+
+    QVERIFY(QMetaObject::invokeMethod(&themes, "useSystemDefault", Qt::DirectConnection));
+    QVERIFY(!themes.property("busy").toBool());
     QCOMPARE(selectedThemeSpy.count(), 2);
     QFile config(configPath);
     QVERIFY(config.open(QIODevice::ReadOnly));
@@ -272,22 +289,53 @@ void SettingsThemesControllerTest::staleSelectionCompletionCannotReplaceTheNewes
 
     QVERIFY(invokeSetIconTheme(&themes, QStringLiteral("theme-a")));
     QTRY_VERIFY_WITH_TIMEOUT(writer.readerConnected(), 3000);
+    QCOMPARE(themes.property("selectedIconTheme").toString(), QStringLiteral("theme-a"));
+    QCOMPARE(selectedThemeSpy.count(), 1);
     QVERIFY(invokeSetIconTheme(&themes, QStringLiteral("theme-b")));
+    QCOMPARE(themes.property("selectedIconTheme").toString(), QStringLiteral("theme-b"));
+    QCOMPARE(selectedThemeSpy.count(), 2);
     QVERIFY(invokeSetIconTheme(&themes, QStringLiteral("theme-c")));
-    QVERIFY(themes.property("selectedIconTheme").toString().isEmpty());
-    QCOMPARE(selectedThemeSpy.count(), 0);
+    QCOMPARE(themes.property("selectedIconTheme").toString(), QStringLiteral("theme-c"));
+    QCOMPARE(selectedThemeSpy.count(), 3);
     QVERIFY(themes.property("busy").toBool());
     writer.release();
     writer.join();
 
     QTRY_VERIFY_WITH_TIMEOUT(!themes.property("busy").toBool(), 5000);
     QCOMPARE(themes.property("selectedIconTheme").toString(), QStringLiteral("theme-c"));
-    QCOMPARE(selectedThemeSpy.count(), 1);
+    QCOMPARE(selectedThemeSpy.count(), 3);
     QFile config(configPath);
     QVERIFY(config.open(QIODevice::ReadOnly));
     const QJsonObject persisted = QJsonDocument::fromJson(config.readAll()).object();
     QCOMPARE(persisted.value(QStringLiteral("system_icon_theme")).toString(),
              QStringLiteral("theme-c"));
+}
+
+void SettingsThemesControllerTest::persistenceFailureRollsBackProjectedSelection()
+{
+    ThemeTestEnvironment environment;
+    QVERIFY(environment.isValid());
+    QVERIFY(environment.createThemes());
+    SettingsThemesController themes;
+    QTRY_VERIFY_WITH_TIMEOUT(hasTheme(&themes, QStringLiteral("theme-c")), 5000);
+
+    const QString configDirectory = QDir(environment.home()).filePath(QStringLiteral(".config/AstreaOS"));
+    QVERIFY(QDir().mkpath(QFileInfo(configDirectory).path()));
+    QFile blocker(configDirectory);
+    QVERIFY(blocker.open(QIODevice::WriteOnly));
+    QVERIFY(blocker.write("not-a-directory") > 0);
+    blocker.close();
+
+    QSignalSpy selectedThemeSpy(&themes, SIGNAL(selectedIconThemeChanged()));
+    QVERIFY(selectedThemeSpy.isValid());
+    QVERIFY(invokeSetIconTheme(&themes, QStringLiteral("theme-c")));
+    QCOMPARE(themes.property("selectedIconTheme").toString(), QStringLiteral("theme-c"));
+    QCOMPARE(selectedThemeSpy.count(), 1);
+
+    QTRY_VERIFY_WITH_TIMEOUT(!themes.property("busy").toBool(), 5000);
+    QVERIFY(themes.property("selectedIconTheme").toString().isEmpty());
+    QCOMPARE(selectedThemeSpy.count(), 2);
+    QVERIFY(!themes.property("lastError").toString().isEmpty());
 }
 
 void SettingsThemesControllerTest::destroyingControllerDuringPersistenceDoesNotWaitForWorker()

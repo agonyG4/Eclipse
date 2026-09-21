@@ -520,7 +520,8 @@ void SettingsQmlSmokeTest::loadsThemesRouteOffscreen()
                                      "/Settings/qml/pages/appearance/Themes.qml"));
     QVERIFY(themesSource.open(QIODevice::ReadOnly | QIODevice::Text));
     const QString source = QString::fromUtf8(themesSource.readAll());
-    QVERIFY(source.contains(QStringLiteral("controller.busy")));
+    QVERIFY(source.contains(QStringLiteral("controller.refreshing")));
+    QVERIFY(!source.contains(QStringLiteral("visible: root.controller.busy")));
     QVERIFY(source.contains(QStringLiteral("controller.lastError")));
     QVERIFY(source.contains(QStringLiteral("No installed themes match your search.")));
     QVERIFY2(qmlWarnings.isEmpty(),

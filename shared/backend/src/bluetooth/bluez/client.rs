@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::future::{Future, pending};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -32,14 +32,6 @@ enum WorkerCommand {
         session_generation: u64,
         target: bool,
     },
-    RequestScan {
-        session_generation: u64,
-        owner: String,
-    },
-    ReleaseScan {
-        session_generation: u64,
-        owner: String,
-    },
     Connect {
         session_generation: u64,
         object_path: String,
@@ -50,7 +42,45 @@ enum WorkerCommand {
 #[derive(Clone, Copy, Debug)]
 enum WorkerControl {
     LifecycleChanged,
+    ScanOwnersChanged,
     Shutdown,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ConnectionState {
+    Stopped,
+    Disconnected,
+    Connecting,
+    Connected,
+}
+
+#[derive(Debug, Default)]
+struct ReconnectBackoff {
+    attempt: usize,
+}
+
+impl ReconnectBackoff {
+    fn on_failure(&mut self, now: Instant) -> Instant {
+        const DELAYS: [Duration; 4] = [
+            Duration::from_millis(500),
+            Duration::from_secs(1),
+            Duration::from_secs(2),
+            Duration::from_secs(5),
+        ];
+        let delay = DELAYS[self.attempt.min(DELAYS.len() - 1)];
+        self.attempt = self.attempt.saturating_add(1);
+        now + delay
+    }
+
+    fn on_success(&mut self) {
+        self.attempt = 0;
+    }
+}
+
+enum SignalOutcome {
+    Message(Message),
+    Error(String),
+    End,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -59,9 +89,16 @@ struct LifecycleRequest {
     running: bool,
 }
 
+#[derive(Clone, Default)]
+struct ScanOwnerMailbox {
+    session_generation: u64,
+    owners: BTreeSet<String>,
+}
+
 struct WorkerChannels {
     commands: Receiver<WorkerCommand>,
     controls: Receiver<WorkerControl>,
+    scan_controls: Receiver<WorkerControl>,
     shutdown: Receiver<WorkerControl>,
 }
 
@@ -70,9 +107,11 @@ struct WorkerChannels {
 pub struct BluetoothWorker {
     commands: Sender<WorkerCommand>,
     controls: Sender<WorkerControl>,
+    scan_controls: Sender<WorkerControl>,
     shutdown: Sender<WorkerControl>,
     lifecycle: Arc<std::sync::Mutex<LifecycleRequest>>,
-    _thread: std::thread::JoinHandle<()>,
+    scan_owners: Arc<std::sync::Mutex<ScanOwnerMailbox>>,
+    _thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl BluetoothWorker {
@@ -82,10 +121,13 @@ impl BluetoothWorker {
     {
         let (commands, command_rx) = async_channel::bounded(COMMAND_CAPACITY);
         let (controls, control_rx) = async_channel::bounded(1);
+        let (scan_controls, scan_control_rx) = async_channel::bounded(1);
         let (shutdown, shutdown_rx) = async_channel::bounded(1);
         let lifecycle = Arc::new(std::sync::Mutex::new(LifecycleRequest::default()));
+        let scan_owners = Arc::new(std::sync::Mutex::new(ScanOwnerMailbox::default()));
         let callback = Arc::new(on_snapshot);
         let worker_lifecycle = Arc::clone(&lifecycle);
+        let worker_scan_owners = Arc::clone(&scan_owners);
         let thread = std::thread::Builder::new()
             .name(String::from("astrea-bluetooth-bluez"))
             .spawn(move || {
@@ -93,18 +135,22 @@ impl BluetoothWorker {
                     WorkerChannels {
                         commands: command_rx,
                         controls: control_rx,
+                        scan_controls: scan_control_rx,
                         shutdown: shutdown_rx,
                     },
                     worker_lifecycle,
+                    worker_scan_owners,
                     callback,
                 ));
             })?;
         Ok(Self {
             commands,
             controls,
+            scan_controls,
             shutdown,
             lifecycle,
-            _thread: thread,
+            scan_owners,
+            _thread: Some(thread),
         })
     }
 
@@ -126,21 +172,21 @@ impl BluetoothWorker {
     }
 
     pub fn request_scan(&self, session_generation: u64, owner: String) -> bool {
-        self.commands
-            .try_send(WorkerCommand::RequestScan {
-                session_generation,
-                owner,
-            })
-            .is_ok()
+        update_scan_owner_request(
+            &self.scan_owners,
+            &self.scan_controls,
+            session_generation,
+            owner,
+        )
     }
 
-    pub fn release_scan(&self, session_generation: u64, owner: String) -> bool {
-        self.commands
-            .try_send(WorkerCommand::ReleaseScan {
-                session_generation,
-                owner,
-            })
-            .is_ok()
+    pub fn release_scan(&self, session_generation: u64, owner: String) {
+        update_scan_owner_release(
+            &self.scan_owners,
+            &self.scan_controls,
+            session_generation,
+            owner,
+        );
     }
 
     pub fn connect(&self, session_generation: u64, object_path: String, connect: bool) -> bool {
@@ -164,6 +210,14 @@ impl BluetoothWorker {
             session_generation,
             running,
         };
+        if !running {
+            let mut desired = self
+                .scan_owners
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            desired.session_generation = session_generation;
+            desired.owners.clear();
+        }
         match self.controls.try_send(WorkerControl::LifecycleChanged) {
             Ok(()) => true,
             Err(async_channel::TrySendError::Full(_)) => true,
@@ -172,9 +226,63 @@ impl BluetoothWorker {
     }
 }
 
+fn update_scan_owner_request(
+    scan_owners: &std::sync::Mutex<ScanOwnerMailbox>,
+    scan_controls: &Sender<WorkerControl>,
+    session_generation: u64,
+    owner: String,
+) -> bool {
+    if owner.is_empty() {
+        return false;
+    }
+    let mut desired = scan_owners
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if session_generation < desired.session_generation {
+        return false;
+    }
+    if session_generation > desired.session_generation {
+        desired.session_generation = session_generation;
+        desired.owners.clear();
+    }
+    desired.owners.insert(owner);
+    drop(desired);
+    match scan_controls.try_send(WorkerControl::ScanOwnersChanged) {
+        Ok(()) | Err(async_channel::TrySendError::Full(_)) => true,
+        Err(async_channel::TrySendError::Closed(_)) => false,
+    }
+}
+
+fn update_scan_owner_release(
+    scan_owners: &std::sync::Mutex<ScanOwnerMailbox>,
+    scan_controls: &Sender<WorkerControl>,
+    session_generation: u64,
+    owner: String,
+) {
+    if owner.is_empty() {
+        return;
+    }
+    let mut desired = scan_owners
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if session_generation < desired.session_generation {
+        return;
+    }
+    if session_generation > desired.session_generation {
+        desired.session_generation = session_generation;
+        desired.owners.clear();
+    }
+    desired.owners.remove(&owner);
+    drop(desired);
+    let _ = scan_controls.try_send(WorkerControl::ScanOwnersChanged);
+}
+
 impl Drop for BluetoothWorker {
     fn drop(&mut self) {
         let _ = self.shutdown.try_send(WorkerControl::Shutdown);
+        if let Some(thread) = self._thread.take() {
+            let _ = thread.join();
+        }
     }
 }
 
@@ -253,6 +361,68 @@ impl BusStreams {
     }
 }
 
+type TransportFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+type BusSessionHandle = Arc<dyn BusSession>;
+
+trait BusTransport: Send + Sync {
+    fn connect(&self) -> TransportFuture<'static, Result<BusSessionHandle, String>>;
+}
+
+trait BusSession: Send + Sync {
+    fn owner(&self) -> TransportFuture<'static, Result<String, String>>;
+    fn next_signal(&self) -> TransportFuture<'static, SignalOutcome>;
+    fn execute(&self, action: CoreAction) -> TaskFuture;
+}
+
+struct ZbusTransport;
+
+struct ZbusBusSession {
+    connection: Arc<Connection>,
+    streams: Arc<futures::lock::Mutex<BusStreams>>,
+}
+
+impl BusTransport for ZbusTransport {
+    fn connect(&self) -> TransportFuture<'static, Result<BusSessionHandle, String>> {
+        Box::pin(async {
+            let connection =
+                bounded_result(Connection::system(), "system D-Bus connection").await?;
+            let streams =
+                bounded_result(BusStreams::new(&connection), "BlueZ signal subscriptions").await?;
+            Ok(Arc::new(ZbusBusSession {
+                connection: Arc::new(connection),
+                streams: Arc::new(futures::lock::Mutex::new(streams)),
+            }) as BusSessionHandle)
+        })
+    }
+}
+
+impl BusSession for ZbusBusSession {
+    fn owner(&self) -> TransportFuture<'static, Result<String, String>> {
+        let connection = Arc::clone(&self.connection);
+        Box::pin(async move {
+            let proxy =
+                bounded_result(BusDaemonProxy::new(&connection), "D-Bus daemon proxy").await?;
+            bounded_result(proxy.get_name_owner("org.bluez"), "BlueZ owner lookup").await
+        })
+    }
+
+    fn next_signal(&self) -> TransportFuture<'static, SignalOutcome> {
+        let streams = Arc::clone(&self.streams);
+        Box::pin(async move {
+            let mut streams = streams.lock().await;
+            match streams.messages.next().await {
+                Some(Ok(message)) => SignalOutcome::Message(message),
+                Some(Err(error)) => SignalOutcome::Error(error.to_string()),
+                None => SignalOutcome::End,
+            }
+        })
+    }
+
+    fn execute(&self, action: CoreAction) -> TaskFuture {
+        make_task(&self.connection, action)
+    }
+}
+
 fn make_match_rule(
     interface: &str,
     member: &str,
@@ -279,83 +449,81 @@ fn make_match_rule(
 async fn run_worker<F>(
     channels: WorkerChannels,
     lifecycle: Arc<std::sync::Mutex<LifecycleRequest>>,
+    scan_owners: Arc<std::sync::Mutex<ScanOwnerMailbox>>,
     on_snapshot: Arc<F>,
 ) where
     F: Fn(CoreSnapshot) + Send + Sync + 'static,
 {
-    let connection = match bounded_result(Connection::system(), "system D-Bus connection").await {
-        Ok(connection) => connection,
-        Err(error) => {
-            run_without_bus(channels, lifecycle, on_snapshot, error).await;
-            return;
-        }
-    };
-    let streams =
-        match bounded_result(BusStreams::new(&connection), "BlueZ signal subscriptions").await {
-            Ok(streams) => streams,
-            Err(error) => {
-                run_without_bus(channels, lifecycle, on_snapshot, error).await;
-                return;
-            }
-        };
-    let bus = match bounded_result(BusDaemonProxy::new(&connection), "D-Bus daemon proxy").await {
-        Ok(proxy) => proxy,
-        Err(error) => {
-            run_without_bus(channels, lifecycle, on_snapshot, error).await;
-            return;
-        }
-    };
-    run_connected(channels, lifecycle, connection, bus, streams, on_snapshot).await;
+    run_worker_with_transport(
+        channels,
+        lifecycle,
+        scan_owners,
+        Arc::new(ZbusTransport),
+        on_snapshot,
+    )
+    .await;
 }
 
-async fn run_without_bus<F>(
-    channels: WorkerChannels,
-    lifecycle: Arc<std::sync::Mutex<LifecycleRequest>>,
-    on_snapshot: Arc<F>,
-    reason: String,
+type ConnectionResult = Result<(BusSessionHandle, Option<String>), String>;
+type ConnectAttempt = Pin<Box<dyn Future<Output = ConnectionResult> + Send>>;
+type ConnectSelectionFuture<'a> =
+    Pin<Box<dyn Future<Output = Option<ConnectionResult>> + Send + 'a>>;
+
+fn connect_attempt(transport: Arc<dyn BusTransport>) -> ConnectAttempt {
+    Box::pin(async move {
+        let session = transport.connect().await?;
+        let owner = session.owner().await.ok();
+        Ok((session, owner))
+    })
+}
+
+fn scan_owner_request(scan_owners: &std::sync::Mutex<ScanOwnerMailbox>) -> ScanOwnerMailbox {
+    scan_owners
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+}
+
+fn best_effort_stop_discovery(session: Option<BusSessionHandle>, action: Option<CoreAction>) {
+    let (Some(session), Some(action)) = (session, action) else {
+        return;
+    };
+    smol::spawn(async move {
+        let _ = session.execute(action).await;
+    })
+    .detach();
+}
+
+fn apply_scan_owner_update<F>(
+    scan_owners: &std::sync::Mutex<ScanOwnerMailbox>,
+    core: &mut BluetoothCore,
+    queued_actions: &mut VecDeque<CoreAction>,
+    on_snapshot: &F,
 ) where
-    F: Fn(CoreSnapshot) + Send + Sync + 'static,
+    F: Fn(CoreSnapshot),
 {
-    let WorkerChannels {
-        commands,
-        controls,
-        shutdown,
-    } = channels;
-    let mut core = BluetoothCore::default();
-    loop {
-        futures::select_biased! {
-            control = shutdown.recv().fuse() => {
-                if matches!(control, Ok(WorkerControl::Shutdown)) { return; }
-            },
-            control = controls.recv().fuse() => {
-                if matches!(control, Ok(WorkerControl::LifecycleChanged)) {
-                    let requested = lifecycle.lock().map(|state| *state).unwrap_or_default();
-                    if requested.running {
-                        if core.start_generation(requested.session_generation) {
-                            core.bus_unavailable(requested.session_generation, reason.clone());
-                            on_snapshot(core.snapshot().clone());
-                        }
-                    } else if core.stop_generation(requested.session_generation) {
-                        on_snapshot(core.snapshot().clone());
-                    }
-                }
-            },
-            control = commands.recv().fuse() => {
-                match control {
-                    Ok(_) => {}
-                    Err(_) => return,
-                }
-            },
-        }
+    let desired = scan_owner_request(scan_owners);
+    if desired.session_generation != core.session_generation() {
+        return;
     }
+    let actions = core.replace_scan_owners(desired.owners, Instant::now());
+    enqueue_actions(actions, queued_actions, core, on_snapshot);
+    on_snapshot(core.snapshot().clone());
 }
 
-async fn run_connected<F>(
+fn retire_generation_work(
+    tasks: &mut FuturesUnordered<TaskFuture>,
+    queued_actions: &mut VecDeque<CoreAction>,
+) {
+    *tasks = FuturesUnordered::new();
+    queued_actions.clear();
+}
+
+async fn run_worker_with_transport<F>(
     channels: WorkerChannels,
     lifecycle: Arc<std::sync::Mutex<LifecycleRequest>>,
-    connection: Connection,
-    bus: BusDaemonProxy<'_>,
-    mut streams: BusStreams,
+    scan_owners: Arc<std::sync::Mutex<ScanOwnerMailbox>>,
+    transport: Arc<dyn BusTransport>,
     on_snapshot: Arc<F>,
 ) where
     F: Fn(CoreSnapshot) + Send + Sync + 'static,
@@ -363,36 +531,71 @@ async fn run_connected<F>(
     let WorkerChannels {
         commands,
         controls,
+        scan_controls,
         shutdown,
     } = channels;
     let mut core = BluetoothCore::default();
+    let mut state = ConnectionState::Stopped;
+    let mut session = None::<BusSessionHandle>;
+    let mut owner = String::new();
     let mut tasks = FuturesUnordered::<TaskFuture>::new();
     let mut queued_actions = VecDeque::<CoreAction>::new();
-    let mut owner = String::new();
+    let mut backoff = ReconnectBackoff::default();
+    let mut reconnect_at = None::<Instant>;
+    let mut connecting = None::<ConnectAttempt>;
 
     loop {
-        while tasks.len() < TASK_LIMIT {
-            let Some(action) = queued_actions.pop_front() else {
-                break;
-            };
-            tasks.push(make_task(&connection, action));
+        let requested = lifecycle.lock().map(|state| *state).unwrap_or_default();
+        if requested.running
+            && state == ConnectionState::Disconnected
+            && connecting.is_none()
+            && reconnect_at.is_none()
+        {
+            reconnect_at = Some(Instant::now());
         }
+        if requested.running
+            && state == ConnectionState::Disconnected
+            && connecting.is_none()
+            && reconnect_at.is_some_and(|deadline| deadline <= Instant::now())
+        {
+            connecting = Some(connect_attempt(Arc::clone(&transport)));
+            reconnect_at = None;
+            state = ConnectionState::Connecting;
+        }
+
         let mut lifecycle_changed = None;
+        let mut scan_changed = false;
         let mut shutdown_requested = false;
+        let mut connection_lost = None::<String>;
+        let mut connection_result = None::<ConnectionResult>;
+        let mut reconnect_timer_fired = false;
+        let mut generation_replaced = false;
         {
             let task = if tasks.is_empty() {
                 Box::pin(pending()) as Pin<Box<dyn Future<Output = Option<TaskResult>> + Send>>
             } else {
                 Box::pin(tasks.next()) as Pin<Box<dyn Future<Output = Option<TaskResult>> + Send>>
             };
-            let timer = if let Some(deadline) = core.next_deadline() {
-                Box::pin(async_io::Timer::at(deadline))
-                    as Pin<Box<dyn Future<Output = Instant> + Send>>
-            } else {
-                Box::pin(pending()) as Pin<Box<dyn Future<Output = Instant> + Send>>
+            let signal = session.as_ref().map_or_else(
+                || Box::pin(pending()) as TransportFuture<'static, SignalOutcome>,
+                |session| session.next_signal(),
+            );
+            let connect: ConnectSelectionFuture<'_> = match connecting.as_mut() {
+                Some(connect) => Box::pin(connect.as_mut().map(Some)),
+                None => Box::pin(pending()),
             };
+            let timer = [core.next_deadline(), reconnect_at]
+                .into_iter()
+                .flatten()
+                .min()
+                .map_or_else(
+                    || Box::pin(pending()) as TransportFuture<'static, Instant>,
+                    |deadline| {
+                        Box::pin(async_io::Timer::at(deadline)) as TransportFuture<'static, Instant>
+                    },
+                );
 
-            futures::pin_mut!(task, timer);
+            futures::pin_mut!(task, signal, connect, timer);
             futures::select_biased! {
                 shutdown_result = shutdown.recv().fuse() => {
                     if matches!(shutdown_result, Ok(WorkerControl::Shutdown)) {
@@ -407,6 +610,15 @@ async fn run_connected<F>(
                             lifecycle_changed = Some(lifecycle.lock().map(|state| *state).unwrap_or_default());
                         }
                         Ok(WorkerControl::Shutdown) => shutdown_requested = true,
+                        Ok(WorkerControl::ScanOwnersChanged) => scan_changed = true,
+                        Err(_) => return,
+                    }
+                },
+                scan_result = scan_controls.recv().fuse() => {
+                    match scan_result {
+                        Ok(WorkerControl::ScanOwnersChanged) => scan_changed = true,
+                        Ok(WorkerControl::Shutdown) => shutdown_requested = true,
+                        Ok(WorkerControl::LifecycleChanged) => {},
                         Err(_) => return,
                     }
                 },
@@ -421,70 +633,128 @@ async fn run_connected<F>(
                         handle_task_result(result, &mut core, &mut owner, &mut queued_actions, on_snapshot.as_ref());
                     }
                 },
-                signal = streams.messages.next().fuse() => {
-                    if let Some(Ok(message)) = signal {
-                        handle_signal(message, &mut core, &mut owner, &mut queued_actions, on_snapshot.as_ref());
+                signal_result = signal.fuse() => {
+                    match signal_result {
+                        SignalOutcome::Message(message) => {
+                            let previous_generation = core.bluez_generation();
+                            handle_signal(message, &mut core, &mut owner, &mut queued_actions, on_snapshot.as_ref());
+                            if core.bluez_generation() != previous_generation {
+                                generation_replaced = true;
+                            }
+                        }
+                        SignalOutcome::Error(error) => connection_lost = Some(error),
+                        SignalOutcome::End => connection_lost = Some(String::from("BlueZ signal stream ended")),
                     }
                 },
-                _ = timer.fuse() => {
-                    let actions = core.on_timer(Instant::now());
-                    enqueue_actions(actions, &mut queued_actions, &mut core, on_snapshot.as_ref());
-                    on_snapshot(core.snapshot().clone());
+                connection = connect.fuse() => {
+                    connection_result = connection;
                 },
+                _ = timer.fuse() => reconnect_timer_fired = true,
             }
         }
 
+        if generation_replaced {
+            retire_generation_work(&mut tasks, &mut queued_actions);
+        }
+
         if shutdown_requested {
-            drop(tasks);
-            queued_actions.clear();
-            if let Some(action) = core.stop_discovery_action() {
-                let _ = make_task(&connection, action).await;
-            }
+            best_effort_stop_discovery(session, core.stop_discovery_action());
             return;
         }
 
         if let Some(requested) = lifecycle_changed {
-            let replaces_session = requested.session_generation > core.session_generation();
-            let stops_session =
-                !requested.running && requested.session_generation >= core.session_generation();
-            if replaces_session || stops_session {
-                tasks = FuturesUnordered::new();
-                queued_actions.clear();
-                if let Some(action) = core.stop_discovery_action() {
-                    let _ = make_task(&connection, action).await;
+            if !requested.running && requested.session_generation >= core.session_generation() {
+                best_effort_stop_discovery(session.take(), core.stop_discovery_action());
+                connecting = None;
+                reconnect_at = None;
+                retire_generation_work(&mut tasks, &mut queued_actions);
+                owner.clear();
+                state = ConnectionState::Stopped;
+                if core.stop_generation(requested.session_generation) {
+                    on_snapshot(core.snapshot().clone());
+                }
+            } else if requested.running && requested.session_generation > core.session_generation()
+            {
+                best_effort_stop_discovery(session.take(), core.stop_discovery_action());
+                connecting = None;
+                reconnect_at = Some(Instant::now());
+                retire_generation_work(&mut tasks, &mut queued_actions);
+                owner.clear();
+                state = ConnectionState::Disconnected;
+                if core.start_generation(requested.session_generation) {
+                    backoff.on_success();
+                    on_snapshot(core.snapshot().clone());
                 }
             }
+        }
 
-            if requested.running {
-                if core.start_generation(requested.session_generation) {
-                    owner.clear();
+        if scan_changed {
+            apply_scan_owner_update(
+                &scan_owners,
+                &mut core,
+                &mut queued_actions,
+                on_snapshot.as_ref(),
+            );
+        }
+
+        if let Some(result) = connection_result {
+            connecting = None;
+            match result {
+                Ok((new_session, new_owner)) => {
+                    backoff.on_success();
+                    owner = new_owner.clone().unwrap_or_default();
+                    session = Some(new_session);
+                    state = ConnectionState::Connected;
+                    let actions = core.owner_changed(core.session_generation(), new_owner);
+                    enqueue_actions(
+                        actions,
+                        &mut queued_actions,
+                        &mut core,
+                        on_snapshot.as_ref(),
+                    );
                     on_snapshot(core.snapshot().clone());
-                    match bounded_result(bus.get_name_owner("org.bluez"), "BlueZ owner lookup")
-                        .await
-                    {
-                        Ok(unique_owner) => {
-                            owner.clone_from(&unique_owner);
-                            enqueue_actions(
-                                core.owner_changed(
-                                    requested.session_generation,
-                                    Some(unique_owner),
-                                ),
-                                &mut queued_actions,
-                                &mut core,
-                                on_snapshot.as_ref(),
-                            );
-                        }
-                        Err(_) => {
-                            owner.clear();
-                            core.owner_changed(requested.session_generation, None);
-                            on_snapshot(core.snapshot().clone());
-                        }
+                }
+                Err(error) => {
+                    state = ConnectionState::Disconnected;
+                    reconnect_at = Some(backoff.on_failure(Instant::now()));
+                    if core.bus_unavailable(core.session_generation(), error) {
+                        on_snapshot(core.snapshot().clone());
                     }
                 }
-            } else if core.stop_generation(requested.session_generation) {
-                owner.clear();
-                on_snapshot(core.snapshot().clone());
             }
+        }
+
+        if let Some(error) = connection_lost {
+            session = None;
+            owner.clear();
+            state = ConnectionState::Disconnected;
+            reconnect_at = Some(backoff.on_failure(Instant::now()));
+            retire_generation_work(&mut tasks, &mut queued_actions);
+            core.connection_lost(core.session_generation(), error);
+            on_snapshot(core.snapshot().clone());
+        }
+
+        if reconnect_timer_fired {
+            reconnect_at = None;
+            let actions = core.on_timer(Instant::now());
+            enqueue_actions(
+                actions,
+                &mut queued_actions,
+                &mut core,
+                on_snapshot.as_ref(),
+            );
+            on_snapshot(core.snapshot().clone());
+        }
+
+        while tasks.len() < TASK_LIMIT {
+            let Some(action) = queued_actions.pop_front() else {
+                break;
+            };
+            let Some(session) = session.as_ref() else {
+                queued_actions.push_front(action);
+                break;
+            };
+            tasks.push(session.execute(action));
         }
     }
 }
@@ -510,28 +780,6 @@ async fn handle_command<F>(
                 enqueue_actions([action], queued, core, on_snapshot);
                 on_snapshot(core.snapshot().clone());
             }
-        }
-        WorkerCommand::RequestScan {
-            session_generation,
-            owner,
-        } => {
-            if session_generation != core.session_generation() {
-                return;
-            }
-            let action = core.request_scan(&owner, now);
-            enqueue_actions(action, queued, core, on_snapshot);
-            on_snapshot(core.snapshot().clone());
-        }
-        WorkerCommand::ReleaseScan {
-            session_generation,
-            owner,
-        } => {
-            if session_generation != core.session_generation() {
-                return;
-            }
-            let action = core.release_scan(&owner, now);
-            enqueue_actions(action, queued, core, on_snapshot);
-            on_snapshot(core.snapshot().clone());
         }
         WorkerCommand::Connect {
             session_generation,
@@ -652,8 +900,7 @@ fn handle_task_result<F>(
                         connect,
                         success,
                         error,
-                    )
-                    {
+                    ) {
                         on_snapshot(core.snapshot().clone());
                     }
                 }
@@ -1092,4 +1339,361 @@ fn convert_property(value: OwnedValue) -> PropertyValue {
         return PropertyValue::Integer(value);
     }
     PropertyValue::Unsupported
+}
+
+#[cfg(test)]
+mod worker_lifecycle_tests {
+    use super::{
+        BluetoothWorker, BusSession, BusSessionHandle, BusTransport, CoreAction, LifecycleRequest,
+        ScanOwnerMailbox, TASK_LIMIT, TaskFuture, TaskResult, WorkerChannels, WorkerCommand,
+        WorkerControl, apply_scan_owner_update, retire_generation_work, run_worker_with_transport,
+        update_scan_owner_release, update_scan_owner_request,
+    };
+    use super::{ConnectionState, ReconnectBackoff, SignalOutcome};
+    use crate::bluetooth::engine::{BluetoothCore, CoreSnapshot};
+    use crate::bluetooth::object_store::{InterfaceMap, PropertyMap};
+    use async_channel::{Receiver, Sender};
+    use std::collections::VecDeque;
+    use std::future::Future;
+    use std::pin::Pin;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn reconnect_backoff_is_bounded_and_resets_after_success() {
+        let now = Instant::now();
+        let mut backoff = ReconnectBackoff::default();
+
+        assert_eq!(backoff.on_failure(now), now + Duration::from_millis(500));
+        assert_eq!(backoff.on_failure(now), now + Duration::from_secs(1));
+        assert_eq!(backoff.on_failure(now), now + Duration::from_secs(2));
+        assert_eq!(backoff.on_failure(now), now + Duration::from_secs(5));
+        assert_eq!(backoff.on_failure(now), now + Duration::from_secs(5));
+
+        backoff.on_success();
+        assert_eq!(backoff.on_failure(now), now + Duration::from_millis(500));
+    }
+
+    #[test]
+    fn signal_stream_outcomes_are_distinct() {
+        assert!(matches!(SignalOutcome::End, SignalOutcome::End));
+        assert_eq!(ConnectionState::Disconnected, ConnectionState::Disconnected);
+    }
+
+    enum FakeSignal {
+        Pending,
+        Error(String),
+        End,
+    }
+
+    struct FakeSession {
+        owner: Option<String>,
+        signals: Arc<Mutex<VecDeque<FakeSignal>>>,
+    }
+
+    struct FakeTransport {
+        plans: Arc<Mutex<VecDeque<Result<FakeSession, String>>>>,
+        attempts: Arc<AtomicUsize>,
+    }
+
+    impl BusTransport for FakeTransport {
+        fn connect(
+            &self,
+        ) -> Pin<Box<dyn Future<Output = Result<BusSessionHandle, String>> + Send + 'static>>
+        {
+            let plan = self
+                .plans
+                .lock()
+                .expect("fake plans lock")
+                .pop_front()
+                .unwrap_or_else(|| Err(String::from("no fake connection plan")));
+            let attempts = Arc::clone(&self.attempts);
+            Box::pin(async move {
+                attempts.fetch_add(1, Ordering::SeqCst);
+                plan.map(|session| Arc::new(session) as BusSessionHandle)
+            })
+        }
+    }
+
+    impl BusSession for FakeSession {
+        fn owner(&self) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'static>> {
+            let owner = self.owner.clone();
+            Box::pin(async move { owner.ok_or_else(|| String::from("BlueZ has no owner")) })
+        }
+
+        fn next_signal(&self) -> Pin<Box<dyn Future<Output = SignalOutcome> + Send + 'static>> {
+            let signals = Arc::clone(&self.signals);
+            Box::pin(async move {
+                let signal = signals.lock().expect("fake signals lock").pop_front();
+                match signal {
+                    Some(FakeSignal::Error(error)) => SignalOutcome::Error(error),
+                    Some(FakeSignal::End) => SignalOutcome::End,
+                    Some(FakeSignal::Pending) | None => futures::future::pending().await,
+                }
+            })
+        }
+
+        fn execute(&self, action: CoreAction) -> TaskFuture {
+            Box::pin(async move {
+                match action {
+                    CoreAction::Probe {
+                        session_generation,
+                        bluez_generation,
+                        ..
+                    } => TaskResult::Probe {
+                        session_generation,
+                        bluez_generation,
+                        result: Ok(std::collections::BTreeMap::<String, InterfaceMap>::new()),
+                    },
+                    CoreAction::GetAll {
+                        session_generation,
+                        owner,
+                        token,
+                    } => TaskResult::GetAll {
+                        session_generation,
+                        owner,
+                        token,
+                        result: Ok(PropertyMap::new()),
+                    },
+                    action @ CoreAction::SetPowered { .. }
+                    | action @ CoreAction::Discovery { .. }
+                    | action @ CoreAction::Connect { .. }
+                    | action @ CoreAction::StartBus { .. } => TaskResult::Operation {
+                        action,
+                        result: Ok(()),
+                    },
+                }
+            })
+        }
+    }
+
+    struct WorkerHarness {
+        _commands: Sender<WorkerCommand>,
+        lifecycle: Arc<Mutex<LifecycleRequest>>,
+        controls: Sender<WorkerControl>,
+        _scan_controls: Sender<WorkerControl>,
+        shutdown: Sender<WorkerControl>,
+        snapshots: Receiver<CoreSnapshot>,
+        thread: Option<std::thread::JoinHandle<()>>,
+    }
+
+    impl WorkerHarness {
+        fn new(plans: Vec<Result<FakeSession, String>>) -> (Self, Arc<AtomicUsize>) {
+            let (commands, command_rx) = async_channel::bounded(64);
+            let (controls, control_rx) = async_channel::bounded(1);
+            let (scan_controls, scan_control_rx) = async_channel::bounded(1);
+            let (shutdown, shutdown_rx) = async_channel::bounded(1);
+            let lifecycle = Arc::new(Mutex::new(LifecycleRequest::default()));
+            let scan_owners = Arc::new(Mutex::new(ScanOwnerMailbox::default()));
+            let (snapshots, snapshot_rx) = async_channel::bounded(32);
+            let attempts = Arc::new(AtomicUsize::new(0));
+            let transport = Arc::new(FakeTransport {
+                plans: Arc::new(Mutex::new(VecDeque::from(plans))),
+                attempts: Arc::clone(&attempts),
+            });
+            let thread_lifecycle = Arc::clone(&lifecycle);
+            let thread_scan_owners = Arc::clone(&scan_owners);
+            let thread = std::thread::spawn(move || {
+                smol::block_on(run_worker_with_transport(
+                    WorkerChannels {
+                        commands: command_rx,
+                        controls: control_rx,
+                        scan_controls: scan_control_rx,
+                        shutdown: shutdown_rx,
+                    },
+                    thread_lifecycle,
+                    thread_scan_owners,
+                    transport,
+                    Arc::new(move |snapshot| {
+                        let _ = snapshots.try_send(snapshot);
+                    }),
+                ));
+            });
+            (
+                Self {
+                    _commands: commands,
+                    lifecycle,
+                    controls,
+                    _scan_controls: scan_controls,
+                    shutdown,
+                    snapshots: snapshot_rx,
+                    thread: Some(thread),
+                },
+                attempts,
+            )
+        }
+
+        fn start(&self) {
+            let mut lifecycle = self.lifecycle.lock().expect("lifecycle lock");
+            lifecycle.session_generation += 1;
+            lifecycle.running = true;
+            self.controls
+                .try_send(WorkerControl::LifecycleChanged)
+                .expect("lifecycle wake");
+        }
+
+        fn wait_for(&self, predicate: impl Fn(&CoreSnapshot) -> bool) -> CoreSnapshot {
+            smol::block_on(async {
+                loop {
+                    let snapshot = self.snapshots.recv().await.expect("snapshot");
+                    if predicate(&snapshot) {
+                        return snapshot;
+                    }
+                }
+            })
+        }
+
+        fn shutdown(mut self) {
+            self.shutdown
+                .try_send(WorkerControl::Shutdown)
+                .expect("shutdown wake");
+            self.thread
+                .take()
+                .expect("worker thread")
+                .join()
+                .expect("worker join");
+        }
+    }
+
+    fn pending_session(signals: Vec<FakeSignal>) -> FakeSession {
+        FakeSession {
+            owner: Some(String::from(":1.42")),
+            signals: Arc::new(Mutex::new(VecDeque::from(signals))),
+        }
+    }
+
+    #[test]
+    fn saturated_commands_cannot_drop_the_final_scan_owner_release() {
+        let (ordinary, _ordinary_rx) = async_channel::bounded(64);
+        for index in 0..64 {
+            ordinary
+                .try_send(WorkerCommand::SetPowered {
+                    session_generation: 1,
+                    target: index % 2 == 0,
+                })
+                .expect("ordinary queue capacity");
+        }
+        let (scan_controls, _scan_rx) = async_channel::bounded(1);
+        let scan_owners = Mutex::new(ScanOwnerMailbox::default());
+        assert!(update_scan_owner_request(
+            &scan_owners,
+            &scan_controls,
+            1,
+            String::from("topbar"),
+        ));
+        assert!(update_scan_owner_request(
+            &scan_owners,
+            &scan_controls,
+            1,
+            String::from("bluetooth-popup"),
+        ));
+
+        let mut core = BluetoothCore::default();
+        assert!(core.start_generation(1));
+        apply_scan_owner_update(&scan_owners, &mut core, &mut VecDeque::new(), &|_| {});
+        assert_eq!(core.scan_owners().len(), 2);
+
+        update_scan_owner_release(&scan_owners, &scan_controls, 1, String::from("topbar"));
+        update_scan_owner_release(
+            &scan_owners,
+            &scan_controls,
+            1,
+            String::from("bluetooth-popup"),
+        );
+        apply_scan_owner_update(&scan_owners, &mut core, &mut VecDeque::new(), &|_| {});
+        assert!(core.scan_owners().is_empty());
+    }
+
+    #[test]
+    fn generation_replacement_drops_old_tasks_before_new_probe() {
+        let mut tasks = futures::stream::FuturesUnordered::<TaskFuture>::new();
+        for _ in 0..TASK_LIMIT {
+            tasks.push(Box::pin(futures::future::pending::<TaskResult>()));
+        }
+        let mut queued_actions = VecDeque::from([CoreAction::Probe {
+            session_generation: 1,
+            bluez_generation: 1,
+            owner: String::from(":1.42"),
+        }]);
+
+        retire_generation_work(&mut tasks, &mut queued_actions);
+
+        assert!(tasks.is_empty());
+        assert!(queued_actions.is_empty());
+
+        tasks.push(Box::pin(async {
+            TaskResult::Probe {
+                session_generation: 2,
+                bluez_generation: 2,
+                result: Ok(std::collections::BTreeMap::<String, InterfaceMap>::new()),
+            }
+        }));
+        assert!(smol::block_on(async { futures::StreamExt::next(&mut tasks).await }).is_some());
+    }
+
+    #[test]
+    fn initial_connection_failure_recovers_with_a_fresh_connection() {
+        let (harness, attempts) = WorkerHarness::new(vec![
+            Err(String::from("system bus unavailable")),
+            Ok(pending_session(vec![FakeSignal::Pending])),
+        ]);
+        harness.start();
+        harness.wait_for(|snapshot| {
+            snapshot.state == crate::bluetooth::engine::ServiceState::Unavailable
+        });
+        harness
+            .wait_for(|snapshot| snapshot.state == crate::bluetooth::engine::ServiceState::Ready);
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+        harness.shutdown();
+    }
+
+    #[test]
+    fn signal_error_and_terminal_end_each_trigger_recovery() {
+        for signal in [
+            FakeSignal::Error(String::from("signal error")),
+            FakeSignal::End,
+        ] {
+            let (harness, attempts) = WorkerHarness::new(vec![
+                Ok(pending_session(vec![signal])),
+                Ok(pending_session(vec![FakeSignal::Pending])),
+            ]);
+            harness.start();
+            harness.wait_for(|snapshot| {
+                snapshot.state == crate::bluetooth::engine::ServiceState::Unavailable
+            });
+            harness.wait_for(|snapshot| {
+                snapshot.state == crate::bluetooth::engine::ServiceState::Ready
+            });
+            assert_eq!(attempts.load(Ordering::SeqCst), 2);
+            harness.shutdown();
+        }
+    }
+
+    #[test]
+    fn stopped_worker_never_attempts_connection_and_shutdown_cancels_backoff() {
+        let (stopped, attempts) =
+            WorkerHarness::new(vec![Ok(pending_session(vec![FakeSignal::Pending]))]);
+        std::thread::sleep(Duration::from_millis(20));
+        assert_eq!(attempts.load(Ordering::SeqCst), 0);
+        stopped.shutdown();
+
+        let (running, attempts) = WorkerHarness::new(vec![Err(String::from("temporary failure"))]);
+        running.start();
+        running.wait_for(|snapshot| {
+            snapshot.state == crate::bluetooth::engine::ServiceState::Unavailable
+        });
+        let started = Instant::now();
+        running.shutdown();
+        assert!(started.elapsed() < Duration::from_millis(200));
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn dropping_worker_wakes_and_joins_the_worker_thread() {
+        let started = Instant::now();
+        let worker = BluetoothWorker::spawn(|_| {}).expect("worker thread");
+        drop(worker);
+        assert!(started.elapsed() < Duration::from_millis(200));
+    }
 }

@@ -7,12 +7,11 @@
 #include "system/network/NetworkManagerState.hpp"
 #include "system/bluetooth/BluetoothService.hpp"
 #include "system/bluetooth/BluetoothDeviceModel.hpp"
-#include "system/bluetooth/BluezDiscoveryState.hpp"
-#include "system/bluetooth/BluezObjectStore.hpp"
 
-#include <QJsonObject>
 #include <QDBusObjectPath>
+#include <QJsonObject>
 #include <QCoreApplication>
+#include <QSet>
 #include <QSignalSpy>
 #include <QTest>
 
@@ -156,25 +155,21 @@ public:
         m_callbacks = {};
     }
 
-    bool setPowered(bool powered, quint64 requestId) override
+    bool setPowered(bool powered) override
     {
         poweredValue = powered;
-        powerRequestIds.append(requestId);
         return actionResult;
     }
 
-    bool startDiscovery(quint64 requestId) override
+    bool requestScan(const QString &owner) override
     {
-        ++startDiscoveryCount;
-        startDiscoveryIds.append(requestId);
+        scanOwners.insert(owner);
         return actionResult;
     }
 
-    bool stopDiscovery(quint64 requestId) override
+    void releaseScan(const QString &owner) override
     {
-        ++stopDiscoveryCount;
-        stopDiscoveryIds.append(requestId);
-        return actionResult;
+        scanOwners.remove(owner);
     }
 
     bool connectDevice(const QString &path) override
@@ -196,24 +191,13 @@ public:
             m_callbacks.snapshotChanged(snapshot);
     }
 
-    void finish(BluetoothOperationKind kind, quint64 requestId, bool success,
-                const QString &error = {})
-    {
-        if (m_callbacks.operationFinished)
-            m_callbacks.operationFinished({kind, requestId, success, error});
-    }
-
     bool startResult = true;
     bool actionResult = true;
     int startCount = 0;
     int stopCount = 0;
-    int startDiscoveryCount = 0;
-    int stopDiscoveryCount = 0;
-    QVector<quint64> startDiscoveryIds;
-    QVector<quint64> stopDiscoveryIds;
-    QVector<quint64> powerRequestIds;
     int connectCount = 0;
     bool poweredValue = false;
+    QSet<QString> scanOwners;
     QString connectedPath;
     QString disconnectedPath;
 
@@ -249,34 +233,16 @@ private slots:
     void networkOldDeviceScanReplyRejectedAfterWifiSwitch();
     void networkScanRequestIdChangesAcrossRetries();
     void wifiModelDeduplicatesAndAvoidsSemanticReset();
-    void bluezObjectStoreMergesInterfaces();
-    void bluezInvalidationRejectsOlderInterfaceRevision();
-    void bluezInvalidationRejectsRemovedRecreatedInterface();
-    void bluezInvalidationKeepsOtherInterfacesIndependent();
-    void bluezDiscoverySeparatesDemandLeaseAndActualState();
-      void bluetoothDiscoveryFailureWithDemandRetries();
-      void bluetoothDiscoveryTimeoutRejectsLateReply();
-      void bluetoothDiscoveryRetryCancelsWithoutDemand();
-      void bluetoothDiscoveryRetryRecoversAfterDaemonLoss();
-    void bluetoothStopFailureWithNewDemandRestartsDiscovery();
-    void bluetoothStopFailurePreservesHeldLease();
-    void bluetoothStopFailureRetriesRelease();
-    void bluetoothStopRetryCancelledWhenDemandReturns();
-    void bluetoothLateStopReplyCannotSettleNewStop();
-    void bluetoothSharedDiscoveryRemainsValidAfterRelease();
     void pipewireStateUsesMetadataAndPerNodeCache();
     void pipewirePartialMutePatchPreservesVolume();
     void pipewirePartialVolumePatchPreservesMute();
     void pipewirePartialPatchPreservesChannelVolumes();
     void pipewireIncompleteDefaultStateIsUnavailable();
     void pipewireDefaultWriteDoesNotOptimisticallyMutateState();
-    void bluetoothModelReconcilesAndScanOwnershipIsReferenceCounted();
-    void bluetoothRejectsUnpairedConnect();
-    void bluetoothScanningFollowsBackendState();
-    void bluetoothPowerWaitsForAuthoritativeState();
-    void bluetoothOldPowerReplyCannotSettleReplacementRequest();
-    void bluetoothPowerPropertyConvergenceRetiresRequest();
-    void bluetoothPowerTimeoutRejectsLateReply();
+    void bluetoothFacadeContractAndForwardsOperations();
+    void bluetoothHealthChangedCoversHealthJsonFields();
+    void bluetoothBackendStartupFailureReportsUnavailable();
+    void bluetoothDeviceModelPreservesOrderingAndRoles();
     void wifiPowerOldReplyCannotSettleReplacementRequest();
     void networkRatesUseReadableUnits();
     void healthJsonContainsNoSecrets();
@@ -587,405 +553,6 @@ void SystemServicesTest::wifiModelDeduplicatesAndAvoidsSemanticReset()
     QCOMPARE(resetSpy.count(), 1);
 }
 
-void SystemServicesTest::bluezObjectStoreMergesInterfaces()
-{
-    BluezObjectStore store;
-    const QDBusObjectPath devicePath(QStringLiteral("/org/bluez/hci0/dev_AA"));
-    store.interfacesAdded(devicePath,
-                          {{QStringLiteral("org.bluez.Device1"),
-                            {{QStringLiteral("Paired"), true},
-                             {QStringLiteral("Connected"), false}}}});
-    store.interfacesAdded(devicePath,
-                          {{QStringLiteral("org.bluez.Battery1"),
-                            {{QStringLiteral("Percentage"), 80}}}});
-    QCOMPARE(store.objects().value(devicePath).size(), 2);
-    store.propertiesChanged(devicePath, QStringLiteral("org.bluez.Device1"),
-                            {{QStringLiteral("Connected"), true}});
-    QVERIFY(store.objects().value(devicePath).value(QStringLiteral("org.bluez.Device1"))
-                .value(QStringLiteral("Connected")).toBool());
-    store.interfacesRemoved(devicePath, {QStringLiteral("org.bluez.Battery1")});
-    QCOMPARE(store.objects().value(devicePath).size(), 1);
-    store.interfacesRemoved(devicePath, {QStringLiteral("org.bluez.Device1")});
-    QVERIFY(!store.objects().contains(devicePath));
-}
-
-void SystemServicesTest::bluezInvalidationRejectsOlderInterfaceRevision()
-{
-    BluezObjectStore store;
-    const QDBusObjectPath path(QStringLiteral("/org/bluez/hci0/dev_AA"));
-    const QString interfaceName = QStringLiteral("org.bluez.Device1");
-    store.interfacesAdded(path, {{interfaceName, {{QStringLiteral("Connected"), true}}}});
-    const quint64 refreshRevision = store.interfaceRevision(path, interfaceName);
-
-    QVERIFY(store.propertiesChanged(path, interfaceName,
-                                    {{QStringLiteral("Connected"), false}}));
-    QVERIFY(store.interfaceRevision(path, interfaceName) != refreshRevision);
-    QVERIFY(!store.replaceInterfaceIfRevision(path, interfaceName, refreshRevision,
-                                              {{QStringLiteral("Connected"), true}}));
-    QVERIFY(!store.objects().value(path).value(interfaceName)
-                .value(QStringLiteral("Connected")).toBool());
-}
-
-void SystemServicesTest::bluezInvalidationRejectsRemovedRecreatedInterface()
-{
-    BluezObjectStore store;
-    const QDBusObjectPath path(QStringLiteral("/org/bluez/hci0/dev_AA"));
-    const QString interfaceName = QStringLiteral("org.bluez.Device1");
-    store.interfacesAdded(path, {{interfaceName, {{QStringLiteral("Connected"), true}}}});
-    const quint64 refreshRevision = store.interfaceRevision(path, interfaceName);
-    store.interfacesRemoved(path, {interfaceName});
-    store.interfacesAdded(path, {{interfaceName, {{QStringLiteral("Connected"), false}}}});
-
-    QVERIFY(!store.replaceInterfaceIfRevision(path, interfaceName, refreshRevision,
-                                              {{QStringLiteral("Connected"), true}}));
-    QVERIFY(!store.objects().value(path).value(interfaceName)
-                .value(QStringLiteral("Connected")).toBool());
-}
-
-void SystemServicesTest::bluezInvalidationKeepsOtherInterfacesIndependent()
-{
-    BluezObjectStore store;
-    const QDBusObjectPath path(QStringLiteral("/org/bluez/hci0/dev_AA"));
-    const QString deviceInterface = QStringLiteral("org.bluez.Device1");
-    const QString batteryInterface = QStringLiteral("org.bluez.Battery1");
-    store.interfacesAdded(path, {{deviceInterface, {{QStringLiteral("Connected"), true}}},
-                                 {batteryInterface, {{QStringLiteral("Percentage"), 80}}}});
-    const quint64 batteryRevision = store.interfaceRevision(path, batteryInterface);
-    store.interfacesRemoved(path, {batteryInterface});
-
-    QVERIFY(store.objects().contains(path));
-    QVERIFY(store.objects().value(path).contains(deviceInterface));
-    QVERIFY(!store.replaceInterfaceIfRevision(path, batteryInterface, batteryRevision,
-                                              {{QStringLiteral("Percentage"), 20}}));
-    QVERIFY(store.objects().value(path).value(deviceInterface)
-                .value(QStringLiteral("Connected")).toBool());
-}
-
-void SystemServicesTest::bluezDiscoverySeparatesDemandLeaseAndActualState()
-{
-    BluezDiscoveryState state;
-    state.setAdapterReady(true);
-    state.request(QStringLiteral("topbar"));
-    QVERIFY(state.wantsStart());
-    state.startRequested();
-    QCOMPARE(state.lease(), BluezDiscoveryLease::StartPending);
-    state.operationFinished(true, true);
-    QCOMPARE(state.lease(), BluezDiscoveryLease::Held);
-    state.setActualDiscovering(true);
-    state.release(QStringLiteral("topbar"));
-    QVERIFY(state.wantsStop());
-    state.stopRequested();
-    state.operationFinished(false, false);
-    QCOMPARE(state.lease(), BluezDiscoveryLease::Held);
-    QVERIFY(state.wantsStop());
-    state.stopRequested();
-    state.request(QStringLiteral("popup"));
-    state.operationFinished(false, true);
-    QCOMPARE(state.lease(), BluezDiscoveryLease::None);
-    QVERIFY(state.wantsStart());
-    QVERIFY(state.actualDiscovering());
-}
-
-void SystemServicesTest::bluetoothDiscoveryFailureWithDemandRetries()
-{
-    auto backend = std::make_unique<FakeBluetoothBackend>();
-    auto *backendPtr = backend.get();
-    BluetoothService service(std::move(backend));
-    QVERIFY(service.start());
-    BluetoothSnapshot snapshot;
-    snapshot.daemonAvailable = true;
-    snapshot.adapterAvailable = true;
-    snapshot.adapterPath = QStringLiteral("/org/bluez/hci0");
-    snapshot.powered = true;
-    backendPtr->publish(snapshot);
-    QTRY_VERIFY_WITH_TIMEOUT(service.adapterAvailable(), 500);
-
-    backendPtr->actionResult = false;
-    QVERIFY(service.requestScan(QStringLiteral("topbar")));
-    QCOMPARE(backendPtr->startDiscoveryCount, 1);
-    backendPtr->actionResult = true;
-    QTRY_COMPARE_WITH_TIMEOUT(backendPtr->startDiscoveryCount, 2, 2000);
-    backendPtr->finish(BluetoothOperationKind::StartDiscovery,
-                       backendPtr->startDiscoveryIds.constLast(), true);
-    QCoreApplication::processEvents();
-    QCOMPARE(backendPtr->startDiscoveryCount, 2);
-    service.releaseScan(QStringLiteral("topbar"));
-}
-
-void SystemServicesTest::bluetoothDiscoveryTimeoutRejectsLateReply()
-{
-    auto backend = std::make_unique<FakeBluetoothBackend>();
-    auto *backendPtr = backend.get();
-    BluetoothService service(std::move(backend));
-    QVERIFY(service.start());
-    BluetoothSnapshot snapshot;
-    snapshot.daemonAvailable = true;
-    snapshot.adapterAvailable = true;
-    snapshot.adapterPath = QStringLiteral("/org/bluez/hci0");
-    snapshot.powered = true;
-    backendPtr->publish(snapshot);
-    QTRY_VERIFY_WITH_TIMEOUT(service.adapterAvailable(), 500);
-
-    QVERIFY(service.requestScan(QStringLiteral("topbar")));
-    const quint64 firstRequest = backendPtr->startDiscoveryIds.constLast();
-    QTRY_COMPARE_WITH_TIMEOUT(backendPtr->startDiscoveryCount, 2, 5000);
-    const quint64 secondRequest = backendPtr->startDiscoveryIds.constLast();
-    QVERIFY(secondRequest != firstRequest);
-    backendPtr->finish(BluetoothOperationKind::StartDiscovery, firstRequest, true);
-    QCoreApplication::processEvents();
-    QTest::qWait(100);
-    QCOMPARE(backendPtr->startDiscoveryCount, 2);
-    QTRY_COMPARE_WITH_TIMEOUT(backendPtr->startDiscoveryCount, 3, 4500);
-    backendPtr->finish(BluetoothOperationKind::StartDiscovery, secondRequest, true);
-    QCoreApplication::processEvents();
-    service.releaseScan(QStringLiteral("topbar"));
-}
-
-void SystemServicesTest::bluetoothDiscoveryRetryCancelsWithoutDemand()
-{
-    auto backend = std::make_unique<FakeBluetoothBackend>();
-    auto *backendPtr = backend.get();
-    BluetoothService service(std::move(backend));
-    QVERIFY(service.start());
-    BluetoothSnapshot snapshot;
-    snapshot.daemonAvailable = true;
-    snapshot.adapterAvailable = true;
-    snapshot.adapterPath = QStringLiteral("/org/bluez/hci0");
-    snapshot.powered = true;
-    backendPtr->publish(snapshot);
-    QTRY_VERIFY_WITH_TIMEOUT(service.adapterAvailable(), 500);
-
-    backendPtr->actionResult = false;
-    QVERIFY(service.requestScan(QStringLiteral("topbar")));
-    QCOMPARE(backendPtr->startDiscoveryCount, 1);
-    service.releaseScan(QStringLiteral("topbar"));
-    QTest::qWait(700);
-    QCOMPARE(backendPtr->startDiscoveryCount, 1);
-}
-
-void SystemServicesTest::bluetoothDiscoveryRetryRecoversAfterDaemonLoss()
-{
-    auto backend = std::make_unique<FakeBluetoothBackend>();
-    auto *backendPtr = backend.get();
-    BluetoothService service(std::move(backend));
-    QVERIFY(service.start());
-    BluetoothSnapshot snapshot;
-    snapshot.daemonAvailable = true;
-    snapshot.adapterAvailable = true;
-    snapshot.adapterPath = QStringLiteral("/org/bluez/hci0");
-    snapshot.powered = true;
-    backendPtr->publish(snapshot);
-    QTRY_VERIFY_WITH_TIMEOUT(service.adapterAvailable(), 500);
-
-    backendPtr->actionResult = false;
-    QVERIFY(service.requestScan(QStringLiteral("topbar")));
-    QCOMPARE(backendPtr->startDiscoveryCount, 1);
-    snapshot = {};
-    backendPtr->publish(snapshot);
-    QTRY_VERIFY_WITH_TIMEOUT(!service.adapterAvailable(), 500);
-    QTest::qWait(700);
-    QCOMPARE(backendPtr->startDiscoveryCount, 1);
-
-    backendPtr->actionResult = true;
-    snapshot.daemonAvailable = true;
-    snapshot.adapterAvailable = true;
-    snapshot.adapterPath = QStringLiteral("/org/bluez/hci0");
-    snapshot.powered = true;
-    backendPtr->publish(snapshot);
-    QTRY_COMPARE_WITH_TIMEOUT(backendPtr->startDiscoveryCount, 2, 2000);
-    backendPtr->finish(BluetoothOperationKind::StartDiscovery,
-                       backendPtr->startDiscoveryIds.constLast(), true);
-    service.releaseScan(QStringLiteral("topbar"));
-}
-
-void SystemServicesTest::bluetoothStopFailureWithNewDemandRestartsDiscovery()
-{
-    auto backend = std::make_unique<FakeBluetoothBackend>();
-    auto *backendPtr = backend.get();
-    BluetoothService service(std::move(backend));
-    QVERIFY(service.start());
-    BluetoothSnapshot snapshot;
-    snapshot.daemonAvailable = true;
-    snapshot.adapterAvailable = true;
-    snapshot.adapterPath = QStringLiteral("/org/bluez/hci0");
-    snapshot.powered = true;
-    backendPtr->publish(snapshot);
-    QTRY_VERIFY_WITH_TIMEOUT(service.adapterAvailable(), 500);
-
-    QVERIFY(service.requestScan(QStringLiteral("topbar")));
-    const quint64 startRequest = backendPtr->startDiscoveryIds.constLast();
-    backendPtr->finish(BluetoothOperationKind::StartDiscovery, startRequest, true);
-    QCoreApplication::processEvents();
-    QCOMPARE(backendPtr->startDiscoveryCount, 1);
-
-    service.releaseScan(QStringLiteral("topbar"));
-    QCOMPARE(backendPtr->stopDiscoveryCount, 1);
-    const quint64 stopRequest = backendPtr->stopDiscoveryIds.constLast();
-    QVERIFY(service.requestScan(QStringLiteral("popup")));
-    backendPtr->actionResult = false;
-    backendPtr->finish(BluetoothOperationKind::StopDiscovery, stopRequest, false,
-                       QStringLiteral("StopDiscovery failed"));
-    QCoreApplication::processEvents();
-    QCOMPARE(backendPtr->startDiscoveryCount, 1);
-    service.releaseScan(QStringLiteral("popup"));
-    QCOMPARE(backendPtr->stopDiscoveryCount, 2);
-    backendPtr->finish(BluetoothOperationKind::StopDiscovery,
-                       backendPtr->stopDiscoveryIds.constLast(), true);
-}
-
-void SystemServicesTest::bluetoothStopFailurePreservesHeldLease()
-{
-    auto backend = std::make_unique<FakeBluetoothBackend>();
-    auto *backendPtr = backend.get();
-    BluetoothService service(std::move(backend));
-    QVERIFY(service.start());
-    BluetoothSnapshot snapshot;
-    snapshot.daemonAvailable = true;
-    snapshot.adapterAvailable = true;
-    snapshot.adapterPath = QStringLiteral("/org/bluez/hci0");
-    snapshot.powered = true;
-    backendPtr->publish(snapshot);
-    QTRY_VERIFY_WITH_TIMEOUT(service.adapterAvailable(), 500);
-
-    QVERIFY(service.requestScan(QStringLiteral("topbar")));
-    backendPtr->finish(BluetoothOperationKind::StartDiscovery,
-                       backendPtr->startDiscoveryIds.constLast(), true);
-    QCoreApplication::processEvents();
-    service.releaseScan(QStringLiteral("topbar"));
-    const quint64 stopRequest = backendPtr->stopDiscoveryIds.constLast();
-    backendPtr->finish(BluetoothOperationKind::StopDiscovery, stopRequest, false,
-                       QStringLiteral("StopDiscovery failed"));
-    QCoreApplication::processEvents();
-
-    QVERIFY(service.requestScan(QStringLiteral("popup")));
-    QTest::qWait(700);
-    QCOMPARE(backendPtr->startDiscoveryCount, 1);
-    QCOMPARE(backendPtr->stopDiscoveryCount, 1);
-    service.releaseScan(QStringLiteral("popup"));
-    QCOMPARE(backendPtr->stopDiscoveryCount, 2);
-}
-
-void SystemServicesTest::bluetoothStopFailureRetriesRelease()
-{
-    auto backend = std::make_unique<FakeBluetoothBackend>();
-    auto *backendPtr = backend.get();
-    BluetoothService service(std::move(backend));
-    QVERIFY(service.start());
-    BluetoothSnapshot snapshot;
-    snapshot.daemonAvailable = true;
-    snapshot.adapterAvailable = true;
-    snapshot.adapterPath = QStringLiteral("/org/bluez/hci0");
-    snapshot.powered = true;
-    backendPtr->publish(snapshot);
-    QTRY_VERIFY_WITH_TIMEOUT(service.adapterAvailable(), 500);
-
-    QVERIFY(service.requestScan(QStringLiteral("topbar")));
-    backendPtr->finish(BluetoothOperationKind::StartDiscovery,
-                       backendPtr->startDiscoveryIds.constLast(), true);
-    QCoreApplication::processEvents();
-    service.releaseScan(QStringLiteral("topbar"));
-    const quint64 firstStop = backendPtr->stopDiscoveryIds.constLast();
-    backendPtr->finish(BluetoothOperationKind::StopDiscovery, firstStop, false,
-                       QStringLiteral("StopDiscovery failed"));
-    QCoreApplication::processEvents();
-    QTRY_COMPARE_WITH_TIMEOUT(backendPtr->stopDiscoveryCount, 2, 2000);
-    QVERIFY(backendPtr->stopDiscoveryIds.constLast() != firstStop);
-    backendPtr->finish(BluetoothOperationKind::StopDiscovery,
-                       backendPtr->stopDiscoveryIds.constLast(), true);
-    QCoreApplication::processEvents();
-    QCOMPARE(backendPtr->stopDiscoveryCount, 2);
-}
-
-void SystemServicesTest::bluetoothStopRetryCancelledWhenDemandReturns()
-{
-    auto backend = std::make_unique<FakeBluetoothBackend>();
-    auto *backendPtr = backend.get();
-    BluetoothService service(std::move(backend));
-    QVERIFY(service.start());
-    BluetoothSnapshot snapshot;
-    snapshot.daemonAvailable = true;
-    snapshot.adapterAvailable = true;
-    snapshot.adapterPath = QStringLiteral("/org/bluez/hci0");
-    snapshot.powered = true;
-    backendPtr->publish(snapshot);
-    QTRY_VERIFY_WITH_TIMEOUT(service.adapterAvailable(), 500);
-
-    QVERIFY(service.requestScan(QStringLiteral("topbar")));
-    backendPtr->finish(BluetoothOperationKind::StartDiscovery,
-                       backendPtr->startDiscoveryIds.constLast(), true);
-    QCoreApplication::processEvents();
-    service.releaseScan(QStringLiteral("topbar"));
-    backendPtr->finish(BluetoothOperationKind::StopDiscovery,
-                       backendPtr->stopDiscoveryIds.constLast(), false,
-                       QStringLiteral("StopDiscovery failed"));
-    QCoreApplication::processEvents();
-    QVERIFY(service.requestScan(QStringLiteral("popup")));
-    QTest::qWait(700);
-    QCOMPARE(backendPtr->stopDiscoveryCount, 1);
-    QCOMPARE(backendPtr->startDiscoveryCount, 1);
-    service.releaseScan(QStringLiteral("popup"));
-    QCOMPARE(backendPtr->stopDiscoveryCount, 2);
-}
-
-void SystemServicesTest::bluetoothLateStopReplyCannotSettleNewStop()
-{
-    auto backend = std::make_unique<FakeBluetoothBackend>();
-    auto *backendPtr = backend.get();
-    BluetoothService service(std::move(backend));
-    QVERIFY(service.start());
-    BluetoothSnapshot snapshot;
-    snapshot.daemonAvailable = true;
-    snapshot.adapterAvailable = true;
-    snapshot.adapterPath = QStringLiteral("/org/bluez/hci0");
-    snapshot.powered = true;
-    backendPtr->publish(snapshot);
-    QTRY_VERIFY_WITH_TIMEOUT(service.adapterAvailable(), 500);
-
-    QVERIFY(service.requestScan(QStringLiteral("topbar")));
-    backendPtr->finish(BluetoothOperationKind::StartDiscovery,
-                       backendPtr->startDiscoveryIds.constLast(), true);
-    QCoreApplication::processEvents();
-    service.releaseScan(QStringLiteral("topbar"));
-    const quint64 firstStop = backendPtr->stopDiscoveryIds.constLast();
-    QTRY_COMPARE_WITH_TIMEOUT(backendPtr->stopDiscoveryCount, 2, 5000);
-    const quint64 secondStop = backendPtr->stopDiscoveryIds.constLast();
-    QVERIFY(secondStop != firstStop);
-    backendPtr->finish(BluetoothOperationKind::StopDiscovery, firstStop, true);
-    QCoreApplication::processEvents();
-    QCOMPARE(backendPtr->stopDiscoveryCount, 2);
-    backendPtr->finish(BluetoothOperationKind::StopDiscovery, secondStop, true);
-    QCoreApplication::processEvents();
-    QCOMPARE(backendPtr->stopDiscoveryCount, 2);
-}
-
-void SystemServicesTest::bluetoothSharedDiscoveryRemainsValidAfterRelease()
-{
-    auto backend = std::make_unique<FakeBluetoothBackend>();
-    auto *backendPtr = backend.get();
-    BluetoothService service(std::move(backend));
-    QVERIFY(service.start());
-    BluetoothSnapshot snapshot;
-    snapshot.daemonAvailable = true;
-    snapshot.adapterAvailable = true;
-    snapshot.adapterPath = QStringLiteral("/org/bluez/hci0");
-    snapshot.powered = true;
-    snapshot.scanning = true;
-    backendPtr->publish(snapshot);
-    QTRY_VERIFY_WITH_TIMEOUT(service.adapterAvailable(), 500);
-
-    QVERIFY(service.requestScan(QStringLiteral("topbar")));
-    backendPtr->finish(BluetoothOperationKind::StartDiscovery,
-                       backendPtr->startDiscoveryIds.constLast(), true);
-    QCoreApplication::processEvents();
-    service.releaseScan(QStringLiteral("topbar"));
-    backendPtr->finish(BluetoothOperationKind::StopDiscovery,
-                       backendPtr->stopDiscoveryIds.constLast(), true);
-    QCoreApplication::processEvents();
-    QTest::qWait(700);
-    QCOMPARE(backendPtr->stopDiscoveryCount, 1);
-    QVERIFY(service.scanning());
-}
-
 void SystemServicesTest::pipewireStateUsesMetadataAndPerNodeCache()
 {
     PipeWireAudioState state;
@@ -1139,203 +706,196 @@ void SystemServicesTest::pipewireDefaultWriteDoesNotOptimisticallyMutateState()
     QCOMPARE(state.defaultNodeId(), quint32(9));
 }
 
-void SystemServicesTest::bluetoothModelReconcilesAndScanOwnershipIsReferenceCounted()
+void SystemServicesTest::bluetoothFacadeContractAndForwardsOperations()
 {
     auto backend = std::make_unique<FakeBluetoothBackend>();
     auto *backendPtr = backend.get();
     BluetoothService service(std::move(backend));
+
+    QCOMPARE(service.state(), SystemServiceState::Stopped);
     QVERIFY(service.start());
+    QCOMPARE(service.state(), SystemServiceState::Starting);
+    QCOMPARE(backendPtr->startCount, 1);
 
     BluetoothSnapshot snapshot;
-    snapshot.daemonAvailable = true;
+    snapshot.state = SystemServiceState::Ready;
+    snapshot.available = true;
+    snapshot.ready = true;
     snapshot.adapterAvailable = true;
-    snapshot.adapterPath = QStringLiteral("/org/bluez/hci1");
-    snapshot.adapterName = QStringLiteral("Desk");
-    snapshot.powered = true;
-    snapshot.devices = {
-        {QStringLiteral("id-a"), QStringLiteral("/org/bluez/hci1/dev_AA"),
-         QStringLiteral("AA"), QStringLiteral("Mouse"), true, true, true, true,
-         QStringLiteral("input-mouse"), -10, 80},
-        {QStringLiteral("id-b"), QStringLiteral("/org/bluez/hci1/dev_BB"),
-         QStringLiteral("BB"), QStringLiteral("Keyboard"), true, false, false, true,
-         QStringLiteral("input-keyboard"), -40, -1},
-    };
+    snapshot.adapterPath = QStringLiteral("/org/bluez/hci0");
+    snapshot.adapterName = QStringLiteral("Astrea");
+    BluetoothDevice headphones;
+    headphones.id = QStringLiteral("/org/bluez/hci0/dev_AA");
+    headphones.objectPath = headphones.id;
+    headphones.address = QStringLiteral("AA:BB:CC:DD:EE:FF");
+    headphones.name = QStringLiteral("Headphones");
+    headphones.paired = true;
+    headphones.discovered = true;
+    headphones.rssi = -42;
+    headphones.batteryPercent = 76;
+    snapshot.devices.append(headphones);
     backendPtr->publish(snapshot);
-    QTRY_COMPARE(service.devicesModel()->rowCount(), 2);
+
+    QCOMPARE(service.state(), SystemServiceState::Ready);
+    QVERIFY(service.available());
+    QVERIFY(service.ready());
+    QVERIFY(service.adapterAvailable());
+    QCOMPARE(service.adapterPath(), snapshot.adapterPath);
+    QCOMPARE(service.adapterName(), snapshot.adapterName);
+    QCOMPARE(service.devicesModel()->rowCount(), 1);
     QCOMPARE(service.devicesModel()->data(service.devicesModel()->index(0, 0),
-                                           BluetoothDeviceModel::NameRole).toString(),
-             QStringLiteral("Mouse"));
+                                         BluetoothDeviceModel::AddressRole).toString(),
+             headphones.address);
+    QCOMPARE(service.devicesModel()->data(service.devicesModel()->index(0, 0),
+                                         BluetoothDeviceModel::RssiRole).toInt(), -42);
+    QCOMPARE(service.devicesModel()->data(service.devicesModel()->index(0, 0),
+                                         BluetoothDeviceModel::BatteryPercentRole).toInt(), 76);
+
+    QVERIFY(service.setPowered(true));
+    QVERIFY(backendPtr->poweredValue);
+    QVERIFY(!service.powered());
+    snapshot.powerPending = true;
+    backendPtr->publish(snapshot);
+    QVERIFY(service.powerPending());
 
     QVERIFY(service.requestScan(QStringLiteral("topbar")));
-    snapshot.scanning = true;
-    backendPtr->publish(snapshot);
-    QTRY_VERIFY_WITH_TIMEOUT(service.scanning(), 500);
-    backendPtr->finish(BluetoothOperationKind::StartDiscovery,
-                       backendPtr->startDiscoveryIds.constLast(), true);
-    QCoreApplication::processEvents();
-    QVERIFY(service.requestScan(QStringLiteral("popup")));
-    QCOMPARE(backendPtr->startDiscoveryCount, 1);
+    QVERIFY(service.requestScan(QStringLiteral("bluetooth-popup")));
+    QCOMPARE(backendPtr->scanOwners.size(), 2);
     service.releaseScan(QStringLiteral("topbar"));
-    QCOMPARE(backendPtr->stopDiscoveryCount, 0);
-    service.releaseScan(QStringLiteral("popup"));
-    QCOMPARE(backendPtr->stopDiscoveryCount, 1);
-    backendPtr->finish(BluetoothOperationKind::StopDiscovery,
-                       backendPtr->stopDiscoveryIds.constLast(), true);
-    service.releaseScan(QStringLiteral("popup"));
+    QCOMPARE(backendPtr->scanOwners, QSet<QString>{QStringLiteral("bluetooth-popup")});
+
+    QVERIFY(service.connectDevice(headphones.objectPath));
+    QCOMPARE(backendPtr->connectedPath, headphones.objectPath);
+    QVERIFY(service.disconnectDevice(headphones.objectPath));
+    QCOMPARE(backendPtr->disconnectedPath, headphones.objectPath);
+
+    const QJsonObject health = service.healthJson();
+    QVERIFY(health.value(QStringLiteral("available")).toBool());
+    QVERIFY(health.value(QStringLiteral("ready")).toBool());
+    QVERIFY(health.value(QStringLiteral("adapterAvailable")).toBool());
+    QVERIFY(!health.contains(QStringLiteral("address")));
+
+    service.stop();
+    QCOMPARE(service.state(), SystemServiceState::Stopped);
+    QCOMPARE(service.devicesModel()->rowCount(), 0);
+    QCOMPARE(backendPtr->stopCount, 1);
 }
 
-void SystemServicesTest::bluetoothRejectsUnpairedConnect()
+void SystemServicesTest::bluetoothBackendStartupFailureReportsUnavailable()
+{
+    auto backend = std::make_unique<FakeBluetoothBackend>();
+    backend->startResult = false;
+    BluetoothService service(std::move(backend));
+
+    QVERIFY(service.start());
+    QCOMPARE(service.state(), SystemServiceState::Unavailable);
+    QVERIFY(!service.available());
+    QVERIFY(!service.ready());
+    QCOMPARE(service.errorString(), QStringLiteral("Bluetooth backend unavailable"));
+}
+
+void SystemServicesTest::bluetoothHealthChangedCoversHealthJsonFields()
 {
     auto backend = std::make_unique<FakeBluetoothBackend>();
     auto *backendPtr = backend.get();
     BluetoothService service(std::move(backend));
     QVERIFY(service.start());
 
+    QSignalSpy healthSpy(&service, &BluetoothService::healthChanged);
     BluetoothSnapshot snapshot;
-    snapshot.daemonAvailable = true;
+
+    const auto publishAndExpectHealth = [&] {
+        backendPtr->publish(snapshot);
+        QCOMPARE(healthSpy.count(), 1);
+        healthSpy.clear();
+    };
+
+    snapshot.available = true;
+    publishAndExpectHealth();
+    snapshot.ready = true;
+    publishAndExpectHealth();
+    snapshot.state = SystemServiceState::Ready;
+    publishAndExpectHealth();
+    snapshot.errorString = QStringLiteral("BlueZ unavailable");
+    publishAndExpectHealth();
     snapshot.adapterAvailable = true;
-    snapshot.adapterPath = QStringLiteral("/org/bluez/hci0");
+    publishAndExpectHealth();
     snapshot.powered = true;
-    snapshot.devices = {{QStringLiteral("device-a"),
-                         QStringLiteral("/org/bluez/hci0/dev_AA"),
-                         QStringLiteral("AA"), QStringLiteral("Mouse"), false, false,
-                         false, true, QStringLiteral("input-mouse"), -20, 80}};
-    backendPtr->publish(snapshot);
-    QTRY_COMPARE_WITH_TIMEOUT(service.devicesModel()->rowCount(), 1, 500);
-
-    QVERIFY(!service.connectDevice(QStringLiteral("/org/bluez/hci0/dev_AA")));
-    QCOMPARE(backendPtr->connectCount, 0);
-}
-
-void SystemServicesTest::bluetoothScanningFollowsBackendState()
-{
-    auto backend = std::make_unique<FakeBluetoothBackend>();
-    auto *backendPtr = backend.get();
-    BluetoothService service(std::move(backend));
-    QVERIFY(service.start());
-
-    BluetoothSnapshot snapshot;
-    snapshot.daemonAvailable = true;
-    snapshot.adapterAvailable = true;
-    snapshot.adapterPath = QStringLiteral("/org/bluez/hci0");
-    snapshot.powered = true;
-    snapshot.scanning = false;
-    backendPtr->publish(snapshot);
-    QTRY_VERIFY_WITH_TIMEOUT(service.adapterAvailable(), 500);
-
-    QVERIFY(service.requestScan(QStringLiteral("topbar")));
-    QVERIFY(!service.scanning());
+    publishAndExpectHealth();
     snapshot.scanning = true;
+    publishAndExpectHealth();
+    snapshot.connectedCount = 1;
+    publishAndExpectHealth();
+
+    snapshot.adapterName = QStringLiteral("Astrea");
     backendPtr->publish(snapshot);
-    QTRY_VERIFY_WITH_TIMEOUT(service.scanning(), 500);
+    QCOMPARE(healthSpy.count(), 0);
 }
 
-void SystemServicesTest::bluetoothPowerWaitsForAuthoritativeState()
+void SystemServicesTest::bluetoothDeviceModelPreservesOrderingAndRoles()
 {
-    auto backend = std::make_unique<FakeBluetoothBackend>();
-    auto *backendPtr = backend.get();
-    BluetoothService service(std::move(backend));
-    QVERIFY(service.start());
+    BluetoothDeviceModel model;
+    QSignalSpy resetSpy(&model, &QAbstractItemModel::modelReset);
 
-    BluetoothSnapshot snapshot;
-    snapshot.daemonAvailable = true;
-    snapshot.adapterAvailable = true;
-    snapshot.adapterPath = QStringLiteral("/org/bluez/hci0");
-    snapshot.powered = false;
-    backendPtr->publish(snapshot);
-    QTRY_VERIFY_WITH_TIMEOUT(service.adapterAvailable(), 500);
+    BluetoothDevice availableB;
+    availableB.id = QStringLiteral("available-b");
+    availableB.address = QStringLiteral("BB");
+    availableB.name = QStringLiteral("beta");
+    availableB.discovered = true;
+    BluetoothDevice availableA = availableB;
+    availableA.id = QStringLiteral("available-a");
+    availableA.address = QStringLiteral("AA");
+    availableA.name = QStringLiteral("Beta");
+    BluetoothDevice paired;
+    paired.id = QStringLiteral("paired");
+    paired.address = QStringLiteral("CC");
+    paired.name = QStringLiteral("Alpha");
+    paired.paired = true;
+    BluetoothDevice connected;
+    connected.id = QStringLiteral("connected");
+    connected.address = QStringLiteral("DD");
+    connected.name = QStringLiteral("Zeta");
+    connected.connected = true;
 
-    QVERIFY(service.setPowered(true));
-    QVERIFY(service.powerPending());
-    snapshot.powered = false;
-    backendPtr->publish(snapshot);
-    QTRY_VERIFY_WITH_TIMEOUT(service.powerPending(), 500);
-    snapshot.powered = true;
-    backendPtr->publish(snapshot);
-    QTRY_VERIFY_WITH_TIMEOUT(!service.powerPending(), 500);
-}
+    model.replace({availableB, paired, connected, availableA});
+    QCOMPARE(model.rowCount(), 4);
+    QCOMPARE(model.data(model.index(0, 0), BluetoothDeviceModel::IdRole).toString(),
+             QStringLiteral("connected"));
+    QCOMPARE(model.data(model.index(1, 0), BluetoothDeviceModel::IdRole).toString(),
+             QStringLiteral("paired"));
+    QCOMPARE(model.data(model.index(2, 0), BluetoothDeviceModel::IdRole).toString(),
+             QStringLiteral("available-a"));
+    QCOMPARE(model.data(model.index(3, 0), BluetoothDeviceModel::IdRole).toString(),
+             QStringLiteral("available-b"));
+    QCOMPARE(model.data(model.index(1, 0), BluetoothDeviceModel::PairedRole).toBool(), true);
+    QCOMPARE(model.data(model.index(2, 0), BluetoothDeviceModel::DiscoveredRole).toBool(), true);
+    const auto roles = model.roleNames();
+    QCOMPARE(roles.value(BluetoothDeviceModel::IdRole), QByteArray("id"));
+    QCOMPARE(roles.value(BluetoothDeviceModel::ObjectPathRole), QByteArray("objectPath"));
+    QCOMPARE(roles.value(BluetoothDeviceModel::AddressRole), QByteArray("address"));
+    QCOMPARE(roles.value(BluetoothDeviceModel::NameRole), QByteArray("name"));
+    QCOMPARE(roles.value(BluetoothDeviceModel::PairedRole), QByteArray("paired"));
+    QCOMPARE(roles.value(BluetoothDeviceModel::TrustedRole), QByteArray("trusted"));
+    QCOMPARE(roles.value(BluetoothDeviceModel::ConnectedRole), QByteArray("connected"));
+    QCOMPARE(roles.value(BluetoothDeviceModel::DiscoveredRole), QByteArray("discovered"));
+    QCOMPARE(roles.value(BluetoothDeviceModel::IconRole), QByteArray("icon"));
+    QCOMPARE(roles.value(BluetoothDeviceModel::RssiRole), QByteArray("rssi"));
+    QCOMPARE(roles.value(BluetoothDeviceModel::BatteryPercentRole), QByteArray("batteryPercent"));
 
-void SystemServicesTest::bluetoothOldPowerReplyCannotSettleReplacementRequest()
-{
-    auto backend = std::make_unique<FakeBluetoothBackend>();
-    auto *backendPtr = backend.get();
-    BluetoothService service(std::move(backend));
-    QVERIFY(service.start());
-    BluetoothSnapshot snapshot;
-    snapshot.daemonAvailable = true;
-    snapshot.adapterAvailable = true;
-    snapshot.adapterPath = QStringLiteral("/org/bluez/hci0");
-    snapshot.powered = false;
-    backendPtr->publish(snapshot);
-    QTRY_VERIFY_WITH_TIMEOUT(service.adapterAvailable(), 500);
+    model.replace({availableB, paired, connected, availableA});
+    QCOMPARE(resetSpy.count(), 1);
 
-    QVERIFY(service.setPowered(true));
-    const quint64 onRequest = backendPtr->powerRequestIds.constLast();
-    QVERIFY(service.setPowered(false));
-    const quint64 offRequest = backendPtr->powerRequestIds.constLast();
-    QVERIFY(offRequest != onRequest);
-    backendPtr->finish(BluetoothOperationKind::Power, onRequest, false,
-                       QStringLiteral("old power request failed"));
-    QCoreApplication::processEvents();
-    QVERIFY(service.powerPending());
-    backendPtr->finish(BluetoothOperationKind::Power, offRequest, true);
-    snapshot.powered = false;
-    backendPtr->publish(snapshot);
-    QTRY_VERIFY_WITH_TIMEOUT(!service.powerPending(), 500);
-}
+    availableA.connected = true;
+    model.replace({availableB, paired, connected, availableA});
+    QCOMPARE(resetSpy.count(), 2);
+    QCOMPARE(model.rowCount(), 4);
+    QCOMPARE(model.data(model.index(0, 0), BluetoothDeviceModel::IdRole).toString(),
+             QStringLiteral("available-a"));
+    QCOMPARE(model.data(model.index(0, 0), BluetoothDeviceModel::ConnectedRole).toBool(), true);
 
-void SystemServicesTest::bluetoothPowerPropertyConvergenceRetiresRequest()
-{
-    auto backend = std::make_unique<FakeBluetoothBackend>();
-    auto *backendPtr = backend.get();
-    BluetoothService service(std::move(backend));
-    QVERIFY(service.start());
-    BluetoothSnapshot snapshot;
-    snapshot.daemonAvailable = true;
-    snapshot.adapterAvailable = true;
-    snapshot.adapterPath = QStringLiteral("/org/bluez/hci0");
-    snapshot.powered = false;
-    backendPtr->publish(snapshot);
-    QTRY_VERIFY_WITH_TIMEOUT(service.adapterAvailable(), 500);
-
-    QVERIFY(service.setPowered(true));
-    const quint64 requestId = backendPtr->powerRequestIds.constLast();
-    snapshot.powered = true;
-    backendPtr->publish(snapshot);
-    QTRY_VERIFY_WITH_TIMEOUT(!service.powerPending(), 500);
-    backendPtr->finish(BluetoothOperationKind::Power, requestId, false,
-                       QStringLiteral("late power failure"));
-    QCoreApplication::processEvents();
-    QVERIFY(!service.powerPending());
-}
-
-void SystemServicesTest::bluetoothPowerTimeoutRejectsLateReply()
-{
-    auto backend = std::make_unique<FakeBluetoothBackend>();
-    auto *backendPtr = backend.get();
-    BluetoothService service(std::move(backend));
-    QVERIFY(service.start());
-    BluetoothSnapshot snapshot;
-    snapshot.daemonAvailable = true;
-    snapshot.adapterAvailable = true;
-    snapshot.adapterPath = QStringLiteral("/org/bluez/hci0");
-    snapshot.powered = false;
-    backendPtr->publish(snapshot);
-    QTRY_VERIFY_WITH_TIMEOUT(service.adapterAvailable(), 500);
-
-    QVERIFY(service.setPowered(true));
-    const quint64 firstRequest = backendPtr->powerRequestIds.constLast();
-    QTRY_VERIFY_WITH_TIMEOUT(!service.powerPending(), 4000);
-    QVERIFY(service.setPowered(true));
-    const quint64 secondRequest = backendPtr->powerRequestIds.constLast();
-    QVERIFY(secondRequest != firstRequest);
-    backendPtr->finish(BluetoothOperationKind::Power, firstRequest, true);
-    QCoreApplication::processEvents();
-    QVERIFY(service.powerPending());
-    backendPtr->finish(BluetoothOperationKind::Power, secondRequest, true);
-    snapshot.powered = true;
-    backendPtr->publish(snapshot);
-    QTRY_VERIFY_WITH_TIMEOUT(!service.powerPending(), 500);
+    model.replace({availableB, paired, connected});
+    QCOMPARE(resetSpy.count(), 3);
+    QCOMPARE(model.rowCount(), 3);
 }
 
 void SystemServicesTest::wifiPowerOldReplyCannotSettleReplacementRequest()

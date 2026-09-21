@@ -2,12 +2,10 @@
 
 #include "system/SystemServiceState.hpp"
 #include "system/bluetooth/BluetoothBackend.hpp"
-#include "system/bluetooth/BluezDiscoveryState.hpp"
 
 #include <QJsonObject>
 #include <QObject>
-#include <QSet>
-#include <QTimer>
+#include <QString>
 
 #include <memory>
 
@@ -70,20 +68,12 @@ signals:
     void errorStringChanged();
 
 private:
-    void setState(SystemServiceState state);
-    void setErrorString(const QString &errorString);
     void applySnapshot(const BluetoothSnapshot &snapshot);
-    void reconcileDiscovery();
-    void handleOperationFinished(const BluetoothOperationResult &result);
-    void finishPowerPending(bool success, const QString &errorString = {});
-    void finishDiscoveryRequest(bool success, const QString &errorString = {});
-    void scheduleDiscoveryRetry();
-    void cancelDiscoveryRetry();
+    void setState(SystemServiceState state, bool notifyHealth = true);
+    void setErrorString(const QString &errorString, bool notifyHealth = true);
 
     std::unique_ptr<BluetoothBackend> m_backend;
     BluetoothDeviceModel *m_devicesModel = nullptr;
-    QSet<QString> m_scanOwners;
-    BluezDiscoveryState m_discoveryState;
     SystemServiceState m_state = SystemServiceState::Stopped;
     bool m_available = false;
     bool m_ready = false;
@@ -93,20 +83,9 @@ private:
     bool m_powered = false;
     bool m_powerPending = false;
     bool m_scanning = false;
-    bool m_powerTarget = false;
-    bool m_discoveryRequestInFlight = false;
     int m_connectedCount = 0;
     QString m_connectedName;
     QString m_errorString;
-    quint64 m_generation = 0;
-    quint64 m_powerOperationId = 0;
-    quint64 m_powerRequestId = 0;
-    quint64 m_discoveryOperationId = 0;
-    quint64 m_discoveryRequestId = 0;
-    QTimer m_powerTimer;
-    QTimer m_discoveryTimer;
-    QTimer m_discoveryRetryTimer;
-    int m_discoveryRetryAttempt = 0;
 };
 
 } // namespace Astrea::System

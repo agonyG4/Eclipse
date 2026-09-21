@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::time::Instant;
 
 use super::device::{AdapterInfo, BluetoothDevice, adapters, project_devices, select_adapter};
@@ -139,6 +139,10 @@ impl BluetoothCore {
         self.bluez_generation
     }
 
+    pub fn scan_owners(&self) -> &BTreeSet<String> {
+        self.discovery.owners()
+    }
+
     pub fn start(&mut self) -> Option<CoreAction> {
         if self.running {
             return None;
@@ -208,6 +212,34 @@ impl BluetoothCore {
         if !self.accepts_session(session_generation) {
             return false;
         }
+        self.snapshot = CoreSnapshot {
+            session_generation,
+            state: ServiceState::Unavailable,
+            error: Some(error),
+            ..CoreSnapshot::default()
+        };
+        true
+    }
+
+    pub fn connection_lost(&mut self, session_generation: u64, error: String) -> bool {
+        if !self.accepts_session(session_generation) {
+            return false;
+        }
+        let Some(generation) = self.bluez_generation.checked_add(1) else {
+            self.fail("Bluetooth service generation exhausted".to_owned());
+            return true;
+        };
+        self.bluez_generation = generation;
+        self.owner_known_for_session = false;
+        self.owner = None;
+        self.store.clear_generation(generation);
+        self.selected_adapter_path.clear();
+        self.power.clear_pending();
+        self.device_operations.clear();
+        self.discovery.set_adapter_ready(false);
+        self.initial_snapshot_pending = false;
+        self.initial_snapshot_events.clear();
+        self.initial_snapshot_overflowed = false;
         self.snapshot = CoreSnapshot {
             session_generation,
             state: ServiceState::Unavailable,
@@ -486,6 +518,15 @@ impl BluetoothCore {
         self.discovery_action(now)
     }
 
+    pub fn replace_scan_owners(
+        &mut self,
+        owners: BTreeSet<String>,
+        now: Instant,
+    ) -> Option<CoreAction> {
+        self.discovery.replace_owners(owners);
+        self.discovery_action(now)
+    }
+
     pub fn connect_device(&mut self, object_path: &str, connect: bool) -> Option<CoreAction> {
         if !self.snapshot.available || object_path.is_empty() {
             return None;
@@ -512,6 +553,7 @@ impl BluetoothCore {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn connect_reply(
         &mut self,
         session_generation: u64,
@@ -672,7 +714,12 @@ impl BluetoothCore {
         self.selected_adapter_path = selected_adapter_path;
         let selected_info = selected.unwrap_or_else(AdapterInfo::default);
         let devices = project_devices(self.store.objects(), &self.selected_adapter_path);
-        for operation in self.device_operations.pending().cloned().collect::<Vec<_>>() {
+        for operation in self
+            .device_operations
+            .pending()
+            .cloned()
+            .collect::<Vec<_>>()
+        {
             if let Some(device) = devices
                 .iter()
                 .find(|device| device.object_path == operation.object_path)

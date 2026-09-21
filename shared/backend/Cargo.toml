@@ -1,0 +1,22 @@
+[package]
+name = "astrea_system_backend"
+version = "0.1.0"
+edition = "2024"
+links = "astrea_system_backend"
+build = "build.rs"
+
+[lib]
+crate-type = ["staticlib", "lib"]
+
+[dependencies]
+async-channel = "2"
+async-io = "2"
+cxx = "1.0.95"
+cxx-qt = "0.10.0"
+cxx-qt-lib = "0.10.0"
+futures = "0.3"
+smol = "2"
+zbus = { version = "5", default-features = false, features = ["async-io"] }
+
+[build-dependencies]
+cxx-qt-build = "0.10.0"

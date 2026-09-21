@@ -643,3 +643,33 @@ fn device_operations_are_independent_and_retired_by_generation_changes() {
         Some(String::from("stale after stop")),
     ));
 }
+
+#[test]
+fn connection_loss_retires_pending_device_operations() {
+    let mut core = BluetoothCore::default();
+    let (session, generation) = start_ready(&mut core);
+    let action = core
+        .connect_device("/org/bluez/hci0/dev_AA", true)
+        .expect("connect action");
+    let CoreAction::Connect {
+        operation_id,
+        object_path,
+        connect,
+        ..
+    } = action
+    else {
+        panic!("connect action");
+    };
+
+    assert!(core.connection_lost(session, String::from("connection lost")));
+    assert_eq!(core.snapshot().state, ServiceState::Unavailable);
+    assert!(!core.connect_reply(
+        session,
+        generation,
+        operation_id,
+        &object_path,
+        connect,
+        false,
+        Some(String::from("stale failure")),
+    ));
+}

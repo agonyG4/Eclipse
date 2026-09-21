@@ -7,6 +7,16 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick DBus ShaderTools)
+include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/AstreaCxxQtBackend.cmake")
+astrea_add_cxx_qt_crate(
+    NAME ASTREA_SYSTEM_BACKEND
+    MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/backend/Cargo.toml"
+    EXPORT_DIR "${CMAKE_CURRENT_BINARY_DIR}/cxxqt"
+    CRATE_NAME astrea_system_backend
+    QMAKE_VARIABLE ASTREA_SYSTEM_QMAKE
+    QT_MODULES Qt6::Core
+    CXXQT_HEADERS src/bluetooth/bridge.cxxqt.h
+)
 if(NOT TARGET PkgConfig::ASTREA_PIPEWIRE)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(ASTREA_PIPEWIRE REQUIRED IMPORTED_TARGET libpipewire-0.3)
@@ -185,19 +195,17 @@ add_library(astrea-shared-system STATIC
     system/bluetooth/BluetoothBackend.hpp
     system/bluetooth/BluetoothService.cpp
     system/bluetooth/BluetoothService.hpp
-    system/bluetooth/BluezObjectStore.cpp
-    system/bluetooth/BluezObjectStore.hpp
-    system/bluetooth/BluezDiscoveryState.cpp
-    system/bluetooth/BluezDiscoveryState.hpp
-    system/bluetooth/BluezBackend.cpp
-    system/bluetooth/BluezBackend.hpp
+    system/bluetooth/RustBluetoothBackend.cpp
+    system/bluetooth/RustBluetoothBackend.hpp
 )
+add_dependencies(astrea-shared-system astrea_system_backend_cxxqt_headers)
 
 target_include_directories(astrea-shared-system PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_link_libraries(astrea-shared-system PUBLIC
+    astrea_system_backend
     Qt6::Core
     Qt6::DBus
     PkgConfig::ASTREA_PIPEWIRE
@@ -312,11 +320,13 @@ if(NOT MSVC)
 endif()
 
 if(ASTREA_WAYLAND_EFFECTS_AVAILABLE)
+    get_target_property(ASTREA_QT_GUI_INCLUDE_DIRS Qt6::Gui INTERFACE_INCLUDE_DIRECTORIES)
     find_path(ASTREA_QT_GUI_QPA_INCLUDE_DIR
         qpa/qplatformnativeinterface.h
-        PATHS ${Qt6Gui_INCLUDE_DIRS}
+        PATHS ${Qt6Gui_INCLUDE_DIRS} ${ASTREA_QT_GUI_INCLUDE_DIRS}
         PATH_SUFFIXES "${Qt6Gui_VERSION}/QtGui"
     )
+    unset(ASTREA_QT_GUI_INCLUDE_DIRS)
     if(NOT ASTREA_QT_GUI_QPA_INCLUDE_DIR)
         message(FATAL_ERROR
             "Public Wayland effects require Qt's platform native window-resource interface")

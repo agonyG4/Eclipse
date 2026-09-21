@@ -15,10 +15,17 @@ dependency. Production unified-shell builds require LayerShellQt; the
 dependency-free helper stub is available only when the explicit
 `ASTREA_ENABLE_LAYER_SHELL=OFF` development/test mode is selected.
 
-astrea-shared-system is a separate native-service target. It owns the
-PipeWire, NetworkManager D-Bus, and BlueZ D-Bus adapters plus the typed
-Audio, Network, and Bluetooth Qt services and models. The core target remains
-free of PipeWire and D-Bus dependencies. ShellRuntime owns one instance of
-each service and injects those instances into the TopBar through
-BarSurfaceBundle initial properties; QML contains presentation and input
-forwarding only.
+astrea-shared-system is a separate native-service target. Audio and Network
+remain on their existing C++ adapters. Bluetooth is in Phase 1 of an
+incremental Rust migration: the reusable `shared/backend` crate owns BlueZ
+D-Bus communication, Bluetooth object tracking, operations, deadlines, and
+state policy. `BluetoothService` remains a thin Qt compatibility facade, and
+`BluetoothDeviceModel` remains C++ so the current Shell and Bar contract stays
+stable. Those Qt-specific pieces are intentionally deferred for a later model
+migration. The core target remains free of PipeWire and D-Bus dependencies.
+ShellRuntime owns one instance of each service and injects those instances
+into the TopBar through BarSurfaceBundle initial properties; QML contains
+presentation and input forwarding only.
+
+Pairing and a Settings Bluetooth page are separate future feature phases. They
+are not part of the current Bluetooth backend migration.

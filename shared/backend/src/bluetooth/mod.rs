@@ -7,3 +7,4 @@ pub mod discovery;
 pub mod engine;
 pub mod object_store;
 pub mod operations;
+pub mod pairing;

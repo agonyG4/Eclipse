@@ -112,6 +112,24 @@ pub struct PendingDeviceOperation {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeviceMutationKind {
+    Connect,
+    Disconnect,
+    Pair,
+    Trust,
+    Forget,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PendingDeviceMutation {
+    pub operation_id: u64,
+    pub object_path: String,
+    pub kind: DeviceMutationKind,
+    pub session_generation: u64,
+    pub bluez_generation: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DeviceOperationCompletion {
     Ignored,
     AwaitingAuthoritativeState,

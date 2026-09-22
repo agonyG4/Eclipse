@@ -4,7 +4,7 @@ import QtQuick
 QtObject {
     readonly property string configPath: ThemeController.configPath
     readonly property bool loaded: ThemeController.loaded
-    property int themeMode: ThemeController.themeMode
+    readonly property int themeMode: ThemeController.themeMode
     readonly property string themePreference: ThemeController.themePreference
     property int shellStyle: ThemeController.shellStyle
     property int iconStyle: ThemeController.iconStyle
@@ -14,7 +14,6 @@ QtObject {
     property int audioOsdStyle: ThemeController.audioOsdStyle
     property int persistedShellStyle: ThemeController.shellStyle
 
-    onThemeModeChanged: if (ThemeController.themeMode !== themeMode) ThemeController.themeMode = themeMode
     onShellStyleChanged: if (ThemeController.shellStyle !== shellStyle) ThemeController.shellStyle = shellStyle
     onIconStyleChanged: if (ThemeController.iconStyle !== iconStyle) ThemeController.iconStyle = iconStyle
     onIconThemeChanged: if (ThemeController.iconTheme !== iconTheme) ThemeController.iconTheme = iconTheme

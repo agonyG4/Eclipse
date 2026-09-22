@@ -11,7 +11,7 @@ Item {
     readonly property string configPath: Borealis.State.configPath
     readonly property bool loaded: Borealis.State.loaded
 
-    property int themeMode: Borealis.State.themeMode
+    readonly property int themeMode: Borealis.State.themeMode
     readonly property string themePreference: Borealis.State.themePreference
     property int shellStyle: Borealis.State.shellStyle
     property int iconStyle: Borealis.State.iconStyle
@@ -21,7 +21,6 @@ Item {
     property int audioOsdStyle: Borealis.State.audioOsdStyle
     property int persistedShellStyle: Borealis.State.persistedShellStyle
 
-    onThemeModeChanged: if (Borealis.State.themeMode !== themeMode) Borealis.State.themeMode = themeMode
     onShellStyleChanged: if (Borealis.State.shellStyle !== shellStyle) Borealis.State.shellStyle = shellStyle
     onIconStyleChanged: if (Borealis.State.iconStyle !== iconStyle) Borealis.State.iconStyle = iconStyle
     onIconThemeChanged: if (Borealis.State.iconTheme !== iconTheme) Borealis.State.iconTheme = iconTheme
@@ -30,7 +29,6 @@ Item {
 
     Connections {
         target: Borealis.State
-        function onThemeModeChanged() { if (theme.themeMode !== Borealis.State.themeMode) theme.themeMode = Borealis.State.themeMode }
         function onShellStyleChanged() { if (theme.shellStyle !== Borealis.State.shellStyle) theme.shellStyle = Borealis.State.shellStyle }
         function onIconStyleChanged() { if (theme.iconStyle !== Borealis.State.iconStyle) theme.iconStyle = Borealis.State.iconStyle }
         function onIconThemeChanged() { if (theme.iconTheme !== Borealis.State.iconTheme) theme.iconTheme = Borealis.State.iconTheme }

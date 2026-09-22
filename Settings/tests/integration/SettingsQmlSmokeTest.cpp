@@ -94,6 +94,7 @@ private slots:
     void appearanceChoicesPreserveExternalControllerPropagation();
     void appearanceIconChoicesPreserveControllerPropagation();
     void appearanceAccentChoicesUpdateController();
+    void appearancePersistenceErrorsAreVisibleOnlyWhenPresent();
     void visualEffectsChoicesUpdateShellStyle();
     void loadsWallpaperRouteFromHubOffscreen();
     void loadsDockRouteFromHubOffscreen();
@@ -1500,6 +1501,52 @@ void SettingsQmlSmokeTest::appearanceAccentChoicesUpdateController()
             return swatch->property("selected").toBool();
         });
     }(), 1500);
+}
+
+void SettingsQmlSmokeTest::appearancePersistenceErrorsAreVisibleOnlyWhenPresent()
+{
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+    HomeEnvironmentGuard homeGuard(home.path());
+
+    const QString configDirectory = home.filePath(QStringLiteral(".config/AstreaOS/ui"));
+    QVERIFY(QDir().mkpath(configDirectory));
+    QFile malformedConfig(QDir(configDirectory).filePath(QStringLiteral("theme.json")));
+    QVERIFY(malformedConfig.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QCOMPARE(malformedConfig.write(QByteArrayLiteral("{ malformed")), qint64(11));
+    malformedConfig.close();
+
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController;
+    connectAppearanceReload(settingsController, themeController);
+    QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("appearance")));
+    QObject *root = engine.rootObjects().constFirst();
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("appearancePage")) != nullptr,
+                             1000);
+    QObject *page = root->findChild<QObject *>(QStringLiteral("appearancePage"));
+    QVERIFY(page != nullptr);
+    QObject *errorText = page->findChild<QObject *>(QStringLiteral("appearancePersistenceError"));
+    QVERIFY(errorText != nullptr);
+    QCOMPARE(settingsController.appearance()->property("lastError").toString(), QString());
+    QVERIFY(!errorText->property("visible").toBool());
+
+    QVERIFY(QMetaObject::invokeMethod(settingsController.appearance(), "setAccentHex",
+                                      Qt::DirectConnection,
+                                      Q_ARG(QString, QStringLiteral("#bf5af2"))));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !settingsController.appearance()->property("lastError").toString().isEmpty(), 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(errorText->property("visible").toBool(), 1000);
+    QCOMPARE(errorText->property("text").toString(),
+             settingsController.appearance()->property("lastError").toString());
+    QTRY_VERIFY_WITH_TIMEOUT(!settingsController.appearance()->property("busy").toBool(), 1000);
 }
 
 void SettingsQmlSmokeTest::visualEffectsChoicesUpdateShellStyle()

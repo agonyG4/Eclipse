@@ -319,6 +319,18 @@ Item {
         contentMargins: 32
         maxWidth: 760
 
+        Text {
+            objectName: "appearancePersistenceError"
+            visible: SettingsController.appearance.lastError !== ""
+            text: SettingsController.appearance.lastError
+            color: Components.Theme.errorColor
+            font.family: Components.Theme.fontFamily
+            font.pixelSize: Components.Theme.fontSizeSmall
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
+            Layout.bottomMargin: 10
+        }
+
         Form.SectionHeader {
             text: I18n.tr("apps.settings.pages.appearance.text.system_theme", "SYSTEM THEME")
             Layout.bottomMargin: 10

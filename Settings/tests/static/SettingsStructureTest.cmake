@@ -431,6 +431,8 @@ foreach(appearance_required_token IN ITEMS
     "SettingsController.appearance.setThemePreference"
     "SettingsController.appearance.setAccentHex"
     "SettingsController.appearance.setIconAppearance"
+    "appearancePersistenceError"
+    "SettingsController.appearance.lastError !== \"\""
     "apps.settings.pages.appearance.text.accent_color"
     "apps.settings.pages.appearance.text.app_icons"
     "apps.settings.pages.appearance.option.monochrome"
@@ -506,14 +508,35 @@ endforeach()
 file(READ "${SETTINGS_SOURCE_DIR}/qml/theme/State.qml" theme_state_source)
 file(READ "${SETTINGS_SOURCE_DIR}/qml/components/Theme.qml" theme_component_source)
 foreach(readonly_projection IN ITEMS
+    "readonly property int themeMode"
     "readonly property string themePreference"
     "readonly property string accentHex"
     "readonly property string iconAppearance"
 )
-    string(FIND "${theme_state_source}${theme_component_source}" "${readonly_projection}"
-        readonly_projection_position)
-    if(readonly_projection_position EQUAL -1)
-        message(FATAL_ERROR "Live theme projection is not read-only: ${readonly_projection}")
+    foreach(projection_source IN ITEMS theme_state_source theme_component_source)
+        string(FIND "${${projection_source}}" "${readonly_projection}"
+            readonly_projection_position)
+        if(readonly_projection_position EQUAL -1)
+            message(FATAL_ERROR
+                "Live theme projection ${projection_source} is missing read-only property '${readonly_projection}'")
+        endif()
+    endforeach()
+endforeach()
+foreach(migrated_theme_writer IN ITEMS
+    "ThemeController.themeMode ="
+    "ThemeController.themePreference ="
+    "ThemeController.accentHex ="
+    "ThemeController.iconAppearance ="
+    "Borealis.State.themeMode ="
+    "Borealis.State.themePreference ="
+    "Borealis.State.accentHex ="
+    "Borealis.State.iconAppearance ="
+    "onThemeModeChanged:"
+)
+    string(FIND "${theme_state_source}${theme_component_source}" "${migrated_theme_writer}"
+        migrated_theme_writer_position)
+    if(NOT migrated_theme_writer_position EQUAL -1)
+        message(FATAL_ERROR "Settings theme projection reintroduced migrated writer '${migrated_theme_writer}'")
     endif()
 endforeach()
 foreach(removed_theme_helper IN ITEMS

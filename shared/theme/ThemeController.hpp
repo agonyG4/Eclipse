@@ -11,13 +11,13 @@
 
 class ThemeController final : public QObject {
     Q_OBJECT
-    Q_PROPERTY(int themeMode READ themeMode WRITE setThemeMode NOTIFY themeModeChanged)
-    Q_PROPERTY(QString themePreference READ themePreference WRITE setThemePreference NOTIFY themePreferenceChanged)
+    Q_PROPERTY(int themeMode READ themeMode NOTIFY themeModeChanged)
+    Q_PROPERTY(QString themePreference READ themePreference NOTIFY themePreferenceChanged)
     Q_PROPERTY(int shellStyle READ shellStyle WRITE setShellStyle NOTIFY shellStyleChanged)
     Q_PROPERTY(int iconStyle READ iconStyle WRITE setIconStyle NOTIFY iconStyleChanged)
     Q_PROPERTY(QString iconTheme READ iconTheme WRITE setIconTheme NOTIFY iconThemeChanged)
-    Q_PROPERTY(QString iconAppearance READ iconAppearance WRITE setIconAppearance NOTIFY iconAppearanceChanged)
-    Q_PROPERTY(QString accentHex READ accentHex WRITE setAccentHex NOTIFY accentHexChanged)
+    Q_PROPERTY(QString iconAppearance READ iconAppearance NOTIFY iconAppearanceChanged)
+    Q_PROPERTY(QString accentHex READ accentHex NOTIFY accentHexChanged)
     Q_PROPERTY(int audioOsdStyle READ audioOsdStyle WRITE setAudioOsdStyle NOTIFY audioOsdStyleChanged)
     Q_PROPERTY(QString configPath READ configPath CONSTANT)
     Q_PROPERTY(bool loaded READ loaded CONSTANT)

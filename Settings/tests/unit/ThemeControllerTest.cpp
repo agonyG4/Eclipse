@@ -3,6 +3,7 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMetaProperty>
 #include <QSaveFile>
 #include <QTemporaryDir>
 #include <QTextStream>
@@ -79,6 +80,7 @@ class ThemeControllerTest final : public QObject {
     Q_OBJECT
 
 private slots:
+    void qtPropertiesEnforceAppearanceOwnership();
     void usesLegacyDefaultsWhenConfigIsMissing();
     void iconAppearanceDefaultsToDefault();
     void iconAppearanceNormalizesCanonicalValues();
@@ -106,6 +108,34 @@ private slots:
     void legacySetThemeModeSelectsExplicitPreference();
     void automaticPlatformChangeUpdatesEffectiveModeOnly();
 };
+
+void ThemeControllerTest::qtPropertiesEnforceAppearanceOwnership()
+{
+    const QMetaObject *metaObject = &ThemeController::staticMetaObject;
+    const QStringList appearanceProperties {
+        QStringLiteral("themeMode"),
+        QStringLiteral("themePreference"),
+        QStringLiteral("accentHex"),
+        QStringLiteral("iconAppearance"),
+    };
+    for (const QString &name : appearanceProperties) {
+        const int propertyIndex = metaObject->indexOfProperty(name.toLatin1().constData());
+        QVERIFY2(propertyIndex >= 0, qPrintable(name));
+        QVERIFY2(!metaObject->property(propertyIndex).isWritable(), qPrintable(name));
+    }
+
+    const QStringList transitionalProperties {
+        QStringLiteral("shellStyle"),
+        QStringLiteral("iconStyle"),
+        QStringLiteral("iconTheme"),
+        QStringLiteral("audioOsdStyle"),
+    };
+    for (const QString &name : transitionalProperties) {
+        const int propertyIndex = metaObject->indexOfProperty(name.toLatin1().constData());
+        QVERIFY2(propertyIndex >= 0, qPrintable(name));
+        QVERIFY2(metaObject->property(propertyIndex).isWritable(), qPrintable(name));
+    }
+}
 
 void ThemeControllerTest::usesLegacyDefaultsWhenConfigIsMissing()
 {

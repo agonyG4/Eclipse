@@ -1,5 +1,6 @@
 //! Bluetooth state and BlueZ integration.
 
+pub mod agent;
 pub mod bluez;
 pub mod bridge;
 pub mod device;

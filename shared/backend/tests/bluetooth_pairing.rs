@@ -6,7 +6,10 @@ use astrea_system_backend::bluetooth::pairing::{
     PairingState, TrustCompletion, TrustState,
 };
 
-fn identity(operation_id: u64, path: &str) -> astrea_system_backend::bluetooth::pairing::DeviceOperationIdentity {
+fn identity(
+    operation_id: u64,
+    path: &str,
+) -> astrea_system_backend::bluetooth::pairing::DeviceOperationIdentity {
     astrea_system_backend::bluetooth::pairing::DeviceOperationIdentity {
         operation_id,
         object_path: path.to_owned(),
@@ -74,7 +77,10 @@ fn pairing_cancel_and_timeout_retire_identity_without_reusing_it() {
         .begin(1, 7, 11, "/org/bluez/hci0/dev_AA", "Headphones", now)
         .expect("pairing session");
     assert_eq!(state.cancel(&first), PairingCompletion::Canceled);
-    assert_eq!(state.pair_method_reply(&first, true, None), PairingCompletion::Ignored);
+    assert_eq!(
+        state.pair_method_reply(&first, true, None),
+        PairingCompletion::Ignored
+    );
 
     let second = state
         .begin(2, 7, 11, "/org/bluez/hci0/dev_AA", "Headphones", now)
@@ -84,7 +90,10 @@ fn pairing_cancel_and_timeout_retire_identity_without_reusing_it() {
         state.expire(now + Duration::from_secs(120)),
         Some(PairingCompletion::TimedOut)
     );
-    assert_eq!(state.pair_method_reply(&second, true, None), PairingCompletion::Ignored);
+    assert_eq!(
+        state.pair_method_reply(&second, true, None),
+        PairingCompletion::Ignored
+    );
 }
 
 #[test]
@@ -96,10 +105,17 @@ fn pairing_failure_is_pairing_specific_and_does_not_leak_secrets() {
         .expect("pairing session");
     assert!(state.agent_registered(&operation));
     assert_eq!(
-        state.pair_method_reply(&operation, false, Some("authentication rejected".to_owned())),
+        state.pair_method_reply(
+            &operation,
+            false,
+            Some("authentication rejected".to_owned())
+        ),
         PairingCompletion::Failed
     );
-    assert_eq!(state.snapshot().pairing_error.as_deref(), Some("authentication rejected"));
+    assert_eq!(
+        state.snapshot().pairing_error.as_deref(),
+        Some("authentication rejected")
+    );
     let debug = format!("{state:?}");
     assert!(!debug.contains("123456"));
 }
@@ -114,9 +130,18 @@ fn trust_waits_for_authoritative_value_and_ignores_late_failure() {
         state.method_reply(&pending, true),
         TrustCompletion::AwaitingAuthoritativeState
     );
-    assert_eq!(state.authoritative(&pending, false), TrustCompletion::Ignored);
-    assert_eq!(state.authoritative(&pending, true), TrustCompletion::Succeeded);
-    assert_eq!(state.method_reply(&pending, false), TrustCompletion::Ignored);
+    assert_eq!(
+        state.authoritative(&pending, false),
+        TrustCompletion::Ignored
+    );
+    assert_eq!(
+        state.authoritative(&pending, true),
+        TrustCompletion::Succeeded
+    );
+    assert_eq!(
+        state.method_reply(&pending, false),
+        TrustCompletion::Ignored
+    );
 
     let second = state.begin(identity(2, "/org/bluez/hci0/dev_AA"), false, now);
     assert_eq!(state.method_reply(&second, false), TrustCompletion::Failed);
@@ -132,14 +157,26 @@ fn forget_waits_for_authoritative_removal_and_is_terminal_per_device() {
         state.method_reply(&pending, true),
         ForgetCompletion::AwaitingAuthoritativeRemoval
     );
-    assert_eq!(state.authoritative_removed(&pending), ForgetCompletion::Succeeded);
-    assert_eq!(state.method_reply(&pending, false), ForgetCompletion::Ignored);
+    assert_eq!(
+        state.authoritative_removed(&pending),
+        ForgetCompletion::Succeeded
+    );
+    assert_eq!(
+        state.method_reply(&pending, false),
+        ForgetCompletion::Ignored
+    );
 
     let pending = state
         .begin(identity(2, "/org/bluez/hci0/dev_AA"), now)
         .expect("new forget after removal");
-    assert_eq!(state.method_reply(&pending, false), ForgetCompletion::Failed);
-    assert_eq!(state.authoritative_removed(&pending), ForgetCompletion::Ignored);
+    assert_eq!(
+        state.method_reply(&pending, false),
+        ForgetCompletion::Failed
+    );
+    assert_eq!(
+        state.authoritative_removed(&pending),
+        ForgetCompletion::Ignored
+    );
 }
 
 #[test]

@@ -37,7 +37,12 @@ add_library(astrea-alttab-hyprland STATIC
     platform/hyprland/HyprlandSocket.cpp
 )
 target_include_directories(astrea-alttab-hyprland PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
-target_link_libraries(astrea-alttab-hyprland PUBLIC Qt6::Core Qt6::Network astrea-shared-appidentity)
+target_link_libraries(astrea-alttab-hyprland PUBLIC
+    Qt6::Core
+    Qt6::Network
+    astrea-alttab-types
+    astrea-shared-appidentity
+)
 astrea_enable_warnings(astrea-alttab-hyprland)
 astrea_enable_sanitizers(astrea-alttab-hyprland)
 

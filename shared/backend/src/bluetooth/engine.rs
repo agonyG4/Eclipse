@@ -1,12 +1,17 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::time::Instant;
 
+use super::agent::{AgentPromptKind, AgentPromptView};
 use super::device::{AdapterInfo, BluetoothDevice, adapters, project_devices, select_adapter};
 use super::discovery::{DiscoveryCommand, DiscoveryReply, DiscoveryState};
 use super::object_store::{InterfaceMap, InterfaceRefreshToken, ObjectStore, PropertyMap};
 use super::operations::{
     DeviceOperationCompletion, DeviceOperationState, OperationIds, PendingDeviceOperation,
     PowerState, PowerUpdate,
+};
+use super::pairing::{
+    DeviceOperationIdentity, ForgetCompletion, ForgetState, PairingCompletion, PairingIdentity,
+    PairingState, TrustCompletion, TrustState,
 };
 
 const INITIAL_SNAPSHOT_EVENT_CAPACITY: usize = 128;
@@ -55,6 +60,20 @@ pub struct CoreSnapshot {
     pub connected_name: String,
     pub error: Option<String>,
     pub devices: Vec<BluetoothDevice>,
+    pub pairing: bool,
+    pub pairing_device_path: String,
+    pub pairing_device_name: String,
+    pub pairing_error: Option<String>,
+    pub agent_request_active: bool,
+    pub agent_request_id: u64,
+    pub agent_request_kind: AgentPromptKind,
+    pub agent_device_path: String,
+    pub agent_device_name: String,
+    pub agent_passkey: Option<u32>,
+    pub agent_entered: Option<u8>,
+    pub agent_service_uuid: Option<String>,
+    pub agent_display_pin: Option<String>,
+    pub operation_error: Option<String>,
 }
 
 impl CoreSnapshot {
@@ -100,6 +119,46 @@ pub enum CoreAction {
         object_path: String,
         connect: bool,
     },
+    RegisterAgent {
+        session_generation: u64,
+        bluez_generation: u64,
+        owner: String,
+        operation_id: u64,
+        pairing_epoch: u64,
+        device_path: String,
+    },
+    Pair {
+        session_generation: u64,
+        bluez_generation: u64,
+        owner: String,
+        operation_id: u64,
+        pairing_epoch: u64,
+        device_path: String,
+    },
+    CancelPairing {
+        session_generation: u64,
+        bluez_generation: u64,
+        owner: String,
+        operation_id: u64,
+        pairing_epoch: u64,
+        device_path: String,
+    },
+    SetTrusted {
+        session_generation: u64,
+        bluez_generation: u64,
+        owner: String,
+        operation_id: u64,
+        object_path: String,
+        target: bool,
+    },
+    RemoveDevice {
+        session_generation: u64,
+        bluez_generation: u64,
+        owner: String,
+        operation_id: u64,
+        adapter_path: String,
+        object_path: String,
+    },
     GetAll {
         session_generation: u64,
         owner: String,
@@ -119,6 +178,10 @@ pub struct BluetoothCore {
     power: PowerState,
     operation_ids: OperationIds,
     device_operations: DeviceOperationState,
+    pairing: PairingState,
+    trust: TrustState,
+    forget: ForgetState,
+    agent_prompt: AgentPromptView,
     discovery: DiscoveryState,
     snapshot: CoreSnapshot,
     initial_snapshot_pending: bool,
@@ -173,6 +236,7 @@ impl BluetoothCore {
         self.store.clear_generation(self.bluez_generation);
         self.power.clear_pending();
         self.device_operations.clear();
+        self.clear_phase2_state();
         self.discovery.reset();
         self.initial_snapshot_pending = false;
         self.initial_snapshot_events.clear();
@@ -202,6 +266,7 @@ impl BluetoothCore {
         self.store.clear_generation(self.bluez_generation);
         self.power.clear_pending();
         self.device_operations.clear();
+        self.clear_phase2_state();
         self.discovery.reset();
         self.initial_snapshot_pending = false;
         self.initial_snapshot_events.clear();
@@ -241,6 +306,7 @@ impl BluetoothCore {
         self.selected_adapter_path.clear();
         self.power.clear_pending();
         self.device_operations.clear();
+        self.clear_phase2_state();
         self.discovery.set_adapter_ready(false);
         self.initial_snapshot_pending = false;
         self.initial_snapshot_events.clear();
@@ -277,6 +343,7 @@ impl BluetoothCore {
         self.selected_adapter_path.clear();
         self.power.clear_pending();
         self.device_operations.clear();
+        self.clear_phase2_state();
         self.discovery.set_adapter_ready(false);
         self.initial_snapshot_events.clear();
         self.initial_snapshot_overflowed = false;
@@ -558,6 +625,273 @@ impl BluetoothCore {
         })
     }
 
+    pub fn pair_device(&mut self, object_path: &str) -> Option<CoreAction> {
+        let owner = self.owner.clone()?;
+        let device = self.authoritative_device(object_path)?.clone();
+        if !self.snapshot.available
+            || !self.snapshot.adapter_available
+            || !self.snapshot.powered
+            || device.paired
+            || self.pairing.active_identity().is_some()
+            || self.trust.is_pending(object_path)
+            || self.forget.is_pending(object_path)
+            || self.has_device_conflict(object_path)
+        {
+            return None;
+        }
+        let operation_id = self.operation_ids.allocate()?;
+        let identity = self
+            .pairing
+            .begin(
+                operation_id,
+                self.session_generation,
+                self.bluez_generation,
+                object_path,
+                &device.name,
+                Instant::now(),
+            )
+            .ok()?;
+        self.refresh_snapshot();
+        Some(CoreAction::RegisterAgent {
+            session_generation: self.session_generation,
+            bluez_generation: self.bluez_generation,
+            owner,
+            operation_id: identity.operation_id,
+            pairing_epoch: identity.pairing_epoch,
+            device_path: identity.device_path,
+        })
+    }
+
+    pub fn agent_registered(
+        &mut self,
+        session_generation: u64,
+        bluez_generation: u64,
+        operation_id: u64,
+        pairing_epoch: u64,
+    ) -> Option<CoreAction> {
+        if !self.accepts_bluez(session_generation, bluez_generation) {
+            return None;
+        }
+        let identity = self.pairing.active_identity()?.clone();
+        if identity.operation_id != operation_id || identity.pairing_epoch != pairing_epoch {
+            return None;
+        }
+        if !self.pairing.agent_registered(&identity) {
+            return None;
+        }
+        let owner = self.owner.clone()?;
+        Some(CoreAction::Pair {
+            session_generation,
+            bluez_generation,
+            owner,
+            operation_id,
+            pairing_epoch,
+            device_path: identity.device_path,
+        })
+    }
+
+    pub fn agent_registration_failed(
+        &mut self,
+        session_generation: u64,
+        bluez_generation: u64,
+        operation_id: u64,
+        pairing_epoch: u64,
+        error: Option<String>,
+    ) -> bool {
+        if !self.accepts_bluez(session_generation, bluez_generation) {
+            return false;
+        }
+        let Some(identity) = self.pairing.active_identity().cloned() else {
+            return false;
+        };
+        if identity.operation_id != operation_id || identity.pairing_epoch != pairing_epoch {
+            return false;
+        }
+        let failed = self.pairing.agent_registration_failed(&identity, error);
+        self.refresh_snapshot();
+        failed == PairingCompletion::Failed
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn pair_reply(
+        &mut self,
+        session_generation: u64,
+        bluez_generation: u64,
+        operation_id: u64,
+        pairing_epoch: u64,
+        object_path: &str,
+        success: bool,
+        error: Option<String>,
+    ) -> bool {
+        if !self.accepts_bluez(session_generation, bluez_generation) {
+            return false;
+        }
+        let identity = PairingIdentity {
+            operation_id,
+            pairing_epoch,
+            session_generation,
+            bluez_generation,
+            device_path: object_path.to_owned(),
+        };
+        let result = self.pairing.pair_method_reply(&identity, success, error);
+        self.refresh_snapshot();
+        result == PairingCompletion::Failed
+    }
+
+    pub fn cancel_pairing(&mut self) -> Option<CoreAction> {
+        let identity = self.pairing.active_identity().cloned()?;
+        let owner = self.owner.clone()?;
+        if self.pairing.cancel(&identity) == PairingCompletion::Ignored {
+            return None;
+        }
+        self.agent_prompt = AgentPromptView::default();
+        self.refresh_snapshot();
+        Some(CoreAction::CancelPairing {
+            session_generation: identity.session_generation,
+            bluez_generation: identity.bluez_generation,
+            owner,
+            operation_id: identity.operation_id,
+            pairing_epoch: identity.pairing_epoch,
+            device_path: identity.device_path,
+        })
+    }
+
+    pub fn set_device_trusted(&mut self, object_path: &str, target: bool) -> Option<CoreAction> {
+        let owner = self.owner.clone()?;
+        let device = self.authoritative_device(object_path)?.clone();
+        if !self.snapshot.available
+            || !self.snapshot.adapter_available
+            || !device.paired
+            || self.pairing.active_identity().is_some()
+            || self.forget.is_pending(object_path)
+            || self
+                .device_operations
+                .pending()
+                .any(|operation| operation.object_path == object_path)
+        {
+            return None;
+        }
+        let operation_id = self.operation_ids.allocate()?;
+        let identity = DeviceOperationIdentity {
+            operation_id,
+            object_path: object_path.to_owned(),
+            session_generation: self.session_generation,
+            bluez_generation: self.bluez_generation,
+        };
+        self.trust.begin(identity, target, Instant::now());
+        Some(CoreAction::SetTrusted {
+            session_generation: self.session_generation,
+            bluez_generation: self.bluez_generation,
+            owner,
+            operation_id,
+            object_path: object_path.to_owned(),
+            target,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn trusted_reply(
+        &mut self,
+        session_generation: u64,
+        bluez_generation: u64,
+        operation_id: u64,
+        object_path: &str,
+        target: bool,
+        success: bool,
+        error: Option<String>,
+    ) -> bool {
+        if !self.accepts_bluez(session_generation, bluez_generation) {
+            return false;
+        }
+        let Some(operation) = self.trust.current(object_path) else {
+            return false;
+        };
+        if operation.identity.operation_id != operation_id
+            || operation.identity.session_generation != session_generation
+            || operation.identity.bluez_generation != bluez_generation
+            || operation.target_trusted != target
+        {
+            return false;
+        }
+        let result = self.trust.method_reply(&operation, success);
+        if result == TrustCompletion::Failed {
+            self.snapshot.operation_error = error;
+        }
+        result == TrustCompletion::Failed
+    }
+
+    pub fn forget_device(&mut self, object_path: &str) -> Option<CoreAction> {
+        let owner = self.owner.clone()?;
+        if !self.snapshot.available
+            || !self.snapshot.adapter_available
+            || self.authoritative_device(object_path).is_none()
+            || self.pairing.active_identity().is_some()
+            || self.trust.is_pending(object_path)
+            || self.has_device_conflict(object_path)
+        {
+            return None;
+        }
+        let operation_id = self.operation_ids.allocate()?;
+        let identity = DeviceOperationIdentity {
+            operation_id,
+            object_path: object_path.to_owned(),
+            session_generation: self.session_generation,
+            bluez_generation: self.bluez_generation,
+        };
+        self.forget.begin(identity, Instant::now()).ok()?;
+        Some(CoreAction::RemoveDevice {
+            session_generation: self.session_generation,
+            bluez_generation: self.bluez_generation,
+            owner,
+            operation_id,
+            adapter_path: self.selected_adapter_path.clone(),
+            object_path: object_path.to_owned(),
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn forget_reply(
+        &mut self,
+        session_generation: u64,
+        bluez_generation: u64,
+        operation_id: u64,
+        object_path: &str,
+        success: bool,
+        error: Option<String>,
+    ) -> bool {
+        if !self.accepts_bluez(session_generation, bluez_generation) {
+            return false;
+        }
+        let Some(operation) = self.forget.current(object_path) else {
+            return false;
+        };
+        if operation.identity.operation_id != operation_id
+            || operation.identity.session_generation != session_generation
+            || operation.identity.bluez_generation != bluez_generation
+        {
+            return false;
+        }
+        let result = self.forget.method_reply(&operation, success);
+        if result == ForgetCompletion::Failed {
+            self.snapshot.operation_error = error;
+        }
+        result == ForgetCompletion::Failed
+    }
+
+    pub fn agent_prompt_changed(
+        &mut self,
+        session_generation: u64,
+        bluez_generation: u64,
+        prompt: AgentPromptView,
+    ) -> bool {
+        if !self.accepts_bluez(session_generation, bluez_generation) {
+            return false;
+        }
+        self.agent_prompt = prompt;
+        self.refresh_snapshot();
+        true
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn connect_reply(
         &mut self,
@@ -620,6 +954,26 @@ impl BluetoothCore {
         if !self.running {
             return Vec::new();
         }
+        let mut actions = Vec::new();
+        if let Some((identity, PairingCompletion::TimedOut)) = self.pairing.expire(now) {
+            self.agent_prompt = AgentPromptView::default();
+            if let Some(owner) = self.owner.clone() {
+                actions.push(CoreAction::CancelPairing {
+                    session_generation: identity.session_generation,
+                    bluez_generation: identity.bluez_generation,
+                    owner,
+                    operation_id: identity.operation_id,
+                    pairing_epoch: identity.pairing_epoch,
+                    device_path: identity.device_path,
+                });
+            }
+        }
+        if !self.trust.expire(now).is_empty() {
+            self.snapshot.operation_error = Some("Bluetooth trust operation timed out".to_owned());
+        }
+        if !self.forget.expire(now).is_empty() {
+            self.snapshot.operation_error = Some("Bluetooth forget operation timed out".to_owned());
+        }
         if self.power.expire(now) {
             self.snapshot.power_pending = false;
             self.fail("Bluetooth power update timed out".to_owned());
@@ -627,7 +981,11 @@ impl BluetoothCore {
         if self.discovery.expire(now) {
             self.fail("Bluetooth discovery update timed out".to_owned());
         }
-        self.discovery_action(now).into_iter().collect()
+        if let Some(action) = self.discovery_action(now) {
+            actions.push(action);
+        }
+        self.refresh_snapshot();
+        actions
     }
 
     pub fn next_deadline(&self) -> Option<Instant> {
@@ -635,6 +993,9 @@ impl BluetoothCore {
             self.power.deadline(),
             self.discovery.pending().map(|op| op.deadline),
             self.discovery.retry_at(),
+            self.pairing.next_deadline(),
+            self.trust.next_deadline(),
+            self.forget.next_deadline(),
         ]
         .into_iter()
         .flatten()
@@ -714,11 +1075,36 @@ impl BluetoothCore {
             // new request.
             self.power.clear_pending();
             self.device_operations.clear();
+            self.clear_phase2_state();
             self.discovery.set_adapter_ready(false);
         }
         self.selected_adapter_path = selected_adapter_path;
         let selected_info = selected.unwrap_or_else(AdapterInfo::default);
         let devices = project_devices(self.store.objects(), &self.selected_adapter_path);
+        if let Some(operation) = self.pairing.active_identity().cloned()
+            && devices
+                .iter()
+                .any(|device| device.object_path == operation.device_path && device.paired)
+        {
+            self.pairing.authoritative_paired(&operation, true);
+            self.agent_prompt = AgentPromptView::default();
+        }
+        for operation in self.trust.pending().cloned().collect::<Vec<_>>() {
+            if let Some(device) = devices
+                .iter()
+                .find(|device| device.object_path == operation.identity.object_path)
+            {
+                self.trust.authoritative(&operation, device.trusted);
+            }
+        }
+        for operation in self.forget.pending().cloned().collect::<Vec<_>>() {
+            if !devices
+                .iter()
+                .any(|device| device.object_path == operation.identity.object_path)
+            {
+                self.forget.authoritative_removed(&operation);
+            }
+        }
         for operation in self
             .device_operations
             .pending()
@@ -758,6 +1144,12 @@ impl BluetoothCore {
             self.power.set_authoritative_powered(selected_info.powered);
             selected_info.powered
         };
+        let pairing = self.pairing.snapshot();
+        let agent_prompt = self.agent_prompt.clone();
+        let agent_device_name = devices
+            .iter()
+            .find(|device| device.object_path == agent_prompt.device_path)
+            .map_or_else(String::new, |device| device.name.clone());
         self.snapshot = CoreSnapshot {
             session_generation: self.session_generation,
             state: if daemon_available {
@@ -777,6 +1169,20 @@ impl BluetoothCore {
             connected_name,
             error: self.snapshot.error.clone(),
             devices,
+            pairing: pairing.pairing,
+            pairing_device_path: pairing.pairing_device_path,
+            pairing_device_name: pairing.pairing_device_name,
+            pairing_error: pairing.pairing_error,
+            agent_request_active: agent_prompt.active,
+            agent_request_id: agent_prompt.request_id,
+            agent_request_kind: agent_prompt.kind,
+            agent_device_path: agent_prompt.device_path,
+            agent_device_name,
+            agent_passkey: agent_prompt.passkey,
+            agent_entered: agent_prompt.entered,
+            agent_service_uuid: agent_prompt.service_uuid,
+            agent_display_pin: agent_prompt.display_pin,
+            operation_error: self.snapshot.operation_error.clone(),
         };
     }
 
@@ -785,6 +1191,31 @@ impl BluetoothCore {
         if self.snapshot.available {
             self.snapshot.state = ServiceState::Ready;
         }
+    }
+
+    fn authoritative_device(&self, object_path: &str) -> Option<&BluetoothDevice> {
+        if self.selected_adapter_path.is_empty()
+            || !object_path.starts_with(&(self.selected_adapter_path.clone() + "/"))
+        {
+            return None;
+        }
+        self.snapshot
+            .devices
+            .iter()
+            .find(|device| device.object_path == object_path)
+    }
+
+    fn has_device_conflict(&self, object_path: &str) -> bool {
+        self.device_operations
+            .pending()
+            .any(|operation| operation.object_path == object_path)
+    }
+
+    fn clear_phase2_state(&mut self) {
+        self.pairing.clear();
+        self.trust.clear();
+        self.forget.clear();
+        self.agent_prompt = AgentPromptView::default();
     }
 
     fn fail(&mut self, error: String) {

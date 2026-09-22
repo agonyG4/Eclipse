@@ -40,6 +40,17 @@ fn snapshot_objects() -> BTreeMap<String, InterfaceMap> {
     ])
 }
 
+fn unpaired_snapshot_objects() -> BTreeMap<String, InterfaceMap> {
+    let mut objects = snapshot_objects();
+    let device = objects
+        .get_mut("/org/bluez/hci0/dev_AA")
+        .and_then(|interfaces| interfaces.get_mut("org.bluez.Device1"))
+        .expect("fixture device");
+    device.insert(String::from("Paired"), PropertyValue::Boolean(false));
+    device.insert(String::from("Trusted"), PropertyValue::Boolean(false));
+    objects
+}
+
 fn start_ready(core: &mut BluetoothCore) -> (u64, u64) {
     let open = core.start().expect("start succeeds");
     let CoreAction::StartBus { session_generation } = open else {
@@ -672,4 +683,381 @@ fn connection_loss_retires_pending_device_operations() {
         false,
         Some(String::from("stale failure")),
     ));
+}
+
+#[test]
+fn pair_policy_requires_authoritative_unpaired_selected_device_and_registers_first() {
+    let mut core = BluetoothCore::default();
+    let open = core.start().expect("start succeeds");
+    let CoreAction::StartBus { session_generation } = open else {
+        panic!("start action");
+    };
+    let probe = core.owner_changed(session_generation, Some(String::from(":1.42")));
+    let CoreAction::Probe {
+        bluez_generation, ..
+    } = probe[0]
+    else {
+        panic!("probe action");
+    };
+    core.managed_objects(
+        session_generation,
+        bluez_generation,
+        unpaired_snapshot_objects(),
+    );
+
+    let register = core
+        .pair_device("/org/bluez/hci0/dev_AA")
+        .expect("unpaired selected device can pair");
+    let CoreAction::RegisterAgent {
+        operation_id,
+        pairing_epoch,
+        device_path,
+        ..
+    } = register
+    else {
+        panic!("Pair must be preceded by RegisterAgent");
+    };
+    assert!(core.snapshot().pairing);
+    assert_eq!(core.snapshot().pairing_device_path, device_path);
+    assert!(core.pair_device("/org/bluez/hci0/dev_AA").is_none());
+
+    let pair = core
+        .agent_registered(
+            session_generation,
+            bluez_generation,
+            operation_id,
+            pairing_epoch,
+        )
+        .expect("registered agent produces Pair");
+    assert!(matches!(pair, CoreAction::Pair { .. }));
+
+    assert!(core.pair_device("/org/bluez/hci0/dev_unknown").is_none());
+    assert!(
+        core.pair_device("/org/bluez/hci1/dev_AA_BB_CC_DD_EE_FF")
+            .is_none()
+    );
+}
+
+#[test]
+fn pairing_waits_for_authoritative_paired_and_keeps_user_errors_local() {
+    let mut core = BluetoothCore::default();
+    let (session, generation) = {
+        let open = core.start().expect("start succeeds");
+        let CoreAction::StartBus { session_generation } = open else {
+            panic!("start action");
+        };
+        let probe = core.owner_changed(session_generation, Some(String::from(":1.42")));
+        let CoreAction::Probe {
+            bluez_generation, ..
+        } = probe[0]
+        else {
+            panic!("probe action");
+        };
+        core.managed_objects(
+            session_generation,
+            bluez_generation,
+            unpaired_snapshot_objects(),
+        );
+        (session_generation, bluez_generation)
+    };
+    let register = core
+        .pair_device("/org/bluez/hci0/dev_AA")
+        .expect("register");
+    let CoreAction::RegisterAgent {
+        operation_id,
+        pairing_epoch,
+        ..
+    } = register
+    else {
+        panic!("register action");
+    };
+    let pair = core
+        .agent_registered(session, generation, operation_id, pairing_epoch)
+        .expect("pair action");
+    let CoreAction::Pair { device_path, .. } = pair else {
+        panic!("pair action");
+    };
+    assert!(!core.pair_reply(
+        session,
+        generation,
+        operation_id,
+        pairing_epoch,
+        &device_path,
+        true,
+        None,
+    ));
+    assert!(core.snapshot().pairing);
+    assert!(
+        core.properties_changed(
+            session,
+            generation,
+            &device_path,
+            "org.bluez.Device1",
+            props([("Paired", PropertyValue::Boolean(true))]),
+            &[],
+        )
+        .0
+    );
+    assert!(!core.snapshot().pairing);
+    assert_eq!(core.snapshot().pairing_error, None);
+    assert!(!core.pair_reply(
+        session,
+        generation,
+        operation_id,
+        pairing_epoch,
+        &device_path,
+        false,
+        Some(String::from("late authentication failure")),
+    ));
+
+    let register = core.pair_device(&device_path);
+    assert!(
+        register.is_none(),
+        "authoritative Paired rejects a second Pair"
+    );
+}
+
+#[test]
+fn pairing_failure_cancel_and_generation_replacement_do_not_degrade_service() {
+    let mut core = BluetoothCore::default();
+    let (session, generation) = {
+        let open = core.start().expect("start succeeds");
+        let CoreAction::StartBus { session_generation } = open else {
+            panic!("start action");
+        };
+        let probe = core.owner_changed(session_generation, Some(String::from(":1.42")));
+        let CoreAction::Probe {
+            bluez_generation, ..
+        } = probe[0]
+        else {
+            panic!("probe action");
+        };
+        core.managed_objects(
+            session_generation,
+            bluez_generation,
+            unpaired_snapshot_objects(),
+        );
+        (session_generation, bluez_generation)
+    };
+    let register = core
+        .pair_device("/org/bluez/hci0/dev_AA")
+        .expect("register");
+    let CoreAction::RegisterAgent {
+        operation_id,
+        pairing_epoch,
+        ..
+    } = register
+    else {
+        panic!("register action");
+    };
+    let _pair = core
+        .agent_registered(session, generation, operation_id, pairing_epoch)
+        .expect("pair action");
+    assert!(core.pair_reply(
+        session,
+        generation,
+        operation_id,
+        pairing_epoch,
+        "/org/bluez/hci0/dev_AA",
+        false,
+        Some(String::from("authentication rejected")),
+    ));
+    assert_eq!(core.snapshot().state, ServiceState::Ready);
+    assert_eq!(
+        core.snapshot().pairing_error.as_deref(),
+        Some("authentication rejected")
+    );
+
+    let register = core.pair_device("/org/bluez/hci0/dev_AA").expect("retry");
+    let CoreAction::RegisterAgent {
+        operation_id,
+        pairing_epoch,
+        ..
+    } = register
+    else {
+        panic!("register action");
+    };
+    let cancel = core.cancel_pairing().expect("cancel action");
+    assert!(matches!(cancel, CoreAction::CancelPairing { .. }));
+    assert!(!core.pair_reply(
+        session,
+        generation,
+        operation_id,
+        pairing_epoch,
+        "/org/bluez/hci0/dev_AA",
+        true,
+        None,
+    ));
+    assert_eq!(core.snapshot().state, ServiceState::Ready);
+
+    let register = core.pair_device("/org/bluez/hci0/dev_AA").expect("retry");
+    let CoreAction::RegisterAgent {
+        operation_id,
+        pairing_epoch,
+        ..
+    } = register
+    else {
+        panic!("register action");
+    };
+    let timeout_actions = core.on_timer(Instant::now() + std::time::Duration::from_secs(121));
+    assert!(matches!(
+        timeout_actions.as_slice(),
+        [CoreAction::CancelPairing { .. }]
+    ));
+    assert!(!core.snapshot().pairing);
+    assert_eq!(
+        core.snapshot().pairing_error.as_deref(),
+        Some("Bluetooth pairing timed out")
+    );
+    assert!(!core.pair_reply(
+        session,
+        generation,
+        operation_id,
+        pairing_epoch,
+        "/org/bluez/hci0/dev_AA",
+        true,
+        None,
+    ));
+
+    let register = core.pair_device("/org/bluez/hci0/dev_AA").expect("retry");
+    let CoreAction::RegisterAgent {
+        operation_id,
+        pairing_epoch,
+        ..
+    } = register
+    else {
+        panic!("register action");
+    };
+    core.owner_changed(session, None);
+    assert!(!core.snapshot().pairing);
+    assert!(!core.pair_reply(
+        session,
+        generation,
+        operation_id,
+        pairing_epoch,
+        "/org/bluez/hci0/dev_AA",
+        false,
+        Some(String::from("stale")),
+    ));
+}
+
+#[test]
+fn trust_converges_authoritatively_and_forget_waits_for_removal() {
+    let mut core = BluetoothCore::default();
+    let (session, generation) = start_ready(&mut core);
+    let trust = core
+        .set_device_trusted("/org/bluez/hci0/dev_AA", true)
+        .expect("paired device can be trusted");
+    let CoreAction::SetTrusted {
+        operation_id,
+        object_path,
+        target,
+        ..
+    } = trust
+    else {
+        panic!("trusted action");
+    };
+    assert!(!core.trusted_reply(
+        session,
+        generation,
+        operation_id,
+        &object_path,
+        target,
+        true,
+        None,
+    ));
+    assert!(
+        core.properties_changed(
+            session,
+            generation,
+            &object_path,
+            "org.bluez.Device1",
+            props([("Trusted", PropertyValue::Boolean(true))]),
+            &[],
+        )
+        .0
+    );
+    assert!(core.snapshot().devices[0].trusted);
+    assert!(!core.trusted_reply(
+        session,
+        generation,
+        operation_id,
+        &object_path,
+        target,
+        false,
+        Some(String::from("late trust failure")),
+    ));
+
+    let forget = core
+        .forget_device(&object_path)
+        .expect("selected authoritative device can be forgotten");
+    let CoreAction::RemoveDevice {
+        operation_id,
+        object_path,
+        ..
+    } = forget
+    else {
+        panic!("forget action");
+    };
+    assert!(core.set_device_trusted(&object_path, false).is_none());
+    assert!(!core.forget_reply(session, generation, operation_id, &object_path, true, None,));
+    assert_eq!(core.snapshot().devices.len(), 1);
+    assert!(core.interfaces_removed(
+        session,
+        generation,
+        &object_path,
+        &[String::from("org.bluez.Device1")],
+    ));
+    assert!(core.snapshot().devices.is_empty());
+    assert!(!core.forget_reply(
+        session,
+        generation,
+        operation_id,
+        &object_path,
+        false,
+        Some(String::from("late remove failure")),
+    ));
+
+    let mut unpaired = BluetoothCore::default();
+    let (unpaired_session, unpaired_generation) = {
+        let open = unpaired.start().expect("start succeeds");
+        let CoreAction::StartBus { session_generation } = open else {
+            panic!("start action");
+        };
+        let probe = unpaired.owner_changed(session_generation, Some(String::from(":1.42")));
+        let CoreAction::Probe {
+            bluez_generation, ..
+        } = probe[0]
+        else {
+            panic!("probe action");
+        };
+        unpaired.managed_objects(
+            session_generation,
+            bluez_generation,
+            unpaired_snapshot_objects(),
+        );
+        (session_generation, bluez_generation)
+    };
+    assert!(
+        unpaired
+            .set_device_trusted("/org/bluez/hci0/dev_AA", true)
+            .is_none()
+    );
+    assert!(
+        unpaired
+            .set_device_trusted("/org/bluez/hci0/dev_unknown", true)
+            .is_none()
+    );
+    assert!(
+        unpaired
+            .properties_changed(
+                unpaired_session,
+                unpaired_generation,
+                "/org/bluez/hci0/dev_AA",
+                "org.bluez.Device1",
+                props([("Paired", PropertyValue::Boolean(true))]),
+                &[],
+            )
+            .0
+    );
 }

@@ -1003,6 +1003,77 @@ where
                 CoreAction::Probe { .. }
                 | CoreAction::StartBus { .. }
                 | CoreAction::GetAll { .. } => {}
+                CoreAction::RegisterAgent {
+                    session_generation,
+                    bluez_generation,
+                    operation_id,
+                    pairing_epoch,
+                    ..
+                } => {
+                    let _ = core.agent_registration_failed(
+                        session_generation,
+                        bluez_generation,
+                        operation_id,
+                        pairing_epoch,
+                        result.err(),
+                    );
+                }
+                CoreAction::Pair {
+                    session_generation,
+                    bluez_generation,
+                    operation_id,
+                    pairing_epoch,
+                    device_path,
+                    ..
+                } => {
+                    let _ = core.pair_reply(
+                        session_generation,
+                        bluez_generation,
+                        operation_id,
+                        pairing_epoch,
+                        &device_path,
+                        result.is_ok(),
+                        result.err(),
+                    );
+                    completed_device_path = Some(device_path);
+                }
+                CoreAction::CancelPairing { .. } => {}
+                CoreAction::SetTrusted {
+                    session_generation,
+                    bluez_generation,
+                    operation_id,
+                    object_path,
+                    target,
+                    ..
+                } => {
+                    let _ = core.trusted_reply(
+                        session_generation,
+                        bluez_generation,
+                        operation_id,
+                        &object_path,
+                        target,
+                        result.is_ok(),
+                        result.err(),
+                    );
+                    completed_device_path = Some(object_path);
+                }
+                CoreAction::RemoveDevice {
+                    session_generation,
+                    bluez_generation,
+                    operation_id,
+                    object_path,
+                    ..
+                } => {
+                    let _ = core.forget_reply(
+                        session_generation,
+                        bluez_generation,
+                        operation_id,
+                        &object_path,
+                        result.is_ok(),
+                        result.err(),
+                    );
+                    completed_device_path = Some(object_path);
+                }
             }
         }
     }
@@ -1231,6 +1302,74 @@ fn fail_action(core: &mut BluetoothCore, action: CoreAction, now: Instant) {
             );
         }
         CoreAction::StartBus { .. } => {}
+        CoreAction::RegisterAgent {
+            session_generation,
+            bluez_generation,
+            operation_id,
+            pairing_epoch,
+            ..
+        } => {
+            core.agent_registration_failed(
+                session_generation,
+                bluez_generation,
+                operation_id,
+                pairing_epoch,
+                Some(String::from("Bluetooth backend command queue is full")),
+            );
+        }
+        CoreAction::Pair {
+            session_generation,
+            bluez_generation,
+            operation_id,
+            pairing_epoch,
+            device_path,
+            ..
+        } => {
+            core.pair_reply(
+                session_generation,
+                bluez_generation,
+                operation_id,
+                pairing_epoch,
+                &device_path,
+                false,
+                Some(String::from("Bluetooth backend command queue is full")),
+            );
+        }
+        CoreAction::CancelPairing { .. } => {}
+        CoreAction::SetTrusted {
+            session_generation,
+            bluez_generation,
+            operation_id,
+            object_path,
+            target,
+            ..
+        } => {
+            core.trusted_reply(
+                session_generation,
+                bluez_generation,
+                operation_id,
+                &object_path,
+                target,
+                false,
+                Some(String::from("Bluetooth backend command queue is full")),
+            );
+        }
+        CoreAction::RemoveDevice {
+            session_generation,
+            bluez_generation,
+            operation_id,
+            object_path,
+            ..
+        } => {
+            core.forget_reply(
+                session_generation,
+                bluez_generation,
+                operation_id,
+                &object_path,
+                false,
+                Some(String::from("Bluetooth backend command queue is full")),
+            );
+        }
     }
 }
 
@@ -1387,6 +1526,16 @@ fn make_task(connection: &Connection, action: CoreAction) -> TaskFuture {
                     result,
                 }
             }
+            action @ (CoreAction::RegisterAgent { .. }
+            | CoreAction::Pair { .. }
+            | CoreAction::CancelPairing { .. }
+            | CoreAction::SetTrusted { .. }
+            | CoreAction::RemoveDevice { .. }) => TaskResult::Operation {
+                action,
+                result: Err(String::from(
+                    "Phase 2 BlueZ operation dispatch is not installed",
+                )),
+            },
             CoreAction::StartBus { session_generation } => {
                 let _ = session_generation;
                 TaskResult::Operation {
@@ -1735,7 +1884,12 @@ mod worker_lifecycle_tests {
                 }),
                 action @ CoreAction::SetPowered { .. }
                 | action @ CoreAction::Discovery { .. }
-                | action @ CoreAction::StartBus { .. } => Box::pin(async move {
+                | action @ CoreAction::StartBus { .. }
+                | action @ CoreAction::RegisterAgent { .. }
+                | action @ CoreAction::Pair { .. }
+                | action @ CoreAction::CancelPairing { .. }
+                | action @ CoreAction::SetTrusted { .. }
+                | action @ CoreAction::RemoveDevice { .. } => Box::pin(async move {
                     TaskResult::Operation {
                         action,
                         result: Ok(()),

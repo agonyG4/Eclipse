@@ -135,6 +135,18 @@ impl PairingState {
         true
     }
 
+    pub fn agent_registration_failed(
+        &mut self,
+        identity: &PairingIdentity,
+        error: Option<String>,
+    ) -> PairingCompletion {
+        if !self.is_current(identity) || self.phase != PairingPhase::EnsuringAgent {
+            return PairingCompletion::Ignored;
+        }
+        self.retire_with_error(error);
+        PairingCompletion::Failed
+    }
+
     pub fn pair_method_reply(
         &mut self,
         identity: &PairingIdentity,
@@ -177,16 +189,22 @@ impl PairingState {
         PairingCompletion::Canceled
     }
 
-    pub fn expire(&mut self, now: Instant) -> Option<PairingCompletion> {
+    pub fn expire(&mut self, now: Instant) -> Option<(PairingIdentity, PairingCompletion)> {
         if self
             .active
             .as_ref()
             .is_some_and(|operation| operation.deadline <= now)
         {
+            let identity = self
+                .active
+                .as_ref()
+                .expect("active pairing checked above")
+                .identity
+                .clone();
             self.active = None;
             self.phase = PairingPhase::Idle;
             self.pairing_error = Some(String::from("Bluetooth pairing timed out"));
-            Some(PairingCompletion::TimedOut)
+            Some((identity, PairingCompletion::TimedOut))
         } else {
             None
         }
@@ -226,7 +244,8 @@ impl PairingState {
     fn retire_with_error(&mut self, error: Option<String>) {
         self.active = None;
         self.phase = PairingPhase::Idle;
-        self.pairing_error = Some(error.unwrap_or_else(|| String::from("Bluetooth pairing failed")));
+        self.pairing_error =
+            Some(error.unwrap_or_else(|| String::from("Bluetooth pairing failed")));
     }
 }
 
@@ -251,6 +270,14 @@ pub struct TrustState {
 }
 
 impl TrustState {
+    pub fn is_pending(&self, object_path: &str) -> bool {
+        self.pending.contains_key(object_path)
+    }
+
+    pub fn current(&self, object_path: &str) -> Option<PendingTrustOperation> {
+        self.pending.get(object_path).cloned()
+    }
+
     pub fn begin(
         &mut self,
         identity: DeviceOperationIdentity,
@@ -307,6 +334,17 @@ impl TrustState {
         expired
     }
 
+    pub fn next_deadline(&self) -> Option<Instant> {
+        self.pending
+            .values()
+            .map(|operation| operation.deadline)
+            .min()
+    }
+
+    pub fn pending(&self) -> impl Iterator<Item = &PendingTrustOperation> {
+        self.pending.values()
+    }
+
     pub fn clear(&mut self) {
         self.pending.clear();
     }
@@ -343,6 +381,14 @@ pub struct ForgetState {
 }
 
 impl ForgetState {
+    pub fn is_pending(&self, object_path: &str) -> bool {
+        self.pending.contains_key(object_path)
+    }
+
+    pub fn current(&self, object_path: &str) -> Option<PendingForgetOperation> {
+        self.pending.get(object_path).cloned()
+    }
+
     pub fn begin(
         &mut self,
         identity: DeviceOperationIdentity,
@@ -397,6 +443,17 @@ impl ForgetState {
             self.pending.remove(&operation.identity.object_path);
         }
         expired
+    }
+
+    pub fn next_deadline(&self) -> Option<Instant> {
+        self.pending
+            .values()
+            .map(|operation| operation.deadline)
+            .min()
+    }
+
+    pub fn pending(&self) -> impl Iterator<Item = &PendingForgetOperation> {
+        self.pending.values()
     }
 
     pub fn clear(&mut self) {

@@ -88,7 +88,7 @@ fn pairing_cancel_and_timeout_retire_identity_without_reusing_it() {
     assert_ne!(first.pairing_epoch, second.pairing_epoch);
     assert_eq!(
         state.expire(now + Duration::from_secs(120)),
-        Some(PairingCompletion::TimedOut)
+        Some((second.clone(), PairingCompletion::TimedOut))
     );
     assert_eq!(
         state.pair_method_reply(&second, true, None),

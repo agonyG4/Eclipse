@@ -17,3 +17,4 @@ run_rust_gate() {
 
 run_rust_gate Spotlight/backend/Cargo.toml
 run_rust_gate Settings/backend/Cargo.toml
+run_rust_gate shared/backend/Cargo.toml

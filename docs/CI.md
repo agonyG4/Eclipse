@@ -45,7 +45,7 @@ tools/ci/run-rust-gate.sh
 tools/ci/run-qml-gate.sh
 ```
 
-The Rust gate prints `rustc` and `cargo` versions, then runs locked format checking, clippy with `-D warnings`, and tests for both `Spotlight/backend` and `Settings/backend`. The QML gate builds the generated `astrea-shell_qmllint` and `astrea-settings-ui_qmllint` targets with `QT_QPA_PLATFORM=offscreen`; those targets own the authoritative QML file registration for Shell, Dock, AltTab, Spotlight, and Settings.
+The Rust gate prints `rustc` and `cargo` versions, then runs locked format checking, clippy with `-D warnings`, and tests for `Spotlight/backend`, `Settings/backend`, and `shared/backend`. The QML gate builds the generated `astrea-shell_qmllint` and `astrea-settings-ui_qmllint` targets with `QT_QPA_PLATFORM=offscreen`; those targets own the authoritative QML file registration for Shell, Dock, AltTab, Spotlight, and Settings. Set `ASTREA_CMAKE_BUILD_DIR` to place its build tree outside the checkout.
 
 Run the complete local contract with:
 

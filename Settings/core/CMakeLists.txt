@@ -31,6 +31,7 @@ add_library(astrea-settings-core STATIC
     ../services/profile/SettingsUserProfileProvider.hpp
     ../services/profile/SettingsUserProfile.hpp
 )
+add_dependencies(astrea-settings-core astrea_settings_backend_cxxqt_headers)
 
 target_include_directories(astrea-settings-core PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/.."

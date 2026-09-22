@@ -269,6 +269,20 @@ impl SettingsThemesControllerRust {
         self.set_error_value(String::new())
     }
 
+    fn rollback_pending_selection(&mut self, error: String) -> ControllerEffects {
+        let previous = self.effective_selected().map(str::to_owned);
+        self.pending_selection = None;
+        let busy_changed = self.update_busy();
+        let current = self.effective_selected().map(str::to_owned);
+
+        ControllerEffects {
+            busy_changed,
+            selected_icon_theme_changed: previous != current,
+            error_changed: self.set_error_value(error),
+            ..ControllerEffects::default()
+        }
+    }
+
     fn record_worker_start_failure(&mut self, error: String) -> bool {
         self.set_error_value(error)
     }
@@ -412,19 +426,21 @@ impl qobject::SettingsThemesController {
             .worker
             .as_ref()
             .map(|worker| worker.request_persistence(generation, selected));
-        match submission {
-            Some(Ok(())) => {}
-            Some(Err(error)) => {
-                self.as_mut().rust_mut().pending_selection = None;
-                self.as_mut().update_busy();
-                self.as_mut().selected_icon_theme_changed();
-                self.set_error(error.to_string());
+        let submission_error = match submission {
+            Some(Ok(())) => None,
+            Some(Err(error)) => Some(error.to_string()),
+            None => Some(String::from("The icon theme worker is unavailable.")),
+        };
+        if let Some(error) = submission_error {
+            let effects = self.as_mut().rust_mut().rollback_pending_selection(error);
+            if effects.busy_changed {
+                self.as_mut().busy_changed();
             }
-            None => {
-                self.as_mut().rust_mut().pending_selection = None;
-                self.as_mut().update_busy();
+            if effects.selected_icon_theme_changed {
                 self.as_mut().selected_icon_theme_changed();
-                self.set_error(String::from("The icon theme worker is unavailable."));
+            }
+            if effects.error_changed {
+                self.as_mut().error_changed();
             }
         }
     }
@@ -728,6 +744,53 @@ mod tests {
         assert!(controller.pending_selection.is_none());
         assert_eq!(controller.last_error, "persistence blocked");
         assert!(!controller.busy);
+    }
+
+    #[test]
+    fn submission_failure_keeps_default_projection_when_default_is_already_pending() {
+        let directory = TempDir::new().unwrap();
+        let mut controller = controller_with_catalog(directory.path());
+        controller.selection.use_system_default();
+        controller.configured_selection = Some(String::from("Papirus"));
+        controller.pending_selection = Some(PendingSelection {
+            generation: 6,
+            selected: None,
+            error_revision: controller.error_revision,
+        });
+        controller.busy = true;
+
+        let effects = controller.rollback_pending_selection(String::from("worker unavailable"));
+
+        assert_eq!(controller.effective_selected(), None);
+        assert_eq!(controller.configured_selection.as_deref(), Some("Papirus"));
+        assert!(controller.pending_selection.is_none());
+        assert!(effects.busy_changed);
+        assert!(!controller.busy);
+        assert!(!effects.selected_icon_theme_changed);
+        assert!(effects.error_changed);
+        assert_eq!(controller.last_error, "worker unavailable");
+    }
+
+    #[test]
+    fn submission_failure_notifies_when_optimistic_projection_rolls_back() {
+        let directory = TempDir::new().unwrap();
+        let mut controller = controller_with_catalog(directory.path());
+        controller.pending_selection = Some(PendingSelection {
+            generation: 7,
+            selected: Some(String::from("theme-b")),
+            error_revision: controller.error_revision,
+        });
+        controller.busy = true;
+        assert_eq!(controller.effective_selected(), Some("theme-b"));
+
+        let effects = controller.rollback_pending_selection(String::from("worker unavailable"));
+
+        assert_eq!(controller.effective_selected(), Some("theme-a"));
+        assert!(controller.pending_selection.is_none());
+        assert!(effects.busy_changed);
+        assert!(!controller.busy);
+        assert!(effects.selected_icon_theme_changed);
+        assert!(effects.error_changed);
     }
 
     #[test]

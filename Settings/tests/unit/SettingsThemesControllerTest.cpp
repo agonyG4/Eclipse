@@ -189,6 +189,7 @@ class SettingsThemesControllerTest final : public QObject {
 private slots:
     void exposesThemesControllerThroughSettingsController();
     void selectionCompletesOffTheQtCallerThreadAndSystemDefaultPersists();
+    void unavailableConfiguredThemeCanBeReplacedWithSystemDefault();
     void staleSelectionCompletionCannotReplaceTheNewestRequest();
     void persistenceFailureRollsBackProjectedSelection();
     void destroyingControllerDuringPersistenceDoesNotWaitForWorker();
@@ -264,13 +265,76 @@ void SettingsThemesControllerTest::selectionCompletesOffTheQtCallerThreadAndSyst
     QVERIFY(themes.property("selectedIconTheme").toString().isEmpty());
     QCOMPARE(selectedThemeSpy.count(), 2);
 
+    QFile persistedConfig(configPath);
+    QVERIFY(persistedConfig.open(QIODevice::ReadOnly));
+    const QJsonObject persisted = QJsonDocument::fromJson(persistedConfig.readAll()).object();
+    QVERIFY(!persisted.contains(QStringLiteral("system_icon_theme")));
+    persistedConfig.close();
+
+    QVERIFY(QFile::remove(configPath));
+    QVERIFY(createThemeConfigFifo(configPath));
+    FifoGateWriter noOpWriter(configPath);
     QVERIFY(QMetaObject::invokeMethod(&themes, "useSystemDefault", Qt::DirectConnection));
+    QTest::qWait(100);
     QVERIFY(!themes.property("busy").toBool());
+    QVERIFY(!noOpWriter.readerConnected());
     QCOMPARE(selectedThemeSpy.count(), 2);
+    noOpWriter.release();
+    noOpWriter.join();
+}
+
+void SettingsThemesControllerTest::unavailableConfiguredThemeCanBeReplacedWithSystemDefault()
+{
+    ThemeTestEnvironment environment;
+    QVERIFY(environment.isValid());
+    QVERIFY(environment.createThemes());
+
+    const QString configPath = environment.configPath();
+    QVERIFY(QDir().mkpath(QFileInfo(configPath).path()));
     QFile config(configPath);
+    QVERIFY(config.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QJsonObject initialConfig;
+    initialConfig.insert(QStringLiteral("system_icon_theme"), QStringLiteral("theme-b"));
+    QVERIFY(config.write(QJsonDocument(initialConfig).toJson()) > 0);
+    config.close();
+
+    SettingsThemesController themes;
+    QTRY_COMPARE_WITH_TIMEOUT(themes.property("selectedIconTheme").toString(),
+                              QStringLiteral("theme-b"),
+                              5000);
+    QTRY_VERIFY_WITH_TIMEOUT(!themes.property("busy").toBool(), 5000);
+
+    QVERIFY(QDir(QDir(environment.home()).filePath(QStringLiteral(".icons/theme-b")))
+                .removeRecursively());
+    QVERIFY(QMetaObject::invokeMethod(&themes, "refresh", Qt::DirectConnection));
+    QTRY_VERIFY_WITH_TIMEOUT(!themes.property("refreshing").toBool(), 5000);
+    QVERIFY(themes.property("selectedIconTheme").toString().isEmpty());
+
+    QSignalSpy selectedThemeSpy(&themes, SIGNAL(selectedIconThemeChanged()));
+    QVERIFY(selectedThemeSpy.isValid());
+    QVERIFY(QMetaObject::invokeMethod(&themes, "useSystemDefault", Qt::DirectConnection));
+    QTRY_VERIFY_WITH_TIMEOUT(!themes.property("busy").toBool(), 5000);
+    QVERIFY(themes.property("selectedIconTheme").toString().isEmpty());
+    QCOMPARE(selectedThemeSpy.count(), 1);
+
     QVERIFY(config.open(QIODevice::ReadOnly));
     const QJsonObject persisted = QJsonDocument::fromJson(config.readAll()).object();
     QVERIFY(!persisted.contains(QStringLiteral("system_icon_theme")));
+    config.close();
+
+    const QString themeDirectory = QDir(environment.home()).filePath(QStringLiteral(".icons/theme-b"));
+    QVERIFY(QDir().mkpath(themeDirectory));
+    QFile index(QDir(themeDirectory).filePath(QStringLiteral("index.theme")));
+    QVERIFY(index.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    const QByteArray metadata =
+        "[Icon Theme]\nName=theme-b\nDirectories=48x48/apps\n\n"
+        "[48x48/apps]\nSize=48\nType=Fixed\n";
+    QVERIFY(index.write(metadata) == metadata.size());
+    index.close();
+
+    QVERIFY(QMetaObject::invokeMethod(&themes, "refresh", Qt::DirectConnection));
+    QTRY_VERIFY_WITH_TIMEOUT(!themes.property("refreshing").toBool(), 5000);
+    QVERIFY(themes.property("selectedIconTheme").toString().isEmpty());
 }
 
 void SettingsThemesControllerTest::staleSelectionCompletionCannotReplaceTheNewestRequest()

@@ -124,6 +124,13 @@ impl SettingsThemesControllerRust {
         }
     }
 
+    fn selection_request_is_satisfied(&self, selected: Option<&str>) -> bool {
+        if let Some(pending) = self.pending_selection.as_ref() {
+            return pending.selected.as_deref() == selected;
+        }
+        self.configured_selection.as_deref() == selected && self.selection.selected() == selected
+    }
+
     fn reconcile_configured_selection(&mut self, configured: Option<String>) {
         self.configured_selection = configured.clone();
         if let Some(configured) = configured
@@ -379,8 +386,10 @@ impl qobject::SettingsThemesController {
     }
 
     fn queue_selection_persistence(mut self: Pin<&mut Self>, selected: Option<String>) {
-        let previous = self.rust().effective_selected().map(str::to_owned);
-        if previous == selected {
+        if self
+            .rust()
+            .selection_request_is_satisfied(selected.as_deref())
+        {
             return;
         }
         let generation = self.rust().selection_generation.wrapping_add(1);
@@ -531,6 +540,69 @@ mod tests {
         controller.handle_worker_result(refresh_result(catalog_with_b.clone(), Some("theme-b")));
         assert_eq!(controller.selection.selected(), Some("theme-b"));
 
+        controller.handle_worker_result(refresh_result(catalog_with_b, None));
+        assert_eq!(controller.selection.selected(), None);
+        assert_eq!(controller.configured_selection, None);
+    }
+
+    #[test]
+    fn selection_request_is_satisfied_uses_pending_configured_and_committed_state() {
+        let directory = TempDir::new().unwrap();
+        let mut controller = controller_with_catalog(directory.path());
+
+        assert!(controller.selection_request_is_satisfied(Some("theme-a")));
+
+        controller.configured_selection = Some(String::from("theme-b"));
+        controller.selection.use_system_default();
+        assert!(!controller.selection_request_is_satisfied(None));
+
+        controller.selection.select("theme-b").unwrap();
+        assert!(controller.selection_request_is_satisfied(Some("theme-b")));
+
+        controller.pending_selection = Some(PendingSelection {
+            generation: 7,
+            selected: Some(String::from("theme-c")),
+            error_revision: controller.error_revision,
+        });
+        assert!(controller.selection_request_is_satisfied(Some("theme-c")));
+        assert!(!controller.selection_request_is_satisfied(Some("theme-b")));
+    }
+
+    #[test]
+    fn unavailable_configured_selection_can_be_explicitly_cleared_without_reappearing() {
+        let directory = TempDir::new().unwrap();
+        let mut controller = controller_with_catalog(directory.path());
+        let catalog = ThemeCatalog::discover(&[directory.path().into()]).unwrap();
+
+        controller.handle_worker_result(refresh_result(catalog.clone(), Some("theme-b")));
+        assert_eq!(controller.selection.selected(), Some("theme-b"));
+        assert_eq!(controller.configured_selection.as_deref(), Some("theme-b"));
+
+        fs::remove_dir_all(directory.path().join("theme-b")).unwrap();
+        let catalog_without_b = ThemeCatalog::discover(&[directory.path().into()]).unwrap();
+        controller.handle_worker_result(refresh_result(catalog_without_b, Some("theme-b")));
+        assert_eq!(controller.selection.selected(), None);
+        assert_eq!(controller.configured_selection.as_deref(), Some("theme-b"));
+        assert!(!controller.selection_request_is_satisfied(None));
+
+        controller.selection_generation = 1;
+        controller.pending_selection = Some(PendingSelection {
+            generation: 1,
+            selected: None,
+            error_revision: controller.error_revision,
+        });
+        controller.busy = true;
+        controller.handle_worker_result(WorkerResult::Persistence {
+            generation: 1,
+            selected: None,
+            result: Ok(()),
+        });
+        assert_eq!(controller.selection.selected(), None);
+        assert_eq!(controller.configured_selection, None);
+        assert!(controller.pending_selection.is_none());
+
+        write_theme(directory.path(), "theme-b");
+        let catalog_with_b = ThemeCatalog::discover(&[directory.path().into()]).unwrap();
         controller.handle_worker_result(refresh_result(catalog_with_b, None));
         assert_eq!(controller.selection.selected(), None);
         assert_eq!(controller.configured_selection, None);

@@ -1,14 +1,39 @@
 use std::time::Duration;
 
 use astrea_system_backend::bluetooth::agent::{
-    AgentBroker, AgentError, AgentPromptKind, AgentSubmitResult,
+    Agent1, AgentBroker, AgentError, AgentPromptKind, AgentSubmitResult,
 };
+use zbus::object_server::Interface;
 
 const SENDER: &str = ":1.42";
 const SESSION: u64 = 7;
 const BLUEZ: u64 = 11;
 const EPOCH: u64 = 3;
 const DEVICE: &str = "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF";
+
+#[test]
+fn agent1_exports_the_complete_surface_without_default_agent_control() {
+    let broker = AgentBroker::new();
+    let mut introspection = String::new();
+    Agent1::new(broker).introspect_to_writer(&mut introspection, 0);
+    for method in [
+        "Release",
+        "RequestPinCode",
+        "DisplayPinCode",
+        "RequestPasskey",
+        "DisplayPasskey",
+        "RequestConfirmation",
+        "RequestAuthorization",
+        "AuthorizeService",
+        "Cancel",
+    ] {
+        assert!(
+            introspection.contains(&format!("name=\"{method}\"")),
+            "missing {method}"
+        );
+    }
+    assert!(!introspection.contains("RequestDefaultAgent"));
+}
 
 fn broker() -> AgentBroker {
     let broker = AgentBroker::new_with_prompt_timeout(Duration::from_millis(50));

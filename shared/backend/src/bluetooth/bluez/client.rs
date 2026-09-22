@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::future::{Future, pending};
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use async_channel::{Receiver, Sender};
@@ -11,13 +12,14 @@ use zbus::message::Type;
 use zbus::zvariant::{OwnedObjectPath, OwnedValue};
 use zbus::{Connection, MatchRule, Message, MessageStream};
 
+use crate::bluetooth::agent::{AGENT_CAPABILITY, AGENT_OBJECT_PATH, Agent1, AgentBroker};
 use crate::bluetooth::discovery::DiscoveryOperationKind;
 use crate::bluetooth::engine::{BluetoothCore, CoreAction, CoreSnapshot};
 use crate::bluetooth::object_store::{InterfaceMap, PropertyMap, PropertyValue};
 
 use super::proxies::{
-    Adapter1Proxy, BusDaemonProxy, Device1Proxy, ManagedObjects, ObjectManagerProxy,
-    PropertiesProxy,
+    Adapter1Proxy, AgentManager1Proxy, BusDaemonProxy, Device1Proxy, ManagedObjects,
+    ObjectManagerProxy, PropertiesProxy,
 };
 
 const COMMAND_CAPACITY: usize = 64;
@@ -25,6 +27,7 @@ const TASK_LIMIT: usize = 16;
 const TASK_QUEUE_CAPACITY: usize = 64;
 const SIGNAL_QUEUE_CAPACITY: usize = 32;
 const DBUS_CALL_TIMEOUT: Duration = Duration::from_millis(3_000);
+const PAIRING_DBUS_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Clone, Debug)]
 enum WorkerCommand {
@@ -369,6 +372,10 @@ trait BusTransport: Send + Sync {
 trait BusSession: Send + Sync {
     fn owner(&self) -> TransportFuture<'static, Result<Option<String>, OwnerLookupError>>;
     fn next_signal(&self) -> TransportFuture<'static, SignalOutcome>;
+    fn set_agent_authority(&self, session_generation: u64, bluez_generation: u64, owner: &str);
+    fn invalidate_agent(&self);
+    fn unregister_agent(&self) -> TransportFuture<'static, ()>;
+    fn register_agent_task(&self, action: CoreAction) -> TaskFuture;
     fn execute(&self, action: CoreAction) -> TaskFuture;
 }
 
@@ -414,6 +421,9 @@ struct ZbusTransport;
 struct ZbusBusSession {
     connection: Arc<Connection>,
     streams: Arc<futures::lock::Mutex<BusStreams>>,
+    agent: AgentBroker,
+    agent_registration: Arc<std::sync::Mutex<Option<(u64, u64, String)>>>,
+    agent_registration_epoch: Arc<AtomicU64>,
 }
 
 impl BusTransport for ZbusTransport {
@@ -426,6 +436,9 @@ impl BusTransport for ZbusTransport {
             Ok(Arc::new(ZbusBusSession {
                 connection: Arc::new(connection),
                 streams: Arc::new(futures::lock::Mutex::new(streams)),
+                agent: AgentBroker::new(),
+                agent_registration: Arc::new(std::sync::Mutex::new(None)),
+                agent_registration_epoch: Arc::new(AtomicU64::new(0)),
             }) as BusSessionHandle)
         })
     }
@@ -458,8 +471,179 @@ impl BusSession for ZbusBusSession {
         })
     }
 
+    fn set_agent_authority(&self, session_generation: u64, bluez_generation: u64, owner: &str) {
+        let mut registration = self
+            .agent_registration
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if registration.as_ref().is_some_and(|(session, bluez, _)| {
+            *session != session_generation || *bluez != bluez_generation
+        }) {
+            *registration = None;
+            self.agent_registration_epoch.fetch_add(1, Ordering::SeqCst);
+            self.agent.on_bluez_owner_replaced();
+        }
+        if owner.is_empty() {
+            *registration = None;
+            self.agent_registration_epoch.fetch_add(1, Ordering::SeqCst);
+            self.agent.on_bluez_owner_replaced();
+        } else {
+            self.agent
+                .set_authority(session_generation, bluez_generation, owner);
+        }
+    }
+
+    fn invalidate_agent(&self) {
+        *self
+            .agent_registration
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        self.agent_registration_epoch.fetch_add(1, Ordering::SeqCst);
+        self.agent.on_bluez_owner_replaced();
+    }
+
+    fn unregister_agent(&self) -> TransportFuture<'static, ()> {
+        let connection = Arc::clone(&self.connection);
+        let registration = Arc::clone(&self.agent_registration);
+        let broker = self.agent.clone();
+        Box::pin(async move {
+            let current = registration
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take();
+            broker.on_service_stop();
+            let Some((_session, _bluez, owner)) = current else {
+                return;
+            };
+            let Ok(path) = OwnedObjectPath::try_from(AGENT_OBJECT_PATH) else {
+                return;
+            };
+            let Ok(builder) = AgentManager1Proxy::builder(&connection).destination(owner.as_str())
+            else {
+                return;
+            };
+            let Ok(proxy) = builder.build().await else {
+                return;
+            };
+            let _ = bounded_result(proxy.unregister_agent(path), "BlueZ Agent1 unregister").await;
+        })
+    }
+
+    fn register_agent_task(&self, action: CoreAction) -> TaskFuture {
+        let CoreAction::RegisterAgent {
+            session_generation,
+            bluez_generation,
+            owner,
+            operation_id,
+            pairing_epoch,
+            device_path,
+        } = action
+        else {
+            unreachable!("register_agent_task called for another action");
+        };
+        let action = CoreAction::RegisterAgent {
+            session_generation,
+            bluez_generation,
+            owner: owner.clone(),
+            operation_id,
+            pairing_epoch,
+            device_path,
+        };
+        let connection = Arc::clone(&self.connection);
+        let broker = self.agent.clone();
+        let registration = Arc::clone(&self.agent_registration);
+        let registration_epoch = Arc::clone(&self.agent_registration_epoch);
+        Box::pin(async move {
+            let already_registered = registration
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .as_ref()
+                .is_some_and(|(session, bluez, registered_owner)| {
+                    *session == session_generation
+                        && *bluez == bluez_generation
+                        && registered_owner == &owner
+                });
+            let epoch = registration_epoch.load(Ordering::SeqCst);
+            let result = if already_registered {
+                Ok(())
+            } else {
+                let path = OwnedObjectPath::try_from(AGENT_OBJECT_PATH)
+                    .map_err(|error| format!("invalid Agent1 object path: {error}"));
+                match path {
+                    Ok(path) => {
+                        let exported = bounded_result(
+                            connection
+                                .object_server()
+                                .at(AGENT_OBJECT_PATH, Agent1::new(broker.clone())),
+                            "Agent1 export",
+                        )
+                        .await;
+                        match exported {
+                            Ok(_) => {
+                                match AgentManager1Proxy::builder(&connection)
+                                    .destination(owner.as_str())
+                                {
+                                    Ok(builder) => match builder.build().await {
+                                        Ok(proxy) => {
+                                            bounded_result(
+                                                proxy.register_agent(path, AGENT_CAPABILITY),
+                                                "BlueZ Agent1 registration",
+                                            )
+                                            .await
+                                        }
+                                        Err(error) => Err(error.to_string()),
+                                    },
+                                    Err(error) => Err(error.to_string()),
+                                }
+                            }
+                            Err(error) => Err(error),
+                        }
+                    }
+                    Err(error) => Err(error),
+                }
+            };
+            if result.is_ok() && registration_epoch.load(Ordering::SeqCst) == epoch {
+                *registration
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                    Some((session_generation, bluez_generation, owner));
+            }
+            TaskResult::Operation { action, result }
+        })
+    }
+
     fn execute(&self, action: CoreAction) -> TaskFuture {
-        make_task(&self.connection, action)
+        match action {
+            CoreAction::RegisterAgent { .. } => self.register_agent_task(action),
+            CoreAction::Pair {
+                pairing_epoch,
+                device_path,
+                session_generation,
+                bluez_generation,
+                owner,
+                operation_id,
+                ..
+            } => {
+                self.agent.set_pairing_context(
+                    pairing_epoch,
+                    session_generation,
+                    bluez_generation,
+                    &device_path,
+                );
+                make_task(
+                    &self.connection,
+                    CoreAction::Pair {
+                        pairing_epoch,
+                        device_path,
+                        session_generation,
+                        bluez_generation,
+                        owner,
+                        operation_id,
+                    },
+                )
+            }
+            action => make_task(&self.connection, action),
+        }
     }
 }
 
@@ -530,6 +714,16 @@ fn best_effort_stop_discovery(session: Option<BusSessionHandle>, action: Option<
     };
     smol::spawn(async move {
         let _ = session.execute(action).await;
+    })
+    .detach();
+}
+
+fn best_effort_unregister_agent(session: Option<BusSessionHandle>) {
+    let Some(session) = session else {
+        return;
+    };
+    smol::spawn(async move {
+        session.unregister_agent().await;
     })
     .detach();
 }
@@ -695,7 +889,14 @@ async fn run_worker_with_transport<F>(
                     match signal_result {
                         SignalOutcome::Message(message) => {
                             let previous_generation = core.bluez_generation();
-                            handle_signal(message, &mut core, &mut owner, &mut queued_actions, on_snapshot.as_ref());
+                            handle_signal(
+                                message,
+                                &mut core,
+                                &mut owner,
+                                session.as_ref(),
+                                &mut queued_actions,
+                                on_snapshot.as_ref(),
+                            );
                             if core.bluez_generation() != previous_generation {
                                 generation_replaced = true;
                             }
@@ -716,13 +917,17 @@ async fn run_worker_with_transport<F>(
         }
 
         if shutdown_requested {
-            best_effort_stop_discovery(session, core.stop_discovery_action());
+            let current_session = session.take();
+            best_effort_stop_discovery(current_session.clone(), core.stop_discovery_action());
+            best_effort_unregister_agent(current_session);
             return;
         }
 
         if let Some(requested) = lifecycle_changed {
             if !requested.running && requested.session_generation >= core.session_generation() {
-                best_effort_stop_discovery(session.take(), core.stop_discovery_action());
+                let current_session = session.take();
+                best_effort_stop_discovery(current_session.clone(), core.stop_discovery_action());
+                best_effort_unregister_agent(current_session);
                 connecting = None;
                 reconnect_at = None;
                 retire_generation_work(
@@ -737,7 +942,8 @@ async fn run_worker_with_transport<F>(
                 }
             } else if requested.running && requested.session_generation > core.session_generation()
             {
-                best_effort_stop_discovery(session.take(), core.stop_discovery_action());
+                let current_session = session.take();
+                best_effort_stop_discovery(current_session, core.stop_discovery_action());
                 connecting = None;
                 reconnect_at = Some(Instant::now());
                 retire_generation_work(
@@ -769,9 +975,18 @@ async fn run_worker_with_transport<F>(
                 Ok((new_session, new_owner)) => {
                     backoff.on_success();
                     owner = new_owner.clone().unwrap_or_default();
+                    let actions = core.owner_changed(core.session_generation(), new_owner);
+                    if owner.is_empty() {
+                        new_session.invalidate_agent();
+                    } else {
+                        new_session.set_agent_authority(
+                            core.session_generation(),
+                            core.bluez_generation(),
+                            &owner,
+                        );
+                    }
                     session = Some(new_session);
                     state = ConnectionState::Connected;
-                    let actions = core.owner_changed(core.session_generation(), new_owner);
                     enqueue_actions(
                         actions,
                         &mut queued_actions,
@@ -791,6 +1006,9 @@ async fn run_worker_with_transport<F>(
         }
 
         if let Some(error) = connection_lost {
+            if let Some(session) = session.as_ref() {
+                session.invalidate_agent();
+            }
             session = None;
             owner.clear();
             state = ConnectionState::Disconnected;
@@ -1084,6 +1302,7 @@ fn handle_signal<F>(
     message: Message,
     core: &mut BluetoothCore,
     owner: &mut String,
+    session: Option<&BusSessionHandle>,
     queued: &mut VecDeque<CoreAction>,
     on_snapshot: &F,
 ) where
@@ -1117,6 +1336,17 @@ fn handle_signal<F>(
         let previous_generation = core.bluez_generation();
         let actions = core.owner_changed(core.session_generation(), new_owner);
         if core.bluez_generation() != previous_generation {
+            if let Some(session) = session {
+                if owner.is_empty() {
+                    session.invalidate_agent();
+                } else {
+                    session.set_agent_authority(
+                        core.session_generation(),
+                        core.bluez_generation(),
+                        owner,
+                    );
+                }
+            }
             // owner_changed has created the replacement generation's actions.
             // Discard only the older queued generation here; the worker retires
             // old in-flight futures separately after this handler returns.
@@ -1526,16 +1756,150 @@ fn make_task(connection: &Connection, action: CoreAction) -> TaskFuture {
                     result,
                 }
             }
-            action @ (CoreAction::RegisterAgent { .. }
-            | CoreAction::Pair { .. }
-            | CoreAction::CancelPairing { .. }
-            | CoreAction::SetTrusted { .. }
-            | CoreAction::RemoveDevice { .. }) => TaskResult::Operation {
-                action,
+            CoreAction::RegisterAgent { .. } => TaskResult::Operation {
+                action: CoreAction::RegisterAgent {
+                    session_generation: 0,
+                    bluez_generation: 0,
+                    owner: String::new(),
+                    operation_id: 0,
+                    pairing_epoch: 0,
+                    device_path: String::new(),
+                },
                 result: Err(String::from(
-                    "Phase 2 BlueZ operation dispatch is not installed",
+                    "Agent registration must use the connection session",
                 )),
             },
+            CoreAction::Pair {
+                session_generation,
+                bluez_generation,
+                owner,
+                operation_id,
+                pairing_epoch,
+                device_path,
+            } => {
+                let result = bounded_result_with_timeout(
+                    async {
+                        let proxy = Device1Proxy::builder(&connection)
+                            .destination(owner.as_str())?
+                            .path(device_path.as_str())?
+                            .build()
+                            .await?;
+                        proxy.pair().await
+                    },
+                    "BlueZ pairing operation",
+                    PAIRING_DBUS_TIMEOUT,
+                )
+                .await;
+                TaskResult::Operation {
+                    action: CoreAction::Pair {
+                        session_generation,
+                        bluez_generation,
+                        owner,
+                        operation_id,
+                        pairing_epoch,
+                        device_path,
+                    },
+                    result,
+                }
+            }
+            CoreAction::CancelPairing {
+                session_generation,
+                bluez_generation,
+                owner,
+                operation_id,
+                pairing_epoch,
+                device_path,
+            } => {
+                let result = bounded_result(
+                    async {
+                        let proxy = Device1Proxy::builder(&connection)
+                            .destination(owner.as_str())?
+                            .path(device_path.as_str())?
+                            .build()
+                            .await?;
+                        proxy.cancel_pairing().await
+                    },
+                    "BlueZ pairing cancellation",
+                )
+                .await;
+                TaskResult::Operation {
+                    action: CoreAction::CancelPairing {
+                        session_generation,
+                        bluez_generation,
+                        owner,
+                        operation_id,
+                        pairing_epoch,
+                        device_path,
+                    },
+                    result,
+                }
+            }
+            CoreAction::SetTrusted {
+                session_generation,
+                bluez_generation,
+                owner,
+                operation_id,
+                object_path,
+                target,
+            } => {
+                let result = bounded_result(
+                    async {
+                        let proxy = Device1Proxy::builder(&connection)
+                            .destination(owner.as_str())?
+                            .path(object_path.as_str())?
+                            .build()
+                            .await?;
+                        proxy.set_trusted(target).await
+                    },
+                    "BlueZ trust operation",
+                )
+                .await;
+                TaskResult::Operation {
+                    action: CoreAction::SetTrusted {
+                        session_generation,
+                        bluez_generation,
+                        owner,
+                        operation_id,
+                        object_path,
+                        target,
+                    },
+                    result,
+                }
+            }
+            CoreAction::RemoveDevice {
+                session_generation,
+                bluez_generation,
+                owner,
+                operation_id,
+                adapter_path,
+                object_path,
+            } => {
+                let result = bounded_result(
+                    async {
+                        let proxy = Adapter1Proxy::builder(&connection)
+                            .destination(owner.as_str())?
+                            .path(adapter_path.as_str())?
+                            .build()
+                            .await?;
+                        proxy
+                            .remove_device(OwnedObjectPath::try_from(object_path.as_str())?)
+                            .await
+                    },
+                    "BlueZ forget operation",
+                )
+                .await;
+                TaskResult::Operation {
+                    action: CoreAction::RemoveDevice {
+                        session_generation,
+                        bluez_generation,
+                        owner,
+                        operation_id,
+                        adapter_path,
+                        object_path,
+                    },
+                    result,
+                }
+            }
             CoreAction::StartBus { session_generation } => {
                 let _ = session_generation;
                 TaskResult::Operation {
@@ -1554,8 +1918,19 @@ async fn bounded_result<T, E>(
 where
     E: std::fmt::Display,
 {
+    bounded_result_with_timeout(future, operation, DBUS_CALL_TIMEOUT).await
+}
+
+async fn bounded_result_with_timeout<T, E>(
+    future: impl Future<Output = Result<T, E>>,
+    operation: &'static str,
+    timeout_duration: Duration,
+) -> Result<T, String>
+where
+    E: std::fmt::Display,
+{
     futures::pin_mut!(future);
-    let timeout = async_io::Timer::after(DBUS_CALL_TIMEOUT);
+    let timeout = async_io::Timer::after(timeout_duration);
     futures::pin_mut!(timeout);
     match futures::future::select(future, timeout).await {
         futures::future::Either::Left((result, _)) => result.map_err(|error| error.to_string()),
@@ -1848,6 +2223,29 @@ mod worker_lifecycle_tests {
                     Ok(FakeSignal::Message(message)) => SignalOutcome::Message(message),
                     Ok(FakeSignal::Error(error)) => SignalOutcome::Error(error),
                     Ok(FakeSignal::End) | Err(_) => SignalOutcome::End,
+                }
+            })
+        }
+
+        fn set_agent_authority(
+            &self,
+            _session_generation: u64,
+            _bluez_generation: u64,
+            _owner: &str,
+        ) {
+        }
+
+        fn invalidate_agent(&self) {}
+
+        fn unregister_agent(&self) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>> {
+            Box::pin(async {})
+        }
+
+        fn register_agent_task(&self, action: CoreAction) -> TaskFuture {
+            Box::pin(async move {
+                TaskResult::Operation {
+                    action,
+                    result: Ok(()),
                 }
             })
         }

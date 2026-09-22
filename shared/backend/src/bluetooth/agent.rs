@@ -223,6 +223,17 @@ impl AgentBroker {
         authorize_locked(&state, sender, session_generation, bluez_generation)
     }
 
+    fn authority_for_sender(&self, sender: &str) -> Result<(u64, u64), AgentError> {
+        let state = self.state.lock().expect("AgentBroker mutex poisoned");
+        let Some(authority) = &state.authority else {
+            return Err(AgentError::Rejected);
+        };
+        if authority.owner != sender {
+            return Err(AgentError::Rejected);
+        }
+        Ok((authority.session_generation, authority.bluez_generation))
+    }
+
     pub async fn request_pin_code(
         &self,
         sender: &str,
@@ -722,17 +733,11 @@ fn cancel_locked(state: &mut BrokerState, response: PendingResponse) {
 #[derive(Clone)]
 pub struct Agent1 {
     broker: AgentBroker,
-    session_generation: u64,
-    bluez_generation: u64,
 }
 
 impl Agent1 {
-    pub fn new(broker: AgentBroker, session_generation: u64, bluez_generation: u64) -> Self {
-        Self {
-            broker,
-            session_generation,
-            bluez_generation,
-        }
+    pub fn new(broker: AgentBroker) -> Self {
+        Self { broker }
     }
 
     fn sender(header: &Header<'_>) -> Result<String, AgentError> {
@@ -741,14 +746,20 @@ impl Agent1 {
             .map(|sender| sender.as_str().to_owned())
             .ok_or(AgentError::Rejected)
     }
+
+    fn caller(header: &Header<'_>, broker: &AgentBroker) -> Result<(String, u64, u64), AgentError> {
+        let sender = Self::sender(header)?;
+        let (session_generation, bluez_generation) = broker.authority_for_sender(&sender)?;
+        Ok((sender, session_generation, bluez_generation))
+    }
 }
 
 #[zbus::interface(name = "org.bluez.Agent1")]
 impl Agent1 {
     async fn release(&self, #[zbus(header)] header: Header<'_>) -> Result<(), AgentError> {
-        let sender = Self::sender(&header)?;
+        let (sender, session_generation, bluez_generation) = Self::caller(&header, &self.broker)?;
         self.broker
-            .release_from_bluez(&sender, self.session_generation, self.bluez_generation)
+            .release_from_bluez(&sender, session_generation, bluez_generation)
     }
 
     async fn request_pin_code(
@@ -756,12 +767,12 @@ impl Agent1 {
         device: OwnedObjectPath,
         #[zbus(header)] header: Header<'_>,
     ) -> Result<String, AgentError> {
-        let sender = Self::sender(&header)?;
+        let (sender, session_generation, bluez_generation) = Self::caller(&header, &self.broker)?;
         self.broker
             .request_pin_code(
                 &sender,
-                self.session_generation,
-                self.bluez_generation,
+                session_generation,
+                bluez_generation,
                 device.as_str(),
             )
             .await
@@ -773,11 +784,11 @@ impl Agent1 {
         pin_code: String,
         #[zbus(header)] header: Header<'_>,
     ) -> Result<(), AgentError> {
-        let sender = Self::sender(&header)?;
+        let (sender, session_generation, bluez_generation) = Self::caller(&header, &self.broker)?;
         self.broker.display_pin_code(
             &sender,
-            self.session_generation,
-            self.bluez_generation,
+            session_generation,
+            bluez_generation,
             device.as_str(),
             &pin_code,
         )
@@ -788,12 +799,12 @@ impl Agent1 {
         device: OwnedObjectPath,
         #[zbus(header)] header: Header<'_>,
     ) -> Result<u32, AgentError> {
-        let sender = Self::sender(&header)?;
+        let (sender, session_generation, bluez_generation) = Self::caller(&header, &self.broker)?;
         self.broker
             .request_passkey(
                 &sender,
-                self.session_generation,
-                self.bluez_generation,
+                session_generation,
+                bluez_generation,
                 device.as_str(),
             )
             .await
@@ -806,11 +817,11 @@ impl Agent1 {
         entered: u8,
         #[zbus(header)] header: Header<'_>,
     ) -> Result<(), AgentError> {
-        let sender = Self::sender(&header)?;
+        let (sender, session_generation, bluez_generation) = Self::caller(&header, &self.broker)?;
         self.broker.display_passkey(
             &sender,
-            self.session_generation,
-            self.bluez_generation,
+            session_generation,
+            bluez_generation,
             device.as_str(),
             passkey,
             entered,
@@ -823,12 +834,12 @@ impl Agent1 {
         passkey: u32,
         #[zbus(header)] header: Header<'_>,
     ) -> Result<(), AgentError> {
-        let sender = Self::sender(&header)?;
+        let (sender, session_generation, bluez_generation) = Self::caller(&header, &self.broker)?;
         self.broker
             .request_confirmation(
                 &sender,
-                self.session_generation,
-                self.bluez_generation,
+                session_generation,
+                bluez_generation,
                 device.as_str(),
                 passkey,
             )
@@ -840,12 +851,12 @@ impl Agent1 {
         device: OwnedObjectPath,
         #[zbus(header)] header: Header<'_>,
     ) -> Result<(), AgentError> {
-        let sender = Self::sender(&header)?;
+        let (sender, session_generation, bluez_generation) = Self::caller(&header, &self.broker)?;
         self.broker
             .request_authorization(
                 &sender,
-                self.session_generation,
-                self.bluez_generation,
+                session_generation,
+                bluez_generation,
                 device.as_str(),
             )
             .await
@@ -857,12 +868,12 @@ impl Agent1 {
         service_uuid: String,
         #[zbus(header)] header: Header<'_>,
     ) -> Result<(), AgentError> {
-        let sender = Self::sender(&header)?;
+        let (sender, session_generation, bluez_generation) = Self::caller(&header, &self.broker)?;
         self.broker
             .authorize_service(
                 &sender,
-                self.session_generation,
-                self.bluez_generation,
+                session_generation,
+                bluez_generation,
                 device.as_str(),
                 &service_uuid,
             )
@@ -870,8 +881,8 @@ impl Agent1 {
     }
 
     async fn cancel(&self, #[zbus(header)] header: Header<'_>) -> Result<(), AgentError> {
-        let sender = Self::sender(&header)?;
+        let (sender, session_generation, bluez_generation) = Self::caller(&header, &self.broker)?;
         self.broker
-            .cancel_from_bluez(&sender, self.session_generation, self.bluez_generation)
+            .cancel_from_bluez(&sender, session_generation, bluez_generation)
     }
 }

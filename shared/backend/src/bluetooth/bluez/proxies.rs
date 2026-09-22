@@ -48,6 +48,7 @@ pub trait Properties {
 pub trait Adapter1 {
     fn start_discovery(&self) -> zbus::Result<()>;
     fn stop_discovery(&self) -> zbus::Result<()>;
+    fn remove_device(&self, device: OwnedObjectPath) -> zbus::Result<()>;
 
     #[zbus(property)]
     fn alias(&self) -> zbus::Result<String>;
@@ -68,6 +69,8 @@ pub trait Adapter1 {
 pub trait Device1 {
     fn connect(&self) -> zbus::Result<()>;
     fn disconnect(&self) -> zbus::Result<()>;
+    fn pair(&self) -> zbus::Result<()>;
+    fn cancel_pairing(&self) -> zbus::Result<()>;
 
     #[zbus(property)]
     fn address(&self) -> zbus::Result<String>;
@@ -79,6 +82,8 @@ pub trait Device1 {
     fn paired(&self) -> zbus::Result<bool>;
     #[zbus(property)]
     fn trusted(&self) -> zbus::Result<bool>;
+    #[zbus(property)]
+    fn set_trusted(&self, trusted: bool) -> zbus::Result<()>;
     #[zbus(property)]
     fn connected(&self) -> zbus::Result<bool>;
     #[zbus(property)]
@@ -106,4 +111,15 @@ pub trait Battery1 {
 )]
 pub trait BusDaemon {
     fn get_name_owner(&self, name: &str) -> zbus::Result<String>;
+}
+
+#[proxy(
+    interface = "org.bluez.AgentManager1",
+    default_service = "org.bluez",
+    default_path = "/org/bluez",
+    gen_blocking = false
+)]
+pub trait AgentManager1 {
+    fn register_agent(&self, agent: OwnedObjectPath, capability: &str) -> zbus::Result<()>;
+    fn unregister_agent(&self, agent: OwnedObjectPath) -> zbus::Result<()>;
 }

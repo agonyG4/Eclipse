@@ -24,6 +24,18 @@ enum class NetworkConnectionType {
 };
 Q_ENUM_NS(NetworkConnectionType)
 
+enum class BluetoothAgentRequestKind {
+    None,
+    PinCodeInput,
+    PasskeyInput,
+    PasskeyConfirmation,
+    Authorization,
+    ServiceAuthorization,
+    DisplayPinCode,
+    DisplayPasskey,
+};
+Q_ENUM_NS(BluetoothAgentRequestKind)
+
 QString systemServiceStateName(SystemServiceState state);
 QJsonObject serviceHealthJson(SystemServiceState state, bool available, bool ready,
                               const QString &errorString = {});

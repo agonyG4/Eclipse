@@ -596,6 +596,7 @@ impl AgentBroker {
             }
             let request_id = next_request_id(&mut state)?;
             let (response_tx, response_rx) = async_channel::bounded(1);
+            state.display = None;
             let prompt = AgentPromptView {
                 active: true,
                 request_id,

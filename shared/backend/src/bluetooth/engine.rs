@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::fmt;
 use std::time::Instant;
 
 use super::agent::{AgentPromptKind, AgentPromptView};
@@ -44,7 +45,7 @@ pub enum ServiceState {
     Degraded,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct CoreSnapshot {
     pub session_generation: u64,
     pub state: ServiceState,
@@ -74,6 +75,42 @@ pub struct CoreSnapshot {
     pub agent_service_uuid: Option<String>,
     pub agent_display_pin: Option<String>,
     pub operation_error: Option<String>,
+}
+
+impl fmt::Debug for CoreSnapshot {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CoreSnapshot")
+            .field("session_generation", &self.session_generation)
+            .field("state", &self.state)
+            .field("available", &self.available)
+            .field("ready", &self.ready)
+            .field("adapter_available", &self.adapter_available)
+            .field("adapter_path", &self.adapter_path)
+            .field("adapter_name", &self.adapter_name)
+            .field("powered", &self.powered)
+            .field("power_pending", &self.power_pending)
+            .field("scanning", &self.scanning)
+            .field("connected_count", &self.connected_count)
+            .field("connected_name", &self.connected_name)
+            .field("error", &self.error)
+            .field("devices", &self.devices)
+            .field("pairing", &self.pairing)
+            .field("pairing_device_path", &self.pairing_device_path)
+            .field("pairing_device_name", &self.pairing_device_name)
+            .field("pairing_error", &self.pairing_error)
+            .field("agent_request_active", &self.agent_request_active)
+            .field("agent_request_id", &self.agent_request_id)
+            .field("agent_request_kind", &self.agent_request_kind)
+            .field("agent_device_path", &self.agent_device_path)
+            .field("agent_device_name", &self.agent_device_name)
+            .field("has_agent_passkey", &self.agent_passkey.is_some())
+            .field("agent_entered", &self.agent_entered)
+            .field("agent_service_uuid", &self.agent_service_uuid)
+            .field("has_agent_display_pin", &self.agent_display_pin.is_some())
+            .field("operation_error", &self.operation_error)
+            .finish()
+    }
 }
 
 impl CoreSnapshot {
@@ -603,6 +640,12 @@ impl BluetoothCore {
         if !self.snapshot.available || object_path.is_empty() {
             return None;
         }
+        if self.pairing_conflicts(object_path)
+            || self.trust.is_pending(object_path)
+            || self.forget.is_pending(object_path)
+        {
+            return None;
+        }
         if connect && !self.snapshot.can_connect(object_path) {
             return None;
         }
@@ -762,7 +805,7 @@ impl BluetoothCore {
         if !self.snapshot.available
             || !self.snapshot.adapter_available
             || !device.paired
-            || self.pairing.active_identity().is_some()
+            || self.pairing_conflicts(object_path)
             || self.forget.is_pending(object_path)
             || self
                 .device_operations
@@ -779,6 +822,7 @@ impl BluetoothCore {
             bluez_generation: self.bluez_generation,
         };
         self.trust.begin(identity, target, Instant::now());
+        self.snapshot.operation_error = None;
         Some(CoreAction::SetTrusted {
             session_generation: self.session_generation,
             bluez_generation: self.bluez_generation,
@@ -825,7 +869,7 @@ impl BluetoothCore {
         if !self.snapshot.available
             || !self.snapshot.adapter_available
             || self.authoritative_device(object_path).is_none()
-            || self.pairing.active_identity().is_some()
+            || self.pairing_conflicts(object_path)
             || self.trust.is_pending(object_path)
             || self.has_device_conflict(object_path)
         {
@@ -839,6 +883,7 @@ impl BluetoothCore {
             bluez_generation: self.bluez_generation,
         };
         self.forget.begin(identity, Instant::now()).ok()?;
+        self.snapshot.operation_error = None;
         Some(CoreAction::RemoveDevice {
             session_generation: self.session_generation,
             bluez_generation: self.bluez_generation,
@@ -1209,6 +1254,12 @@ impl BluetoothCore {
         self.device_operations
             .pending()
             .any(|operation| operation.object_path == object_path)
+    }
+
+    fn pairing_conflicts(&self, object_path: &str) -> bool {
+        self.pairing
+            .active_identity()
+            .is_some_and(|identity| identity.device_path == object_path)
     }
 
     fn clear_phase2_state(&mut self) {

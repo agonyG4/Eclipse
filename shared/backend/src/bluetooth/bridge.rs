@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 
+use super::agent::{AgentPromptKind, AgentSubmitResult};
 use super::bluez::client::BluetoothWorker;
 use super::device::BluetoothDevice;
 use super::engine::{CoreSnapshot, ServiceState};
@@ -35,6 +36,20 @@ pub mod qobject {
         #[qproperty(QString, connected_name, cxx_name = "connectedName", READ = connected_name, NOTIFY = snapshot_changed)]
         #[qproperty(QList_QVariant, devices, READ = devices, NOTIFY = snapshot_changed)]
         #[qproperty(QString, error_string, cxx_name = "errorString", READ = error_string, NOTIFY = snapshot_changed)]
+        #[qproperty(bool, pairing, READ = pairing, NOTIFY = snapshot_changed)]
+        #[qproperty(QString, pairing_device_path, cxx_name = "pairingDevicePath", READ = pairing_device_path, NOTIFY = snapshot_changed)]
+        #[qproperty(QString, pairing_device_name, cxx_name = "pairingDeviceName", READ = pairing_device_name, NOTIFY = snapshot_changed)]
+        #[qproperty(QString, pairing_error, cxx_name = "pairingError", READ = pairing_error, NOTIFY = snapshot_changed)]
+        #[qproperty(bool, agent_request_active, cxx_name = "agentRequestActive", READ = agent_request_active, NOTIFY = snapshot_changed)]
+        #[qproperty(u64, agent_request_id, cxx_name = "agentRequestId", READ = agent_request_id, NOTIFY = snapshot_changed)]
+        #[qproperty(i32, agent_request_kind, cxx_name = "agentRequestKind", READ = agent_request_kind, NOTIFY = snapshot_changed)]
+        #[qproperty(QString, agent_device_path, cxx_name = "agentDevicePath", READ = agent_device_path, NOTIFY = snapshot_changed)]
+        #[qproperty(QString, agent_device_name, cxx_name = "agentDeviceName", READ = agent_device_name, NOTIFY = snapshot_changed)]
+        #[qproperty(u32, agent_passkey, cxx_name = "agentPasskey", READ = agent_passkey, NOTIFY = snapshot_changed)]
+        #[qproperty(i32, agent_entered, cxx_name = "agentEntered", READ = agent_entered, NOTIFY = snapshot_changed)]
+        #[qproperty(QString, agent_service_uuid, cxx_name = "agentServiceUuid", READ = agent_service_uuid, NOTIFY = snapshot_changed)]
+        #[qproperty(QString, agent_display_pin, cxx_name = "agentDisplayPin", READ = agent_display_pin, NOTIFY = snapshot_changed)]
+        #[qproperty(QString, operation_error, cxx_name = "operationError", READ = operation_error, NOTIFY = snapshot_changed)]
         type RustBluetoothEngine = super::RustBluetoothEngineRust;
     }
 
@@ -59,6 +74,33 @@ pub mod qobject {
         fn devices(self: &RustBluetoothEngine) -> QList_QVariant;
         #[cxx_name = "errorString"]
         fn error_string(self: &RustBluetoothEngine) -> QString;
+        fn pairing(self: &RustBluetoothEngine) -> bool;
+        #[cxx_name = "pairingDevicePath"]
+        fn pairing_device_path(self: &RustBluetoothEngine) -> QString;
+        #[cxx_name = "pairingDeviceName"]
+        fn pairing_device_name(self: &RustBluetoothEngine) -> QString;
+        #[cxx_name = "pairingError"]
+        fn pairing_error(self: &RustBluetoothEngine) -> QString;
+        #[cxx_name = "agentRequestActive"]
+        fn agent_request_active(self: &RustBluetoothEngine) -> bool;
+        #[cxx_name = "agentRequestId"]
+        fn agent_request_id(self: &RustBluetoothEngine) -> u64;
+        #[cxx_name = "agentRequestKind"]
+        fn agent_request_kind(self: &RustBluetoothEngine) -> i32;
+        #[cxx_name = "agentDevicePath"]
+        fn agent_device_path(self: &RustBluetoothEngine) -> QString;
+        #[cxx_name = "agentDeviceName"]
+        fn agent_device_name(self: &RustBluetoothEngine) -> QString;
+        #[cxx_name = "agentPasskey"]
+        fn agent_passkey(self: &RustBluetoothEngine) -> u32;
+        #[cxx_name = "agentEntered"]
+        fn agent_entered(self: &RustBluetoothEngine) -> i32;
+        #[cxx_name = "agentServiceUuid"]
+        fn agent_service_uuid(self: &RustBluetoothEngine) -> QString;
+        #[cxx_name = "agentDisplayPin"]
+        fn agent_display_pin(self: &RustBluetoothEngine) -> QString;
+        #[cxx_name = "operationError"]
+        fn operation_error(self: &RustBluetoothEngine) -> QString;
 
         #[qsignal]
         #[cxx_name = "snapshotChanged"]
@@ -83,6 +125,39 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "disconnectDevice"]
         fn disconnect_device(self: Pin<&mut RustBluetoothEngine>, object_path: &QString) -> bool;
+        #[qinvokable]
+        #[cxx_name = "pairDevice"]
+        fn pair_device(self: Pin<&mut RustBluetoothEngine>, object_path: &QString) -> bool;
+        #[qinvokable]
+        #[cxx_name = "cancelPairing"]
+        fn cancel_pairing(self: Pin<&mut RustBluetoothEngine>) -> bool;
+        #[qinvokable]
+        #[cxx_name = "setDeviceTrusted"]
+        fn set_device_trusted(
+            self: Pin<&mut RustBluetoothEngine>,
+            object_path: &QString,
+            trusted: bool,
+        ) -> bool;
+        #[qinvokable]
+        #[cxx_name = "forgetDevice"]
+        fn forget_device(self: Pin<&mut RustBluetoothEngine>, object_path: &QString) -> bool;
+        #[qinvokable]
+        #[cxx_name = "submitAgentText"]
+        fn submit_agent_text(
+            self: Pin<&mut RustBluetoothEngine>,
+            request_id: u64,
+            text: &QString,
+        ) -> bool;
+        #[qinvokable]
+        #[cxx_name = "confirmAgentRequest"]
+        fn confirm_agent_request(
+            self: Pin<&mut RustBluetoothEngine>,
+            request_id: u64,
+            accepted: bool,
+        ) -> bool;
+        #[qinvokable]
+        #[cxx_name = "rejectAgentRequest"]
+        fn reject_agent_request(self: Pin<&mut RustBluetoothEngine>, request_id: u64) -> bool;
     }
 
     impl cxx_qt::Initialize for RustBluetoothEngine {}
@@ -210,6 +285,78 @@ impl qobject::RustBluetoothEngine {
             .map_or_else(QString::default, QString::from)
     }
 
+    fn pairing(&self) -> bool {
+        self.rust().snapshot.pairing
+    }
+
+    fn pairing_device_path(&self) -> QString {
+        QString::from(&self.rust().snapshot.pairing_device_path)
+    }
+
+    fn pairing_device_name(&self) -> QString {
+        QString::from(&self.rust().snapshot.pairing_device_name)
+    }
+
+    fn pairing_error(&self) -> QString {
+        self.rust()
+            .snapshot
+            .pairing_error
+            .as_ref()
+            .map_or_else(QString::default, QString::from)
+    }
+
+    fn agent_request_active(&self) -> bool {
+        self.rust().snapshot.agent_request_active
+    }
+
+    fn agent_request_id(&self) -> u64 {
+        self.rust().snapshot.agent_request_id
+    }
+
+    fn agent_request_kind(&self) -> i32 {
+        agent_prompt_kind_code(self.rust().snapshot.agent_request_kind)
+    }
+
+    fn agent_device_path(&self) -> QString {
+        QString::from(&self.rust().snapshot.agent_device_path)
+    }
+
+    fn agent_device_name(&self) -> QString {
+        QString::from(&self.rust().snapshot.agent_device_name)
+    }
+
+    fn agent_passkey(&self) -> u32 {
+        self.rust().snapshot.agent_passkey.unwrap_or_default()
+    }
+
+    fn agent_entered(&self) -> i32 {
+        self.rust().snapshot.agent_entered.map_or(-1, i32::from)
+    }
+
+    fn agent_service_uuid(&self) -> QString {
+        self.rust()
+            .snapshot
+            .agent_service_uuid
+            .as_ref()
+            .map_or_else(QString::default, QString::from)
+    }
+
+    fn agent_display_pin(&self) -> QString {
+        self.rust()
+            .snapshot
+            .agent_display_pin
+            .as_ref()
+            .map_or_else(QString::default, QString::from)
+    }
+
+    fn operation_error(&self) -> QString {
+        self.rust()
+            .snapshot
+            .operation_error
+            .as_ref()
+            .map_or_else(QString::default, QString::from)
+    }
+
     fn start(mut self: Pin<&mut Self>) -> bool {
         if self.rust().running {
             return true;
@@ -310,6 +457,74 @@ impl qobject::RustBluetoothEngine {
             })
     }
 
+    fn pair_device(self: Pin<&mut Self>, object_path: &QString) -> bool {
+        let object_path = String::from(object_path);
+        !object_path.is_empty()
+            && self.rust().running
+            && self
+                .rust()
+                .worker
+                .as_ref()
+                .is_some_and(|worker| worker.pair(self.rust().session_generation, object_path))
+    }
+
+    fn cancel_pairing(self: Pin<&mut Self>) -> bool {
+        self.rust().running
+            && self
+                .rust()
+                .worker
+                .as_ref()
+                .is_some_and(|worker| worker.cancel_pairing(self.rust().session_generation))
+    }
+
+    fn set_device_trusted(self: Pin<&mut Self>, object_path: &QString, trusted: bool) -> bool {
+        let object_path = String::from(object_path);
+        !object_path.is_empty()
+            && self.rust().running
+            && self.rust().worker.as_ref().is_some_and(|worker| {
+                worker.set_trusted(self.rust().session_generation, object_path, trusted)
+            })
+    }
+
+    fn forget_device(self: Pin<&mut Self>, object_path: &QString) -> bool {
+        let object_path = String::from(object_path);
+        !object_path.is_empty()
+            && self.rust().running
+            && self
+                .rust()
+                .worker
+                .as_ref()
+                .is_some_and(|worker| worker.forget(self.rust().session_generation, object_path))
+    }
+
+    fn submit_agent_text(self: Pin<&mut Self>, request_id: u64, text: &QString) -> bool {
+        let text = String::from(text);
+        self.rust().worker.as_ref().is_some_and(|worker| {
+            matches!(
+                worker.submit_agent_text(request_id, &text),
+                AgentSubmitResult::Accepted
+            )
+        })
+    }
+
+    fn confirm_agent_request(self: Pin<&mut Self>, request_id: u64, accepted: bool) -> bool {
+        self.rust().worker.as_ref().is_some_and(|worker| {
+            matches!(
+                worker.confirm_agent_request(request_id, accepted),
+                AgentSubmitResult::Accepted
+            )
+        })
+    }
+
+    fn reject_agent_request(self: Pin<&mut Self>, request_id: u64) -> bool {
+        self.rust().worker.as_ref().is_some_and(|worker| {
+            matches!(
+                worker.reject_agent_request(request_id),
+                AgentSubmitResult::Accepted
+            )
+        })
+    }
+
     fn handle_worker_snapshot(mut self: Pin<&mut Self>, snapshot: CoreSnapshot) {
         if !self.rust().running || snapshot.session_generation != self.rust().session_generation {
             return;
@@ -372,4 +587,17 @@ fn insert_string(map: &mut QMap<QMapPair_QString_QVariant>, key: &str, value: &s
 
 fn insert_bool(map: &mut QMap<QMapPair_QString_QVariant>, key: &str, value: bool) {
     map.insert(QString::from(key), QVariant::from(&value));
+}
+
+fn agent_prompt_kind_code(kind: AgentPromptKind) -> i32 {
+    match kind {
+        AgentPromptKind::None => 0,
+        AgentPromptKind::PinCodeInput => 1,
+        AgentPromptKind::PasskeyInput => 2,
+        AgentPromptKind::PasskeyConfirmation => 3,
+        AgentPromptKind::Authorization => 4,
+        AgentPromptKind::ServiceAuthorization => 5,
+        AgentPromptKind::DisplayPinCode => 6,
+        AgentPromptKind::DisplayPasskey => 7,
+    }
 }

@@ -20,6 +20,13 @@ public:
     void releaseScan(const QString &owner) override;
     bool connectDevice(const QString &objectPath) override;
     bool disconnectDevice(const QString &objectPath) override;
+    bool pairDevice(const QString &objectPath) override;
+    bool cancelPairing() override;
+    bool setDeviceTrusted(const QString &objectPath, bool trusted) override;
+    bool forgetDevice(const QString &objectPath) override;
+    bool submitAgentText(quint64 requestId, const QString &text) override;
+    bool confirmAgentRequest(quint64 requestId, bool accepted) override;
+    bool rejectAgentRequest(quint64 requestId) override;
 
 private:
     void publishSnapshot();

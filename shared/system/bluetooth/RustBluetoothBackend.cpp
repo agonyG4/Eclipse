@@ -57,6 +57,41 @@ bool RustBluetoothBackend::disconnectDevice(const QString &objectPath)
     return m_engine.disconnectDevice(objectPath);
 }
 
+bool RustBluetoothBackend::pairDevice(const QString &objectPath)
+{
+    return m_engine.pairDevice(objectPath);
+}
+
+bool RustBluetoothBackend::cancelPairing()
+{
+    return m_engine.cancelPairing();
+}
+
+bool RustBluetoothBackend::setDeviceTrusted(const QString &objectPath, bool trusted)
+{
+    return m_engine.setDeviceTrusted(objectPath, trusted);
+}
+
+bool RustBluetoothBackend::forgetDevice(const QString &objectPath)
+{
+    return m_engine.forgetDevice(objectPath);
+}
+
+bool RustBluetoothBackend::submitAgentText(quint64 requestId, const QString &text)
+{
+    return m_engine.submitAgentText(requestId, text);
+}
+
+bool RustBluetoothBackend::confirmAgentRequest(quint64 requestId, bool accepted)
+{
+    return m_engine.confirmAgentRequest(requestId, accepted);
+}
+
+bool RustBluetoothBackend::rejectAgentRequest(quint64 requestId)
+{
+    return m_engine.rejectAgentRequest(requestId);
+}
+
 void RustBluetoothBackend::publishSnapshot()
 {
     if (!m_callbacks.snapshotChanged)
@@ -75,6 +110,20 @@ void RustBluetoothBackend::publishSnapshot()
     snapshot.connectedCount = m_engine.connectedCount();
     snapshot.connectedName = m_engine.connectedName();
     snapshot.errorString = m_engine.errorString();
+    snapshot.pairing = m_engine.pairing();
+    snapshot.pairingDevicePath = m_engine.pairingDevicePath();
+    snapshot.pairingDeviceName = m_engine.pairingDeviceName();
+    snapshot.pairingError = m_engine.pairingError();
+    snapshot.agentRequestActive = m_engine.agentRequestActive();
+    snapshot.agentRequestId = m_engine.agentRequestId();
+    snapshot.agentRequestKind = static_cast<BluetoothAgentRequestKind>(m_engine.agentRequestKind());
+    snapshot.agentDevicePath = m_engine.agentDevicePath();
+    snapshot.agentDeviceName = m_engine.agentDeviceName();
+    snapshot.agentPasskey = m_engine.agentPasskey();
+    snapshot.agentEntered = m_engine.agentEntered();
+    snapshot.agentServiceUuid = m_engine.agentServiceUuid();
+    snapshot.agentDisplayPin = m_engine.agentDisplayPin();
+    snapshot.operationError = m_engine.operationError();
 
     const QList<QVariant> deviceRows = m_engine.devices();
     snapshot.devices.reserve(deviceRows.size());

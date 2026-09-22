@@ -24,6 +24,20 @@ struct BluetoothSnapshot {
     QString connectedName;
     QString errorString;
     QVector<BluetoothDevice> devices;
+    bool pairing = false;
+    QString pairingDevicePath;
+    QString pairingDeviceName;
+    QString pairingError;
+    bool agentRequestActive = false;
+    quint64 agentRequestId = 0;
+    BluetoothAgentRequestKind agentRequestKind = BluetoothAgentRequestKind::None;
+    QString agentDevicePath;
+    QString agentDeviceName;
+    quint32 agentPasskey = 0;
+    int agentEntered = -1;
+    QString agentServiceUuid;
+    QString agentDisplayPin;
+    QString operationError;
 };
 
 // Thin Qt transport boundary. Bluetooth policy and BlueZ calls live in the
@@ -43,6 +57,13 @@ public:
     virtual void releaseScan(const QString &owner) = 0;
     virtual bool connectDevice(const QString &objectPath) = 0;
     virtual bool disconnectDevice(const QString &objectPath) = 0;
+    virtual bool pairDevice(const QString &objectPath) = 0;
+    virtual bool cancelPairing() = 0;
+    virtual bool setDeviceTrusted(const QString &objectPath, bool trusted) = 0;
+    virtual bool forgetDevice(const QString &objectPath) = 0;
+    virtual bool submitAgentText(quint64 requestId, const QString &text) = 0;
+    virtual bool confirmAgentRequest(quint64 requestId, bool accepted) = 0;
+    virtual bool rejectAgentRequest(quint64 requestId) = 0;
 };
 
 } // namespace Astrea::System

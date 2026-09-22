@@ -12,7 +12,9 @@ use zbus::message::Type;
 use zbus::zvariant::{OwnedObjectPath, OwnedValue};
 use zbus::{Connection, MatchRule, Message, MessageStream};
 
-use crate::bluetooth::agent::{AGENT_CAPABILITY, AGENT_OBJECT_PATH, Agent1, AgentBroker};
+use crate::bluetooth::agent::{
+    AGENT_CAPABILITY, AGENT_OBJECT_PATH, Agent1, AgentBroker, AgentPromptView, AgentSubmitResult,
+};
 use crate::bluetooth::discovery::DiscoveryOperationKind;
 use crate::bluetooth::engine::{BluetoothCore, CoreAction, CoreSnapshot};
 use crate::bluetooth::object_store::{InterfaceMap, PropertyMap, PropertyValue};
@@ -40,6 +42,19 @@ enum WorkerCommand {
         object_path: String,
         connect: bool,
     },
+    Pair {
+        session_generation: u64,
+        object_path: String,
+    },
+    SetTrusted {
+        session_generation: u64,
+        object_path: String,
+        target: bool,
+    },
+    Forget {
+        session_generation: u64,
+        object_path: String,
+    },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -47,6 +62,7 @@ enum WorkerControl {
     LifecycleChanged,
     ScanOwnersChanged,
     Shutdown,
+    CancelPairing { session_generation: u64 },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -103,6 +119,7 @@ struct WorkerChannels {
     controls: Receiver<WorkerControl>,
     scan_controls: Receiver<WorkerControl>,
     shutdown: Receiver<WorkerControl>,
+    pairing_controls: Receiver<WorkerControl>,
 }
 
 /// One long-lived worker and system-bus connection for one Bluetooth backend.
@@ -112,8 +129,10 @@ pub struct BluetoothWorker {
     controls: Sender<WorkerControl>,
     scan_controls: Sender<WorkerControl>,
     shutdown: Sender<WorkerControl>,
+    pairing_controls: Sender<WorkerControl>,
     lifecycle: Arc<std::sync::Mutex<LifecycleRequest>>,
     scan_owners: Arc<std::sync::Mutex<ScanOwnerMailbox>>,
+    agent_broker: Arc<std::sync::Mutex<Option<AgentBroker>>>,
     _thread: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -126,11 +145,14 @@ impl BluetoothWorker {
         let (controls, control_rx) = async_channel::bounded(1);
         let (scan_controls, scan_control_rx) = async_channel::bounded(1);
         let (shutdown, shutdown_rx) = async_channel::bounded(1);
+        let (pairing_controls, pairing_control_rx) = async_channel::bounded(1);
         let lifecycle = Arc::new(std::sync::Mutex::new(LifecycleRequest::default()));
         let scan_owners = Arc::new(std::sync::Mutex::new(ScanOwnerMailbox::default()));
+        let agent_broker = Arc::new(std::sync::Mutex::new(None));
         let callback = Arc::new(on_snapshot);
         let worker_lifecycle = Arc::clone(&lifecycle);
         let worker_scan_owners = Arc::clone(&scan_owners);
+        let worker_agent_broker = Arc::clone(&agent_broker);
         let thread = std::thread::Builder::new()
             .name(String::from("astrea-bluetooth-bluez"))
             .spawn(move || {
@@ -140,9 +162,11 @@ impl BluetoothWorker {
                         controls: control_rx,
                         scan_controls: scan_control_rx,
                         shutdown: shutdown_rx,
+                        pairing_controls: pairing_control_rx,
                     },
                     worker_lifecycle,
                     worker_scan_owners,
+                    worker_agent_broker,
                     callback,
                 ));
             })?;
@@ -151,8 +175,10 @@ impl BluetoothWorker {
             controls,
             scan_controls,
             shutdown,
+            pairing_controls,
             lifecycle,
             scan_owners,
+            agent_broker,
             _thread: Some(thread),
         })
     }
@@ -200,6 +226,72 @@ impl BluetoothWorker {
                 connect,
             })
             .is_ok()
+    }
+
+    pub fn pair(&self, session_generation: u64, object_path: String) -> bool {
+        self.commands
+            .try_send(WorkerCommand::Pair {
+                session_generation,
+                object_path,
+            })
+            .is_ok()
+    }
+
+    pub fn set_trusted(&self, session_generation: u64, object_path: String, target: bool) -> bool {
+        self.commands
+            .try_send(WorkerCommand::SetTrusted {
+                session_generation,
+                object_path,
+                target,
+            })
+            .is_ok()
+    }
+
+    pub fn forget(&self, session_generation: u64, object_path: String) -> bool {
+        self.commands
+            .try_send(WorkerCommand::Forget {
+                session_generation,
+                object_path,
+            })
+            .is_ok()
+    }
+
+    pub fn cancel_pairing(&self, session_generation: u64) -> bool {
+        self.pairing_controls
+            .try_send(WorkerControl::CancelPairing { session_generation })
+            .is_ok()
+    }
+
+    pub fn submit_agent_text(&self, request_id: u64, text: &str) -> AgentSubmitResult {
+        self.agent_broker
+            .lock()
+            .ok()
+            .and_then(|broker| {
+                broker
+                    .as_ref()
+                    .map(|broker| broker.submit_text(request_id, text))
+            })
+            .unwrap_or(AgentSubmitResult::Ignored)
+    }
+
+    pub fn confirm_agent_request(&self, request_id: u64, accepted: bool) -> AgentSubmitResult {
+        self.agent_broker
+            .lock()
+            .ok()
+            .and_then(|broker| {
+                broker
+                    .as_ref()
+                    .map(|broker| broker.confirm(request_id, accepted))
+            })
+            .unwrap_or(AgentSubmitResult::Ignored)
+    }
+
+    pub fn reject_agent_request(&self, request_id: u64) -> AgentSubmitResult {
+        self.agent_broker
+            .lock()
+            .ok()
+            .and_then(|broker| broker.as_ref().map(|broker| broker.reject(request_id)))
+            .unwrap_or(AgentSubmitResult::Ignored)
     }
 
     fn request_lifecycle(&self, session_generation: u64, running: bool) -> bool {
@@ -375,6 +467,9 @@ trait BusSession: Send + Sync {
     fn set_agent_authority(&self, session_generation: u64, bluez_generation: u64, owner: &str);
     fn invalidate_agent(&self);
     fn unregister_agent(&self) -> TransportFuture<'static, ()>;
+    fn agent_broker(&self) -> Option<AgentBroker>;
+    fn agent_wake(&self) -> Receiver<()>;
+    fn agent_prompt(&self) -> AgentPromptView;
     fn register_agent_task(&self, action: CoreAction) -> TaskFuture;
     fn execute(&self, action: CoreAction) -> TaskFuture;
 }
@@ -529,6 +624,18 @@ impl BusSession for ZbusBusSession {
         })
     }
 
+    fn agent_broker(&self) -> Option<AgentBroker> {
+        Some(self.agent.clone())
+    }
+
+    fn agent_wake(&self) -> Receiver<()> {
+        self.agent.wake_receiver()
+    }
+
+    fn agent_prompt(&self) -> AgentPromptView {
+        self.agent.prompt()
+    }
+
     fn register_agent_task(&self, action: CoreAction) -> TaskFuture {
         let CoreAction::RegisterAgent {
             session_generation,
@@ -642,6 +749,10 @@ impl BusSession for ZbusBusSession {
                     },
                 )
             }
+            action @ CoreAction::CancelPairing { .. } => {
+                self.agent.cancel_for_lifecycle();
+                make_task(&self.connection, action)
+            }
             action => make_task(&self.connection, action),
         }
     }
@@ -674,6 +785,7 @@ async fn run_worker<F>(
     channels: WorkerChannels,
     lifecycle: Arc<std::sync::Mutex<LifecycleRequest>>,
     scan_owners: Arc<std::sync::Mutex<ScanOwnerMailbox>>,
+    agent_broker: Arc<std::sync::Mutex<Option<AgentBroker>>>,
     on_snapshot: Arc<F>,
 ) where
     F: Fn(CoreSnapshot) + Send + Sync + 'static,
@@ -682,6 +794,7 @@ async fn run_worker<F>(
         channels,
         lifecycle,
         scan_owners,
+        agent_broker,
         Arc::new(ZbusTransport),
         on_snapshot,
     )
@@ -722,10 +835,19 @@ fn best_effort_unregister_agent(session: Option<BusSessionHandle>) {
     let Some(session) = session else {
         return;
     };
+    if let Some(broker) = session.agent_broker() {
+        broker.on_service_stop();
+    }
     smol::spawn(async move {
         session.unregister_agent().await;
     })
     .detach();
+}
+
+fn clear_agent_broker(agent_broker: &std::sync::Mutex<Option<AgentBroker>>) {
+    *agent_broker
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
 }
 
 fn apply_scan_owner_update<F>(
@@ -766,6 +888,7 @@ async fn run_worker_with_transport<F>(
     channels: WorkerChannels,
     lifecycle: Arc<std::sync::Mutex<LifecycleRequest>>,
     scan_owners: Arc<std::sync::Mutex<ScanOwnerMailbox>>,
+    agent_broker: Arc<std::sync::Mutex<Option<AgentBroker>>>,
     transport: Arc<dyn BusTransport>,
     on_snapshot: Arc<F>,
 ) where
@@ -776,6 +899,7 @@ async fn run_worker_with_transport<F>(
         controls,
         scan_controls,
         shutdown,
+        pairing_controls,
     } = channels;
     let mut core = BluetoothCore::default();
     let mut state = ConnectionState::Stopped;
@@ -824,6 +948,17 @@ async fn run_worker_with_transport<F>(
                 || Box::pin(pending()) as TransportFuture<'static, SignalOutcome>,
                 |session| session.next_signal(),
             );
+            let agent_wake = session.as_ref().map_or_else(
+                || {
+                    Box::pin(pending())
+                        as TransportFuture<'static, Result<(), async_channel::RecvError>>
+                },
+                |session| {
+                    let receiver = session.agent_wake();
+                    Box::pin(async move { receiver.recv().await })
+                        as TransportFuture<'static, Result<(), async_channel::RecvError>>
+                },
+            );
             let connect: ConnectSelectionFuture<'_> = match connecting.as_mut() {
                 Some(connect) => Box::pin(connect.as_mut().map(Some)),
                 None => Box::pin(pending()),
@@ -855,6 +990,7 @@ async fn run_worker_with_transport<F>(
                         }
                         Ok(WorkerControl::Shutdown) => shutdown_requested = true,
                         Ok(WorkerControl::ScanOwnersChanged) => scan_changed = true,
+                        Ok(WorkerControl::CancelPairing { .. }) => {},
                         Err(_) => return,
                     }
                 },
@@ -863,6 +999,23 @@ async fn run_worker_with_transport<F>(
                         Ok(WorkerControl::ScanOwnersChanged) => scan_changed = true,
                         Ok(WorkerControl::Shutdown) => shutdown_requested = true,
                         Ok(WorkerControl::LifecycleChanged) => {},
+                        Ok(WorkerControl::CancelPairing { .. }) => {},
+                        Err(_) => return,
+                    }
+                },
+                pairing_result = pairing_controls.recv().fuse() => {
+                    match pairing_result {
+                        Ok(WorkerControl::CancelPairing { session_generation }) => {
+                            handle_cancel_pairing(
+                                session_generation,
+                                session.as_ref(),
+                                &mut core,
+                                &mut queued_actions,
+                                on_snapshot.as_ref(),
+                            );
+                        }
+                        Ok(WorkerControl::Shutdown) => shutdown_requested = true,
+                        Ok(_) => {},
                         Err(_) => return,
                     }
                 },
@@ -878,6 +1031,7 @@ async fn run_worker_with_transport<F>(
                             result,
                             &mut core,
                             &mut owner,
+                            session.as_ref(),
                             &mut queued_actions,
                             on_snapshot.as_ref(),
                         )
@@ -889,6 +1043,7 @@ async fn run_worker_with_transport<F>(
                     match signal_result {
                         SignalOutcome::Message(message) => {
                             let previous_generation = core.bluez_generation();
+                            let pairing_was_active = core.snapshot().pairing;
                             handle_signal(
                                 message,
                                 &mut core,
@@ -897,12 +1052,34 @@ async fn run_worker_with_transport<F>(
                                 &mut queued_actions,
                                 on_snapshot.as_ref(),
                             );
+                            if pairing_was_active
+                                && !core.snapshot().pairing
+                                && let Some(broker) = session
+                                    .as_ref()
+                                    .and_then(|session| session.agent_broker())
+                            {
+                                broker.clear_pairing_context();
+                            }
                             if core.bluez_generation() != previous_generation {
                                 generation_replaced = true;
                             }
                         }
                         SignalOutcome::Error(error) => connection_lost = Some(error),
                         SignalOutcome::End => connection_lost = Some(String::from("BlueZ signal stream ended")),
+                    }
+                },
+                agent_result = agent_wake.fuse() => {
+                    if agent_result.is_ok()
+                        && let Some(session) = session.as_ref()
+                    {
+                        let prompt = session.agent_prompt();
+                        if core.agent_prompt_changed(
+                            core.session_generation(),
+                            core.bluez_generation(),
+                            prompt,
+                        ) {
+                            on_snapshot(core.snapshot().clone());
+                        }
                     }
                 },
                 connection = connect.fuse() => {
@@ -920,6 +1097,7 @@ async fn run_worker_with_transport<F>(
             let current_session = session.take();
             best_effort_stop_discovery(current_session.clone(), core.stop_discovery_action());
             best_effort_unregister_agent(current_session);
+            clear_agent_broker(&agent_broker);
             return;
         }
 
@@ -928,6 +1106,7 @@ async fn run_worker_with_transport<F>(
                 let current_session = session.take();
                 best_effort_stop_discovery(current_session.clone(), core.stop_discovery_action());
                 best_effort_unregister_agent(current_session);
+                clear_agent_broker(&agent_broker);
                 connecting = None;
                 reconnect_at = None;
                 retire_generation_work(
@@ -944,6 +1123,7 @@ async fn run_worker_with_transport<F>(
             {
                 let current_session = session.take();
                 best_effort_stop_discovery(current_session, core.stop_discovery_action());
+                clear_agent_broker(&agent_broker);
                 connecting = None;
                 reconnect_at = Some(Instant::now());
                 retire_generation_work(
@@ -985,6 +1165,10 @@ async fn run_worker_with_transport<F>(
                             &owner,
                         );
                     }
+                    *agent_broker
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                        new_session.agent_broker();
                     session = Some(new_session);
                     state = ConnectionState::Connected;
                     enqueue_actions(
@@ -996,6 +1180,7 @@ async fn run_worker_with_transport<F>(
                     on_snapshot(core.snapshot().clone());
                 }
                 Err(error) => {
+                    clear_agent_broker(&agent_broker);
                     state = ConnectionState::Disconnected;
                     reconnect_at = Some(backoff.on_failure(Instant::now()));
                     if core.bus_unavailable(core.session_generation(), error) {
@@ -1009,6 +1194,7 @@ async fn run_worker_with_transport<F>(
             if let Some(session) = session.as_ref() {
                 session.invalidate_agent();
             }
+            clear_agent_broker(&agent_broker);
             session = None;
             owner.clear();
             state = ConnectionState::Disconnected;
@@ -1040,7 +1226,7 @@ async fn run_worker_with_transport<F>(
                 queued_actions.push_front(action);
                 break;
             };
-            if let CoreAction::Connect { object_path, .. } = &action {
+            if let Some(object_path) = ordinary_device_path(&action) {
                 in_flight_device_paths.insert(object_path.clone());
             }
             tasks.push(session.execute(action));
@@ -1054,11 +1240,8 @@ fn take_next_dispatchable_action(
 ) -> Option<CoreAction> {
     let mut blocked = VecDeque::new();
     while let Some(action) = queued_actions.pop_front() {
-        let blocked_for_device = matches!(
-            &action,
-            CoreAction::Connect { object_path, .. }
-                if in_flight_device_paths.contains(object_path)
-        );
+        let blocked_for_device = ordinary_device_path(&action)
+            .is_some_and(|object_path| in_flight_device_paths.contains(object_path));
         if blocked_for_device {
             blocked.push_back(action);
         } else {
@@ -1068,6 +1251,28 @@ fn take_next_dispatchable_action(
     }
     queued_actions.extend(blocked);
     None
+}
+
+fn ordinary_device_path(action: &CoreAction) -> Option<&String> {
+    match action {
+        CoreAction::Connect { object_path, .. }
+        | CoreAction::RegisterAgent {
+            device_path: object_path,
+            ..
+        }
+        | CoreAction::Pair {
+            device_path: object_path,
+            ..
+        }
+        | CoreAction::SetTrusted { object_path, .. }
+        | CoreAction::RemoveDevice { object_path, .. } => Some(object_path),
+        CoreAction::StartBus { .. }
+        | CoreAction::Probe { .. }
+        | CoreAction::GetAll { .. }
+        | CoreAction::SetPowered { .. }
+        | CoreAction::Discovery { .. }
+        | CoreAction::CancelPairing { .. } => None,
+    }
 }
 
 async fn handle_command<F>(
@@ -1103,6 +1308,61 @@ async fn handle_command<F>(
             let action = core.connect_device(&object_path, connect);
             enqueue_actions(action, queued, core, on_snapshot);
         }
+        WorkerCommand::Pair {
+            session_generation,
+            object_path,
+        } => {
+            if session_generation != core.session_generation() {
+                return;
+            }
+            let action = core.pair_device(&object_path);
+            enqueue_actions(action, queued, core, on_snapshot);
+            on_snapshot(core.snapshot().clone());
+        }
+        WorkerCommand::SetTrusted {
+            session_generation,
+            object_path,
+            target,
+        } => {
+            if session_generation != core.session_generation() {
+                return;
+            }
+            let action = core.set_device_trusted(&object_path, target);
+            enqueue_actions(action, queued, core, on_snapshot);
+            on_snapshot(core.snapshot().clone());
+        }
+        WorkerCommand::Forget {
+            session_generation,
+            object_path,
+        } => {
+            if session_generation != core.session_generation() {
+                return;
+            }
+            let action = core.forget_device(&object_path);
+            enqueue_actions(action, queued, core, on_snapshot);
+            on_snapshot(core.snapshot().clone());
+        }
+    }
+}
+
+fn handle_cancel_pairing<F>(
+    session_generation: u64,
+    session: Option<&BusSessionHandle>,
+    core: &mut BluetoothCore,
+    queued: &mut VecDeque<CoreAction>,
+    on_snapshot: &F,
+) where
+    F: Fn(CoreSnapshot),
+{
+    if session_generation != core.session_generation() {
+        return;
+    }
+    if let Some(broker) = session.and_then(|session| session.agent_broker()) {
+        broker.cancel_for_lifecycle();
+    }
+    if let Some(action) = core.cancel_pairing() {
+        enqueue_actions([action], queued, core, on_snapshot);
+        on_snapshot(core.snapshot().clone());
     }
 }
 
@@ -1110,6 +1370,7 @@ fn handle_task_result<F>(
     result: TaskResult,
     core: &mut BluetoothCore,
     _owner: &mut String,
+    session: Option<&BusSessionHandle>,
     queued: &mut VecDeque<CoreAction>,
     on_snapshot: &F,
 ) -> Option<String>
@@ -1226,15 +1487,31 @@ where
                     bluez_generation,
                     operation_id,
                     pairing_epoch,
+                    device_path,
                     ..
                 } => {
-                    let _ = core.agent_registration_failed(
-                        session_generation,
-                        bluez_generation,
-                        operation_id,
-                        pairing_epoch,
-                        result.err(),
-                    );
+                    match result {
+                        Ok(()) => {
+                            let next = core.agent_registered(
+                                session_generation,
+                                bluez_generation,
+                                operation_id,
+                                pairing_epoch,
+                            );
+                            enqueue_actions(next, queued, core, on_snapshot);
+                        }
+                        Err(error) => {
+                            core.agent_registration_failed(
+                                session_generation,
+                                bluez_generation,
+                                operation_id,
+                                pairing_epoch,
+                                Some(error),
+                            );
+                        }
+                    }
+                    on_snapshot(core.snapshot().clone());
+                    completed_device_path = Some(device_path);
                 }
                 CoreAction::Pair {
                     session_generation,
@@ -1244,7 +1521,7 @@ where
                     device_path,
                     ..
                 } => {
-                    let _ = core.pair_reply(
+                    let failed = core.pair_reply(
                         session_generation,
                         bluez_generation,
                         operation_id,
@@ -1253,6 +1530,11 @@ where
                         result.is_ok(),
                         result.err(),
                     );
+                    if failed
+                        && let Some(broker) = session.and_then(|session| session.agent_broker())
+                    {
+                        broker.cancel_for_lifecycle();
+                    }
                     completed_device_path = Some(device_path);
                 }
                 CoreAction::CancelPairing { .. } => {}
@@ -1441,6 +1723,17 @@ fn enqueue_actions<F>(
                 !matches!(
                     queued_action,
                     CoreAction::Connect {
+                        object_path: queued_path,
+                        ..
+                    } if queued_path == object_path
+                )
+            });
+        }
+        if let CoreAction::SetTrusted { object_path, .. } = &action {
+            queued.retain(|queued_action| {
+                !matches!(
+                    queued_action,
+                    CoreAction::SetTrusted {
                         object_path: queued_path,
                         ..
                     } if queued_path == object_path
@@ -2010,6 +2303,7 @@ mod worker_lifecycle_tests {
         update_scan_owner_release, update_scan_owner_request,
     };
     use super::{ConnectionState, ReconnectBackoff, SignalOutcome};
+    use crate::bluetooth::agent::{AgentBroker, AgentPromptView};
     use crate::bluetooth::engine::{BluetoothCore, CoreSnapshot};
     use crate::bluetooth::object_store::{InterfaceMap, PropertyMap, PropertyValue};
     use async_channel::{Receiver, Sender};
@@ -2052,6 +2346,8 @@ mod worker_lifecycle_tests {
         owner: Option<String>,
         owner_error: Option<String>,
         signals: Receiver<FakeSignal>,
+        agent_wake: Receiver<()>,
+        _agent_wake_sender: Sender<()>,
         probe_objects: BTreeMap<String, InterfaceMap>,
         operations: Arc<OperationTracker>,
     }
@@ -2077,6 +2373,8 @@ mod worker_lifecycle_tests {
     struct OperationTracker {
         dispatched: Mutex<Vec<DispatchedDeviceOperation>>,
         completions: Mutex<BTreeMap<u64, Sender<Result<(), String>>>>,
+        events: Mutex<Vec<&'static str>>,
+        pair_release: Mutex<Option<Sender<()>>>,
         probes: AtomicUsize,
         active: AtomicUsize,
         max_active: AtomicUsize,
@@ -2088,6 +2386,8 @@ mod worker_lifecycle_tests {
             Arc::new(Self {
                 dispatched: Mutex::new(Vec::new()),
                 completions: Mutex::new(BTreeMap::new()),
+                events: Mutex::new(Vec::new()),
+                pair_release: Mutex::new(None),
                 probes: AtomicUsize::new(0),
                 active: AtomicUsize::new(0),
                 max_active: AtomicUsize::new(0),
@@ -2123,6 +2423,43 @@ mod worker_lifecycle_tests {
         fn record_probe(&self) {
             self.probes.fetch_add(1, Ordering::SeqCst);
             self.changed.notify_all();
+        }
+
+        fn record_event(&self, event: &'static str) {
+            self.events.lock().expect("event log lock").push(event);
+            self.changed.notify_all();
+        }
+
+        fn events(&self) -> Vec<&'static str> {
+            self.events.lock().expect("event log lock").clone()
+        }
+
+        fn wait_for_event(&self, event: &'static str) {
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while !self.events().contains(&event) {
+                assert!(
+                    Instant::now() < deadline,
+                    "timed out waiting for worker event"
+                );
+                std::thread::sleep(Duration::from_millis(2));
+            }
+        }
+
+        fn record_pair(&self) -> Receiver<()> {
+            let (sender, receiver) = async_channel::bounded(1);
+            *self.pair_release.lock().expect("pair release lock") = Some(sender);
+            self.record_event("pair");
+            receiver
+        }
+
+        fn complete_pair(&self) {
+            let sender = self
+                .pair_release
+                .lock()
+                .expect("pair release lock")
+                .take()
+                .expect("pair release sender");
+            sender.try_send(()).expect("pair release");
         }
 
         fn finish_device(&self, operation_id: u64) {
@@ -2241,7 +2578,21 @@ mod worker_lifecycle_tests {
             Box::pin(async {})
         }
 
+        fn agent_broker(&self) -> Option<AgentBroker> {
+            None
+        }
+
+        fn agent_wake(&self) -> Receiver<()> {
+            self.agent_wake.clone()
+        }
+
+        fn agent_prompt(&self) -> AgentPromptView {
+            AgentPromptView::default()
+        }
+
         fn register_agent_task(&self, action: CoreAction) -> TaskFuture {
+            self.operations.record_event("agent_exported");
+            self.operations.record_event("register_agent");
             Box::pin(async move {
                 TaskResult::Operation {
                     action,
@@ -2280,12 +2631,29 @@ mod worker_lifecycle_tests {
                         result: Ok(PropertyMap::new()),
                     }
                 }),
+                CoreAction::RegisterAgent { .. } => self.register_agent_task(action),
+                CoreAction::Pair { .. } => {
+                    let completion = operations.record_pair();
+                    Box::pin(async move {
+                        let _ = completion.recv().await;
+                        TaskResult::Operation {
+                            action,
+                            result: Ok(()),
+                        }
+                    })
+                }
+                CoreAction::CancelPairing { .. } => {
+                    operations.record_event("cancel_pairing");
+                    Box::pin(async move {
+                        TaskResult::Operation {
+                            action,
+                            result: Ok(()),
+                        }
+                    })
+                }
                 action @ CoreAction::SetPowered { .. }
                 | action @ CoreAction::Discovery { .. }
                 | action @ CoreAction::StartBus { .. }
-                | action @ CoreAction::RegisterAgent { .. }
-                | action @ CoreAction::Pair { .. }
-                | action @ CoreAction::CancelPairing { .. }
                 | action @ CoreAction::SetTrusted { .. }
                 | action @ CoreAction::RemoveDevice { .. } => Box::pin(async move {
                     TaskResult::Operation {
@@ -2329,6 +2697,7 @@ mod worker_lifecycle_tests {
         lifecycle: Arc<Mutex<LifecycleRequest>>,
         controls: Sender<WorkerControl>,
         _scan_controls: Sender<WorkerControl>,
+        pairing_controls: Sender<WorkerControl>,
         shutdown: Sender<WorkerControl>,
         snapshots: Receiver<CoreSnapshot>,
         session_controls: Vec<FakeSessionControl>,
@@ -2340,6 +2709,7 @@ mod worker_lifecycle_tests {
             let (commands, command_rx) = async_channel::bounded(64);
             let (controls, control_rx) = async_channel::bounded(1);
             let (scan_controls, scan_control_rx) = async_channel::bounded(1);
+            let (pairing_controls, pairing_control_rx) = async_channel::bounded(1);
             let (shutdown, shutdown_rx) = async_channel::bounded(1);
             let lifecycle = Arc::new(Mutex::new(LifecycleRequest::default()));
             let scan_owners = Arc::new(Mutex::new(ScanOwnerMailbox::default()));
@@ -2369,9 +2739,11 @@ mod worker_lifecycle_tests {
                         controls: control_rx,
                         scan_controls: scan_control_rx,
                         shutdown: shutdown_rx,
+                        pairing_controls: pairing_control_rx,
                     },
                     thread_lifecycle,
                     thread_scan_owners,
+                    Arc::new(Mutex::new(None)),
                     transport,
                     Arc::new(move |snapshot| {
                         let _ = snapshots.try_send(snapshot);
@@ -2384,6 +2756,7 @@ mod worker_lifecycle_tests {
                     lifecycle,
                     controls,
                     _scan_controls: scan_controls,
+                    pairing_controls,
                     shutdown,
                     snapshots: snapshot_rx,
                     session_controls,
@@ -2400,6 +2773,23 @@ mod worker_lifecycle_tests {
             self.controls
                 .try_send(WorkerControl::LifecycleChanged)
                 .expect("lifecycle wake");
+        }
+
+        fn pair(&self, object_path: &str) {
+            self.commands
+                .try_send(WorkerCommand::Pair {
+                    session_generation: 1,
+                    object_path: object_path.to_owned(),
+                })
+                .expect("pair command");
+        }
+
+        fn cancel_pairing(&self) {
+            self.pairing_controls
+                .try_send(WorkerControl::CancelPairing {
+                    session_generation: 1,
+                })
+                .expect("pairing cancellation control");
         }
 
         fn wait_for(&self, predicate: impl Fn(&CoreSnapshot) -> bool) -> CoreSnapshot {
@@ -2449,6 +2839,7 @@ mod worker_lifecycle_tests {
 
     fn pending_session(signals: Vec<FakeSignal>) -> FakeSessionPlan {
         let (sender, receiver) = async_channel::bounded(32);
+        let (agent_wake_sender, agent_wake) = async_channel::bounded(1);
         for signal in signals {
             sender.try_send(signal).expect("initial fake signal");
         }
@@ -2462,6 +2853,8 @@ mod worker_lifecycle_tests {
                 owner: Some(String::from(":1.42")),
                 owner_error: None,
                 signals: receiver,
+                agent_wake,
+                _agent_wake_sender: agent_wake_sender,
                 probe_objects: test_managed_objects(&["/org/bluez/hci0/dev_AA"], false),
                 operations,
             },
@@ -2474,7 +2867,17 @@ mod worker_lifecycle_tests {
         owner_error: Option<&str>,
         devices: &[&str],
     ) -> FakeSessionPlan {
+        session_plan_with_pairing(owner, owner_error, devices, true)
+    }
+
+    fn session_plan_with_pairing(
+        owner: Option<&str>,
+        owner_error: Option<&str>,
+        devices: &[&str],
+        paired: bool,
+    ) -> FakeSessionPlan {
         let (sender, receiver) = async_channel::bounded(32);
+        let (agent_wake_sender, agent_wake) = async_channel::bounded(1);
         let operations = OperationTracker::new();
         let control = FakeSessionControl {
             signals: sender,
@@ -2485,7 +2888,9 @@ mod worker_lifecycle_tests {
                 owner: owner.map(str::to_owned),
                 owner_error: owner_error.map(str::to_owned),
                 signals: receiver,
-                probe_objects: test_managed_objects(devices, false),
+                agent_wake,
+                _agent_wake_sender: agent_wake_sender,
+                probe_objects: test_managed_objects_with_pairing(devices, false, paired),
                 operations,
             },
             control,
@@ -2493,6 +2898,14 @@ mod worker_lifecycle_tests {
     }
 
     fn test_managed_objects(devices: &[&str], connected: bool) -> BTreeMap<String, InterfaceMap> {
+        test_managed_objects_with_pairing(devices, connected, true)
+    }
+
+    fn test_managed_objects_with_pairing(
+        devices: &[&str],
+        connected: bool,
+        paired: bool,
+    ) -> BTreeMap<String, InterfaceMap> {
         let mut objects = BTreeMap::new();
         objects.insert(
             String::from("/org/bluez/hci0"),
@@ -2522,7 +2935,7 @@ mod worker_lifecycle_tests {
                             String::from("Alias"),
                             PropertyValue::String((*path).to_owned()),
                         ),
-                        (String::from("Paired"), PropertyValue::Boolean(true)),
+                        (String::from("Paired"), PropertyValue::Boolean(paired)),
                         (String::from("Trusted"), PropertyValue::Boolean(false)),
                         (String::from("Connected"), PropertyValue::Boolean(connected)),
                     ]),
@@ -2566,6 +2979,21 @@ mod worker_lifecycle_tests {
 
     fn ready_worker(devices: &[&str]) -> (WorkerHarness, FakeSessionControl) {
         let harness = WorkerHarness::new(vec![Ok(session_plan(Some(":1.42"), None, devices))]).0;
+        let session = harness.session(0);
+        harness.start();
+        harness
+            .wait_for(|snapshot| snapshot.state == crate::bluetooth::engine::ServiceState::Ready);
+        (harness, session)
+    }
+
+    fn ready_unpaired_worker(devices: &[&str]) -> (WorkerHarness, FakeSessionControl) {
+        let harness = WorkerHarness::new(vec![Ok(session_plan_with_pairing(
+            Some(":1.42"),
+            None,
+            devices,
+            false,
+        ))])
+        .0;
         let session = harness.session(0);
         harness.start();
         harness
@@ -2781,6 +3209,41 @@ mod worker_lifecycle_tests {
         for operation in session.operations.dispatched() {
             session.operations.complete(operation.operation_id, Ok(()));
         }
+        harness.shutdown();
+    }
+
+    #[test]
+    fn worker_exports_agent_before_registering_and_pairing() {
+        let (harness, session) = ready_unpaired_worker(&["/org/bluez/hci0/dev_AA"]);
+        harness.pair("/org/bluez/hci0/dev_AA");
+        session.operations.wait_for_event("pair");
+        let events = session.operations.events();
+        let export = events
+            .iter()
+            .position(|event| *event == "agent_exported")
+            .expect("agent export event");
+        let register = events
+            .iter()
+            .position(|event| *event == "register_agent")
+            .expect("agent registration event");
+        let pair = events
+            .iter()
+            .position(|event| *event == "pair")
+            .expect("pair event");
+        assert!(export < register);
+        assert!(register < pair);
+        session.operations.complete_pair();
+        harness.shutdown();
+    }
+
+    #[test]
+    fn cancel_pairing_dispatches_while_pair_is_in_flight() {
+        let (harness, session) = ready_unpaired_worker(&["/org/bluez/hci0/dev_AA"]);
+        harness.pair("/org/bluez/hci0/dev_AA");
+        session.operations.wait_for_event("pair");
+        harness.cancel_pairing();
+        session.operations.wait_for_event("cancel_pairing");
+        session.operations.complete_pair();
         harness.shutdown();
     }
 

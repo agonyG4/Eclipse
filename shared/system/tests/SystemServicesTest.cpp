@@ -185,6 +185,52 @@ public:
         return actionResult;
     }
 
+    bool pairDevice(const QString &path) override
+    {
+        pairedPath = path;
+        return actionResult;
+    }
+
+    bool cancelPairing() override
+    {
+        ++cancelPairingCount;
+        return actionResult;
+    }
+
+    bool setDeviceTrusted(const QString &path, bool trusted) override
+    {
+        trustedPath = path;
+        trustedValue = trusted;
+        return actionResult;
+    }
+
+    bool forgetDevice(const QString &path) override
+    {
+        forgottenPath = path;
+        return actionResult;
+    }
+
+    bool submitAgentText(quint64 requestId, const QString &text) override
+    {
+        agentRequestId = requestId;
+        agentText = text;
+        return actionResult;
+    }
+
+    bool confirmAgentRequest(quint64 requestId, bool accepted) override
+    {
+        agentRequestId = requestId;
+        agentAccepted = accepted;
+        return actionResult;
+    }
+
+    bool rejectAgentRequest(quint64 requestId) override
+    {
+        agentRequestId = requestId;
+        ++rejectAgentCount;
+        return actionResult;
+    }
+
     void publish(const BluetoothSnapshot &snapshot)
     {
         if (m_callbacks.snapshotChanged)
@@ -200,6 +246,15 @@ public:
     QSet<QString> scanOwners;
     QString connectedPath;
     QString disconnectedPath;
+    QString pairedPath;
+    int cancelPairingCount = 0;
+    QString trustedPath;
+    bool trustedValue = false;
+    QString forgottenPath;
+    quint64 agentRequestId = 0;
+    QString agentText;
+    bool agentAccepted = false;
+    int rejectAgentCount = 0;
 
 private:
     Callbacks m_callbacks;
@@ -240,6 +295,7 @@ private slots:
     void pipewireIncompleteDefaultStateIsUnavailable();
     void pipewireDefaultWriteDoesNotOptimisticallyMutateState();
     void bluetoothFacadeContractAndForwardsOperations();
+    void bluetoothPhase2ContractAndForwardsOperations();
     void bluetoothHealthChangedCoversHealthJsonFields();
     void bluetoothBackendStartupFailureReportsUnavailable();
     void bluetoothDeviceModelPreservesOrderingAndRoles();
@@ -792,6 +848,69 @@ void SystemServicesTest::bluetoothBackendStartupFailureReportsUnavailable()
     QVERIFY(!service.available());
     QVERIFY(!service.ready());
     QCOMPARE(service.errorString(), QStringLiteral("Bluetooth backend unavailable"));
+}
+
+void SystemServicesTest::bluetoothPhase2ContractAndForwardsOperations()
+{
+    auto backend = std::make_unique<FakeBluetoothBackend>();
+    auto *backendPtr = backend.get();
+    BluetoothService service(std::move(backend));
+    QVERIFY(service.start());
+
+    QSignalSpy pairingSpy(&service, &BluetoothService::pairingChanged);
+    QSignalSpy agentSpy(&service, &BluetoothService::agentRequestChanged);
+    QSignalSpy operationSpy(&service, &BluetoothService::operationChanged);
+
+    BluetoothSnapshot snapshot;
+    snapshot.pairing = true;
+    snapshot.pairingDevicePath = QStringLiteral("/org/bluez/hci0/dev_AA");
+    snapshot.pairingDeviceName = QStringLiteral("Headphones");
+    snapshot.pairingError = QStringLiteral("Pairing rejected");
+    snapshot.agentRequestActive = true;
+    snapshot.agentRequestId = 42;
+    snapshot.agentRequestKind = BluetoothAgentRequestKind::PasskeyConfirmation;
+    snapshot.agentDevicePath = snapshot.pairingDevicePath;
+    snapshot.agentDeviceName = snapshot.pairingDeviceName;
+    snapshot.agentPasskey = 7;
+    snapshot.agentEntered = 2;
+    snapshot.agentServiceUuid = QStringLiteral("0000110e-0000-1000-8000-00805f9b34fb");
+    snapshot.agentDisplayPin = QStringLiteral("1234");
+    snapshot.operationError = QStringLiteral("Trust rejected");
+    backendPtr->publish(snapshot);
+
+    QVERIFY(service.pairing());
+    QCOMPARE(service.pairingDevicePath(), snapshot.pairingDevicePath);
+    QCOMPARE(service.pairingDeviceName(), snapshot.pairingDeviceName);
+    QCOMPARE(service.pairingError(), snapshot.pairingError);
+    QCOMPARE(service.agentRequestId(), quint64(42));
+    QCOMPARE(service.agentRequestKind(), BluetoothAgentRequestKind::PasskeyConfirmation);
+    QCOMPARE(service.agentPasskey(), quint32(7));
+    QCOMPARE(service.agentEntered(), 2);
+    QVERIFY(pairingSpy.count() == 1);
+    QVERIFY(agentSpy.count() == 1);
+    QVERIFY(operationSpy.count() == 1);
+
+    const QString path = snapshot.pairingDevicePath;
+    QVERIFY(service.pairDevice(path));
+    QCOMPARE(backendPtr->pairedPath, path);
+    QVERIFY(service.cancelPairing());
+    QCOMPARE(backendPtr->cancelPairingCount, 1);
+    QVERIFY(service.setDeviceTrusted(path, true));
+    QCOMPARE(backendPtr->trustedPath, path);
+    QVERIFY(backendPtr->trustedValue);
+    QVERIFY(service.forgetDevice(path));
+    QCOMPARE(backendPtr->forgottenPath, path);
+    QVERIFY(service.submitAgentText(42, QStringLiteral("123456")));
+    QCOMPARE(backendPtr->agentRequestId, quint64(42));
+    QCOMPARE(backendPtr->agentText, QStringLiteral("123456"));
+    QVERIFY(service.confirmAgentRequest(42, true));
+    QVERIFY(backendPtr->agentAccepted);
+    QVERIFY(service.rejectAgentRequest(42));
+    QCOMPARE(backendPtr->rejectAgentCount, 1);
+
+    const QJsonObject health = service.healthJson();
+    QVERIFY(!health.contains(QStringLiteral("pairingError")));
+    QVERIFY(!health.contains(QStringLiteral("agentDisplayPin")));
 }
 
 void SystemServicesTest::bluetoothHealthChangedCoversHealthJsonFields()

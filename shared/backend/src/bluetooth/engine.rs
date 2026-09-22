@@ -71,7 +71,7 @@ pub struct CoreSnapshot {
     pub agent_device_path: String,
     pub agent_device_name: String,
     pub agent_passkey: Option<u32>,
-    pub agent_entered: Option<u8>,
+    pub agent_entered: Option<u16>,
     pub agent_service_uuid: Option<String>,
     pub agent_display_pin: Option<String>,
     pub operation_error: Option<String>,
@@ -931,6 +931,20 @@ impl BluetoothCore {
     ) -> bool {
         if !self.accepts_bluez(session_generation, bluez_generation) {
             return false;
+        }
+        if prompt.active {
+            let Some(pairing) = self.pairing.active_identity() else {
+                return false;
+            };
+            if pairing.session_generation != session_generation
+                || pairing.bluez_generation != bluez_generation
+                || prompt.session_generation != pairing.session_generation
+                || prompt.bluez_generation != pairing.bluez_generation
+                || prompt.pairing_epoch != pairing.pairing_epoch
+                || prompt.device_path != pairing.device_path
+            {
+                return false;
+            }
         }
         self.agent_prompt = prompt;
         self.refresh_snapshot();

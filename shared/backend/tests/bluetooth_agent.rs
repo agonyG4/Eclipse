@@ -16,23 +16,94 @@ fn agent1_exports_the_complete_surface_without_default_agent_control() {
     let broker = AgentBroker::new();
     let mut introspection = String::new();
     Agent1::new(broker).introspect_to_writer(&mut introspection, 0);
-    for method in [
-        "Release",
-        "RequestPinCode",
-        "DisplayPinCode",
-        "RequestPasskey",
-        "DisplayPasskey",
-        "RequestConfirmation",
-        "RequestAuthorization",
-        "AuthorizeService",
-        "Cancel",
+    for (method, expected) in [
+        ("Release", &[][..]),
+        ("RequestPinCode", &[("o", "in"), ("s", "out")]),
+        ("DisplayPinCode", &[("o", "in"), ("s", "in")]),
+        ("RequestPasskey", &[("o", "in"), ("u", "out")]),
+        ("DisplayPasskey", &[("o", "in"), ("u", "in"), ("q", "in")]),
+        ("RequestConfirmation", &[("o", "in"), ("u", "in")]),
+        ("RequestAuthorization", &[("o", "in")]),
+        ("AuthorizeService", &[("o", "in"), ("s", "in")]),
+        ("Cancel", &[]),
     ] {
-        assert!(
-            introspection.contains(&format!("name=\"{method}\"")),
-            "missing {method}"
+        assert_eq!(
+            method_signature(&introspection, method),
+            expected,
+            "unexpected Agent1 signature for {method}"
         );
     }
+    assert_eq!(
+        method_argument_names(&introspection, "DisplayPasskey"),
+        ["device", "passkey", "entered"]
+    );
     assert!(!introspection.contains("RequestDefaultAgent"));
+}
+
+fn method_signature<'a>(introspection: &'a str, method: &str) -> Vec<(&'a str, &'static str)> {
+    let marker = format!("<method name=\"{method}\"");
+    let method_start = introspection
+        .find(&marker)
+        .unwrap_or_else(|| panic!("missing Agent1 method {method}"));
+    let method_end = introspection[method_start..]
+        .find("</method>")
+        .map(|offset| method_start + offset)
+        .unwrap_or_else(|| panic!("unterminated Agent1 method {method}"));
+    let method_xml = &introspection[method_start..method_end];
+    let mut signature = Vec::new();
+    for argument in method_xml.split("<arg ").skip(1) {
+        let end = argument
+            .find('>')
+            .unwrap_or_else(|| panic!("malformed argument in Agent1 method {method}"));
+        let argument = &argument[..end];
+        let Some(type_start) = argument.find("type=\"").map(|offset| offset + 6) else {
+            panic!("argument without type in Agent1 method {method}");
+        };
+        let Some(type_end) = argument[type_start..].find('"') else {
+            panic!("malformed type in Agent1 method {method}");
+        };
+        let direction = argument
+            .find("direction=\"out\"")
+            .map(|_| "out")
+            .unwrap_or("in");
+        let argument_type = &argument[type_start..type_start + type_end];
+        assert!(
+            ["o", "s", "u", "q", "y"].contains(&argument_type),
+            "unexpected Agent1 argument type {argument_type}"
+        );
+        signature.push((argument_type, direction));
+    }
+    signature
+}
+
+fn method_argument_names(introspection: &str, method: &str) -> Vec<String> {
+    let marker = format!("<method name=\"{method}\"");
+    let method_start = introspection
+        .find(&marker)
+        .unwrap_or_else(|| panic!("missing Agent1 method {method}"));
+    let method_end = introspection[method_start..]
+        .find("</method>")
+        .map(|offset| method_start + offset)
+        .unwrap_or_else(|| panic!("unterminated Agent1 method {method}"));
+    introspection[method_start..method_end]
+        .split("<arg ")
+        .skip(1)
+        .map(|argument| {
+            let end = argument
+                .find('>')
+                .unwrap_or_else(|| panic!("malformed argument in Agent1 method {method}"));
+            let argument = &argument[..end];
+            let name = argument
+                .find("name=\"")
+                .map(|offset| offset + 6)
+                .unwrap_or_else(|| panic!("unnamed argument in Agent1 method {method}"));
+            let end = argument[name..]
+                .find('"')
+                .map(|offset| name + offset)
+                .unwrap_or_else(|| panic!("malformed name in Agent1 method {method}"));
+            argument[name..end].to_owned()
+        })
+        .collect()
 }
 
 fn broker() -> AgentBroker {
@@ -159,12 +230,12 @@ fn display_prompts_are_immediate_and_repeated_passkeys_coalesce() {
     assert_eq!(first.entered, Some(0));
 
     broker
-        .display_passkey(SENDER, SESSION, BLUEZ, DEVICE, 420042, 3)
+        .display_passkey(SENDER, SESSION, BLUEZ, DEVICE, 420042, u16::MAX)
         .expect("update displayed passkey");
     let second = broker.prompt();
     assert_eq!(second.request_id, first.request_id);
     assert_eq!(second.passkey, Some(420042));
-    assert_eq!(second.entered, Some(3));
+    assert_eq!(second.entered, Some(u16::MAX));
 }
 
 #[test]
@@ -254,7 +325,7 @@ fn lifecycle_cancellation_timeout_and_owner_authentication_clear_prompts() {
 }
 
 #[test]
-fn stale_owner_and_release_cancel_without_publishing_unauthorized_prompts() {
+fn stale_owner_and_owner_replacement_cancel_without_publishing_unauthorized_prompts() {
     let broker = broker();
     assert_eq!(
         broker.display_pin_code(":1.99", SESSION, BLUEZ, DEVICE, "1234"),
@@ -276,6 +347,40 @@ fn stale_owner_and_release_cancel_without_publishing_unauthorized_prompts() {
         assert_eq!(request.await, Err(AgentError::Canceled));
         assert!(!broker.prompt().active);
     });
+}
+
+#[test]
+fn authorized_release_clears_pairing_context_and_prompts() {
+    let broker = broker();
+    broker
+        .display_passkey(SENDER, SESSION, BLUEZ, DEVICE, 123456, 0)
+        .expect("display passkey");
+
+    broker
+        .release_from_bluez(SENDER, SESSION, BLUEZ)
+        .expect("authorized Release");
+
+    assert!(!broker.prompt().active);
+    assert_eq!(
+        broker.display_passkey(SENDER, SESSION, BLUEZ, DEVICE, 123456, 0),
+        Err(AgentError::Rejected)
+    );
+}
+
+#[test]
+fn unauthorized_release_does_not_clear_pairing_context_or_prompts() {
+    let broker = broker();
+    broker
+        .display_passkey(SENDER, SESSION, BLUEZ, DEVICE, 123456, 0)
+        .expect("display passkey");
+    let prompt = broker.prompt();
+
+    assert_eq!(
+        broker.release_from_bluez(":1.99", SESSION, BLUEZ),
+        Err(AgentError::Rejected)
+    );
+
+    assert_eq!(broker.prompt(), prompt);
 }
 
 #[test]

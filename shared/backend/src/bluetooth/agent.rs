@@ -1,6 +1,6 @@
 use std::{
     fmt,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, atomic::AtomicU64},
     time::Duration,
 };
 
@@ -33,10 +33,12 @@ pub struct AgentPromptView {
     pub active: bool,
     pub request_id: u64,
     pub pairing_epoch: u64,
+    pub session_generation: u64,
+    pub bluez_generation: u64,
     pub kind: AgentPromptKind,
     pub device_path: String,
     pub passkey: Option<u32>,
-    pub entered: Option<u8>,
+    pub entered: Option<u16>,
     pub service_uuid: Option<String>,
     pub display_pin: Option<String>,
 }
@@ -48,6 +50,8 @@ impl fmt::Debug for AgentPromptView {
             .field("active", &self.active)
             .field("request_id", &self.request_id)
             .field("pairing_epoch", &self.pairing_epoch)
+            .field("session_generation", &self.session_generation)
+            .field("bluez_generation", &self.bluez_generation)
             .field("kind", &self.kind)
             .field("device_path", &self.device_path)
             .field("has_passkey", &self.passkey.is_some())
@@ -104,7 +108,6 @@ enum PendingResponse {
 struct BrokerState {
     authority: Option<AgentAuthority>,
     pairing: Option<PairingContext>,
-    next_request_id: u64,
     interactive: Option<PendingInteractive>,
     display: Option<AgentPromptView>,
 }
@@ -119,7 +122,7 @@ struct AgentCall<'a> {
 struct PromptSpec {
     kind: AgentPromptKind,
     passkey: Option<u32>,
-    entered: Option<u8>,
+    entered: Option<u16>,
     service_uuid: Option<String>,
     display_pin: Option<String>,
 }
@@ -127,9 +130,47 @@ struct PromptSpec {
 #[derive(Clone)]
 pub struct AgentBroker {
     state: Arc<Mutex<BrokerState>>,
+    request_ids: Arc<AgentRequestIds>,
     wake_tx: Sender<()>,
     wake_rx: Receiver<()>,
     prompt_timeout: Duration,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct AgentRequestIds {
+    last_issued: AtomicU64,
+}
+
+impl AgentRequestIds {
+    fn allocate(&self) -> Result<u64, AgentError> {
+        self.last_issued
+            .fetch_update(
+                std::sync::atomic::Ordering::Relaxed,
+                std::sync::atomic::Ordering::Relaxed,
+                |last_issued| last_issued.checked_add(1),
+            )
+            .map(|last_issued| last_issued + 1)
+            .map_err(|_| AgentError::Rejected)
+    }
+}
+
+#[derive(Clone, Default)]
+pub(crate) struct AgentReleaseHook {
+    invalidate: Option<Arc<dyn Fn(u64, u64) + Send + Sync>>,
+}
+
+impl AgentReleaseHook {
+    pub(crate) fn new(invalidate: impl Fn(u64, u64) + Send + Sync + 'static) -> Self {
+        Self {
+            invalidate: Some(Arc::new(invalidate)),
+        }
+    }
+
+    fn invalidate(&self, session_generation: u64, bluez_generation: u64) {
+        if let Some(invalidate) = &self.invalidate {
+            invalidate(session_generation, bluez_generation);
+        }
+    }
 }
 
 impl AgentBroker {
@@ -138,9 +179,24 @@ impl AgentBroker {
     }
 
     pub fn new_with_prompt_timeout(prompt_timeout: Duration) -> Self {
+        Self::new_with_request_ids_and_prompt_timeout(
+            Arc::new(AgentRequestIds::default()),
+            prompt_timeout,
+        )
+    }
+
+    pub(crate) fn new_with_request_ids(request_ids: Arc<AgentRequestIds>) -> Self {
+        Self::new_with_request_ids_and_prompt_timeout(request_ids, Duration::from_secs(60))
+    }
+
+    fn new_with_request_ids_and_prompt_timeout(
+        request_ids: Arc<AgentRequestIds>,
+        prompt_timeout: Duration,
+    ) -> Self {
         let (wake_tx, wake_rx) = async_channel::bounded(1);
         Self {
             state: Arc::new(Mutex::new(BrokerState::default())),
+            request_ids,
             wake_tx,
             wake_rx,
             prompt_timeout,
@@ -407,7 +463,7 @@ impl AgentBroker {
         bluez_generation: u64,
         device_path: &str,
         passkey: u32,
-        entered: u8,
+        entered: u16,
     ) -> Result<(), AgentError> {
         self.display(
             AgentCall {
@@ -594,13 +650,15 @@ impl AgentBroker {
             if state.interactive.is_some() {
                 return Err(AgentError::Rejected);
             }
-            let request_id = next_request_id(&mut state)?;
+            let request_id = self.request_ids.allocate()?;
             let (response_tx, response_rx) = async_channel::bounded(1);
             state.display = None;
             let prompt = AgentPromptView {
                 active: true,
                 request_id,
                 pairing_epoch: pairing.pairing_epoch,
+                session_generation: pairing.session_generation,
+                bluez_generation: pairing.bluez_generation,
                 kind: prompt_spec.kind,
                 device_path: pairing.device_path,
                 passkey: prompt_spec.passkey,
@@ -637,12 +695,14 @@ impl AgentBroker {
         }) {
             prompt.request_id
         } else {
-            next_request_id(&mut state)?
+            self.request_ids.allocate()?
         };
         state.display = Some(AgentPromptView {
             active: true,
             request_id,
             pairing_epoch: pairing.pairing_epoch,
+            session_generation: pairing.session_generation,
+            bluez_generation: pairing.bluez_generation,
             kind: prompt_spec.kind,
             device_path: pairing.device_path,
             passkey: prompt_spec.passkey,
@@ -671,20 +731,17 @@ impl AgentBroker {
     fn notify(&self) {
         let _ = self.wake_tx.try_send(());
     }
+
+    #[cfg(test)]
+    pub(crate) fn notify_for_test(&self) {
+        self.notify();
+    }
 }
 
 impl Default for AgentBroker {
     fn default() -> Self {
         Self::new()
     }
-}
-
-fn next_request_id(state: &mut BrokerState) -> Result<u64, AgentError> {
-    let Some(request_id) = state.next_request_id.checked_add(1) else {
-        return Err(AgentError::Rejected);
-    };
-    state.next_request_id = request_id;
-    Ok(request_id)
 }
 
 fn authorize_locked(
@@ -734,11 +791,35 @@ fn cancel_locked(state: &mut BrokerState, response: PendingResponse) {
 #[derive(Clone)]
 pub struct Agent1 {
     broker: AgentBroker,
+    release_hook: AgentReleaseHook,
 }
 
 impl Agent1 {
     pub fn new(broker: AgentBroker) -> Self {
-        Self { broker }
+        Self {
+            broker,
+            release_hook: AgentReleaseHook::default(),
+        }
+    }
+
+    pub(crate) fn with_release_hook(broker: AgentBroker, release_hook: AgentReleaseHook) -> Self {
+        Self {
+            broker,
+            release_hook,
+        }
+    }
+
+    pub(crate) fn release_from_bluez(
+        &self,
+        sender: &str,
+        session_generation: u64,
+        bluez_generation: u64,
+    ) -> Result<(), AgentError> {
+        self.broker
+            .release_from_bluez(sender, session_generation, bluez_generation)?;
+        self.release_hook
+            .invalidate(session_generation, bluez_generation);
+        Ok(())
     }
 
     fn sender(header: &Header<'_>) -> Result<String, AgentError> {
@@ -759,8 +840,7 @@ impl Agent1 {
 impl Agent1 {
     async fn release(&self, #[zbus(header)] header: Header<'_>) -> Result<(), AgentError> {
         let (sender, session_generation, bluez_generation) = Self::caller(&header, &self.broker)?;
-        self.broker
-            .release_from_bluez(&sender, session_generation, bluez_generation)
+        self.release_from_bluez(&sender, session_generation, bluez_generation)
     }
 
     async fn request_pin_code(
@@ -815,7 +895,7 @@ impl Agent1 {
         &self,
         device: OwnedObjectPath,
         passkey: u32,
-        entered: u8,
+        entered: u16,
         #[zbus(header)] header: Header<'_>,
     ) -> Result<(), AgentError> {
         let (sender, session_generation, bluez_generation) = Self::caller(&header, &self.broker)?;
@@ -885,5 +965,73 @@ impl Agent1 {
         let (sender, session_generation, bluez_generation) = Self::caller(&header, &self.broker)?;
         self.broker
             .cancel_from_bluez(&sender, session_generation, bluez_generation)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AGENT_OBJECT_PATH, Agent1, AgentBroker, AgentError, AgentReleaseHook};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicU64, AtomicUsize, Ordering},
+    };
+    use zbus::Message;
+
+    const OWNER: &str = ":1.42";
+    const SESSION: u64 = 7;
+    const BLUEZ: u64 = 11;
+    const DEVICE: &str = "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF";
+
+    #[test]
+    fn release_interface_authenticates_sender_before_invalidating_registration() {
+        let broker = AgentBroker::new();
+        broker.set_authority(SESSION, BLUEZ, OWNER);
+        broker.set_pairing_context(3, SESSION, BLUEZ, DEVICE);
+        broker
+            .display_passkey(OWNER, SESSION, BLUEZ, DEVICE, 123456, 0)
+            .expect("display prompt");
+        let releases = Arc::new(AtomicUsize::new(0));
+        let hook_releases = Arc::clone(&releases);
+        let agent = Agent1::with_release_hook(
+            broker.clone(),
+            AgentReleaseHook::new(move |session, bluez| {
+                assert_eq!(session, SESSION);
+                assert_eq!(bluez, BLUEZ);
+                hook_releases.fetch_add(1, Ordering::SeqCst);
+            }),
+        );
+
+        let unauthorized = release_message(":1.99");
+        assert_eq!(
+            smol::block_on(agent.release(unauthorized.header())),
+            Err(AgentError::Rejected)
+        );
+        assert_eq!(releases.load(Ordering::SeqCst), 0);
+        assert!(broker.prompt().active);
+
+        let authorized = release_message(OWNER);
+        smol::block_on(agent.release(authorized.header())).expect("authorized Release");
+        assert_eq!(releases.load(Ordering::SeqCst), 1);
+        assert!(!broker.prompt().active);
+    }
+
+    #[test]
+    fn request_id_allocator_issues_max_once_then_fails_closed() {
+        let ids = super::AgentRequestIds {
+            last_issued: AtomicU64::new(u64::MAX - 1),
+        };
+        assert_eq!(ids.allocate(), Ok(u64::MAX));
+        assert_eq!(ids.allocate(), Err(AgentError::Rejected));
+    }
+
+    fn release_message(sender: &str) -> Message {
+        Message::method_call(AGENT_OBJECT_PATH, "Release")
+            .expect("Release method message")
+            .interface("org.bluez.Agent1")
+            .expect("Agent1 interface")
+            .sender(sender)
+            .expect("Release sender")
+            .build(&())
+            .expect("Release message")
     }
 }

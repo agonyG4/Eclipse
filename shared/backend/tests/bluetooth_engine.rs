@@ -1,3 +1,4 @@
+use astrea_system_backend::bluetooth::agent::{AgentPromptKind, AgentPromptView};
 use astrea_system_backend::bluetooth::device::BluetoothDevice;
 use astrea_system_backend::bluetooth::discovery::DiscoveryReply;
 use astrea_system_backend::bluetooth::engine::{BluetoothCore, CoreAction, ServiceState};
@@ -815,6 +816,66 @@ fn pairing_waits_for_authoritative_paired_and_keeps_user_errors_local() {
         register.is_none(),
         "authoritative Paired rejects a second Pair"
     );
+}
+
+#[test]
+fn active_agent_prompt_must_match_the_current_pairing_identity() {
+    let mut core = BluetoothCore::default();
+    let open = core.start().expect("start succeeds");
+    let CoreAction::StartBus { session_generation } = open else {
+        panic!("start action");
+    };
+    let probe = core.owner_changed(session_generation, Some(String::from(":1.42")));
+    let CoreAction::Probe {
+        bluez_generation, ..
+    } = probe[0]
+    else {
+        panic!("probe action");
+    };
+    core.managed_objects(
+        session_generation,
+        bluez_generation,
+        unpaired_snapshot_objects(),
+    );
+    let register = core
+        .pair_device("/org/bluez/hci0/dev_AA")
+        .expect("agent registration");
+    let CoreAction::RegisterAgent { pairing_epoch, .. } = register else {
+        panic!("registration action");
+    };
+
+    let valid_prompt = AgentPromptView {
+        active: true,
+        request_id: 19,
+        pairing_epoch,
+        session_generation,
+        bluez_generation,
+        kind: AgentPromptKind::PasskeyInput,
+        device_path: String::from("/org/bluez/hci0/dev_AA"),
+        ..AgentPromptView::default()
+    };
+    assert!(core.agent_prompt_changed(session_generation, bluez_generation, valid_prompt.clone()));
+
+    let mut stale_epoch = valid_prompt.clone();
+    stale_epoch.pairing_epoch += 1;
+    assert!(!core.agent_prompt_changed(session_generation, bluez_generation, stale_epoch));
+    assert_eq!(core.snapshot().agent_request_id, valid_prompt.request_id);
+
+    let mut stale_session = valid_prompt.clone();
+    stale_session.session_generation += 1;
+    assert!(!core.agent_prompt_changed(session_generation, bluez_generation, stale_session));
+    let mut stale_bluez = valid_prompt.clone();
+    stale_bluez.bluez_generation += 1;
+    assert!(!core.agent_prompt_changed(session_generation, bluez_generation, stale_bluez));
+
+    let mut stale_device = valid_prompt.clone();
+    stale_device.device_path = String::from("/org/bluez/hci0/dev_BB");
+    assert!(!core.agent_prompt_changed(session_generation, bluez_generation, stale_device));
+    assert_eq!(core.snapshot().agent_request_id, valid_prompt.request_id);
+
+    assert!(core.cancel_pairing().is_some());
+    assert!(!core.agent_prompt_changed(session_generation, bluez_generation, valid_prompt));
+    assert!(!core.snapshot().agent_request_active);
 }
 
 #[test]

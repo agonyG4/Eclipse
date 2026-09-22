@@ -392,6 +392,7 @@ impl qobject::SettingsThemesController {
         {
             return;
         }
+        let previous = self.rust().effective_selected().map(str::to_owned);
         let generation = self.rust().selection_generation.wrapping_add(1);
         let error_revision = self.rust().error_revision;
         self.as_mut().rust_mut().selection_generation = generation;
@@ -401,7 +402,10 @@ impl qobject::SettingsThemesController {
             error_revision,
         });
         self.as_mut().update_busy();
-        self.as_mut().selected_icon_theme_changed();
+        let current = self.rust().effective_selected().map(str::to_owned);
+        if previous != current {
+            self.as_mut().selected_icon_theme_changed();
+        }
 
         let submission = self
             .rust()

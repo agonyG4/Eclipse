@@ -315,7 +315,7 @@ void SettingsThemesControllerTest::unavailableConfiguredThemeCanBeReplacedWithSy
     QVERIFY(QMetaObject::invokeMethod(&themes, "useSystemDefault", Qt::DirectConnection));
     QTRY_VERIFY_WITH_TIMEOUT(!themes.property("busy").toBool(), 5000);
     QVERIFY(themes.property("selectedIconTheme").toString().isEmpty());
-    QCOMPARE(selectedThemeSpy.count(), 1);
+    QCOMPARE(selectedThemeSpy.count(), 0);
 
     QVERIFY(config.open(QIODevice::ReadOnly));
     const QJsonObject persisted = QJsonDocument::fromJson(config.readAll()).object();

@@ -143,6 +143,11 @@ impl BluetoothCore {
         self.discovery.owners()
     }
 
+    #[cfg(test)]
+    pub(crate) fn pending_device_operations(&self) -> usize {
+        self.device_operations.pending().count()
+    }
+
     pub fn start(&mut self) -> Option<CoreAction> {
         if self.running {
             return None;

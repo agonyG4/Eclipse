@@ -84,8 +84,9 @@ private slots:
     void iconAppearanceNormalizesCanonicalValues();
     void iconAppearanceRejectsInvalidValues();
     void iconAppearanceResetsOnCompleteReplacement();
-    void iconAppearancePersistsWithoutChangingLegacyFields();
+    void savePersistsOnlyUnmigratedLegacyFields();
     void savePreservesRustAndUnknownKeys();
+    void staleAppearanceStateCannotOverwriteRustValuesOnLegacySave();
     void saveWaitsForRustTransactionAndPreservesBothUpdates();
     void saveDoesNotOverwriteMalformedConfig();
     void failedAtomicSaveLeavesPreviousConfigIntact();
@@ -101,7 +102,7 @@ private slots:
     void legacyDarkConfigurationMigratesInMemory();
     void validShellStylesRemainCompatible();
     void invalidShellStyleUsesDefault();
-    void saveWritesCanonicalAndLegacyThemeKeys();
+    void saveWritesOnlyUnmigratedFields();
     void legacySetThemeModeSelectsExplicitPreference();
     void automaticPlatformChangeUpdatesEffectiveModeOnly();
 };
@@ -171,7 +172,7 @@ void ThemeControllerTest::iconAppearanceResetsOnCompleteReplacement()
     QTRY_COMPARE_WITH_TIMEOUT(controller.iconAppearance(), QStringLiteral("default"), 1500);
 }
 
-void ThemeControllerTest::iconAppearancePersistsWithoutChangingLegacyFields()
+void ThemeControllerTest::savePersistsOnlyUnmigratedLegacyFields()
 {
     QTemporaryDir directory;
     QVERIFY(directory.isValid());
@@ -190,13 +191,12 @@ void ThemeControllerTest::iconAppearancePersistsWithoutChangingLegacyFields()
     controller.save();
 
     const QJsonObject saved = readConfig(path);
-    QCOMPARE(saved.value(QStringLiteral("icon_appearance")).toString(),
-             QStringLiteral("monochrome"));
+    QVERIFY(!saved.contains(QStringLiteral("icon_appearance")));
+    QVERIFY(!saved.contains(QStringLiteral("theme_preference")));
+    QVERIFY(!saved.contains(QStringLiteral("accent")));
     QCOMPARE(saved.value(QStringLiteral("icon_style")).toInt(), 1);
     QCOMPARE(saved.value(QStringLiteral("icon_theme")).toString(), QStringLiteral("dark"));
-    QCOMPARE(saved.value(QStringLiteral("theme_preference")).toString(), QStringLiteral("dark"));
     QCOMPARE(saved.value(QStringLiteral("shell_style")).toInt(), 2);
-    QCOMPARE(saved.value(QStringLiteral("accent")).toString(), QStringLiteral("#30d158"));
     QCOMPARE(saved.value(QStringLiteral("audio_osd_style")).toInt(), 1);
 }
 
@@ -220,7 +220,48 @@ void ThemeControllerTest::savePreservesRustAndUnknownKeys()
     QCOMPARE(saved.value(QStringLiteral("future_setting")).toObject().value(QStringLiteral("enabled")),
              QJsonValue(true));
     QCOMPARE(saved.value(QStringLiteral("icon_theme")).toString(), QStringLiteral("legacy"));
+    QCOMPARE(saved.value(QStringLiteral("accent")).toString(), QStringLiteral("#123456"));
+}
+
+void ThemeControllerTest::staleAppearanceStateCannotOverwriteRustValuesOnLegacySave()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = writeConfig(
+        directory,
+        R"({"theme_preference":"light","theme":"light","theme_mode":1,"accent":"#123456","icon_appearance":"monochrome","system_icon_theme":"Breeze","shell_style":1,"future_setting":true})");
+    QVERIFY(!path.isEmpty());
+
+    ThemeController controller(path);
+    QCOMPARE(controller.accentHex(), QStringLiteral("#123456"));
+    controller.setAccentHex(QStringLiteral("#aaaaaa"));
+    controller.setThemePreference(QStringLiteral("dark"));
+    controller.setIconAppearance(QStringLiteral("tinted"));
+    controller.setShellStyle(2);
+
+    // Model a Rust Appearance commit after ThemeController loaded its projection.
+    QVERIFY(writeConfigAtomically(
+        path,
+        {{QStringLiteral("theme_preference"), QStringLiteral("auto")},
+         {QStringLiteral("theme"), QStringLiteral("legacy-light")},
+         {QStringLiteral("theme_mode"), 1},
+         {QStringLiteral("accent"), QStringLiteral("#30d158")},
+         {QStringLiteral("icon_appearance"), QStringLiteral("default")},
+         {QStringLiteral("system_icon_theme"), QStringLiteral("Papirus")},
+         {QStringLiteral("shell_style"), 1},
+         {QStringLiteral("future_setting"), true}}));
+
+    controller.save();
+
+    const QJsonObject saved = readConfig(path);
+    QCOMPARE(saved.value(QStringLiteral("theme_preference")).toString(), QStringLiteral("auto"));
+    QCOMPARE(saved.value(QStringLiteral("theme")).toString(), QStringLiteral("legacy-light"));
+    QCOMPARE(saved.value(QStringLiteral("theme_mode")).toInt(), 1);
     QCOMPARE(saved.value(QStringLiteral("accent")).toString(), QStringLiteral("#30d158"));
+    QCOMPARE(saved.value(QStringLiteral("icon_appearance")).toString(), QStringLiteral("default"));
+    QCOMPARE(saved.value(QStringLiteral("system_icon_theme")).toString(), QStringLiteral("Papirus"));
+    QCOMPARE(saved.value(QStringLiteral("shell_style")).toInt(), 2);
+    QCOMPARE(saved.value(QStringLiteral("future_setting")).toBool(), true);
 }
 
 void ThemeControllerTest::saveWaitsForRustTransactionAndPreservesBothUpdates()
@@ -244,9 +285,10 @@ void ThemeControllerTest::saveWaitsForRustTransactionAndPreservesBothUpdates()
     auto completed = saveCompleted.get_future();
     std::thread cppWriter([&] {
         ThemeController controller(path);
-        controller.setThemePreference(QStringLiteral("light"));
-        controller.setIconAppearance(QStringLiteral("monochrome"));
-        controller.setAccentHex(QStringLiteral("#30d158"));
+        controller.setShellStyle(2);
+        controller.setIconStyle(1);
+        controller.setIconTheme(QStringLiteral("legacy-dark"));
+        controller.setAudioOsdStyle(1);
         saveAttempted.set_value();
         controller.save();
         saveCompleted.set_value();
@@ -264,10 +306,14 @@ void ThemeControllerTest::saveWaitsForRustTransactionAndPreservesBothUpdates()
     QVERIFY(rustCommitSucceeded);
     QVERIFY(!completedWhileRustHeldLock);
     const QJsonObject saved = readConfig(path);
-    QCOMPARE(saved.value(QStringLiteral("accent")).toString(), QStringLiteral("#30d158"));
-    QCOMPARE(saved.value(QStringLiteral("theme_preference")).toString(), QStringLiteral("light"));
-    QCOMPARE(saved.value(QStringLiteral("icon_appearance")).toString(), QStringLiteral("monochrome"));
+    QCOMPARE(saved.value(QStringLiteral("accent")).toString(), QStringLiteral("#123456"));
+    QCOMPARE(saved.value(QStringLiteral("theme_preference")).toString(), QStringLiteral("auto"));
+    QCOMPARE(saved.value(QStringLiteral("icon_appearance")).toString(), QStringLiteral("default"));
     QCOMPARE(saved.value(QStringLiteral("system_icon_theme")).toString(), QStringLiteral("Nordic"));
+    QCOMPARE(saved.value(QStringLiteral("shell_style")).toInt(), 2);
+    QCOMPARE(saved.value(QStringLiteral("icon_style")).toInt(), 1);
+    QCOMPARE(saved.value(QStringLiteral("icon_theme")).toString(), QStringLiteral("legacy-dark"));
+    QCOMPARE(saved.value(QStringLiteral("audio_osd_style")).toInt(), 1);
     QCOMPARE(saved.value(QStringLiteral("future_setting")).toObject()
                  .value(QStringLiteral("enabled")), QJsonValue(true));
 }
@@ -411,7 +457,7 @@ void ThemeControllerTest::customAccentPreservesThemeAndShellState()
 
     controller.save();
     const QJsonObject saved = readConfig(path);
-    QCOMPARE(saved.value(QStringLiteral("accent")).toString(), QStringLiteral("#30d158"));
+    QCOMPARE(saved.value(QStringLiteral("accent")).toString(), QStringLiteral("#123456"));
     QCOMPARE(saved.value(QStringLiteral("theme_preference")).toString(), QStringLiteral("light"));
     QCOMPARE(saved.value(QStringLiteral("shell_style")).toInt(), 2);
 }
@@ -564,11 +610,14 @@ void ThemeControllerTest::invalidShellStyleUsesDefault()
     QCOMPARE(controller.shellStyle(), 1);
 }
 
-void ThemeControllerTest::saveWritesCanonicalAndLegacyThemeKeys()
+void ThemeControllerTest::saveWritesOnlyUnmigratedFields()
 {
     QTemporaryDir directory;
     QVERIFY(directory.isValid());
-    const QString path = directory.filePath(QStringLiteral("theme.json"));
+    const QString path = writeConfig(
+        directory,
+        R"({"theme_preference":"auto","theme":"legacy-dark","theme_mode":0,"accent":"#123456","icon_appearance":"monochrome","system_icon_theme":"Breeze"})");
+    QVERIFY(!path.isEmpty());
     ThemeController controller(path, nullptr, [] { return Qt::ColorScheme::Light; });
 
     controller.applyConfig({
@@ -583,10 +632,12 @@ void ThemeControllerTest::saveWritesCanonicalAndLegacyThemeKeys()
 
     const QJsonObject object = readConfig(path);
     QCOMPARE(object.value(QStringLiteral("theme_preference")).toString(), QStringLiteral("auto"));
-    QCOMPARE(object.value(QStringLiteral("theme")).toString(), QStringLiteral("light"));
-    QCOMPARE(object.value(QStringLiteral("theme_mode")).toInt(), 1);
+    QCOMPARE(object.value(QStringLiteral("theme")).toString(), QStringLiteral("legacy-dark"));
+    QCOMPARE(object.value(QStringLiteral("theme_mode")).toInt(), 0);
     QCOMPARE(object.value(QStringLiteral("shell_style")).toInt(), 2);
-    QCOMPARE(object.value(QStringLiteral("accent")).toString(), QStringLiteral("#30d158"));
+    QCOMPARE(object.value(QStringLiteral("accent")).toString(), QStringLiteral("#123456"));
+    QCOMPARE(object.value(QStringLiteral("icon_appearance")).toString(), QStringLiteral("monochrome"));
+    QCOMPARE(object.value(QStringLiteral("system_icon_theme")).toString(), QStringLiteral("Breeze"));
     QCOMPARE(object.value(QStringLiteral("icon_style")).toInt(), 1);
     QCOMPARE(object.value(QStringLiteral("icon_theme")).toString(), QStringLiteral("dark"));
     QCOMPARE(object.value(QStringLiteral("audio_osd_style")).toInt(), 1);

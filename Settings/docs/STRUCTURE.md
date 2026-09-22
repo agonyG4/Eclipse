@@ -34,6 +34,9 @@ Settings/
 │   ├── build.rs
 │   └── src/
 │       ├── animation/       # typed state and thin CXX-Qt QObject
+│       ├── appearance/      # Appearance mutations and bounded worker
+│       ├── icons/           # installed icon-theme domain and QObject
+│       ├── theme_config/    # shared theme.json transaction store
 │       └── typhon/          # typed protocol, discovery, and transport
 ├── qml/
 │   ├── CMakeLists.txt
@@ -81,7 +84,7 @@ app -> core -> services -> platform/linux
 qml -> context properties supplied by app
 tests -> public production targets -> explicit fake boundaries
 shared -> compositor-independent utilities only
-astrea_settings_backend -> CXX-Qt generated QObject and Rust animation backend
+astrea_settings_backend -> CXX-Qt generated QObjects and Rust domain backends
 ```
 
 The core target deliberately has no Qt QML, Qt Quick, Quick Controls,
@@ -110,6 +113,27 @@ first navigable destination at startup, derives the sidebar highlight for
 nested routes, and owns the bounded Back/Forward session history. `Main.qml`
 supplies its `selectedPageSource` to one authoritative `Loader`; an empty URL is
 never selected and therefore does not produce an empty page.
+
+Customization children appear in this native catalogue order: Appearance,
+Visual Effects, Icons, Wallpaper, Dock, and Animations. Their stable route IDs
+are `appearance`, `visual-effects`, `icons`, `wallpaper`, `dock`, and
+`animations`; nested routes remain hidden from the sidebar.
+
+## Theme Configuration Ownership
+
+QML owns presentation and interaction. `SettingsController.appearance` exposes
+the CXX-Qt `SettingsAppearanceController`, whose Rust backend owns mutations of
+`theme_preference`, `accent`, and `icon_appearance`. `SettingsController.icons`
+exposes `SettingsIconsController`, whose Rust domain owns installed icon-theme
+selection and `system_icon_theme`. Both use the shared Rust
+`ThemeConfigStore` transaction primitive for `theme.json`.
+
+The C++ `ThemeController` remains the live Qt reader, filesystem watcher, and
+projection consumed by QML, Shell, Dock, and Bar. It temporarily writes only
+unmigrated legacy fields (`shell_style`, `icon_style`, `icon_theme`, and
+`audio_osd_style`). Visual Effects is the transitional UI for `shell_style`
+until Phase 2 migrates the material/effects control plane. Phase 2 behavior is
+not implemented by this architecture phase.
 
 ## Adding a Visual-Only Page
 

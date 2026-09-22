@@ -1,22 +1,28 @@
 # Settings Verification
 
-All verification reuses the checkout's existing configured build directory.
-Do not create feature-specific build directories, alternate Debug/Release
-directories, or delete the existing directory for a clean-build claim. If no
-configured build directory is available, report that build verification could
-not be performed.
+All compilation, test output, generated files, Cargo targets, and temporary
+build output must stay under `/mnt/Aether/Desktop/GitHub`. The source checkout
+remains at `/home/agony/GitHub/Eclipse`. Reuse the stable Eclipse build tree
+`/mnt/Aether/Desktop/GitHub/Eclipse-build`; verify its resolved path and
+`CMAKE_HOME_DIRECTORY` before configuring or building. Set `TMPDIR` to the
+short Aether path `/mnt/Aether/Desktop/GitHub/t` when invoking compiler/build
+commands; this also keeps temporary Unix socket paths below Linux's length
+limit.
 
 ## Existing build directory
 
 ```bash
-cmake --build build --parallel 4
-ctest --test-dir build --output-on-failure
-cmake --build build --target astrea-settings-ui_qmllint --parallel 4
+export CARGO_TARGET_DIR=/mnt/Aether/Desktop/GitHub/Eclipse-settings-target
+export TMPDIR=/mnt/Aether/Desktop/GitHub/t
+cmake --build /mnt/Aether/Desktop/GitHub/Eclipse-build --parallel 4
+ctest --test-dir /mnt/Aether/Desktop/GitHub/Eclipse-build --output-on-failure
+cmake --build /mnt/Aether/Desktop/GitHub/Eclipse-build --target astrea-settings-ui_qmllint --parallel 4
 ```
 
-Use the build type already recorded in `build/CMakeCache.txt`; do not create a
-second directory to verify another configuration. Reconfigure `build` in place
-only when it is genuinely necessary.
+Use the build type already recorded in
+`/mnt/Aether/Desktop/GitHub/Eclipse-build/CMakeCache.txt`; do not create a
+second directory to verify another configuration. Reconfigure that tree in
+place only when it is genuinely necessary.
 
 The Settings tests cover controller behavior, Dock defaults and typed atomic
 persistence, deferred external Dock replacement and pin preservation,
@@ -27,14 +33,18 @@ the full application QML route, disabled deferred Wallpaper controls,
 representative registered QML components, AppIcon provider ownership,
 Compositor source policy, and structural ownership invariants.
 
-Themes coverage includes Rust catalog priority/deduplication, hidden metadata,
+Icons coverage includes Rust catalog priority/deduplication, hidden metadata,
 split roots, inheritance and bounded preview lookup, conservative atomic
 preference persistence, invalid selection rejection, and worker coalescing.
-Settings tests cover the generated `SettingsThemesController` projection, the
-stable `themes` route, page construction, System Default selection, keyboard
-activation, filtering, and bounded loading/error/empty presentation. Shared
-icon tests cover persisted-preference precedence, environment overrides,
-invalid fallback, and watcher-driven provider invalidation.
+Settings tests cover the generated `SettingsIconsController` projection, the
+stable `icons` route, page construction, System Default selection, keyboard
+activation, filtering, and bounded loading/error/empty presentation. Appearance
+Rust tests cover validation, isolated key patches, malformed-file protection,
+shared locking, and bounded/coalesced worker mutations. ThemeConfigStore tests
+cover atomic replacement and compatibility with the C++ lock path. Shared icon
+tests cover persisted-preference precedence, environment overrides, invalid
+fallback, and watcher-driven provider invalidation. ThemeController tests prove
+that unrelated legacy saves preserve Rust-owned keys and compatibility inputs.
 
 The Settings Animations test also exercises the Rust-backed CXX-Qt QObject from
 the application's perspective: authoritative snapshots, planned and
@@ -47,15 +57,18 @@ not need Qt live in `Settings/backend` Rust unit tests.
 The Settings Rust gate uses the crate's lockfile and runs:
 
 ```bash
-cargo fmt --manifest-path Settings/backend/Cargo.toml -- --check
-cargo clippy --manifest-path Settings/backend/Cargo.toml --locked --all-targets -- -D warnings
-cargo test --manifest-path Settings/backend/Cargo.toml --locked
+export CARGO_TARGET_DIR=/mnt/Aether/Desktop/GitHub/Eclipse-settings-target
+export TMPDIR=/mnt/Aether/Desktop/GitHub/t
+rtk cargo fmt --check --manifest-path Settings/backend/Cargo.toml
+rtk cargo test --manifest-path Settings/backend/Cargo.toml
+rtk cargo clippy --manifest-path Settings/backend/Cargo.toml --all-targets -- -D warnings
 ```
 
 The CXX-Qt integration uses the stable 0.10.0 release and the qmake selected
-by CMake. A normal Settings CMake build owns Cargo, generated CXX-Qt headers,
-and the Rust static library in the active CMake build tree; no separate manual
-Cargo build is required before CMake.
+by CMake. A normal Settings CMake build owns generated CXX-Qt headers and the
+Rust static library in the Aether CMake build tree. Set `CARGO_TARGET_DIR`
+explicitly for manual Cargo commands; CMake's configured Rust target directory
+must also resolve under Aether.
 
 Wallpaper correctness is covered by `paper-catalog-test`,
 `paper-service-test`, `paper-control-server-test`, and
@@ -69,14 +82,14 @@ qualifies a Git-based archive in an isolated temporary repository.
 
 ## QML Registration and Lint
 
-The authoritative QML list is in `qml/CMakeLists.txt`. It contains 45 files and
+The authoritative QML list is in `qml/CMakeLists.txt`. It contains 46 files and
 is registered once by `astrea-settings-ui`. The application and integration
 tests consume the same module and generated plugin.
 
 Build the module lint target from the existing build:
 
 ```bash
-cmake --build build --target astrea-settings-ui_qmllint --parallel 4
+cmake --build /mnt/Aether/Desktop/GitHub/Eclipse-build --target astrea-settings-ui_qmllint --parallel 4
 ```
 
 The final report must record the registered count, linted count, and warning and

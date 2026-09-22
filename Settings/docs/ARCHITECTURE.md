@@ -3,8 +3,9 @@
 `astrea-settings` is a native Qt 6 application and a normal frameless Wayland
 toplevel. QML / Qt Quick owns presentation and interaction. CXX-Qt is a thin
 generated Qt boundary for migrated backends. Rust owns migrated backend,
-domain, and system logic such as Animations/Typhon. C++ owns application
-composition and remaining unmigrated Qt/system services.
+domain, and system logic such as Animations/Typhon, Appearance preferences, and
+installed icon themes. C++ owns application composition and remaining
+unmigrated Qt/system services.
 
 ## Composition Root
 
@@ -24,9 +25,19 @@ SettingsDockController -> shared DockConfigStore
 SettingsController.animations
   -> CXX-Qt SettingsAnimationController QObject
       -> Rust animation state and typed Typhon client
-SettingsController.themes
-  -> CXX-Qt SettingsThemesController QObject
-      -> Rust icon-theme catalog, persistence, selection, and previews
+SettingsController.appearance
+  -> CXX-Qt SettingsAppearanceController QObject
+      -> Rust Appearance mutation boundary
+          -> ThemeConfigStore -> theme.json
+SettingsController.icons
+  -> CXX-Qt SettingsIconsController QObject
+      -> Rust Icons domain
+          -> ThemeConfigStore -> theme.json
+VisualEffects.qml
+  -> Components.Theme shellStyle bridge
+      -> ThemeController::save() -> theme.json
+theme.json
+  -> ThemeController watcher and live QML/Shell/Dock/Bar projections
 QQmlApplicationEngine
 ```
 
@@ -55,16 +66,24 @@ thread. Pure Rust owns configuration mutation semantics, capability projection,
 typed serde protocol structures, secure endpoint discovery, and one bounded
 worker for Unix-socket I/O. JSON is used only at the Typhon wire boundary.
 
-The Themes domain follows the same boundary with a narrower purpose: QML owns
-presentation and interaction; Rust owns Freedesktop discovery, `index.theme`
-metadata, validation, selection, `theme.json` persistence, preview lookup, and
-the bounded filesystem worker; CXX-Qt is only the Qt property/signal/invokable
-projection. Shared C++ icon code remains the Qt/QIcon rendering integration
-and live cache-invalidation layer. The legacy Settings-only `icon_theme` key
-and the Rust-owned `system_icon_theme` key are intentionally different.
+`Settings/backend/src/theme_config/ThemeConfigStore` is the shared Rust
+transaction primitive for `theme.json`. It uses the existing `theme.json.lock`
+advisory lock, protects malformed JSON, preserves unrelated fields, and
+atomically replaces the file. Both Appearance and Icons domain wrappers use
+this store; they never share domain semantics.
+
+The Icons domain is limited to installed Freedesktop icon themes: Rust owns
+discovery, `index.theme` metadata, selection, previews, the bounded worker, and
+the `system_icon_theme` preference. Its resolver keeps split roots, first
+authoritative metadata, Hidden filtering, inheritance, hicolor fallback,
+explicit size/scale handling, exact-before-closest lookup, scoped previews,
+deterministic sorting, optimistic selection, persisted intent,
+newest-request-wins, and live `AstreaIconProvider` invalidation. CXX-Qt remains
+the Qt property/signal/invokable boundary. The legacy Settings-only
+`icon_theme` key and the Rust-owned `system_icon_theme` key stay separate.
 
 `astrea-settings-ui` is the only `Astrea.Settings 1.0` QML module and registers
-45 QML files. The application and QML integration tests consume that same
+46 QML files. The application and QML integration tests consume that same
 target and generated plugin. The application additionally links the existing
 shared core and QML plugin for compositor-independent shared utilities.
 
@@ -76,15 +95,14 @@ its visual delegates and retain the framework's pointer, keyboard, touch,
 focus, range, and RTL behavior instead of implementing a second input state
 machine with `MouseArea`.
 
-`pages/appearance/MaterialPreview.qml` is the reusable preview surface for
-Appearance and Interface Style cards. It consumes the effective wallpaper
-snapshot projected by `SettingsController.wallpaper`, including its preview
-URL and fit mode. `MaterialShowcase.qml` owns the existing fallback visual
-tree, while the Frosted variant additionally offers that same content through
-the `Astrea.Effects.BackdropEffectSurface` child-surface primitive. The public
-Wayland-effects service uses Qt's existing Wayland display and window surface;
-it never opens a second display connection. If the compositor or protocol is
-unavailable, the fallback showcase remains visible.
+`pages/appearance/MaterialPreview.qml` is the reusable preview surface for the
+Appearance previews and the transitional Visual Effects choices. It consumes
+the effective wallpaper snapshot projected by `SettingsController.wallpaper`.
+`MaterialShowcase.qml` retains the existing fallback visual tree, while the
+Frosted variant may show the existing public Qt Wayland-effects preview when
+available. Visual Effects currently exposes only the three existing
+`shell_style` modes. The future continuous material model and shader controls
+belong to Phase 2 and are not current capabilities.
 
 Unit tests link `astrea-settings-core`. Integration tests link both reusable
 production targets. No test target lists a production `.cpp` file owned by the
@@ -123,10 +141,11 @@ index and no QML route-ID condition. The current routable descriptors are:
 ```text
 qrc:/qt/qml/Astrea/Settings/qml/pages/system/Compositor.qml
 qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Appearance.qml
-qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Themes.qml
-qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Animations.qml
+qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/VisualEffects.qml
+qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Icons.qml
 qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Wallpaper.qml
 qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Dock.qml
+qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Animations.qml
 ```
 
 Rows without implemented pages remain visible but cannot be selected. The first
@@ -171,12 +190,15 @@ logic, and the remaining C++ composition and unrelated services are deferred.
 
 ### Application icon appearance
 
-`ThemeController.iconAppearance` is the canonical global application-icon
-presentation preference. It persists the lowercase `default`, `monochrome`, or
-`tinted` value as `icon_appearance` in the shared theme configuration; missing
-or invalid values resolve to `default`. The Settings `Theme`/`State` proxies
-forward this property to the controller, and the Appearance page mutates it
-through that path rather than binding a projected property directly.
+Rust Appearance is the Settings mutation boundary for `theme_preference`,
+`accent`, and `icon_appearance`. It normalizes those values, patches only the
+requested key through `ThemeConfigStore` on one bounded/coalescing worker, and
+emits `configurationChanged()` only after a successful transaction. The
+composition root connects that signal to `ThemeController.reload()`. The
+ThemeController watcher and `Components.Theme` continue to expose the live
+read-only projection used by the existing QML/Shell/Dock/Bar token system.
+Invalid theme preferences resolve to `auto`, invalid icon appearance resolves
+to `default`, and empty Accent resolves to `#0a84ff`.
 
 This preference is independent from the legacy Settings-only `iconStyle` and
 `iconTheme` fields. Those fields continue to serve Settings navigation icon
@@ -191,16 +213,31 @@ Dark and Clear app-icon modes are intentionally not supported in v1: they
 require a richer icon-asset representation and are not approximated with
 opacity or darkening filters.
 
-### Icon Themes
+### Icons
 
-`Themes.qml` is a presentation-only installed-theme picker. It consumes the
-projected `SettingsController.themes` descriptor list and never reads the
+`Icons.qml` is a presentation-only installed-theme picker. It consumes the
+`SettingsController.icons.iconThemes` descriptor list and never reads the
 filesystem, environment, or theme metadata itself. Selecting a card writes
 only `system_icon_theme` in `~/.config/AstreaOS/ui/theme.json`; System Default
 removes that key. `AstreaIconTheme` applies the preference after explicit
 `ASTREA_ICON_THEME` and `QS_ICON_THEME` overrides, while `AstreaIconProvider`
 continues to own watcher-driven QIcon reapplication, cache invalidation, and
 the shared `themeRevision` update used by Shell, Dock, Alt+Tab, and Settings.
+
+### ThemeController transition
+
+The C++ `ThemeController` remains the live theme reader, filesystem watcher,
+and existing Qt projection. Its `save()` only writes the remaining unmigrated
+legacy fields: `shell_style`, `icon_style`, `icon_theme`, and
+`audio_osd_style`. It preserves `theme_preference`, `accent`,
+`icon_appearance`, `system_icon_theme`, compatibility inputs `theme` and
+`theme_mode`, and all unknown fields. `applyConfig()` may still read the legacy
+compatibility values as fallback. The Visual Effects bridge uses the existing
+`shellStyle`, `setShellStyle()`, and `save()` path until Phase 2 migrates the
+material/effects control plane.
+
+The single System Theme entry in Appearance is the built-in Astrea theme card;
+there is no persisted preset key or alternate preset catalogue in Phase 1.
 
 ## Exclusions
 

@@ -8,7 +8,7 @@ pub mod worker;
 #[cfg(test)]
 mod tests {
     use super::catalog::{ThemeCatalog, ThemeDescriptor};
-    use super::config::ThemePreferenceStore;
+    use super::config::IconThemePreferenceStore;
     use super::icon_lookup::PreviewResolver;
     use super::state::ThemeSelection;
     use std::fs;
@@ -299,7 +299,7 @@ mod tests {
         let directory = TempDir::new().unwrap();
         let path = directory.path().join("theme.json");
         fs::write(&path, r#"{"icon_theme":"dark","unknown":42}"#).unwrap();
-        let store = ThemePreferenceStore::new(path.clone());
+        let store = IconThemePreferenceStore::new(path.clone());
 
         store.save_selected("metadata-theme").unwrap();
         let saved: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
@@ -320,7 +320,7 @@ mod tests {
         let original = b"{ malformed";
         fs::write(&path, original).unwrap();
 
-        let result = ThemePreferenceStore::new(path.clone()).save_selected("theme");
+        let result = IconThemePreferenceStore::new(path.clone()).save_selected("theme");
         assert!(result.is_err());
         assert_eq!(fs::read(&path).unwrap(), original);
     }
@@ -329,7 +329,7 @@ mod tests {
     fn atomic_replacement_leaves_no_temporary_file() {
         let directory = TempDir::new().unwrap();
         let path = directory.path().join("theme.json");
-        ThemePreferenceStore::new(path.clone())
+        IconThemePreferenceStore::new(path.clone())
             .save_selected("theme")
             .unwrap();
 

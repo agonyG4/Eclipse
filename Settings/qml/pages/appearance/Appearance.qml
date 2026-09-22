@@ -21,13 +21,10 @@ Item {
         property string choiceGroup: "appearance"
         property string choiceId: ""
         property string label: ""
-        property int styleValue: -1
         property string previewKind: "dark"
         readonly property bool selected: choiceGroup === "appearance"
             ? Components.Theme.themePreference === choiceId
-            : choiceGroup === "iconAppearance"
-                ? Components.Theme.iconAppearance === choiceId
-                : Components.Theme.shellStyle === styleValue
+            : Components.Theme.iconAppearance === choiceId
         readonly property bool hovered: cardMouse.containsMouse
         readonly property bool compactPreview: choiceGroup === "iconAppearance"
 
@@ -42,12 +39,9 @@ Item {
         function activate() {
             choiceCard.forceActiveFocus()
             if (choiceCard.choiceGroup === "appearance")
-                Components.Theme.setThemePreference(choiceCard.choiceId)
-            else if (choiceCard.choiceGroup === "iconAppearance")
-                Components.Theme.setIconAppearance(choiceCard.choiceId)
+                SettingsController.appearance.setThemePreference(choiceCard.choiceId)
             else
-                Components.Theme.setShellStyle(choiceCard.styleValue)
-            Components.Theme.save()
+                SettingsController.appearance.setIconAppearance(choiceCard.choiceId)
         }
 
         Keys.onPressed: function(event) {
@@ -115,9 +109,7 @@ Item {
 
                     MaterialPreview {
                         visible: choiceCard.choiceGroup !== "iconAppearance"
-                        objectName: "materialPreview-" + choiceCard.choiceGroup + "-"
-                            + (choiceCard.choiceGroup === "interface"
-                                ? choiceCard.previewKind : choiceCard.choiceId)
+                        objectName: "materialPreview-appearance-" + choiceCard.choiceId
                         anchors.fill: parent
                         wallpaperSource: root.wallpaperController
                             ? root.wallpaperController.effectivePreviewUrl : ""
@@ -126,8 +118,7 @@ Item {
                         themeVariant: choiceCard.choiceGroup === "appearance"
                             ? choiceCard.previewKind
                             : (Components.Theme.isLight ? "light" : "dark")
-                        materialId: choiceCard.choiceGroup === "interface"
-                            ? choiceCard.previewKind : "default"
+                        materialId: "default"
                     }
 
                     Row {
@@ -245,8 +236,7 @@ Item {
 
         function activate() {
             accentSwatch.forceActiveFocus()
-            Components.Theme.setAccentHex(accentSwatch.accentValue)
-            Components.Theme.save()
+            SettingsController.appearance.setAccentHex(accentSwatch.accentValue)
         }
 
         Keys.onPressed: function(event) {
@@ -330,6 +320,67 @@ Item {
         maxWidth: 760
 
         Form.SectionHeader {
+            text: I18n.tr("apps.settings.pages.appearance.text.system_theme", "SYSTEM THEME")
+            Layout.bottomMargin: 10
+        }
+
+        Form.FormCard {
+            objectName: "systemTheme-astrea"
+            readonly property bool selected: true
+            Layout.fillWidth: true
+            Layout.bottomMargin: 18
+            margins: 10
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 16
+
+                MaterialPreview {
+                    objectName: "materialPreview-system-theme-astrea"
+                    Layout.preferredWidth: 180
+                    Layout.preferredHeight: 96
+                    wallpaperSource: root.wallpaperController
+                        ? root.wallpaperController.effectivePreviewUrl : ""
+                    wallpaperFit: root.wallpaperController
+                        ? root.wallpaperController.effectiveFit : "cover"
+                    themeVariant: Components.Theme.isLight ? "light" : "dark"
+                    materialId: "default"
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+
+                    Text {
+                        text: I18n.tr("apps.settings.pages.appearance.system_theme.astrea", "Astrea")
+                        color: Components.Theme.textPrimary
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeNormal
+                        font.weight: Components.Theme.fontWeightDemiBold
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: I18n.tr("apps.settings.pages.appearance.system_theme.astrea_description",
+                                      "The built-in Astrea system theme")
+                        color: Components.Theme.textSecondary
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeSmall
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
+                Text {
+                    text: "\uf00c"
+                    color: Components.Theme.accent
+                    font.family: Components.Theme.monoFontFamily
+                    font.pixelSize: 14
+                    font.weight: Components.Theme.fontWeightBold
+                }
+            }
+        }
+
+        Form.SectionHeader {
             text: I18n.tr("apps.settings.pages.appearance.text.appearance", "APPEARANCE")
             Layout.bottomMargin: 10
         }
@@ -364,48 +415,6 @@ Item {
                     choiceId: "dark"
                     label: I18n.tr("apps.settings.pages.appearance.option.dark", "Dark")
                     previewKind: "dark"
-                }
-            }
-        }
-
-        Form.SectionHeader {
-            text: I18n.tr("apps.settings.pages.appearance.text.interface_style", "INTERFACE STYLE")
-            Layout.bottomMargin: 10
-        }
-
-        Form.FormCard {
-            Layout.fillWidth: true
-            Layout.bottomMargin: 20
-            margins: 8
-
-            GridLayout {
-                Layout.fillWidth: true
-                columns: 3
-                columnSpacing: 10
-                rowSpacing: 10
-
-                ChoiceCard {
-                    objectName: "interfaceStyleOption-default"
-                    choiceGroup: "interface"
-                    styleValue: 1
-                    label: I18n.tr("apps.settings.pages.appearance.option.default", "Default")
-                    previewKind: "default"
-                }
-
-                ChoiceCard {
-                    objectName: "interfaceStyleOption-transparent"
-                    choiceGroup: "interface"
-                    styleValue: 0
-                    label: I18n.tr("apps.settings.pages.appearance.option.transparent", "Transparent")
-                    previewKind: "transparent"
-                }
-
-                ChoiceCard {
-                    objectName: "interfaceStyleOption-frosted"
-                    choiceGroup: "interface"
-                    styleValue: 2
-                    label: I18n.tr("apps.settings.pages.appearance.option.frosted", "Frosted")
-                    previewKind: "frosted"
                 }
             }
         }

@@ -1,6 +1,7 @@
 set(ASTREA_SETTINGS_BACKEND_CXXQT_HEADERS
     "${CMAKE_CURRENT_BINARY_DIR}/../cxxqt/crates/astrea_settings_backend/include/astrea_settings_backend/src/animation/qobject.cxxqt.h"
-    "${CMAKE_CURRENT_BINARY_DIR}/../cxxqt/crates/astrea_settings_backend/include/astrea_settings_backend/src/themes/qobject.cxxqt.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/../cxxqt/crates/astrea_settings_backend/include/astrea_settings_backend/src/appearance/qobject.cxxqt.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/../cxxqt/crates/astrea_settings_backend/include/astrea_settings_backend/src/icons/qobject.cxxqt.h"
 )
 set_source_files_properties(${ASTREA_SETTINGS_BACKEND_CXXQT_HEADERS}
     PROPERTIES GENERATED TRUE

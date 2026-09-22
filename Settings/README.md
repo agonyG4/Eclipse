@@ -7,14 +7,16 @@ focused native boundaries.
 
 ## Build
 
-From the Eclipse checkout:
+From the Eclipse checkout (build output belongs on Aether):
 
 ```bash
-cmake -S . -B build-settings -G Ninja \
+export CARGO_TARGET_DIR=/mnt/Aether/Desktop/GitHub/Eclipse-settings-target
+export TMPDIR=/mnt/Aether/Desktop/GitHub/t
+cmake -S . -B /mnt/Aether/Desktop/GitHub/Eclipse-build -G Ninja \
   -DASTREA_BUILD_TESTS=ON \
   -DASTREA_SETTINGS_BUILD_TESTS=ON
-cmake --build build-settings --parallel
-ctest --test-dir build-settings --output-on-failure
+cmake --build /mnt/Aether/Desktop/GitHub/Eclipse-build --parallel
+ctest --test-dir /mnt/Aether/Desktop/GitHub/Eclipse-build --output-on-failure
 ```
 
 The executable is `Settings/app/astrea-settings` in the build tree and installs
@@ -30,12 +32,14 @@ The native application includes:
 - catalogue-owned flat navigation with stable IDs, hub metadata, and native
   session history;
 - twelve sidebar rows including the non-selectable spacer, with Page, Hub, and
-  Spacer semantics; Themes, Wallpaper, and Dock are nested catalogue destinations;
+  Spacer semantics; Appearance, Visual Effects, Icons, Wallpaper, Dock, and
+  Animations are nested Customization destinations;
 - native theme configuration, translations, icon resolution, and user-profile
   services; Linux libc/NSS administrative-group detection recognizes only
   `wheel` and `sudo`;
-  - six implemented page routes: `Compositor`, immediately after `Services`,
-  plus the native `Appearance`, `Themes`, `Animations`, `Wallpaper`, and `Dock` routes
+  - seven implemented page routes: `Compositor`, immediately after `Services`,
+  plus the native `Appearance`, `Visual Effects`, `Icons`, `Wallpaper`, `Dock`,
+  and `Animations` routes
   under the `Customization` hub;
   unavailable catalogue entries remain visible but cannot select an empty
   content route;
@@ -71,13 +75,17 @@ Rust owns migrated animation/Typhon domain, protocol, discovery, and transport
 logic; C++ remains application composition and the remaining unmigrated
 Qt/system services.
 
-The Themes page is backed by `SettingsController.themes`, a thin CXX-Qt
-projection over the Rust Themes domain. Rust discovers installed Freedesktop
-icon themes, parses metadata, validates selection, resolves bounded previews,
-and atomically persists `system_icon_theme`. QML only presents and filters the
-projected descriptors. The shared Qt icon provider keeps ownership of global
-QIcon rendering and watcher-driven invalidation; the legacy `icon_theme` key
-continues to retain its Settings-only meaning.
+Appearance mutations are backed by `SettingsController.appearance`, a thin
+CXX-Qt projection over the Rust Appearance backend. Rust owns
+`theme_preference`, `accent`, and `icon_appearance` mutations through the shared
+`ThemeConfigStore`. The Icons page is backed by `SettingsController.icons`, a
+thin CXX-Qt projection over the Rust icon-theme domain, which discovers
+installed Freedesktop icon themes and persists `system_icon_theme`. The shared
+Qt icon provider keeps ownership of global QIcon rendering and watcher-driven
+invalidation; the legacy `icon_theme` key continues to retain its Settings-only
+meaning. Visual Effects temporarily controls the three existing `shell_style`
+values through ThemeController until Phase 2 migrates the material/effects
+control plane.
 
 The Compositor preview intentionally has no compositor integration or Typhon
 transport. Existing ThemeController configuration is separate from the

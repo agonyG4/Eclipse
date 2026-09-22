@@ -21,9 +21,18 @@ list(FIND registered_qml_files "pages/appearance/Animations.qml" animations_qml_
 if(animations_qml_index EQUAL -1)
     message(FATAL_ERROR "Animations.qml is not registered in the Settings QML module")
 endif()
-list(FIND registered_qml_files "pages/appearance/Themes.qml" themes_qml_index)
-if(themes_qml_index EQUAL -1)
-    message(FATAL_ERROR "Themes.qml is not registered in the Settings QML module")
+foreach(new_appearance_page IN ITEMS
+    "pages/appearance/VisualEffects.qml"
+    "pages/appearance/Icons.qml"
+)
+    list(FIND registered_qml_files "${new_appearance_page}" appearance_page_index)
+    if(appearance_page_index EQUAL -1)
+        message(FATAL_ERROR "${new_appearance_page} is not registered in the Settings QML module")
+    endif()
+endforeach()
+list(FIND registered_qml_files "pages/appearance/Themes.qml" old_themes_qml_index)
+if(NOT old_themes_qml_index EQUAL -1)
+    message(FATAL_ERROR "The old Themes.qml route remains registered")
 endif()
 
 set(settings_desktop_file "${SETTINGS_SOURCE_DIR}/packaging/applications/astrea-settings.desktop")
@@ -258,13 +267,19 @@ set(production_source_files
     backend/src/animation/mod.rs
     backend/src/animation/state.rs
     backend/src/animation/qobject.rs
-    backend/src/themes/mod.rs
-    backend/src/themes/catalog.rs
-    backend/src/themes/config.rs
-    backend/src/themes/icon_lookup.rs
-    backend/src/themes/state.rs
-    backend/src/themes/worker.rs
-    backend/src/themes/qobject.rs
+    backend/src/theme_config/mod.rs
+    backend/src/theme_config/store.rs
+    backend/src/appearance/mod.rs
+    backend/src/appearance/config.rs
+    backend/src/appearance/worker.rs
+    backend/src/appearance/qobject.rs
+    backend/src/icons/mod.rs
+    backend/src/icons/catalog.rs
+    backend/src/icons/config.rs
+    backend/src/icons/icon_lookup.rs
+    backend/src/icons/state.rs
+    backend/src/icons/worker.rs
+    backend/src/icons/qobject.rs
     backend/src/typhon/mod.rs
     backend/src/typhon/protocol.rs
     backend/src/typhon/discovery.rs
@@ -300,10 +315,11 @@ set(production_source_files
     qml/components/navigation/Sidebar.qml
     qml/pages/navigation/Hub.qml
     qml/pages/appearance/Appearance.qml
+    qml/pages/appearance/VisualEffects.qml
+    qml/pages/appearance/Icons.qml
     qml/pages/appearance/MaterialPreview.qml
     qml/pages/appearance/MaterialShowcase.qml
     qml/pages/appearance/Animations.qml
-    qml/pages/appearance/Themes.qml
     qml/pages/appearance/Wallpaper.qml
     qml/pages/system/Compositor.qml
     qml/pages/appearance/Dock.qml
@@ -349,8 +365,14 @@ foreach(navigation_required_token IN ITEMS
     "appearance"
     "Appearance.qml"
     "Animations.qml"
-    "themes"
-    "Themes.qml"
+    "visual-effects"
+    "VisualEffects.qml"
+    "icons"
+    "Icons.qml"
+    "wallpaper"
+    "Wallpaper.qml"
+    "dock"
+    "Dock.qml"
     "animations"
     "settings.nav.appearance.subtitle"
     "childrenForId"
@@ -363,11 +385,11 @@ foreach(navigation_required_token IN ITEMS
         message(FATAL_ERROR "Native destination graph is missing '${navigation_required_token}'")
     endif()
 endforeach()
-
-file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/Themes.qml" themes_source)
-foreach(themes_required_token IN ITEMS
-    "objectName: \"themesPage\""
-    "SettingsController.themes"
+file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/Icons.qml" icons_source)
+foreach(icons_required_token IN ITEMS
+    "objectName: \"iconsPage\""
+    "SettingsController.icons"
+    "root.controller.iconThemes"
     "Controls.SearchField"
     "selectedIconTheme"
     "setIconTheme"
@@ -377,9 +399,9 @@ foreach(themes_required_token IN ITEMS
     "Keys.onPressed"
     "system-default"
 )
-    string(FIND "${themes_source}" "${themes_required_token}" themes_required_position)
-    if(themes_required_position EQUAL -1)
-        message(FATAL_ERROR "Themes page is missing '${themes_required_token}'")
+    string(FIND "${icons_source}" "${icons_required_token}" icons_required_position)
+    if(icons_required_position EQUAL -1)
+        message(FATAL_ERROR "Icons page is missing '${icons_required_token}'")
     endif()
 endforeach()
 
@@ -387,12 +409,10 @@ file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/Appearance.qml" appearanc
 foreach(appearance_required_token IN ITEMS
     "objectName: \"appearancePage\""
     "objectName: \"appearanceScrollPage\""
+    "objectName: \"systemTheme-astrea\""
     "objectName: \"appearanceOption-auto\""
     "objectName: \"appearanceOption-light\""
     "objectName: \"appearanceOption-dark\""
-    "objectName: \"interfaceStyleOption-default\""
-    "objectName: \"interfaceStyleOption-transparent\""
-    "objectName: \"interfaceStyleOption-frosted\""
     "objectName: \"accentOption-blue\""
     "objectName: \"accentOption-purple\""
     "objectName: \"accentOption-red\""
@@ -408,7 +428,9 @@ foreach(appearance_required_token IN ITEMS
     "wallpaperController.refresh()"
     "objectName: \"iconAppearance-tinted\""
     "apps.settings.pages.appearance.text.appearance"
-    "apps.settings.pages.appearance.text.interface_style"
+    "SettingsController.appearance.setThemePreference"
+    "SettingsController.appearance.setAccentHex"
+    "SettingsController.appearance.setIconAppearance"
     "apps.settings.pages.appearance.text.accent_color"
     "apps.settings.pages.appearance.text.app_icons"
     "apps.settings.pages.appearance.option.monochrome"
@@ -417,6 +439,142 @@ foreach(appearance_required_token IN ITEMS
     string(FIND "${appearance_source}" "${appearance_required_token}" appearance_required_position)
     if(appearance_required_position EQUAL -1)
         message(FATAL_ERROR "Appearance page is missing '${appearance_required_token}'")
+    endif()
+endforeach()
+
+string(FIND "${appearance_source}"
+    "apps.settings.pages.appearance.text.system_theme" appearance_system_theme_position)
+string(FIND "${appearance_source}"
+    "apps.settings.pages.appearance.text.appearance" appearance_mode_position)
+string(FIND "${appearance_source}"
+    "apps.settings.pages.appearance.text.accent_color" appearance_accent_position)
+string(FIND "${appearance_source}"
+    "apps.settings.pages.appearance.text.app_icons" appearance_icons_position)
+if(appearance_system_theme_position LESS 0 OR appearance_mode_position LESS 0 OR
+   appearance_accent_position LESS 0 OR appearance_icons_position LESS 0 OR
+   NOT appearance_system_theme_position LESS appearance_mode_position OR
+   NOT appearance_mode_position LESS appearance_accent_position OR
+   NOT appearance_accent_position LESS appearance_icons_position)
+    message(FATAL_ERROR "Appearance sections are not ordered System Theme, Appearance, Accent Color, App Icons")
+endif()
+
+foreach(appearance_forbidden_token IN ITEMS
+    "interfaceStyleOption-"
+    "Components.Theme.setThemePreference"
+    "Components.Theme.setAccentHex"
+    "Components.Theme.setIconAppearance"
+    "Components.Theme.save()"
+    "apps.settings.pages.appearance.text.interface_style"
+)
+    string(FIND "${appearance_source}" "${appearance_forbidden_token}" appearance_forbidden_position)
+    if(NOT appearance_forbidden_position EQUAL -1)
+        message(FATAL_ERROR "Appearance.qml retains migrated mutation/control '${appearance_forbidden_token}'")
+    endif()
+endforeach()
+
+file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/VisualEffects.qml" visual_effects_source)
+foreach(visual_effects_required_token IN ITEMS
+    "objectName: \"visualEffectsPage\""
+    "objectName: \"materialOption-default\""
+    "objectName: \"materialOption-transparent\""
+    "objectName: \"materialOption-frosted\""
+    "Components.Theme.setShellStyle"
+    "Components.Theme.save()"
+    "styleValue: 1"
+    "styleValue: 0"
+    "styleValue: 2"
+)
+    string(FIND "${visual_effects_source}" "${visual_effects_required_token}" visual_effects_position)
+    if(visual_effects_position EQUAL -1)
+        message(FATAL_ERROR "Visual Effects bridge is missing '${visual_effects_required_token}'")
+    endif()
+endforeach()
+foreach(phase_two_control_token IN ITEMS
+    "Advanced"
+    "blurStrength"
+    "saturation"
+    "refraction"
+    "shader"
+    "noise"
+)
+    string(FIND "${visual_effects_source}" "${phase_two_control_token}" phase_two_control_position)
+    if(NOT phase_two_control_position EQUAL -1)
+        message(FATAL_ERROR "Visual Effects bridge contains Phase 2 control '${phase_two_control_token}'")
+    endif()
+endforeach()
+
+file(READ "${SETTINGS_SOURCE_DIR}/qml/theme/State.qml" theme_state_source)
+file(READ "${SETTINGS_SOURCE_DIR}/qml/components/Theme.qml" theme_component_source)
+foreach(readonly_projection IN ITEMS
+    "readonly property string themePreference"
+    "readonly property string accentHex"
+    "readonly property string iconAppearance"
+)
+    string(FIND "${theme_state_source}${theme_component_source}" "${readonly_projection}"
+        readonly_projection_position)
+    if(readonly_projection_position EQUAL -1)
+        message(FATAL_ERROR "Live theme projection is not read-only: ${readonly_projection}")
+    endif()
+endforeach()
+foreach(removed_theme_helper IN ITEMS
+    "function setThemePreference"
+    "function setAccentHex"
+    "function setIconAppearance"
+)
+    string(FIND "${theme_state_source}${theme_component_source}" "${removed_theme_helper}"
+        removed_theme_helper_position)
+    if(NOT removed_theme_helper_position EQUAL -1)
+        message(FATAL_ERROR "QML Theme retains migrated writer helper '${removed_theme_helper}'")
+    endif()
+endforeach()
+
+file(READ "${SETTINGS_SOURCE_DIR}/../shared/theme/ThemeController.cpp" theme_controller_source)
+foreach(theme_controller_required_token IN ITEMS
+    "object.insert(QStringLiteral(\"shell_style\")"
+    "object.insert(QStringLiteral(\"icon_style\")"
+    "object.insert(QStringLiteral(\"icon_theme\")"
+    "object.insert(QStringLiteral(\"audio_osd_style\")"
+    "ConfigFileLock lock(m_configPath)"
+)
+    string(FIND "${theme_controller_source}" "${theme_controller_required_token}"
+        theme_controller_required_position)
+    if(theme_controller_required_position EQUAL -1)
+        message(FATAL_ERROR "ThemeController legacy writer is missing '${theme_controller_required_token}'")
+    endif()
+endforeach()
+foreach(rust_owned_or_compat_key IN ITEMS
+    "object.insert(QStringLiteral(\"theme_preference\")"
+    "object.insert(QStringLiteral(\"accent\")"
+    "object.insert(QStringLiteral(\"icon_appearance\")"
+    "object.insert(QStringLiteral(\"system_icon_theme\")"
+    "object.insert(QStringLiteral(\"theme\")"
+    "object.insert(QStringLiteral(\"theme_mode\")"
+)
+    string(FIND "${theme_controller_source}" "${rust_owned_or_compat_key}"
+        rust_owned_write_position)
+    if(NOT rust_owned_write_position EQUAL -1)
+        message(FATAL_ERROR "ThemeController still persists Rust-owned or compatibility key ${rust_owned_or_compat_key}")
+    endif()
+endforeach()
+
+foreach(qml_path IN ITEMS
+    qml/pages/appearance/Appearance.qml
+    qml/pages/appearance/VisualEffects.qml
+    qml/pages/appearance/Icons.qml
+)
+    file(READ "${SETTINGS_SOURCE_DIR}/${qml_path}" qml_page_source)
+    foreach(filesystem_mutation_token IN ITEMS "theme.json" "QFile" "writeFile(" "readFile(")
+        string(FIND "${qml_page_source}" "${filesystem_mutation_token}"
+            filesystem_mutation_position)
+        if(NOT filesystem_mutation_position EQUAL -1)
+            message(FATAL_ERROR "QML page ${qml_path} owns config/filesystem logic '${filesystem_mutation_token}'")
+        endif()
+    endforeach()
+endforeach()
+foreach(phase2_visual_control IN ITEMS "blurStrength" "refraction" "noiseAmount" "shader")
+    string(FIND "${visual_effects_source}" "${phase2_visual_control}" phase2_control_position)
+    if(NOT phase2_control_position EQUAL -1)
+        message(FATAL_ERROR "Phase 2 visual control '${phase2_visual_control}' is premature")
     endif()
 endforeach()
 

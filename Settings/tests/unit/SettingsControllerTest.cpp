@@ -43,7 +43,7 @@ void SettingsControllerTest::navigatesToCustomizationHub()
     QCOMPARE(controller.selectedPageSource(),
              QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/navigation/Hub.qml")));
     QCOMPARE(controller.currentDestination().value(QStringLiteral("kind")).toString(), QStringLiteral("hub"));
-    QCOMPARE(controller.currentDestinationChildren().size(), 5);
+    QCOMPARE(controller.currentDestinationChildren().size(), 6);
     QVERIFY(controller.navigateTo(QStringLiteral("animations")));
     QCOMPARE(controller.currentDestinationId(), QStringLiteral("animations"));
     QCOMPARE(controller.selectedSidebarId(), QStringLiteral("customization"));
@@ -67,9 +67,17 @@ void SettingsControllerTest::nestedDestinationsKeepSidebarAncestorSelected()
     QCOMPARE(controller.currentDestinationId(), QStringLiteral("wallpaper"));
     QCOMPARE(controller.selectedSidebarId(), QStringLiteral("customization"));
 
-    QVERIFY(controller.navigateTo(QStringLiteral("themes")));
-    QCOMPARE(controller.currentDestinationId(), QStringLiteral("themes"));
+    QVERIFY(controller.navigateTo(QStringLiteral("visual-effects")));
+    QCOMPARE(controller.currentDestinationId(), QStringLiteral("visual-effects"));
     QCOMPARE(controller.selectedSidebarId(), QStringLiteral("customization"));
+    QVERIFY(controller.navigateTo(QStringLiteral("icons")));
+    QCOMPARE(controller.currentDestinationId(), QStringLiteral("icons"));
+    QCOMPARE(controller.selectedSidebarId(), QStringLiteral("customization"));
+    QVERIFY(!controller.navigateTo(QStringLiteral("themes")));
+    controller.goBack();
+    QCOMPARE(controller.currentDestinationId(), QStringLiteral("visual-effects"));
+    controller.goForward();
+    QCOMPARE(controller.currentDestinationId(), QStringLiteral("icons"));
 }
 
 void SettingsControllerTest::directNestedNavigationDerivesSidebarAncestor()

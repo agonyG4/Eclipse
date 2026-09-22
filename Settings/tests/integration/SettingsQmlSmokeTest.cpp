@@ -59,6 +59,14 @@ int countVisualItems(QQuickItem *item, const QRegularExpression &pattern)
     return count;
 }
 
+void connectAppearanceReload(SettingsController &settingsController,
+                             ThemeController &themeController)
+{
+    QObject::connect(settingsController.appearance(),
+                     &SettingsAppearanceController::configurationChanged,
+                     &themeController, &ThemeController::reload);
+}
+
 } // namespace
 
 class SettingsQmlSmokeTest final : public QObject {
@@ -71,10 +79,11 @@ private slots:
     void plannedEffectTextUsesRequestedEffect();
     void unavailableEffectTextUsesRequestedEffect();
     void loadsAppearanceRouteFromHubOffscreen();
-    void loadsThemesRouteOffscreen();
-    void themesPageShowsInstalledCatalogAndSearchEmptyStates();
-    void themesPageReconcilesExternalPersistedSelectionOnRefresh();
-    void appearancePreviewsUseCurrentWallpaperSnapshot();
+    void loadsVisualEffectsRouteFromHubOffscreen();
+    void loadsIconsRouteOffscreen();
+    void iconsPageShowsInstalledCatalogAndSearchEmptyStates();
+    void iconsPageReconcilesExternalPersistedSelectionOnRefresh();
+    void appearanceAndVisualEffectsPreviewsUseCurrentWallpaperSnapshot();
     void materialPreviewFrostedGeometryMatchesFallback();
     void materialShowcaseIdentityNamesAreDistinct();
     void appearanceReusesSnapshotAndUpdatesWithoutRecreation();
@@ -85,6 +94,7 @@ private slots:
     void appearanceChoicesPreserveExternalControllerPropagation();
     void appearanceIconChoicesPreserveControllerPropagation();
     void appearanceAccentChoicesUpdateController();
+    void visualEffectsChoicesUpdateShellStyle();
     void loadsWallpaperRouteFromHubOffscreen();
     void loadsDockRouteFromHubOffscreen();
     void navigatesBackAndForwardFromHub();
@@ -358,16 +368,24 @@ void SettingsQmlSmokeTest::loadsCustomizationHubOffscreen()
     QQuickItem *hubItem = qobject_cast<QQuickItem *>(hub);
     QVERIFY(hubItem != nullptr);
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-appearance")) != nullptr);
-    QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-themes")) != nullptr);
+    QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-visual-effects")) != nullptr);
+    QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-icons")) != nullptr);
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-wallpaper")) != nullptr);
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-dock")) != nullptr);
-    QCOMPARE(countVisualItems(hubItem, QRegularExpression(QStringLiteral("^hubNavigationRow-"))), 5);
+    QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-animations")) != nullptr);
+    QCOMPARE(countVisualItems(hubItem, QRegularExpression(QStringLiteral("^hubNavigationRow-"))), 6);
     const QVariantList children = settingsController.currentDestinationChildren();
-    QCOMPARE(children.size(), 5);
-    QCOMPARE(children.at(0).toMap().value(QStringLiteral("entryId")).toString(),
-             QStringLiteral("appearance"));
-    QCOMPARE(children.at(1).toMap().value(QStringLiteral("entryId")).toString(),
-             QStringLiteral("themes"));
+    QCOMPARE(children.size(), 6);
+    const QStringList expectedChildren {QStringLiteral("appearance"),
+                                        QStringLiteral("visual-effects"),
+                                        QStringLiteral("icons"),
+                                        QStringLiteral("wallpaper"),
+                                        QStringLiteral("dock"),
+                                        QStringLiteral("animations")};
+    for (qsizetype index = 0; index < expectedChildren.size(); ++index) {
+        QCOMPARE(children.at(index).toMap().value(QStringLiteral("entryId")).toString(),
+                 expectedChildren.at(index));
+    }
 }
 
 void SettingsQmlSmokeTest::loadsAnimationsRouteOffscreen()
@@ -451,16 +469,52 @@ void SettingsQmlSmokeTest::loadsAppearanceRouteFromHubOffscreen()
     QObject *page = root->findChild<QObject *>(QStringLiteral("appearancePage"));
     QVERIFY(page != nullptr);
     QVERIFY(page->findChild<QObject *>(QStringLiteral("appearanceScrollPage")) != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("systemTheme-astrea")) != nullptr);
     for (const auto name : {"appearanceOption-auto", "appearanceOption-light",
-                            "appearanceOption-dark", "interfaceStyleOption-default",
-                            "interfaceStyleOption-transparent", "interfaceStyleOption-frosted"}) {
+                            "appearanceOption-dark", "accentOption-blue",
+                            "iconAppearance-default", "iconAppearance-monochrome",
+                            "iconAppearance-tinted"}) {
+        QVERIFY2(page->findChild<QObject *>(QString::fromLatin1(name)) != nullptr, name);
+    }
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("interfaceStyleOption-default")) == nullptr);
+    QVERIFY2(qmlWarnings.isEmpty(),
+             qPrintable(qmlWarnings.isEmpty() ? QString() : qmlWarnings.constFirst().toString()));
+}
+
+void SettingsQmlSmokeTest::loadsVisualEffectsRouteFromHubOffscreen()
+{
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+    HomeEnvironmentGuard homeGuard(home.path());
+
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+    QList<QQmlError> qmlWarnings;
+    connect(&engine, &QQmlApplicationEngine::warnings, this,
+            [&qmlWarnings](const QList<QQmlError> &warnings) { qmlWarnings.append(warnings); });
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("visual-effects")));
+    QObject *root = engine.rootObjects().constFirst();
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("visualEffectsPage")) != nullptr,
+                             1000);
+    QObject *page = root->findChild<QObject *>(QStringLiteral("visualEffectsPage"));
+    QVERIFY(page != nullptr);
+    for (const auto name : {"materialOption-default", "materialOption-transparent",
+                            "materialOption-frosted"}) {
         QVERIFY2(page->findChild<QObject *>(QString::fromLatin1(name)) != nullptr, name);
     }
     QVERIFY2(qmlWarnings.isEmpty(),
              qPrintable(qmlWarnings.isEmpty() ? QString() : qmlWarnings.constFirst().toString()));
 }
 
-void SettingsQmlSmokeTest::loadsThemesRouteOffscreen()
+void SettingsQmlSmokeTest::loadsIconsRouteOffscreen()
 {
     QTemporaryDir home;
     QVERIFY(home.isValid());
@@ -487,24 +541,24 @@ void SettingsQmlSmokeTest::loadsThemesRouteOffscreen()
     engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
 
     QCOMPARE(engine.rootObjects().size(), 1);
-    QVERIFY(settingsController.navigateTo(QStringLiteral("themes")));
+    QVERIFY(settingsController.navigateTo(QStringLiteral("icons")));
     auto *root = engine.rootObjects().constFirst();
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("themesPage")) != nullptr,
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("iconsPage")) != nullptr,
                              1000);
-    auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(QStringLiteral("themesPage")));
+    auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(QStringLiteral("iconsPage")));
     QVERIFY(page != nullptr);
 
-    QTRY_VERIFY_WITH_TIMEOUT(findVisualItem(page, QStringLiteral("themeCard-system-default"))
+    QTRY_VERIFY_WITH_TIMEOUT(findVisualItem(page, QStringLiteral("iconThemeCard-system-default"))
                                  != nullptr,
                              1500);
-    auto *systemCard = findVisualItem(page, QStringLiteral("themeCard-system-default"));
+    auto *systemCard = findVisualItem(page, QStringLiteral("iconThemeCard-system-default"));
     QVERIFY(systemCard != nullptr);
     QTRY_VERIFY_WITH_TIMEOUT(systemCard->property("selected").toBool(), 1500);
     QVERIFY(QMetaObject::invokeMethod(systemCard, "activate"));
 
     page->setProperty("searchQuery", QStringLiteral("does-not-match-any-installed-theme"));
     QTRY_COMPARE_WITH_TIMEOUT(page->property("cards").toList().size(), 1, 1000);
-    auto *emptySearch = findVisualItem(page, QStringLiteral("themes-empty-search-results"));
+    auto *emptySearch = findVisualItem(page, QStringLiteral("icons-empty-search-results"));
     QVERIFY(emptySearch != nullptr);
     QTRY_VERIFY_WITH_TIMEOUT(emptySearch->property("visible").toBool(), 1000);
     page->setProperty("searchQuery", QString());
@@ -516,10 +570,10 @@ void SettingsQmlSmokeTest::loadsThemesRouteOffscreen()
     QTest::keyClick(window, Qt::Key_Space);
     QVERIFY(systemCard->property("selected").toBool());
 
-    QFile themesSource(QStringLiteral(ASTREA_ECLIPSE_SOURCE_DIR
-                                     "/Settings/qml/pages/appearance/Themes.qml"));
-    QVERIFY(themesSource.open(QIODevice::ReadOnly | QIODevice::Text));
-    const QString source = QString::fromUtf8(themesSource.readAll());
+    QFile iconsSource(QStringLiteral(ASTREA_ECLIPSE_SOURCE_DIR
+                                    "/Settings/qml/pages/appearance/Icons.qml"));
+    QVERIFY(iconsSource.open(QIODevice::ReadOnly | QIODevice::Text));
+    const QString source = QString::fromUtf8(iconsSource.readAll());
     QVERIFY(source.contains(QStringLiteral("controller.refreshing")));
     QVERIFY(!source.contains(QStringLiteral("visible: root.controller.busy")));
     QVERIFY(source.contains(QStringLiteral("controller.lastError")));
@@ -528,7 +582,7 @@ void SettingsQmlSmokeTest::loadsThemesRouteOffscreen()
              qPrintable(qmlWarnings.isEmpty() ? QString() : qmlWarnings.constFirst().toString()));
 }
 
-void SettingsQmlSmokeTest::themesPageShowsInstalledCatalogAndSearchEmptyStates()
+void SettingsQmlSmokeTest::iconsPageShowsInstalledCatalogAndSearchEmptyStates()
 {
     QTemporaryDir home;
     QVERIFY(home.isValid());
@@ -554,14 +608,14 @@ void SettingsQmlSmokeTest::themesPageShowsInstalledCatalogAndSearchEmptyStates()
     engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
 
     QCOMPARE(engine.rootObjects().size(), 1);
-    QVERIFY(settingsController.navigateTo(QStringLiteral("themes")));
+    QVERIFY(settingsController.navigateTo(QStringLiteral("icons")));
     auto *root = engine.rootObjects().constFirst();
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("themesPage")) != nullptr,
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("iconsPage")) != nullptr,
                              1000);
-    auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(QStringLiteral("themesPage")));
+    auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(QStringLiteral("iconsPage")));
     QVERIFY(page != nullptr);
-    auto *emptyCatalog = findVisualItem(page, QStringLiteral("themes-empty-installed-catalog"));
-    auto *emptySearch = findVisualItem(page, QStringLiteral("themes-empty-search-results"));
+    auto *emptyCatalog = findVisualItem(page, QStringLiteral("icons-empty-installed-catalog"));
+    auto *emptySearch = findVisualItem(page, QStringLiteral("icons-empty-search-results"));
     QVERIFY(emptyCatalog != nullptr);
     QVERIFY(emptySearch != nullptr);
     QTRY_VERIFY_WITH_TIMEOUT(emptyCatalog->property("visible").toBool(), 2000);
@@ -596,7 +650,7 @@ void SettingsQmlSmokeTest::themesPageShowsInstalledCatalogAndSearchEmptyStates()
              qPrintable(qmlWarnings.isEmpty() ? QString() : qmlWarnings.constFirst().toString()));
 }
 
-void SettingsQmlSmokeTest::themesPageReconcilesExternalPersistedSelectionOnRefresh()
+void SettingsQmlSmokeTest::iconsPageReconcilesExternalPersistedSelectionOnRefresh()
 {
     QTemporaryDir home;
     QVERIFY(home.isValid());
@@ -627,13 +681,13 @@ void SettingsQmlSmokeTest::themesPageReconcilesExternalPersistedSelectionOnRefre
     engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
 
     QCOMPARE(engine.rootObjects().size(), 1);
-    QVERIFY(settingsController.navigateTo(QStringLiteral("themes")));
+    QVERIFY(settingsController.navigateTo(QStringLiteral("icons")));
     auto *root = engine.rootObjects().constFirst();
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("themesPage")) != nullptr,
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("iconsPage")) != nullptr,
                              1000);
-    auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(QStringLiteral("themesPage")));
+    auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(QStringLiteral("iconsPage")));
     QVERIFY(page != nullptr);
-    auto *controller = settingsController.themes();
+    auto *controller = settingsController.icons();
     const auto selectedTheme = [controller] {
         return controller->property("selectedIconTheme").toString();
     };
@@ -643,7 +697,7 @@ void SettingsQmlSmokeTest::themesPageReconcilesExternalPersistedSelectionOnRefre
 
     QTRY_COMPARE_WITH_TIMEOUT(selectedTheme(), themeA, 2000);
     QTRY_VERIFY_WITH_TIMEOUT(!controller->property("busy").toBool(), 2000);
-    auto *cardA = findVisualItem(page, QStringLiteral("themeCard-theme-a"));
+    auto *cardA = findVisualItem(page, QStringLiteral("iconThemeCard-theme-a"));
     QVERIFY(cardA != nullptr);
     QTRY_VERIFY_WITH_TIMEOUT(cardA->property("selected").toBool(), 1000);
 
@@ -651,7 +705,7 @@ void SettingsQmlSmokeTest::themesPageReconcilesExternalPersistedSelectionOnRefre
     QVERIFY(refresh());
     QTRY_COMPARE_WITH_TIMEOUT(selectedTheme(), themeB, 2000);
     QTRY_VERIFY_WITH_TIMEOUT(!controller->property("busy").toBool(), 2000);
-    auto *cardB = findVisualItem(page, QStringLiteral("themeCard-theme-b"));
+    auto *cardB = findVisualItem(page, QStringLiteral("iconThemeCard-theme-b"));
     QVERIFY(cardB != nullptr);
     QTRY_VERIFY_WITH_TIMEOUT(cardB->property("selected").toBool(), 1000);
 
@@ -681,7 +735,7 @@ void SettingsQmlSmokeTest::themesPageReconcilesExternalPersistedSelectionOnRefre
     QCOMPARE(persisted.value(QStringLiteral("unknown")).toInt(), 42);
 }
 
-void SettingsQmlSmokeTest::appearancePreviewsUseCurrentWallpaperSnapshot()
+void SettingsQmlSmokeTest::appearanceAndVisualEffectsPreviewsUseCurrentWallpaperSnapshot()
 {
     QTemporaryDir runtime;
     QTemporaryDir images;
@@ -736,12 +790,10 @@ void SettingsQmlSmokeTest::appearancePreviewsUseCurrentWallpaperSnapshot()
 
     const auto expectedSource = QUrl::fromLocalFile(previewPath);
     const QStringList appearancePreviewNames{
+        QStringLiteral("materialPreview-system-theme-astrea"),
         QStringLiteral("materialPreview-appearance-auto"),
         QStringLiteral("materialPreview-appearance-light"),
         QStringLiteral("materialPreview-appearance-dark"),
-        QStringLiteral("materialPreview-interface-default"),
-        QStringLiteral("materialPreview-interface-transparent"),
-        QStringLiteral("materialPreview-interface-frosted"),
     };
     for (const auto &name : appearancePreviewNames) {
         auto *preview = findVisualItem(page, name);
@@ -767,20 +819,44 @@ void SettingsQmlSmokeTest::appearancePreviewsUseCurrentWallpaperSnapshot()
                  ->property("themeVariant")
                  .toString(),
              QStringLiteral("dark"));
-    QCOMPARE(findVisualItem(page, QStringLiteral("materialPreview-interface-default"))
+    QVERIFY(settingsController.navigateTo(QStringLiteral("visual-effects")));
+    QTRY_COMPARE_WITH_TIMEOUT(requestCount, 2, 1500);
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("visualEffectsPage"))
+                                 != nullptr,
+                             1000);
+    auto *visualEffectsPage = qobject_cast<QQuickItem *>(root->findChild<QObject *>(
+        QStringLiteral("visualEffectsPage")));
+    QVERIFY(visualEffectsPage != nullptr);
+    const QStringList materialPreviewNames{
+        QStringLiteral("materialPreview-default"),
+        QStringLiteral("materialPreview-transparent"),
+        QStringLiteral("materialPreview-frosted"),
+    };
+    for (const auto &name : materialPreviewNames) {
+        auto *preview = findVisualItem(visualEffectsPage, name);
+        QVERIFY2(preview != nullptr, qPrintable(name));
+        QTRY_COMPARE_WITH_TIMEOUT(preview->property("wallpaperSource").toUrl(), expectedSource,
+                                  1500);
+        QCOMPARE(preview->property("wallpaperFit").toString(), QStringLiteral("contain"));
+        QCOMPARE(preview->property("usingRendererPreview").toBool(), false);
+        QVERIFY(findVisualItem(preview, QStringLiteral("materialPreviewWallpaper")) != nullptr);
+        QVERIFY(findVisualItem(preview, QStringLiteral("materialPreviewShowcase")) != nullptr);
+        QVERIFY(findVisualItem(preview, QStringLiteral("materialPreviewFallback")) != nullptr);
+    }
+    QCOMPARE(findVisualItem(visualEffectsPage, QStringLiteral("materialPreview-default"))
                  ->property("materialId")
                  .toString(),
              QStringLiteral("default"));
-    QCOMPARE(findVisualItem(page, QStringLiteral("materialPreview-interface-transparent"))
+    QCOMPARE(findVisualItem(visualEffectsPage, QStringLiteral("materialPreview-transparent"))
                  ->property("materialId")
                  .toString(),
              QStringLiteral("transparent"));
-    QCOMPARE(findVisualItem(page, QStringLiteral("materialPreview-interface-frosted"))
+    QCOMPARE(findVisualItem(visualEffectsPage, QStringLiteral("materialPreview-frosted"))
                  ->property("materialId")
                  .toString(),
              QStringLiteral("frosted"));
     auto *frostedPreview = findVisualItem(
-        page, QStringLiteral("materialPreview-interface-frosted"));
+        visualEffectsPage, QStringLiteral("materialPreview-frosted"));
     QVERIFY(frostedPreview != nullptr);
     QVERIFY(frostedPreview->findChild<QObject *>(QStringLiteral("materialPreviewLiveFrosted"))
             != nullptr);
@@ -1109,13 +1185,14 @@ void SettingsQmlSmokeTest::materialPreviewRendererHandoffIsFailSafe()
 
 void SettingsQmlSmokeTest::appearanceChoicesUpdateController()
 {
-    QTemporaryDir directory;
-    QVERIFY(directory.isValid());
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+    HomeEnvironmentGuard homeGuard(home.path());
 
     SettingsController settingsController;
     SettingsTranslationController translationController;
-    ThemeController themeController(directory.filePath(QStringLiteral("missing-theme.json")), nullptr,
-                                    [] { return Qt::ColorScheme::Dark; });
+    ThemeController themeController;
+    connectAppearanceReload(settingsController, themeController);
     QQmlApplicationEngine engine;
 
     engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
@@ -1130,56 +1207,49 @@ void SettingsQmlSmokeTest::appearanceChoicesUpdateController()
                              1000);
     QObject *page = root->findChild<QObject *>(QStringLiteral("appearancePage"));
     QVERIFY(page != nullptr);
+    QObject *systemTheme = page->findChild<QObject *>(QStringLiteral("systemTheme-astrea"));
+    QVERIFY(systemTheme != nullptr);
+    QVERIFY(systemTheme->property("selected").toBool());
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("interfaceStyleOption-default")) == nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("interfaceStyleOption-transparent")) == nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("interfaceStyleOption-frosted")) == nullptr);
 
     auto *automatic = page->findChild<QObject *>(QStringLiteral("appearanceOption-auto"));
     auto *light = page->findChild<QObject *>(QStringLiteral("appearanceOption-light"));
     auto *dark = page->findChild<QObject *>(QStringLiteral("appearanceOption-dark"));
-    auto *defaultStyle = page->findChild<QObject *>(QStringLiteral("interfaceStyleOption-default"));
-    auto *transparent = page->findChild<QObject *>(QStringLiteral("interfaceStyleOption-transparent"));
-    auto *frosted = page->findChild<QObject *>(QStringLiteral("interfaceStyleOption-frosted"));
     QVERIFY(automatic != nullptr);
     QVERIFY(light != nullptr);
     QVERIFY(dark != nullptr);
-    QVERIFY(defaultStyle != nullptr);
-    QVERIFY(transparent != nullptr);
-    QVERIFY(frosted != nullptr);
 
     QCOMPARE(themeController.themePreference(), QStringLiteral("auto"));
-    QCOMPARE(themeController.shellStyle(), 1);
     QVERIFY(automatic->property("selected").toBool());
     QVERIFY(!light->property("selected").toBool());
     QVERIFY(!dark->property("selected").toBool());
-    QVERIFY(defaultStyle->property("selected").toBool());
-    QVERIFY(!transparent->property("selected").toBool());
-    QVERIFY(!frosted->property("selected").toBool());
 
     QVERIFY(QMetaObject::invokeMethod(light, "activate"));
-    QCOMPARE(themeController.themePreference(), QStringLiteral("light"));
+    QTRY_COMPARE_WITH_TIMEOUT(themeController.themePreference(), QStringLiteral("light"), 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(!settingsController.appearance()->property("busy").toBool(), 2000);
     QCOMPARE(themeController.themeMode(), 1);
     QVERIFY(QMetaObject::invokeMethod(dark, "activate"));
-    QCOMPARE(themeController.themePreference(), QStringLiteral("dark"));
+    QTRY_COMPARE_WITH_TIMEOUT(themeController.themePreference(), QStringLiteral("dark"), 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(!settingsController.appearance()->property("busy").toBool(), 2000);
     QCOMPARE(themeController.themeMode(), 0);
     QVERIFY(QMetaObject::invokeMethod(automatic, "activate"));
-    QCOMPARE(themeController.themePreference(), QStringLiteral("auto"));
-
-    QVERIFY(QMetaObject::invokeMethod(defaultStyle, "activate"));
-    QCOMPARE(themeController.shellStyle(), 1);
-    QVERIFY(QMetaObject::invokeMethod(transparent, "activate"));
-    QCOMPARE(themeController.shellStyle(), 0);
-    QVERIFY(QMetaObject::invokeMethod(frosted, "activate"));
-    QCOMPARE(themeController.shellStyle(), 2);
+    QTRY_COMPARE_WITH_TIMEOUT(themeController.themePreference(), QStringLiteral("auto"), 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(!settingsController.appearance()->property("busy").toBool(), 2000);
     QCOMPARE(themeController.themePreference(), QStringLiteral("auto"));
 }
 
 void SettingsQmlSmokeTest::appearanceChoicesPreserveExternalControllerPropagation()
 {
-    QTemporaryDir directory;
-    QVERIFY(directory.isValid());
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+    HomeEnvironmentGuard homeGuard(home.path());
 
     SettingsController settingsController;
     SettingsTranslationController translationController;
-    ThemeController themeController(directory.filePath(QStringLiteral("theme.json")), nullptr,
-                                    [] { return Qt::ColorScheme::Dark; });
+    ThemeController themeController;
+    connectAppearanceReload(settingsController, themeController);
     QQmlApplicationEngine engine;
 
     engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
@@ -1197,24 +1267,20 @@ void SettingsQmlSmokeTest::appearanceChoicesPreserveExternalControllerPropagatio
 
     auto *light = page->findChild<QObject *>(QStringLiteral("appearanceOption-light"));
     auto *dark = page->findChild<QObject *>(QStringLiteral("appearanceOption-dark"));
-    auto *transparent = page->findChild<QObject *>(QStringLiteral("interfaceStyleOption-transparent"));
-    auto *frosted = page->findChild<QObject *>(QStringLiteral("interfaceStyleOption-frosted"));
     QVERIFY(light != nullptr);
     QVERIFY(dark != nullptr);
-    QVERIFY(transparent != nullptr);
-    QVERIFY(frosted != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("interfaceStyleOption-transparent")) == nullptr);
 
     QVERIFY(QMetaObject::invokeMethod(light, "activate"));
-    QVERIFY(QMetaObject::invokeMethod(transparent, "activate"));
-    QCOMPARE(themeController.themePreference(), QStringLiteral("light"));
-    QCOMPARE(themeController.shellStyle(), 0);
+    QTRY_COMPARE_WITH_TIMEOUT(themeController.themePreference(), QStringLiteral("light"), 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(!settingsController.appearance()->property("busy").toBool(), 2000);
 
     QQmlExpression projectedPreference(qmlContext(page), page,
                                        QStringLiteral("Components.Theme.themePreference"));
     QQmlExpression projectedShellStyle(qmlContext(page), page,
                                        QStringLiteral("Components.Theme.shellStyle"));
     QCOMPARE(projectedPreference.evaluate().toString(), QStringLiteral("light"));
-    QCOMPARE(projectedShellStyle.evaluate().toInt(), 0);
+    QCOMPARE(projectedShellStyle.evaluate().toInt(), 1);
 
     QFile replacement(themeController.configPath());
     QVERIFY(replacement.open(QIODevice::WriteOnly | QIODevice::Truncate));
@@ -1231,19 +1297,18 @@ void SettingsQmlSmokeTest::appearanceChoicesPreserveExternalControllerPropagatio
                              1500);
     QVERIFY(dark->property("selected").toBool());
     QVERIFY(!light->property("selected").toBool());
-    QVERIFY(frosted->property("selected").toBool());
-    QVERIFY(!transparent->property("selected").toBool());
 }
 
 void SettingsQmlSmokeTest::appearanceIconChoicesPreserveControllerPropagation()
 {
-    QTemporaryDir directory;
-    QVERIFY(directory.isValid());
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+    HomeEnvironmentGuard homeGuard(home.path());
 
     SettingsController settingsController;
     SettingsTranslationController translationController;
-    ThemeController themeController(directory.filePath(QStringLiteral("theme.json")), nullptr,
-                                    [] { return Qt::ColorScheme::Dark; });
+    ThemeController themeController;
+    connectAppearanceReload(settingsController, themeController);
     QQmlApplicationEngine engine;
     QList<QQmlError> qmlWarnings;
 
@@ -1301,11 +1366,14 @@ void SettingsQmlSmokeTest::appearanceIconChoicesPreserveControllerPropagation()
     QCOMPARE(projectedAppearance.evaluate().toString(), QStringLiteral("default"));
 
     QVERIFY(QMetaObject::invokeMethod(monochrome, "activate"));
-    QCOMPARE(themeController.iconAppearance(), QStringLiteral("monochrome"));
+    QTRY_COMPARE_WITH_TIMEOUT(themeController.iconAppearance(), QStringLiteral("monochrome"), 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(!settingsController.appearance()->property("busy").toBool(), 2000);
     QVERIFY(QMetaObject::invokeMethod(tinted, "activate"));
-    QCOMPARE(themeController.iconAppearance(), QStringLiteral("tinted"));
+    QTRY_COMPARE_WITH_TIMEOUT(themeController.iconAppearance(), QStringLiteral("tinted"), 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(!settingsController.appearance()->property("busy").toBool(), 2000);
     QVERIFY(QMetaObject::invokeMethod(defaultAppearance, "activate"));
-    QCOMPARE(themeController.iconAppearance(), QStringLiteral("default"));
+    QTRY_COMPARE_WITH_TIMEOUT(themeController.iconAppearance(), QStringLiteral("default"), 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(!settingsController.appearance()->property("busy").toBool(), 2000);
     QCOMPARE(themeController.themePreference(), initialThemePreference);
     QCOMPARE(themeController.shellStyle(), initialShellStyle);
     QCOMPARE(themeController.accentHex(), initialAccent);
@@ -1346,13 +1414,14 @@ void SettingsQmlSmokeTest::appearanceIconChoicesPreserveControllerPropagation()
 
 void SettingsQmlSmokeTest::appearanceAccentChoicesUpdateController()
 {
-    QTemporaryDir directory;
-    QVERIFY(directory.isValid());
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+    HomeEnvironmentGuard homeGuard(home.path());
 
     SettingsController settingsController;
     SettingsTranslationController translationController;
-    ThemeController themeController(directory.filePath(QStringLiteral("theme.json")), nullptr,
-                                    [] { return Qt::ColorScheme::Dark; });
+    ThemeController themeController;
+    connectAppearanceReload(settingsController, themeController);
     QQmlApplicationEngine engine;
 
     engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
@@ -1393,14 +1462,16 @@ void SettingsQmlSmokeTest::appearanceAccentChoicesUpdateController()
         QVERIFY(!swatches.at(index)->property("selected").toBool());
 
     QVERIFY(QMetaObject::invokeMethod(swatches.at(5), "activate"));
-    QCOMPARE(themeController.accentHex(), QStringLiteral("#30d158"));
+    QTRY_COMPARE_WITH_TIMEOUT(themeController.accentHex(), QStringLiteral("#30d158"), 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(!settingsController.appearance()->property("busy").toBool(), 2000);
     QCOMPARE(themeController.themePreference(), QStringLiteral("auto"));
     QCOMPARE(themeController.shellStyle(), 1);
     QVERIFY(swatches.at(5)->property("selected").toBool());
     QVERIFY(!swatches.at(0)->property("selected").toBool());
 
     QVERIFY(QMetaObject::invokeMethod(swatches.at(1), "activate"));
-    QCOMPARE(themeController.accentHex(), QStringLiteral("#bf5af2"));
+    QTRY_COMPARE_WITH_TIMEOUT(themeController.accentHex(), QStringLiteral("#bf5af2"), 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(!settingsController.appearance()->property("busy").toBool(), 2000);
     QCOMPARE(themeController.themePreference(), QStringLiteral("auto"));
     QCOMPARE(themeController.shellStyle(), 1);
     QVERIFY(swatches.at(1)->property("selected").toBool());
@@ -1429,6 +1500,55 @@ void SettingsQmlSmokeTest::appearanceAccentChoicesUpdateController()
             return swatch->property("selected").toBool();
         });
     }(), 1500);
+}
+
+void SettingsQmlSmokeTest::visualEffectsChoicesUpdateShellStyle()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString configPath = directory.filePath(QStringLiteral("theme.json"));
+
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController(configPath, nullptr, [] { return Qt::ColorScheme::Dark; });
+    QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("visual-effects")));
+    QObject *root = engine.rootObjects().constFirst();
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("visualEffectsPage")) != nullptr,
+                             1000);
+    QObject *page = root->findChild<QObject *>(QStringLiteral("visualEffectsPage"));
+    QVERIFY(page != nullptr);
+    auto *defaultOption = page->findChild<QObject *>(QStringLiteral("materialOption-default"));
+    auto *transparent = page->findChild<QObject *>(QStringLiteral("materialOption-transparent"));
+    auto *frosted = page->findChild<QObject *>(QStringLiteral("materialOption-frosted"));
+    QVERIFY(defaultOption != nullptr);
+    QVERIFY(transparent != nullptr);
+    QVERIFY(frosted != nullptr);
+    QVERIFY(defaultOption->property("selected").toBool());
+
+    QVERIFY(QMetaObject::invokeMethod(transparent, "activate"));
+    QCOMPARE(themeController.shellStyle(), 0);
+    QVERIFY(transparent->property("selected").toBool());
+    QVERIFY(QMetaObject::invokeMethod(frosted, "activate"));
+    QCOMPARE(themeController.shellStyle(), 2);
+    QVERIFY(frosted->property("selected").toBool());
+    QVERIFY(QMetaObject::invokeMethod(defaultOption, "activate"));
+    QCOMPARE(themeController.shellStyle(), 1);
+    QVERIFY(defaultOption->property("selected").toBool());
+
+    QFile persisted(configPath);
+    QVERIFY(persisted.open(QIODevice::ReadOnly));
+    const QJsonObject saved = QJsonDocument::fromJson(persisted.readAll()).object();
+    QCOMPARE(saved.value(QStringLiteral("shell_style")).toInt(), 1);
+    QVERIFY(!saved.contains(QStringLiteral("theme_preference")));
+    QVERIFY(!saved.contains(QStringLiteral("accent")));
+    QVERIFY(!saved.contains(QStringLiteral("icon_appearance")));
 }
 
 void SettingsQmlSmokeTest::loadsWallpaperRouteFromHubOffscreen()

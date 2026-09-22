@@ -13,5 +13,6 @@ astrea_add_cxx_qt_crate(
     QT_MODULES Qt6::Core Qt6::Network
     CXXQT_HEADERS
         src/animation/qobject.cxxqt.h
-        src/themes/qobject.cxxqt.h
+        src/appearance/qobject.cxxqt.h
+        src/icons/qobject.cxxqt.h
 )

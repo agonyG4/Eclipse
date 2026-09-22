@@ -58,8 +58,8 @@ void SettingsNavigationModelTest::exposesCanonicalKindsAndVisibility()
     QCOMPARE(customization.value(QStringLiteral("subtitleKey")).toString(),
              QStringLiteral("settings.nav.customization.subtitle"));
 
-    for (const QString &id : {QStringLiteral("wallpaper"), QStringLiteral("dock"),
-                              QStringLiteral("themes")}) {
+    for (const QString &id : {QStringLiteral("visual-effects"), QStringLiteral("icons"),
+                              QStringLiteral("wallpaper"), QStringLiteral("dock")}) {
         const QVariantMap entry = model.descriptorForId(id);
         QCOMPARE(entry.value(QStringLiteral("kind")).toString(), QStringLiteral("page"));
         QVERIFY(!entry.value(QStringLiteral("sidebarVisible")).toBool());
@@ -107,8 +107,10 @@ void SettingsNavigationModelTest::exposesNativePageRoutes()
         QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Appearance.qml"));
     const QUrl animationsRoute(
         QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Animations.qml"));
-    const QUrl themesRoute(
-        QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Themes.qml"));
+    const QUrl visualEffectsRoute(
+        QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/VisualEffects.qml"));
+    const QUrl iconsRoute(
+        QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Icons.qml"));
 
     QCOMPARE(model.pageSourceForId(QStringLiteral("compositor")), compositorRoute);
     QCOMPARE(model.pageSourceForId(QStringLiteral("customization")), customizationRoute);
@@ -116,7 +118,8 @@ void SettingsNavigationModelTest::exposesNativePageRoutes()
     QCOMPARE(model.pageSourceForId(QStringLiteral("dock")), dockRoute);
     QCOMPARE(model.pageSourceForId(QStringLiteral("appearance")), appearanceRoute);
     QCOMPARE(model.pageSourceForId(QStringLiteral("animations")), animationsRoute);
-    QCOMPARE(model.pageSourceForId(QStringLiteral("themes")), themesRoute);
+    QCOMPARE(model.pageSourceForId(QStringLiteral("visual-effects")), visualEffectsRoute);
+    QCOMPARE(model.pageSourceForId(QStringLiteral("icons")), iconsRoute);
     QCOMPARE(model.pageSourceForId(QStringLiteral("system")), QUrl());
     QCOMPARE(model.pageSourceForId(QStringLiteral("missing")), QUrl());
 }
@@ -130,31 +133,35 @@ void SettingsNavigationModelTest::exposesHubChildrenAndAncestorLookups()
     QCOMPARE(customization->kind, SettingsNavigationEntry::Kind::Hub);
 
     const QVector<SettingsNavigationEntry> children = model.childrenForId(QStringLiteral("customization"));
-    QCOMPARE(children.size(), 5);
+    QCOMPARE(children.size(), 6);
     QCOMPARE(children.at(0).id, QStringLiteral("appearance"));
-    QCOMPARE(children.at(1).id, QStringLiteral("themes"));
-    QCOMPARE(children.at(2).id, QStringLiteral("wallpaper"));
-    QCOMPARE(children.at(3).id, QStringLiteral("dock"));
-    QCOMPARE(children.at(4).id, QStringLiteral("animations"));
+    QCOMPARE(children.at(1).id, QStringLiteral("visual-effects"));
+    QCOMPARE(children.at(2).id, QStringLiteral("icons"));
+    QCOMPARE(children.at(3).id, QStringLiteral("wallpaper"));
+    QCOMPARE(children.at(4).id, QStringLiteral("dock"));
+    QCOMPARE(children.at(5).id, QStringLiteral("animations"));
 
     const QVariantList childDescriptors = model.childDescriptorsForId(QStringLiteral("customization"));
-    QCOMPARE(childDescriptors.size(), 5);
+    QCOMPARE(childDescriptors.size(), 6);
     QCOMPARE(childDescriptors.at(0).toMap().value(QStringLiteral("entryId")).toString(),
              QStringLiteral("appearance"));
     QCOMPARE(childDescriptors.at(1).toMap().value(QStringLiteral("entryId")).toString(),
-             QStringLiteral("themes"));
+             QStringLiteral("visual-effects"));
     QCOMPARE(childDescriptors.at(2).toMap().value(QStringLiteral("entryId")).toString(),
-             QStringLiteral("wallpaper"));
+             QStringLiteral("icons"));
     QCOMPARE(childDescriptors.at(3).toMap().value(QStringLiteral("entryId")).toString(),
-             QStringLiteral("dock"));
+             QStringLiteral("wallpaper"));
     QCOMPARE(childDescriptors.at(4).toMap().value(QStringLiteral("entryId")).toString(),
+             QStringLiteral("dock"));
+    QCOMPARE(childDescriptors.at(5).toMap().value(QStringLiteral("entryId")).toString(),
              QStringLiteral("animations"));
 
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("customization")), QStringLiteral("customization"));
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("wallpaper")), QStringLiteral("customization"));
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("dock")), QStringLiteral("customization"));
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("appearance")), QStringLiteral("customization"));
-    QCOMPARE(model.sidebarAncestorForId(QStringLiteral("themes")), QStringLiteral("customization"));
+    QCOMPARE(model.sidebarAncestorForId(QStringLiteral("visual-effects")), QStringLiteral("customization"));
+    QCOMPARE(model.sidebarAncestorForId(QStringLiteral("icons")), QStringLiteral("customization"));
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("animations")), QStringLiteral("customization"));
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("compositor")), QStringLiteral("compositor"));
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("missing")), QString());
@@ -177,7 +184,9 @@ void SettingsNavigationModelTest::appliesPageAndHubNavigabilityRules()
     QVERIFY(model.containsNavigableId(QStringLiteral("dock")));
     QVERIFY(model.containsNavigableId(QStringLiteral("appearance")));
     QVERIFY(model.containsNavigableId(QStringLiteral("animations")));
-    QVERIFY(model.containsNavigableId(QStringLiteral("themes")));
+    QVERIFY(model.containsNavigableId(QStringLiteral("visual-effects")));
+    QVERIFY(model.containsNavigableId(QStringLiteral("icons")));
+    QVERIFY(!model.containsNavigableId(QStringLiteral("themes")));
     QVERIFY(!model.containsNavigableId(QStringLiteral("system")));
     QVERIFY(!model.containsNavigableId(QStringLiteral("performance")));
     QVERIFY(!model.containsNavigableId(QStringLiteral("more-settings")));

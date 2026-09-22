@@ -29,8 +29,12 @@ shell.
 - stable QML facade: `core/SettingsController.*`;
 - profile value and provider: `services/profile/`;
 - icon URL resolution: `services/assets/`;
-- installed icon Themes domain: `backend/src/themes/` through the generated
-  `SettingsThemesController` QObject;
+- Rust Appearance mutation boundary: `backend/src/appearance/` through the
+  generated `SettingsAppearanceController` QObject;
+- installed icon-theme domain: `backend/src/icons/` through the generated
+  `SettingsIconsController` QObject;
+- shared `theme.json` lock and atomic transaction primitive:
+  `backend/src/theme_config/ThemeConfigStore`;
 - shared theme and Settings translations: `shared/theme/` and `services/i18n/`;
 - wallpaper presentation/controller boundary: `qml/pages/appearance/Wallpaper.qml`
   and `services/wallpaper/SettingsWallpaperController.*`;
@@ -52,23 +56,54 @@ the QObject's Qt thread. The Rust crate owns typed animation state, validation,
 capability projection, the version-1 `astrea.control` protocol, secure Typhon
 endpoint discovery, and bounded Unix-socket transport.
 
-This does not migrate Theme, Dock, Wallpaper, navigation, Shell services,
-Audio, Bluetooth, Network, Typhon itself, or the preview-only Compositor page.
-Those remain follow-up work under the incremental migration strategy.
+Customization Phase 1 additionally moves mutations of `theme_preference`,
+`accent`, and `icon_appearance` to Rust Appearance. Its generated QObject is a
+thin Qt boundary; a single bounded worker coalesces rapid changes and
+`ThemeConfigStore` preserves unrelated keys under the shared `theme.json.lock`
+protocol. A successful commit signals the application composition root to
+reload the existing C++ ThemeController projection.
 
-## Themes Ownership
+The ownership after Phase 1 is:
 
-The v1 Themes destination manages installed Freedesktop icon themes only.
+```text
+QML = presentation and interaction
+Rust Appearance = theme_preference / accent / icon_appearance mutation semantics
+Rust Icons = installed icon-theme domain and system_icon_theme
+ThemeConfigStore = canonical Rust transaction primitive for theme.json
+ThemeController C++ = live Qt reader/watcher/projection and transitional writer
+                      for remaining unmigrated legacy keys
+Visual Effects = transitional shell_style UI until Phase 2
+```
+
+This phase does not migrate `shell_style`, ThemeController as a whole, Dock,
+Wallpaper, navigation, Shell services, Audio, Bluetooth, Network, Typhon
+itself, or the preview-only Compositor page. Phase 2 will migrate the material
+and effects control plane. Continuous material sliders, advanced overrides,
+blur parameters, shaders, refraction, noise, and Typhon effects integration
+are not current capabilities.
+
+## Icons Ownership
+
+The v1 Icons destination manages installed Freedesktop icon themes only.
 QML is limited to filtering, card presentation, focus, and immediate
 selection. Rust owns discovery, metadata parsing, validation, preview lookup,
-background scanning, error state, and atomic `system_icon_theme` persistence.
-CXX-Qt is a thin QObject projection. Shared C++ owns only Qt/QIcon rendering
-integration and the existing watcher/cache invalidation path.
+background scanning, error state, and atomic `system_icon_theme` persistence
+through `ThemeConfigStore`. CXX-Qt is a thin QObject projection. Shared C++ owns
+only Qt/QIcon rendering integration and the existing watcher/cache
+invalidation path.
 
 `icon_theme` remains the legacy Settings navigation/resource preference used by
 `SettingsIconResolver`; `system_icon_theme` is the canonical system icon-pack
 preference. They must not be merged, and `iconAppearance` remains the separate
 Default/Monochrome/Tinted presentation setting.
+
+The Customization hub children are ordered Appearance, Visual Effects, Icons,
+Wallpaper, Dock, and Animations. Appearance shows the single built-in Astrea
+System Theme card and does not persist a preset selection. Visual Effects
+temporarily owns only the existing Default, Transparent, and Frosted
+`shell_style` controls. Phase 2 replaces these discrete controls with the
+material/effects control plane; none of its future slider or shader controls
+are implemented here.
 
 ## Routing Policy
 

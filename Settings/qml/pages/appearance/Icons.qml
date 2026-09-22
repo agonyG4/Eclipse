@@ -7,9 +7,9 @@ import "../../components/form" as Form
 
 Item {
     id: root
-    objectName: "themesPage"
+    objectName: "iconsPage"
 
-    readonly property var controller: SettingsController.themes
+    readonly property var controller: SettingsController.icons
     readonly property bool catalogLoading: root.controller.busy && root.controller.refreshing
     readonly property int iconThemeRevision: {
         if (typeof AstreaIconProvider !== "undefined" && AstreaIconProvider)
@@ -17,11 +17,11 @@ Item {
         return 0
     }
     property string searchQuery: ""
-    readonly property var filteredThemes: {
+    readonly property var filteredIconThemes: {
         const query = root.searchQuery.trim().toLowerCase()
         if (query === "")
-            return root.controller.themes
-        return root.controller.themes.filter(theme =>
+            return root.controller.iconThemes
+        return root.controller.iconThemes.filter(theme =>
             String(theme.name || "").toLowerCase().includes(query)
             || String(theme.id || "").toLowerCase().includes(query)
             || String(theme.comment || "").toLowerCase().includes(query))
@@ -29,13 +29,13 @@ Item {
     readonly property var cards: {
         const values = [{
             id: "",
-            name: I18n.tr("apps.settings.pages.themes.system_default", "System Default"),
-            comment: I18n.tr("apps.settings.pages.themes.system_default_comment", "Use the active desktop icon theme"),
+            name: I18n.tr("apps.settings.pages.icons.system_default", "System Default"),
+            comment: I18n.tr("apps.settings.pages.icons.system_default_comment", "Use the active desktop icon theme"),
             source: "system",
             previewUrls: ["image://astrea-icon/folder?revision=" + root.iconThemeRevision]
         }]
-        for (let index = 0; index < root.filteredThemes.length; ++index)
-            values.push(root.filteredThemes[index])
+        for (let index = 0; index < root.filteredIconThemes.length; ++index)
+            values.push(root.filteredIconThemes[index])
         return values
     }
 
@@ -49,7 +49,7 @@ Item {
     component ThemeCard: FocusScope {
         id: card
         required property var descriptor
-        objectName: "themeCard-" + (card.descriptor.id || "system-default")
+        objectName: "iconThemeCard-" + (card.descriptor.id || "system-default")
         readonly property bool selected: String(card.descriptor.id || "")
             === String(root.controller.selectedIconTheme || "")
         readonly property bool hovered: cardMouse.containsMouse
@@ -147,8 +147,8 @@ Item {
             Text {
                 Layout.fillWidth: true
                 text: card.descriptor.comment || (card.descriptor.source === "user"
-                    ? I18n.tr("apps.settings.pages.themes.user_theme", "User theme")
-                    : I18n.tr("apps.settings.pages.themes.system_theme", "System theme"))
+                    ? I18n.tr("apps.settings.pages.icons.user_theme", "User theme")
+                    : I18n.tr("apps.settings.pages.icons.system_theme", "System theme"))
                 color: Components.Theme.textSecondary
                 font.family: Components.Theme.fontFamily
                 font.pixelSize: Components.Theme.fontSizeSmall
@@ -194,7 +194,7 @@ Item {
         maxWidth: 900
 
         Text {
-            text: I18n.tr("apps.settings.pages.themes.title", "Themes")
+            text: I18n.tr("apps.settings.pages.icons.title", "Icons")
             color: Components.Theme.textPrimary
             font.family: Components.Theme.fontFamily
             font.pixelSize: Components.Theme.fontSizeHeader
@@ -204,20 +204,20 @@ Item {
         }
 
         Form.SectionHeader {
-            text: I18n.tr("apps.settings.pages.themes.icon_theme", "ICON THEME")
+            text: I18n.tr("apps.settings.pages.icons.icon_theme", "ICON THEME")
             Layout.bottomMargin: 12
         }
 
         Controls.SearchField {
             Layout.fillWidth: true
             Layout.bottomMargin: 16
-            placeholderText: I18n.tr("apps.settings.pages.themes.search", "Search installed icon themes")
+            placeholderText: I18n.tr("apps.settings.pages.icons.search", "Search installed icon themes")
             onTextEdited: text => root.searchQuery = text
         }
 
         Text {
             visible: root.catalogLoading
-            text: I18n.tr("apps.settings.pages.themes.loading", "Loading installed themes…")
+            text: I18n.tr("apps.settings.pages.icons.loading", "Loading installed themes…")
             color: Components.Theme.textSecondary
             font.family: Components.Theme.fontFamily
             font.pixelSize: Components.Theme.fontSizeNormal
@@ -237,10 +237,10 @@ Item {
         }
 
         Text {
-            objectName: "themes-empty-installed-catalog"
+            objectName: "icons-empty-installed-catalog"
             visible: !root.catalogLoading && root.controller.lastError === ""
-                && root.controller.themes.length === 0 && root.searchQuery.trim() === ""
-            text: I18n.tr("apps.settings.pages.themes.empty_catalog", "No icon themes are installed.")
+                && root.controller.iconThemes.length === 0 && root.searchQuery.trim() === ""
+            text: I18n.tr("apps.settings.pages.icons.empty_catalog", "No icon themes are installed.")
             color: Components.Theme.textSecondary
             font.family: Components.Theme.fontFamily
             font.pixelSize: Components.Theme.fontSizeNormal
@@ -249,10 +249,10 @@ Item {
         }
 
         Text {
-            objectName: "themes-empty-search-results"
+            objectName: "icons-empty-search-results"
             visible: !root.catalogLoading && root.controller.lastError === ""
-                && root.filteredThemes.length === 0 && root.searchQuery.trim() !== ""
-            text: I18n.tr("apps.settings.pages.themes.empty_search", "No installed themes match your search.")
+                && root.filteredIconThemes.length === 0 && root.searchQuery.trim() !== ""
+            text: I18n.tr("apps.settings.pages.icons.empty_search", "No installed themes match your search.")
             color: Components.Theme.textSecondary
             font.family: Components.Theme.fontFamily
             font.pixelSize: Components.Theme.fontSizeNormal

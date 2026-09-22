@@ -49,6 +49,9 @@ int SettingsApplication::run()
                                                          iconResolver, this);
     m_translationController = std::make_unique<SettingsTranslationController>();
     m_themeController = std::make_unique<ThemeController>();
+    QObject::connect(m_controller->appearance(),
+                     &SettingsAppearanceController::configurationChanged,
+                     m_themeController.get(), &ThemeController::reload);
     if (!initializeQml())
         return 1;
 

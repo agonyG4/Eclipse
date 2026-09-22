@@ -1,3 +1,6 @@
+# The registered sources are recomputed from the authoritative list whenever
+# CMake is rerun (including renames in an existing build tree).
+unset(ASTREA_SETTINGS_QML_FILES CACHE)
 set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     Main.qml
     components/AppIcon.qml
@@ -34,7 +37,8 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     pages/navigation/Hub.qml
     pages/system/Compositor.qml
     pages/appearance/Appearance.qml
-    pages/appearance/Themes.qml
+    pages/appearance/VisualEffects.qml
+    pages/appearance/Icons.qml
     pages/appearance/MaterialPreview.qml
     pages/appearance/MaterialShowcase.qml
     pages/appearance/Dock.qml
@@ -119,9 +123,9 @@ qt_add_resources(astrea-settings-ui settings-assets
 )
 
 # Keep the authoritative lists available to structural tests without repeating them.
-set(ASTREA_SETTINGS_QML_FILES "${ASTREA_SETTINGS_QML_FILES}" CACHE INTERNAL "Registered Settings QML files")
-set(ASTREA_SETTINGS_QML_RELATIVE_FILES "${ASTREA_SETTINGS_QML_RELATIVE_FILES}" CACHE INTERNAL "Registered Settings QML paths")
-set(ASTREA_SETTINGS_ASSET_FILES "${ASTREA_SETTINGS_ASSET_FILES}" CACHE INTERNAL "Registered Settings assets")
+set(ASTREA_SETTINGS_QML_FILES "${ASTREA_SETTINGS_QML_FILES}" CACHE INTERNAL "Registered Settings QML files" FORCE)
+set(ASTREA_SETTINGS_QML_RELATIVE_FILES "${ASTREA_SETTINGS_QML_RELATIVE_FILES}" CACHE INTERNAL "Registered Settings QML paths" FORCE)
+set(ASTREA_SETTINGS_ASSET_FILES "${ASTREA_SETTINGS_ASSET_FILES}" CACHE INTERNAL "Registered Settings assets" FORCE)
 
 settings_enable_warnings(astrea-settings-ui)
 settings_enable_sanitizers(astrea-settings-ui)

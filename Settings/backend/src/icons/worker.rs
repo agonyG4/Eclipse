@@ -1,5 +1,5 @@
 use super::catalog::{ThemeCatalog, ThemeDescriptor, default_search_roots};
-use super::config::ThemePreferenceStore;
+use super::config::IconThemePreferenceStore;
 use super::icon_lookup::PreviewResolver;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
@@ -19,10 +19,10 @@ pub const PREVIEW_ICON_NAMES: [&str; 5] = [
 ];
 
 #[derive(Debug)]
-pub enum WorkerResult {
+pub enum IconThemeWorkerResult {
     Refresh {
         generation: u64,
-        snapshot: Result<ThemeSnapshot, String>,
+        snapshot: Result<IconThemeSnapshot, String>,
     },
     Persistence {
         generation: u64,
@@ -32,7 +32,7 @@ pub enum WorkerResult {
 }
 
 #[derive(Debug)]
-pub struct ThemeSnapshot {
+pub struct IconThemeSnapshot {
     pub catalog: ThemeCatalog,
     pub previews: HashMap<String, Vec<Option<PathBuf>>>,
     pub configured_selection: Result<Option<String>, String>,
@@ -56,57 +56,57 @@ enum ThemeWork {
 }
 
 #[derive(Debug)]
-pub struct ThemeWorkerInitError(io::Error);
+pub struct IconThemeWorkerInitError(io::Error);
 
-impl Display for ThemeWorkerInitError {
+impl Display for IconThemeWorkerInitError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             formatter,
-            "failed to create Settings Themes worker: {}",
+            "failed to create Settings Icons worker: {}",
             self.0
         )
     }
 }
 
-impl std::error::Error for ThemeWorkerInitError {
+impl std::error::Error for IconThemeWorkerInitError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         Some(&self.0)
     }
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub enum ThemeWorkerRequestError {
+pub enum IconThemeWorkerRequestError {
     Shutdown,
     StateUnavailable,
 }
 
-impl Display for ThemeWorkerRequestError {
+impl Display for IconThemeWorkerRequestError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Shutdown => formatter.write_str("the Settings Themes worker is shutting down"),
+            Self::Shutdown => formatter.write_str("the Settings Icons worker is shutting down"),
             Self::StateUnavailable => {
-                formatter.write_str("the Settings Themes worker state is unavailable")
+                formatter.write_str("the Settings Icons worker state is unavailable")
             }
         }
     }
 }
 
-impl std::error::Error for ThemeWorkerRequestError {}
+impl std::error::Error for IconThemeWorkerRequestError {}
 
 type WorkerTask = Box<dyn FnOnce() + Send + 'static>;
-type Scanner = Box<dyn Fn(&[PathBuf]) -> Result<ThemeSnapshot, String> + Send + 'static>;
+type Scanner = Box<dyn Fn(&[PathBuf]) -> Result<IconThemeSnapshot, String> + Send + 'static>;
 
-pub struct ThemeWorker {
+pub struct IconThemeWorker {
     state: Arc<(Mutex<WorkerState>, Condvar)>,
     next_generation: AtomicU64,
-    results: Option<mpsc::Receiver<WorkerResult>>,
+    results: Option<mpsc::Receiver<IconThemeWorkerResult>>,
 }
 
-impl ThemeWorker {
+impl IconThemeWorker {
     pub fn new(
         search_roots: Vec<PathBuf>,
-        store: ThemePreferenceStore,
-    ) -> Result<Self, ThemeWorkerInitError> {
+        store: IconThemePreferenceStore,
+    ) -> Result<Self, IconThemeWorkerInitError> {
         let (sender, results) = mpsc::sync_channel(1);
         Self::spawn(search_roots, store, Some(results), move |result| {
             let _ = sender.try_send(result);
@@ -115,23 +115,23 @@ impl ThemeWorker {
 
     pub fn new_with_callback<F>(
         search_roots: Vec<PathBuf>,
-        store: ThemePreferenceStore,
+        store: IconThemePreferenceStore,
         callback: F,
-    ) -> Result<Self, ThemeWorkerInitError>
+    ) -> Result<Self, IconThemeWorkerInitError>
     where
-        F: Fn(WorkerResult) + Send + 'static,
+        F: Fn(IconThemeWorkerResult) + Send + 'static,
     {
         Self::spawn(search_roots, store, None, callback)
     }
 
     fn spawn<F>(
         search_roots: Vec<PathBuf>,
-        store: ThemePreferenceStore,
-        results: Option<mpsc::Receiver<WorkerResult>>,
+        store: IconThemePreferenceStore,
+        results: Option<mpsc::Receiver<IconThemeWorkerResult>>,
         callback: F,
-    ) -> Result<Self, ThemeWorkerInitError>
+    ) -> Result<Self, IconThemeWorkerInitError>
     where
-        F: Fn(WorkerResult) + Send + 'static,
+        F: Fn(IconThemeWorkerResult) + Send + 'static,
     {
         Self::spawn_with(
             search_roots,
@@ -141,7 +141,7 @@ impl ThemeWorker {
             scan_theme_snapshot,
             |run| {
                 thread::Builder::new()
-                    .name(String::from("astrea-settings-themes"))
+                    .name(String::from("astrea-settings-icons"))
                     .spawn(run)
             },
         )
@@ -149,15 +149,15 @@ impl ThemeWorker {
 
     fn spawn_with<F, S, T>(
         search_roots: Vec<PathBuf>,
-        store: ThemePreferenceStore,
-        results: Option<mpsc::Receiver<WorkerResult>>,
+        store: IconThemePreferenceStore,
+        results: Option<mpsc::Receiver<IconThemeWorkerResult>>,
         callback: F,
         scanner: S,
         spawn_thread: T,
-    ) -> Result<Self, ThemeWorkerInitError>
+    ) -> Result<Self, IconThemeWorkerInitError>
     where
-        F: Fn(WorkerResult) + Send + 'static,
-        S: Fn(&[PathBuf]) -> Result<ThemeSnapshot, String> + Send + 'static,
+        F: Fn(IconThemeWorkerResult) + Send + 'static,
+        S: Fn(&[PathBuf]) -> Result<IconThemeSnapshot, String> + Send + 'static,
         T: FnOnce(WorkerTask) -> io::Result<JoinHandle<()>>,
     {
         let state = Arc::new((
@@ -179,7 +179,7 @@ impl ThemeWorker {
                 Box::new(scanner),
             );
         });
-        let thread = spawn_thread(run).map_err(ThemeWorkerInitError)?;
+        let thread = spawn_thread(run).map_err(IconThemeWorkerInitError)?;
         drop(thread);
         Ok(Self {
             state,
@@ -188,18 +188,20 @@ impl ThemeWorker {
         })
     }
 
-    pub fn with_default_roots(store: ThemePreferenceStore) -> Result<Self, ThemeWorkerInitError> {
+    pub fn with_default_roots(
+        store: IconThemePreferenceStore,
+    ) -> Result<Self, IconThemeWorkerInitError> {
         Self::new(default_search_roots(), store)
     }
 
-    pub fn request_refresh(&self) -> Result<u64, ThemeWorkerRequestError> {
+    pub fn request_refresh(&self) -> Result<u64, IconThemeWorkerRequestError> {
         let generation = self.next_generation.fetch_add(1, Ordering::Relaxed);
         let (lock, wake) = &*self.state;
         let mut state = lock
             .lock()
-            .map_err(|_| ThemeWorkerRequestError::StateUnavailable)?;
+            .map_err(|_| IconThemeWorkerRequestError::StateUnavailable)?;
         if state.shutdown {
-            return Err(ThemeWorkerRequestError::Shutdown);
+            return Err(IconThemeWorkerRequestError::Shutdown);
         }
         state.pending_refresh = Some(generation);
         wake.notify_one();
@@ -210,13 +212,13 @@ impl ThemeWorker {
         &self,
         generation: u64,
         selected: Option<String>,
-    ) -> Result<(), ThemeWorkerRequestError> {
+    ) -> Result<(), IconThemeWorkerRequestError> {
         let (lock, wake) = &*self.state;
         let mut state = lock
             .lock()
-            .map_err(|_| ThemeWorkerRequestError::StateUnavailable)?;
+            .map_err(|_| IconThemeWorkerRequestError::StateUnavailable)?;
         if state.shutdown {
-            return Err(ThemeWorkerRequestError::Shutdown);
+            return Err(IconThemeWorkerRequestError::Shutdown);
         }
         state.pending_persistence = Some(PersistenceRequest {
             generation,
@@ -226,11 +228,14 @@ impl ThemeWorker {
         Ok(())
     }
 
-    pub fn try_receive(&self) -> Option<WorkerResult> {
+    pub fn try_receive(&self) -> Option<IconThemeWorkerResult> {
         self.results.as_ref()?.try_recv().ok()
     }
 
-    pub fn recv_timeout(&self, timeout: Duration) -> Result<WorkerResult, mpsc::RecvTimeoutError> {
+    pub fn recv_timeout(
+        &self,
+        timeout: Duration,
+    ) -> Result<IconThemeWorkerResult, mpsc::RecvTimeoutError> {
         self.results
             .as_ref()
             .map_or(Err(mpsc::RecvTimeoutError::Disconnected), |results| {
@@ -249,7 +254,7 @@ impl ThemeWorker {
     }
 }
 
-impl Drop for ThemeWorker {
+impl Drop for IconThemeWorker {
     fn drop(&mut self) {
         let (lock, wake) = &*self.state;
         let mut state = match lock.lock() {
@@ -267,10 +272,10 @@ fn worker_loop<F>(
     state: Arc<(Mutex<WorkerState>, Condvar)>,
     callback: F,
     search_roots: Vec<PathBuf>,
-    store: ThemePreferenceStore,
+    store: IconThemePreferenceStore,
     scanner: Scanner,
 ) where
-    F: Fn(WorkerResult),
+    F: Fn(IconThemeWorkerResult),
 {
     loop {
         let work = {
@@ -308,7 +313,7 @@ fn worker_loop<F>(
             break;
         };
         let result = match work {
-            ThemeWork::Refresh { generation } => WorkerResult::Refresh {
+            ThemeWork::Refresh { generation } => IconThemeWorkerResult::Refresh {
                 generation,
                 snapshot: scanner(&search_roots).map(|mut snapshot| {
                     snapshot.configured_selection = store.load().map_err(|error| error.to_string());
@@ -321,7 +326,7 @@ fn worker_loop<F>(
                     None => store.clear_selected(),
                 }
                 .map_err(|error| error.to_string());
-                WorkerResult::Persistence {
+                IconThemeWorkerResult::Persistence {
                     generation: request.generation,
                     selected: request.selected,
                     result,
@@ -348,7 +353,7 @@ fn worker_is_shutting_down(state: &Arc<(Mutex<WorkerState>, Condvar)>) -> bool {
     lock.lock().map_or(true, |state| state.shutdown)
 }
 
-fn scan_theme_snapshot(search_roots: &[PathBuf]) -> Result<ThemeSnapshot, String> {
+fn scan_theme_snapshot(search_roots: &[PathBuf]) -> Result<IconThemeSnapshot, String> {
     ThemeCatalog::discover(search_roots)
         .map(|catalog| {
             let resolver = PreviewResolver::new(catalog.clone());
@@ -357,7 +362,7 @@ fn scan_theme_snapshot(search_roots: &[PathBuf]) -> Result<ThemeSnapshot, String
                 .into_iter()
                 .map(|theme| (theme.id.clone(), previews_for_theme(&resolver, theme)))
                 .collect();
-            ThemeSnapshot {
+            IconThemeSnapshot {
                 catalog,
                 previews,
                 configured_selection: Ok(None),
@@ -390,10 +395,10 @@ fn previews_for_theme(resolver: &PreviewResolver, theme: &ThemeDescriptor) -> Ve
 
 #[cfg(test)]
 mod tests {
+    use super::{IconThemeSnapshot, IconThemeWorker, IconThemeWorkerResult};
     use super::{PreviewResolver, previews_for_theme};
-    use super::{ThemeSnapshot, ThemeWorker, WorkerResult};
-    use crate::themes::catalog::ThemeCatalog;
-    use crate::themes::config::ThemePreferenceStore;
+    use crate::icons::catalog::ThemeCatalog;
+    use crate::icons::config::IconThemePreferenceStore;
     use serde_json::json;
     use std::fs;
     use std::path::PathBuf;
@@ -402,8 +407,8 @@ mod tests {
     use std::time::Duration;
     use tempfile::TempDir;
 
-    fn empty_snapshot() -> ThemeSnapshot {
-        ThemeSnapshot {
+    fn empty_snapshot() -> IconThemeSnapshot {
+        IconThemeSnapshot {
             catalog: ThemeCatalog::discover(&[]).unwrap(),
             previews: Default::default(),
             configured_selection: Ok(None),
@@ -423,15 +428,15 @@ mod tests {
     }
 
     fn spawn_with_scanner<F, S>(
-        store: ThemePreferenceStore,
+        store: IconThemePreferenceStore,
         callback: F,
         scanner: S,
-    ) -> Result<ThemeWorker, super::ThemeWorkerInitError>
+    ) -> Result<IconThemeWorker, super::IconThemeWorkerInitError>
     where
-        F: Fn(WorkerResult) + Send + 'static,
-        S: Fn(&[PathBuf]) -> Result<ThemeSnapshot, String> + Send + 'static,
+        F: Fn(IconThemeWorkerResult) + Send + 'static,
+        S: Fn(&[PathBuf]) -> Result<IconThemeSnapshot, String> + Send + 'static,
     {
-        ThemeWorker::spawn_with(Vec::new(), store, None, callback, scanner, |run| {
+        IconThemeWorker::spawn_with(Vec::new(), store, None, callback, scanner, |run| {
             thread::Builder::new().spawn(run)
         })
     }
@@ -452,9 +457,9 @@ mod tests {
     #[test]
     fn repeated_refresh_requests_keep_one_pending_work_item() {
         let root = TempDir::new().unwrap();
-        let worker = ThemeWorker::new(
+        let worker = IconThemeWorker::new(
             vec![root.path().into()],
-            ThemePreferenceStore::new(root.path().join("theme.json")),
+            IconThemePreferenceStore::new(root.path().join("theme.json")),
         )
         .unwrap();
         for _ in 0..128 {
@@ -462,7 +467,7 @@ mod tests {
         }
         assert!(worker.pending_capacity() <= 1);
         let result = worker.recv_timeout(Duration::from_secs(1)).unwrap();
-        let WorkerResult::Refresh {
+        let IconThemeWorkerResult::Refresh {
             generation,
             snapshot,
         } = result
@@ -481,7 +486,7 @@ mod tests {
         let (scan_finished_tx, scan_finished_rx) = mpsc::sync_channel(1);
         let (result_tx, result_rx) = mpsc::sync_channel(1);
         let worker = spawn_with_scanner(
-            ThemePreferenceStore::new(directory.path().join("theme.json")),
+            IconThemePreferenceStore::new(directory.path().join("theme.json")),
             move |result| {
                 let _ = result_tx.try_send(result);
             },
@@ -523,9 +528,9 @@ mod tests {
     #[test]
     fn dropping_idle_worker_wakes_it_and_waits_for_no_join() {
         let directory = TempDir::new().unwrap();
-        let worker = ThemeWorker::new_with_callback(
+        let worker = IconThemeWorker::new_with_callback(
             Vec::new(),
-            ThemePreferenceStore::new(directory.path().join("theme.json")),
+            IconThemePreferenceStore::new(directory.path().join("theme.json")),
             |_| {},
         )
         .unwrap();
@@ -542,9 +547,9 @@ mod tests {
         let path = directory.path().join("theme.json");
         fs::write(&path, json!({"other": true}).to_string()).unwrap();
         let (result_tx, result_rx) = mpsc::sync_channel(1);
-        let worker = ThemeWorker::new_with_callback(
+        let worker = IconThemeWorker::new_with_callback(
             Vec::new(),
-            ThemePreferenceStore::new(path.clone()),
+            IconThemePreferenceStore::new(path.clone()),
             move |result| {
                 let _ = result_tx.send((thread::current().id(), result));
             },
@@ -560,7 +565,7 @@ mod tests {
         assert_ne!(worker_thread, caller_thread);
         assert!(matches!(
             result,
-            WorkerResult::Persistence {
+            IconThemeWorkerResult::Persistence {
                 generation: 17,
                 selected: Some(ref selected),
                 result: Ok(()),
@@ -577,9 +582,9 @@ mod tests {
         let parent = directory.path().join("not-a-directory");
         fs::write(&parent, b"file").unwrap();
         let (result_tx, result_rx) = mpsc::sync_channel(1);
-        let worker = ThemeWorker::new_with_callback(
+        let worker = IconThemeWorker::new_with_callback(
             Vec::new(),
-            ThemePreferenceStore::new(parent.join("theme.json")),
+            IconThemePreferenceStore::new(parent.join("theme.json")),
             move |result| {
                 let _ = result_tx.send(result);
             },
@@ -593,7 +598,7 @@ mod tests {
         let result = result_rx.recv_timeout(Duration::from_secs(1)).unwrap();
         assert!(matches!(
             result,
-            WorkerResult::Persistence {
+            IconThemeWorkerResult::Persistence {
                 generation: 1,
                 result: Err(_),
                 ..
@@ -609,7 +614,7 @@ mod tests {
         let (release_scan_tx, release_scan_rx) = mpsc::sync_channel(1);
         let (result_tx, result_rx) = mpsc::sync_channel(4);
         let worker = spawn_with_scanner(
-            ThemePreferenceStore::new(path.clone()),
+            IconThemePreferenceStore::new(path.clone()),
             move |result| {
                 let _ = result_tx.send(result);
             },
@@ -641,7 +646,7 @@ mod tests {
         let result = result_rx.recv_timeout(Duration::from_secs(1)).unwrap();
         assert!(matches!(
             result,
-            WorkerResult::Persistence {
+            IconThemeWorkerResult::Persistence {
                 generation: 3,
                 selected: Some(ref selected),
                 result: Ok(()),
@@ -662,9 +667,9 @@ mod tests {
         )
         .unwrap();
         let (result_tx, result_rx) = mpsc::sync_channel(1);
-        let worker = ThemeWorker::new_with_callback(
+        let worker = IconThemeWorker::new_with_callback(
             Vec::new(),
-            ThemePreferenceStore::new(path.clone()),
+            IconThemePreferenceStore::new(path.clone()),
             move |result| {
                 let _ = result_tx.send(result);
             },
@@ -675,7 +680,7 @@ mod tests {
 
         assert!(matches!(
             result_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
-            WorkerResult::Persistence {
+            IconThemeWorkerResult::Persistence {
                 generation: 2,
                 selected: None,
                 result: Ok(()),
@@ -689,9 +694,9 @@ mod tests {
     #[test]
     fn thread_creation_failure_is_reported_as_a_typed_initialization_error() {
         let directory = TempDir::new().unwrap();
-        let result = ThemeWorker::spawn_with(
+        let result = IconThemeWorker::spawn_with(
             Vec::new(),
-            ThemePreferenceStore::new(directory.path().join("theme.json")),
+            IconThemePreferenceStore::new(directory.path().join("theme.json")),
             None,
             |_| {},
             |_| Ok(empty_snapshot()),

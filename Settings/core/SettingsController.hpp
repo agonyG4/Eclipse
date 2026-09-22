@@ -7,7 +7,8 @@
 #include "services/wallpaper/SettingsWallpaperController.hpp"
 
 #include <astrea_settings_backend/src/animation/qobject.cxxqt.h>
-#include <astrea_settings_backend/src/themes/qobject.cxxqt.h>
+#include <astrea_settings_backend/src/appearance/qobject.cxxqt.h>
+#include <astrea_settings_backend/src/icons/qobject.cxxqt.h>
 
 #include <QObject>
 #include <QString>
@@ -34,7 +35,8 @@ class SettingsController final : public QObject {
     Q_PROPERTY(SettingsWallpaperController *wallpaper READ wallpaper CONSTANT)
     Q_PROPERTY(SettingsDockController *dock READ dock CONSTANT)
     Q_PROPERTY(SettingsAnimationController *animations READ animations CONSTANT)
-    Q_PROPERTY(SettingsThemesController *themes READ themes CONSTANT)
+    Q_PROPERTY(SettingsAppearanceController *appearance READ appearance CONSTANT)
+    Q_PROPERTY(SettingsIconsController *icons READ icons CONSTANT)
 
 public:
     explicit SettingsController(QObject *parent = nullptr);
@@ -58,7 +60,8 @@ public:
     SettingsWallpaperController *wallpaper() const { return m_wallpaperController.get(); }
     SettingsDockController *dock() const { return m_dockController.get(); }
     SettingsAnimationController *animations() const { return m_animationController.get(); }
-    SettingsThemesController *themes() const { return m_themesController.get(); }
+    SettingsAppearanceController *appearance() const { return m_appearanceController.get(); }
+    SettingsIconsController *icons() const { return m_iconsController.get(); }
 
     Q_INVOKABLE bool navigateTo(const QString &id);
     Q_INVOKABLE void goBack();
@@ -81,7 +84,8 @@ private:
     std::unique_ptr<SettingsWallpaperController> m_wallpaperController;
     std::unique_ptr<SettingsDockController> m_dockController;
     std::unique_ptr<SettingsAnimationController> m_animationController;
-    std::unique_ptr<SettingsThemesController> m_themesController;
+    std::unique_ptr<SettingsAppearanceController> m_appearanceController;
+    std::unique_ptr<SettingsIconsController> m_iconsController;
     QString m_currentDestinationId;
     QString m_selectedSidebarId;
     QVector<QString> m_history;

@@ -241,16 +241,11 @@ void ThemeController::save()
             object = document.object();
         }
 
-        // ThemeController owns the legacy appearance keys only. Keep newer or
-        // domain-specific keys, including Rust-owned system_icon_theme, intact.
-        object.insert(QStringLiteral("theme_preference"), m_themePreference);
-        object.insert(QStringLiteral("theme"), m_themeMode == 1 ? QStringLiteral("light") : QStringLiteral("dark"));
-        object.insert(QStringLiteral("theme_mode"), m_themeMode);
+        // Rust owns the persisted Appearance projection. Keep those keys and
+        // the legacy theme compatibility inputs untouched during shell saves.
         object.insert(QStringLiteral("shell_style"), m_shellStyle);
-        object.insert(QStringLiteral("accent"), m_accentHex);
         object.insert(QStringLiteral("icon_style"), m_iconStyle);
         object.insert(QStringLiteral("icon_theme"), m_iconTheme);
-        object.insert(QStringLiteral("icon_appearance"), m_iconAppearance);
         object.insert(QStringLiteral("audio_osd_style"), m_audioOsdStyle);
 
         QSaveFile file(m_configPath);

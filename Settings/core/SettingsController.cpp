@@ -38,7 +38,8 @@ SettingsController::SettingsController(std::unique_ptr<SettingsNavigationModel> 
     m_wallpaperController = std::make_unique<SettingsWallpaperController>(QString(), this);
     m_dockController = std::make_unique<SettingsDockController>(QString(), this);
     m_animationController = std::make_unique<SettingsAnimationController>();
-    m_themesController = std::make_unique<SettingsThemesController>();
+    m_appearanceController = std::make_unique<SettingsAppearanceController>();
+    m_iconsController = std::make_unique<SettingsIconsController>();
 }
 
 SettingsNavigationModel *SettingsController::navigationModel()

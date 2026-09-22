@@ -1,7 +1,9 @@
 use super::catalog::{ThemeCatalog, default_search_roots};
-use super::config::ThemePreferenceStore;
+use super::config::IconThemePreferenceStore;
 use super::state::ThemeSelection;
-use super::worker::{PREVIEW_ICON_NAMES, ThemeSnapshot, ThemeWorker, WorkerResult};
+use super::worker::{
+    IconThemeSnapshot, IconThemeWorker, IconThemeWorkerResult, PREVIEW_ICON_NAMES,
+};
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 use std::path::Path;
@@ -20,59 +22,59 @@ pub mod qobject {
 
     extern "RustQt" {
         #[qobject]
-        #[qproperty(QList_QVariant, themes, READ = themes, NOTIFY = themes_changed)]
+        #[qproperty(QList_QVariant, icon_themes, cxx_name = "iconThemes", READ = icon_themes, NOTIFY = icon_themes_changed)]
         #[qproperty(QString, selected_icon_theme, cxx_name = "selectedIconTheme", READ = selected_icon_theme, NOTIFY = selected_icon_theme_changed)]
         #[qproperty(bool, busy, READ = busy, NOTIFY = busy_changed)]
         #[qproperty(bool, refreshing, READ = refreshing, NOTIFY = refreshing_changed)]
         #[qproperty(QString, last_error, cxx_name = "lastError", READ = last_error, NOTIFY = error_changed)]
-        type SettingsThemesController = super::SettingsThemesControllerRust;
+        type SettingsIconsController = super::SettingsIconsControllerRust;
     }
 
     unsafe extern "RustQt" {
-        fn themes(self: &SettingsThemesController) -> QList_QVariant;
+        fn icon_themes(self: &SettingsIconsController) -> QList_QVariant;
         #[cxx_name = "selectedIconTheme"]
-        fn selected_icon_theme(self: &SettingsThemesController) -> QString;
-        fn busy(self: &SettingsThemesController) -> bool;
-        fn refreshing(self: &SettingsThemesController) -> bool;
+        fn selected_icon_theme(self: &SettingsIconsController) -> QString;
+        fn busy(self: &SettingsIconsController) -> bool;
+        fn refreshing(self: &SettingsIconsController) -> bool;
         #[cxx_name = "lastError"]
-        fn last_error(self: &SettingsThemesController) -> QString;
+        fn last_error(self: &SettingsIconsController) -> QString;
 
         #[qsignal]
-        #[cxx_name = "themesChanged"]
-        fn themes_changed(self: Pin<&mut SettingsThemesController>);
+        #[cxx_name = "iconThemesChanged"]
+        fn icon_themes_changed(self: Pin<&mut SettingsIconsController>);
         #[qsignal]
         #[cxx_name = "selectedIconThemeChanged"]
-        fn selected_icon_theme_changed(self: Pin<&mut SettingsThemesController>);
+        fn selected_icon_theme_changed(self: Pin<&mut SettingsIconsController>);
         #[qsignal]
         #[cxx_name = "busyChanged"]
-        fn busy_changed(self: Pin<&mut SettingsThemesController>);
+        fn busy_changed(self: Pin<&mut SettingsIconsController>);
         #[qsignal]
         #[cxx_name = "refreshingChanged"]
-        fn refreshing_changed(self: Pin<&mut SettingsThemesController>);
+        fn refreshing_changed(self: Pin<&mut SettingsIconsController>);
         #[qsignal]
         #[cxx_name = "errorChanged"]
-        fn error_changed(self: Pin<&mut SettingsThemesController>);
+        fn error_changed(self: Pin<&mut SettingsIconsController>);
 
         #[qinvokable]
-        fn refresh(self: Pin<&mut SettingsThemesController>);
+        fn refresh(self: Pin<&mut SettingsIconsController>);
         #[qinvokable]
         #[cxx_name = "setIconTheme"]
-        fn set_icon_theme(self: Pin<&mut SettingsThemesController>, theme_id: &QString);
+        fn set_icon_theme(self: Pin<&mut SettingsIconsController>, theme_id: &QString);
         #[qinvokable]
         #[cxx_name = "useSystemDefault"]
-        fn use_system_default(self: Pin<&mut SettingsThemesController>);
+        fn use_system_default(self: Pin<&mut SettingsIconsController>);
     }
 
-    impl cxx_qt::Initialize for SettingsThemesController {}
-    impl cxx_qt::Threading for SettingsThemesController {}
+    impl cxx_qt::Initialize for SettingsIconsController {}
+    impl cxx_qt::Threading for SettingsIconsController {}
 }
 
-pub struct SettingsThemesControllerRust {
+pub struct SettingsIconsControllerRust {
     selection: ThemeSelection,
     configured_selection: Option<String>,
     previews: std::collections::HashMap<String, Vec<Option<std::path::PathBuf>>>,
-    worker: Option<ThemeWorker>,
-    store: ThemePreferenceStore,
+    worker: Option<IconThemeWorker>,
+    store: IconThemePreferenceStore,
     generation: u64,
     selection_generation: u64,
     pending_selection: Option<PendingSelection>,
@@ -92,19 +94,19 @@ struct PendingSelection {
 struct ControllerEffects {
     busy_changed: bool,
     refreshing_changed: bool,
-    themes_changed: bool,
+    icon_themes_changed: bool,
     selected_icon_theme_changed: bool,
     error_changed: bool,
 }
 
-impl Default for SettingsThemesControllerRust {
+impl Default for SettingsIconsControllerRust {
     fn default() -> Self {
         Self {
             selection: ThemeSelection::new(ThemeCatalog::default()),
             configured_selection: None,
             previews: std::collections::HashMap::new(),
             worker: None,
-            store: ThemePreferenceStore::default(),
+            store: IconThemePreferenceStore::default(),
             generation: 0,
             selection_generation: 0,
             pending_selection: None,
@@ -116,7 +118,7 @@ impl Default for SettingsThemesControllerRust {
     }
 }
 
-impl SettingsThemesControllerRust {
+impl SettingsIconsControllerRust {
     fn effective_selected(&self) -> Option<&str> {
         match self.pending_selection.as_ref() {
             Some(pending) => pending.selected.as_deref(),
@@ -144,10 +146,10 @@ impl SettingsThemesControllerRust {
         }
     }
 
-    fn handle_worker_result(&mut self, result: WorkerResult) -> ControllerEffects {
+    fn handle_worker_result(&mut self, result: IconThemeWorkerResult) -> ControllerEffects {
         let mut effects = ControllerEffects::default();
         match result {
-            WorkerResult::Refresh {
+            IconThemeWorkerResult::Refresh {
                 generation,
                 snapshot,
             } => {
@@ -159,7 +161,7 @@ impl SettingsThemesControllerRust {
                 effects.refreshing_changed = was_refreshing;
                 effects.busy_changed = self.update_busy();
                 match snapshot {
-                    Ok(ThemeSnapshot {
+                    Ok(IconThemeSnapshot {
                         catalog,
                         previews,
                         configured_selection,
@@ -192,14 +194,14 @@ impl SettingsThemesControllerRust {
                                 self.clear_error_value()
                             };
                         }
-                        effects.themes_changed = true;
+                        effects.icon_themes_changed = true;
                     }
                     Err(error) => {
                         effects.error_changed = self.set_error_value(error);
                     }
                 }
             }
-            WorkerResult::Persistence {
+            IconThemeWorkerResult::Persistence {
                 generation,
                 selected,
                 result,
@@ -297,8 +299,8 @@ impl SettingsThemesControllerRust {
     }
 }
 
-impl qobject::SettingsThemesController {
-    fn themes(&self) -> QList<QVariant> {
+impl qobject::SettingsIconsController {
+    fn icon_themes(&self) -> QList<QVariant> {
         let mut themes = QList::default();
         for theme in self.rust().selection.catalog().user_visible() {
             let mut descriptor = QMap::default();
@@ -380,7 +382,7 @@ impl qobject::SettingsThemesController {
         self.queue_selection_persistence(None);
     }
 
-    fn handle_worker_result(mut self: Pin<&mut Self>, result: WorkerResult) {
+    fn handle_worker_result(mut self: Pin<&mut Self>, result: IconThemeWorkerResult) {
         let effects = self.as_mut().rust_mut().handle_worker_result(result);
         if effects.busy_changed {
             self.as_mut().busy_changed();
@@ -388,8 +390,8 @@ impl qobject::SettingsThemesController {
         if effects.refreshing_changed {
             self.as_mut().refreshing_changed();
         }
-        if effects.themes_changed {
-            self.as_mut().themes_changed();
+        if effects.icon_themes_changed {
+            self.as_mut().icon_themes_changed();
         }
         if effects.selected_icon_theme_changed {
             self.as_mut().selected_icon_theme_changed();
@@ -458,10 +460,10 @@ impl qobject::SettingsThemesController {
     }
 }
 
-impl cxx_qt::Initialize for qobject::SettingsThemesController {
+impl cxx_qt::Initialize for qobject::SettingsIconsController {
     fn initialize(mut self: Pin<&mut Self>) {
         let qt_thread = self.qt_thread();
-        let worker = ThemeWorker::new_with_callback(
+        let worker = IconThemeWorker::new_with_callback(
             default_search_roots(),
             self.rust().store.clone(),
             move |result| {
@@ -499,9 +501,9 @@ fn insert_variant(map: &mut QMap<QMapPair_QString_QVariant>, key: &str, value: Q
 
 #[cfg(test)]
 mod tests {
-    use super::{PendingSelection, SettingsThemesControllerRust};
-    use crate::themes::catalog::ThemeCatalog;
-    use crate::themes::worker::{ThemeSnapshot, WorkerResult};
+    use super::{PendingSelection, SettingsIconsControllerRust};
+    use crate::icons::catalog::ThemeCatalog;
+    use crate::icons::worker::{IconThemeSnapshot, IconThemeWorkerResult};
     use std::fs;
     use std::path::Path;
     use tempfile::TempDir;
@@ -516,22 +518,22 @@ mod tests {
         .unwrap();
     }
 
-    fn controller_with_catalog(root: &Path) -> SettingsThemesControllerRust {
+    fn controller_with_catalog(root: &Path) -> SettingsIconsControllerRust {
         for id in ["theme-a", "theme-b", "theme-c"] {
             write_theme(root, id);
         }
         let catalog = ThemeCatalog::discover(&[root.into()]).unwrap();
-        let mut controller = SettingsThemesControllerRust::default();
+        let mut controller = SettingsIconsControllerRust::default();
         controller.selection.replace_catalog(catalog);
         controller.selection.select("theme-a").unwrap();
         controller.configured_selection = Some(String::from("theme-a"));
         controller
     }
 
-    fn refresh_result(catalog: ThemeCatalog, selected: Option<&str>) -> WorkerResult {
-        WorkerResult::Refresh {
+    fn refresh_result(catalog: ThemeCatalog, selected: Option<&str>) -> IconThemeWorkerResult {
+        IconThemeWorkerResult::Refresh {
             generation: 0,
-            snapshot: Ok(ThemeSnapshot {
+            snapshot: Ok(IconThemeSnapshot {
                 catalog,
                 previews: Default::default(),
                 configured_selection: Ok(selected.map(str::to_owned)),
@@ -612,7 +614,7 @@ mod tests {
             error_revision: controller.error_revision,
         });
         controller.busy = true;
-        controller.handle_worker_result(WorkerResult::Persistence {
+        controller.handle_worker_result(IconThemeWorkerResult::Persistence {
             generation: 1,
             selected: None,
             result: Ok(()),
@@ -630,15 +632,15 @@ mod tests {
 
     #[test]
     fn worker_startup_failure_reports_error_and_keeps_safe_default_state() {
-        let mut controller = SettingsThemesControllerRust::default();
+        let mut controller = SettingsIconsControllerRust::default();
 
         assert!(controller.record_worker_start_failure(String::from(
-            "failed to create Settings Themes worker: injected failure"
+            "failed to create Settings Icons worker: injected failure"
         )));
 
         assert_eq!(
             controller.last_error,
-            "failed to create Settings Themes worker: injected failure"
+            "failed to create Settings Icons worker: injected failure"
         );
         assert!(controller.worker.is_none());
         assert!(controller.selection.catalog().themes().is_empty());
@@ -660,7 +662,7 @@ mod tests {
         controller.busy = true;
         controller.set_error_value(String::from("newer error"));
 
-        let effects = controller.handle_worker_result(WorkerResult::Persistence {
+        let effects = controller.handle_worker_result(IconThemeWorkerResult::Persistence {
             generation: 1,
             selected: Some(String::from("theme-a")),
             result: Ok(()),
@@ -701,7 +703,7 @@ mod tests {
             error_revision: controller.error_revision,
         });
         controller.selection_generation = 3;
-        let effects = controller.handle_worker_result(WorkerResult::Persistence {
+        let effects = controller.handle_worker_result(IconThemeWorkerResult::Persistence {
             generation: 1,
             selected: Some(String::from("theme-b")),
             result: Ok(()),
@@ -731,7 +733,7 @@ mod tests {
         controller.selection_generation = 4;
         controller.busy = true;
 
-        let effects = controller.handle_worker_result(WorkerResult::Persistence {
+        let effects = controller.handle_worker_result(IconThemeWorkerResult::Persistence {
             generation: 4,
             selected: Some(String::from("theme-c")),
             result: Err(String::from("persistence blocked")),
@@ -805,7 +807,7 @@ mod tests {
         controller.selection_generation = 5;
         controller.busy = true;
 
-        let effects = controller.handle_worker_result(WorkerResult::Persistence {
+        let effects = controller.handle_worker_result(IconThemeWorkerResult::Persistence {
             generation: 5,
             selected: Some(String::from("theme-c")),
             result: Ok(()),
@@ -830,7 +832,7 @@ mod tests {
         controller.selection_generation = 3;
         controller.busy = true;
 
-        let effects = controller.handle_worker_result(WorkerResult::Persistence {
+        let effects = controller.handle_worker_result(IconThemeWorkerResult::Persistence {
             generation: 3,
             selected: Some(String::from("theme-c")),
             result: Ok(()),

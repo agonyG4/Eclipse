@@ -66,7 +66,7 @@ public:
         return QDir(home()).filePath(".config/AstreaOS/ui/theme.json");
     }
 
-    bool createThemes() const
+    bool createIconThemes() const
     {
         for (const QString &id : {QStringLiteral("theme-a"),
                                   QStringLiteral("theme-b"),
@@ -98,9 +98,9 @@ private:
     PreviousEnvironmentValue m_dataDirs;
 };
 
-bool hasTheme(QObject *controller, const QString &themeId)
+bool hasIconTheme(QObject *controller, const QString &themeId)
 {
-    const QVariantList themes = controller->property("themes").toList();
+    const QVariantList themes = controller->property("iconThemes").toList();
     for (const QVariant &theme : themes) {
         if (theme.toMap().value(QStringLiteral("id")).toString() == themeId)
             return true;
@@ -183,11 +183,11 @@ private:
 
 } // namespace
 
-class SettingsThemesControllerTest final : public QObject {
+class SettingsIconsControllerTest final : public QObject {
     Q_OBJECT
 
 private slots:
-    void exposesThemesControllerThroughSettingsController();
+    void exposesIconsControllerThroughSettingsController();
     void selectionCompletesOffTheQtCallerThreadAndSystemDefaultPersists();
     void unavailableConfiguredThemeCanBeReplacedWithSystemDefault();
     void staleSelectionCompletionCannotReplaceTheNewestRequest();
@@ -195,22 +195,22 @@ private slots:
     void destroyingControllerDuringPersistenceDoesNotWaitForWorker();
 };
 
-void SettingsThemesControllerTest::exposesThemesControllerThroughSettingsController()
+void SettingsIconsControllerTest::exposesIconsControllerThroughSettingsController()
 {
     ThemeTestEnvironment environment;
     QVERIFY(environment.isValid());
 
     SettingsController controller;
-    QObject *themes = controller.themes();
+    QObject *themes = controller.icons();
     QVERIFY(themes != nullptr);
-    QVERIFY(controller.property("themes").value<QObject *>() == themes);
+    QVERIFY(controller.property("icons").value<QObject *>() == themes);
 
     const QMetaObject *metaObject = themes->metaObject();
-    for (const char *name : {"themes", "selectedIconTheme", "busy", "refreshing", "lastError"})
+    for (const char *name : {"iconThemes", "selectedIconTheme", "busy", "refreshing", "lastError"})
         QVERIFY(metaObject->indexOfProperty(name) >= 0);
     for (const char *method : {"refresh()", "setIconTheme(QString)", "useSystemDefault()"})
         QVERIFY(metaObject->indexOfMethod(method) >= 0);
-    for (const char *signal : {"themesChanged()",
+    for (const char *signal : {"iconThemesChanged()",
                                "selectedIconThemeChanged()",
                                "busyChanged()",
                                "refreshingChanged()",
@@ -219,13 +219,13 @@ void SettingsThemesControllerTest::exposesThemesControllerThroughSettingsControl
     }
 }
 
-void SettingsThemesControllerTest::selectionCompletesOffTheQtCallerThreadAndSystemDefaultPersists()
+void SettingsIconsControllerTest::selectionCompletesOffTheQtCallerThreadAndSystemDefaultPersists()
 {
     ThemeTestEnvironment environment;
     QVERIFY(environment.isValid());
-    QVERIFY(environment.createThemes());
-    SettingsThemesController themes;
-    QTRY_VERIFY_WITH_TIMEOUT(hasTheme(&themes, QStringLiteral("theme-c")), 5000);
+    QVERIFY(environment.createIconThemes());
+    SettingsIconsController themes;
+    QTRY_VERIFY_WITH_TIMEOUT(hasIconTheme(&themes, QStringLiteral("theme-c")), 5000);
 
     const QString configPath = environment.configPath();
     QVERIFY(createThemeConfigFifo(configPath));
@@ -283,11 +283,11 @@ void SettingsThemesControllerTest::selectionCompletesOffTheQtCallerThreadAndSyst
     noOpWriter.join();
 }
 
-void SettingsThemesControllerTest::unavailableConfiguredThemeCanBeReplacedWithSystemDefault()
+void SettingsIconsControllerTest::unavailableConfiguredThemeCanBeReplacedWithSystemDefault()
 {
     ThemeTestEnvironment environment;
     QVERIFY(environment.isValid());
-    QVERIFY(environment.createThemes());
+    QVERIFY(environment.createIconThemes());
 
     const QString configPath = environment.configPath();
     QVERIFY(QDir().mkpath(QFileInfo(configPath).path()));
@@ -298,7 +298,7 @@ void SettingsThemesControllerTest::unavailableConfiguredThemeCanBeReplacedWithSy
     QVERIFY(config.write(QJsonDocument(initialConfig).toJson()) > 0);
     config.close();
 
-    SettingsThemesController themes;
+    SettingsIconsController themes;
     QTRY_COMPARE_WITH_TIMEOUT(themes.property("selectedIconTheme").toString(),
                               QStringLiteral("theme-b"),
                               5000);
@@ -337,13 +337,13 @@ void SettingsThemesControllerTest::unavailableConfiguredThemeCanBeReplacedWithSy
     QVERIFY(themes.property("selectedIconTheme").toString().isEmpty());
 }
 
-void SettingsThemesControllerTest::staleSelectionCompletionCannotReplaceTheNewestRequest()
+void SettingsIconsControllerTest::staleSelectionCompletionCannotReplaceTheNewestRequest()
 {
     ThemeTestEnvironment environment;
     QVERIFY(environment.isValid());
-    QVERIFY(environment.createThemes());
-    SettingsThemesController themes;
-    QTRY_VERIFY_WITH_TIMEOUT(hasTheme(&themes, QStringLiteral("theme-c")), 5000);
+    QVERIFY(environment.createIconThemes());
+    SettingsIconsController themes;
+    QTRY_VERIFY_WITH_TIMEOUT(hasIconTheme(&themes, QStringLiteral("theme-c")), 5000);
 
     const QString configPath = environment.configPath();
     QVERIFY(createThemeConfigFifo(configPath));
@@ -375,13 +375,13 @@ void SettingsThemesControllerTest::staleSelectionCompletionCannotReplaceTheNewes
              QStringLiteral("theme-c"));
 }
 
-void SettingsThemesControllerTest::persistenceFailureRollsBackProjectedSelection()
+void SettingsIconsControllerTest::persistenceFailureRollsBackProjectedSelection()
 {
     ThemeTestEnvironment environment;
     QVERIFY(environment.isValid());
-    QVERIFY(environment.createThemes());
-    SettingsThemesController themes;
-    QTRY_VERIFY_WITH_TIMEOUT(hasTheme(&themes, QStringLiteral("theme-c")), 5000);
+    QVERIFY(environment.createIconThemes());
+    SettingsIconsController themes;
+    QTRY_VERIFY_WITH_TIMEOUT(hasIconTheme(&themes, QStringLiteral("theme-c")), 5000);
 
     const QString configDirectory = QDir(environment.home()).filePath(QStringLiteral(".config/AstreaOS"));
     QVERIFY(QDir().mkpath(QFileInfo(configDirectory).path()));
@@ -402,13 +402,13 @@ void SettingsThemesControllerTest::persistenceFailureRollsBackProjectedSelection
     QVERIFY(!themes.property("lastError").toString().isEmpty());
 }
 
-void SettingsThemesControllerTest::destroyingControllerDuringPersistenceDoesNotWaitForWorker()
+void SettingsIconsControllerTest::destroyingControllerDuringPersistenceDoesNotWaitForWorker()
 {
     ThemeTestEnvironment environment;
     QVERIFY(environment.isValid());
-    QVERIFY(environment.createThemes());
-    auto *themes = new SettingsThemesController;
-    QTRY_VERIFY_WITH_TIMEOUT(hasTheme(themes, QStringLiteral("theme-a")), 5000);
+    QVERIFY(environment.createIconThemes());
+    auto *themes = new SettingsIconsController;
+    QTRY_VERIFY_WITH_TIMEOUT(hasIconTheme(themes, QStringLiteral("theme-a")), 5000);
 
     const QString configPath = environment.configPath();
     QVERIFY(createThemeConfigFifo(configPath));
@@ -428,5 +428,5 @@ void SettingsThemesControllerTest::destroyingControllerDuringPersistenceDoesNotW
     QCoreApplication::processEvents();
 }
 
-QTEST_GUILESS_MAIN(SettingsThemesControllerTest)
-#include "SettingsThemesControllerTest.moc"
+QTEST_GUILESS_MAIN(SettingsIconsControllerTest)
+#include "SettingsIconsControllerTest.moc"

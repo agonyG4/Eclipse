@@ -44,11 +44,21 @@ target_include_directories(astrea-settings-core PRIVATE
 target_link_libraries(astrea-settings-core PUBLIC
     Qt6::Core
     astrea-shared-dock
+    astrea-shared-system
     astrea_settings_backend
 )
 target_link_libraries(astrea-settings-core PRIVATE
     Qt6::Network
 )
+
+# The Settings and shared-system CXX-Qt static libraries each contain the
+# version-pinned bridge support symbols. Resolve their identical ABI copies
+# when a Settings executable consumes both backends.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" AND UNIX AND NOT APPLE)
+    target_link_options(astrea-settings-core INTERFACE
+        "LINKER:--allow-multiple-definition"
+    )
+endif()
 
 settings_enable_warnings(astrea-settings-core)
 settings_enable_sanitizers(astrea-settings-core)

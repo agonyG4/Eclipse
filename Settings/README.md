@@ -37,9 +37,9 @@ The native application includes:
 - native theme configuration, translations, icon resolution, and user-profile
   services; Linux libc/NSS administrative-group detection recognizes only
   `wheel` and `sudo`;
-  - seven implemented page routes: `Compositor`, immediately after `Services`,
-  plus the native `Appearance`, `Visual Effects`, `Icons`, `Wallpaper`, `Dock`,
-  and `Animations` routes
+  - eight implemented page routes: the `Compositor` preview, the `Bluetooth`
+  system page, and the native `Appearance`, `Visual Effects`, `Icons`,
+  `Wallpaper`, `Dock`, and `Animations` routes
   under the `Customization` hub;
   unavailable catalogue entries remain visible but cannot select an empty
   content route;
@@ -95,11 +95,19 @@ Network services remain on their existing implementations.
 
 The Settings application links `astrea-shared-core` and its QML plugin only for
 compositor-independent shared utilities. `astrea-settings-core` publicly
-exposes Qt Core and the shared Dock configuration boundary, keeps Qt Network
+exposes Qt Core, the shared Dock configuration boundary, and
+`astrea-shared-system` for its owned Bluetooth service. It keeps Qt Network
 private, links the generated Settings Rust backend needed by its public
-QObject header, and includes the Paper protocol header directly. Layer Shell code is isolated in
+QObject header, and includes the Paper protocol header directly. Layer Shell
+code is isolated in
 `astrea-shared-layer-shell`, which is linked only by Dock, Spotlight, and
 AltTab. Administrative-group detection does not spawn subprocesses.
+
+The Bluetooth page consumes `SettingsController.bluetooth`, which delegates to
+the shared Rust Bluetooth backend. Settings owns no BlueZ implementation. The
+page holds the `settings-bluetooth-page` discovery lease while loaded and
+releases it and cancels active pairing during teardown. Pair, Trust, and
+Connect remain separate user actions.
 
 Use `tools/create-source-archive` for source handoff. It archives committed Git
 content with an `Eclipse/` prefix and never zips the checkout filesystem.

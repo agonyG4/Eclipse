@@ -36,6 +36,7 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     components/typography/TextLabel.qml
     pages/navigation/Hub.qml
     pages/system/Compositor.qml
+    pages/system/Bluetooth.qml
     pages/appearance/Appearance.qml
     pages/appearance/VisualEffects.qml
     pages/appearance/Icons.qml

@@ -97,6 +97,8 @@ void SettingsNavigationModelTest::exposesNativePageRoutes()
     SettingsNavigationModel model;
     const QUrl compositorRoute(
         QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Compositor.qml"));
+    const QUrl bluetoothRoute(
+        QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Bluetooth.qml"));
     const QUrl customizationRoute(
         QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/navigation/Hub.qml"));
     const QUrl wallpaperRoute(
@@ -113,6 +115,7 @@ void SettingsNavigationModelTest::exposesNativePageRoutes()
         QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Icons.qml"));
 
     QCOMPARE(model.pageSourceForId(QStringLiteral("compositor")), compositorRoute);
+    QCOMPARE(model.pageSourceForId(QStringLiteral("bluetooth")), bluetoothRoute);
     QCOMPARE(model.pageSourceForId(QStringLiteral("customization")), customizationRoute);
     QCOMPARE(model.pageSourceForId(QStringLiteral("wallpaper")), wallpaperRoute);
     QCOMPARE(model.pageSourceForId(QStringLiteral("dock")), dockRoute);
@@ -171,7 +174,7 @@ void SettingsNavigationModelTest::startsWithFirstNavigableSidebarDestination()
 {
     SettingsNavigationModel model;
 
-    QCOMPARE(model.firstNavigableSidebarDestination(), QStringLiteral("compositor"));
+    QCOMPARE(model.firstNavigableSidebarDestination(), QStringLiteral("bluetooth"));
 }
 
 void SettingsNavigationModelTest::appliesPageAndHubNavigabilityRules()
@@ -179,6 +182,7 @@ void SettingsNavigationModelTest::appliesPageAndHubNavigabilityRules()
     SettingsNavigationModel model;
 
     QVERIFY(model.containsNavigableId(QStringLiteral("compositor")));
+    QVERIFY(model.containsNavigableId(QStringLiteral("bluetooth")));
     QVERIFY(model.containsNavigableId(QStringLiteral("customization")));
     QVERIFY(model.containsNavigableId(QStringLiteral("wallpaper")));
     QVERIFY(model.containsNavigableId(QStringLiteral("dock")));

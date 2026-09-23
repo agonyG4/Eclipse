@@ -64,7 +64,8 @@ Settings/
 ## Target Graph
 
 ```text
-astrea-settings-core  -> PUBLIC Qt6::Core, astrea-shared-dock;
+astrea-settings-core  -> PUBLIC Qt6::Core, astrea-shared-dock,
+                         astrea-shared-system;
                          PUBLIC astrea_settings_backend;
                          PRIVATE Qt6::Network;
                          direct Paper protocol include
@@ -89,7 +90,8 @@ astrea_settings_backend -> CXX-Qt generated QObjects and Rust domain backends
 
 The core target deliberately has no Qt QML, Qt Quick, Quick Controls,
 LayerShellQt, or compositor dependency. The application owns shared UI-facing
-dependencies directly; the core does not obtain them transitively.
+dependencies directly. The core publicly links `astrea-shared-system` for its
+owned `BluetoothService` API.
 
 Within QML, `components/controls/` owns reusable interactive primitives such as
 `Slider`, `ToggleSwitch`, `SelectButton`, and `SearchField`. `components/form/`
@@ -101,23 +103,37 @@ keyboard, or touch interaction with a raw `MouseArea`.
 ## Composition and Route Flow
 
 `SettingsApplication` constructs the Linux detector, profile provider and value,
-navigation catalogue and model, icon resolver, theme controller, translation
-controller, and QML engine. It registers `SettingsController`,
-`ThemeController`, and `I18n` as context properties and registers the shared
-icon provider as `astrea-icon`.
+navigation catalogue and model, icon resolver, and `SettingsController`. The
+controller owns the shared Bluetooth service. The application starts that
+service and registers the `Astrea.System` enum namespace before creating the
+QML engine. It then registers `SettingsController`, `ThemeController`, and
+`I18n` as context properties and registers the shared icon provider as
+`astrea-icon`.
 
 The catalogue provides ordered descriptors for the flat sidebar and the full
 nested destination graph. The model exposes only sidebar-visible rows and
 provides native child and ancestor lookup. `SettingsController` selects the
-first navigable destination at startup, derives the sidebar highlight for
-nested routes, and owns the bounded Back/Forward session history. `Main.qml`
+preferred Compositor destination at startup while it is navigable, with the
+first navigable route as a safe fallback. It derives the sidebar highlight for
+nested routes and owns the bounded Back/Forward session history. `Main.qml`
 supplies its `selectedPageSource` to one authoritative `Loader`; an empty URL is
 never selected and therefore does not produce an empty page.
 
 Customization children appear in this native catalogue order: Appearance,
 Visual Effects, Icons, Wallpaper, Dock, and Animations. Their stable route IDs
 are `appearance`, `visual-effects`, `icons`, `wallpaper`, `dock`, and
-`animations`; nested routes remain hidden from the sidebar.
+`animations`; nested routes remain hidden from the sidebar. Bluetooth now has a
+native route in its existing sidebar position. The first navigable sidebar row
+is therefore Bluetooth, while the preferred startup destination remains
+Compositor with a first-navigable fallback.
+
+`SettingsController.bluetooth` exposes the shared
+`Astrea::System::BluetoothService`, which projects the shared Rust Bluetooth
+backend and BlueZ state. The Settings core links `astrea-shared-system`; it
+does not compile a second Bluetooth implementation. The page owns the
+`settings-bluetooth-page` discovery lease while loaded, releases it on
+destruction, and cancels pairing if an Agent1 interaction is still active.
+Pair, Trust, and Connect remain separate user actions.
 
 ## Theme Configuration Ownership
 

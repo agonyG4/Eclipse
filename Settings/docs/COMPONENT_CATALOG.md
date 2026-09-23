@@ -1,7 +1,8 @@
 # Registered QML Components
 
-The `astrea-settings-ui` module registers 46 QML files. The canonical legacy
-source column points to the corresponding Astrea source where one exists.
+The authoritative registered source list for the `astrea-settings-ui` module is
+in `qml/CMakeLists.txt`. The canonical legacy source column points to the
+corresponding Astrea source where one exists.
 
 Component ownership is intentional: `controls/` contains reusable interactive
 primitives, while `form/` contains Settings-specific structural and layout
@@ -17,25 +18,25 @@ interaction with a raw `MouseArea`.
 | `qml/components/AvatarImage.qml` | `AvatarImage` | shell | `src/Core/components/AvatarImage.qml` | `Sidebar` | shell-critical |
 | `qml/components/Theme.qml` | `Theme` | theme facade | `src/Core/components/Theme.qml` | all visual components | shell-critical |
 | `qml/components/controls/Button.qml` | `Button` | controls | `src/Core/components/controls/Button.qml` | future pages | page primitive |
-| `qml/components/controls/ButtonCapsule.qml` | `ButtonCapsule` | controls | `src/Core/components/controls/ButtonCapsule.qml` | future pages | page primitive |
+| `qml/components/controls/ButtonCapsule.qml` | `ButtonCapsule` | controls | `src/Core/components/controls/ButtonCapsule.qml` | `Bluetooth`, future pages | page primitive |
 | `qml/components/controls/DualButton.qml` | `DualButton` | controls | `src/Core/components/controls/DualButton.qml` | future pages | page primitive |
 | `qml/components/controls/FloatingButton.qml` | `FloatingButton` | controls | `src/Core/components/controls/FloatingButton.qml` | future pages | page primitive |
 | `qml/components/controls/SearchField.qml` | `SearchField` | controls | `src/Core/components/form/SearchField.qml` | none currently | page primitive |
 | `qml/components/controls/SelectButton.qml` | `SelectButton` | controls | `src/Core/components/form/SelectButton.qml` | `Dock`, `Compositor` | page primitive |
 | `qml/components/controls/Slider.qml` | `Slider` | controls | new Astrea Settings control | `Dock` | page primitive |
-| `qml/components/controls/ToggleSwitch.qml` | `ToggleSwitch` | controls | `src/Core/components/form/ToggleSwitch.qml` | `Dock`, `Wallpaper`, `Compositor` | page primitive |
+| `qml/components/controls/ToggleSwitch.qml` | `ToggleSwitch` | controls | `src/Core/components/form/ToggleSwitch.qml` | `Dock`, `Wallpaper`, `Compositor`, `Bluetooth` | page primitive |
 | `qml/components/feedback/DnsPresetChip.qml` | `DnsPresetChip` | feedback | `src/Core/components/feedback/DnsPresetChip.qml` | none currently | compatibility component |
 | `qml/components/feedback/DnsStatusCard.qml` | `DnsStatusCard` | feedback | `src/Core/components/feedback/DnsStatusCard.qml` | none currently | compatibility component |
 | `qml/components/feedback/ProgressCard.qml` | `ProgressCard` | feedback | `src/Core/components/feedback/ProgressCard.qml` | none currently | compatibility component |
 | `qml/components/feedback/SpeedCard.qml` | `SpeedCard` | feedback | `src/Core/components/feedback/SpeedCard.qml` | none currently | compatibility component |
 | `qml/components/feedback/StatusDot.qml` | `StatusDot` | feedback | `src/Core/components/feedback/StatusDot.qml` | `DnsStatusCard` fixture | compatibility component |
-| `qml/components/form/FormCard.qml` | `FormCard` | form | `src/Core/components/form/FormCard.qml` | `Compositor` | page primitive |
+| `qml/components/form/FormCard.qml` | `FormCard` | form | `src/Core/components/form/FormCard.qml` | `Compositor`, `Bluetooth` | page primitive |
 | `qml/components/form/IconListRow.qml` | `IconListRow` | form | `src/Core/components/form/IconListRow.qml` | none currently | page primitive |
-| `qml/components/form/ScrollPage.qml` | `ScrollPage` | form | `src/Core/components/form/ScrollPage.qml` | `Compositor` | page primitive |
-| `qml/components/form/SectionHeader.qml` | `SectionHeader` | form | `src/Core/components/form/SectionHeader.qml` | `Compositor` | page primitive |
+| `qml/components/form/ScrollPage.qml` | `ScrollPage` | form | `src/Core/components/form/ScrollPage.qml` | `Compositor`, `Bluetooth` | page primitive |
+| `qml/components/form/SectionHeader.qml` | `SectionHeader` | form | `src/Core/components/form/SectionHeader.qml` | `Compositor`, `Bluetooth` | page primitive |
 | `qml/components/form/SettingRow.qml` | `SettingRow` | form | `src/Core/components/form/SettingRow.qml` | `Compositor` | page primitive |
-| `qml/components/menu/ContextMenu.qml` | `ContextMenu` | menu | `src/Core/components/menu/ContextMenu.qml` | none currently | page primitive |
-| `qml/components/menu/ContextMenuAction.qml` | `ContextMenuAction` | menu | `src/Core/components/menu/ContextMenuAction.qml` | `ContextMenu` fixture | page primitive |
+| `qml/components/menu/ContextMenu.qml` | `ContextMenu` | menu | `src/Core/components/menu/ContextMenu.qml` | `Bluetooth` | page primitive |
+| `qml/components/menu/ContextMenuAction.qml` | `ContextMenuAction` | menu | `src/Core/components/menu/ContextMenuAction.qml` | `ContextMenu`, `Bluetooth` | page primitive |
 | `qml/components/menu/ContextMenuDivider.qml` | `ContextMenuDivider` | menu | `src/Core/components/menu/ContextMenuDivider.qml` | `ContextMenu` fixture | page primitive |
 | `qml/components/navigation/NavItem.qml` | `NavItem` | navigation | `src/Core/components/navigation/NavItem.qml` | `Sidebar` | shell-critical |
 | `qml/components/navigation/HubNavigationRow.qml` | `HubNavigationRow` | navigation | native Settings hub row | `Hub` | shell-critical |
@@ -45,6 +46,7 @@ interaction with a raw `MouseArea`.
 | `qml/components/typography/Divider.qml` | `Divider` | typography | `src/Core/components/typography/Divider.qml` | future pages | page primitive |
 | `qml/components/typography/TextLabel.qml` | `TextLabel` | typography | `src/Core/components/typography/TextLabel.qml` | future pages | page primitive |
 | `qml/pages/system/Compositor.qml` | `Compositor` | page | native Settings preview source | `Main` Loader | shell-critical |
+| `qml/pages/system/Bluetooth.qml` | `Bluetooth` | page | native shared-system service page | `Main` Loader | shared Bluetooth route |
 | `qml/pages/navigation/Hub.qml` | `Hub` | page | native Settings hub navigation | `Main` Loader | shell-critical |
 | `qml/pages/appearance/Appearance.qml` | `Appearance` | page | native Settings appearance route | `Main` Loader | native route |
 | `qml/pages/appearance/VisualEffects.qml` | `VisualEffects` | page | native transitional shell material choices | `Main` Loader | ThemeController route |

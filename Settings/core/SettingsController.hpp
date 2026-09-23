@@ -5,6 +5,7 @@
 #include "services/dock/SettingsDockController.hpp"
 #include "services/profile/SettingsUserProfile.hpp"
 #include "services/wallpaper/SettingsWallpaperController.hpp"
+#include "system/bluetooth/BluetoothService.hpp"
 
 #include <astrea_settings_backend/src/animation/qobject.cxxqt.h>
 #include <astrea_settings_backend/src/appearance/qobject.cxxqt.h>
@@ -37,6 +38,7 @@ class SettingsController final : public QObject {
     Q_PROPERTY(SettingsAnimationController *animations READ animations CONSTANT)
     Q_PROPERTY(SettingsAppearanceController *appearance READ appearance CONSTANT)
     Q_PROPERTY(SettingsIconsController *icons READ icons CONSTANT)
+    Q_PROPERTY(Astrea::System::BluetoothService *bluetooth READ bluetooth CONSTANT)
 
 public:
     explicit SettingsController(QObject *parent = nullptr);
@@ -44,6 +46,7 @@ public:
     SettingsController(std::unique_ptr<SettingsNavigationModel> navigationModel,
                        SettingsUserProfile userProfile,
                        SettingsIconResolver iconResolver,
+                       std::unique_ptr<Astrea::System::BluetoothService> bluetoothService = {},
                        QObject *parent = nullptr);
 
     SettingsNavigationModel *navigationModel();
@@ -62,6 +65,7 @@ public:
     SettingsAnimationController *animations() const { return m_animationController.get(); }
     SettingsAppearanceController *appearance() const { return m_appearanceController.get(); }
     SettingsIconsController *icons() const { return m_iconsController.get(); }
+    Astrea::System::BluetoothService *bluetooth() const { return m_bluetoothService.get(); }
 
     Q_INVOKABLE bool navigateTo(const QString &id);
     Q_INVOKABLE void goBack();
@@ -81,6 +85,7 @@ private:
     std::unique_ptr<SettingsNavigationModel> m_navigationModel;
     const SettingsUserProfile m_userProfile;
     const SettingsIconResolver m_iconResolver;
+    std::unique_ptr<Astrea::System::BluetoothService> m_bluetoothService;
     std::unique_ptr<SettingsWallpaperController> m_wallpaperController;
     std::unique_ptr<SettingsDockController> m_dockController;
     std::unique_ptr<SettingsAnimationController> m_animationController;

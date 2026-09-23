@@ -11,7 +11,7 @@ Rectangle {
     property string iconFontFamily: Components.Theme.fontFamily
     property bool primary: false
     property bool danger: false
-    property bool enabled: true
+    property string accessibleName: ""
     property int fontPixelSize: Components.Theme.fontSizeNormal
     property int iconSize: Math.round(fontPixelSize + 4)
     property int controlWidth: 0
@@ -26,6 +26,27 @@ Rectangle {
     readonly property bool pressed: pressArea.pressed
 
     signal clicked()
+
+    focus: enabled
+    activeFocusOnTab: true
+    Accessible.role: Accessible.Button
+    Accessible.name: accessibleName.length > 0 ? accessibleName : root.text
+
+    Keys.onSpacePressed: function(event) {
+        event.accepted = true
+        if (root.enabled)
+            root.clicked()
+    }
+    Keys.onReturnPressed: function(event) {
+        event.accepted = true
+        if (root.enabled)
+            root.clicked()
+    }
+    Keys.onEnterPressed: function(event) {
+        event.accepted = true
+        if (root.enabled)
+            root.clicked()
+    }
 
     implicitWidth: controlWidth > 0 ? controlWidth : Math.max(minWidth, labelRow.implicitWidth + horizontalPadding * 2)
     implicitHeight: controlHeight

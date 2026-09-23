@@ -1,14 +1,45 @@
 #include "core/SettingsController.hpp"
 #include "core/navigation/SettingsNavigationModel.hpp"
+#include "system/bluetooth/BluetoothBackend.hpp"
+#include "system/bluetooth/BluetoothService.hpp"
 
 #include <QSignalSpy>
 #include <QtTest>
+
+namespace {
+
+class ControllerBluetoothBackend final : public Astrea::System::BluetoothBackend {
+public:
+    bool start(const Callbacks &, QString *) override
+    {
+        ++startCount;
+        return true;
+    }
+    void stop() override {}
+    bool setPowered(bool) override { return true; }
+    bool requestScan(const QString &) override { return true; }
+    void releaseScan(const QString &) override {}
+    bool connectDevice(const QString &) override { return true; }
+    bool disconnectDevice(const QString &) override { return true; }
+    bool pairDevice(const QString &) override { return true; }
+    bool cancelPairing() override { return true; }
+    bool setDeviceTrusted(const QString &, bool) override { return true; }
+    bool forgetDevice(const QString &) override { return true; }
+    bool submitAgentText(quint64, const QString &) override { return true; }
+    bool confirmAgentRequest(quint64, bool) override { return true; }
+    bool rejectAgentRequest(quint64) override { return true; }
+
+    int startCount = 0;
+};
+
+} // namespace
 
 class SettingsControllerTest final : public QObject {
     Q_OBJECT
 
 private slots:
-    void startsWithFirstDestination();
+    void startsWithPreferredCompositorDestination();
+    void navigatesToBluetoothPage();
     void navigatesToCustomizationHub();
     void nestedDestinationsKeepSidebarAncestorSelected();
     void directNestedNavigationDerivesSidebarAncestor();
@@ -18,9 +49,11 @@ private slots:
     void invalidNavigationPreservesRouteAndHistory();
     void historyRemainsBounded();
     void usesInjectedProfileForIsSudo();
+    void ownsBluetoothServiceWithoutStartingIt();
+    void preservesInjectedBluetoothServiceWithoutStartingIt();
 };
 
-void SettingsControllerTest::startsWithFirstDestination()
+void SettingsControllerTest::startsWithPreferredCompositorDestination()
 {
     SettingsController controller;
 
@@ -30,6 +63,17 @@ void SettingsControllerTest::startsWithFirstDestination()
              QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Compositor.qml")));
     QVERIFY(!controller.canGoBack());
     QVERIFY(!controller.canGoForward());
+}
+
+void SettingsControllerTest::navigatesToBluetoothPage()
+{
+    SettingsController controller;
+
+    QVERIFY(controller.navigateTo(QStringLiteral("bluetooth")));
+    QCOMPARE(controller.currentDestinationId(), QStringLiteral("bluetooth"));
+    QCOMPARE(controller.selectedSidebarId(), QStringLiteral("bluetooth"));
+    QCOMPARE(controller.selectedPageSource(),
+             QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Bluetooth.qml")));
 }
 
 void SettingsControllerTest::navigatesToCustomizationHub()
@@ -190,6 +234,31 @@ void SettingsControllerTest::usesInjectedProfileForIsSudo()
 
     QVERIFY(controller.isSudo());
     QVERIFY(controller.property("isSudo").toBool());
+}
+
+void SettingsControllerTest::ownsBluetoothServiceWithoutStartingIt()
+{
+    SettingsController controller;
+
+    QVERIFY(controller.bluetooth() != nullptr);
+    QCOMPARE(controller.bluetooth()->state(), Astrea::System::SystemServiceState::Stopped);
+    QCOMPARE(controller.property("bluetooth").value<Astrea::System::BluetoothService *>(),
+             controller.bluetooth());
+}
+
+void SettingsControllerTest::preservesInjectedBluetoothServiceWithoutStartingIt()
+{
+    auto backend = std::make_unique<ControllerBluetoothBackend>();
+    ControllerBluetoothBackend *backendPointer = backend.get();
+    auto service = std::make_unique<Astrea::System::BluetoothService>(std::move(backend));
+    Astrea::System::BluetoothService *servicePointer = service.get();
+    auto navigationModel = std::make_unique<SettingsNavigationModel>();
+
+    SettingsController controller(std::move(navigationModel), {}, {}, std::move(service));
+
+    QCOMPARE(controller.bluetooth(), servicePointer);
+    QCOMPARE(backendPointer->startCount, 0);
+    QCOMPARE(controller.bluetooth()->state(), Astrea::System::SystemServiceState::Stopped);
 }
 
 QTEST_MAIN(SettingsControllerTest)

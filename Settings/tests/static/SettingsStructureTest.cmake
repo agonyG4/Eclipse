@@ -30,6 +30,10 @@ foreach(new_appearance_page IN ITEMS
         message(FATAL_ERROR "${new_appearance_page} is not registered in the Settings QML module")
     endif()
 endforeach()
+list(FIND registered_qml_files "pages/system/Bluetooth.qml" bluetooth_qml_index)
+if(bluetooth_qml_index EQUAL -1)
+    message(FATAL_ERROR "Bluetooth.qml is not registered in the Settings QML module")
+endif()
 list(FIND registered_qml_files "pages/appearance/Themes.qml" old_themes_qml_index)
 if(NOT old_themes_qml_index EQUAL -1)
     message(FATAL_ERROR "The old Themes.qml route remains registered")
@@ -125,6 +129,7 @@ foreach(core_boundary_token IN ITEMS
     "target_link_libraries(astrea-settings-core PUBLIC"
     "Qt6::Core"
     "astrea-shared-dock"
+    "astrea-shared-system"
     "target_link_libraries(astrea-settings-core PRIVATE"
     "Qt6::Network"
     "../../shared"
@@ -134,6 +139,9 @@ foreach(core_boundary_token IN ITEMS
         message(FATAL_ERROR "Settings core dependency boundary is missing '${core_boundary_token}'")
     endif()
 endforeach()
+if(settings_core_cmake MATCHES "system/bluetooth/[^ \t\r\n]*\\.cpp")
+    message(FATAL_ERROR "Settings must consume Bluetooth production sources through astrea-shared-system")
+endif()
 foreach(rust_boundary_token IN ITEMS
     "find_package(CxxQt QUIET)"
     "cxx_qt_import_crate"
@@ -189,12 +197,33 @@ if(settings_core_cmake MATCHES "target_link_libraries\\(astrea-settings-core PUB
 endif()
 foreach(redundant_context_property IN ITEMS
     "setContextProperty(QStringLiteral(\"WallpaperController\")"
+    "setContextProperty(QStringLiteral(\"BluetoothService\")"
 )
     string(FIND "${settings_application_source}" "${redundant_context_property}" context_property_position)
     if(NOT context_property_position EQUAL -1)
         message(FATAL_ERROR "Redundant Settings context property returned: ${redundant_context_property}")
     endif()
 endforeach()
+foreach(bluetooth_startup_token IN ITEMS
+    "qmlRegisterUncreatableMetaObject"
+    "Astrea::System::staticMetaObject"
+    "Astrea.System"
+)
+    string(FIND "${settings_application_source}" "${bluetooth_startup_token}"
+        bluetooth_startup_position)
+    if(bluetooth_startup_position EQUAL -1)
+        message(FATAL_ERROR "Settings must register the shared Bluetooth enum namespace: ${bluetooth_startup_token}")
+    endif()
+endforeach()
+string(FIND "${settings_application_source}" "m_controller->bluetooth()->start();"
+    bluetooth_start_position)
+string(FIND "${settings_application_source}" "if (!initializeQml())" qml_initialization_position)
+string(FIND "${settings_application_source}" "m_engine->load(" qml_load_position)
+if(bluetooth_start_position EQUAL -1 OR qml_initialization_position EQUAL -1
+   OR qml_load_position EQUAL -1 OR bluetooth_start_position GREATER_EQUAL qml_initialization_position
+   OR qml_initialization_position GREATER_EQUAL qml_load_position)
+    message(FATAL_ERROR "Settings must start Bluetooth after controller construction and before QML load")
+endif()
 foreach(required_icon_provider_binding IN ITEMS
     "addImageProvider(QStringLiteral(\"astrea-icon\"), m_iconProvider)"
     "setContextProperty(QStringLiteral(\"AstreaIconProvider\")"
@@ -328,12 +357,32 @@ set(production_source_files
     qml/pages/appearance/Wallpaper.qml
     qml/pages/system/Compositor.qml
     qml/pages/appearance/Dock.qml
+    qml/pages/system/Bluetooth.qml
 )
 
 foreach(relative_path IN LISTS production_source_files)
     if(NOT EXISTS "${SETTINGS_SOURCE_DIR}/${relative_path}")
         message(FATAL_ERROR "Settings production source is missing: ${relative_path}")
     endif()
+endforeach()
+
+foreach(bar_bluetooth_source IN ITEMS
+    "${SETTINGS_SOURCE_DIR}/../Bar/qml/BluetoothPopup.qml"
+    "${SETTINGS_SOURCE_DIR}/../Bar/qml/components/BluetoothIndicator.qml"
+)
+    if(NOT EXISTS "${bar_bluetooth_source}")
+        message(FATAL_ERROR "The existing Bar Bluetooth QML source is missing: ${bar_bluetooth_source}")
+    endif()
+    file(READ "${bar_bluetooth_source}" bar_bluetooth_source_text)
+    foreach(settings_only_bluetooth_action IN ITEMS
+        "pairDevice(" "cancelPairing(" "setDeviceTrusted(" "forgetDevice(" "agentRequest"
+    )
+        string(FIND "${bar_bluetooth_source_text}" "${settings_only_bluetooth_action}"
+            settings_only_action_position)
+        if(NOT settings_only_action_position EQUAL -1)
+            message(FATAL_ERROR "Bar Bluetooth QML must remain outside Settings pairing actions: ${bar_bluetooth_source}")
+        endif()
+    endforeach()
 endforeach()
 
 file(READ "${SETTINGS_SOURCE_DIR}/core/navigation/SettingsNavigationEntry.hpp" navigation_entry_source)
@@ -369,6 +418,8 @@ foreach(navigation_required_token IN ITEMS
     "parentId"
     "appearance"
     "Appearance.qml"
+    "bluetooth"
+    "pages/system/Bluetooth.qml"
     "Animations.qml"
     "visual-effects"
     "VisualEffects.qml"

@@ -6,29 +6,35 @@
 #include <utility>
 
 SettingsController::SettingsController(QObject *parent)
-    : SettingsController(std::make_unique<SettingsNavigationModel>(), {}, {}, parent)
+    : SettingsController(std::make_unique<SettingsNavigationModel>(), {}, {}, {}, parent)
 {
 }
 
 SettingsController::SettingsController(SettingsUserProfile userProfile, QObject *parent)
-    : SettingsController(std::make_unique<SettingsNavigationModel>(), std::move(userProfile), {}, parent)
+    : SettingsController(std::make_unique<SettingsNavigationModel>(), std::move(userProfile), {}, {}, parent)
 {
 }
 
 SettingsController::SettingsController(std::unique_ptr<SettingsNavigationModel> navigationModel,
                                        SettingsUserProfile userProfile,
                                        SettingsIconResolver iconResolver,
+                                       std::unique_ptr<Astrea::System::BluetoothService> bluetoothService,
                                        QObject *parent)
     : QObject(parent)
     , m_navigationModel(std::move(navigationModel))
     , m_userProfile(std::move(userProfile))
     , m_iconResolver(std::move(iconResolver))
+    , m_bluetoothService(bluetoothService ? std::move(bluetoothService)
+                                          : std::make_unique<Astrea::System::BluetoothService>())
 {
     if (!m_navigationModel)
         m_navigationModel = std::make_unique<SettingsNavigationModel>();
     m_navigationModel->setParent(this);
 
-    m_currentDestinationId = m_navigationModel->firstNavigableSidebarDestination();
+    const QString preferredDestination = QStringLiteral("compositor");
+    m_currentDestinationId = m_navigationModel->containsNavigableId(preferredDestination)
+        ? preferredDestination
+        : m_navigationModel->firstNavigableSidebarDestination();
     m_selectedSidebarId = m_navigationModel->sidebarAncestorForId(m_currentDestinationId);
     if (!m_currentDestinationId.isEmpty()) {
         m_history.append(m_currentDestinationId);

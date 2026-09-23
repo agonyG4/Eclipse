@@ -8,7 +8,29 @@ Item {
     width: implicitWidth
     height: implicitHeight
     property bool checked: false
+    property string accessibleName: ""
     signal toggled(bool targetChecked)
+
+    focus: enabled
+    activeFocusOnTab: true
+    Accessible.role: Accessible.CheckBox
+    Accessible.name: accessibleName
+
+    Keys.onSpacePressed: function(event) {
+        event.accepted = true
+        if (toggle.enabled)
+            toggle.toggled(!toggle.checked)
+    }
+    Keys.onReturnPressed: function(event) {
+        event.accepted = true
+        if (toggle.enabled)
+            toggle.toggled(!toggle.checked)
+    }
+    Keys.onEnterPressed: function(event) {
+        event.accepted = true
+        if (toggle.enabled)
+            toggle.toggled(!toggle.checked)
+    }
 
     opacity: enabled ? 1.0 : 0.55
     Behavior on opacity { NumberAnimation { duration: Components.Theme.animationMicro } }

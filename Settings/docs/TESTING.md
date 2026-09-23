@@ -77,14 +77,20 @@ projection (including resource and special-character local paths), managed
 content-addressed removal, active-wallpaper rejection, bounded JSON removal,
 refreshed catalog responses, and Settings' non-optimistic removal transport.
 
+`settings-bluetooth-qml-test` loads the registered Bluetooth page offscreen
+with the real `BluetoothService` and an injected deterministic fake backend.
+It covers authoritative power/device presentation, page-owned discovery and
+pairing teardown, device actions, confirmation and Agent1 prompt flows,
+captured request IDs, and dialog synchronization without a live system D-Bus.
+
 The repository-level `create-source-archive-test` runs Bash syntax checks and
 qualifies a Git-based archive in an isolated temporary repository.
 
 ## QML Registration and Lint
 
-The authoritative QML list is in `qml/CMakeLists.txt`. It contains 46 files and
-is registered once by `astrea-settings-ui`. The application and integration
-tests consume the same module and generated plugin.
+The authoritative QML list is in `qml/CMakeLists.txt` and is registered once by
+`astrea-settings-ui`. The application, integration tests, and structural test
+derive their QML coverage from that module list.
 
 Build the module lint target from the existing build:
 

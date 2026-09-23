@@ -19,6 +19,8 @@ SettingsNavigationCatalog
   -> SettingsNavigationModel
 SettingsIconResolver
   -> SettingsController
+      -> Astrea::System::BluetoothService
+          -> shared Rust Bluetooth engine -> BlueZ/system D-Bus
 ThemeController
 SettingsTranslationController
 SettingsDockController -> shared DockConfigStore
@@ -47,17 +49,28 @@ The provider is owned by the QML engine and is not duplicated as a context
 property. It also owns metadata, QML startup, fatal warning reporting, and
 exactly-one-root validation.
 
+`SettingsApplication` starts `SettingsController.bluetooth` after constructing
+the controller and before loading QML. It registers the shared
+`Astrea::System` enum namespace before creating the QML engine. Bluetooth
+startup failure remains service state and does not prevent Settings from
+opening. The engine is destroyed before the controller, so page teardown can
+release its discovery lease and cancel an active pairing before the shared
+service is stopped by its destructor.
+
 ## Target Boundaries
 
 `astrea-settings-core` is a reusable static native library. Its public link
-interface is `Qt6::Core` and `astrea-shared-dock`; `Qt6::Network` is private.
+interface is `Qt6::Core`, `astrea-shared-dock`, and `astrea-shared-system`;
+`Qt6::Network` is private.
 The core contains the controller, navigation, services, and Linux account
 implementation, includes the header-only Paper protocol directly, and links
 the generated `astrea_settings_backend` target through the public QObject
-header. The Rust target is
-built by the supported CXX-Qt CMake integration; its generated QObject header
-is consumed by the C++ composition root. It does not link Qt QML, Qt Quick,
-Quick Controls, LayerShellQt, or a compositor library.
+header. The Settings Rust target is built by the supported CXX-Qt CMake
+integration; its generated QObject header is consumed by the C++ composition
+root. The shared system target supplies `BluetoothService`; Settings does not
+compile Bluetooth production sources or own another BlueZ/D-Bus implementation.
+The core does not link Qt QML, Qt Quick, Quick Controls, LayerShellQt, or a
+compositor library.
 
 `Settings/backend` is intentionally focused. The CXX-Qt QObject only projects
 typed Rust state into Qt-compatible properties, emits the existing notify
@@ -83,9 +96,10 @@ the Qt property/signal/invokable boundary. The legacy Settings-only
 `icon_theme` key and the Rust-owned `system_icon_theme` key stay separate.
 
 `astrea-settings-ui` is the only `Astrea.Settings 1.0` QML module and registers
-46 QML files. The application and QML integration tests consume that same
-target and generated plugin. The application additionally links the existing
-shared core and QML plugin for compositor-independent shared utilities.
+the authoritative file list from `qml/CMakeLists.txt`. The application and QML
+integration tests consume that same target and generated plugin. The
+application additionally links the existing shared core and QML plugin for
+compositor-independent shared utilities.
 
 The QML component taxonomy separates reusable interaction from page composition:
 `components/controls/` owns interactive primitives, while `components/form/`
@@ -139,6 +153,7 @@ single source of truth for row order and page routing. There is no numeric page
 index and no QML route-ID condition. The current routable descriptors are:
 
 ```text
+qrc:/qt/qml/Astrea/Settings/qml/pages/system/Bluetooth.qml
 qrc:/qt/qml/Astrea/Settings/qml/pages/system/Compositor.qml
 qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Appearance.qml
 qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/VisualEffects.qml
@@ -148,13 +163,15 @@ qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Dock.qml
 qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Animations.qml
 ```
 
-Rows without implemented pages remain visible but cannot be selected. The first
-navigable sidebar destination is supplied by the catalogue and is currently
-Compositor. The sidebar is flat: `Customization` remains highlighted while its
-nested Wallpaper or Dock destination is open. Hub pages render their children
-from controller metadata, and the controller maintains a bounded 64-entry
-Back/Forward history without duplicate current entries. Leaving Compositor
-destroys the page and recreates its local preview state when selected again.
+Rows without implemented pages remain visible but cannot be selected. The
+first navigable sidebar destination follows catalogue order and is Bluetooth.
+The preferred application destination remains Compositor while it is
+navigable, with the first navigable route as a safe fallback. The sidebar is
+flat: `Customization` remains highlighted while its nested Wallpaper or Dock
+destination is open. Hub pages render their children from controller metadata,
+and the controller maintains a bounded 64-entry Back/Forward history without
+duplicate current entries. Leaving a page destroys its local presentation
+state.
 
 ## Native Ownership
 
@@ -177,6 +194,15 @@ owns libc/NSS enumeration; `AdministrativeGroupPolicy` recognizes exactly
 
 `ThemeController` and `SettingsTranslationController` retain their existing
 public QML names and semantics, but live under their service ownership paths.
+
+`SettingsController.bluetooth` owns the shared
+`Astrea::System::BluetoothService`. The Bluetooth page reads authoritative
+power properties and the `BluetoothDeviceModel` and sends service commands;
+QML does not own Bluetooth policy or duplicate device state. While the page
+exists, it owns the `settings-bluetooth-page` discovery token, including while
+power is off. Page destruction releases that token and cancels an active
+pairing so an Agent1 request cannot outlive the page that can answer it. Pair,
+Trust, and Connect remain separate user actions; the page does not chain them.
 
 ### Animations backend migration
 

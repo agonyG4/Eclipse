@@ -17,6 +17,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlError>
+#include <QtQml/qqml.h>
 
 SettingsApplication::SettingsApplication(QGuiApplication &app)
     : QObject(&app)
@@ -46,7 +47,13 @@ int SettingsApplication::run()
     auto navigationModel = std::make_unique<SettingsNavigationModel>(navigationCatalog);
     SettingsIconResolver iconResolver;
     m_controller = std::make_unique<SettingsController>(std::move(navigationModel), userProfile,
-                                                         iconResolver, this);
+                                                         iconResolver,
+                                                         std::unique_ptr<Astrea::System::BluetoothService>{},
+                                                         this);
+    m_controller->bluetooth()->start();
+    qmlRegisterUncreatableMetaObject(
+        Astrea::System::staticMetaObject, "Astrea.System", 1, 0, "System",
+        QStringLiteral("Astrea.System contains shared system enums"));
     m_translationController = std::make_unique<SettingsTranslationController>();
     m_themeController = std::make_unique<ThemeController>();
     QObject::connect(m_controller->appearance(),

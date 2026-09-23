@@ -8,10 +8,32 @@ Item {
     property bool actionEnabled: true
     readonly property bool hovered: hoverArea.containsMouse
     property bool hasSubmenu: false
+    property string accessibleName: label
     property color hoverColor: destructive ? "#3a1a1a" : "#2c2c2e"
     property color textColor: destructive ? "#ff6b6b" : "#f2f2f7"
     property color disabledTextColor: "#636366"
     signal triggered()
+
+    focus: actionEnabled
+    activeFocusOnTab: true
+    Accessible.role: Accessible.Button
+    Accessible.name: accessibleName
+
+    Keys.onSpacePressed: function(event) {
+        event.accepted = true
+        if (actionRoot.actionEnabled)
+            actionRoot.triggered()
+    }
+    Keys.onReturnPressed: function(event) {
+        event.accepted = true
+        if (actionRoot.actionEnabled)
+            actionRoot.triggered()
+    }
+    Keys.onEnterPressed: function(event) {
+        event.accepted = true
+        if (actionRoot.actionEnabled)
+            actionRoot.triggered()
+    }
 
     width: parent ? parent.width : 192
     height: visible ? 32 : 0

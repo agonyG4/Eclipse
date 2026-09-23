@@ -71,6 +71,13 @@ pub struct PairingState {
 }
 
 impl PairingState {
+    #[cfg(test)]
+    pub(crate) fn expire_now_for_test(&mut self) {
+        if let Some(active) = self.active.as_mut() {
+            active.deadline = Instant::now();
+        }
+    }
+
     pub fn phase(&self) -> PairingPhase {
         self.phase
     }

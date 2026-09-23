@@ -134,6 +134,8 @@ pub struct AgentBroker {
     wake_tx: Sender<()>,
     wake_rx: Receiver<()>,
     prompt_timeout: Duration,
+    #[cfg(test)]
+    wake_count: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 #[derive(Debug, Default)]
@@ -200,6 +202,8 @@ impl AgentBroker {
             wake_tx,
             wake_rx,
             prompt_timeout,
+            #[cfg(test)]
+            wake_count: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
     }
 
@@ -253,20 +257,29 @@ impl AgentBroker {
             bluez_generation,
             device_path: device_path.to_owned(),
         };
-        if state.pairing.as_ref() != Some(&context) {
+        let changed = state.pairing.as_ref() != Some(&context);
+        if changed {
             cancel_locked(&mut state, PendingResponse::Canceled);
             state.pairing = Some(context);
         }
         drop(state);
-        self.notify();
+        if changed {
+            self.notify();
+        }
     }
 
     pub fn clear_pairing_context(&self) {
         let mut state = self.state.lock().expect("AgentBroker mutex poisoned");
-        cancel_locked(&mut state, PendingResponse::Canceled);
-        state.pairing = None;
+        let changed =
+            state.pairing.is_some() || state.interactive.is_some() || state.display.is_some();
+        if changed {
+            cancel_locked(&mut state, PendingResponse::Canceled);
+            state.pairing = None;
+        }
         drop(state);
-        self.notify();
+        if changed {
+            self.notify();
+        }
     }
 
     pub fn authorize_call(
@@ -598,10 +611,16 @@ impl AgentBroker {
 
     pub fn cancel_for_lifecycle(&self) {
         let mut state = self.state.lock().expect("AgentBroker mutex poisoned");
-        cancel_locked(&mut state, PendingResponse::Canceled);
-        state.pairing = None;
+        let changed =
+            state.pairing.is_some() || state.interactive.is_some() || state.display.is_some();
+        if changed {
+            cancel_locked(&mut state, PendingResponse::Canceled);
+            state.pairing = None;
+        }
         drop(state);
-        self.notify();
+        if changed {
+            self.notify();
+        }
     }
 
     pub fn on_service_stop(&self) {
@@ -618,11 +637,19 @@ impl AgentBroker {
 
     fn invalidate_connection(&self) {
         let mut state = self.state.lock().expect("AgentBroker mutex poisoned");
-        cancel_locked(&mut state, PendingResponse::Canceled);
-        state.authority = None;
-        state.pairing = None;
+        let changed = state.authority.is_some()
+            || state.pairing.is_some()
+            || state.interactive.is_some()
+            || state.display.is_some();
+        if changed {
+            cancel_locked(&mut state, PendingResponse::Canceled);
+            state.authority = None;
+            state.pairing = None;
+        }
         drop(state);
-        self.notify();
+        if changed {
+            self.notify();
+        }
     }
 
     async fn request_confirmation_like(
@@ -697,7 +724,7 @@ impl AgentBroker {
         } else {
             self.request_ids.allocate()?
         };
-        state.display = Some(AgentPromptView {
+        let prompt = AgentPromptView {
             active: true,
             request_id,
             pairing_epoch: pairing.pairing_epoch,
@@ -709,9 +736,13 @@ impl AgentBroker {
             entered: prompt_spec.entered,
             service_uuid: None,
             display_pin: prompt_spec.display_pin,
-        });
+        };
+        let changed = state.display.as_ref() != Some(&prompt);
+        state.display = Some(prompt);
         drop(state);
-        self.notify();
+        if changed {
+            self.notify();
+        }
         Ok(())
     }
 
@@ -729,12 +760,20 @@ impl AgentBroker {
     }
 
     fn notify(&self) {
+        #[cfg(test)]
+        self.wake_count
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let _ = self.wake_tx.try_send(());
     }
 
     #[cfg(test)]
     pub(crate) fn notify_for_test(&self) {
         self.notify();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn wake_count_for_test(&self) -> usize {
+        self.wake_count.load(std::sync::atomic::Ordering::SeqCst)
     }
 }
 
@@ -1022,6 +1061,38 @@ mod tests {
         };
         assert_eq!(ids.allocate(), Ok(u64::MAX));
         assert_eq!(ids.allocate(), Err(AgentError::Rejected));
+    }
+
+    #[test]
+    fn empty_pairing_context_clear_does_not_emit_a_wake() {
+        let broker = AgentBroker::new();
+        let before = broker.wake_count_for_test();
+
+        broker.clear_pairing_context();
+
+        assert_eq!(broker.wake_count_for_test(), before);
+    }
+
+    #[test]
+    fn unchanged_pairing_context_and_display_prompt_do_not_emit_wakes() {
+        let broker = AgentBroker::new();
+        broker.set_authority(SESSION, BLUEZ, OWNER);
+        broker.set_pairing_context(3, SESSION, BLUEZ, DEVICE);
+        let pairing_context_wakes = broker.wake_count_for_test();
+
+        broker.set_pairing_context(3, SESSION, BLUEZ, DEVICE);
+
+        assert_eq!(broker.wake_count_for_test(), pairing_context_wakes);
+
+        broker
+            .display_passkey(OWNER, SESSION, BLUEZ, DEVICE, 123456, 4)
+            .expect("initial display prompt");
+        let display_wakes = broker.wake_count_for_test();
+        broker
+            .display_passkey(OWNER, SESSION, BLUEZ, DEVICE, 123456, 4)
+            .expect("identical display prompt");
+
+        assert_eq!(broker.wake_count_for_test(), display_wakes);
     }
 
     fn release_message(sender: &str) -> Message {

@@ -171,6 +171,7 @@ pub enum CoreAction {
         operation_id: u64,
         pairing_epoch: u64,
         device_path: String,
+        registration: AgentRegistrationToken,
     },
     CancelPairing {
         session_generation: u64,
@@ -201,6 +202,27 @@ pub enum CoreAction {
         owner: String,
         token: InterfaceRefreshToken,
     },
+}
+
+/// Opaque identity for the BlueZ Agent registration authorizing one Pair call.
+#[doc(hidden)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AgentRegistrationToken {
+    pub(crate) session_generation: u64,
+    pub(crate) bluez_generation: u64,
+    pub(crate) owner: String,
+    pub(crate) epoch: u64,
+}
+
+impl AgentRegistrationToken {
+    pub fn new(session_generation: u64, bluez_generation: u64, owner: String, epoch: u64) -> Self {
+        Self {
+            session_generation,
+            bluez_generation,
+            owner,
+            epoch,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -711,6 +733,7 @@ impl BluetoothCore {
         bluez_generation: u64,
         operation_id: u64,
         pairing_epoch: u64,
+        registration: AgentRegistrationToken,
     ) -> Option<CoreAction> {
         if !self.accepts_bluez(session_generation, bluez_generation) {
             return None;
@@ -719,17 +742,24 @@ impl BluetoothCore {
         if identity.operation_id != operation_id || identity.pairing_epoch != pairing_epoch {
             return None;
         }
+        let owner = self.owner.as_ref()?;
+        if registration.session_generation != session_generation
+            || registration.bluez_generation != bluez_generation
+            || registration.owner != *owner
+        {
+            return None;
+        }
         if !self.pairing.agent_registered(&identity) {
             return None;
         }
-        let owner = self.owner.clone()?;
         Some(CoreAction::Pair {
             session_generation,
             bluez_generation,
-            owner,
+            owner: owner.clone(),
             operation_id,
             pairing_epoch,
             device_path: identity.device_path,
+            registration,
         })
     }
 
@@ -779,6 +809,33 @@ impl BluetoothCore {
         let result = self.pairing.pair_method_reply(&identity, success, error);
         self.refresh_snapshot();
         result == PairingCompletion::Failed
+    }
+
+    pub(crate) fn is_current_pair_action(&self, action: &CoreAction) -> bool {
+        let CoreAction::Pair {
+            session_generation,
+            bluez_generation,
+            owner,
+            operation_id,
+            pairing_epoch,
+            device_path,
+            registration,
+        } = action
+        else {
+            return false;
+        };
+        let Some(identity) = self.pairing.active_identity() else {
+            return false;
+        };
+        *session_generation == self.session_generation
+            && *bluez_generation == self.bluez_generation
+            && self.owner.as_deref() == Some(owner.as_str())
+            && identity.operation_id == *operation_id
+            && identity.pairing_epoch == *pairing_epoch
+            && identity.device_path == *device_path
+            && registration.session_generation == *session_generation
+            && registration.bluez_generation == *bluez_generation
+            && registration.owner == *owner
     }
 
     pub fn cancel_pairing(&mut self) -> Option<CoreAction> {
@@ -946,6 +1003,9 @@ impl BluetoothCore {
                 return false;
             }
         }
+        if self.agent_prompt == prompt {
+            return false;
+        }
         self.agent_prompt = prompt;
         self.refresh_snapshot();
         true
@@ -1059,6 +1119,11 @@ impl BluetoothCore {
         .into_iter()
         .flatten()
         .min()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn expire_pairing_now_for_test(&mut self) {
+        self.pairing.expire_now_for_test();
     }
 
     pub fn operation_failed(

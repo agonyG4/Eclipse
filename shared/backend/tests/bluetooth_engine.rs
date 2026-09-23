@@ -1,7 +1,9 @@
 use astrea_system_backend::bluetooth::agent::{AgentPromptKind, AgentPromptView};
 use astrea_system_backend::bluetooth::device::BluetoothDevice;
 use astrea_system_backend::bluetooth::discovery::DiscoveryReply;
-use astrea_system_backend::bluetooth::engine::{BluetoothCore, CoreAction, ServiceState};
+use astrea_system_backend::bluetooth::engine::{
+    AgentRegistrationToken, BluetoothCore, CoreAction, ServiceState,
+};
 use astrea_system_backend::bluetooth::object_store::{InterfaceMap, PropertyMap, PropertyValue};
 use std::collections::BTreeMap;
 use std::time::Instant;
@@ -728,6 +730,12 @@ fn pair_policy_requires_authoritative_unpaired_selected_device_and_registers_fir
             bluez_generation,
             operation_id,
             pairing_epoch,
+            AgentRegistrationToken::new(
+                session_generation,
+                bluez_generation,
+                String::from(":1.42"),
+                pairing_epoch,
+            ),
         )
         .expect("registered agent produces Pair");
     assert!(matches!(pair, CoreAction::Pair { .. }));
@@ -773,7 +781,13 @@ fn pairing_waits_for_authoritative_paired_and_keeps_user_errors_local() {
         panic!("register action");
     };
     let pair = core
-        .agent_registered(session, generation, operation_id, pairing_epoch)
+        .agent_registered(
+            session,
+            generation,
+            operation_id,
+            pairing_epoch,
+            AgentRegistrationToken::new(session, generation, String::from(":1.42"), pairing_epoch),
+        )
         .expect("pair action");
     let CoreAction::Pair { device_path, .. } = pair else {
         panic!("pair action");
@@ -855,6 +869,9 @@ fn active_agent_prompt_must_match_the_current_pairing_identity() {
         ..AgentPromptView::default()
     };
     assert!(core.agent_prompt_changed(session_generation, bluez_generation, valid_prompt.clone()));
+    let snapshot_after_prompt = core.snapshot().clone();
+    assert!(!core.agent_prompt_changed(session_generation, bluez_generation, valid_prompt.clone()));
+    assert_eq!(core.snapshot(), &snapshot_after_prompt);
 
     let mut stale_epoch = valid_prompt.clone();
     stale_epoch.pairing_epoch += 1;
@@ -912,7 +929,13 @@ fn pairing_failure_cancel_and_generation_replacement_do_not_degrade_service() {
         panic!("register action");
     };
     let _pair = core
-        .agent_registered(session, generation, operation_id, pairing_epoch)
+        .agent_registered(
+            session,
+            generation,
+            operation_id,
+            pairing_epoch,
+            AgentRegistrationToken::new(session, generation, String::from(":1.42"), pairing_epoch),
+        )
         .expect("pair action");
     assert!(core.pair_reply(
         session,

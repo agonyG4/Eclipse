@@ -112,6 +112,12 @@ private slots:
 void ThemeControllerTest::qtPropertiesEnforceAppearanceOwnership()
 {
     const QMetaObject *metaObject = &ThemeController::staticMetaObject;
+    const QByteArray applyConfigSignature = QMetaObject::normalizedSignature("applyConfig(QVariantMap)");
+    QVERIFY2(metaObject->indexOfMethod(applyConfigSignature.constData()) < 0,
+             "applyConfig must not be exposed through the Qt meta-object");
+    QVERIFY(metaObject->indexOfMethod("reload()") >= 0);
+    QVERIFY(metaObject->indexOfMethod("save()") >= 0);
+
     const QStringList appearanceProperties {
         QStringLiteral("themeMode"),
         QStringLiteral("themePreference"),

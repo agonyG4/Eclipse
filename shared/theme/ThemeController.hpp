@@ -47,7 +47,7 @@ public:
     QString configPath() const;
     bool loaded() const;
 
-    Q_INVOKABLE void applyConfig(const QVariantMap &config);
+    void applyConfig(const QVariantMap &config);
     Q_INVOKABLE void reload();
     Q_INVOKABLE void save();
 

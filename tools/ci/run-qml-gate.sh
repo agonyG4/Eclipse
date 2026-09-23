@@ -11,7 +11,7 @@ export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-2}"
 build_dir="${ASTREA_CMAKE_BUILD_DIR:-$project_root/build/debug}"
 printf 'QML gate build directory: %s\n' "$(realpath -m "$build_dir")"
 
-cmake --fresh -S "$project_root" -B "$build_dir" -G Ninja \
+cmake -S "$project_root" -B "$build_dir" -G Ninja \
     -DBUILD_TESTING=ON \
     -DASTREA_BUILD_TESTS=ON \
     -DASTREA_ENABLE_LAYER_SHELL=ON \

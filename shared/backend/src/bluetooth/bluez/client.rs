@@ -30,6 +30,7 @@ const TASK_QUEUE_CAPACITY: usize = 64;
 const SIGNAL_QUEUE_CAPACITY: usize = 32;
 const DBUS_CALL_TIMEOUT: Duration = Duration::from_millis(3_000);
 const PAIRING_DBUS_TIMEOUT: Duration = Duration::from_secs(130);
+const SHUTDOWN_PAIRING_CANCELLATION_TIMEOUT: Duration = Duration::from_millis(500);
 
 #[derive(Clone, Debug)]
 enum WorkerCommand {
@@ -146,7 +147,6 @@ impl QueuedActions {
 
     fn queue_cancellation(&mut self, action: CoreAction) {
         debug_assert!(matches!(&action, CoreAction::CancelPairing { .. }));
-        self.mark_cancellation_requested(&action);
         self.cancellation = Some(action);
     }
 
@@ -285,6 +285,17 @@ impl PairTransportRetirement {
             && self.identity.operation_id == *operation_id
             && self.identity.pairing_epoch == *pairing_epoch
             && self.identity.device_path == *device_path
+    }
+
+    fn cancellation_action(&self) -> CoreAction {
+        CoreAction::CancelPairing {
+            session_generation: self.identity.session_generation,
+            bluez_generation: self.identity.bluez_generation,
+            owner: self.identity.owner.clone(),
+            operation_id: self.identity.operation_id,
+            pairing_epoch: self.identity.pairing_epoch,
+            device_path: self.identity.device_path.clone(),
+        }
     }
 }
 
@@ -1177,6 +1188,42 @@ fn best_effort_unregister_agent(session: Option<BusSessionHandle>) {
     .detach();
 }
 
+fn best_effort_worker_shutdown(
+    session: Option<BusSessionHandle>,
+    pair_cancellation: Option<(BusSessionHandle, CoreAction)>,
+    stop_discovery: Option<CoreAction>,
+) {
+    best_effort_stop_discovery(session.clone(), stop_discovery);
+
+    let Some((pair_session, action)) = pair_cancellation else {
+        best_effort_unregister_agent(session);
+        return;
+    };
+    let same_session = session
+        .as_ref()
+        .is_some_and(|current| Arc::ptr_eq(current, &pair_session));
+    let unregister_session = if same_session { None } else { session };
+    smol::spawn(async move {
+        let cancellation = pair_session.execute(action);
+        let timeout = async_io::Timer::after(SHUTDOWN_PAIRING_CANCELLATION_TIMEOUT);
+        futures::pin_mut!(cancellation, timeout);
+        let _ = futures::future::select(cancellation, timeout).await;
+
+        let unregister_session = if same_session {
+            Some(pair_session)
+        } else {
+            unregister_session
+        };
+        if let Some(unregister_session) = unregister_session {
+            if let Some(broker) = unregister_session.agent_broker() {
+                broker.on_service_stop();
+            }
+            unregister_session.unregister_agent().await;
+        }
+    })
+    .detach();
+}
+
 fn clear_agent_broker(agent_broker: &std::sync::Mutex<Option<AgentBroker>>) {
     *agent_broker
         .lock()
@@ -1271,6 +1318,7 @@ async fn run_worker_with_transport<F>(
     let mut owner = String::new();
     let mut tasks = FuturesUnordered::<TaskFuture>::new();
     let mut pair_task = None::<TaskFuture>;
+    let mut pair_transport_session = None::<BusSessionHandle>;
     let mut cancellation_tasks = FuturesUnordered::<TaskFuture>::new();
     let mut queued_actions = QueuedActions::default();
     let mut in_flight_device_paths = BTreeSet::<String>::new();
@@ -1510,6 +1558,10 @@ async fn run_worker_with_transport<F>(
             cancellation_tasks = FuturesUnordered::new();
         }
 
+        if queued_actions.pair_transport.is_none() {
+            pair_transport_session = None;
+        }
+
         if generation_replaced {
             retire_in_flight_tasks(&mut tasks, &mut in_flight_device_paths);
             pair_task = None;
@@ -1517,18 +1569,40 @@ async fn run_worker_with_transport<F>(
             queued_actions.cancellation = None;
             queued_actions.pair = None;
             queued_actions.pair_transport = None;
+            pair_transport_session = None;
         }
 
         if shutdown_requested {
+            let pair_cancellation = queued_actions
+                .pair_transport
+                .as_ref()
+                .zip(pair_transport_session.as_ref())
+                .map(|(pair_transport, pair_session)| {
+                    (
+                        Arc::clone(pair_session),
+                        pair_transport.cancellation_action(),
+                    )
+                });
+            let _ = core.cancel_pairing();
             let current_session = session.take();
-            best_effort_stop_discovery(current_session.clone(), core.stop_discovery_action());
-            best_effort_unregister_agent(current_session);
+            best_effort_worker_shutdown(
+                current_session,
+                pair_cancellation,
+                core.stop_discovery_action(),
+            );
             clear_agent_broker(&agent_broker);
             return;
         }
 
         if let Some(requested) = lifecycle_changed {
             if !requested.running && requested.session_generation >= core.session_generation() {
+                handle_cancel_pairing(
+                    core.session_generation(),
+                    &mut core,
+                    &mut queued_actions,
+                    on_snapshot.as_ref(),
+                );
+                queued_actions.sync_pairing_lifecycle(&core);
                 dispatch_pairing_cancellation(
                     &mut queued_actions,
                     &mut cancellation_tasks,
@@ -1631,6 +1705,7 @@ async fn run_worker_with_transport<F>(
                 &mut queued_actions,
                 &mut in_flight_device_paths,
             );
+            pair_transport_session = None;
             core.connection_lost(core.session_generation(), error);
             on_snapshot(core.snapshot().clone());
         }
@@ -1648,6 +1723,9 @@ async fn run_worker_with_transport<F>(
         }
 
         queued_actions.sync_pairing_lifecycle(&core);
+        if queued_actions.pair_transport.is_none() {
+            pair_transport_session = None;
+        }
         dispatch_pairing_cancellation(
             &mut queued_actions,
             &mut cancellation_tasks,
@@ -1670,6 +1748,7 @@ async fn run_worker_with_transport<F>(
                     in_flight_device_paths.insert(path.clone());
                 }
                 queued_actions.start_pair_transport(&action);
+                pair_transport_session = Some(Arc::clone(session));
                 pair_task = Some(session.execute(action));
             }
         }
@@ -1736,7 +1815,14 @@ fn dispatch_pairing_cancellation(
             && *bluez_generation == core.bluez_generation()
             && action_owner == owner
     );
-    if current && let Some(session) = session {
+    let exact_active_transport = queued
+        .pair_transport
+        .as_ref()
+        .is_some_and(|pair_transport| pair_transport.matches_cancellation(&action));
+    if current
+        && exact_active_transport
+        && let Some(session) = session
+    {
         queued.mark_cancellation_requested(&action);
         cancellation_tasks.push(session.execute(action));
     }
@@ -3100,6 +3186,7 @@ mod worker_lifecycle_tests {
         events: Mutex<Vec<&'static str>>,
         pair_release: Mutex<Option<Sender<Result<(), String>>>>,
         pair_devices: Mutex<Vec<String>>,
+        cancel_pairing_devices: Mutex<Vec<String>>,
         probes: AtomicUsize,
         active: AtomicUsize,
         max_active: AtomicUsize,
@@ -3114,6 +3201,7 @@ mod worker_lifecycle_tests {
                 events: Mutex::new(Vec::new()),
                 pair_release: Mutex::new(None),
                 pair_devices: Mutex::new(Vec::new()),
+                cancel_pairing_devices: Mutex::new(Vec::new()),
                 probes: AtomicUsize::new(0),
                 active: AtomicUsize::new(0),
                 max_active: AtomicUsize::new(0),
@@ -3201,6 +3289,21 @@ mod worker_lifecycle_tests {
 
         fn pair_devices(&self) -> Vec<String> {
             self.pair_devices.lock().expect("Pair devices lock").clone()
+        }
+
+        fn record_cancel_pairing(&self, device_path: String) {
+            self.cancel_pairing_devices
+                .lock()
+                .expect("CancelPairing devices lock")
+                .push(device_path);
+            self.record_event("cancel_pairing");
+        }
+
+        fn cancel_pairing_devices(&self) -> Vec<String> {
+            self.cancel_pairing_devices
+                .lock()
+                .expect("CancelPairing devices lock")
+                .clone()
         }
 
         fn complete_pair(&self) {
@@ -3481,8 +3584,10 @@ mod worker_lifecycle_tests {
                         })
                     }
                 }
-                CoreAction::CancelPairing { .. } => {
-                    operations.record_event("cancel_pairing");
+                CoreAction::CancelPairing {
+                    ref device_path, ..
+                } => {
+                    operations.record_cancel_pairing(device_path.clone());
                     Box::pin(async move {
                         TaskResult::Operation {
                             action,
@@ -4397,7 +4502,95 @@ mod worker_lifecycle_tests {
         session.operations.wait_for_event("pair");
         harness.cancel_pairing();
         session.operations.wait_for_event("cancel_pairing");
+        assert_eq!(
+            session.operations.cancel_pairing_devices(),
+            ["/org/bluez/hci0/dev_AA"]
+        );
         session.operations.complete_pair();
+        harness.shutdown();
+    }
+
+    #[test]
+    fn queued_pair_cancellation_does_not_dispatch_physical_cancellation() {
+        let mut core = ready_unpaired_core();
+        let register = core.pair_device(AGENT_DEVICE).expect("Pair request");
+        let CoreAction::RegisterAgent {
+            operation_id,
+            pairing_epoch,
+            ..
+        } = register
+        else {
+            panic!("agent registration action");
+        };
+        let pair = core
+            .agent_registered(
+                1,
+                1,
+                operation_id,
+                pairing_epoch,
+                AgentRegistrationToken::new(1, 1, AGENT_OWNER.to_owned(), pairing_epoch),
+            )
+            .expect("registered Pair action");
+        let plan = session_plan_with_pairing(Some(AGENT_OWNER), None, &[AGENT_DEVICE], false);
+        let operations = Arc::clone(&plan.control.operations);
+        let session: BusSessionHandle = Arc::new(plan.session);
+        let mut queued = QueuedActions {
+            pair: Some(pair),
+            ..QueuedActions::default()
+        };
+        let in_flight_device_paths = BTreeSet::from([AGENT_DEVICE.to_owned()]);
+        assert!(
+            super::ordinary_device_path(queued.pair.as_ref().expect("queued Pair"))
+                .is_some_and(|path| in_flight_device_paths.contains(path))
+        );
+
+        let cancel = core.cancel_pairing().expect("queued Pair cancellation");
+        enqueue_actions([cancel], &mut queued, &mut core, &|_| {});
+        let mut cancellation_tasks = FuturesUnordered::<TaskFuture>::new();
+        dispatch_pairing_cancellation(
+            &mut queued,
+            &mut cancellation_tasks,
+            Some(&session),
+            &core,
+            AGENT_OWNER,
+        );
+
+        assert!(operations.cancel_pairing_devices().is_empty());
+        assert!(operations.pair_devices().is_empty());
+        assert!(cancellation_tasks.is_empty());
+        assert!(
+            queued
+                .pair
+                .as_ref()
+                .is_some_and(|action| !core.is_current_pair_action(action))
+        );
+    }
+
+    #[test]
+    fn canceling_replacement_pair_does_not_cancel_its_undispatched_transport() {
+        let (harness, session) = ready_unpaired_worker(&[AGENT_DEVICE, AGENT_DEVICE_B]);
+        harness.pair(AGENT_DEVICE);
+        session.operations.wait_for_event_count("pair", 1);
+
+        harness.cancel_pairing();
+        harness.wait_for(|snapshot| !snapshot.pairing);
+        session.operations.wait_for_event_count("cancel_pairing", 1);
+        assert_eq!(session.operations.cancel_pairing_devices(), [AGENT_DEVICE]);
+
+        harness.pair(AGENT_DEVICE_B);
+        harness.wait_for(|snapshot| {
+            snapshot.pairing && snapshot.pairing_device_path == AGENT_DEVICE_B
+        });
+        harness.cancel_pairing();
+        harness.wait_for(|snapshot| !snapshot.pairing);
+        harness.wait_for_quiescence();
+
+        assert_eq!(session.operations.cancel_pairing_devices(), [AGENT_DEVICE]);
+        assert_eq!(session.operations.pair_devices(), [AGENT_DEVICE]);
+
+        session.operations.complete_pair();
+        harness.wait_for_quiescence();
+        assert_eq!(session.operations.pair_devices(), [AGENT_DEVICE]);
         harness.shutdown();
     }
 
@@ -4543,6 +4736,13 @@ mod worker_lifecycle_tests {
         harness.stop();
         harness
             .wait_for(|snapshot| snapshot.state == crate::bluetooth::engine::ServiceState::Stopped);
+        old_session
+            .operations
+            .wait_for_event_count("cancel_pairing", 1);
+        assert_eq!(
+            old_session.operations.cancel_pairing_devices(),
+            [AGENT_DEVICE]
+        );
         harness.start();
         harness.wait_for(|snapshot| {
             snapshot.state == crate::bluetooth::engine::ServiceState::Ready
@@ -4562,6 +4762,96 @@ mod worker_lifecycle_tests {
         );
         new_session.operations.complete_pair();
         harness.shutdown();
+    }
+
+    #[test]
+    fn service_stop_does_not_physically_cancel_queued_replacement_pair() {
+        let (harness, session) = ready_unpaired_worker(&[AGENT_DEVICE, AGENT_DEVICE_B]);
+        harness.pair(AGENT_DEVICE);
+        session.operations.wait_for_event_count("pair", 1);
+        harness.cancel_pairing();
+        harness.wait_for(|snapshot| !snapshot.pairing);
+        session.operations.wait_for_event_count("cancel_pairing", 1);
+
+        harness.pair(AGENT_DEVICE_B);
+        harness.wait_for(|snapshot| {
+            snapshot.pairing && snapshot.pairing_device_path == AGENT_DEVICE_B
+        });
+        harness.stop();
+        harness
+            .wait_for(|snapshot| snapshot.state == crate::bluetooth::engine::ServiceState::Stopped);
+
+        assert_eq!(session.operations.cancel_pairing_devices(), [AGENT_DEVICE]);
+        assert_eq!(session.operations.pair_devices(), [AGENT_DEVICE]);
+        session.operations.complete_pair();
+        harness.shutdown();
+    }
+
+    #[test]
+    fn service_stop_with_only_queued_pair_cancels_it_locally() {
+        let mut core = ready_unpaired_core();
+        let register = core.pair_device(AGENT_DEVICE).expect("Pair request");
+        let CoreAction::RegisterAgent {
+            operation_id,
+            pairing_epoch,
+            ..
+        } = register
+        else {
+            panic!("agent registration action");
+        };
+        let pair = core
+            .agent_registered(
+                1,
+                1,
+                operation_id,
+                pairing_epoch,
+                AgentRegistrationToken::new(1, 1, AGENT_OWNER.to_owned(), pairing_epoch),
+            )
+            .expect("registered Pair action");
+        let plan = session_plan_with_pairing(Some(AGENT_OWNER), None, &[AGENT_DEVICE], false);
+        let operations = Arc::clone(&plan.control.operations);
+        let session: BusSessionHandle = Arc::new(plan.session);
+        let mut queued = QueuedActions {
+            pair: Some(pair),
+            ..QueuedActions::default()
+        };
+
+        super::handle_cancel_pairing(core.session_generation(), &mut core, &mut queued, &|_| {});
+        let mut cancellation_tasks = FuturesUnordered::<TaskFuture>::new();
+        dispatch_pairing_cancellation(
+            &mut queued,
+            &mut cancellation_tasks,
+            Some(&session),
+            &core,
+            AGENT_OWNER,
+        );
+        let mut ordinary_tasks = FuturesUnordered::<TaskFuture>::new();
+        let mut in_flight_device_paths = BTreeSet::new();
+        super::retire_service_work(
+            &mut ordinary_tasks,
+            &mut queued,
+            &mut in_flight_device_paths,
+        );
+        assert!(core.stop_generation(2));
+
+        assert!(!core.snapshot().pairing);
+        assert!(queued.pair.is_none());
+        assert!(queued.pair_transport.is_none());
+        assert!(operations.cancel_pairing_devices().is_empty());
+        assert!(operations.pair_devices().is_empty());
+        assert!(cancellation_tasks.is_empty());
+    }
+
+    #[test]
+    fn worker_shutdown_requests_best_effort_cancellation_for_active_pair() {
+        let (harness, session) = ready_unpaired_worker(&[AGENT_DEVICE]);
+        harness.pair(AGENT_DEVICE);
+        session.operations.wait_for_event_count("pair", 1);
+
+        harness.shutdown();
+        session.operations.wait_for_event_count("cancel_pairing", 1);
+
+        assert_eq!(session.operations.cancel_pairing_devices(), [AGENT_DEVICE]);
     }
 
     #[test]
@@ -4747,6 +5037,7 @@ mod worker_lifecycle_tests {
                 AgentRegistrationToken::new(1, 1, AGENT_OWNER.to_owned(), pairing_epoch),
             )
             .expect("registered Pair action");
+        let pair_transport = pair.clone();
         assert!(core.snapshot().pairing);
 
         let plan = session_plan_with_pairing(Some(AGENT_OWNER), None, &[AGENT_DEVICE], false);
@@ -4769,6 +5060,7 @@ mod worker_lifecycle_tests {
 
         let cancel = core.cancel_pairing().expect("active Pair cancellation");
         let mut queued = saturated_action_queue();
+        queued.start_pair_transport(&pair_transport);
         enqueue_actions([cancel], &mut queued, &mut core, &|_| {});
         assert_eq!(queued.ordinary.len(), TASK_QUEUE_CAPACITY);
         assert!(queued.cancellation.is_some());
@@ -4809,6 +5101,7 @@ mod worker_lifecycle_tests {
                 AgentRegistrationToken::new(1, 1, AGENT_OWNER.to_owned(), pairing_epoch),
             )
             .expect("registered Pair action");
+        let pair_transport = pair.clone();
 
         let plan = session_plan_with_pairing(Some(AGENT_OWNER), None, &[AGENT_DEVICE], false);
         let (_, tracker_token) = plan
@@ -4833,6 +5126,7 @@ mod worker_lifecycle_tests {
             Some("Bluetooth pairing timed out")
         );
         let mut queued = saturated_action_queue();
+        queued.start_pair_transport(&pair_transport);
         enqueue_actions(timed_out, &mut queued, &mut core, &|_| {});
         assert_eq!(queued.ordinary.len(), TASK_QUEUE_CAPACITY);
 
@@ -4853,12 +5147,30 @@ mod worker_lifecycle_tests {
     #[test]
     fn old_generation_cancellation_is_not_sent_to_the_replacement_owner() {
         let mut core = ready_unpaired_core();
-        let _ = core.pair_device(AGENT_DEVICE).expect("Pair request");
+        let register = core.pair_device(AGENT_DEVICE).expect("Pair request");
+        let CoreAction::RegisterAgent {
+            operation_id,
+            pairing_epoch,
+            ..
+        } = register
+        else {
+            panic!("agent registration action");
+        };
+        let pair = core
+            .agent_registered(
+                1,
+                1,
+                operation_id,
+                pairing_epoch,
+                AgentRegistrationToken::new(1, 1, AGENT_OWNER.to_owned(), pairing_epoch),
+            )
+            .expect("registered Pair action");
         let cancel = core.cancel_pairing().expect("active Pair cancellation");
         let plan = session_plan_with_pairing(Some(AGENT_OWNER), None, &[AGENT_DEVICE], false);
         let operations = Arc::clone(&plan.control.operations);
         let session: BusSessionHandle = Arc::new(plan.session);
         let mut queued = saturated_action_queue();
+        queued.start_pair_transport(&pair);
         enqueue_actions([cancel], &mut queued, &mut core, &|_| {});
 
         let _ = core.owner_changed(1, Some(String::from(":1.84")));
@@ -4872,6 +5184,7 @@ mod worker_lifecycle_tests {
         );
 
         assert!(!operations.events().contains(&"cancel_pairing"));
+        assert!(operations.cancel_pairing_devices().is_empty());
         assert!(cancellation_tasks.is_empty());
     }
 

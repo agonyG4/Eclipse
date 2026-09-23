@@ -83,19 +83,19 @@ private slots:
     void loadsIconsRouteOffscreen();
     void iconsPageShowsInstalledCatalogAndSearchEmptyStates();
     void iconsPageReconcilesExternalPersistedSelectionOnRefresh();
-    void appearanceAndVisualEffectsPreviewsUseCurrentWallpaperSnapshot();
-    void materialPreviewFrostedGeometryMatchesFallback();
-    void materialShowcaseIdentityNamesAreDistinct();
+    void visualEffectsPreviewUsesEffectiveMaterialSnapshot();
+    void materialPreviewFallbackUsesEffectiveSnapshot();
+    void materialShowcaseMarksLocalApproximation();
     void appearanceReusesSnapshotAndUpdatesWithoutRecreation();
     void appearanceDoesNotRefreshWhileWallpaperBusy();
     void appearancePreviewFallsBackWithoutWallpaperService();
-    void materialPreviewRendererHandoffIsFailSafe();
+    void visualEffectsAdvancedTogglesWithMouseAndKeyboard();
     void appearanceChoicesUpdateController();
     void appearanceChoicesPreserveExternalControllerPropagation();
     void appearanceIconChoicesPreserveControllerPropagation();
     void appearanceAccentChoicesUpdateController();
     void appearancePersistenceErrorsAreVisibleOnlyWhenPresent();
-    void visualEffectsChoicesUpdateShellStyle();
+    void visualEffectsPageUsesTypedMaterialController();
     void loadsWallpaperRouteFromHubOffscreen();
     void loadsDockRouteFromHubOffscreen();
     void navigatesBackAndForwardFromHub();
@@ -505,16 +505,22 @@ void SettingsQmlSmokeTest::loadsVisualEffectsRouteFromHubOffscreen()
     QObject *root = engine.rootObjects().constFirst();
     QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("visualEffectsPage")) != nullptr,
                              1000);
-    QObject *page = root->findChild<QObject *>(QStringLiteral("visualEffectsPage"));
+    auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(
+        QStringLiteral("visualEffectsPage")));
     QVERIFY(page != nullptr);
-    for (const auto name : {"materialOption-default", "materialOption-transparent",
-                            "materialOption-frosted"}) {
-        QVERIFY2(page->findChild<QObject *>(QString::fromLatin1(name)) != nullptr, name);
-    }
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("visualEffectsMaterialPreview")) != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("materialPositionSlider")) != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("visualEffectsAdvancedToggle")) != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("visualEffectsUnavailable")) != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("materialOption-default")) == nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("materialOption-transparent")) == nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("materialOption-frosted")) == nullptr);
+    auto *advanced = page->findChild<QObject *>(QStringLiteral("visualEffectsAdvancedCard"));
+    QVERIFY(advanced != nullptr);
+    QCOMPARE(advanced->property("visible").toBool(), false);
     QVERIFY2(qmlWarnings.isEmpty(),
              qPrintable(qmlWarnings.isEmpty() ? QString() : qmlWarnings.constFirst().toString()));
 }
-
 void SettingsQmlSmokeTest::loadsIconsRouteOffscreen()
 {
     QTemporaryDir home;
@@ -736,165 +742,44 @@ void SettingsQmlSmokeTest::iconsPageReconcilesExternalPersistedSelectionOnRefres
     QCOMPARE(persisted.value(QStringLiteral("unknown")).toInt(), 42);
 }
 
-void SettingsQmlSmokeTest::appearanceAndVisualEffectsPreviewsUseCurrentWallpaperSnapshot()
+void SettingsQmlSmokeTest::visualEffectsPreviewUsesEffectiveMaterialSnapshot()
 {
+    // The Visual Effects page uses one semantic preview bound to the Rust
+    // controller snapshot while sharing the current wallpaper snapshot.
     QTemporaryDir runtime;
-    QTemporaryDir images;
+    QTemporaryDir home;
     QVERIFY(runtime.isValid());
-    QVERIFY(images.isValid());
-    QVERIFY(QDir(runtime.path()).mkpath(QStringLiteral("astrea-shell")));
+    QVERIFY(home.isValid());
     RuntimeEnvironmentGuard runtimeGuard(runtime.path());
-
-    const auto previewPath = writeWallpaperImage(
-        images.filePath(QStringLiteral("appearance-current.png")), QColor("#456e9d"));
-    const auto endpoint = QDir(runtime.path()).filePath(QStringLiteral("astrea-shell/wallpaper.sock"));
-    QLocalServer server;
-    QVERIFY(server.listen(endpoint));
-    int requestCount = 0;
-    QByteArray requestBuffer;
-    QObject::connect(&server, &QLocalServer::newConnection, this, [&, previewPath] {
-        auto *socket = server.nextPendingConnection();
-        connect(socket, &QLocalSocket::readyRead, this, [&, socket, previewPath] {
-            requestBuffer += socket->readAll();
-            if (!requestBuffer.endsWith('\n'))
-                return;
-            const auto line = QString::fromUtf8(requestBuffer).trimmed();
-            requestBuffer.clear();
-            if (!line.startsWith(QStringLiteral("wallpaper get")))
-                return;
-            ++requestCount;
-            socket->write(appearanceWallpaperResponse(previewPath, QStringLiteral("contain"), 0));
-            socket->flush();
-        });
-    });
+    HomeEnvironmentGuard homeGuard(home.path());
 
     SettingsController settingsController;
     SettingsTranslationController translationController;
     ThemeController themeController;
     QQmlApplicationEngine engine;
-    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"),
-                                             &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
     engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
     engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
     engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
-
     QCOMPARE(engine.rootObjects().size(), 1);
-    QVERIFY(settingsController.navigateTo(QStringLiteral("appearance")));
-    auto *root = engine.rootObjects().constFirst();
-    QVERIFY(root != nullptr);
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("appearancePage")) != nullptr,
-                             1000);
-    auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(
-        QStringLiteral("appearancePage")));
-    QVERIFY(page != nullptr);
-    QTRY_COMPARE_WITH_TIMEOUT(requestCount, 1, 1500);
-
-    const auto expectedSource = QUrl::fromLocalFile(previewPath);
-    const QStringList appearancePreviewNames{
-        QStringLiteral("materialPreview-system-theme-astrea"),
-        QStringLiteral("materialPreview-appearance-auto"),
-        QStringLiteral("materialPreview-appearance-light"),
-        QStringLiteral("materialPreview-appearance-dark"),
-    };
-    for (const auto &name : appearancePreviewNames) {
-        auto *preview = findVisualItem(page, name);
-        QVERIFY2(preview != nullptr, qPrintable(name));
-        QTRY_COMPARE_WITH_TIMEOUT(preview->property("wallpaperSource").toUrl(), expectedSource,
-                                  1500);
-        QCOMPARE(preview->property("wallpaperFit").toString(), QStringLiteral("contain"));
-        QCOMPARE(preview->property("usingRendererPreview").toBool(), false);
-        QVERIFY(findVisualItem(preview, QStringLiteral("materialPreviewWallpaper")) != nullptr);
-        QVERIFY(findVisualItem(preview, QStringLiteral("materialPreviewShowcase")) != nullptr);
-        QVERIFY(findVisualItem(preview, QStringLiteral("materialPreviewFallback")) != nullptr);
-    }
-
-    QCOMPARE(findVisualItem(page, QStringLiteral("materialPreview-appearance-auto"))
-                 ->property("themeVariant")
-                 .toString(),
-             QStringLiteral("auto"));
-    QCOMPARE(findVisualItem(page, QStringLiteral("materialPreview-appearance-light"))
-                 ->property("themeVariant")
-                 .toString(),
-             QStringLiteral("light"));
-    QCOMPARE(findVisualItem(page, QStringLiteral("materialPreview-appearance-dark"))
-                 ->property("themeVariant")
-                 .toString(),
-             QStringLiteral("dark"));
     QVERIFY(settingsController.navigateTo(QStringLiteral("visual-effects")));
-    QTRY_COMPARE_WITH_TIMEOUT(requestCount, 2, 1500);
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("visualEffectsPage"))
-                                 != nullptr,
+    QObject *root = engine.rootObjects().constFirst();
+    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("visualEffectsPage")) != nullptr,
                              1000);
-    auto *visualEffectsPage = qobject_cast<QQuickItem *>(root->findChild<QObject *>(
-        QStringLiteral("visualEffectsPage")));
-    QVERIFY(visualEffectsPage != nullptr);
-    const QStringList materialPreviewNames{
-        QStringLiteral("materialPreview-default"),
-        QStringLiteral("materialPreview-transparent"),
-        QStringLiteral("materialPreview-frosted"),
-    };
-    for (const auto &name : materialPreviewNames) {
-        auto *preview = findVisualItem(visualEffectsPage, name);
-        QVERIFY2(preview != nullptr, qPrintable(name));
-        QTRY_COMPARE_WITH_TIMEOUT(preview->property("wallpaperSource").toUrl(), expectedSource,
-                                  1500);
-        QCOMPARE(preview->property("wallpaperFit").toString(), QStringLiteral("contain"));
-        QCOMPARE(preview->property("usingRendererPreview").toBool(), false);
-        QVERIFY(findVisualItem(preview, QStringLiteral("materialPreviewWallpaper")) != nullptr);
-        QVERIFY(findVisualItem(preview, QStringLiteral("materialPreviewShowcase")) != nullptr);
-        QVERIFY(findVisualItem(preview, QStringLiteral("materialPreviewFallback")) != nullptr);
-    }
-    QCOMPARE(findVisualItem(visualEffectsPage, QStringLiteral("materialPreview-default"))
-                 ->property("materialId")
-                 .toString(),
-             QStringLiteral("default"));
-    QCOMPARE(findVisualItem(visualEffectsPage, QStringLiteral("materialPreview-transparent"))
-                 ->property("materialId")
-                 .toString(),
-             QStringLiteral("transparent"));
-    QCOMPARE(findVisualItem(visualEffectsPage, QStringLiteral("materialPreview-frosted"))
-                 ->property("materialId")
-                 .toString(),
-             QStringLiteral("frosted"));
-    auto *frostedPreview = findVisualItem(
-        visualEffectsPage, QStringLiteral("materialPreview-frosted"));
-    QVERIFY(frostedPreview != nullptr);
-    QVERIFY(frostedPreview->findChild<QObject *>(QStringLiteral("materialPreviewLiveFrosted"))
-            != nullptr);
-    QCOMPARE(frostedPreview->property("liveFrostedAvailable").toBool(), false);
-    QCOMPARE(frostedPreview->property("liveFrostedActive").toBool(), false);
-}
-
-void SettingsQmlSmokeTest::materialPreviewFrostedGeometryMatchesFallback()
-{
-    ThemeController themeController;
-    QQmlApplicationEngine engine;
-    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
-    QQmlComponent component(
-        &engine,
-        QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/MaterialPreview.qml")));
-    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
-    std::unique_ptr<QObject> previewObject(component.create());
-    QVERIFY(previewObject != nullptr);
-
-    auto *preview = qobject_cast<QQuickItem *>(previewObject.get());
+    auto *preview = qobject_cast<QQuickItem *>(root->findChild<QObject *>(
+        QStringLiteral("visualEffectsMaterialPreview")));
     QVERIFY(preview != nullptr);
-    preview->setWidth(1000);
-    preview->setHeight(600);
-    preview->setProperty("materialId", QStringLiteral("frosted"));
-    QCoreApplication::processEvents();
-
-    auto *live = findVisualItem(preview, QStringLiteral("materialPreviewLiveFrosted"));
-    auto *fallback = findVisualItem(preview, QStringLiteral("materialPreviewShowcase"));
-    QVERIFY(live != nullptr);
+    QVERIFY(preview->property("controller").value<QObject *>() == settingsController.visualEffects());
+    QVERIFY(findVisualItem(preview, QStringLiteral("materialPreviewLiveEffect")) != nullptr);
+    auto *fallback = findVisualItem(preview, QStringLiteral("materialPreviewFallbackShowcase"));
     QVERIFY(fallback != nullptr);
-    QCOMPARE(live->width(), fallback->width());
-    QCOMPARE(live->height(), fallback->height());
-    QCOMPARE(live->x(), fallback->x());
-    QCOMPARE(live->y(), fallback->y());
+    QVERIFY(fallback->property("fallbackApproximation").toBool());
+    QCOMPARE(fallback->property("effectiveBlur").toDouble(),
+             settingsController.visualEffects()->property("effectiveBlur").toDouble());
+    QCOMPARE(fallback->property("effectiveSaturation").toDouble(),
+             settingsController.visualEffects()->property("effectiveSaturation").toDouble());
 }
-
-void SettingsQmlSmokeTest::materialShowcaseIdentityNamesAreDistinct()
+void SettingsQmlSmokeTest::materialPreviewFallbackUsesEffectiveSnapshot()
 {
     ThemeController themeController;
     QQmlApplicationEngine engine;
@@ -903,18 +788,36 @@ void SettingsQmlSmokeTest::materialShowcaseIdentityNamesAreDistinct()
         &engine,
         QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/MaterialShowcase.qml")));
     QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
-
-    const QVariantMap fallbackProperties{{QStringLiteral("canonicalIdentity"), false}};
-    const QVariantMap liveProperties{{QStringLiteral("canonicalIdentity"), true}};
+    const QVariantMap properties{{QStringLiteral("fallbackApproximation"), true},
+                                 {QStringLiteral("effectiveBlur"), 0.73},
+                                 {QStringLiteral("effectiveSaturation"), 0.42},
+                                 {QStringLiteral("effectiveNoise"), 0.18}};
+    std::unique_ptr<QObject> fallback(component.createWithInitialProperties(properties));
+    QVERIFY(fallback != nullptr);
+    QCOMPARE(fallback->objectName(), QStringLiteral("materialPreviewShowcaseFallback"));
+    QCOMPARE(fallback->property("effectiveBlur").toDouble(), 0.73);
+    QCOMPARE(fallback->property("effectiveSaturation").toDouble(), 0.42);
+    QCOMPARE(fallback->property("effectiveNoise").toDouble(), 0.18);
+    QVERIFY(fallback->property("fallbackApproximation").toBool());
+}
+void SettingsQmlSmokeTest::materialShowcaseMarksLocalApproximation()
+{
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    QQmlComponent component(
+        &engine,
+        QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/MaterialShowcase.qml")));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    const QVariantMap fallbackProperties{{QStringLiteral("fallbackApproximation"), true}};
+    const QVariantMap liveProperties{{QStringLiteral("fallbackApproximation"), false}};
     std::unique_ptr<QObject> fallback(component.createWithInitialProperties(fallbackProperties));
     std::unique_ptr<QObject> live(component.createWithInitialProperties(liveProperties));
     QVERIFY(fallback != nullptr);
     QVERIFY(live != nullptr);
     QCOMPARE(fallback->objectName(), QStringLiteral("materialPreviewShowcaseFallback"));
     QCOMPARE(live->objectName(), QStringLiteral("materialPreviewShowcase"));
-    QVERIFY(fallback->objectName() != live->objectName());
 }
-
 void SettingsQmlSmokeTest::appearanceReusesSnapshotAndUpdatesWithoutRecreation()
 {
     QTemporaryDir runtime;
@@ -1100,90 +1003,46 @@ void SettingsQmlSmokeTest::appearancePreviewFallsBackWithoutWallpaperService()
     QVERIFY(page->findChild<QObject *>(QStringLiteral("appearanceOption-light")) != nullptr);
 }
 
-void SettingsQmlSmokeTest::materialPreviewRendererHandoffIsFailSafe()
+void SettingsQmlSmokeTest::visualEffectsAdvancedTogglesWithMouseAndKeyboard()
 {
-    QTemporaryDir runtime;
-    QTemporaryDir images;
-    QVERIFY(runtime.isValid());
-    QVERIFY(images.isValid());
-    QVERIFY(QDir(runtime.path()).mkpath(QStringLiteral("astrea-shell")));
-    RuntimeEnvironmentGuard runtimeGuard(runtime.path());
-
-    const auto wallpaperPath = writeWallpaperImage(
-        images.filePath(QStringLiteral("renderer-wallpaper.png")), QColor("#496d9c"));
-    const auto endpoint = QDir(runtime.path()).filePath(QStringLiteral("astrea-shell/wallpaper.sock"));
-    QLocalServer server;
-    QVERIFY(server.listen(endpoint));
-    QByteArray requestBuffer;
-    QObject::connect(&server, &QLocalServer::newConnection, this, [&, wallpaperPath] {
-        auto *socket = server.nextPendingConnection();
-        connect(socket, &QLocalSocket::readyRead, this, [&, socket, wallpaperPath] {
-            requestBuffer += socket->readAll();
-            if (!requestBuffer.endsWith('\n'))
-                return;
-            requestBuffer.clear();
-            socket->write(appearanceWallpaperResponse(wallpaperPath, QStringLiteral("cover"), 0));
-            socket->flush();
-        });
-    });
-
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+    HomeEnvironmentGuard homeGuard(home.path());
     SettingsController settingsController;
     SettingsTranslationController translationController;
     ThemeController themeController;
     QQmlApplicationEngine engine;
-    engine.addImageProvider(QStringLiteral("material-preview-test"),
-                            new DelayedMaterialPreviewProvider(250));
-    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"),
-                                             &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
     engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
     engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
     engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
-
     QCOMPARE(engine.rootObjects().size(), 1);
-    QVERIFY(settingsController.navigateTo(QStringLiteral("appearance")));
-    auto *root = engine.rootObjects().constFirst();
-    QVERIFY(root != nullptr);
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("appearancePage")) != nullptr,
-                             1000);
-    auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(
-        QStringLiteral("appearancePage")));
+    QVERIFY(settingsController.navigateTo(QStringLiteral("visual-effects")));
+    auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
+    QVERIFY(window != nullptr);
+    auto *page = qobject_cast<QQuickItem *>(window->findChild<QObject *>(
+        QStringLiteral("visualEffectsPage")));
     QVERIFY(page != nullptr);
-    auto *preview = findVisualItem(page, QStringLiteral("materialPreview-appearance-auto"));
-    QVERIFY(preview != nullptr);
-    auto *wallpaper = findVisualItem(preview, QStringLiteral("materialPreviewWallpaper"));
-    auto *rendererFrame = findVisualItem(preview, QStringLiteral("materialPreviewRendererFrame"));
-    auto *showcase = findVisualItem(preview, QStringLiteral("materialPreviewShowcase"));
-    QVERIFY(wallpaper != nullptr);
-    QVERIFY(rendererFrame != nullptr);
-    QVERIFY(showcase != nullptr);
-    QTRY_VERIFY_WITH_TIMEOUT(preview->property("wallpaperReady").toBool(), 1500);
-    QVERIFY(wallpaper->property("visible").toBool());
-    QVERIFY(!rendererFrame->property("visible").toBool());
-    QVERIFY(showcase->property("visible").toBool());
+    auto *toggle = qobject_cast<QQuickItem *>(page->findChild<QObject *>(
+        QStringLiteral("visualEffectsAdvancedToggle")));
+    auto *advanced = page->findChild<QObject *>(QStringLiteral("visualEffectsAdvancedCard"));
+    QVERIFY(toggle != nullptr);
+    QVERIFY(advanced != nullptr);
+    QCOMPARE(advanced->property("visible").toBool(), false);
+    window->show();
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    window->requestActivate();
+    QVERIFY(QTest::qWaitForWindowActive(window));
 
-    preview->setProperty("rendererPreviewSource",
-                         QUrl(QStringLiteral("image://material-preview-test/slow")));
-    preview->setProperty("rendererPreviewReady", true);
-    QVERIFY(preview->property("rendererPreviewRequested").toBool());
-    QVERIFY(!preview->property("usingRendererPreview").toBool());
-    QVERIFY(wallpaper->property("visible").toBool());
-    QVERIFY(!rendererFrame->property("visible").toBool());
-    QVERIFY(showcase->property("visible").toBool());
-
-    QTRY_VERIFY_WITH_TIMEOUT(preview->property("usingRendererPreview").toBool(), 2000);
-    QVERIFY(rendererFrame->property("visible").toBool());
-    QVERIFY(!showcase->property("visible").toBool());
-
-    preview->setProperty("rendererPreviewSource",
-                         QUrl::fromLocalFile(images.filePath(QStringLiteral("missing-renderer.png"))));
-    QVERIFY(preview->property("rendererPreviewRequested").toBool());
-    QTRY_VERIFY_WITH_TIMEOUT(preview->property("rendererPreviewFailed").toBool(), 1500);
-    QVERIFY(!preview->property("usingRendererPreview").toBool());
-    QTRY_VERIFY_WITH_TIMEOUT(wallpaper->property("visible").toBool(), 1500);
-    QVERIFY(!rendererFrame->property("visible").toBool());
-    QVERIFY(showcase->property("visible").toBool());
+    const QPoint mousePosition = toggle->mapToScene(QPointF(toggle->width() / 2,
+                                                              toggle->height() / 2)).toPoint();
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, mousePosition);
+    QTRY_VERIFY(advanced->property("visible").toBool());
+    QVERIFY(QMetaObject::invokeMethod(toggle, "forceActiveFocus"));
+    QTRY_VERIFY_WITH_TIMEOUT(toggle->property("activeFocus").toBool(), 1000);
+    QTest::keyClick(window, Qt::Key_Space);
+    QTRY_VERIFY(!advanced->property("visible").toBool());
 }
-
 void SettingsQmlSmokeTest::appearanceChoicesUpdateController()
 {
     QTemporaryDir home;
@@ -1549,55 +1408,32 @@ void SettingsQmlSmokeTest::appearancePersistenceErrorsAreVisibleOnlyWhenPresent(
     QTRY_VERIFY_WITH_TIMEOUT(!settingsController.appearance()->property("busy").toBool(), 1000);
 }
 
-void SettingsQmlSmokeTest::visualEffectsChoicesUpdateShellStyle()
+void SettingsQmlSmokeTest::visualEffectsPageUsesTypedMaterialController()
 {
-    QTemporaryDir directory;
-    QVERIFY(directory.isValid());
-    const QString configPath = directory.filePath(QStringLiteral("theme.json"));
-
     SettingsController settingsController;
     SettingsTranslationController translationController;
-    ThemeController themeController(configPath, nullptr, [] { return Qt::ColorScheme::Dark; });
+    ThemeController themeController;
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
     engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
     engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
     engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
-
     QCOMPARE(engine.rootObjects().size(), 1);
     QVERIFY(settingsController.navigateTo(QStringLiteral("visual-effects")));
-    QObject *root = engine.rootObjects().constFirst();
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("visualEffectsPage")) != nullptr,
-                             1000);
-    QObject *page = root->findChild<QObject *>(QStringLiteral("visualEffectsPage"));
-    QVERIFY(page != nullptr);
-    auto *defaultOption = page->findChild<QObject *>(QStringLiteral("materialOption-default"));
-    auto *transparent = page->findChild<QObject *>(QStringLiteral("materialOption-transparent"));
-    auto *frosted = page->findChild<QObject *>(QStringLiteral("materialOption-frosted"));
-    QVERIFY(defaultOption != nullptr);
-    QVERIFY(transparent != nullptr);
-    QVERIFY(frosted != nullptr);
-    QVERIFY(defaultOption->property("selected").toBool());
-
-    QVERIFY(QMetaObject::invokeMethod(transparent, "activate"));
-    QCOMPARE(themeController.shellStyle(), 0);
-    QVERIFY(transparent->property("selected").toBool());
-    QVERIFY(QMetaObject::invokeMethod(frosted, "activate"));
-    QCOMPARE(themeController.shellStyle(), 2);
-    QVERIFY(frosted->property("selected").toBool());
-    QVERIFY(QMetaObject::invokeMethod(defaultOption, "activate"));
-    QCOMPARE(themeController.shellStyle(), 1);
-    QVERIFY(defaultOption->property("selected").toBool());
-
-    QFile persisted(configPath);
-    QVERIFY(persisted.open(QIODevice::ReadOnly));
-    const QJsonObject saved = QJsonDocument::fromJson(persisted.readAll()).object();
-    QCOMPARE(saved.value(QStringLiteral("shell_style")).toInt(), 1);
-    QVERIFY(!saved.contains(QStringLiteral("theme_preference")));
-    QVERIFY(!saved.contains(QStringLiteral("accent")));
-    QVERIFY(!saved.contains(QStringLiteral("icon_appearance")));
+    auto *root = engine.rootObjects().constFirst();
+    auto *page = root->findChild<QObject *>(QStringLiteral("visualEffectsPage"));
+    QTRY_VERIFY_WITH_TIMEOUT(page != nullptr, 1000);
+    QVERIFY(settingsController.visualEffects() != nullptr);
+    QCOMPARE(settingsController.visualEffects()->metaObject()->className(),
+             QByteArrayLiteral("SettingsVisualEffectsController"));
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("materialPositionSlider")) != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("materialBlurSlider")) != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("materialSaturationSlider")) != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("materialNoiseSlider")) != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("resetAdvancedCustomizations")) != nullptr);
+    QCOMPARE(page->findChild<QObject *>(QStringLiteral("visualEffectsAdvancedCard"))
+                 ->property("visible").toBool(), false);
 }
-
 void SettingsQmlSmokeTest::loadsWallpaperRouteFromHubOffscreen()
 {
     SettingsController settingsController;

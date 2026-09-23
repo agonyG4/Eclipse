@@ -1,6 +1,6 @@
 use super::state::{AnimationMutation, AnimationState, StateError};
 use crate::typhon::client::{ClientWorker, WorkerEvent};
-use crate::typhon::protocol::{AnimationRequest, ProtocolOutcome};
+use crate::typhon::protocol::{AnimationRequest, ControlSuccess, ProtocolOutcome};
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 use std::pin::Pin;
@@ -187,7 +187,7 @@ impl SettingsAnimationControllerRust {
             ..WorkerEventEffects::default()
         };
         match result {
-            Ok(ProtocolOutcome::Success(snapshot)) => {
+            Ok(ProtocolOutcome::Success(ControlSuccess::Animation(snapshot))) => {
                 let was_available = self.state.available();
                 self.state.set_available();
                 effects.availability_changed = !was_available;
@@ -202,6 +202,11 @@ impl SettingsAnimationControllerRust {
                         ));
                     }
                 }
+            }
+            Ok(ProtocolOutcome::Success(ControlSuccess::Material(_))) => {
+                effects.error_changed = self.set_error_value(String::from(
+                    "Typhon returned a material snapshot to the animation controller.",
+                ));
             }
             Ok(ProtocolOutcome::ServerRejected(error)) => {
                 if refresh && self.state.available() {
@@ -526,7 +531,7 @@ mod tests {
     use super::{RequestState, SettingsAnimationControllerRust};
     use crate::animation::state::{AnimationCatalog, AnimationConfiguration, AnimationSnapshot};
     use crate::typhon::client::WorkerEvent;
-    use crate::typhon::protocol::ProtocolOutcome;
+    use crate::typhon::protocol::{ControlSuccess, ProtocolOutcome};
 
     #[test]
     fn stale_operation_token_cannot_mutate_newer_state() {
@@ -569,7 +574,9 @@ mod tests {
 
         let effects = controller.handle_worker_event(WorkerEvent::RequestFinished {
             id: first,
-            result: Box::new(Ok(ProtocolOutcome::Success(snapshot("stale")))),
+            result: Box::new(Ok(ProtocolOutcome::Success(ControlSuccess::Animation(
+                snapshot("stale"),
+            )))),
         });
 
         assert!(effects.is_none());

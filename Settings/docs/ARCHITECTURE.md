@@ -36,10 +36,13 @@ SettingsController.icons
       -> Rust Icons domain
           -> ThemeConfigStore -> theme.json
 VisualEffects.qml
-  -> Components.Theme shellStyle bridge
-      -> ThemeController::save() -> theme.json
+  -> SettingsController.visualEffects
+      -> CXX-Qt SettingsVisualEffectsController QObject
+          -> Rust material state and typed Typhon control client
+              -> astrea.control v1 -> Typhon MaterialConfiguration
+                  -> Typhon-owned material.json and canonical Effects graph
 theme.json
-  -> ThemeController watcher and live QML/Shell/Dock/Bar projections
+  -> ThemeController watcher and legacy Shell/Dock/Bar projections
 QQmlApplicationEngine
 ```
 
@@ -109,14 +112,18 @@ its visual delegates and retain the framework's pointer, keyboard, touch,
 focus, range, and RTL behavior instead of implementing a second input state
 machine with `MouseArea`.
 
-`pages/appearance/MaterialPreview.qml` is the reusable preview surface for the
-Appearance previews and the transitional Visual Effects choices. It consumes
-the effective wallpaper snapshot projected by `SettingsController.wallpaper`.
-`MaterialShowcase.qml` retains the existing fallback visual tree, while the
-Frosted variant may show the existing public Qt Wayland-effects preview when
-available. Visual Effects currently exposes only the three existing
-`shell_style` modes. The future continuous material model and shader controls
-belong to Phase 2 and are not current capabilities.
+`pages/appearance/MaterialPreview.qml` is the reusable Visual Effects preview.
+It consumes the effective wallpaper snapshot and Typhon material snapshot,
+and requests semantic background blur through the public Qt Wayland-effects
+bridge while visible when that capability exists. `MaterialShowcase.qml` is a
+deterministic local approximation used only when a live compositor preview
+cannot be made. It is not a renderer frame or intensity transport.
+
+Visual Effects presents one Glass ↔ Frosted material position. Its supported
+Phase 2A overrides are Blur Strength, Saturation, and Noise. Eclipse keeps the
+requested configuration for typed requests and Qt projection; Typhon alone
+validates, persists, resolves, and applies the material curve. Eclipse does
+not mirror MaterialConfiguration into `theme.json`.
 
 Unit tests link `astrea-settings-core`. Integration tests link both reusable
 production targets. No test target lists a production `.cpp` file owned by the
@@ -258,9 +265,30 @@ legacy fields: `shell_style`, `icon_style`, `icon_theme`, and
 `audio_osd_style`. It preserves `theme_preference`, `accent`,
 `icon_appearance`, `system_icon_theme`, compatibility inputs `theme` and
 `theme_mode`, and all unknown fields. `applyConfig()` may still read the legacy
-compatibility values as fallback. The Visual Effects bridge uses the existing
-`shellStyle`, `setShellStyle()`, and `save()` path until Phase 2 migrates the
-material/effects control plane.
+compatibility values as fallback. The Visual Effects page no longer calls
+`setShellStyle()` or `save()`. `shell_style` remains a temporary legacy
+client-chrome compatibility value for current Shell presentation consumers;
+it is not the compositor material authority and is not dual-written with
+MaterialConfiguration.
+
+The ownership contract is:
+
+```text
+ext-background-effect-v1
+    = semantic per-surface blur request only
+Typhon Blur Policy
+    = which surfaces receive canonical background blur
+Typhon MaterialConfiguration
+    = global appearance of canonical background blur
+Typhon Effects engine
+    = actual implementation and rendering
+Eclipse Visual Effects
+    = presentation and user mutation client through astrea.control
+```
+
+Phase 2A has no shader UI. Phase 2B may expose only qualified named trusted
+material programs from Typhon's registry. Renderer configuration remains in
+Typhon's private material store, never in Eclipse `theme.json`.
 
 The single System Theme entry in Appearance is the built-in Astrea theme card;
 there is no persisted preset key or alternate preset catalogue in Phase 1.
@@ -268,9 +296,9 @@ there is no persisted preset key or alternate preset catalogue in Phase 1.
 ## Exclusions
 
 Settings has no Quickshell import, LayerShellQt dependency, Hyprland command,
-Typhon-private protocol, compositor backend, persistence for the Compositor
-preview, or shell command execution. The Animations page does have the public
-Astrea `astrea.control` Typhon IPC boundary described above. The shared public Wayland
+private Typhon socket, compositor backend, persistence for the Compositor
+preview, or shell command execution. Animations and Visual Effects use the
+existing public Astrea `astrea.control` v1 boundary described above. The shared public Wayland
 effects module is a narrow Qt-owned child-surface bridge; it is independent of
 Typhon and falls back cleanly when unsupported. The Dock page is a native route
 under the Customization hub and its preview is presentation-only; it does not

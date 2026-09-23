@@ -115,10 +115,11 @@ Item {
                             ? root.wallpaperController.effectivePreviewUrl : ""
                         wallpaperFit: root.wallpaperController
                             ? root.wallpaperController.effectiveFit : "cover"
+                        controller: SettingsController.visualEffects
+                        liveEffectEnabled: false
                         themeVariant: choiceCard.choiceGroup === "appearance"
                             ? choiceCard.previewKind
                             : (Components.Theme.isLight ? "light" : "dark")
-                        materialId: "default"
                     }
 
                     Row {
@@ -355,8 +356,9 @@ Item {
                         ? root.wallpaperController.effectivePreviewUrl : ""
                     wallpaperFit: root.wallpaperController
                         ? root.wallpaperController.effectiveFit : "cover"
+                    controller: SettingsController.visualEffects
+                    liveEffectEnabled: false
                     themeVariant: Components.Theme.isLight ? "light" : "dark"
-                    materialId: "default"
                 }
 
                 ColumnLayout {

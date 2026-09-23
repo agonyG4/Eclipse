@@ -54,6 +54,17 @@ security failures, oversized mutations, pending-speed folding, and destruction
 while a request is outstanding. Protocol and secure-discovery cases that do
 not need Qt live in `Settings/backend` Rust unit tests.
 
+The Settings Visual Effects controller tests exercise the Rust-backed typed
+material client, authoritative snapshots, normalized configuration validation,
+one in-flight plus newest-pending mutation folding, override merge/reset
+semantics, stale completion rejection, protocol rejection, and availability
+transitions. `settings-qml-smoke-test` covers the single Glass ↔ Frosted slider,
+collapsed Advanced controls, keyboard and pointer disclosure, semantic live
+preview request, and the local approximation when Wayland effects are
+unavailable. The preview sends no intensity through
+`ext-background-effect-v1`. `settings-structure-test` rejects the old
+Interface Style mutation path and shader/refraction controls.
+
 The Settings Rust gate uses the crate's lockfile and runs:
 
 ```bash

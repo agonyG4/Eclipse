@@ -10,6 +10,7 @@
 #include <astrea_settings_backend/src/animation/qobject.cxxqt.h>
 #include <astrea_settings_backend/src/appearance/qobject.cxxqt.h>
 #include <astrea_settings_backend/src/icons/qobject.cxxqt.h>
+#include <astrea_settings_backend/src/visual_effects/qobject.cxxqt.h>
 
 #include <QObject>
 #include <QString>
@@ -38,6 +39,7 @@ class SettingsController final : public QObject {
     Q_PROPERTY(SettingsAnimationController *animations READ animations CONSTANT)
     Q_PROPERTY(SettingsAppearanceController *appearance READ appearance CONSTANT)
     Q_PROPERTY(SettingsIconsController *icons READ icons CONSTANT)
+    Q_PROPERTY(SettingsVisualEffectsController *visualEffects READ visualEffects CONSTANT)
     Q_PROPERTY(Astrea::System::BluetoothService *bluetooth READ bluetooth CONSTANT)
 
 public:
@@ -65,6 +67,7 @@ public:
     SettingsAnimationController *animations() const { return m_animationController.get(); }
     SettingsAppearanceController *appearance() const { return m_appearanceController.get(); }
     SettingsIconsController *icons() const { return m_iconsController.get(); }
+    SettingsVisualEffectsController *visualEffects() const { return m_visualEffectsController.get(); }
     Astrea::System::BluetoothService *bluetooth() const { return m_bluetoothService.get(); }
 
     Q_INVOKABLE bool navigateTo(const QString &id);
@@ -91,6 +94,7 @@ private:
     std::unique_ptr<SettingsAnimationController> m_animationController;
     std::unique_ptr<SettingsAppearanceController> m_appearanceController;
     std::unique_ptr<SettingsIconsController> m_iconsController;
+    std::unique_ptr<SettingsVisualEffectsController> m_visualEffectsController;
     QString m_currentDestinationId;
     QString m_selectedSidebarId;
     QVector<QString> m_history;

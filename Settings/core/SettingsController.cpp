@@ -46,6 +46,7 @@ SettingsController::SettingsController(std::unique_ptr<SettingsNavigationModel> 
     m_animationController = std::make_unique<SettingsAnimationController>();
     m_appearanceController = std::make_unique<SettingsAppearanceController>();
     m_iconsController = std::make_unique<SettingsIconsController>();
+    m_visualEffectsController = std::make_unique<SettingsVisualEffectsController>();
 }
 
 SettingsNavigationModel *SettingsController::navigationModel()

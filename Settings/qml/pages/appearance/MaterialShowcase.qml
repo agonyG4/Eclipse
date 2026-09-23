@@ -3,13 +3,15 @@ import "../../components" as Components
 
 Rectangle {
     id: root
-    property bool canonicalIdentity: true
-    objectName: canonicalIdentity ? "materialPreviewShowcase" : "materialPreviewShowcaseFallback"
+    property bool fallbackApproximation: true
+    objectName: fallbackApproximation ? "materialPreviewShowcaseFallback" : "materialPreviewShowcase"
     property string themeVariant: "dark"
-    property string materialId: "default"
+    property real effectiveBlur: 0.0
+    property real effectiveSaturation: 1.0
+    property real effectiveNoise: 0.0
 
-    readonly property real materialOpacity: materialId === "transparent" ? 0.58
-        : materialId === "frosted" ? 0.80 : 0.96
+    readonly property real materialOpacity: 0.72 + effectiveBlur * 0.20
+    readonly property real saturationOpacity: 0.38 + effectiveSaturation * 0.62
     readonly property color lightSurface: "#fbfcff"
     readonly property color lightText: "#4c5665"
     readonly property color darkSurface: "#272e3a"
@@ -195,8 +197,7 @@ Rectangle {
             color: root.themeVariant === "light" ? "#d1dce9"
                 : root.themeVariant === "dark" ? "#3a4657"
                     : Components.Theme.isLight ? "#d1dce9" : "#3a4657"
-            opacity: root.materialId === "transparent" ? 0.42
-                : root.materialId === "frosted" ? 0.65 : 0.90
+            opacity: 0.42 + root.effectiveBlur * 0.40
         }
 
         Rectangle {
@@ -209,6 +210,51 @@ Rectangle {
             height: 3
             radius: 2
             color: Components.Theme.accent
-            opacity: 0.72
+            opacity: 0.25 + root.saturationOpacity * 0.47
+        }
+
+        Rectangle {
+            visible: root.fallbackApproximation
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 7
+            width: approximationText.implicitWidth + 10
+            height: 16
+            radius: 8
+            color: Components.Theme.cardBg
+            opacity: 0.88
+
+            Text {
+                id: approximationText
+                anchors.centerIn: parent
+                text: "APPROXIMATION"
+                color: Components.Theme.textSecondary
+                font.family: Components.Theme.monoFontFamily
+                font.pixelSize: 7
+                font.weight: Components.Theme.fontWeightDemiBold
+            }
+        }
+
+        Row {
+            visible: root.fallbackApproximation && root.effectiveNoise > 0.001
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.margins: 8
+            spacing: 11
+            opacity: Math.min(0.22, root.effectiveNoise * 0.22)
+
+            Repeater {
+                model: 12
+                delegate: Rectangle {
+                    width: 1
+                    height: 1
+                    radius: 1
+                    color: Components.Theme.textPrimary
+                    x: (index * 17) % Math.max(1, parent.width)
+                    y: (index * 29) % Math.max(1, parent.height)
+                }
+            }
         }
 }

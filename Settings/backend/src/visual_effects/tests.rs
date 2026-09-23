@@ -1,0 +1,232 @@
+use super::{
+    EffectiveMaterial, MaterialCapabilities, MaterialConfigSource, MaterialConfiguration,
+    MaterialOverrides, MaterialSnapshot, VisualEffectsState,
+};
+
+fn snapshot(generation: u64, configuration: MaterialConfiguration) -> MaterialSnapshot {
+    MaterialSnapshot {
+        generation,
+        source: MaterialConfigSource::Runtime,
+        effective: EffectiveMaterial {
+            blur: configuration.position,
+            saturation: 0.8,
+            noise: 0.2,
+        },
+        configuration,
+        capabilities: MaterialCapabilities {
+            blur_override: true,
+            saturation_override: true,
+            noise_override: true,
+        },
+    }
+}
+
+#[test]
+fn material_state_starts_at_astrea_default_without_claiming_availability() {
+    let state = VisualEffectsState::default();
+
+    assert!(!state.available());
+    assert_eq!(state.default_material_position(), 0.5);
+    assert_eq!(state.configuration().position, 0.5);
+    assert!(state.configuration().overrides.is_empty());
+    assert_eq!(state.generation(), 0);
+}
+
+#[test]
+fn authoritative_snapshot_replaces_configuration_and_effective_projection() {
+    let mut state = VisualEffectsState::default();
+    let configuration = MaterialConfiguration {
+        position: 0.88,
+        overrides: MaterialOverrides {
+            blur: Some(0.9),
+            saturation: None,
+            noise: None,
+        },
+        ..MaterialConfiguration::default()
+    };
+
+    state
+        .apply_snapshot(snapshot(9, configuration.clone()))
+        .unwrap();
+
+    assert!(state.available());
+    assert_eq!(state.generation(), 9);
+    assert_eq!(state.configuration(), &configuration);
+    assert_eq!(state.effective().blur, 0.88);
+}
+
+#[test]
+fn position_and_advanced_edits_fold_into_one_newest_complete_configuration() {
+    let mut state = VisualEffectsState::default();
+    state
+        .apply_snapshot(snapshot(1, MaterialConfiguration::default()))
+        .unwrap();
+
+    state.set_material_position(0.7).unwrap();
+    state.set_blur_override(0.91).unwrap();
+    state.set_noise_override(0.4).unwrap();
+
+    let pending = state.pending_configuration().unwrap();
+    assert_eq!(pending.position, 0.7);
+    assert_eq!(pending.overrides.blur, Some(0.91));
+    assert_eq!(pending.overrides.noise, Some(0.4));
+    assert_eq!(pending.overrides.saturation, None);
+}
+
+#[test]
+fn clearing_one_override_and_resetting_overrides_preserve_material_position() {
+    let mut state = VisualEffectsState::default();
+    state
+        .apply_snapshot(snapshot(
+            1,
+            MaterialConfiguration {
+                position: 0.78,
+                overrides: MaterialOverrides {
+                    blur: Some(0.2),
+                    saturation: Some(0.3),
+                    noise: Some(0.4),
+                },
+                ..MaterialConfiguration::default()
+            },
+        ))
+        .unwrap();
+
+    state.clear_blur_override().unwrap();
+    assert_eq!(state.configuration().position, 0.78);
+    assert_eq!(state.pending_configuration().unwrap().overrides.blur, None);
+    state.reset_overrides().unwrap();
+    let pending = state.pending_configuration().unwrap();
+    assert_eq!(pending.position, 0.78);
+    assert!(pending.overrides.is_empty());
+}
+
+#[test]
+fn restore_defaults_resets_position_and_overrides_as_one_configuration() {
+    let mut state = VisualEffectsState::default();
+    state
+        .apply_snapshot(snapshot(
+            1,
+            MaterialConfiguration {
+                position: 0.9,
+                overrides: MaterialOverrides {
+                    blur: Some(0.7),
+                    ..MaterialOverrides::default()
+                },
+                ..MaterialConfiguration::default()
+            },
+        ))
+        .unwrap();
+
+    state.restore_defaults().unwrap();
+
+    assert_eq!(
+        state.pending_configuration(),
+        Some(MaterialConfiguration::default())
+    );
+}
+
+#[test]
+fn stale_authoritative_snapshot_does_not_roll_back_newer_generation() {
+    let mut state = VisualEffectsState::default();
+    state
+        .apply_snapshot(snapshot(
+            5,
+            MaterialConfiguration {
+                position: 0.8,
+                ..MaterialConfiguration::default()
+            },
+        ))
+        .unwrap();
+
+    assert!(
+        state
+            .apply_snapshot(snapshot(4, MaterialConfiguration::default()))
+            .is_err()
+    );
+    assert_eq!(state.generation(), 5);
+    assert_eq!(state.configuration().position, 0.8);
+}
+
+#[test]
+fn unavailable_transition_preserves_last_authoritative_snapshot() {
+    let mut state = VisualEffectsState::default();
+    let expected = snapshot(2, MaterialConfiguration::default());
+    state.apply_snapshot(expected.clone()).unwrap();
+    state.set_unavailable();
+
+    assert!(!state.available());
+    assert_eq!(state.snapshot(), Some(&expected));
+}
+
+#[test]
+fn older_in_flight_snapshot_does_not_replace_newer_pending_edits() {
+    let mut state = VisualEffectsState::default();
+    state
+        .apply_snapshot(snapshot(1, MaterialConfiguration::default()))
+        .unwrap();
+
+    state.set_material_position(0.7).unwrap();
+    let in_flight = state.pending_configuration().unwrap();
+    assert!(state.take_pending_configuration_if_matches(&in_flight));
+    state.set_noise_override(0.8).unwrap();
+
+    state
+        .apply_snapshot(snapshot(2, in_flight.clone()))
+        .unwrap();
+
+    assert_eq!(state.configuration().position, 0.7);
+    assert_eq!(state.configuration().overrides.noise, Some(0.8));
+    assert_eq!(
+        state.pending_configuration().unwrap(),
+        *state.configuration()
+    );
+}
+
+#[test]
+fn rejecting_latest_configuration_restores_authoritative_values() {
+    let mut state = VisualEffectsState::default();
+    let authoritative = MaterialConfiguration::default();
+    state
+        .apply_snapshot(snapshot(3, authoritative.clone()))
+        .unwrap();
+
+    state.set_material_position(0.9).unwrap();
+    let rejected = state.pending_configuration().unwrap();
+    assert!(state.take_pending_configuration_if_matches(&rejected));
+    state.reject_if_current(&rejected);
+
+    assert_eq!(state.configuration(), &authoritative);
+    assert_eq!(state.pending_configuration(), None);
+}
+
+#[test]
+fn clearing_each_override_keeps_the_other_dimensions_and_position() {
+    let mut state = VisualEffectsState::default();
+    state
+        .apply_snapshot(snapshot(
+            1,
+            MaterialConfiguration {
+                position: 0.63,
+                overrides: MaterialOverrides {
+                    blur: Some(0.2),
+                    saturation: Some(0.3),
+                    noise: Some(0.4),
+                },
+                ..MaterialConfiguration::default()
+            },
+        ))
+        .unwrap();
+
+    state.clear_saturation_override().unwrap();
+    let after_saturation = state.pending_configuration().unwrap();
+    assert_eq!(after_saturation.position, 0.63);
+    assert_eq!(after_saturation.overrides.blur, Some(0.2));
+    assert_eq!(after_saturation.overrides.saturation, None);
+    assert_eq!(after_saturation.overrides.noise, Some(0.4));
+
+    state.clear_noise_override().unwrap();
+    let after_noise = state.pending_configuration().unwrap();
+    assert_eq!(after_noise.overrides.blur, Some(0.2));
+    assert_eq!(after_noise.overrides.saturation, None);
+    assert_eq!(after_noise.overrides.noise, None);
+}

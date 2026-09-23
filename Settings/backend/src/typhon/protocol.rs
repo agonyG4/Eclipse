@@ -1,4 +1,5 @@
 use crate::animation::state::{AnimationConfiguration, AnimationSnapshot};
+use crate::visual_effects::{MaterialConfiguration, MaterialSnapshot};
 use serde::Serialize;
 use serde_json::Number;
 
@@ -10,6 +11,24 @@ const PROTOCOL: &str = "astrea.control";
 pub enum AnimationRequest {
     Get,
     Set(AnimationConfiguration),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum MaterialRequest {
+    Get,
+    Set(MaterialConfiguration),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ControlRequest {
+    Animation(AnimationRequest),
+    Material(MaterialRequest),
+}
+
+impl From<AnimationRequest> for ControlRequest {
+    fn from(request: AnimationRequest) -> Self {
+        Self::Animation(request)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -26,8 +45,14 @@ pub enum ProtocolError {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum ControlSuccess {
+    Animation(AnimationSnapshot),
+    Material(MaterialSnapshot),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum ProtocolOutcome {
-    Success(AnimationSnapshot),
+    Success(ControlSuccess),
     ServerRejected(String),
 }
 
@@ -44,14 +69,15 @@ struct WireRequest {
 #[serde(untagged)]
 enum WireArguments {
     Get(GetArguments),
-    Set(SetArguments),
+    AnimationSet(AnimationSetArguments),
+    MaterialSet(MaterialConfiguration),
 }
 
 #[derive(Serialize)]
 struct GetArguments {}
 
 #[derive(Serialize)]
-struct SetArguments {
+struct AnimationSetArguments {
     version: u8,
     enabled: bool,
     preset: String,
@@ -60,17 +86,30 @@ struct SetArguments {
 }
 
 pub fn encode_request(id: u64, request: AnimationRequest) -> Result<Vec<u8>, ProtocolError> {
+    encode_control_request(id, ControlRequest::Animation(request))
+}
+
+pub fn encode_control_request(id: u64, request: ControlRequest) -> Result<Vec<u8>, ProtocolError> {
     let (command, args) = match request {
-        AnimationRequest::Get => ("animation.config.get", WireArguments::Get(GetArguments {})),
-        AnimationRequest::Set(configuration) => (
+        ControlRequest::Animation(AnimationRequest::Get) => {
+            ("animation.config.get", WireArguments::Get(GetArguments {}))
+        }
+        ControlRequest::Animation(AnimationRequest::Set(configuration)) => (
             "animation.config.set",
-            WireArguments::Set(SetArguments {
+            WireArguments::AnimationSet(AnimationSetArguments {
                 version: 1,
                 enabled: configuration.enabled,
                 preset: configuration.preset,
                 speed: configuration.speed,
                 overrides: configuration.overrides,
             }),
+        ),
+        ControlRequest::Material(MaterialRequest::Get) => {
+            ("material.config.get", WireArguments::Get(GetArguments {}))
+        }
+        ControlRequest::Material(MaterialRequest::Set(configuration)) => (
+            "material.config.set",
+            WireArguments::MaterialSet(configuration),
         ),
     };
     let request = WireRequest {
@@ -89,6 +128,18 @@ pub fn encode_request(id: u64, request: AnimationRequest) -> Result<Vec<u8>, Pro
 }
 
 pub fn decode_response(bytes: &[u8], expected_id: u64) -> Result<ProtocolOutcome, ProtocolError> {
+    decode_control_response(
+        bytes,
+        expected_id,
+        &ControlRequest::Animation(AnimationRequest::Get),
+    )
+}
+
+pub fn decode_control_response(
+    bytes: &[u8],
+    expected_id: u64,
+    request: &ControlRequest,
+) -> Result<ProtocolOutcome, ProtocolError> {
     if bytes.len() > MAX_RESPONSE_BYTES {
         return Err(ProtocolError::ResponseTooLarge);
     }
@@ -129,9 +180,20 @@ pub fn decode_response(bytes: &[u8], expected_id: u64) -> Result<ProtocolOutcome
         let Some(result) = object.get("result").filter(|result| result.is_object()) else {
             return Err(ProtocolError::MissingResult);
         };
-        let snapshot =
-            serde_json::from_value(result.clone()).map_err(|_| ProtocolError::InvalidJson)?;
-        Ok(ProtocolOutcome::Success(snapshot))
+        let success = match request {
+            ControlRequest::Animation(_) => ControlSuccess::Animation(
+                serde_json::from_value(result.clone()).map_err(|_| ProtocolError::InvalidJson)?,
+            ),
+            ControlRequest::Material(_) => {
+                let snapshot: MaterialSnapshot = serde_json::from_value(result.clone())
+                    .map_err(|_| ProtocolError::InvalidJson)?;
+                snapshot
+                    .validate()
+                    .map_err(|_| ProtocolError::InvalidJson)?;
+                ControlSuccess::Material(snapshot)
+            }
+        };
+        Ok(ProtocolOutcome::Success(success))
     } else {
         let Some(error) = object.get("error").and_then(serde_json::Value::as_object) else {
             return Err(ProtocolError::MissingError);
@@ -190,6 +252,104 @@ mod tests {
         assert_eq!(
             request["args"]["overrides"]["window.move"],
             "geometry.macos"
+        );
+    }
+
+    #[test]
+    fn animation_get_encoding_remains_byte_for_byte_compatible() {
+        let legacy = encode_request(7, AnimationRequest::Get).unwrap();
+        let generalized =
+            encode_control_request(7, ControlRequest::Animation(AnimationRequest::Get)).unwrap();
+        assert_eq!(generalized, legacy);
+        assert_eq!(
+            generalized,
+            br#"{"protocol":"astrea.control","version":1,"id":7,"command":"animation.config.get","args":{}}"#
+                .iter()
+                .copied()
+                .chain(*b"\n")
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn material_get_and_set_use_astrea_control_v1_typed_requests() {
+        let get =
+            encode_control_request(31, ControlRequest::Material(MaterialRequest::Get)).unwrap();
+        let get_value: Value = serde_json::from_slice(&get[..get.len() - 1]).unwrap();
+        assert_eq!(get_value["protocol"], "astrea.control");
+        assert_eq!(get_value["version"], 1);
+        assert_eq!(get_value["id"], 31);
+        assert_eq!(get_value["command"], "material.config.get");
+        assert_eq!(get_value["args"], json!({}));
+
+        let configuration = crate::visual_effects::MaterialConfiguration {
+            position: 0.74,
+            overrides: crate::visual_effects::MaterialOverrides {
+                blur: Some(0.82),
+                ..crate::visual_effects::MaterialOverrides::default()
+            },
+            ..crate::visual_effects::MaterialConfiguration::default()
+        };
+        let set = encode_control_request(
+            32,
+            ControlRequest::Material(MaterialRequest::Set(configuration)),
+        )
+        .unwrap();
+        let set_value: Value = serde_json::from_slice(&set[..set.len() - 1]).unwrap();
+        assert_eq!(set_value["command"], "material.config.set");
+        assert_eq!(set_value["args"]["version"], 1);
+        assert_eq!(set_value["args"]["position"], 0.74);
+        assert_eq!(set_value["args"]["overrides"]["blur"], 0.82);
+    }
+
+    #[test]
+    fn material_response_decodes_to_authoritative_typed_snapshot() {
+        let response = material_response(json!({
+            "generation": 4,
+            "source": "runtime",
+            "configuration": {
+                "version": 1,
+                "position": 0.7,
+                "overrides": {"blur": 0.9, "saturation": null, "noise": null}
+            },
+            "effective": {"blur": 0.7, "saturation": 0.9, "noise": 0.1},
+            "capabilities": {
+                "blurOverride": true,
+                "saturationOverride": true,
+                "noiseOverride": true
+            }
+        }));
+
+        let outcome = decode_control_response(
+            &response,
+            44,
+            &ControlRequest::Material(MaterialRequest::Get),
+        )
+        .unwrap();
+        let ProtocolOutcome::Success(ControlSuccess::Material(snapshot)) = outcome else {
+            panic!("material get must return a material snapshot");
+        };
+        assert_eq!(snapshot.generation, 4);
+        assert_eq!(snapshot.configuration.position, 0.7);
+        assert_eq!(snapshot.configuration.overrides.blur, Some(0.9));
+    }
+
+    #[test]
+    fn incomplete_material_snapshot_is_rejected_at_the_wire_boundary() {
+        let response = material_response(json!({
+            "generation": 4,
+            "source": "runtime",
+            "configuration": {"version": 1, "position": 0.5, "overrides": {}},
+            "effective": {"blur": 0.5, "saturation": 0.8, "noise": 0.1}
+        }));
+
+        assert_eq!(
+            decode_control_response(
+                &response,
+                44,
+                &ControlRequest::Material(MaterialRequest::Get)
+            ),
+            Err(ProtocolError::InvalidJson)
         );
     }
 
@@ -342,6 +502,20 @@ mod tests {
             "result": []
         }))
         .unwrap_or_default()
+        .into_iter()
+        .chain(*b"\n")
+        .collect()
+    }
+
+    fn material_response(result: Value) -> Vec<u8> {
+        serde_json::to_vec(&json!({
+            "protocol": "astrea.control",
+            "version": 1,
+            "id": 44,
+            "ok": true,
+            "result": result,
+        }))
+        .unwrap()
         .into_iter()
         .chain(*b"\n")
         .collect()

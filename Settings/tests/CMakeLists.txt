@@ -17,6 +17,7 @@ endfunction()
 
 add_settings_unit_test(settings-controller-test unit/SettingsControllerTest.cpp)
 add_settings_unit_test(settings-animation-controller-test unit/SettingsAnimationControllerTest.cpp)
+add_settings_unit_test(settings-visual-effects-controller-test unit/SettingsVisualEffectsControllerTest.cpp)
 add_settings_unit_test(settings-appearance-controller-test unit/SettingsAppearanceControllerTest.cpp)
 add_settings_unit_test(settings-icons-controller-test unit/SettingsIconsControllerTest.cpp)
 add_settings_unit_test(settings-dock-controller-test unit/SettingsDockControllerTest.cpp)

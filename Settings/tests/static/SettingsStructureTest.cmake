@@ -533,31 +533,49 @@ endforeach()
 file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/VisualEffects.qml" visual_effects_source)
 foreach(visual_effects_required_token IN ITEMS
     "objectName: \"visualEffectsPage\""
-    "objectName: \"materialOption-default\""
-    "objectName: \"materialOption-transparent\""
-    "objectName: \"materialOption-frosted\""
-    "Components.Theme.setShellStyle"
-    "Components.Theme.save()"
-    "styleValue: 1"
-    "styleValue: 0"
-    "styleValue: 2"
+    "SettingsController.visualEffects"
+    "text: I18n.tr(\"apps.settings.pages.visual_effects.material\", \"MATERIAL\")"
+    "\"Glass\""
+    "\"Frosted\""
+    "from: 0.0"
+    "to: 1.0"
+    "stepSize: 0.01"
+    "modelValueEnabled: root.controller && root.controller.available"
+    "modelValue: root.controller ? root.controller.materialPosition : 0.5"
+    "detentValue: root.controller"
+    "onValueEdited"
+    "root.controller.flush()"
+    "property bool advancedExpanded: false"
+    "visible: root.advancedExpanded"
+    "materialBlurSlider"
+    "materialSaturationSlider"
+    "materialNoiseSlider"
+    "root.controller.resetOverrides()"
 )
     string(FIND "${visual_effects_source}" "${visual_effects_required_token}" visual_effects_position)
     if(visual_effects_position EQUAL -1)
-        message(FATAL_ERROR "Visual Effects bridge is missing '${visual_effects_required_token}'")
+        message(FATAL_ERROR "Visual Effects material controller is missing '${visual_effects_required_token}'")
     endif()
 endforeach()
-foreach(phase_two_control_token IN ITEMS
-    "Advanced"
-    "blurStrength"
-    "saturation"
+foreach(visual_effects_forbidden_token IN ITEMS
+    "materialOption-default"
+    "materialOption-transparent"
+    "materialOption-frosted"
+    "INTERFACE STYLE"
+    "Components.Theme.setShellStyle"
+    "Components.Theme.save()"
+    "setShellStyle("
+    "Theme.save()"
     "refraction"
+    "distortion"
     "shader"
-    "noise"
+    "GLSL"
+    "tint color"
+    "downloadable"
 )
-    string(FIND "${visual_effects_source}" "${phase_two_control_token}" phase_two_control_position)
-    if(NOT phase_two_control_position EQUAL -1)
-        message(FATAL_ERROR "Visual Effects bridge contains Phase 2 control '${phase_two_control_token}'")
+    string(FIND "${visual_effects_source}" "${visual_effects_forbidden_token}" visual_effects_forbidden_position)
+    if(NOT visual_effects_forbidden_position EQUAL -1)
+        message(FATAL_ERROR "Visual Effects contains forbidden legacy/Phase 2 control '${visual_effects_forbidden_token}'")
     endif()
 endforeach()
 
@@ -650,7 +668,7 @@ foreach(qml_path IN ITEMS
         endif()
     endforeach()
 endforeach()
-foreach(phase2_visual_control IN ITEMS "blurStrength" "refraction" "noiseAmount" "shader")
+foreach(phase2_visual_control IN ITEMS "refraction" "distortion" "noiseAmount" "shader" "GLSL" "specular")
     string(FIND "${visual_effects_source}" "${phase2_visual_control}" phase2_control_position)
     if(NOT phase2_control_position EQUAL -1)
         message(FATAL_ERROR "Phase 2 visual control '${phase2_visual_control}' is premature")
@@ -761,45 +779,53 @@ foreach(material_preview_required_token IN ITEMS
     "objectName: \"materialPreview\""
     "objectName: \"materialPreviewWallpaper\""
     "objectName: \"materialPreviewFallback\""
-    "property url wallpaperSource"
-    "property string wallpaperFit"
-    "import QtQuick.Window"
-    "rendererPreviewReady"
-    "rendererPreviewRequested"
-    "usingRendererPreview"
-    "rendererFrame.status === Image.Ready"
-    "rendererPreviewFailed"
-    "Image.PreserveAspectCrop"
-    "Image.PreserveAspectFit"
-    "Image.Stretch"
-    "Image.Pad"
-    "Image.Tile"
+    "property var controller"
+    "property real effectiveBlur"
+    "property real effectiveSaturation"
+    "property real effectiveNoise"
     "import Astrea.Effects"
-    "anchors.centerIn: parent"
-    "width: parent.width * 0.70"
-    "height: parent.height * 0.64"
-    "liveFrosted.effectActive"
+    "effectEnabled: root.visible && root.liveEffectEnabled && effectAvailable"
+    "objectName: \"materialPreviewLiveEffect\""
+    "liveMaterial.effectActive"
+    "fallbackApproximation: true"
+    "root.usingFallback"
 )
     string(FIND "${material_preview_source}" "${material_preview_required_token}" material_preview_token_position)
     if(material_preview_token_position EQUAL -1)
         message(FATAL_ERROR "MaterialPreview.qml is missing '${material_preview_required_token}'")
     endif()
 endforeach()
+foreach(material_preview_forbidden_token IN ITEMS
+    "rendererPreviewSource"
+    "rendererPreviewReady"
+    "rendererPreviewRequested"
+    "rendererFrame"
+    "materialId"
+    "effectIntensity"
+    "blurRadius"
+    "setBlurRadius")
+    string(FIND "${material_preview_source}" "${material_preview_forbidden_token}" material_preview_forbidden_position)
+    if(NOT material_preview_forbidden_position EQUAL -1)
+        message(FATAL_ERROR "MaterialPreview.qml retains dead or non-semantic state '${material_preview_forbidden_token}'")
+    endif()
+endforeach()
 
 file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/MaterialShowcase.qml" material_showcase_source)
 foreach(material_showcase_required_token IN ITEMS
-    "objectName: canonicalIdentity ? \"materialPreviewShowcase\" : \"materialPreviewShowcaseFallback\""
-    "property bool canonicalIdentity"
-    "materialPreviewShowcaseFallback"
-    "property string themeVariant"
-    "property string materialId"
-    "Rectangle {"
-)
+    "fallbackApproximation"
+    "property real effectiveBlur"
+    "property real effectiveSaturation"
+    "property real effectiveNoise"
+    "APPROXIMATION")
     string(FIND "${material_showcase_source}" "${material_showcase_required_token}" material_showcase_token_position)
     if(material_showcase_token_position EQUAL -1)
         message(FATAL_ERROR "MaterialShowcase.qml is missing '${material_showcase_required_token}'")
     endif()
 endforeach()
+string(FIND "${material_showcase_source}" "materialId" material_showcase_material_id_position)
+if(NOT material_showcase_material_id_position EQUAL -1)
+    message(FATAL_ERROR "MaterialShowcase.qml retains the obsolete three-option materialId contract")
+endif()
 
 file(READ "${SETTINGS_SOURCE_DIR}/../shared/platform/wayland/effects/AstreaWaylandEffects.cpp"
     wayland_effects_source)
@@ -1008,7 +1034,8 @@ set(forbidden_production_tokens
 foreach(relative_path IN LISTS production_source_files)
     file(READ "${SETTINGS_SOURCE_DIR}/${relative_path}" source_text)
     set(source_forbidden_tokens ${forbidden_production_tokens})
-    if(NOT relative_path MATCHES "^backend/")
+    if(NOT relative_path MATCHES "^backend/" AND
+       NOT relative_path STREQUAL "qml/pages/appearance/VisualEffects.qml")
         list(APPEND source_forbidden_tokens "Typhon")
     endif()
     foreach(token IN LISTS source_forbidden_tokens)

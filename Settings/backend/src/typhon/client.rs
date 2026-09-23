@@ -1,6 +1,7 @@
 use super::discovery::{DiscoveryError, discover_socket_from_environment};
 use super::protocol::{
-    AnimationRequest, ProtocolError, ProtocolOutcome, decode_response, encode_request,
+    AnimationRequest, ControlRequest, ProtocolError, ProtocolOutcome, decode_control_response,
+    encode_control_request,
 };
 use std::fmt::{Display, Formatter};
 use std::io::{ErrorKind, Read, Write};
@@ -75,7 +76,7 @@ pub enum WorkerEvent {
 }
 
 enum WorkerMessage {
-    Request { id: u64, request: AnimationRequest },
+    Request { id: u64, request: ControlRequest },
     DebounceElapsed { token: u64 },
 }
 
@@ -150,7 +151,10 @@ impl ClientWorker {
         })
     }
 
-    pub fn submit(&self, id: u64, request: AnimationRequest) -> Result<(), ClientError> {
+    pub fn submit<R>(&self, id: u64, request: R) -> Result<(), ClientError>
+    where
+        R: Into<ControlRequest>,
+    {
         let mut state = self
             .control
             .state
@@ -159,7 +163,10 @@ impl ClientWorker {
         if state.shutdown || state.pending.is_some() {
             return Err(ClientError::WorkerUnavailable);
         }
-        state.pending = Some(WorkerMessage::Request { id, request });
+        state.pending = Some(WorkerMessage::Request {
+            id,
+            request: request.into(),
+        });
         drop(state);
         self.control.wake.notify_one();
         Ok(())
@@ -197,7 +204,7 @@ where
         };
         match message {
             WorkerMessage::Request { id, request } => {
-                let result = execute_request(id, request, deadline);
+                let result = execute_control_request(id, request, deadline);
                 completion(WorkerEvent::RequestFinished {
                     id,
                     result: Box::new(result),
@@ -261,9 +268,17 @@ pub fn execute_request(
     request: AnimationRequest,
     deadline: Duration,
 ) -> Result<ProtocolOutcome, ClientError> {
+    execute_control_request(id, ControlRequest::Animation(request), deadline)
+}
+
+pub fn execute_control_request(
+    id: u64,
+    request: ControlRequest,
+    deadline: Duration,
+) -> Result<ProtocolOutcome, ClientError> {
     let deadline = Instant::now() + deadline;
     let path = discover_socket_from_environment().map_err(ClientError::Discovery)?;
-    let encoded = encode_request(id, request).map_err(ClientError::Request)?;
+    let encoded = encode_control_request(id, request.clone()).map_err(ClientError::Request)?;
     let mut stream = connect(&path, deadline)?;
     let remaining = remaining(deadline)?;
     stream
@@ -272,7 +287,7 @@ pub fn execute_request(
     stream
         .write_all(&encoded)
         .map_err(|error| transport_or_timeout(error, deadline))?;
-    read_response(&mut stream, id, deadline)
+    read_response(&mut stream, id, deadline, &request)
 }
 
 fn connect(path: &std::path::Path, deadline: Instant) -> Result<UnixStream, ClientError> {
@@ -292,6 +307,7 @@ fn read_response(
     stream: &mut UnixStream,
     id: u64,
     deadline: Instant,
+    request: &ControlRequest,
 ) -> Result<ProtocolOutcome, ClientError> {
     let mut response = Vec::new();
     let mut chunk = [0_u8; 8192];
@@ -314,7 +330,7 @@ fn read_response(
             break;
         }
     }
-    decode_response(&response, id).map_err(ClientError::Request)
+    decode_control_response(&response, id, request).map_err(ClientError::Request)
 }
 
 fn remaining(deadline: Instant) -> Result<Duration, ClientError> {

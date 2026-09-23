@@ -51,6 +51,7 @@ private slots:
     void usesInjectedProfileForIsSudo();
     void ownsBluetoothServiceWithoutStartingIt();
     void preservesInjectedBluetoothServiceWithoutStartingIt();
+    void exposesRustBackedVisualEffectsController();
 };
 
 void SettingsControllerTest::startsWithPreferredCompositorDestination()
@@ -259,6 +260,18 @@ void SettingsControllerTest::preservesInjectedBluetoothServiceWithoutStartingIt(
     QCOMPARE(controller.bluetooth(), servicePointer);
     QCOMPARE(backendPointer->startCount, 0);
     QCOMPARE(controller.bluetooth()->state(), Astrea::System::SystemServiceState::Stopped);
+}
+
+void SettingsControllerTest::exposesRustBackedVisualEffectsController()
+{
+    SettingsController controller;
+
+    QVERIFY(controller.visualEffects() != nullptr);
+    QCOMPARE(controller.property("visualEffects")
+                 .value<SettingsVisualEffectsController *>(),
+             controller.visualEffects());
+    QCOMPARE(QString::fromLatin1(controller.visualEffects()->metaObject()->className()),
+             QStringLiteral("SettingsVisualEffectsController"));
 }
 
 QTEST_MAIN(SettingsControllerTest)

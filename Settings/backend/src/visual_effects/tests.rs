@@ -45,6 +45,9 @@ fn material_state_starts_at_astrea_default_without_claiming_availability() {
     assert!(!state.blur_override_supported());
     assert!(!state.saturation_override_supported());
     assert!(!state.noise_override_supported());
+    assert!(
+        !state.configuration_is_compatible_with_latest_snapshot(&MaterialConfiguration::default())
+    );
 }
 
 #[test]
@@ -315,6 +318,240 @@ fn older_in_flight_snapshot_does_not_replace_newer_pending_edits() {
         state.pending_configuration().unwrap(),
         *state.configuration()
     );
+}
+
+#[test]
+fn capability_downgrade_reverts_pending_override_to_authoritative_value() {
+    let mut state = VisualEffectsState::default();
+    state
+        .apply_snapshot(snapshot_with_capabilities(
+            1,
+            MaterialConfiguration::default(),
+            MaterialCapabilities {
+                blur_override: true,
+                ..MaterialCapabilities::default()
+            },
+        ))
+        .unwrap();
+    state.set_blur_override(0.7).unwrap();
+
+    state
+        .apply_snapshot(snapshot_with_capabilities(
+            2,
+            MaterialConfiguration::default(),
+            MaterialCapabilities::default(),
+        ))
+        .unwrap();
+
+    assert_eq!(state.configuration().overrides.blur, None);
+    assert_eq!(state.pending_configuration(), None);
+}
+
+#[test]
+fn capability_downgrade_rebases_only_unsupported_pending_fields() {
+    let mut state = VisualEffectsState::default();
+    state
+        .apply_snapshot(snapshot(1, MaterialConfiguration::default()))
+        .unwrap();
+    state.set_material_position(0.82).unwrap();
+    state.set_blur_override(0.7).unwrap();
+    state.set_noise_override(0.1).unwrap();
+
+    state
+        .apply_snapshot(snapshot_with_capabilities(
+            2,
+            MaterialConfiguration {
+                position: 0.5,
+                overrides: MaterialOverrides {
+                    blur: Some(0.25),
+                    saturation: None,
+                    noise: None,
+                },
+                ..MaterialConfiguration::default()
+            },
+            MaterialCapabilities {
+                blur_override: false,
+                saturation_override: false,
+                noise_override: true,
+            },
+        ))
+        .unwrap();
+
+    let expected = MaterialConfiguration {
+        position: 0.82,
+        overrides: MaterialOverrides {
+            blur: Some(0.25),
+            saturation: None,
+            noise: Some(0.1),
+        },
+        ..MaterialConfiguration::default()
+    };
+    assert_eq!(state.configuration(), &expected);
+    assert_eq!(state.pending_configuration(), Some(expected));
+}
+
+#[test]
+fn multiple_capability_downgrades_reconcile_each_override_independently() {
+    let mut state = VisualEffectsState::default();
+    state
+        .apply_snapshot(snapshot(1, MaterialConfiguration::default()))
+        .unwrap();
+    state.set_material_position(0.82).unwrap();
+    state.set_blur_override(0.7).unwrap();
+    state.set_saturation_override(0.6).unwrap();
+    state.set_noise_override(0.1).unwrap();
+
+    state
+        .apply_snapshot(snapshot_with_capabilities(
+            2,
+            MaterialConfiguration {
+                position: 0.5,
+                overrides: MaterialOverrides {
+                    blur: Some(0.25),
+                    saturation: Some(0.4),
+                    noise: None,
+                },
+                ..MaterialConfiguration::default()
+            },
+            MaterialCapabilities::default(),
+        ))
+        .unwrap();
+
+    let expected = MaterialConfiguration {
+        position: 0.82,
+        overrides: MaterialOverrides {
+            blur: Some(0.25),
+            saturation: Some(0.4),
+            noise: None,
+        },
+        ..MaterialConfiguration::default()
+    };
+    assert_eq!(state.configuration(), &expected);
+    assert_eq!(state.pending_configuration(), Some(expected));
+}
+
+#[test]
+fn position_edit_preserves_unsupported_authoritative_override() {
+    let mut state = VisualEffectsState::default();
+    let authoritative = MaterialConfiguration {
+        overrides: MaterialOverrides {
+            blur: Some(0.25),
+            ..MaterialOverrides::default()
+        },
+        ..MaterialConfiguration::default()
+    };
+    state
+        .apply_snapshot(snapshot_with_capabilities(
+            1,
+            authoritative,
+            MaterialCapabilities::default(),
+        ))
+        .unwrap();
+
+    state.set_material_position(0.82).unwrap();
+
+    let pending = state.pending_configuration().unwrap();
+    assert_eq!(pending.position, 0.82);
+    assert_eq!(pending.overrides.blur, Some(0.25));
+    assert_eq!(state.configuration().overrides.blur, Some(0.25));
+    assert!(state.configuration_is_compatible_with_latest_snapshot(&pending));
+}
+
+#[test]
+fn compatibility_allows_clears_and_authoritative_unsupported_values_only() {
+    let mut state = VisualEffectsState::default();
+    let authoritative = MaterialConfiguration {
+        overrides: MaterialOverrides {
+            blur: Some(0.25),
+            saturation: Some(0.4),
+            noise: Some(0.1),
+        },
+        ..MaterialConfiguration::default()
+    };
+    state
+        .apply_snapshot(snapshot_with_capabilities(
+            1,
+            authoritative.clone(),
+            MaterialCapabilities::default(),
+        ))
+        .unwrap();
+
+    assert!(state.configuration_is_compatible_with_latest_snapshot(&authoritative));
+
+    let mut clear = authoritative.clone();
+    clear.overrides.blur = None;
+    assert!(state.configuration_is_compatible_with_latest_snapshot(&clear));
+
+    let mut changed_blur = authoritative.clone();
+    changed_blur.overrides.blur = Some(0.7);
+    assert!(!state.configuration_is_compatible_with_latest_snapshot(&changed_blur));
+
+    let mut changed_saturation = authoritative.clone();
+    changed_saturation.overrides.saturation = Some(0.6);
+    assert!(!state.configuration_is_compatible_with_latest_snapshot(&changed_saturation));
+
+    let mut changed_noise = authoritative;
+    changed_noise.overrides.noise = Some(0.8);
+    assert!(!state.configuration_is_compatible_with_latest_snapshot(&changed_noise));
+}
+
+#[test]
+fn compatibility_allows_any_valid_override_for_supported_capabilities() {
+    let mut state = VisualEffectsState::default();
+    state
+        .apply_snapshot(snapshot_with_capabilities(
+            1,
+            MaterialConfiguration::default(),
+            MaterialCapabilities {
+                blur_override: true,
+                saturation_override: true,
+                noise_override: true,
+            },
+        ))
+        .unwrap();
+    let requested = MaterialConfiguration {
+        overrides: MaterialOverrides {
+            blur: Some(0.7),
+            saturation: Some(0.6),
+            noise: Some(0.8),
+        },
+        ..MaterialConfiguration::default()
+    };
+
+    assert!(state.configuration_is_compatible_with_latest_snapshot(&requested));
+}
+
+#[test]
+fn clear_reset_and_restore_defaults_remain_valid_when_capabilities_are_unsupported() {
+    let mut state = VisualEffectsState::default();
+    state
+        .apply_snapshot(snapshot_with_capabilities(
+            1,
+            MaterialConfiguration {
+                position: 0.74,
+                overrides: MaterialOverrides {
+                    blur: Some(0.25),
+                    saturation: Some(0.4),
+                    noise: Some(0.1),
+                },
+                ..MaterialConfiguration::default()
+            },
+            MaterialCapabilities::default(),
+        ))
+        .unwrap();
+
+    state.clear_blur_override().unwrap();
+    let cleared = state.pending_configuration().unwrap();
+    assert_eq!(cleared.overrides.blur, None);
+    assert!(state.configuration_is_compatible_with_latest_snapshot(&cleared));
+    state.reset_overrides().unwrap();
+    let reset = state.pending_configuration().unwrap();
+    assert!(reset.overrides.is_empty());
+    assert!(state.configuration_is_compatible_with_latest_snapshot(&reset));
+    state.restore_defaults().unwrap();
+    let restored = state.pending_configuration().unwrap();
+    assert_eq!(restored, MaterialConfiguration::default());
+    assert!(state.configuration_is_compatible_with_latest_snapshot(&restored));
 }
 
 #[test]

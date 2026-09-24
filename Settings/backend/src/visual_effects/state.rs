@@ -233,6 +233,51 @@ impl VisualEffectsState {
         self.pending.clone()
     }
 
+    pub fn configuration_is_compatible_with_latest_snapshot(
+        &self,
+        configuration: &MaterialConfiguration,
+    ) -> bool {
+        if configuration.validate().is_err() {
+            return false;
+        }
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return false;
+        };
+
+        (snapshot.capabilities.blur_override
+            || configuration.overrides.blur.is_none()
+            || configuration.overrides.blur == snapshot.configuration.overrides.blur)
+            && (snapshot.capabilities.saturation_override
+                || configuration.overrides.saturation.is_none()
+                || configuration.overrides.saturation
+                    == snapshot.configuration.overrides.saturation)
+            && (snapshot.capabilities.noise_override
+                || configuration.overrides.noise.is_none()
+                || configuration.overrides.noise == snapshot.configuration.overrides.noise)
+    }
+
+    /// Reconcile pending intent against the latest server-owned capability and configuration
+    /// values before the controller turns it into a Typhon Set request.
+    pub fn pending_configuration_for_submission(&mut self) -> Option<MaterialConfiguration> {
+        if !self.available {
+            return None;
+        }
+        self.reconcile_pending_configuration();
+        let configuration = self.pending.clone()?;
+        if self.configuration_is_compatible_with_latest_snapshot(&configuration) {
+            return Some(configuration);
+        }
+
+        // State mutations validate and reconcile every supported field. If this final guard ever
+        // catches an invalid internal configuration, restore the authoritative projection and do
+        // not submit it.
+        if let Some(snapshot) = self.snapshot.as_ref() {
+            self.configuration = snapshot.configuration.clone();
+            self.pending = None;
+        }
+        None
+    }
+
     pub fn take_pending_configuration(&mut self) -> Option<MaterialConfiguration> {
         self.pending.take()
     }
@@ -260,9 +305,9 @@ impl VisualEffectsState {
         }
         self.snapshot = Some(snapshot);
         self.available = true;
-        if self.pending.is_none()
-            && let Some(snapshot) = self.snapshot.as_ref()
-        {
+        if self.pending.is_some() {
+            self.reconcile_pending_configuration();
+        } else if let Some(snapshot) = self.snapshot.as_ref() {
             self.configuration = snapshot.configuration.clone();
         }
         Ok(())
@@ -359,6 +404,36 @@ impl VisualEffectsState {
         supported
             .then_some(())
             .ok_or(StateError::UnsupportedCapability)
+    }
+
+    fn reconcile_pending_configuration(&mut self) {
+        let (Some(snapshot), Some(mut configuration)) =
+            (self.snapshot.as_ref(), self.pending.clone())
+        else {
+            return;
+        };
+
+        if !snapshot.capabilities.blur_override
+            && configuration.overrides.blur.is_some()
+            && configuration.overrides.blur != snapshot.configuration.overrides.blur
+        {
+            configuration.overrides.blur = snapshot.configuration.overrides.blur;
+        }
+        if !snapshot.capabilities.saturation_override
+            && configuration.overrides.saturation.is_some()
+            && configuration.overrides.saturation != snapshot.configuration.overrides.saturation
+        {
+            configuration.overrides.saturation = snapshot.configuration.overrides.saturation;
+        }
+        if !snapshot.capabilities.noise_override
+            && configuration.overrides.noise.is_some()
+            && configuration.overrides.noise != snapshot.configuration.overrides.noise
+        {
+            configuration.overrides.noise = snapshot.configuration.overrides.noise;
+        }
+
+        self.configuration = configuration.clone();
+        self.pending = (configuration != snapshot.configuration).then_some(configuration);
     }
 
     fn queue_configuration(&mut self) {

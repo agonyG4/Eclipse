@@ -141,6 +141,15 @@ enum ActiveRequest {
     Set(MaterialConfiguration),
 }
 
+fn control_request_for(active: &ActiveRequest) -> ControlRequest {
+    match active {
+        ActiveRequest::Refresh => ControlRequest::Material(MaterialRequest::Get),
+        ActiveRequest::Set(configuration) => {
+            ControlRequest::Material(MaterialRequest::Set(configuration.clone()))
+        }
+    }
+}
+
 #[derive(Default)]
 struct RequestState {
     next_id: u64,
@@ -204,6 +213,13 @@ impl SettingsVisualEffectsControllerRust {
                 self.handle_request_finished(id, *result)
             }
         }
+    }
+
+    fn pending_configuration_for_submission(&mut self) -> Option<MaterialConfiguration> {
+        if self.busy || !self.debounce_elapsed {
+            return None;
+        }
+        self.state.pending_configuration_for_submission()
     }
 
     fn handle_request_finished(
@@ -475,12 +491,7 @@ impl qobject::SettingsVisualEffectsController {
     fn start_request(mut self: Pin<&mut Self>, active: ActiveRequest) {
         let (id, request, worker_available) = {
             let mut rust = self.as_mut().rust_mut();
-            let request = match &active {
-                ActiveRequest::Refresh => ControlRequest::Material(MaterialRequest::Get),
-                ActiveRequest::Set(configuration) => {
-                    ControlRequest::Material(MaterialRequest::Set(configuration.clone()))
-                }
-            };
+            let request = control_request_for(&active);
             let id = rust.requests.start(active.clone());
             rust.busy = true;
             (id, request, rust.worker.is_some())
@@ -537,17 +548,11 @@ impl qobject::SettingsVisualEffectsController {
     }
 
     fn submit_pending(mut self: Pin<&mut Self>) {
-        let can_submit = {
-            let rust = self.rust();
-            rust.state.available()
-                && !rust.busy
-                && rust.debounce_elapsed
-                && rust.state.pending_configuration().is_some()
-        };
-        if !can_submit {
-            return;
-        }
-        let Some(configuration) = self.rust().state.pending_configuration() else {
+        let Some(configuration) = self
+            .as_mut()
+            .rust_mut()
+            .pending_configuration_for_submission()
+        else {
             return;
         };
         self.as_mut()
@@ -579,7 +584,32 @@ fn bounded_error(error: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{ActiveRequest, MaterialConfiguration, RequestState};
+    use super::{
+        ActiveRequest, MaterialConfiguration, RequestState, SettingsVisualEffectsControllerRust,
+        control_request_for,
+    };
+    use crate::typhon::client::WorkerEvent;
+    use crate::typhon::protocol::{
+        ControlRequest, ControlSuccess, MaterialRequest, ProtocolOutcome,
+    };
+    use crate::visual_effects::state::{
+        EffectiveMaterial, MaterialCapabilities, MaterialConfigSource, MaterialOverrides,
+        MaterialSnapshot,
+    };
+
+    fn snapshot(
+        generation: u64,
+        configuration: MaterialConfiguration,
+        capabilities: MaterialCapabilities,
+    ) -> MaterialSnapshot {
+        MaterialSnapshot {
+            generation,
+            source: MaterialConfigSource::Runtime,
+            effective: EffectiveMaterial::default(),
+            configuration,
+            capabilities,
+        }
+    }
 
     #[test]
     fn stale_completion_id_cannot_finish_the_current_request() {
@@ -590,5 +620,78 @@ mod tests {
         assert!(requests.finish(current_id.wrapping_add(1)).is_none());
         assert!(requests.finish(current_id).is_some());
         assert!(requests.finish(current_id).is_none());
+    }
+
+    #[test]
+    fn completion_capability_downgrade_filters_pending_set_but_preserves_position_edit() {
+        let mut controller = SettingsVisualEffectsControllerRust::default();
+        controller
+            .state
+            .apply_snapshot(snapshot(
+                1,
+                MaterialConfiguration::default(),
+                MaterialCapabilities {
+                    blur_override: true,
+                    ..MaterialCapabilities::default()
+                },
+            ))
+            .unwrap();
+        controller.debounce_elapsed = true;
+
+        controller.state.set_material_position(0.6).unwrap();
+        let request_a = controller.state.pending_configuration().unwrap();
+        assert!(
+            controller
+                .state
+                .take_pending_configuration_if_matches(&request_a)
+        );
+        let request_a_id = controller
+            .requests
+            .start(ActiveRequest::Set(request_a.clone()));
+        controller.busy = true;
+
+        controller.state.set_material_position(0.82).unwrap();
+        controller.state.set_blur_override(0.7).unwrap();
+        assert_eq!(
+            controller
+                .state
+                .pending_configuration()
+                .unwrap()
+                .overrides
+                .blur,
+            Some(0.7)
+        );
+
+        controller.handle_event(WorkerEvent::RequestFinished {
+            id: request_a_id,
+            result: Box::new(Ok(ProtocolOutcome::Success(ControlSuccess::Material(
+                snapshot(
+                    2,
+                    MaterialConfiguration {
+                        position: 0.6,
+                        overrides: MaterialOverrides::default(),
+                        ..MaterialConfiguration::default()
+                    },
+                    MaterialCapabilities::default(),
+                ),
+            )))),
+        });
+
+        let Some(configuration) = controller.pending_configuration_for_submission() else {
+            panic!("position edit should still produce a Material Set request");
+        };
+        let outgoing_request = control_request_for(&ActiveRequest::Set(configuration));
+        let ControlRequest::Material(MaterialRequest::Set(outgoing_configuration)) =
+            outgoing_request
+        else {
+            panic!("pending Visual Effects state should be sent as Material Set");
+        };
+        assert_eq!(outgoing_configuration.position, 0.82);
+        assert_eq!(outgoing_configuration.overrides.blur, None);
+        assert!(
+            controller
+                .state
+                .configuration_is_compatible_with_latest_snapshot(&outgoing_configuration)
+        );
     }
 }

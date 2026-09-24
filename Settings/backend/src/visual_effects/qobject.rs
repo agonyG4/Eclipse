@@ -24,6 +24,9 @@ pub mod qobject {
         #[qproperty(f64, blur_value, cxx_name = "blurValue", READ = blur_value, NOTIFY = snapshot_changed)]
         #[qproperty(f64, saturation_value, cxx_name = "saturationValue", READ = saturation_value, NOTIFY = snapshot_changed)]
         #[qproperty(f64, noise_value, cxx_name = "noiseValue", READ = noise_value, NOTIFY = snapshot_changed)]
+        #[qproperty(bool, blur_override_supported, cxx_name = "blurOverrideSupported", READ = blur_override_supported, NOTIFY = snapshot_changed)]
+        #[qproperty(bool, saturation_override_supported, cxx_name = "saturationOverrideSupported", READ = saturation_override_supported, NOTIFY = snapshot_changed)]
+        #[qproperty(bool, noise_override_supported, cxx_name = "noiseOverrideSupported", READ = noise_override_supported, NOTIFY = snapshot_changed)]
         #[qproperty(bool, blur_overridden, cxx_name = "blurOverridden", READ = blur_overridden, NOTIFY = snapshot_changed)]
         #[qproperty(bool, saturation_overridden, cxx_name = "saturationOverridden", READ = saturation_overridden, NOTIFY = snapshot_changed)]
         #[qproperty(bool, noise_overridden, cxx_name = "noiseOverridden", READ = noise_overridden, NOTIFY = snapshot_changed)]
@@ -53,6 +56,12 @@ pub mod qobject {
         fn saturation_value(self: &SettingsVisualEffectsController) -> f64;
         #[cxx_name = "noiseValue"]
         fn noise_value(self: &SettingsVisualEffectsController) -> f64;
+        #[cxx_name = "blurOverrideSupported"]
+        fn blur_override_supported(self: &SettingsVisualEffectsController) -> bool;
+        #[cxx_name = "saturationOverrideSupported"]
+        fn saturation_override_supported(self: &SettingsVisualEffectsController) -> bool;
+        #[cxx_name = "noiseOverrideSupported"]
+        fn noise_override_supported(self: &SettingsVisualEffectsController) -> bool;
         #[cxx_name = "blurOverridden"]
         fn blur_overridden(self: &SettingsVisualEffectsController) -> bool;
         #[cxx_name = "saturationOverridden"]
@@ -325,6 +334,18 @@ impl qobject::SettingsVisualEffectsController {
             .overrides
             .noise
             .unwrap_or_else(|| self.rust().state.effective().noise)
+    }
+
+    fn blur_override_supported(&self) -> bool {
+        self.rust().state.blur_override_supported()
+    }
+
+    fn saturation_override_supported(&self) -> bool {
+        self.rust().state.saturation_override_supported()
+    }
+
+    fn noise_override_supported(&self) -> bool {
+        self.rust().state.noise_override_supported()
     }
 
     fn blur_overridden(&self) -> bool {

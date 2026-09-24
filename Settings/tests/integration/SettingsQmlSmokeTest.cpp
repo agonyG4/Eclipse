@@ -69,6 +69,100 @@ void connectAppearanceReload(SettingsController &settingsController,
 
 } // namespace
 
+class VisualEffectsPageTestController final : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(bool available READ available CONSTANT)
+    Q_PROPERTY(double materialPosition READ materialPosition CONSTANT)
+    Q_PROPERTY(double defaultMaterialPosition READ defaultMaterialPosition CONSTANT)
+    Q_PROPERTY(double effectiveBlur READ effectiveBlur CONSTANT)
+    Q_PROPERTY(double effectiveSaturation READ effectiveSaturation CONSTANT)
+    Q_PROPERTY(double effectiveNoise READ effectiveNoise CONSTANT)
+    Q_PROPERTY(double blurValue READ blurValue CONSTANT)
+    Q_PROPERTY(double saturationValue READ saturationValue CONSTANT)
+    Q_PROPERTY(double noiseValue READ noiseValue CONSTANT)
+    Q_PROPERTY(bool blurOverrideSupported READ blurOverrideSupported NOTIFY snapshotChanged)
+    Q_PROPERTY(bool saturationOverrideSupported READ saturationOverrideSupported NOTIFY snapshotChanged)
+    Q_PROPERTY(bool noiseOverrideSupported READ noiseOverrideSupported NOTIFY snapshotChanged)
+    Q_PROPERTY(bool blurOverridden READ blurOverridden CONSTANT)
+    Q_PROPERTY(bool saturationOverridden READ saturationOverridden CONSTANT)
+    Q_PROPERTY(bool noiseOverridden READ noiseOverridden CONSTANT)
+    Q_PROPERTY(bool hasOverrides READ hasOverrides NOTIFY snapshotChanged)
+    Q_PROPERTY(QString lastError READ lastError CONSTANT)
+
+public:
+    bool available() const { return true; }
+    double materialPosition() const { return 0.5; }
+    double defaultMaterialPosition() const { return 0.5; }
+    double effectiveBlur() const { return 0.3; }
+    double effectiveSaturation() const { return 0.8; }
+    double effectiveNoise() const { return 0.1; }
+    double blurValue() const { return 0.3; }
+    double saturationValue() const { return 0.8; }
+    double noiseValue() const { return 0.1; }
+    bool blurOverrideSupported() const { return m_blurOverrideSupported; }
+    bool saturationOverrideSupported() const { return m_saturationOverrideSupported; }
+    bool noiseOverrideSupported() const { return m_noiseOverrideSupported; }
+    bool blurOverridden() const { return false; }
+    bool saturationOverridden() const { return false; }
+    bool noiseOverridden() const { return false; }
+    bool hasOverrides() const { return m_hasOverrides; }
+    QString lastError() const { return {}; }
+
+    void setCapabilities(bool blur, bool saturation, bool noise)
+    {
+        m_blurOverrideSupported = blur;
+        m_saturationOverrideSupported = saturation;
+        m_noiseOverrideSupported = noise;
+        emit snapshotChanged();
+    }
+
+    void setHasOverrides(bool value)
+    {
+        if (m_hasOverrides == value)
+            return;
+        m_hasOverrides = value;
+        emit snapshotChanged();
+    }
+
+    Q_INVOKABLE void refresh() {}
+    Q_INVOKABLE void setMaterialPosition(double) {}
+    Q_INVOKABLE void setBlurOverride(double) {}
+    Q_INVOKABLE void clearBlurOverride() {}
+    Q_INVOKABLE void setSaturationOverride(double) {}
+    Q_INVOKABLE void clearSaturationOverride() {}
+    Q_INVOKABLE void setNoiseOverride(double) {}
+    Q_INVOKABLE void clearNoiseOverride() {}
+    Q_INVOKABLE void resetOverrides() {}
+    Q_INVOKABLE void restoreDefaults() {}
+    Q_INVOKABLE void flush() {}
+
+signals:
+    void snapshotChanged();
+
+private:
+    bool m_blurOverrideSupported = false;
+    bool m_saturationOverrideSupported = false;
+    bool m_noiseOverrideSupported = false;
+    bool m_hasOverrides = false;
+};
+
+class VisualEffectsPageTestSettings final : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(QObject *visualEffects READ visualEffects CONSTANT)
+    Q_PROPERTY(QObject *wallpaper READ wallpaper CONSTANT)
+
+public:
+    explicit VisualEffectsPageTestSettings(QObject *visualEffects)
+        : m_visualEffects(visualEffects)
+    {}
+
+    QObject *visualEffects() const { return m_visualEffects; }
+    QObject *wallpaper() const { return nullptr; }
+
+private:
+    QObject *m_visualEffects;
+};
+
 class SettingsQmlSmokeTest final : public QObject {
     Q_OBJECT
 
@@ -85,6 +179,7 @@ private slots:
     void iconsPageReconcilesExternalPersistedSelectionOnRefresh();
     void visualEffectsPreviewUsesEffectiveMaterialSnapshot();
     void materialPreviewFallbackUsesEffectiveSnapshot();
+    void materialShowcaseLiveModeKeepsNeutralLocalSurface();
     void materialShowcaseMarksLocalApproximation();
     void appearanceReusesSnapshotAndUpdatesWithoutRecreation();
     void appearanceDoesNotRefreshWhileWallpaperBusy();
@@ -96,6 +191,7 @@ private slots:
     void appearanceAccentChoicesUpdateController();
     void appearancePersistenceErrorsAreVisibleOnlyWhenPresent();
     void visualEffectsPageUsesTypedMaterialController();
+    void visualEffectsAdvancedRowsAndActionsFollowCapabilities();
     void loadsWallpaperRouteFromHubOffscreen();
     void loadsDockRouteFromHubOffscreen();
     void navigatesBackAndForwardFromHub();
@@ -799,6 +895,78 @@ void SettingsQmlSmokeTest::materialPreviewFallbackUsesEffectiveSnapshot()
     QCOMPARE(fallback->property("effectiveSaturation").toDouble(), 0.42);
     QCOMPARE(fallback->property("effectiveNoise").toDouble(), 0.18);
     QVERIFY(fallback->property("fallbackApproximation").toBool());
+
+    auto *surface = qobject_cast<QQuickItem *>(fallback.get());
+    QVERIFY(surface != nullptr);
+    auto *chrome = findVisualItem(surface, QStringLiteral("materialShowcaseBlurSurface"));
+    auto *accent = findVisualItem(surface, QStringLiteral("materialShowcaseAccent"));
+    auto *noise = findVisualItem(surface, QStringLiteral("materialShowcaseNoise"));
+    QVERIFY(chrome != nullptr);
+    QVERIFY(accent != nullptr);
+    QVERIFY(noise != nullptr);
+
+    const double initialOpacity = surface->opacity();
+    const double initialChromeOpacity = chrome->opacity();
+    const double initialAccentOpacity = accent->opacity();
+    QVERIFY(noise->property("visible").toBool());
+    QVERIFY(noise->opacity() > 0.0);
+
+    fallback->setProperty("effectiveBlur", 0.12);
+    fallback->setProperty("effectiveSaturation", 0.91);
+    fallback->setProperty("effectiveNoise", 0.0);
+    QCoreApplication::processEvents();
+
+    QVERIFY(!qFuzzyCompare(surface->opacity(), initialOpacity));
+    QVERIFY(!qFuzzyCompare(chrome->opacity(), initialChromeOpacity));
+    QVERIFY(!qFuzzyCompare(accent->opacity(), initialAccentOpacity));
+    QVERIFY(!noise->property("visible").toBool());
+    QCOMPARE(noise->opacity(), 0.0);
+}
+
+void SettingsQmlSmokeTest::materialShowcaseLiveModeKeepsNeutralLocalSurface()
+{
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    QQmlComponent component(
+        &engine,
+        QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/MaterialShowcase.qml")));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    const QVariantMap properties{{QStringLiteral("fallbackApproximation"), false},
+                                 {QStringLiteral("themeVariant"), QStringLiteral("dark")},
+                                 {QStringLiteral("effectiveBlur"), 0.08},
+                                 {QStringLiteral("effectiveSaturation"), 0.18},
+                                 {QStringLiteral("effectiveNoise"), 0.0}};
+    std::unique_ptr<QObject> live(component.createWithInitialProperties(properties));
+    QVERIFY(live != nullptr);
+    QCOMPARE(live->objectName(), QStringLiteral("materialPreviewShowcase"));
+
+    auto *surface = qobject_cast<QQuickItem *>(live.get());
+    QVERIFY(surface != nullptr);
+    auto *chrome = findVisualItem(surface, QStringLiteral("materialShowcaseBlurSurface"));
+    auto *accent = findVisualItem(surface, QStringLiteral("materialShowcaseAccent"));
+    auto *noise = findVisualItem(surface, QStringLiteral("materialShowcaseNoise"));
+    QVERIFY(chrome != nullptr);
+    QVERIFY(accent != nullptr);
+    QVERIFY(noise != nullptr);
+
+    const double stableSurfaceOpacity = surface->opacity();
+    const double stableChromeOpacity = chrome->opacity();
+    const double stableAccentOpacity = accent->opacity();
+    QVERIFY(!noise->property("visible").toBool());
+
+    live->setProperty("effectiveBlur", 0.96);
+    live->setProperty("effectiveSaturation", 0.94);
+    live->setProperty("effectiveNoise", 0.82);
+    QCoreApplication::processEvents();
+
+    QCOMPARE(live->property("effectiveBlur").toDouble(), 0.96);
+    QCOMPARE(live->property("effectiveSaturation").toDouble(), 0.94);
+    QCOMPARE(live->property("effectiveNoise").toDouble(), 0.82);
+    QCOMPARE(surface->opacity(), stableSurfaceOpacity);
+    QCOMPARE(chrome->opacity(), stableChromeOpacity);
+    QCOMPARE(accent->opacity(), stableAccentOpacity);
+    QVERIFY(!noise->property("visible").toBool());
 }
 void SettingsQmlSmokeTest::materialShowcaseMarksLocalApproximation()
 {
@@ -1005,42 +1173,45 @@ void SettingsQmlSmokeTest::appearancePreviewFallsBackWithoutWallpaperService()
 
 void SettingsQmlSmokeTest::visualEffectsAdvancedTogglesWithMouseAndKeyboard()
 {
-    QTemporaryDir home;
-    QVERIFY(home.isValid());
-    HomeEnvironmentGuard homeGuard(home.path());
-    SettingsController settingsController;
+    VisualEffectsPageTestController controller;
+    controller.setCapabilities(true, false, false);
+    VisualEffectsPageTestSettings settingsController(&controller);
     SettingsTranslationController translationController;
     ThemeController themeController;
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
     engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
     engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
-    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
-    QCOMPARE(engine.rootObjects().size(), 1);
-    QVERIFY(settingsController.navigateTo(QStringLiteral("visual-effects")));
-    auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
-    QVERIFY(window != nullptr);
-    auto *page = qobject_cast<QQuickItem *>(window->findChild<QObject *>(
-        QStringLiteral("visualEffectsPage")));
+    QQmlComponent component(
+        &engine,
+        QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/VisualEffects.qml")));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    QQuickWindow window;
+    window.resize(1200, 900);
+    std::unique_ptr<QObject> pageObject(component.create());
+    QVERIFY(pageObject != nullptr);
+    auto *page = qobject_cast<QQuickItem *>(pageObject.get());
     QVERIFY(page != nullptr);
-    auto *toggle = qobject_cast<QQuickItem *>(page->findChild<QObject *>(
-        QStringLiteral("visualEffectsAdvancedToggle")));
-    auto *advanced = page->findChild<QObject *>(QStringLiteral("visualEffectsAdvancedCard"));
+    auto *toggle = findVisualItem(page, QStringLiteral("visualEffectsAdvancedToggle"));
+    auto *advanced = findVisualItem(page, QStringLiteral("visualEffectsAdvancedCard"));
     QVERIFY(toggle != nullptr);
     QVERIFY(advanced != nullptr);
+    page->setParentItem(window.contentItem());
+    page->setWidth(window.width());
+    page->setHeight(window.height());
     QCOMPARE(advanced->property("visible").toBool(), false);
-    window->show();
-    QVERIFY(QTest::qWaitForWindowExposed(window));
-    window->requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(window));
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.requestActivate();
+    QVERIFY(QTest::qWaitForWindowActive(&window));
 
     const QPoint mousePosition = toggle->mapToScene(QPointF(toggle->width() / 2,
                                                               toggle->height() / 2)).toPoint();
-    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, mousePosition);
+    QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, mousePosition);
     QTRY_VERIFY(advanced->property("visible").toBool());
     QVERIFY(QMetaObject::invokeMethod(toggle, "forceActiveFocus"));
     QTRY_VERIFY_WITH_TIMEOUT(toggle->property("activeFocus").toBool(), 1000);
-    QTest::keyClick(window, Qt::Key_Space);
+    QTest::keyClick(&window, Qt::Key_Space);
     QTRY_VERIFY(!advanced->property("visible").toBool());
 }
 void SettingsQmlSmokeTest::appearanceChoicesUpdateController()
@@ -1434,6 +1605,85 @@ void SettingsQmlSmokeTest::visualEffectsPageUsesTypedMaterialController()
     QCOMPARE(page->findChild<QObject *>(QStringLiteral("visualEffectsAdvancedCard"))
                  ->property("visible").toBool(), false);
 }
+
+void SettingsQmlSmokeTest::visualEffectsAdvancedRowsAndActionsFollowCapabilities()
+{
+    VisualEffectsPageTestController controller;
+    VisualEffectsPageTestSettings settingsController(&controller);
+    SettingsTranslationController translationController;
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"),
+                                             &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    QQmlComponent component(
+        &engine,
+        QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/VisualEffects.qml")));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    std::unique_ptr<QObject> pageObject(component.create());
+    QVERIFY(pageObject != nullptr);
+    auto *page = qobject_cast<QQuickItem *>(pageObject.get());
+    QVERIFY(page != nullptr);
+
+    auto *toggle = findVisualItem(page, QStringLiteral("visualEffectsAdvancedToggle"));
+    auto *card = findVisualItem(page, QStringLiteral("visualEffectsAdvancedCard"));
+    auto *blurRow = findVisualItem(page, QStringLiteral("materialBlurRow"));
+    auto *saturationRow = findVisualItem(page, QStringLiteral("materialSaturationRow"));
+    auto *noiseRow = findVisualItem(page, QStringLiteral("materialNoiseRow"));
+    auto *reset = findVisualItem(page, QStringLiteral("resetAdvancedCustomizations"));
+    auto *restore = findVisualItem(page, QStringLiteral("restoreVisualEffectsDefaults"));
+    QVERIFY(toggle != nullptr);
+    QVERIFY(card != nullptr);
+    QVERIFY(blurRow != nullptr);
+    QVERIFY(saturationRow != nullptr);
+    QVERIFY(noiseRow != nullptr);
+    QVERIFY(reset != nullptr);
+    QVERIFY(restore != nullptr);
+
+    QVERIFY(!page->property("advancedExpanded").toBool());
+    QVERIFY(!toggle->isVisible());
+    QVERIFY(!card->isVisible());
+    QVERIFY(!blurRow->property("visible").toBool());
+    QVERIFY(!saturationRow->property("visible").toBool());
+    QVERIFY(!noiseRow->property("visible").toBool());
+    QVERIFY(!reset->isVisible());
+    QVERIFY(!restore->isVisible());
+
+    controller.setCapabilities(true, false, true);
+    QCoreApplication::processEvents();
+    QVERIFY(toggle->isVisible());
+    QVERIFY(!page->property("advancedExpanded").toBool());
+    QVERIFY(!card->isVisible());
+    QVERIFY(!reset->isVisible());
+    QVERIFY(!restore->isVisible());
+
+    page->setProperty("advancedExpanded", true);
+    QCoreApplication::processEvents();
+    QVERIFY(card->isVisible());
+    QVERIFY(blurRow->property("visible").toBool());
+    QVERIFY(!saturationRow->property("visible").toBool());
+    QVERIFY(noiseRow->property("visible").toBool());
+    QVERIFY(reset->isVisible());
+    QVERIFY(restore->isVisible());
+    QVERIFY(!reset->property("enabled").toBool());
+    QVERIFY(restore->property("enabled").toBool());
+
+    controller.setHasOverrides(true);
+    QCoreApplication::processEvents();
+    QVERIFY(reset->property("enabled").toBool());
+    controller.setHasOverrides(false);
+    QCoreApplication::processEvents();
+    QVERIFY(!reset->property("enabled").toBool());
+
+    controller.setCapabilities(false, false, false);
+    QCoreApplication::processEvents();
+    QVERIFY(!toggle->isVisible());
+    QVERIFY(!card->isVisible());
+    QVERIFY(!reset->isVisible());
+    QVERIFY(!restore->isVisible());
+}
+
 void SettingsQmlSmokeTest::loadsWallpaperRouteFromHubOffscreen()
 {
     SettingsController settingsController;

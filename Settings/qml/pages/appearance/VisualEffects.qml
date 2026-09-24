@@ -11,6 +11,9 @@ Item {
 
     readonly property var controller: SettingsController.visualEffects
     readonly property var wallpaperController: SettingsController.wallpaper
+    readonly property bool hasAdvancedCapabilities: controller &&
+        (controller.blurOverrideSupported || controller.saturationOverrideSupported
+         || controller.noiseOverrideSupported)
     property bool advancedExpanded: false
 
     Component.onCompleted: {
@@ -107,6 +110,7 @@ Item {
             id: advancedToggle
             objectName: "visualEffectsAdvancedToggle"
             Layout.fillWidth: true
+            visible: root.hasAdvancedCapabilities
             flat: true
             activeFocusOnTab: true
             text: root.advancedExpanded
@@ -119,7 +123,7 @@ Item {
 
         Form.FormCard {
             objectName: "visualEffectsAdvancedCard"
-            visible: root.advancedExpanded
+            visible: root.advancedExpanded && root.hasAdvancedCapabilities
             Layout.fillWidth: true
             Layout.bottomMargin: 14
 
@@ -128,6 +132,7 @@ Item {
 
                 Form.SettingRow {
                     objectName: "materialBlurRow"
+                    visible: root.controller && root.controller.blurOverrideSupported
                     label: I18n.tr("apps.settings.pages.visual_effects.blur", "Blur Strength")
                     sublabel: root.controller && root.controller.blurOverridden
                         ? I18n.tr("apps.settings.pages.visual_effects.overridden", "Override")
@@ -166,6 +171,7 @@ Item {
 
                 Form.SettingRow {
                     objectName: "materialSaturationRow"
+                    visible: root.controller && root.controller.saturationOverrideSupported
                     label: I18n.tr("apps.settings.pages.visual_effects.saturation", "Saturation")
                     sublabel: root.controller && root.controller.saturationOverridden
                         ? I18n.tr("apps.settings.pages.visual_effects.overridden", "Override")
@@ -204,6 +210,7 @@ Item {
 
                 Form.SettingRow {
                     objectName: "materialNoiseRow"
+                    visible: root.controller && root.controller.noiseOverrideSupported
                     label: I18n.tr("apps.settings.pages.visual_effects.noise", "Noise")
                     sublabel: root.controller && root.controller.noiseOverridden
                         ? I18n.tr("apps.settings.pages.visual_effects.overridden", "Override")
@@ -239,23 +246,23 @@ Item {
                         }
                     }
                 }
-            }
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.bottomMargin: 12
-            QQC2.Button {
-                objectName: "resetAdvancedCustomizations"
-                text: I18n.tr("apps.settings.pages.visual_effects.reset_advanced", "Reset advanced customizations")
-                enabled: root.controller && root.controller.available && root.controller.hasOverrides
-                onClicked: root.controller.resetOverrides()
-            }
-            Item { Layout.fillWidth: true }
-            QQC2.Button {
-                text: I18n.tr("apps.settings.pages.visual_effects.restore_defaults", "Restore Defaults")
-                enabled: root.controller && root.controller.available
-                onClicked: root.controller.restoreDefaults()
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 8
+                    QQC2.Button {
+                        objectName: "resetAdvancedCustomizations"
+                        text: I18n.tr("apps.settings.pages.visual_effects.reset_advanced", "Reset advanced customizations")
+                        enabled: root.controller && root.controller.available && root.controller.hasOverrides
+                        onClicked: root.controller.resetOverrides()
+                    }
+                    Item { Layout.fillWidth: true }
+                    QQC2.Button {
+                        objectName: "restoreVisualEffectsDefaults"
+                        text: I18n.tr("apps.settings.pages.visual_effects.restore_defaults", "Restore Defaults")
+                        enabled: root.controller && root.controller.available
+                        onClicked: root.controller.restoreDefaults()
+                    }
+                }
             }
         }
 

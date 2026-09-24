@@ -10,8 +10,10 @@ Rectangle {
     property real effectiveSaturation: 1.0
     property real effectiveNoise: 0.0
 
-    readonly property real materialOpacity: 0.72 + effectiveBlur * 0.20
-    readonly property real saturationOpacity: 0.38 + effectiveSaturation * 0.62
+    readonly property real materialOpacity: fallbackApproximation
+        ? 0.72 + effectiveBlur * 0.20 : 0.96
+    readonly property real saturationOpacity: fallbackApproximation
+        ? 0.38 + effectiveSaturation * 0.62 : 1.0
     readonly property color lightSurface: "#fbfcff"
     readonly property color lightText: "#4c5665"
     readonly property color darkSurface: "#272e3a"
@@ -189,6 +191,7 @@ Rectangle {
         }
 
         Rectangle {
+            objectName: "materialShowcaseBlurSurface"
             visible: root.themeVariant !== "auto"
             anchors.left: parent.left
             anchors.right: parent.right
@@ -197,10 +200,12 @@ Rectangle {
             color: root.themeVariant === "light" ? "#d1dce9"
                 : root.themeVariant === "dark" ? "#3a4657"
                     : Components.Theme.isLight ? "#d1dce9" : "#3a4657"
-            opacity: 0.42 + root.effectiveBlur * 0.40
+            opacity: root.fallbackApproximation
+                ? 0.42 + root.effectiveBlur * 0.40 : 0.58
         }
 
         Rectangle {
+            objectName: "materialShowcaseAccent"
             visible: root.themeVariant !== "auto"
             anchors.right: parent.right
             anchors.bottom: parent.bottom
@@ -210,7 +215,8 @@ Rectangle {
             height: 3
             radius: 2
             color: Components.Theme.accent
-            opacity: 0.25 + root.saturationOpacity * 0.47
+            opacity: root.fallbackApproximation
+                ? 0.25 + root.saturationOpacity * 0.47 : 0.72
         }
 
         Rectangle {
@@ -236,6 +242,7 @@ Rectangle {
         }
 
         Row {
+            objectName: "materialShowcaseNoise"
             visible: root.fallbackApproximation && root.effectiveNoise > 0.001
             anchors.left: parent.left
             anchors.right: parent.right

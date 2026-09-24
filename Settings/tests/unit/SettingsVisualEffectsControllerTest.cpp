@@ -22,9 +22,20 @@ void SettingsVisualEffectsControllerTest::controllerIsRustBackedAndTyped()
     const auto *meta = controller->metaObject();
     for (const auto *name : {"available", "busy", "materialPosition", "defaultMaterialPosition",
                               "effectiveBlur", "effectiveSaturation", "effectiveNoise",
+                              "blurOverrideSupported", "saturationOverrideSupported",
+                              "noiseOverrideSupported",
                               "blurOverridden", "saturationOverridden", "noiseOverridden",
                               "hasOverrides", "generation", "source", "lastError"}) {
         QVERIFY2(meta->indexOfProperty(name) >= 0, name);
+    }
+    for (const auto *name : {"blurOverrideSupported", "saturationOverrideSupported",
+                              "noiseOverrideSupported"}) {
+        const auto propertyIndex = meta->indexOfProperty(name);
+        QVERIFY2(propertyIndex >= 0, name);
+        const auto property = meta->property(propertyIndex);
+        QVERIFY2(property.isValid(), name);
+        QCOMPARE(property.metaType().id(), QMetaType::Bool);
+        QVERIFY2(!property.isWritable(), name);
     }
     for (const auto *signature : {"refresh()", "setMaterialPosition(double)",
                                   "setBlurOverride(double)", "clearBlurOverride()",

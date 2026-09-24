@@ -134,6 +134,7 @@ pub enum StateError {
     IncompleteSnapshot,
     StaleSnapshot,
     InvalidConfiguration,
+    UnsupportedCapability,
     Unavailable,
 }
 
@@ -143,6 +144,7 @@ impl std::fmt::Display for StateError {
             Self::IncompleteSnapshot => "Typhon returned an incomplete material snapshot",
             Self::StaleSnapshot => "Typhon returned a stale material snapshot",
             Self::InvalidConfiguration => "material configuration is outside supported bounds",
+            Self::UnsupportedCapability => "Typhon does not support this material override",
             Self::Unavailable => "Typhon is unavailable",
         })
     }
@@ -209,6 +211,24 @@ impl VisualEffectsState {
         self.configuration.overrides.noise.is_some()
     }
 
+    pub fn blur_override_supported(&self) -> bool {
+        self.snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.capabilities.blur_override)
+    }
+
+    pub fn saturation_override_supported(&self) -> bool {
+        self.snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.capabilities.saturation_override)
+    }
+
+    pub fn noise_override_supported(&self) -> bool {
+        self.snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.capabilities.noise_override)
+    }
+
     pub fn pending_configuration(&self) -> Option<MaterialConfiguration> {
         self.pending.clone()
     }
@@ -262,6 +282,7 @@ impl VisualEffectsState {
 
     pub fn set_blur_override(&mut self, value: f64) -> Result<(), StateError> {
         self.ensure_available()?;
+        self.ensure_override_supported(self.blur_override_supported())?;
         validate_value(value)?;
         self.configuration.overrides.blur = Some(value);
         self.queue_configuration();
@@ -277,6 +298,7 @@ impl VisualEffectsState {
 
     pub fn set_saturation_override(&mut self, value: f64) -> Result<(), StateError> {
         self.ensure_available()?;
+        self.ensure_override_supported(self.saturation_override_supported())?;
         validate_value(value)?;
         self.configuration.overrides.saturation = Some(value);
         self.queue_configuration();
@@ -292,6 +314,7 @@ impl VisualEffectsState {
 
     pub fn set_noise_override(&mut self, value: f64) -> Result<(), StateError> {
         self.ensure_available()?;
+        self.ensure_override_supported(self.noise_override_supported())?;
         validate_value(value)?;
         self.configuration.overrides.noise = Some(value);
         self.queue_configuration();
@@ -330,6 +353,12 @@ impl VisualEffectsState {
 
     fn ensure_available(&self) -> Result<(), StateError> {
         self.available.then_some(()).ok_or(StateError::Unavailable)
+    }
+
+    fn ensure_override_supported(&self, supported: bool) -> Result<(), StateError> {
+        supported
+            .then_some(())
+            .ok_or(StateError::UnsupportedCapability)
     }
 
     fn queue_configuration(&mut self) {

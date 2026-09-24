@@ -1,9 +1,25 @@
 use super::{
     EffectiveMaterial, MaterialCapabilities, MaterialConfigSource, MaterialConfiguration,
-    MaterialOverrides, MaterialSnapshot, VisualEffectsState,
+    MaterialOverrides, MaterialSnapshot, StateError, VisualEffectsState,
 };
 
 fn snapshot(generation: u64, configuration: MaterialConfiguration) -> MaterialSnapshot {
+    snapshot_with_capabilities(
+        generation,
+        configuration,
+        MaterialCapabilities {
+            blur_override: true,
+            saturation_override: true,
+            noise_override: true,
+        },
+    )
+}
+
+fn snapshot_with_capabilities(
+    generation: u64,
+    configuration: MaterialConfiguration,
+    capabilities: MaterialCapabilities,
+) -> MaterialSnapshot {
     MaterialSnapshot {
         generation,
         source: MaterialConfigSource::Runtime,
@@ -13,11 +29,7 @@ fn snapshot(generation: u64, configuration: MaterialConfiguration) -> MaterialSn
             noise: 0.2,
         },
         configuration,
-        capabilities: MaterialCapabilities {
-            blur_override: true,
-            saturation_override: true,
-            noise_override: true,
-        },
+        capabilities,
     }
 }
 
@@ -30,6 +42,9 @@ fn material_state_starts_at_astrea_default_without_claiming_availability() {
     assert_eq!(state.configuration().position, 0.5);
     assert!(state.configuration().overrides.is_empty());
     assert_eq!(state.generation(), 0);
+    assert!(!state.blur_override_supported());
+    assert!(!state.saturation_override_supported());
+    assert!(!state.noise_override_supported());
 }
 
 #[test]
@@ -56,6 +71,44 @@ fn authoritative_snapshot_replaces_configuration_and_effective_projection() {
 }
 
 #[test]
+fn override_capabilities_project_exactly_from_the_latest_authoritative_snapshot() {
+    let mut state = VisualEffectsState::default();
+    let first_capabilities = MaterialCapabilities {
+        blur_override: false,
+        saturation_override: true,
+        noise_override: false,
+    };
+    state
+        .apply_snapshot(snapshot_with_capabilities(
+            1,
+            MaterialConfiguration::default(),
+            first_capabilities,
+        ))
+        .unwrap();
+
+    assert!(!state.blur_override_supported());
+    assert!(state.saturation_override_supported());
+    assert!(!state.noise_override_supported());
+
+    let latest_capabilities = MaterialCapabilities {
+        blur_override: true,
+        saturation_override: false,
+        noise_override: true,
+    };
+    state
+        .apply_snapshot(snapshot_with_capabilities(
+            2,
+            MaterialConfiguration::default(),
+            latest_capabilities,
+        ))
+        .unwrap();
+
+    assert!(state.blur_override_supported());
+    assert!(!state.saturation_override_supported());
+    assert!(state.noise_override_supported());
+}
+
+#[test]
 fn position_and_advanced_edits_fold_into_one_newest_complete_configuration() {
     let mut state = VisualEffectsState::default();
     state
@@ -64,13 +117,95 @@ fn position_and_advanced_edits_fold_into_one_newest_complete_configuration() {
 
     state.set_material_position(0.7).unwrap();
     state.set_blur_override(0.91).unwrap();
+    state.set_saturation_override(0.65).unwrap();
     state.set_noise_override(0.4).unwrap();
 
     let pending = state.pending_configuration().unwrap();
     assert_eq!(pending.position, 0.7);
     assert_eq!(pending.overrides.blur, Some(0.91));
     assert_eq!(pending.overrides.noise, Some(0.4));
-    assert_eq!(pending.overrides.saturation, None);
+    assert_eq!(pending.overrides.saturation, Some(0.65));
+}
+
+fn assert_unsupported_override_preserves_state(
+    set_override: fn(&mut VisualEffectsState, f64) -> Result<(), StateError>,
+) {
+    let mut state = VisualEffectsState::default();
+    let configuration = MaterialConfiguration {
+        position: 0.64,
+        overrides: MaterialOverrides {
+            blur: Some(0.17),
+            saturation: Some(0.83),
+            noise: Some(0.08),
+        },
+        ..MaterialConfiguration::default()
+    };
+    state
+        .apply_snapshot(snapshot_with_capabilities(
+            1,
+            configuration,
+            MaterialCapabilities::default(),
+        ))
+        .unwrap();
+
+    // Keep an existing pending request in place to prove a rejected setter
+    // neither changes the requested configuration nor replaces pending work.
+    state.set_material_position(0.71).unwrap();
+    let requested_before = state.configuration().clone();
+    let pending_before = state.pending_configuration();
+
+    assert_eq!(
+        set_override(&mut state, 0.42),
+        Err(StateError::UnsupportedCapability)
+    );
+    assert_eq!(state.configuration(), &requested_before);
+    assert_eq!(state.pending_configuration(), pending_before);
+}
+
+#[test]
+fn unsupported_blur_override_is_rejected_locally() {
+    assert_unsupported_override_preserves_state(VisualEffectsState::set_blur_override);
+}
+
+#[test]
+fn unsupported_saturation_override_is_rejected_locally() {
+    assert_unsupported_override_preserves_state(VisualEffectsState::set_saturation_override);
+}
+
+#[test]
+fn unsupported_noise_override_is_rejected_locally() {
+    assert_unsupported_override_preserves_state(VisualEffectsState::set_noise_override);
+}
+
+#[test]
+fn clearing_and_resetting_existing_overrides_is_safe_when_unsupported() {
+    let mut state = VisualEffectsState::default();
+    state
+        .apply_snapshot(snapshot_with_capabilities(
+            1,
+            MaterialConfiguration {
+                position: 0.74,
+                overrides: MaterialOverrides {
+                    blur: Some(0.21),
+                    saturation: Some(0.67),
+                    noise: Some(0.12),
+                },
+                ..MaterialConfiguration::default()
+            },
+            MaterialCapabilities::default(),
+        ))
+        .unwrap();
+
+    state.clear_blur_override().unwrap();
+    state.clear_saturation_override().unwrap();
+    state.clear_noise_override().unwrap();
+    state.reset_overrides().unwrap();
+
+    assert_eq!(state.configuration().position, 0.74);
+    assert!(state.configuration().overrides.is_empty());
+    let pending = state.pending_configuration().unwrap();
+    assert_eq!(pending.position, 0.74);
+    assert!(pending.overrides.is_empty());
 }
 
 #[test]

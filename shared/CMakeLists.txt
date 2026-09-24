@@ -169,9 +169,8 @@ endif()
 
 astrea_shared_enable_sanitizers(astrea-shared-statusnotifier)
 
-add_library(astrea-shared-system STATIC
+add_library(astrea-shared-system-qt STATIC
     system/SystemServiceState.cpp
-    system/SystemServiceState.hpp
     system/audio/AudioOutputModel.cpp
     system/audio/AudioOutputModel.hpp
     system/audio/AudioBackend.hpp
@@ -198,24 +197,43 @@ add_library(astrea-shared-system STATIC
     system/bluetooth/RustBluetoothBackend.cpp
     system/bluetooth/RustBluetoothBackend.hpp
 )
-add_dependencies(astrea-shared-system astrea_system_backend_cxxqt_headers)
+add_dependencies(astrea-shared-system-qt astrea_system_backend_cxxqt_headers)
 
-target_include_directories(astrea-shared-system PUBLIC
+target_include_directories(astrea-shared-system-qt PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
+target_include_directories(astrea-shared-system-qt PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/system"
+    "${CMAKE_CURRENT_BINARY_DIR}/cxxqt/crates/astrea_system_backend/include"
+)
 
-target_link_libraries(astrea-shared-system PUBLIC
-    astrea_system_backend
+target_link_libraries(astrea-shared-system-qt PUBLIC
     Qt6::Core
+    Qt6::Qml
     Qt6::DBus
     PkgConfig::ASTREA_PIPEWIRE
 )
 
 if(NOT MSVC)
-    target_compile_options(astrea-shared-system PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(astrea-shared-system-qt PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-astrea_shared_enable_sanitizers(astrea-shared-system)
+astrea_shared_enable_sanitizers(astrea-shared-system-qt)
+
+qt_add_qml_module(astrea-shared-system-qt
+    URI Astrea.System
+    VERSION 1.0
+    OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Astrea/System"
+    SOURCES system/SystemServiceState.hpp
+)
+
+# Shell consumers use the standalone shared provider. Settings links its own
+# CXX-Qt aggregate, which depends on astrea_system_backend through Cargo.
+add_library(astrea-shared-system INTERFACE)
+target_link_libraries(astrea-shared-system INTERFACE
+    astrea-shared-system-qt
+    astrea_system_backend
+)
 
 qt_add_qml_module(astrea-shared-core
     URI Astrea.Shared

@@ -7,5 +7,7 @@ fn main() {
             "src/icons/qobject.rs",
             "src/visual_effects/qobject.rs",
         ])
-        .build();
+        .build()
+        .reexport_dependency("astrea_system_backend")
+        .export();
 }

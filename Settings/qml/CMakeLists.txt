@@ -104,6 +104,7 @@ set_source_files_properties(
 add_library(astrea-settings-ui STATIC)
 target_include_directories(astrea-settings-ui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(astrea-settings-ui PUBLIC
+    astrea-shared-system-qt
     Qt6::Core
     Qt6::Core5Compat
     Qt6::Gui

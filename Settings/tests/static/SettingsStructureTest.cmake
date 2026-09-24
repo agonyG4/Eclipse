@@ -107,6 +107,8 @@ endforeach()
 
 file(READ "${SETTINGS_SOURCE_DIR}/core/CMakeLists.txt" settings_core_cmake)
 file(READ "${SETTINGS_SOURCE_DIR}/CMakeLists.txt" settings_root_cmake)
+file(READ "${SETTINGS_SOURCE_DIR}/app/CMakeLists.txt" settings_app_cmake)
+file(READ "${SETTINGS_SOURCE_DIR}/qml/CMakeLists.txt" settings_qml_cmake)
 file(READ "${SETTINGS_SOURCE_DIR}/cmake/RustBackend.cmake" settings_rust_backend_cmake)
 set(shared_cxxqt_backend_cmake "")
 if(EXISTS "${SETTINGS_SOURCE_DIR}/../cmake/AstreaCxxQtBackend.cmake")
@@ -114,6 +116,22 @@ if(EXISTS "${SETTINGS_SOURCE_DIR}/../cmake/AstreaCxxQtBackend.cmake")
 endif()
 file(READ "${SETTINGS_SOURCE_DIR}/tests/CMakeLists.txt" settings_tests_cmake)
 file(READ "${SETTINGS_SOURCE_DIR}/app/SettingsApplication.cpp" settings_application_source)
+file(READ "${SETTINGS_SOURCE_DIR}/tests/integration/SettingsBluetoothQmlTest.cpp"
+    settings_bluetooth_qml_test_source)
+file(READ "${SETTINGS_SOURCE_DIR}/../shared/CMakeLists.txt" shared_cmake)
+file(READ "${SETTINGS_SOURCE_DIR}/../shared/system/SystemServiceState.hpp"
+    shared_system_service_state_header)
+file(READ "${SETTINGS_SOURCE_DIR}/backend/Cargo.toml" settings_backend_manifest)
+file(READ "${SETTINGS_SOURCE_DIR}/backend/build.rs" settings_backend_build_source)
+file(READ "${SETTINGS_SOURCE_DIR}/../shared/backend/build.rs" shared_backend_build_source)
+
+set(settings_production_link_configuration
+    "${settings_root_cmake}\n${settings_core_cmake}\n${settings_app_cmake}\n${settings_qml_cmake}")
+if(settings_production_link_configuration MATCHES "--allow-multiple-definition|(^|[ \t])-z[ \t]+muldefs")
+    message(FATAL_ERROR
+        "Settings production link configuration must not suppress duplicate-symbol diagnostics")
+endif()
+
 file(READ "${SETTINGS_SOURCE_DIR}/../shared/theme/ThemeController.hpp" theme_controller_header)
 string(REGEX REPLACE "[ \t\r\n]+" " " normalized_theme_controller_header "${theme_controller_header}")
 if(normalized_theme_controller_header MATCHES "Q_INVOKABLE void applyConfig\\(")
@@ -155,6 +173,18 @@ foreach(rust_boundary_token IN ITEMS
     string(FIND "${settings_root_cmake}${settings_core_cmake}${settings_rust_backend_cmake}${shared_cxxqt_backend_cmake}" "${rust_boundary_token}" rust_boundary_position)
     if(rust_boundary_position EQUAL -1)
         message(FATAL_ERROR "Settings Rust/CXX-Qt boundary is missing '${rust_boundary_token}'")
+    endif()
+endforeach()
+foreach(cxxqt_dependency_token IN ITEMS
+    "astrea_system_backend = { path = \"../../shared/backend\" }"
+    ".reexport_dependency(\"astrea_system_backend\")"
+    ".export()"
+    "astrea-shared-system-qt"
+)
+    string(FIND "${settings_backend_manifest}${settings_backend_build_source}${shared_backend_build_source}${settings_core_cmake}"
+        "${cxxqt_dependency_token}" cxxqt_dependency_position)
+    if(cxxqt_dependency_position EQUAL -1)
+        message(FATAL_ERROR "Settings CXX-Qt aggregate is missing '${cxxqt_dependency_token}'")
     endif()
 endforeach()
 string(FIND "${settings_rust_backend_cmake}" "CRATES astrea_settings_backend" direct_settings_crate_position)
@@ -204,17 +234,30 @@ foreach(redundant_context_property IN ITEMS
         message(FATAL_ERROR "Redundant Settings context property returned: ${redundant_context_property}")
     endif()
 endforeach()
-foreach(bluetooth_startup_token IN ITEMS
-    "qmlRegisterUncreatableMetaObject"
-    "Astrea::System::staticMetaObject"
-    "Astrea.System"
+foreach(runtime_enum_registration_source IN ITEMS
+    "${settings_application_source}"
+    "${settings_bluetooth_qml_test_source}"
 )
-    string(FIND "${settings_application_source}" "${bluetooth_startup_token}"
-        bluetooth_startup_position)
-    if(bluetooth_startup_position EQUAL -1)
-        message(FATAL_ERROR "Settings must register the shared Bluetooth enum namespace: ${bluetooth_startup_token}")
+if(runtime_enum_registration_source MATCHES "qmlRegisterUncreatableMetaObject")
+    message(FATAL_ERROR "Astrea.System enum registration must come from the generated QML module")
+endif()
+endforeach()
+foreach(system_qml_module_token IN ITEMS
+    "qt_add_qml_module(astrea-shared-system-qt"
+    "URI Astrea.System"
+    "VERSION 1.0"
+    "SOURCES system/SystemServiceState.hpp"
+)
+    string(FIND "${shared_cmake}" "${system_qml_module_token}" system_qml_module_position)
+    if(system_qml_module_position EQUAL -1)
+        message(FATAL_ERROR "The shared Astrea.System QML module is missing '${system_qml_module_token}'")
     endif()
 endforeach()
+string(FIND "${shared_system_service_state_header}" "QML_NAMED_ELEMENT(System)"
+    system_namespace_qml_type_position)
+if(system_namespace_qml_type_position EQUAL -1)
+    message(FATAL_ERROR "Astrea::System must be declared as the System QML namespace type")
+endif()
 string(FIND "${settings_application_source}" "m_controller->bluetooth()->start();"
     bluetooth_start_position)
 string(FIND "${settings_application_source}" "if (!initializeQml())" qml_initialization_position)

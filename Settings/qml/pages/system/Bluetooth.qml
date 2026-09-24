@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQml.Models
 import Astrea.System 1.0
 import "../../components" as Components
 import "../../components/controls" as Controls
@@ -15,6 +16,9 @@ FocusScope {
     property bool scanLeaseHeld: false
     property bool pageActive: true
     readonly property string scanOwner: "settings-bluetooth-page"
+    property int pairedDeviceCount: 0
+    readonly property int otherDeviceCount:
+        bluetoothDeviceCountModel.items.count - root.pairedDeviceCount
 
     property string menuDevicePath: ""
     property string menuDeviceName: ""
@@ -30,6 +34,27 @@ FocusScope {
     property int displayedEntered: -1
     property string displayedServiceUuid: ""
     property string displayedPin: ""
+
+    DelegateModel {
+        id: bluetoothDeviceCountModel
+        model: root.bluetooth ? root.bluetooth.devicesModel : null
+        delegate: QtObject {}
+    }
+
+    Connections {
+        target: root.bluetooth ? root.bluetooth.devicesModel : null
+        function onModelReset() { Qt.callLater(root.updateDeviceSectionCounts) }
+    }
+
+    function updateDeviceSectionCounts() {
+        const items = bluetoothDeviceCountModel.items
+        let pairedCount = 0
+        for (let index = 0; index < items.count; ++index) {
+            if (items.get(index).model.paired)
+                ++pairedCount
+        }
+        root.pairedDeviceCount = pairedCount
+    }
 
     readonly property string statusText: {
         if (!root.bluetooth || root.bluetooth.state === System.Starting)
@@ -66,8 +91,7 @@ FocusScope {
     function acquireScanLease() {
         if (root.scanLeaseHeld || !root.bluetooth)
             return
-        root.bluetooth.requestScan(root.scanOwner)
-        root.scanLeaseHeld = true
+        root.scanLeaseHeld = root.bluetooth.requestScan(root.scanOwner)
     }
 
     function openDeviceMenu(objectPath, deviceName, trusted, x, y) {
@@ -349,7 +373,8 @@ FocusScope {
             }
 
             Text {
-                visible: pairedDeviceRepeater.count === 0
+                objectName: "myDevicesEmptyState"
+                visible: root.pairedDeviceCount === 0
                 Layout.fillWidth: true
                 text: I18n.tr("settings.bluetooth.empty.my_devices", "No paired devices yet")
                 color: Components.Theme.textSecondary
@@ -378,7 +403,8 @@ FocusScope {
             }
 
             Text {
-                visible: otherDeviceRepeater.count === 0
+                objectName: "otherDevicesEmptyState"
+                visible: root.otherDeviceCount === 0
                 Layout.fillWidth: true
                 text: I18n.tr("settings.bluetooth.empty.other_devices", "No other devices found")
                 color: Components.Theme.textSecondary
@@ -861,6 +887,7 @@ FocusScope {
     }
 
     Component.onCompleted: {
+        root.updateDeviceSectionCounts()
         root.acquireScanLease()
         root.synchronizeAgentPrompt()
     }

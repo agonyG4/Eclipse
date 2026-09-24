@@ -41,7 +41,7 @@ public:
     bool requestScan(const QString &owner) override
     {
         scanRequests.append(owner);
-        return true;
+        return scanRequestAccepted;
     }
     void releaseScan(const QString &owner) override { scanReleases.append(owner); }
     bool connectDevice(const QString &path) override
@@ -110,6 +110,7 @@ public:
     int startCount = 0;
     int stopCount = 0;
     int cancelPairingCount = 0;
+    bool scanRequestAccepted = true;
     QList<bool> poweredTargets;
     QStringList scanRequests;
     QStringList scanReleases;
@@ -131,19 +132,10 @@ private:
     quint64 m_agentRequestId = 0;
 };
 
-void registerBluetoothEnums()
-{
-    static const int registration = qmlRegisterUncreatableMetaObject(
-        Astrea::System::staticMetaObject, "Astrea.System", 1, 0, "System",
-        QStringLiteral("Astrea.System contains shared system enums"));
-    Q_UNUSED(registration)
-}
-
 class BluetoothPageFixture final {
 public:
     BluetoothPageFixture()
     {
-        registerBluetoothEnums();
         auto backend = std::make_unique<PageBluetoothBackend>();
         m_backend = backend.get();
         auto service = std::make_unique<Astrea::System::BluetoothService>(std::move(backend));
@@ -246,6 +238,8 @@ private slots:
     void showsBluetoothAvailabilityStatesSeparately();
     void powerToggleUsesAuthoritativeStateAndRespectsPendingAndPairing();
     void ownsOneScanLeaseUntilPageDestructionWhilePoweredOff();
+    void failedScanAcquisitionIsNotReleased();
+    void emptyStatesFollowAuthoritativeDeviceComposition();
     void pageDestructionCancelsActivePairing();
     void presentsSharedDevicesAndDispatchesActions();
     void successfulPairingMovesWithAuthoritativeModelWithoutChaining();
@@ -374,6 +368,53 @@ void SettingsBluetoothQmlTest::ownsOneScanLeaseUntilPageDestructionWhilePoweredO
              QStringList{QStringLiteral("settings-bluetooth-page")});
     fixture.destroyPage();
     QCOMPARE(fixture.backend()->scanReleases.size(), 1);
+}
+
+void SettingsBluetoothQmlTest::failedScanAcquisitionIsNotReleased()
+{
+    BluetoothPageFixture fixture;
+    fixture.backend()->scanRequestAccepted = false;
+    QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.componentErrors()));
+    QCOMPARE(fixture.backend()->scanRequests,
+             QStringList{QStringLiteral("settings-bluetooth-page")});
+
+    fixture.destroyPage();
+    QVERIFY(fixture.backend()->scanReleases.isEmpty());
+}
+
+void SettingsBluetoothQmlTest::emptyStatesFollowAuthoritativeDeviceComposition()
+{
+    BluetoothPageFixture fixture;
+    QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.componentErrors()));
+    QObject *myDevicesEmpty = fixture.findObject(QStringLiteral("myDevicesEmptyState"));
+    QObject *otherDevicesEmpty = fixture.findObject(QStringLiteral("otherDevicesEmptyState"));
+    QVERIFY(myDevicesEmpty != nullptr);
+    QVERIFY(otherDevicesEmpty != nullptr);
+
+    auto snapshot = readyBluetoothSnapshot();
+    snapshot.powered = true;
+
+    fixture.publish(snapshot);
+    QVERIFY(myDevicesEmpty->property("visible").toBool());
+    QVERIFY(otherDevicesEmpty->property("visible").toBool());
+
+    snapshot.devices = {bluetoothDevice(QStringLiteral("paired"), QStringLiteral("Paired"), true)};
+    fixture.publish(snapshot);
+    QVERIFY(!myDevicesEmpty->property("visible").toBool());
+    QVERIFY(otherDevicesEmpty->property("visible").toBool());
+
+    snapshot.devices = {bluetoothDevice(QStringLiteral("unpaired"), QStringLiteral("Unpaired"), false)};
+    fixture.publish(snapshot);
+    QVERIFY(myDevicesEmpty->property("visible").toBool());
+    QVERIFY(!otherDevicesEmpty->property("visible").toBool());
+
+    snapshot.devices = {
+        bluetoothDevice(QStringLiteral("paired"), QStringLiteral("Paired"), true),
+        bluetoothDevice(QStringLiteral("unpaired"), QStringLiteral("Unpaired"), false),
+    };
+    fixture.publish(snapshot);
+    QVERIFY(!myDevicesEmpty->property("visible").toBool());
+    QVERIFY(!otherDevicesEmpty->property("visible").toBool());
 }
 
 void SettingsBluetoothQmlTest::pageDestructionCancelsActivePairing()

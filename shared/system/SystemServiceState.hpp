@@ -2,10 +2,12 @@
 
 #include <QJsonObject>
 #include <QString>
+#include <QtQml/qqmlregistration.h>
 
 namespace Astrea::System {
 
 Q_NAMESPACE
+QML_NAMED_ELEMENT(System)
 
 enum class SystemServiceState {
     Stopped,

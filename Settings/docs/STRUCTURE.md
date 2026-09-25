@@ -139,10 +139,19 @@ Pair, Trust, and Connect remain separate user actions.
 
 For Agent1 service authorization, `agentServiceUuid` preserves the exact raw
 UUID received from BlueZ as technical identity. `agentServiceCategory` carries
-separate semantic presentation metadata from a curated subset of Bluetooth
-SIG Assigned Numbers; it is not a complete mirror of that database. Settings
-uses the category for localized authorization copy and keeps unknown or custom
-UUIDs on the generic Bluetooth-service prompt.
+separate semantic presentation metadata from a deliberately curated subset of
+the [Bluetooth SIG Assigned Numbers](https://www.bluetooth.com/specifications/assigned-numbers/),
+the authoritative source for the standard UUIDs mapped by the catalog. The
+catalog is not a complete mirror of that database and does not create
+categories for services without a clear Settings capability. Unknown and
+custom UUIDs remain valid service identities and use the generic Bluetooth
+service prompt; an unknown category never rejects authorization.
+
+The category is presentation metadata only. It does not affect BlueZ caller
+authentication, authorization acceptance or rejection, pairing state, or
+operation identity. Settings uses the category for localized capability copy
+from its QML and I18n layers. The raw UUID stays available internally for
+diagnostics and is not shown in the normal Agent1 authorization prompt.
 
 ## Theme Configuration Ownership
 

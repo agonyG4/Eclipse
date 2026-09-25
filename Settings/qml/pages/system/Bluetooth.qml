@@ -168,16 +168,16 @@ FocusScope {
     function serviceAuthorizationPrompt(category, deviceName) {
         if (category === System.BluetoothServiceCategory.Audio)
             return I18n.tr("settings.bluetooth.agent.service_authorization.audio",
-                           "Allow \"%1\" to use audio?").replace("%1", deviceName)
+                           "Allow \"%1\" to connect for Bluetooth audio?").replace("%1", deviceName)
         if (category === System.BluetoothServiceCategory.MediaControl)
             return I18n.tr("settings.bluetooth.agent.service_authorization.media_control",
-                           "Allow \"%1\" to use media controls?").replace("%1", deviceName)
+                           "Allow \"%1\" to control media playback?").replace("%1", deviceName)
         if (category === System.BluetoothServiceCategory.Calls)
             return I18n.tr("settings.bluetooth.agent.service_authorization.calls",
-                           "Allow \"%1\" to use calls and microphone features?").replace("%1", deviceName)
+                           "Allow \"%1\" to connect for calls and microphone audio?").replace("%1", deviceName)
         if (category === System.BluetoothServiceCategory.HumanInterface)
             return I18n.tr("settings.bluetooth.agent.service_authorization.human_interface",
-                           "Allow \"%1\" to use keyboard, mouse, or controller input?")
+                           "Allow \"%1\" to control this computer as an input device?")
                 .replace("%1", deviceName)
         if (category === System.BluetoothServiceCategory.FileTransfer)
             return I18n.tr("settings.bluetooth.agent.service_authorization.file_transfer",
@@ -187,15 +187,15 @@ FocusScope {
                            "Allow \"%1\" to access contacts?").replace("%1", deviceName)
         if (category === System.BluetoothServiceCategory.Network)
             return I18n.tr("settings.bluetooth.agent.service_authorization.network",
-                           "Allow \"%1\" to access network features?").replace("%1", deviceName)
+                           "Allow \"%1\" to use network access?").replace("%1", deviceName)
         if (category === System.BluetoothServiceCategory.Battery)
             return I18n.tr("settings.bluetooth.agent.service_authorization.battery",
                            "Allow \"%1\" to access battery information?").replace("%1", deviceName)
         if (category === System.BluetoothServiceCategory.Serial)
             return I18n.tr("settings.bluetooth.agent.service_authorization.serial",
-                           "Allow \"%1\" to use serial communication?").replace("%1", deviceName)
+                           "Allow \"%1\" to use a serial connection?").replace("%1", deviceName)
         return I18n.tr("settings.bluetooth.agent.service_authorization.unknown",
-                       "Allow \"%1\" to use a Bluetooth service?").replace("%1", deviceName)
+                       "Allow \"%1\" to connect using a Bluetooth service?").replace("%1", deviceName)
     }
 
     function focusCurrentAgentPrompt() {

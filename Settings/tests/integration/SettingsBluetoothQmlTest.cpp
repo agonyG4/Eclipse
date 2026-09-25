@@ -668,73 +668,79 @@ void SettingsBluetoothQmlTest::handlesPasskeyConfirmationAndAuthorizationPrompts
     QCOMPARE(fixture.backend()->confirmedRequestIds.last(), quint64(51));
     QVERIFY(fixture.backend()->confirmationValues.last());
 
-    snapshot.agentRequestId = 52;
-    snapshot.agentRequestKind = Astrea::System::BluetoothAgentRequestKind::ServiceAuthorization;
-    snapshot.agentServiceUuid = QStringLiteral("0000110b-0000-1000-8000-00805f9b34fb");
-    snapshot.agentServiceCategory = Astrea::System::BluetoothServiceCategory::Audio;
-    fixture.publish(snapshot);
-    QString promptText = fixture.findObject(QStringLiteral("agentPromptText"))->property("text").toString();
-    QVERIFY(promptText.contains(QStringLiteral("Phone")));
-    QVERIFY(promptText.contains(QStringLiteral("use audio?")));
-    QVERIFY(!promptText.contains(snapshot.agentServiceUuid));
-    QVERIFY(QMetaObject::invokeMethod(fixture.findObject(QStringLiteral("agentRejectButton")), "clicked"));
-    QCOMPARE(fixture.backend()->confirmedRequestIds.last(), quint64(52));
-    QVERIFY(!fixture.backend()->confirmationValues.last());
+    struct ServiceAuthorizationCase
+    {
+        QString uuid;
+        Astrea::System::BluetoothServiceCategory category;
+        QString capability;
+        QString technicalName;
+    };
+    const QList<ServiceAuthorizationCase> serviceCases = {
+        {QStringLiteral("0000184d-0000-1000-8000-00805f9b34fb"),
+         Astrea::System::BluetoothServiceCategory::Audio,
+         QStringLiteral("connect for Bluetooth audio"), QStringLiteral("Microphone Control")},
+        {QStringLiteral("0000110f-0000-1000-8000-00805f9b34fb"),
+         Astrea::System::BluetoothServiceCategory::MediaControl,
+         QStringLiteral("control media playback"), QStringLiteral("A/V Remote Control Controller")},
+        {QStringLiteral("00001204-0000-1000-8000-00805f9b34fb"),
+         Astrea::System::BluetoothServiceCategory::Calls,
+         QStringLiteral("connect for calls and microphone audio"), QStringLiteral("Generic Telephony")},
+        {QStringLiteral("00001812-0000-1000-8000-00805f9b34fb"),
+         Astrea::System::BluetoothServiceCategory::HumanInterface,
+         QStringLiteral("control this computer as an input device"),
+         QStringLiteral("Human Interface Device Service")},
+        {QStringLiteral("00001825-0000-1000-8000-00805f9b34fb"),
+         Astrea::System::BluetoothServiceCategory::FileTransfer,
+         QStringLiteral("transfer files"), QStringLiteral("Object Transfer Service")},
+        {QStringLiteral("0000112e-0000-1000-8000-00805f9b34fb"),
+         Astrea::System::BluetoothServiceCategory::Contacts,
+         QStringLiteral("access contacts"), QStringLiteral("Phonebook Access Client")},
+        {QStringLiteral("00001820-0000-1000-8000-00805f9b34fb"),
+         Astrea::System::BluetoothServiceCategory::Network,
+         QStringLiteral("use network access"), QStringLiteral("Internet Protocol Support Service")},
+        {QStringLiteral("0000180f-0000-1000-8000-00805f9b34fb"),
+         Astrea::System::BluetoothServiceCategory::Battery,
+         QStringLiteral("access battery information"), QStringLiteral("Battery Service")},
+        {QStringLiteral("00001101-0000-1000-8000-00805f9b34fb"),
+         Astrea::System::BluetoothServiceCategory::Serial,
+         QStringLiteral("use a serial connection"), QStringLiteral("Serial Port")},
+        {QStringLiteral("f000110e-0451-4000-b000-000000000000"),
+         Astrea::System::BluetoothServiceCategory::Unknown,
+         QStringLiteral("connect using a Bluetooth service"), QStringLiteral("A/V Remote Control")},
+    };
 
-    snapshot.agentRequestId = 53;
-    snapshot.agentServiceUuid = QStringLiteral("0000110e-0000-1000-8000-00805f9b34fb");
-    snapshot.agentServiceCategory = Astrea::System::BluetoothServiceCategory::MediaControl;
-    fixture.publish(snapshot);
-    promptText = fixture.findObject(QStringLiteral("agentPromptText"))->property("text").toString();
-    QVERIFY(promptText.contains(QStringLiteral("media controls")));
-    QVERIFY(!promptText.contains(snapshot.agentServiceUuid));
+    quint64 nextRequestId = 52;
+    for (const ServiceAuthorizationCase &serviceCase : serviceCases) {
+        for (const bool accepted : {true, false}) {
+            snapshot.agentRequestId = nextRequestId++;
+            snapshot.agentRequestKind = Astrea::System::BluetoothAgentRequestKind::ServiceAuthorization;
+            snapshot.agentServiceUuid = serviceCase.uuid;
+            snapshot.agentServiceCategory = serviceCase.category;
+            fixture.publish(snapshot);
 
-    snapshot.agentRequestId = 54;
-    snapshot.agentServiceUuid = QStringLiteral("00001124-0000-1000-8000-00805f9b34fb");
-    snapshot.agentServiceCategory = Astrea::System::BluetoothServiceCategory::HumanInterface;
-    fixture.publish(snapshot);
-    promptText = fixture.findObject(QStringLiteral("agentPromptText"))->property("text").toString();
-    QVERIFY(promptText.contains(QStringLiteral("keyboard, mouse, or controller input")));
-    QVERIFY(!promptText.contains(QStringLiteral("HID")));
-    QVERIFY(!promptText.contains(snapshot.agentServiceUuid));
+            const QString promptText =
+                fixture.findObject(QStringLiteral("agentPromptText"))->property("text").toString();
+            QVERIFY(promptText.contains(QStringLiteral("Phone")));
+            QVERIFY2(promptText.contains(serviceCase.capability), qPrintable(promptText));
+            QVERIFY(!promptText.contains(serviceCase.uuid));
+            QVERIFY(!promptText.contains(serviceCase.technicalName));
+            QCOMPARE(fixture.page()->property("displayedRequestId").toULongLong(), nextRequestId - 1);
 
-    const QString customUuid = QStringLiteral("f000110e-0451-4000-b000-000000000000");
-    snapshot.agentRequestId = 55;
-    snapshot.agentServiceUuid = customUuid;
-    snapshot.agentServiceCategory = Astrea::System::BluetoothServiceCategory::Unknown;
-    fixture.publish(snapshot);
-    QCOMPARE(fixture.page()->property("displayedServiceCategory").value<Astrea::System::BluetoothServiceCategory>(),
-             Astrea::System::BluetoothServiceCategory::Unknown);
-    promptText = fixture.findObject(QStringLiteral("agentPromptText"))->property("text").toString();
-    QVERIFY(promptText.contains(QStringLiteral("Bluetooth service")));
-    QVERIFY(promptText.contains(QStringLiteral("Phone")));
-    QVERIFY(!promptText.contains(customUuid));
-    QVERIFY(QMetaObject::invokeMethod(fixture.findObject(QStringLiteral("agentAllowButton")), "clicked"));
-    QCOMPARE(fixture.backend()->confirmedRequestIds.last(), quint64(55));
-    QVERIFY(fixture.backend()->confirmationValues.last());
+            QObject *button = fixture.findObject(accepted ? QStringLiteral("agentAllowButton")
+                                                          : QStringLiteral("agentRejectButton"));
+            QVERIFY(button != nullptr);
+            QVERIFY(QMetaObject::invokeMethod(button, "clicked"));
+            QCOMPARE(fixture.backend()->confirmedRequestIds.last(), nextRequestId - 1);
+            QCOMPARE(fixture.backend()->confirmationValues.last(), accepted);
+        }
+    }
 
-    snapshot.agentRequestId = 56;
-    fixture.publish(snapshot);
-    promptText = fixture.findObject(QStringLiteral("agentPromptText"))->property("text").toString();
-    QVERIFY(promptText.contains(QStringLiteral("Bluetooth service")));
-    QVERIFY(!promptText.contains(customUuid));
-    QVERIFY(QMetaObject::invokeMethod(fixture.findObject(QStringLiteral("agentRejectButton")), "clicked"));
-    QCOMPARE(fixture.backend()->confirmedRequestIds.last(), quint64(56));
-    QVERIFY(!fixture.backend()->confirmationValues.last());
-
-    snapshot.agentRequestId = 57;
-    snapshot.agentServiceUuid = QStringLiteral("0000110e-0000-1000-8000-00805f9b34fb");
-    snapshot.agentServiceCategory = Astrea::System::BluetoothServiceCategory::MediaControl;
-    fixture.publish(snapshot);
-    QCOMPARE(fixture.page()->property("displayedServiceCategory").value<Astrea::System::BluetoothServiceCategory>(),
-             Astrea::System::BluetoothServiceCategory::MediaControl);
-
-    snapshot.agentRequestId = 58;
+    snapshot.agentRequestId = nextRequestId;
     snapshot.agentRequestKind = Astrea::System::BluetoothAgentRequestKind::Authorization;
     snapshot.agentServiceUuid.clear();
     snapshot.agentServiceCategory = Astrea::System::BluetoothServiceCategory::Unknown;
     fixture.publish(snapshot);
-    QCOMPARE(fixture.page()->property("displayedRequestId").toULongLong(), quint64(58));
+    QCOMPARE(fixture.page()->property("displayedRequestId").toULongLong(), nextRequestId);
     QCOMPARE(fixture.page()->property("displayedServiceUuid").toString(), QString{});
     QCOMPARE(fixture.page()->property("displayedServiceCategory").value<Astrea::System::BluetoothServiceCategory>(),
              Astrea::System::BluetoothServiceCategory::Unknown);

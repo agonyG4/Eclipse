@@ -39,6 +39,7 @@ class BluetoothService final : public QObject {
     Q_PROPERTY(quint32 agentPasskey READ agentPasskey NOTIFY agentRequestChanged)
     Q_PROPERTY(int agentEntered READ agentEntered NOTIFY agentRequestChanged)
     Q_PROPERTY(QString agentServiceUuid READ agentServiceUuid NOTIFY agentRequestChanged)
+    Q_PROPERTY(BluetoothServiceCategory agentServiceCategory READ agentServiceCategory NOTIFY agentRequestChanged)
     Q_PROPERTY(QString agentDisplayPin READ agentDisplayPin NOTIFY agentRequestChanged)
     Q_PROPERTY(QString operationError READ operationError NOTIFY operationChanged)
     Q_PROPERTY(BluetoothDeviceModel *devicesModel READ devicesModel CONSTANT)
@@ -72,6 +73,7 @@ public:
     quint32 agentPasskey() const { return m_agentPasskey; }
     int agentEntered() const { return m_agentEntered; }
     QString agentServiceUuid() const { return m_agentServiceUuid; }
+    BluetoothServiceCategory agentServiceCategory() const { return m_agentServiceCategory; }
     QString agentDisplayPin() const { return m_agentDisplayPin; }
     QString operationError() const { return m_operationError; }
     BluetoothDeviceModel *devicesModel() const { return m_devicesModel; }
@@ -136,6 +138,7 @@ private:
     quint32 m_agentPasskey = 0;
     int m_agentEntered = -1;
     QString m_agentServiceUuid;
+    BluetoothServiceCategory m_agentServiceCategory = BluetoothServiceCategory::Unknown;
     QString m_agentDisplayPin;
     QString m_operationError;
 };

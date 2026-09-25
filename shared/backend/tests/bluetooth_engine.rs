@@ -5,6 +5,7 @@ use astrea_system_backend::bluetooth::engine::{
     AgentRegistrationToken, BluetoothCore, CoreAction, ServiceState,
 };
 use astrea_system_backend::bluetooth::object_store::{InterfaceMap, PropertyMap, PropertyValue};
+use astrea_system_backend::bluetooth::service_catalog::BluetoothServiceCategory;
 use std::collections::BTreeMap;
 use std::time::Instant;
 
@@ -864,19 +865,34 @@ fn active_agent_prompt_must_match_the_current_pairing_identity() {
         pairing_epoch,
         session_generation,
         bluez_generation,
-        kind: AgentPromptKind::PasskeyInput,
+        kind: AgentPromptKind::ServiceAuthorization,
         device_path: String::from("/org/bluez/hci0/dev_AA"),
+        service_uuid: Some(String::from("0000110e-0000-1000-8000-00805f9b34fb")),
+        service_category: BluetoothServiceCategory::MediaControl,
         ..AgentPromptView::default()
     };
     assert!(core.agent_prompt_changed(session_generation, bluez_generation, valid_prompt.clone()));
+    assert_eq!(
+        core.snapshot().agent_service_uuid.as_deref(),
+        Some("0000110e-0000-1000-8000-00805f9b34fb")
+    );
+    assert_eq!(
+        core.snapshot().agent_service_category,
+        BluetoothServiceCategory::MediaControl
+    );
     let snapshot_after_prompt = core.snapshot().clone();
     assert!(!core.agent_prompt_changed(session_generation, bluez_generation, valid_prompt.clone()));
     assert_eq!(core.snapshot(), &snapshot_after_prompt);
 
     let mut stale_epoch = valid_prompt.clone();
     stale_epoch.pairing_epoch += 1;
+    stale_epoch.service_category = BluetoothServiceCategory::Calls;
     assert!(!core.agent_prompt_changed(session_generation, bluez_generation, stale_epoch));
     assert_eq!(core.snapshot().agent_request_id, valid_prompt.request_id);
+    assert_eq!(
+        core.snapshot().agent_service_category,
+        BluetoothServiceCategory::MediaControl
+    );
 
     let mut stale_session = valid_prompt.clone();
     stale_session.session_generation += 1;

@@ -10,6 +10,32 @@
 
 namespace Astrea::System {
 
+constexpr BluetoothServiceCategory bluetoothServiceCategoryFromBridgeCode(int code) noexcept
+{
+    switch (code) {
+    case 1:
+        return BluetoothServiceCategory::Audio;
+    case 2:
+        return BluetoothServiceCategory::MediaControl;
+    case 3:
+        return BluetoothServiceCategory::Calls;
+    case 4:
+        return BluetoothServiceCategory::HumanInterface;
+    case 5:
+        return BluetoothServiceCategory::FileTransfer;
+    case 6:
+        return BluetoothServiceCategory::Contacts;
+    case 7:
+        return BluetoothServiceCategory::Network;
+    case 8:
+        return BluetoothServiceCategory::Battery;
+    case 9:
+        return BluetoothServiceCategory::Serial;
+    default:
+        return BluetoothServiceCategory::Unknown;
+    }
+}
+
 struct BluetoothSnapshot {
     SystemServiceState state = SystemServiceState::Stopped;
     bool available = false;
@@ -36,6 +62,7 @@ struct BluetoothSnapshot {
     quint32 agentPasskey = 0;
     int agentEntered = -1;
     QString agentServiceUuid;
+    BluetoothServiceCategory agentServiceCategory = BluetoothServiceCategory::Unknown;
     QString agentDisplayPin;
     QString operationError;
 };

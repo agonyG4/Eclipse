@@ -33,6 +33,7 @@ FocusScope {
     property string displayedPasskey: ""
     property int displayedEntered: -1
     property string displayedServiceUuid: ""
+    property var displayedServiceCategory: System.BluetoothServiceCategory.Unknown
     property string displayedPin: ""
 
     DelegateModel {
@@ -134,6 +135,7 @@ FocusScope {
         if (isNewRequest) {
             agentInput.text = ""
             root.displayedRequestId = requestId
+            root.displayedServiceCategory = root.bluetooth.agentServiceCategory
         }
 
         root.displayedRequestKind = root.bluetooth.agentRequestKind
@@ -158,8 +160,42 @@ FocusScope {
         root.displayedPasskey = ""
         root.displayedEntered = -1
         root.displayedServiceUuid = ""
+        root.displayedServiceCategory = System.BluetoothServiceCategory.Unknown
         root.displayedPin = ""
         agentInput.text = ""
+    }
+
+    function serviceAuthorizationPrompt(category, deviceName) {
+        if (category === System.BluetoothServiceCategory.Audio)
+            return I18n.tr("settings.bluetooth.agent.service_authorization.audio",
+                           "Allow \"%1\" to use audio?").replace("%1", deviceName)
+        if (category === System.BluetoothServiceCategory.MediaControl)
+            return I18n.tr("settings.bluetooth.agent.service_authorization.media_control",
+                           "Allow \"%1\" to use media controls?").replace("%1", deviceName)
+        if (category === System.BluetoothServiceCategory.Calls)
+            return I18n.tr("settings.bluetooth.agent.service_authorization.calls",
+                           "Allow \"%1\" to use calls and microphone features?").replace("%1", deviceName)
+        if (category === System.BluetoothServiceCategory.HumanInterface)
+            return I18n.tr("settings.bluetooth.agent.service_authorization.human_interface",
+                           "Allow \"%1\" to use keyboard, mouse, or controller input?")
+                .replace("%1", deviceName)
+        if (category === System.BluetoothServiceCategory.FileTransfer)
+            return I18n.tr("settings.bluetooth.agent.service_authorization.file_transfer",
+                           "Allow \"%1\" to transfer files?").replace("%1", deviceName)
+        if (category === System.BluetoothServiceCategory.Contacts)
+            return I18n.tr("settings.bluetooth.agent.service_authorization.contacts",
+                           "Allow \"%1\" to access contacts?").replace("%1", deviceName)
+        if (category === System.BluetoothServiceCategory.Network)
+            return I18n.tr("settings.bluetooth.agent.service_authorization.network",
+                           "Allow \"%1\" to access network features?").replace("%1", deviceName)
+        if (category === System.BluetoothServiceCategory.Battery)
+            return I18n.tr("settings.bluetooth.agent.service_authorization.battery",
+                           "Allow \"%1\" to access battery information?").replace("%1", deviceName)
+        if (category === System.BluetoothServiceCategory.Serial)
+            return I18n.tr("settings.bluetooth.agent.service_authorization.serial",
+                           "Allow \"%1\" to use serial communication?").replace("%1", deviceName)
+        return I18n.tr("settings.bluetooth.agent.service_authorization.unknown",
+                       "Allow \"%1\" to use a Bluetooth service?").replace("%1", deviceName)
     }
 
     function focusCurrentAgentPrompt() {
@@ -714,10 +750,8 @@ FocusScope {
                         return I18n.tr("settings.bluetooth.agent.authorization_prompt",
                                         "Allow \"%1\" to pair?").replace("%1", root.displayedDeviceName)
                     if (root.displayedRequestKind === System.ServiceAuthorization)
-                        return I18n.tr("settings.bluetooth.agent.service_authorization_prompt",
-                                        "Allow \"%1\" to use service %2?")
-                            .replace("%1", root.displayedDeviceName)
-                            .replace("%2", root.displayedServiceUuid)
+                        return root.serviceAuthorizationPrompt(root.displayedServiceCategory,
+                                                               root.displayedDeviceName)
                     if (root.displayedRequestKind === System.DisplayPinCode)
                         return root.displayedPin
                     if (root.displayedRequestKind === System.DisplayPasskey)

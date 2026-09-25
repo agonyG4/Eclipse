@@ -105,10 +105,12 @@ keyboard, or touch interaction with a raw `MouseArea`.
 `SettingsApplication` constructs the Linux detector, profile provider and value,
 navigation catalogue and model, icon resolver, and `SettingsController`. The
 controller owns the shared Bluetooth service. The application starts that
-service and registers the `Astrea.System` enum namespace before creating the
-QML engine. It then registers `SettingsController`, `ThemeController`, and
-`I18n` as context properties and registers the shared icon provider as
-`astrea-icon`.
+service before creating the QML engine. The `Astrea.System 1.0` module is
+generated from the shared Qt namespace marked with `QML_NAMED_ELEMENT(System)`;
+its enums are discovered through the generated QML metadata rather than
+registered manually by `SettingsApplication`. The application registers
+`SettingsController`, `ThemeController`, and `I18n` as context properties and
+registers the shared icon provider as `astrea-icon`.
 
 The catalogue provides ordered descriptors for the flat sidebar and the full
 nested destination graph. The model exposes only sidebar-visible rows and
@@ -134,6 +136,13 @@ does not compile a second Bluetooth implementation. The page owns the
 `settings-bluetooth-page` discovery lease while loaded, releases it on
 destruction, and cancels pairing if an Agent1 interaction is still active.
 Pair, Trust, and Connect remain separate user actions.
+
+For Agent1 service authorization, `agentServiceUuid` preserves the exact raw
+UUID received from BlueZ as technical identity. `agentServiceCategory` carries
+separate semantic presentation metadata from a curated subset of Bluetooth
+SIG Assigned Numbers; it is not a complete mirror of that database. Settings
+uses the category for localized authorization copy and keeps unknown or custom
+UUIDs on the generic Bluetooth-service prompt.
 
 ## Theme Configuration Ownership
 

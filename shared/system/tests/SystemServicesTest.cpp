@@ -296,6 +296,7 @@ private slots:
     void pipewireDefaultWriteDoesNotOptimisticallyMutateState();
     void bluetoothFacadeContractAndForwardsOperations();
     void bluetoothPhase2ContractAndForwardsOperations();
+    void bluetoothServiceCategoryIsCarriedAndNotified();
     void bluetoothHealthChangedCoversHealthJsonFields();
     void bluetoothBackendStartupFailureReportsUnavailable();
     void bluetoothDeviceModelPreservesOrderingAndRoles();
@@ -911,6 +912,49 @@ void SystemServicesTest::bluetoothPhase2ContractAndForwardsOperations()
     const QJsonObject health = service.healthJson();
     QVERIFY(!health.contains(QStringLiteral("pairingError")));
     QVERIFY(!health.contains(QStringLiteral("agentDisplayPin")));
+}
+
+void SystemServicesTest::bluetoothServiceCategoryIsCarriedAndNotified()
+{
+    using Astrea::System::BluetoothServiceCategory;
+    using Astrea::System::bluetoothServiceCategoryFromBridgeCode;
+
+    static_assert(static_cast<int>(BluetoothServiceCategory::Unknown) == 0);
+    static_assert(static_cast<int>(BluetoothServiceCategory::Audio) == 1);
+    static_assert(static_cast<int>(BluetoothServiceCategory::MediaControl) == 2);
+    static_assert(static_cast<int>(BluetoothServiceCategory::Calls) == 3);
+    static_assert(static_cast<int>(BluetoothServiceCategory::HumanInterface) == 4);
+    static_assert(static_cast<int>(BluetoothServiceCategory::FileTransfer) == 5);
+    static_assert(static_cast<int>(BluetoothServiceCategory::Contacts) == 6);
+    static_assert(static_cast<int>(BluetoothServiceCategory::Network) == 7);
+    static_assert(static_cast<int>(BluetoothServiceCategory::Battery) == 8);
+    static_assert(static_cast<int>(BluetoothServiceCategory::Serial) == 9);
+
+    QCOMPARE(bluetoothServiceCategoryFromBridgeCode(2), BluetoothServiceCategory::MediaControl);
+    QCOMPARE(bluetoothServiceCategoryFromBridgeCode(99), BluetoothServiceCategory::Unknown);
+
+    auto backend = std::make_unique<FakeBluetoothBackend>();
+    auto *backendPtr = backend.get();
+    BluetoothService service(std::move(backend));
+    QVERIFY(service.start());
+    QSignalSpy agentSpy(&service, &BluetoothService::agentRequestChanged);
+
+    BluetoothSnapshot snapshot;
+    snapshot.agentRequestActive = true;
+    snapshot.agentRequestId = 7;
+    snapshot.agentRequestKind = BluetoothAgentRequestKind::ServiceAuthorization;
+    snapshot.agentServiceUuid = QStringLiteral("0000110e-0000-1000-8000-00805f9b34fb");
+    snapshot.agentServiceCategory = BluetoothServiceCategory::MediaControl;
+    backendPtr->publish(snapshot);
+
+    QCOMPARE(service.agentServiceUuid(), snapshot.agentServiceUuid);
+    QCOMPARE(service.agentServiceCategory(), BluetoothServiceCategory::MediaControl);
+    QCOMPARE(agentSpy.count(), 1);
+
+    snapshot.agentServiceCategory = BluetoothServiceCategory::Calls;
+    backendPtr->publish(snapshot);
+    QCOMPARE(service.agentServiceCategory(), BluetoothServiceCategory::Calls);
+    QCOMPARE(agentSpy.count(), 2);
 }
 
 void SystemServicesTest::bluetoothHealthChangedCoversHealthJsonFields()

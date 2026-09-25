@@ -144,6 +144,7 @@ void BluetoothService::applySnapshot(const BluetoothSnapshot &snapshot)
         || m_agentDeviceName != snapshot.agentDeviceName
         || m_agentPasskey != snapshot.agentPasskey || m_agentEntered != snapshot.agentEntered
         || m_agentServiceUuid != snapshot.agentServiceUuid
+        || m_agentServiceCategory != snapshot.agentServiceCategory
         || m_agentDisplayPin != snapshot.agentDisplayPin;
     const bool operationValuesChanged = m_operationError != snapshot.operationError;
     const bool healthValuesChanged = m_state != snapshot.state || m_available != snapshot.available
@@ -173,6 +174,7 @@ void BluetoothService::applySnapshot(const BluetoothSnapshot &snapshot)
     m_agentPasskey = snapshot.agentPasskey;
     m_agentEntered = snapshot.agentEntered;
     m_agentServiceUuid = snapshot.agentServiceUuid;
+    m_agentServiceCategory = snapshot.agentServiceCategory;
     m_agentDisplayPin = snapshot.agentDisplayPin;
     m_operationError = snapshot.operationError;
     m_devicesModel->replace(snapshot.devices);

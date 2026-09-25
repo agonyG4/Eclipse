@@ -3,6 +3,7 @@ use std::time::Duration;
 use astrea_system_backend::bluetooth::agent::{
     Agent1, AgentBroker, AgentError, AgentPromptKind, AgentSubmitResult,
 };
+use astrea_system_backend::bluetooth::service_catalog::BluetoothServiceCategory;
 use zbus::object_server::Interface;
 
 const SENDER: &str = ":1.42";
@@ -179,7 +180,7 @@ fn interactive_prompts_publish_typed_state_and_accept_responses() {
                         SESSION,
                         BLUEZ,
                         DEVICE,
-                        "0000110b-0000-1000-8000-00805f9b34fb",
+                        "0000110e-0000-1000-8000-00805f9b34fb",
                     )
                     .await
                     .map(|()| true),
@@ -194,8 +195,14 @@ fn interactive_prompts_publish_typed_state_and_accept_responses() {
             if kind == AgentPromptKind::ServiceAuthorization {
                 assert_eq!(
                     prompt.service_uuid.as_deref(),
-                    Some("0000110b-0000-1000-8000-00805f9b34fb")
+                    Some("0000110e-0000-1000-8000-00805f9b34fb")
                 );
+                assert_eq!(
+                    prompt.service_category,
+                    BluetoothServiceCategory::MediaControl
+                );
+            } else {
+                assert_eq!(prompt.service_category, BluetoothServiceCategory::Unknown);
             }
             assert_eq!(
                 broker.confirm(prompt.request_id, result),
@@ -209,6 +216,40 @@ fn interactive_prompts_publish_typed_state_and_accept_responses() {
             }
         });
     }
+}
+
+#[test]
+fn unknown_custom_service_authorization_remains_confirmable() {
+    let broker = broker();
+    let request_broker = broker.clone();
+    let request = smol::spawn(async move {
+        request_broker
+            .authorize_service(
+                SENDER,
+                SESSION,
+                BLUEZ,
+                DEVICE,
+                "f000110e-0451-4000-b000-000000000000",
+            )
+            .await
+    });
+
+    smol::block_on(async {
+        while broker.prompt().kind != AgentPromptKind::ServiceAuthorization {
+            async_io::Timer::after(Duration::from_millis(1)).await;
+        }
+        let prompt = broker.prompt();
+        assert_eq!(
+            prompt.service_uuid.as_deref(),
+            Some("f000110e-0451-4000-b000-000000000000")
+        );
+        assert_eq!(prompt.service_category, BluetoothServiceCategory::Unknown);
+        assert_eq!(
+            broker.confirm(prompt.request_id, true),
+            AgentSubmitResult::Accepted
+        );
+        assert_eq!(request.await, Ok(()));
+    });
 }
 
 #[test]

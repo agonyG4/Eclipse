@@ -122,6 +122,8 @@ void RustBluetoothBackend::publishSnapshot()
     snapshot.agentPasskey = m_engine.agentPasskey();
     snapshot.agentEntered = m_engine.agentEntered();
     snapshot.agentServiceUuid = m_engine.agentServiceUuid();
+    snapshot.agentServiceCategory =
+        bluetoothServiceCategoryFromBridgeCode(m_engine.agentServiceCategory());
     snapshot.agentDisplayPin = m_engine.agentDisplayPin();
     snapshot.operationError = m_engine.operationError();
 

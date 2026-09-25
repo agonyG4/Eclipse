@@ -14,6 +14,7 @@ use super::pairing::{
     DeviceOperationIdentity, ForgetCompletion, ForgetState, PairingCompletion, PairingIdentity,
     PairingState, TrustCompletion, TrustState,
 };
+use super::service_catalog::BluetoothServiceCategory;
 
 const INITIAL_SNAPSHOT_EVENT_CAPACITY: usize = 128;
 
@@ -73,6 +74,7 @@ pub struct CoreSnapshot {
     pub agent_passkey: Option<u32>,
     pub agent_entered: Option<u16>,
     pub agent_service_uuid: Option<String>,
+    pub agent_service_category: BluetoothServiceCategory,
     pub agent_display_pin: Option<String>,
     pub operation_error: Option<String>,
 }
@@ -107,6 +109,7 @@ impl fmt::Debug for CoreSnapshot {
             .field("has_agent_passkey", &self.agent_passkey.is_some())
             .field("agent_entered", &self.agent_entered)
             .field("agent_service_uuid", &self.agent_service_uuid)
+            .field("agent_service_category", &self.agent_service_category)
             .field("has_agent_display_pin", &self.agent_display_pin.is_some())
             .field("operation_error", &self.operation_error)
             .finish()
@@ -1305,6 +1308,7 @@ impl BluetoothCore {
             agent_passkey: agent_prompt.passkey,
             agent_entered: agent_prompt.entered,
             agent_service_uuid: agent_prompt.service_uuid,
+            agent_service_category: agent_prompt.service_category,
             agent_display_pin: agent_prompt.display_pin,
             operation_error: self.snapshot.operation_error.clone(),
         };

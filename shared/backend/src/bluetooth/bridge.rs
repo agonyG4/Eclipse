@@ -9,6 +9,7 @@ use super::agent::{AgentPromptKind, AgentSubmitResult};
 use super::bluez::client::BluetoothWorker;
 use super::device::BluetoothDevice;
 use super::engine::{CoreSnapshot, ServiceState};
+use super::service_catalog::BluetoothServiceCategory;
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -43,6 +44,7 @@ pub mod qobject {
         #[qproperty(bool, agent_request_active, cxx_name = "agentRequestActive", READ = agent_request_active, NOTIFY = snapshot_changed)]
         #[qproperty(u64, agent_request_id, cxx_name = "agentRequestId", READ = agent_request_id, NOTIFY = snapshot_changed)]
         #[qproperty(i32, agent_request_kind, cxx_name = "agentRequestKind", READ = agent_request_kind, NOTIFY = snapshot_changed)]
+        #[qproperty(i32, agent_service_category, cxx_name = "agentServiceCategory", READ = agent_service_category, NOTIFY = snapshot_changed)]
         #[qproperty(QString, agent_device_path, cxx_name = "agentDevicePath", READ = agent_device_path, NOTIFY = snapshot_changed)]
         #[qproperty(QString, agent_device_name, cxx_name = "agentDeviceName", READ = agent_device_name, NOTIFY = snapshot_changed)]
         #[qproperty(u32, agent_passkey, cxx_name = "agentPasskey", READ = agent_passkey, NOTIFY = snapshot_changed)]
@@ -87,6 +89,8 @@ pub mod qobject {
         fn agent_request_id(self: &RustBluetoothEngine) -> u64;
         #[cxx_name = "agentRequestKind"]
         fn agent_request_kind(self: &RustBluetoothEngine) -> i32;
+        #[cxx_name = "agentServiceCategory"]
+        fn agent_service_category(self: &RustBluetoothEngine) -> i32;
         #[cxx_name = "agentDevicePath"]
         fn agent_device_path(self: &RustBluetoothEngine) -> QString;
         #[cxx_name = "agentDeviceName"]
@@ -315,6 +319,10 @@ impl qobject::RustBluetoothEngine {
 
     fn agent_request_kind(&self) -> i32 {
         agent_prompt_kind_code(self.rust().snapshot.agent_request_kind)
+    }
+
+    fn agent_service_category(&self) -> i32 {
+        agent_service_category_code(self.rust().snapshot.agent_service_category)
     }
 
     fn agent_device_path(&self) -> QString {
@@ -599,5 +607,46 @@ fn agent_prompt_kind_code(kind: AgentPromptKind) -> i32 {
         AgentPromptKind::ServiceAuthorization => 5,
         AgentPromptKind::DisplayPinCode => 6,
         AgentPromptKind::DisplayPasskey => 7,
+    }
+}
+
+// Stable integer contract mirrored by Astrea::System::BluetoothServiceCategory.
+// Keep these explicit so Rust enum declaration order never changes the Qt value.
+fn agent_service_category_code(category: BluetoothServiceCategory) -> i32 {
+    match category {
+        BluetoothServiceCategory::Unknown => 0,
+        BluetoothServiceCategory::Audio => 1,
+        BluetoothServiceCategory::MediaControl => 2,
+        BluetoothServiceCategory::Calls => 3,
+        BluetoothServiceCategory::HumanInterface => 4,
+        BluetoothServiceCategory::FileTransfer => 5,
+        BluetoothServiceCategory::Contacts => 6,
+        BluetoothServiceCategory::Network => 7,
+        BluetoothServiceCategory::Battery => 8,
+        BluetoothServiceCategory::Serial => 9,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::agent_service_category_code;
+    use crate::bluetooth::service_catalog::BluetoothServiceCategory;
+
+    #[test]
+    fn agent_service_category_codes_match_the_qt_contract() {
+        for (category, code) in [
+            (BluetoothServiceCategory::Unknown, 0),
+            (BluetoothServiceCategory::Audio, 1),
+            (BluetoothServiceCategory::MediaControl, 2),
+            (BluetoothServiceCategory::Calls, 3),
+            (BluetoothServiceCategory::HumanInterface, 4),
+            (BluetoothServiceCategory::FileTransfer, 5),
+            (BluetoothServiceCategory::Contacts, 6),
+            (BluetoothServiceCategory::Network, 7),
+            (BluetoothServiceCategory::Battery, 8),
+            (BluetoothServiceCategory::Serial, 9),
+        ] {
+            assert_eq!(agent_service_category_code(category), code);
+        }
     }
 }

@@ -9,3 +9,4 @@ pub mod engine;
 pub mod object_store;
 pub mod operations;
 pub mod pairing;
+pub mod service_catalog;

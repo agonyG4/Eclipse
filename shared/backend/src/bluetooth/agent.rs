@@ -12,6 +12,8 @@ use futures::{
 use zbus::zvariant::OwnedObjectPath;
 use zbus::{DBusError, message::Header};
 
+use super::service_catalog::{BluetoothServiceCategory, classify_service_uuid};
+
 pub const AGENT_OBJECT_PATH: &str = "/org/astrea/bluetooth/agent";
 pub const AGENT_CAPABILITY: &str = "KeyboardDisplay";
 
@@ -40,6 +42,7 @@ pub struct AgentPromptView {
     pub passkey: Option<u32>,
     pub entered: Option<u16>,
     pub service_uuid: Option<String>,
+    pub service_category: BluetoothServiceCategory,
     pub display_pin: Option<String>,
 }
 
@@ -57,6 +60,7 @@ impl fmt::Debug for AgentPromptView {
             .field("has_passkey", &self.passkey.is_some())
             .field("entered", &self.entered)
             .field("service_uuid", &self.service_uuid)
+            .field("service_category", &self.service_category)
             .field("has_display_pin", &self.display_pin.is_some())
             .finish()
     }
@@ -124,6 +128,7 @@ struct PromptSpec {
     passkey: Option<u32>,
     entered: Option<u16>,
     service_uuid: Option<String>,
+    service_category: BluetoothServiceCategory,
     display_pin: Option<String>,
 }
 
@@ -323,6 +328,7 @@ impl AgentBroker {
                     passkey: None,
                     entered: None,
                     service_uuid: None,
+                    service_category: BluetoothServiceCategory::Unknown,
                     display_pin: None,
                 },
             )
@@ -355,6 +361,7 @@ impl AgentBroker {
                     passkey: None,
                     entered: None,
                     service_uuid: None,
+                    service_category: BluetoothServiceCategory::Unknown,
                     display_pin: None,
                 },
             )
@@ -387,6 +394,7 @@ impl AgentBroker {
                 passkey: Some(passkey),
                 entered: None,
                 service_uuid: None,
+                service_category: BluetoothServiceCategory::Unknown,
                 display_pin: None,
             },
         )
@@ -412,6 +420,7 @@ impl AgentBroker {
                 passkey: None,
                 entered: None,
                 service_uuid: None,
+                service_category: BluetoothServiceCategory::Unknown,
                 display_pin: None,
             },
         )
@@ -438,6 +447,7 @@ impl AgentBroker {
                 passkey: None,
                 entered: None,
                 service_uuid: Some(service_uuid.to_owned()),
+                service_category: classify_service_uuid(service_uuid),
                 display_pin: None,
             },
         )
@@ -464,6 +474,7 @@ impl AgentBroker {
                 passkey: None,
                 entered: None,
                 service_uuid: None,
+                service_category: BluetoothServiceCategory::Unknown,
                 display_pin: Some(display_pin.to_owned()),
             },
         )
@@ -490,6 +501,7 @@ impl AgentBroker {
                 passkey: Some(passkey),
                 entered: Some(entered),
                 service_uuid: None,
+                service_category: BluetoothServiceCategory::Unknown,
                 display_pin: None,
             },
         )
@@ -691,6 +703,7 @@ impl AgentBroker {
                 passkey: prompt_spec.passkey,
                 entered: prompt_spec.entered,
                 service_uuid: prompt_spec.service_uuid,
+                service_category: prompt_spec.service_category,
                 display_pin: prompt_spec.display_pin,
             };
             state.interactive = Some(PendingInteractive {
@@ -735,6 +748,7 @@ impl AgentBroker {
             passkey: prompt_spec.passkey,
             entered: prompt_spec.entered,
             service_uuid: None,
+            service_category: prompt_spec.service_category,
             display_pin: prompt_spec.display_pin,
         };
         let changed = state.display.as_ref() != Some(&prompt);

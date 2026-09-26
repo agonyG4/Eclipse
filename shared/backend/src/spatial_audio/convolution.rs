@@ -20,6 +20,7 @@ pub enum KernelPrepareError {
 pub struct KernelBank {
     spectra: Vec<Complex<f32>>,
     geometry: PartitionGeometry,
+    effective_partitions: usize,
 }
 
 impl KernelBank {
@@ -38,16 +39,31 @@ impl KernelBank {
             return Err(KernelPrepareError::InvalidGeometry);
         }
 
-        let count = geometry.input_history_partitions;
+        let mut effective_frames = 0;
+        for source in SourceChannel::ALL {
+            for ear in 0..2 {
+                for (frame, coefficient) in response.channel(source.index(), ear).iter().enumerate()
+                {
+                    if !coefficient.is_finite() {
+                        return Err(KernelPrepareError::InvalidResponse);
+                    }
+                    if *coefficient != 0.0 {
+                        effective_frames = effective_frames.max(frame + 1);
+                    }
+                }
+            }
+        }
+
+        let effective_partitions = effective_frames.div_ceil(frames).max(1);
         let bins = geometry.spectrum_bins;
-        let mut spectra = vec![Complex::new(0.0, 0.0); 8 * 2 * count * bins];
+        let mut spectra = vec![Complex::new(0.0, 0.0); 8 * 2 * effective_partitions * bins];
         let mut scratch = vec![Complex::new(0.0, 0.0); geometry.fft_size];
         let mut plan_scratch = vec![Complex::new(0.0, 0.0); forward.get_inplace_scratch_len()];
 
         for source in SourceChannel::ALL {
             for ear in 0..2 {
                 let coefficients = response.channel(source.index(), ear);
-                for partition in 0..count {
+                for partition in 0..effective_partitions {
                     scratch.fill(Complex::new(0.0, 0.0));
                     let start = partition * frames;
                     if let Some(partition_coefficients) =
@@ -61,20 +77,28 @@ impl KernelBank {
                         }
                     }
                     forward.process_with_scratch(&mut scratch, &mut plan_scratch);
-                    let bank_start = ((source.index() * 2 + ear) * count + partition) * bins;
+                    let bank_start =
+                        ((source.index() * 2 + ear) * effective_partitions + partition) * bins;
                     spectra[bank_start..bank_start + bins].copy_from_slice(&scratch[..bins]);
                 }
             }
         }
 
-        Ok(Self { spectra, geometry })
+        Ok(Self {
+            spectra,
+            geometry,
+            effective_partitions,
+        })
     }
 
     fn partition(&self, source: usize, ear: usize, partition: usize) -> &[Complex<f32>] {
         let bins = self.geometry.spectrum_bins;
-        let start =
-            ((source * 2 + ear) * self.geometry.input_history_partitions + partition) * bins;
+        let start = ((source * 2 + ear) * self.effective_partitions + partition) * bins;
         &self.spectra[start..start + bins]
+    }
+
+    fn render_partition_count(&self, available_history_blocks: usize) -> usize {
+        self.effective_partitions.min(available_history_blocks)
     }
 }
 
@@ -236,6 +260,7 @@ impl PartitionedConvolver {
         let geometry = self.geometry;
         let bins = geometry.spectrum_bins;
         let parts = geometry.input_history_partitions;
+        let render_partitions = bank.render_partition_count(self.history_blocks);
         let history_latest = if self.history_blocks == 0 {
             None
         } else {
@@ -246,10 +271,7 @@ impl PartitionedConvolver {
             self.accumulation.fill(Complex::new(0.0, 0.0));
             if let Some(latest) = history_latest {
                 for source in 0..8 {
-                    for partition in 0..parts {
-                        if partition >= self.history_blocks {
-                            break;
-                        }
+                    for partition in 0..render_partitions {
                         let history_slot = (latest + parts - partition) % parts;
                         let history_start = (source * parts + history_slot) * bins;
                         let input_spectrum = &self.history[history_start..history_start + bins];
@@ -286,5 +308,85 @@ impl PartitionedConvolver {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustfft::FftPlanner;
+
+    const PARTITION_FRAMES: usize = 16;
+    const HISTORY_PARTITIONS: usize = 8;
+
+    fn prepare_bank(
+        length: usize,
+        coefficients: &[(usize, usize, f32)],
+    ) -> (KernelBank, PartitionGeometry) {
+        let mut interleaved = vec![0.0f32; length * 14];
+        for &(channel, frame, value) in coefficients {
+            interleaved[frame * 14 + channel] = value;
+        }
+        let response =
+            HrtfImpulseResponse::from_hesuvi_interleaved(&interleaved, 14, 48_000).unwrap();
+        let geometry = PartitionGeometry {
+            partition_frames: PARTITION_FRAMES,
+            input_history_partitions: HISTORY_PARTITIONS,
+            fft_size: PARTITION_FRAMES * 2,
+            spectrum_bins: PARTITION_FRAMES + 1,
+        };
+        let mut planner = FftPlanner::<f32>::new();
+        let forward = planner.plan_fft_forward(geometry.fft_size);
+        let bank = KernelBank::prepare(&response, geometry, forward.as_ref()).unwrap();
+        (bank, geometry)
+    }
+
+    #[test]
+    fn banks_share_global_geometry_but_store_only_their_effective_partitions() {
+        let (short, short_geometry) = prepare_bank(16, &[(6, 0, 0.5)]);
+        let (long, long_geometry) = prepare_bank(128, &[(6, 127, 0.25), (4, 2, 0.1)]);
+
+        assert_eq!(short_geometry, long_geometry);
+        assert_eq!(short.geometry, long.geometry);
+        assert_eq!(short.effective_partitions, 1);
+        assert_eq!(long.effective_partitions, HISTORY_PARTITIONS);
+        assert_eq!(
+            short.spectra.len(),
+            8 * 2 * short.effective_partitions * short_geometry.spectrum_bins
+        );
+    }
+
+    #[test]
+    fn response_ending_inside_partition_reports_its_required_partition_count() {
+        let (bank, _) = prepare_bank(35, &[(6, 34, 0.75)]);
+        assert_eq!(bank.effective_partitions, 3);
+    }
+
+    #[test]
+    fn trailing_exact_zero_frames_do_not_extend_effective_partitions() {
+        let (bank, _) = prepare_bank(80, &[(6, 31, -0.5)]);
+        assert_eq!(bank.effective_partitions, 2);
+    }
+
+    #[test]
+    fn tiny_nonzero_trailing_coefficient_extends_effective_partitions() {
+        let (bank, _) = prepare_bank(80, &[(6, 31, -0.5), (13, 79, -1.0e-12), (4, 1, 0.25)]);
+        assert_eq!(bank.effective_partitions, 5);
+    }
+
+    #[test]
+    fn all_zero_valid_response_uses_one_effective_partition() {
+        let (bank, _) = prepare_bank(80, &[]);
+        assert_eq!(bank.effective_partitions, 1);
+    }
+
+    #[test]
+    fn render_partition_count_is_bounded_by_kernel_and_available_history() {
+        let (short, _) = prepare_bank(16, &[(6, 0, 0.5)]);
+        let (long, _) = prepare_bank(128, &[(6, 127, 0.25)]);
+
+        assert_eq!(short.render_partition_count(HISTORY_PARTITIONS), 1);
+        assert_eq!(short.render_partition_count(0), 0);
+        assert_eq!(long.render_partition_count(3), 3);
     }
 }

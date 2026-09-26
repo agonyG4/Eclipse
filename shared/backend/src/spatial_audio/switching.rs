@@ -54,6 +54,12 @@ pub struct DecodedRequest {
     pub preset: HrtfPresetId,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct PendingRequest {
+    encoded: u64,
+    request: DecodedRequest,
+}
+
 fn encode_request(generation: u64, preset: HrtfPresetId) -> u64 {
     (generation << 8) | (preset.index() as u64 + 1)
 }
@@ -72,9 +78,20 @@ fn store_latest_request(mailbox: &AtomicU64, generation: u64, preset: HrtfPreset
     mailbox.fetch_max(encode_request(generation, preset), Ordering::Release);
 }
 
-fn take_fresh_request(mailbox: &AtomicU64, applied_generation: u64) -> Option<DecodedRequest> {
-    decode_request(mailbox.swap(0, Ordering::AcqRel))
-        .filter(|request| request.generation > applied_generation)
+fn acknowledge_request(mailbox: &AtomicU64, encoded: u64) -> bool {
+    mailbox
+        .compare_exchange(encoded, 0, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+}
+
+fn peek_fresh_request(mailbox: &AtomicU64, applied_generation: u64) -> Option<PendingRequest> {
+    let encoded = mailbox.load(Ordering::Acquire);
+    let request = decode_request(encoded)?;
+    if request.generation <= applied_generation {
+        acknowledge_request(mailbox, encoded);
+        return None;
+    }
+    Some(PendingRequest { encoded, request })
 }
 
 pub fn crossfade_gains(frame: usize, total_frames: usize) -> (f32, f32) {
@@ -175,12 +192,12 @@ impl RealtimeSpatialEngine {
         if !self.registry.contains(preset) {
             return Err(SelectionError::UnavailablePreset);
         }
+        // The consumer publishes state before acknowledging its request. Read the mailbox first
+        // so an acquired empty value cannot be paired with the pre-publication state.
+        let pending_request = self.latest_request.load(Ordering::Acquire);
         let published = self.published_status.load(Ordering::Acquire);
         let (active, target, _) = unpack_status(published);
-        if active == Some(preset)
-            && target.is_none()
-            && self.latest_request.load(Ordering::Acquire) == 0
-        {
+        if active == Some(preset) && target.is_none() && pending_request == 0 {
             return Ok(SelectionResult {
                 generation: self.next_generation.load(Ordering::Acquire),
                 no_op: true,
@@ -347,10 +364,11 @@ impl RealtimeSpatialEngine {
     }
 
     fn apply_latest_request(&self, state: &mut RtSwitchState) {
-        let Some(request) = take_fresh_request(&self.latest_request, state.applied_generation)
+        let Some(pending) = peek_fresh_request(&self.latest_request, state.applied_generation)
         else {
             return;
         };
+        let request = pending.request;
         state.applied_generation = request.generation;
         self.published_generation
             .store(request.generation, Ordering::Release);
@@ -361,8 +379,11 @@ impl RealtimeSpatialEngine {
             state.queued = None;
             if request.preset != state.active {
                 self.start_transition(state, request);
+            } else {
+                self.publish_state(state);
             }
         }
+        acknowledge_request(&self.latest_request, pending.encoded);
     }
 
     fn start_transition(&self, state: &mut RtSwitchState, request: DecodedRequest) {
@@ -450,11 +471,36 @@ mod tests {
             })
         );
 
-        assert_eq!(take_fresh_request(&mailbox, 0).unwrap().generation, 12);
+        let pending = peek_fresh_request(&mailbox, 0).unwrap();
+        assert_eq!(pending.request.generation, 12);
+        assert_eq!(
+            decode_request(mailbox.load(Ordering::Acquire)),
+            Some(pending.request)
+        );
+        assert!(acknowledge_request(&mailbox, pending.encoded));
+        assert_eq!(mailbox.load(Ordering::Acquire), 0);
 
-        // Simulate an older producer publishing after the audio thread consumed generation 12.
+        // Simulate an older producer publishing after generation 12 was acknowledged.
         store_latest_request(&mailbox, 11, HrtfPresetId::AstreaDolby);
-        assert_eq!(take_fresh_request(&mailbox, 12), None);
+        assert_eq!(peek_fresh_request(&mailbox, 12), None);
+        assert_eq!(mailbox.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn acknowledgement_of_an_observed_request_cannot_clear_a_newer_request() {
+        let mailbox = AtomicU64::new(0);
+        store_latest_request(&mailbox, 11, HrtfPresetId::AstreaDolby);
+        let observed = mailbox.load(Ordering::Acquire);
+
+        store_latest_request(&mailbox, 12, HrtfPresetId::AstreaHalf);
+        assert!(!acknowledge_request(&mailbox, observed));
+        assert_eq!(
+            decode_request(mailbox.load(Ordering::Acquire)),
+            Some(DecodedRequest {
+                generation: 12,
+                preset: HrtfPresetId::AstreaHalf,
+            })
+        );
     }
 
     #[test]
@@ -482,5 +528,45 @@ mod tests {
         engine.process_interleaved(&input, &mut output).unwrap();
         assert_eq!(engine.active_hrtf(), Some(HrtfPresetId::AstreaDolby));
         assert_eq!(engine.switch_state().target, None);
+    }
+
+    #[test]
+    fn selecting_active_preset_after_observing_an_unacknowledged_request_is_not_a_noop() {
+        let registry = PreparedBankRegistry::from_responses(
+            vec![
+                (HrtfPresetId::Astrea, response()),
+                (HrtfPresetId::AstreaDolby, response()),
+                (HrtfPresetId::AstreaMovie, response()),
+            ],
+            16,
+        )
+        .unwrap();
+        let engine = RealtimeSpatialEngine::from_registry(registry, 1).unwrap();
+
+        let dolby = engine.select_hrtf(HrtfPresetId::AstreaDolby).unwrap();
+        let observed = peek_fresh_request(&engine.latest_request, 0).unwrap();
+        assert_eq!(observed.request.generation, dolby.generation);
+        assert_eq!(
+            engine.latest_request.load(Ordering::Acquire),
+            observed.encoded
+        );
+
+        let astrea = engine.select_hrtf(HrtfPresetId::Astrea).unwrap();
+        assert!(!astrea.no_op);
+        assert_eq!(
+            decode_request(engine.latest_request.load(Ordering::Acquire)),
+            Some(DecodedRequest {
+                generation: astrea.generation,
+                preset: HrtfPresetId::Astrea,
+            })
+        );
+
+        let input = vec![0.0f32; 16 * 8];
+        let mut output = vec![0.0f32; 16 * 2];
+        engine.process_interleaved(&input, &mut output).unwrap();
+
+        assert_eq!(engine.active_hrtf(), Some(HrtfPresetId::Astrea));
+        assert_eq!(engine.switch_state().target, None);
+        assert_eq!(engine.switch_state().generation, astrea.generation);
     }
 }

@@ -474,9 +474,52 @@ fn long_and_short_banks_share_one_history_geometry() {
 }
 
 #[test]
+fn short_bank_renders_its_expected_convolution_output() {
+    let response = hesuvi_response(16, &[(6, 0, 0.5), (13, 0, 0.25)]);
+    let engine = engine_with_responses(response.clone(), response.clone(), response, 1);
+    let mut input = vec![0.0f32; PARTITION_FRAMES * SOURCE_CHANNELS];
+    input[SourceChannel::FrontCenter.index()] = 1.0;
+    let silence = vec![0.0f32; input.len()];
+    let mut output = vec![0.0f32; PARTITION_FRAMES * 2];
+
+    engine.process_interleaved(&input, &mut output).unwrap();
+    engine.process_interleaved(&silence, &mut output).unwrap();
+
+    assert!((output[0] - 0.5).abs() < 2.0e-5);
+    assert!((output[1] - 0.25).abs() < 2.0e-5);
+}
+
+#[test]
+fn switching_from_long_active_bank_to_short_target_reuses_history_without_shrinking_it() {
+    let long = hesuvi_response(PARTITION_FRAMES * 3, &[(6, PARTITION_FRAMES * 2, 0.5)]);
+    let short = hesuvi_response(PARTITION_FRAMES, &[(6, 1, 0.25)]);
+    let engine = engine_with_responses(long, short.clone(), short, 1);
+    let geometry = engine.partition_geometry();
+    assert_eq!(geometry.input_history_partitions, 3);
+
+    let mut input = vec![0.0f32; PARTITION_FRAMES * SOURCE_CHANNELS];
+    input[(PARTITION_FRAMES - 1) * SOURCE_CHANNELS + SourceChannel::FrontCenter.index()] = 1.0;
+    let silence = vec![0.0f32; input.len()];
+    let mut output = vec![0.0f32; PARTITION_FRAMES * 2];
+    engine.process_interleaved(&input, &mut output).unwrap();
+    engine.select_hrtf(HrtfPresetId::AstreaDolby).unwrap();
+    engine.process_interleaved(&silence, &mut output).unwrap();
+    engine.process_interleaved(&silence, &mut output).unwrap();
+
+    assert_eq!(engine.active_hrtf(), Some(HrtfPresetId::AstreaDolby));
+    assert_eq!(engine.partition_geometry(), geometry);
+    assert!(
+        (output[0] - 0.25).abs() < 2.0e-5,
+        "first output frames: {:?}",
+        &output[..16]
+    );
+}
+
+#[test]
 fn process_uses_no_heap_allocations_after_initialization() {
-    let response = hesuvi_response(256, &[(6, 0, 1.0), (13, 0, 1.0)]);
-    let engine = engine_with_responses(response.clone(), response.clone(), response, 480);
+    let short = hesuvi_response(16, &[(6, 0, 1.0), (13, 0, 1.0)]);
+    let long = hesuvi_response(PARTITION_FRAMES * 4, &[(6, PARTITION_FRAMES * 3, 0.5)]);
+    let engine = engine_with_responses(short.clone(), long, short.clone(), 480);
     let input: [Vec<f32>; SOURCE_CHANNELS] =
         std::array::from_fn(|_| vec![0.0f32; PARTITION_FRAMES * 4]);
     let input_refs: [&[f32]; SOURCE_CHANNELS] =

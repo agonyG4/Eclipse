@@ -20,11 +20,15 @@ The source WAV layout has 14 HeSuVi channels. Preparation maps each source into 
 canonical `8 sources x 2 ears` matrix in 7.1 order: FL, FR, FC, LFE, RL, RR, SL, SR. LFE explicitly
 uses the FC left/right pair. The realtime engine sees only this canonical matrix.
 
-All prepared banks in an engine share one partition size, FFT size, and input-history length. Each
-input block is transformed once for each of the eight sources, and those spectra are stored in one
-source-indexed ring. Both output ears and both banks in a transition reuse that same ring. Kernel
-memory lives in fixed registry slots for the engine lifetime; the realtime callback changes slot
-identity and never releases a bank.
+All prepared banks in an engine share one partition size, FFT size, and global input-history
+capacity. Each bank stores only the kernel partitions through its last exactly non-zero
+coefficient across the canonical HRTF channels. An all-zero valid response keeps one effective
+partition. Trailing exact-zero frames may be omitted during kernel preparation; no amplitude
+threshold is used, so tiny non-zero values remain part of the response. Each input block is
+transformed once for each of the eight sources, and those spectra are stored in one source-indexed
+ring. Both output ears and both banks in a transition reuse that same ring. Kernel memory lives in
+fixed registry slots for the engine lifetime; the realtime callback changes slot identity and
+never releases a bank.
 
 Long impulse responses use uniform partitioned FFT convolution. Eight forward transforms feed two
 ear accumulations and two inverse transforms per output render. The target bank's overlap state is
@@ -35,8 +39,13 @@ arrived before the request.
 
 The state machine is `Stable(active)`, `Transition(active, target)`, then `Stable(target)`. Requests
 carry increasing generations. Before a transition starts, an atomic latest-generation mailbox
-replaces older pending requests. While a transition is active, one queued target is retained and
-newer requests replace it. Requests older than the applied generation are ignored.
+replaces older pending requests. The realtime consumer observes a fresh request, applies it to
+realtime state, publishes that state and generation, then acknowledges the exact encoded mailbox
+value with compare-exchange. The request therefore does not disappear from both the mailbox and
+published state during handoff, and acknowledgement cannot erase a newer generation. Stale
+requests are cleared only when the exact stale value is still present. While a transition is
+active, one queued target is retained and newer requests replace it. Requests older than the
+applied generation are ignored.
 
 The default transition lasts 480 output frames at 48 kHz. Progress is measured in frames, so graph
 quantum changes do not change its duration. Old and new stereo renders use complementary raised

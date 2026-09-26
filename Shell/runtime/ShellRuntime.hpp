@@ -45,6 +45,7 @@ namespace Astrea::System {
 class AudioService;
 class BluetoothService;
 class NetworkService;
+class SpatialAudioEngine;
 }
 
 namespace Paper {
@@ -94,6 +95,8 @@ public:
     AltTabConfigWatcher *altTabConfig() const { return m_altTabConfig.get(); }
     SpotlightConfigWatcher *spotlightConfig() const { return m_spotlightConfig.get(); }
     Astrea::System::AudioService *audioService() const { return m_audioService.get(); }
+    Astrea::System::SpatialAudioEngine *spatialAudioEngine() const
+    { return m_spatialAudioEngine.get(); }
     Astrea::System::NetworkService *networkService() const { return m_networkService.get(); }
     Astrea::System::BluetoothService *bluetoothService() const
     { return m_bluetoothService.get(); }
@@ -144,6 +147,7 @@ private:
     std::unique_ptr<SpotlightConfigWatcher> m_spotlightConfig;
     std::unique_ptr<GameModeMonitor> m_gameMode;
     std::unique_ptr<Astrea::System::AudioService> m_audioService;
+    std::unique_ptr<Astrea::System::SpatialAudioEngine> m_spatialAudioEngine;
     std::unique_ptr<Astrea::System::NetworkService> m_networkService;
     std::unique_ptr<Astrea::System::BluetoothService> m_bluetoothService;
     std::unique_ptr<Astrea::StatusNotifier::StatusNotifierService> m_statusNotifier;

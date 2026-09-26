@@ -2,6 +2,7 @@
 #include "system/audio/AudioService.hpp"
 #include "system/audio/AudioOutputModel.hpp"
 #include "system/audio/PipeWireAudioState.hpp"
+#include "system/audio/spatial/SpatialAudioBlockBridge.hpp"
 #include "system/network/NetworkService.hpp"
 #include "system/network/WifiNetworkModel.hpp"
 #include "system/network/NetworkManagerState.hpp"
@@ -15,7 +16,9 @@
 #include <QSignalSpy>
 #include <QTest>
 
+#include <array>
 #include <memory>
+#include <string_view>
 
 using namespace Astrea::System;
 
@@ -267,6 +270,25 @@ AudioOutput output(quint32 id, const QString &name, bool isDefault = false)
                        isDefault, false};
 }
 
+struct FakeSpatialProcessor {
+    int calls = 0;
+    bool shouldFail = false;
+};
+
+int processSpatialFake(void *context, const float *const *inputs, float *const *outputs,
+                       std::uint32_t frames)
+{
+    auto *fake = static_cast<FakeSpatialProcessor *>(context);
+    ++fake->calls;
+    if (fake->shouldFail)
+        return 1;
+    for (std::uint32_t frame = 0; frame < frames; ++frame) {
+        outputs[0][frame] = inputs[2][frame];
+        outputs[1][frame] = inputs[7][frame];
+    }
+    return 0;
+}
+
 } // namespace
 
 class SystemServicesTest final : public QObject {
@@ -294,6 +316,7 @@ private slots:
     void pipewirePartialPatchPreservesChannelVolumes();
     void pipewireIncompleteDefaultStateIsUnavailable();
     void pipewireDefaultWriteDoesNotOptimisticallyMutateState();
+    void spatialAudioPipeWireBoundaryUsesCanonicalPlanarPortsAndSilencesErrors();
     void bluetoothFacadeContractAndForwardsOperations();
     void bluetoothPhase2ContractAndForwardsOperations();
     void bluetoothServiceCategoryIsCarriedAndNotified();
@@ -1105,6 +1128,43 @@ void SystemServicesTest::healthJsonContainsNoSecrets()
     QVERIFY(health.contains(QStringLiteral("available")));
     QVERIFY(!health.keys().contains(QStringLiteral("password")));
     QVERIFY(!health.keys().contains(QStringLiteral("secret")));
+}
+
+void SystemServicesTest::spatialAudioPipeWireBoundaryUsesCanonicalPlanarPortsAndSilencesErrors()
+{
+    using Bridge = SpatialAudioBlockBridge;
+    QVERIFY((Bridge::InputChannelNames ==
+             std::array<std::string_view, 8>{"FL", "FR", "FC", "LFE", "RL", "RR", "SL", "SR"}));
+    QVERIFY((Bridge::OutputChannelNames == std::array<std::string_view, 2>{"FL", "FR"}));
+    QVERIFY(Bridge::supportsClockRate(1, 48'000));
+    QVERIFY(Bridge::supportsClockRate(2, 96'000));
+    QVERIFY(!Bridge::supportsClockRate(1, 44'100));
+
+    std::array<std::array<float, 3>, 8> inputStorage{};
+    std::array<const float *, 8> inputs{};
+    for (std::size_t channel = 0; channel < inputStorage.size(); ++channel) {
+        for (std::size_t frame = 0; frame < inputStorage[channel].size(); ++frame)
+            inputStorage[channel][frame] = static_cast<float>(channel * 10 + frame);
+        inputs[channel] = inputStorage[channel].data();
+    }
+    std::array<std::array<float, 3>, 2> outputStorage{};
+    std::array<float *, 2> outputs = {outputStorage[0].data(), outputStorage[1].data()};
+    FakeSpatialProcessor fake;
+    QVERIFY(Bridge::process(inputs, outputs, 3, &processSpatialFake, &fake));
+    QCOMPARE(fake.calls, 1);
+    QCOMPARE(outputStorage[0][1], 21.0f);
+    QCOMPARE(outputStorage[1][2], 72.0f);
+
+    fake.shouldFail = true;
+    QVERIFY(!Bridge::process(inputs, outputs, 3, &processSpatialFake, &fake));
+    QVERIFY((outputStorage[0] == std::array<float, 3>{0.0f, 0.0f, 0.0f}));
+    QVERIFY((outputStorage[1] == std::array<float, 3>{0.0f, 0.0f, 0.0f}));
+
+    fake.shouldFail = false;
+    inputs[4] = nullptr;
+    QVERIFY(!Bridge::process(inputs, outputs, 3, &processSpatialFake, &fake));
+    QVERIFY((outputStorage[0] == std::array<float, 3>{0.0f, 0.0f, 0.0f}));
+    QVERIFY((outputStorage[1] == std::array<float, 3>{0.0f, 0.0f, 0.0f}));
 }
 
 QTEST_GUILESS_MAIN(SystemServicesTest)

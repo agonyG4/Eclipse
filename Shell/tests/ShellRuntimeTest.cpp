@@ -103,6 +103,7 @@ void ShellRuntimeTest::createsOneSharedOwnershipGraph()
     QCOMPARE(runtime.altTabController()->identityResolver(), runtime.identityResolver());
     QCOMPARE(runtime.barController()->workspaceModel(), runtime.workspaceModel());
     QVERIFY(runtime.audioService());
+    QVERIFY(runtime.spatialAudioEngine());
     QVERIFY(runtime.networkService());
     QVERIFY(runtime.bluetoothService());
     QVERIFY(static_cast<QObject *>(runtime.audioService())

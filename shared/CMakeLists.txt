@@ -131,6 +131,28 @@ if(NOT MSVC)
 endif()
 astrea_shared_enable_sanitizers(astrea-shared-dock)
 
+add_library(astrea-shared-spatial-audio STATIC
+    system/audio/spatial/PipeWireSpatialHost.cpp
+    system/audio/spatial/PipeWireSpatialHost.hpp
+    system/audio/spatial/SpatialAudioBlockBridge.cpp
+    system/audio/spatial/SpatialAudioBlockBridge.hpp
+    system/audio/spatial/SpatialAudioCAPI.h
+    system/audio/spatial/SpatialAudioEngine.cpp
+    system/audio/spatial/SpatialAudioEngine.hpp
+)
+add_dependencies(astrea-shared-spatial-audio astrea_system_backend_cxxqt_headers)
+target_include_directories(astrea-shared-spatial-audio PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(astrea-shared-spatial-audio PUBLIC
+    astrea_system_backend
+    PkgConfig::ASTREA_PIPEWIRE
+)
+if(NOT MSVC)
+    target_compile_options(astrea-shared-spatial-audio PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+astrea_shared_enable_sanitizers(astrea-shared-spatial-audio)
+
 add_library(astrea-shared-statusnotifier STATIC
     statusnotifier/StatusNotifierTypes.cpp
     statusnotifier/StatusNotifierTypes.hpp
@@ -232,6 +254,7 @@ qt_add_qml_module(astrea-shared-system-qt
 add_library(astrea-shared-system INTERFACE)
 target_link_libraries(astrea-shared-system INTERFACE
     astrea-shared-system-qt
+    astrea-shared-spatial-audio
     astrea_system_backend
 )
 

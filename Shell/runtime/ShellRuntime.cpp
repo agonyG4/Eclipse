@@ -38,6 +38,7 @@
 #include "apps/appidentity/AppIdentityResolver.hpp"
 #include "theme/ThemeController.hpp"
 #include "system/audio/AudioService.hpp"
+#include "system/audio/spatial/SpatialAudioEngine.hpp"
 #include "system/network/NetworkService.hpp"
 #include "system/bluetooth/BluetoothService.hpp"
 #include "statusnotifier/StatusNotifierService.hpp"
@@ -136,6 +137,7 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
     }
     m_gameMode = std::make_unique<GameModeMonitor>();
     m_audioService = std::make_unique<Astrea::System::AudioService>();
+    m_spatialAudioEngine = std::make_unique<Astrea::System::SpatialAudioEngine>();
     m_networkService = std::make_unique<Astrea::System::NetworkService>();
     m_bluetoothService = std::make_unique<Astrea::System::BluetoothService>();
     m_statusNotifier = std::make_unique<Astrea::StatusNotifier::StatusNotifierService>();
@@ -308,6 +310,7 @@ void ShellRuntime::start()
     m_gameMode->start();
     m_barClock->start();
     m_audioService->start();
+    m_spatialAudioEngine->start();
     m_networkService->start();
     m_bluetoothService->start();
     m_statusNotifier->start();
@@ -327,6 +330,8 @@ void ShellRuntime::stop()
         m_statusNotifier->stop();
     if (m_networkService)
         m_networkService->stop();
+    if (m_spatialAudioEngine)
+        m_spatialAudioEngine->stop();
     if (m_audioService)
         m_audioService->stop();
     m_gameMode->stop();

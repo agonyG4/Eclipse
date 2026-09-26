@@ -19,6 +19,7 @@
 #include <array>
 #include <memory>
 #include <string_view>
+#include <utility>
 
 using namespace Astrea::System;
 
@@ -320,6 +321,7 @@ private slots:
     void bluetoothFacadeContractAndForwardsOperations();
     void bluetoothPhase2ContractAndForwardsOperations();
     void bluetoothServiceCategoryIsCarriedAndNotified();
+    void bluetoothDeviceKindIsCarriedAndNotified();
     void bluetoothHealthChangedCoversHealthJsonFields();
     void bluetoothBackendStartupFailureReportsUnavailable();
     void bluetoothDeviceModelPreservesOrderingAndRoles();
@@ -980,6 +982,77 @@ void SystemServicesTest::bluetoothServiceCategoryIsCarriedAndNotified()
     QCOMPARE(agentSpy.count(), 2);
 }
 
+void SystemServicesTest::bluetoothDeviceKindIsCarriedAndNotified()
+{
+    using Astrea::System::BluetoothDeviceKind;
+    using Astrea::System::bluetoothDeviceKindFromBridgeCode;
+
+    static_assert(static_cast<int>(BluetoothDeviceKind::Unknown) == 0);
+    static_assert(static_cast<int>(BluetoothDeviceKind::Audio) == 1);
+    static_assert(static_cast<int>(BluetoothDeviceKind::Headset) == 2);
+    static_assert(static_cast<int>(BluetoothDeviceKind::Headphones) == 3);
+    static_assert(static_cast<int>(BluetoothDeviceKind::Speaker) == 4);
+    static_assert(static_cast<int>(BluetoothDeviceKind::Keyboard) == 5);
+    static_assert(static_cast<int>(BluetoothDeviceKind::Mouse) == 6);
+    static_assert(static_cast<int>(BluetoothDeviceKind::Gamepad) == 7);
+    static_assert(static_cast<int>(BluetoothDeviceKind::Phone) == 8);
+    static_assert(static_cast<int>(BluetoothDeviceKind::Computer) == 9);
+    static_assert(static_cast<int>(BluetoothDeviceKind::Tablet) == 10);
+    static_assert(static_cast<int>(BluetoothDeviceKind::Printer) == 11);
+    static_assert(static_cast<int>(BluetoothDeviceKind::Camera) == 12);
+    static_assert(static_cast<int>(BluetoothDeviceKind::Network) == 13);
+
+    for (const auto &[kind, code] : std::array{
+             std::pair{BluetoothDeviceKind::Unknown, 0},
+             std::pair{BluetoothDeviceKind::Audio, 1},
+             std::pair{BluetoothDeviceKind::Headset, 2},
+             std::pair{BluetoothDeviceKind::Headphones, 3},
+             std::pair{BluetoothDeviceKind::Speaker, 4},
+             std::pair{BluetoothDeviceKind::Keyboard, 5},
+             std::pair{BluetoothDeviceKind::Mouse, 6},
+             std::pair{BluetoothDeviceKind::Gamepad, 7},
+             std::pair{BluetoothDeviceKind::Phone, 8},
+             std::pair{BluetoothDeviceKind::Computer, 9},
+             std::pair{BluetoothDeviceKind::Tablet, 10},
+             std::pair{BluetoothDeviceKind::Printer, 11},
+             std::pair{BluetoothDeviceKind::Camera, 12},
+             std::pair{BluetoothDeviceKind::Network, 13},
+         }) {
+        QCOMPARE(bluetoothDeviceKindFromBridgeCode(code), kind);
+    }
+    QCOMPARE(bluetoothDeviceKindFromBridgeCode(99), BluetoothDeviceKind::Unknown);
+
+    auto backend = std::make_unique<FakeBluetoothBackend>();
+    auto *backendPtr = backend.get();
+    BluetoothService service(std::move(backend));
+    QVERIFY(service.start());
+    QSignalSpy pairingSpy(&service, &BluetoothService::pairingChanged);
+    QSignalSpy agentSpy(&service, &BluetoothService::agentRequestChanged);
+
+    BluetoothSnapshot snapshot;
+    snapshot.pairing = true;
+    snapshot.pairingDevicePath = QStringLiteral("/org/bluez/hci0/dev_headset");
+    snapshot.agentRequestActive = true;
+    snapshot.agentRequestId = 1;
+    snapshot.pairingDeviceKind = BluetoothDeviceKind::Headset;
+    snapshot.agentDeviceKind = BluetoothDeviceKind::Keyboard;
+    backendPtr->publish(snapshot);
+    QCOMPARE(service.pairingDeviceKind(), BluetoothDeviceKind::Headset);
+    QCOMPARE(service.agentDeviceKind(), BluetoothDeviceKind::Keyboard);
+    QCOMPARE(pairingSpy.count(), 1);
+    QCOMPARE(agentSpy.count(), 1);
+
+    snapshot.pairingDeviceKind = BluetoothDeviceKind::Speaker;
+    backendPtr->publish(snapshot);
+    QCOMPARE(service.pairingDeviceKind(), BluetoothDeviceKind::Speaker);
+    QCOMPARE(pairingSpy.count(), 2);
+
+    snapshot.agentDeviceKind = BluetoothDeviceKind::Computer;
+    backendPtr->publish(snapshot);
+    QCOMPARE(service.agentDeviceKind(), BluetoothDeviceKind::Computer);
+    QCOMPARE(agentSpy.count(), 2);
+}
+
 void SystemServicesTest::bluetoothHealthChangedCoversHealthJsonFields()
 {
     auto backend = std::make_unique<FakeBluetoothBackend>();
@@ -1027,6 +1100,7 @@ void SystemServicesTest::bluetoothDeviceModelPreservesOrderingAndRoles()
     availableB.id = QStringLiteral("available-b");
     availableB.address = QStringLiteral("BB");
     availableB.name = QStringLiteral("beta");
+    availableB.deviceKind = BluetoothDeviceKind::Keyboard;
     availableB.discovered = true;
     BluetoothDevice availableA = availableB;
     availableA.id = QStringLiteral("available-a");
@@ -1055,11 +1129,14 @@ void SystemServicesTest::bluetoothDeviceModelPreservesOrderingAndRoles()
              QStringLiteral("available-b"));
     QCOMPARE(model.data(model.index(1, 0), BluetoothDeviceModel::PairedRole).toBool(), true);
     QCOMPARE(model.data(model.index(2, 0), BluetoothDeviceModel::DiscoveredRole).toBool(), true);
+    QCOMPARE(model.data(model.index(2, 0), BluetoothDeviceModel::DeviceKindRole)
+                 .value<BluetoothDeviceKind>(), BluetoothDeviceKind::Keyboard);
     const auto roles = model.roleNames();
     QCOMPARE(roles.value(BluetoothDeviceModel::IdRole), QByteArray("id"));
     QCOMPARE(roles.value(BluetoothDeviceModel::ObjectPathRole), QByteArray("objectPath"));
     QCOMPARE(roles.value(BluetoothDeviceModel::AddressRole), QByteArray("address"));
     QCOMPARE(roles.value(BluetoothDeviceModel::NameRole), QByteArray("name"));
+    QCOMPARE(roles.value(BluetoothDeviceModel::DeviceKindRole), QByteArray("deviceKind"));
     QCOMPARE(roles.value(BluetoothDeviceModel::PairedRole), QByteArray("paired"));
     QCOMPARE(roles.value(BluetoothDeviceModel::TrustedRole), QByteArray("trusted"));
     QCOMPARE(roles.value(BluetoothDeviceModel::ConnectedRole), QByteArray("connected"));

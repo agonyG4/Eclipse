@@ -36,6 +36,40 @@ constexpr BluetoothServiceCategory bluetoothServiceCategoryFromBridgeCode(int co
     }
 }
 
+constexpr BluetoothDeviceKind bluetoothDeviceKindFromBridgeCode(int code) noexcept
+{
+    switch (code) {
+    case 1:
+        return BluetoothDeviceKind::Audio;
+    case 2:
+        return BluetoothDeviceKind::Headset;
+    case 3:
+        return BluetoothDeviceKind::Headphones;
+    case 4:
+        return BluetoothDeviceKind::Speaker;
+    case 5:
+        return BluetoothDeviceKind::Keyboard;
+    case 6:
+        return BluetoothDeviceKind::Mouse;
+    case 7:
+        return BluetoothDeviceKind::Gamepad;
+    case 8:
+        return BluetoothDeviceKind::Phone;
+    case 9:
+        return BluetoothDeviceKind::Computer;
+    case 10:
+        return BluetoothDeviceKind::Tablet;
+    case 11:
+        return BluetoothDeviceKind::Printer;
+    case 12:
+        return BluetoothDeviceKind::Camera;
+    case 13:
+        return BluetoothDeviceKind::Network;
+    default:
+        return BluetoothDeviceKind::Unknown;
+    }
+}
+
 struct BluetoothSnapshot {
     SystemServiceState state = SystemServiceState::Stopped;
     bool available = false;
@@ -53,12 +87,14 @@ struct BluetoothSnapshot {
     bool pairing = false;
     QString pairingDevicePath;
     QString pairingDeviceName;
+    BluetoothDeviceKind pairingDeviceKind = BluetoothDeviceKind::Unknown;
     QString pairingError;
     bool agentRequestActive = false;
     quint64 agentRequestId = 0;
     BluetoothAgentRequestKind agentRequestKind = BluetoothAgentRequestKind::None;
     QString agentDevicePath;
     QString agentDeviceName;
+    BluetoothDeviceKind agentDeviceKind = BluetoothDeviceKind::Unknown;
     quint32 agentPasskey = 0;
     int agentEntered = -1;
     QString agentServiceUuid;

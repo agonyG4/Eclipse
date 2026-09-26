@@ -24,6 +24,7 @@ QVariant BluetoothDeviceModel::data(const QModelIndex &index, int role) const
     case ObjectPathRole: return device.objectPath;
     case AddressRole: return device.address;
     case NameRole: return device.name;
+    case DeviceKindRole: return QVariant::fromValue(device.deviceKind);
     case PairedRole: return device.paired;
     case TrustedRole: return device.trusted;
     case ConnectedRole: return device.connected;
@@ -43,6 +44,7 @@ QHash<int, QByteArray> BluetoothDeviceModel::roleNames() const
         {ObjectPathRole, "objectPath"},
         {AddressRole, "address"},
         {NameRole, "name"},
+        {DeviceKindRole, "deviceKind"},
         {PairedRole, "paired"},
         {TrustedRole, "trusted"},
         {ConnectedRole, "connected"},

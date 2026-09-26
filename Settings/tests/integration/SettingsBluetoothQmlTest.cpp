@@ -242,6 +242,8 @@ private slots:
     void emptyStatesFollowAuthoritativeDeviceComposition();
     void pageDestructionCancelsActivePairing();
     void presentsSharedDevicesAndDispatchesActions();
+    void resolvesDeviceKindFallbacksAndKeepsDuplicateNamesPathKeyed();
+    void usesOnePlainTextIdentityAcrossAgentAndForgetPrompts();
     void successfulPairingMovesWithAuthoritativeModelWithoutChaining();
     void separatesPairingAndOperationErrors();
     void handlesPinAndPasskeyInputWithCapturedRequestIds();
@@ -265,7 +267,9 @@ Astrea::System::BluetoothSnapshot readyBluetoothSnapshot()
 }
 
 Astrea::System::BluetoothDevice bluetoothDevice(const QString &id, const QString &name,
-                                                bool paired, bool connected = false)
+                                                bool paired, bool connected = false,
+                                                Astrea::System::BluetoothDeviceKind deviceKind =
+                                                    Astrea::System::BluetoothDeviceKind::Unknown)
 {
     Astrea::System::BluetoothDevice device;
     device.id = id;
@@ -276,6 +280,7 @@ Astrea::System::BluetoothDevice bluetoothDevice(const QString &id, const QString
     device.connected = connected;
     device.discovered = !paired;
     device.icon = QStringLiteral("audio-headphones");
+    device.deviceKind = deviceKind;
     return device;
 }
 
@@ -519,6 +524,196 @@ void SettingsBluetoothQmlTest::presentsSharedDevicesAndDispatchesActions()
     QVERIFY(QMetaObject::invokeMethod(fixture.findObject(QStringLiteral("cancelPairingButton")),
                                       "clicked"));
     QCOMPARE(fixture.backend()->cancelPairingCount, 1);
+}
+
+void SettingsBluetoothQmlTest::resolvesDeviceKindFallbacksAndKeepsDuplicateNamesPathKeyed()
+{
+    using Astrea::System::BluetoothDeviceKind;
+
+    BluetoothPageFixture fixture;
+    QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.componentErrors()));
+
+    const QList<QPair<BluetoothDeviceKind, QString>> fallbackCases = {
+        {BluetoothDeviceKind::Unknown, QStringLiteral("Bluetooth device")},
+        {BluetoothDeviceKind::Audio, QStringLiteral("Bluetooth audio device")},
+        {BluetoothDeviceKind::Headset, QStringLiteral("Bluetooth headset")},
+        {BluetoothDeviceKind::Headphones, QStringLiteral("Bluetooth headphones")},
+        {BluetoothDeviceKind::Speaker, QStringLiteral("Bluetooth speaker")},
+        {BluetoothDeviceKind::Keyboard, QStringLiteral("Bluetooth keyboard")},
+        {BluetoothDeviceKind::Mouse, QStringLiteral("Bluetooth mouse")},
+        {BluetoothDeviceKind::Gamepad, QStringLiteral("Bluetooth controller")},
+        {BluetoothDeviceKind::Phone, QStringLiteral("Phone")},
+        {BluetoothDeviceKind::Computer, QStringLiteral("Computer")},
+        {BluetoothDeviceKind::Tablet, QStringLiteral("Tablet")},
+        {BluetoothDeviceKind::Printer, QStringLiteral("Bluetooth printer")},
+        {BluetoothDeviceKind::Camera, QStringLiteral("Bluetooth camera")},
+        {BluetoothDeviceKind::Network, QStringLiteral("Bluetooth network device")},
+    };
+
+    QList<Astrea::System::BluetoothDevice> devices;
+    for (qsizetype index = 0; index < fallbackCases.size(); ++index) {
+        const QString id = QStringLiteral("kind_%1").arg(index);
+        devices.append(bluetoothDevice(id, QString{}, false, false, fallbackCases[index].first));
+    }
+
+    auto named = bluetoothDevice(QStringLiteral("human_name"), QStringLiteral("WH-1000XM5"),
+                                 false, false, BluetoothDeviceKind::Headphones);
+    auto normalized = bluetoothDevice(QStringLiteral("normalized_name"),
+                                      QStringLiteral("WH-1000XM3"), false, false,
+                                      BluetoothDeviceKind::Headphones);
+    auto technicalHeadset = bluetoothDevice(QStringLiteral("technical_headset"), QString{}, false,
+                                            false, BluetoothDeviceKind::Headset);
+    technicalHeadset.address = QStringLiteral("AA:BB:CC:DD:EE:FF");
+    technicalHeadset.objectPath =
+        QStringLiteral("/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF");
+    auto technicalKeyboard = bluetoothDevice(QStringLiteral("technical_keyboard"), QString{}, false,
+                                             false, BluetoothDeviceKind::Keyboard);
+    technicalKeyboard.name = QString{};
+    auto technicalUnknown = bluetoothDevice(QStringLiteral("technical_unknown"), QString{}, false);
+    technicalUnknown.address = QStringLiteral("11:22:33:44:55:66");
+    technicalUnknown.objectPath =
+        QStringLiteral("/org/bluez/hci0/dev_11_22_33_44_55_66");
+    auto duplicateA = bluetoothDevice(QStringLiteral("duplicate_a"), QStringLiteral("Studio Buds"),
+                                      false, false, BluetoothDeviceKind::Headset);
+    auto duplicateB = bluetoothDevice(QStringLiteral("duplicate_b"), QStringLiteral("Studio Buds"),
+                                      false, false, BluetoothDeviceKind::Headset);
+    devices.append({named, normalized, technicalHeadset, technicalKeyboard, technicalUnknown,
+                    duplicateA, duplicateB});
+
+    auto snapshot = readyBluetoothSnapshot();
+    snapshot.powered = true;
+    snapshot.devices = devices;
+    fixture.publish(snapshot);
+
+    for (qsizetype index = 0; index < fallbackCases.size(); ++index) {
+        const QString id = QStringLiteral("kind_%1").arg(index);
+        const QString objectName = QStringLiteral("deviceName_%1_other").arg(id);
+        QObject *nameLabel = fixture.findObject(objectName);
+        QVERIFY2(nameLabel != nullptr, qPrintable(objectName));
+        QCOMPARE(nameLabel->property("text").toString(), fallbackCases[index].second);
+    }
+    QObject *humanName = fixture.findObject(QStringLiteral("deviceName_human_name_other"));
+    QVERIFY(humanName != nullptr);
+    QCOMPARE(humanName->property("text").toString(), QStringLiteral("WH-1000XM5"));
+    QObject *normalizedName = fixture.findObject(QStringLiteral("deviceName_normalized_name_other"));
+    QVERIFY(normalizedName != nullptr);
+    QCOMPARE(normalizedName->property("text").toString(), QStringLiteral("WH-1000XM3"));
+    const QString technicalHeadsetObjectName =
+        QStringLiteral("deviceName_dev_AA_BB_CC_DD_EE_FF_other");
+    QObject *technicalHeadsetLabel = fixture.findObject(technicalHeadsetObjectName);
+    QVERIFY2(technicalHeadsetLabel != nullptr, qPrintable(technicalHeadsetObjectName));
+    QCOMPARE(technicalHeadsetLabel->property("text").toString(),
+             QStringLiteral("Bluetooth headset"));
+    QObject *technicalKeyboardLabel =
+        fixture.findObject(QStringLiteral("deviceName_technical_keyboard_other"));
+    QVERIFY(technicalKeyboardLabel != nullptr);
+    QCOMPARE(technicalKeyboardLabel->property("text").toString(),
+             QStringLiteral("Bluetooth keyboard"));
+    const QString technicalUnknownObjectName =
+        QStringLiteral("deviceName_dev_11_22_33_44_55_66_other");
+    QObject *technicalUnknownLabel = fixture.findObject(technicalUnknownObjectName);
+    QVERIFY2(technicalUnknownLabel != nullptr, qPrintable(technicalUnknownObjectName));
+    QCOMPARE(technicalUnknownLabel->property("text").toString(),
+             QStringLiteral("Bluetooth device"));
+    QVERIFY(fixture.findObject(QStringLiteral("deviceRow_dev_11_22_33_44_55_66_other"))
+            != nullptr);
+    QVERIFY(!fixture.findObject(QStringLiteral("otherDevicesEmptyState"))
+                 ->property("visible").toBool());
+
+    const QString technicalVisibleName = technicalHeadsetLabel->property("text").toString();
+    QVERIFY(!technicalVisibleName.contains(QStringLiteral("LE_4A8C19FE")));
+    QVERIFY(!technicalVisibleName.contains(technicalHeadset.address));
+    QVERIFY(!technicalVisibleName.contains(technicalHeadset.objectPath));
+    QCOMPARE(fixture.findObject(QStringLiteral("deviceName_duplicate_a_other"))
+                 ->property("text").toString(),
+             fixture.findObject(QStringLiteral("deviceName_duplicate_b_other"))
+                 ->property("text").toString());
+
+    QVERIFY(QMetaObject::invokeMethod(
+        fixture.findObject(QStringLiteral("deviceAction_duplicate_b_other")), "clicked"));
+    QCOMPARE(fixture.backend()->pairedPaths, QStringList{duplicateB.objectPath});
+}
+
+void SettingsBluetoothQmlTest::usesOnePlainTextIdentityAcrossAgentAndForgetPrompts()
+{
+    using Astrea::System::BluetoothAgentRequestKind;
+    using Astrea::System::BluetoothDeviceKind;
+    using Astrea::System::BluetoothServiceCategory;
+
+    BluetoothPageFixture fixture;
+    QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.componentErrors()));
+
+    auto headset = bluetoothDevice(QStringLiteral("unnamed_headset"), QString{}, true, false,
+                                   BluetoothDeviceKind::Headset);
+    auto markedUp = bluetoothDevice(QStringLiteral("marked_up"),
+                                    QStringLiteral("<b>Owner Device</b> & friends"), true);
+    auto snapshot = readyBluetoothSnapshot();
+    snapshot.powered = true;
+    snapshot.devices = {headset, markedUp};
+    fixture.publish(snapshot);
+
+    QObject *headsetName = fixture.findObject(QStringLiteral("deviceName_unnamed_headset_mine"));
+    QVERIFY(headsetName != nullptr);
+    QCOMPARE(headsetName->property("text").toString(), QStringLiteral("Bluetooth headset"));
+    QCOMPARE(headsetName->property("textFormat").toInt(), 0);
+
+    QVERIFY(QMetaObject::invokeMethod(fixture.findObject(QStringLiteral("deviceMore_unnamed_headset_mine")),
+                                      "clicked"));
+    QVERIFY(QMetaObject::invokeMethod(fixture.findObject(QStringLiteral("forgetDeviceAction")),
+                                      "triggered"));
+    QObject *forgetPrompt = fixture.findObject(QStringLiteral("forgetDevicePrompt"));
+    QCOMPARE(forgetPrompt->property("text").toString(), QStringLiteral("Forget Bluetooth headset?"));
+    QCOMPARE(forgetPrompt->property("textFormat").toInt(), 0);
+    QVERIFY(QMetaObject::invokeMethod(fixture.findObject(QStringLiteral("forgetDeviceCancelButton")),
+                                      "clicked"));
+
+    QVERIFY(QMetaObject::invokeMethod(fixture.findObject(QStringLiteral("deviceMore_marked_up_mine")),
+                                      "clicked"));
+    QVERIFY(QMetaObject::invokeMethod(fixture.findObject(QStringLiteral("forgetDeviceAction")),
+                                      "triggered"));
+    const QString markedUpForgetText =
+        QStringLiteral("Forget <b>Owner Device</b> & friends?");
+    QCOMPARE(forgetPrompt->property("text").toString(), markedUpForgetText);
+    QCOMPARE(forgetPrompt->property("textFormat").toInt(), 0);
+    QVERIFY(QMetaObject::invokeMethod(fixture.findObject(QStringLiteral("forgetDeviceConfirmButton")),
+                                      "clicked"));
+    QCOMPARE(fixture.backend()->forgottenPaths, QStringList{markedUp.objectPath});
+
+    snapshot.agentRequestActive = true;
+    snapshot.agentRequestId = 120;
+    snapshot.agentRequestKind = BluetoothAgentRequestKind::PinCodeInput;
+    snapshot.agentDevicePath = headset.objectPath;
+    snapshot.agentDeviceName = headset.name;
+    snapshot.agentDeviceKind = headset.deviceKind;
+    fixture.publish(snapshot);
+    QObject *agentPrompt = fixture.findObject(QStringLiteral("agentPromptText"));
+    QCOMPARE(agentPrompt->property("text").toString(),
+             QStringLiteral("Enter the PIN for \"Bluetooth headset\""));
+    QCOMPARE(agentPrompt->property("textFormat").toInt(), 0);
+
+    snapshot.agentRequestId = 121;
+    snapshot.agentRequestKind = BluetoothAgentRequestKind::Authorization;
+    fixture.publish(snapshot);
+    QCOMPARE(agentPrompt->property("text").toString(),
+             QStringLiteral("Allow \"Bluetooth headset\" to pair?"));
+    QCOMPARE(agentPrompt->property("textFormat").toInt(), 0);
+
+    snapshot.agentRequestId = 122;
+    snapshot.agentRequestKind = BluetoothAgentRequestKind::ServiceAuthorization;
+    snapshot.agentServiceCategory = BluetoothServiceCategory::Audio;
+    fixture.publish(snapshot);
+    QCOMPARE(agentPrompt->property("text").toString(),
+             QStringLiteral("Allow \"Bluetooth headset\" to connect for Bluetooth audio?"));
+    QCOMPARE(agentPrompt->property("textFormat").toInt(), 0);
+
+    snapshot.agentRequestId = 123;
+    snapshot.agentRequestKind = BluetoothAgentRequestKind::Authorization;
+    snapshot.agentDeviceName = markedUp.name;
+    snapshot.agentDeviceKind = BluetoothDeviceKind::Unknown;
+    fixture.publish(snapshot);
+    QCOMPARE(agentPrompt->property("text").toString(),
+             QStringLiteral("Allow \"<b>Owner Device</b> & friends\" to pair?"));
+    QCOMPARE(agentPrompt->property("textFormat").toInt(), 0);
 }
 
 void SettingsBluetoothQmlTest::separatesPairingAndOperationErrors()

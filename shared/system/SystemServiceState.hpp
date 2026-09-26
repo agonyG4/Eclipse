@@ -38,6 +38,24 @@ enum class BluetoothAgentRequestKind {
 };
 Q_ENUM_NS(BluetoothAgentRequestKind)
 
+enum class BluetoothDeviceKind {
+    Unknown = 0,
+    Audio = 1,
+    Headset = 2,
+    Headphones = 3,
+    Speaker = 4,
+    Keyboard = 5,
+    Mouse = 6,
+    Gamepad = 7,
+    Phone = 8,
+    Computer = 9,
+    Tablet = 10,
+    Printer = 11,
+    Camera = 12,
+    Network = 13,
+};
+Q_ENUM_NS(BluetoothDeviceKind)
+
 // Numeric values are shared with the Rust CXX-Qt category-code mapping.
 enum class BluetoothServiceCategory {
     Unknown = 0,

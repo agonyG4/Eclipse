@@ -30,6 +30,7 @@ FocusScope {
     property var displayedRequestKind: null
     property string displayedDevicePath: ""
     property string displayedDeviceName: ""
+    property int displayedDeviceKind: System.BluetoothDeviceKind.Unknown
     property string displayedPasskey: ""
     property int displayedEntered: -1
     property string displayedServiceUuid: ""
@@ -73,11 +74,41 @@ FocusScope {
         return I18n.tr("settings.bluetooth.status.ready", "Bluetooth is ready")
     }
 
-    function deviceNameOrFallback(name) {
+    function deviceNameOrFallback(name, kind) {
         const cleanName = String(name || "").trim()
-        return cleanName.length > 0
-            ? cleanName
-            : I18n.tr("settings.bluetooth.device.unnamed", "Bluetooth device")
+        if (cleanName.length > 0)
+            return cleanName
+
+        switch (kind) {
+        case System.BluetoothDeviceKind.Audio:
+            return I18n.tr("settings.bluetooth.device.kind.audio", "Bluetooth audio device")
+        case System.BluetoothDeviceKind.Headset:
+            return I18n.tr("settings.bluetooth.device.kind.headset", "Bluetooth headset")
+        case System.BluetoothDeviceKind.Headphones:
+            return I18n.tr("settings.bluetooth.device.kind.headphones", "Bluetooth headphones")
+        case System.BluetoothDeviceKind.Speaker:
+            return I18n.tr("settings.bluetooth.device.kind.speaker", "Bluetooth speaker")
+        case System.BluetoothDeviceKind.Keyboard:
+            return I18n.tr("settings.bluetooth.device.kind.keyboard", "Bluetooth keyboard")
+        case System.BluetoothDeviceKind.Mouse:
+            return I18n.tr("settings.bluetooth.device.kind.mouse", "Bluetooth mouse")
+        case System.BluetoothDeviceKind.Gamepad:
+            return I18n.tr("settings.bluetooth.device.kind.gamepad", "Bluetooth controller")
+        case System.BluetoothDeviceKind.Phone:
+            return I18n.tr("settings.bluetooth.device.kind.phone", "Phone")
+        case System.BluetoothDeviceKind.Computer:
+            return I18n.tr("settings.bluetooth.device.kind.computer", "Computer")
+        case System.BluetoothDeviceKind.Tablet:
+            return I18n.tr("settings.bluetooth.device.kind.tablet", "Tablet")
+        case System.BluetoothDeviceKind.Printer:
+            return I18n.tr("settings.bluetooth.device.kind.printer", "Bluetooth printer")
+        case System.BluetoothDeviceKind.Camera:
+            return I18n.tr("settings.bluetooth.device.kind.camera", "Bluetooth camera")
+        case System.BluetoothDeviceKind.Network:
+            return I18n.tr("settings.bluetooth.device.kind.network", "Bluetooth network device")
+        default:
+            return I18n.tr("settings.bluetooth.device.kind.unknown", "Bluetooth device")
+        }
     }
 
     function hasDeviceName(name) {
@@ -140,7 +171,9 @@ FocusScope {
 
         root.displayedRequestKind = root.bluetooth.agentRequestKind
         root.displayedDevicePath = root.bluetooth.agentDevicePath
-        root.displayedDeviceName = root.deviceNameOrFallback(root.bluetooth.agentDeviceName)
+        root.displayedDeviceName = root.deviceNameOrFallback(
+            root.bluetooth.agentDeviceName, root.bluetooth.agentDeviceKind)
+        root.displayedDeviceKind = root.bluetooth.agentDeviceKind
         root.displayedPasskey = root.formatPasskey(root.bluetooth.agentPasskey)
         root.displayedEntered = root.bluetooth.agentEntered
         root.displayedServiceUuid = root.bluetooth.agentServiceUuid
@@ -157,6 +190,7 @@ FocusScope {
         root.displayedRequestKind = null
         root.displayedDevicePath = ""
         root.displayedDeviceName = ""
+        root.displayedDeviceKind = System.BluetoothDeviceKind.Unknown
         root.displayedPasskey = ""
         root.displayedEntered = -1
         root.displayedServiceUuid = ""
@@ -369,9 +403,11 @@ FocusScope {
 
                     Text {
                         Layout.fillWidth: true
+                        textFormat: Text.PlainText
                         text: I18n.tr("settings.bluetooth.pairing.active", "Pairing with %1")
                             .replace("%1", root.deviceNameOrFallback(root.bluetooth
-                                ? root.bluetooth.pairingDeviceName : ""))
+                                ? root.bluetooth.pairingDeviceName : "", root.bluetooth
+                                ? root.bluetooth.pairingDeviceKind : System.BluetoothDeviceKind.Unknown))
                         color: Components.Theme.textPrimary
                         font.family: Components.Theme.fontFamily
                         font.pixelSize: Components.Theme.fontSizeNormal
@@ -455,6 +491,7 @@ FocusScope {
             property bool pairedSection: true
             required property string objectPath
             required property string name
+            required property int deviceKind
             required property bool paired
             required property bool trusted
             required property bool connected
@@ -469,7 +506,7 @@ FocusScope {
                     ? pathParts[pathParts.length - 1] : objectPath
             }
             readonly property string sectionObjectSuffix: pairedSection ? "mine" : "other"
-            readonly property string displayName: root.deviceNameOrFallback(name)
+            readonly property string displayName: root.deviceNameOrFallback(name, deviceKind)
             readonly property bool activePairingDevice: root.bluetooth && root.bluetooth.pairing
                 && root.bluetooth.pairingDevicePath === objectPath
             readonly property bool belongsInSection: paired
@@ -490,13 +527,14 @@ FocusScope {
                     Layout.preferredWidth: 36
                     horizontalAlignment: Text.AlignHCenter
                     text: {
-                        const iconName = String(deviceRow.icon || "").toLowerCase()
-                        if (iconName.indexOf("keyboard") >= 0)
+                        if (deviceRow.deviceKind === System.BluetoothDeviceKind.Keyboard)
                             return "\uf11c"
-                        if (iconName.indexOf("gamepad") >= 0 || iconName.indexOf("joystick") >= 0)
+                        if (deviceRow.deviceKind === System.BluetoothDeviceKind.Gamepad)
                             return "\uf11b"
-                        if (iconName.indexOf("headset") >= 0 || iconName.indexOf("headphone") >= 0
-                                || iconName.indexOf("audio") >= 0)
+                        if (deviceRow.deviceKind === System.BluetoothDeviceKind.Headset
+                                || deviceRow.deviceKind === System.BluetoothDeviceKind.Headphones
+                                || deviceRow.deviceKind === System.BluetoothDeviceKind.Speaker
+                                || deviceRow.deviceKind === System.BluetoothDeviceKind.Audio)
                             return "\uf025"
                         return "\uf293"
                     }
@@ -514,6 +552,7 @@ FocusScope {
                     Text {
                         objectName: "deviceName_" + deviceRow.deviceId + "_" + deviceRow.sectionObjectSuffix
                         Layout.fillWidth: true
+                        textFormat: Text.PlainText
                         text: deviceRow.displayName
                         color: Components.Theme.textPrimary
                         font.family: Components.Theme.fontFamily
@@ -655,6 +694,7 @@ FocusScope {
             Text {
                 objectName: "forgetDevicePrompt"
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: I18n.tr("settings.bluetooth.forget.title", "Forget %1?")
                     .replace("%1", root.pendingForgetName)
                 color: Components.Theme.textPrimary
@@ -679,6 +719,7 @@ FocusScope {
             spacing: Components.Theme.spacingSmall
 
             Controls.ButtonCapsule {
+                id: forgetDeviceCancelButton
                 objectName: "forgetDeviceCancelButton"
                 Layout.fillWidth: true
                 label: I18n.tr("settings.bluetooth.action.cancel", "Cancel")
@@ -737,6 +778,7 @@ FocusScope {
                 id: agentPromptText
                 objectName: "agentPromptText"
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: {
                     if (root.displayedRequestKind === System.PinCodeInput)
                         return I18n.tr("settings.bluetooth.agent.pin_prompt",

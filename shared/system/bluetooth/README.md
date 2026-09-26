@@ -23,8 +23,42 @@ Shell / Bar QML
   `KeyboardDisplay` capability, Pair/CancelPairing, authoritative Trust and
   Untrust, and authoritative Forget Device. The Agent is never made the
   system-wide default agent.
-- Phase 3 will add the Settings Bluetooth UI. Phase 2 exposes its typed state
-  and bounded response operations, but does not create that page.
+- Phase 3 is the Settings Bluetooth page under `Settings/qml/pages/system`.
+  It consumes the typed state and bounded response operations from Phase 2.
+
+## Display identity
+
+Bluetooth operations continue to use the BlueZ object path, address,
+generation, request identity, and the existing Rust state-machine ownership.
+Names and device kinds are presentation metadata; they never identify an
+operation, authorize a request, or change pairing behavior.
+
+BlueZ `Alias` and `Name` are retained as raw presentation evidence in the Rust
+device projection. Astrea resolves that evidence into a concrete
+`display_name` and a semantic `BluetoothDeviceKind`. The Qt device model keeps
+its `name` role for the resolved concrete display name and adds a `deviceKind`
+role. When no concrete name is available, Settings localizes a fallback from
+the kind. Raw aliases, remote names, addresses, and object paths are not sent
+to QML as the primary display name.
+
+Resolution is conservative. A non-empty Alias that differs from a non-empty
+Name is treated as a user alias and always wins, including when it resembles a
+technical token. When Alias and Name are equal, the value is treated as the
+ordinary remote name; when Alias is absent, Name is the candidate. Empty and
+generic labels, MAC addresses, BlueZ `dev_` address tokens, and the current
+device's own path or address are unresolved. A narrow `LE_` or `BLE_` prefix is
+removed only when the remainder is a useful name, so names such as
+`LE_WH-1000XM3` become `WH-1000XM3` while `LE_4A8C19FE` stays unresolved.
+Model-like names, punctuation, capitalization, and ordinary Unicode are
+preserved. The resolver trims and sanitizes control characters for one-line
+display while retaining the raw BlueZ values internally.
+
+`BluetoothDeviceKind` comes from exact BlueZ `Icon` values. Settings owns all
+localized fallback strings. Classification does not affect pairing,
+authorization, Trust, cancellation, deadlines, generations, or stale-response
+handling. The resolver does not probe devices, read GATT services, spawn
+metadata lookup processes, or consult a product database. Unknown and
+unnamed devices remain visible and pairable.
 
 ## Agent and pairing ownership
 

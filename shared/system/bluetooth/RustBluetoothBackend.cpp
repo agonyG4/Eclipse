@@ -113,12 +113,16 @@ void RustBluetoothBackend::publishSnapshot()
     snapshot.pairing = m_engine.pairing();
     snapshot.pairingDevicePath = m_engine.pairingDevicePath();
     snapshot.pairingDeviceName = m_engine.pairingDeviceName();
+    snapshot.pairingDeviceKind =
+        bluetoothDeviceKindFromBridgeCode(m_engine.pairingDeviceKind());
     snapshot.pairingError = m_engine.pairingError();
     snapshot.agentRequestActive = m_engine.agentRequestActive();
     snapshot.agentRequestId = m_engine.agentRequestId();
     snapshot.agentRequestKind = static_cast<BluetoothAgentRequestKind>(m_engine.agentRequestKind());
     snapshot.agentDevicePath = m_engine.agentDevicePath();
     snapshot.agentDeviceName = m_engine.agentDeviceName();
+    snapshot.agentDeviceKind =
+        bluetoothDeviceKindFromBridgeCode(m_engine.agentDeviceKind());
     snapshot.agentPasskey = m_engine.agentPasskey();
     snapshot.agentEntered = m_engine.agentEntered();
     snapshot.agentServiceUuid = m_engine.agentServiceUuid();
@@ -136,6 +140,8 @@ void RustBluetoothBackend::publishSnapshot()
         device.objectPath = properties.value(QStringLiteral("objectPath")).toString();
         device.address = properties.value(QStringLiteral("address")).toString();
         device.name = properties.value(QStringLiteral("name")).toString();
+        device.deviceKind =
+            bluetoothDeviceKindFromBridgeCode(properties.value(QStringLiteral("deviceKind")).toInt());
         device.paired = properties.value(QStringLiteral("paired")).toBool();
         device.trusted = properties.value(QStringLiteral("trusted")).toBool();
         device.connected = properties.value(QStringLiteral("connected")).toBool();

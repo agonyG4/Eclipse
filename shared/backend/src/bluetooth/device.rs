@@ -1,5 +1,9 @@
 use std::collections::BTreeMap;
 
+use super::device_identity::{
+    BluetoothDeviceKind, BluetoothDeviceNameSource, RawBluetoothDisplayIdentity,
+    resolve_bluetooth_display_identity,
+};
 use super::object_store::{InterfaceMap, PropertyMap, PropertyValue};
 
 const ADAPTER_INTERFACE: &str = "org.bluez.Adapter1";
@@ -19,7 +23,11 @@ pub struct BluetoothDevice {
     pub id: String,
     pub object_path: String,
     pub address: String,
-    pub name: String,
+    pub alias: String,
+    pub remote_name: String,
+    pub display_name: String,
+    pub name_source: BluetoothDeviceNameSource,
+    pub kind: BluetoothDeviceKind,
     pub paired: bool,
     pub trusted: bool,
     pub connected: bool,
@@ -71,16 +79,31 @@ pub fn project_devices(
         .filter_map(|(path, interfaces)| {
             let properties = interfaces.get(DEVICE_INTERFACE)?;
             let battery = interfaces.get(BATTERY_INTERFACE);
+            let address = string_property(properties, "Address", "");
+            let alias = string_property(properties, "Alias", "");
+            let remote_name = string_property(properties, "Name", "");
+            let icon = string_property(properties, "Icon", "");
+            let identity = resolve_bluetooth_display_identity(RawBluetoothDisplayIdentity {
+                alias: &alias,
+                remote_name: &remote_name,
+                address: &address,
+                object_path: path,
+                icon: &icon,
+            });
             Some(BluetoothDevice {
                 id: path.clone(),
                 object_path: path.clone(),
-                address: string_property(properties, "Address", ""),
-                name: string_property(properties, "Alias", "Name"),
+                address,
+                alias,
+                remote_name,
+                display_name: identity.display_name,
+                name_source: identity.name_source,
+                kind: identity.kind,
                 paired: bool_property(properties, "Paired"),
                 trusted: bool_property(properties, "Trusted"),
                 connected: bool_property(properties, "Connected"),
                 discovered: true,
-                icon: string_property(properties, "Icon", ""),
+                icon,
                 rssi: integer_property(properties, "RSSI").unwrap_or(-1),
                 battery_percent: battery
                     .and_then(|properties| integer_property(properties, "Percentage"))

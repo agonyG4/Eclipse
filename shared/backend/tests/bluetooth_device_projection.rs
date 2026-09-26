@@ -1,6 +1,9 @@
 use astrea_system_backend::bluetooth::device::{
     AdapterInfo, BluetoothDevice, project_devices, select_adapter,
 };
+use astrea_system_backend::bluetooth::device_identity::{
+    BluetoothDeviceKind, BluetoothDeviceNameSource,
+};
 use astrea_system_backend::bluetooth::object_store::{InterfaceMap, PropertyMap, PropertyValue};
 use std::collections::BTreeMap;
 
@@ -118,7 +121,11 @@ fn device_projection_keeps_selected_adapter_scope_and_bluez_fields() {
             id: String::from("/org/bluez/hci0/dev_AA"),
             object_path: String::from("/org/bluez/hci0/dev_AA"),
             address: String::from("AA:BB"),
-            name: String::from("Headphones"),
+            alias: String::from("Headphones"),
+            remote_name: String::from("Fallback"),
+            display_name: String::from("Headphones"),
+            name_source: BluetoothDeviceNameSource::ExplicitAlias,
+            kind: BluetoothDeviceKind::Headphones,
             paired: true,
             trusted: true,
             connected: true,
@@ -146,7 +153,10 @@ fn device_projection_uses_name_fallback_and_unknown_metrics() {
     )]);
 
     let devices = project_devices(&objects, "/org/bluez/hci2");
-    assert_eq!(devices[0].name, "Keyboard");
+    assert_eq!(devices[0].alias, "");
+    assert_eq!(devices[0].remote_name, "Keyboard");
+    assert_eq!(devices[0].display_name, "Keyboard");
+    assert_eq!(devices[0].kind, BluetoothDeviceKind::Unknown);
     assert_eq!(devices[0].rssi, -1);
     assert_eq!(devices[0].battery_percent, -1);
     assert!(!devices[0].paired);

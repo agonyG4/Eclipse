@@ -4,6 +4,7 @@ use std::time::Instant;
 
 use super::agent::{AgentPromptKind, AgentPromptView};
 use super::device::{AdapterInfo, BluetoothDevice, adapters, project_devices, select_adapter};
+use super::device_identity::BluetoothDeviceKind;
 use super::discovery::{DiscoveryCommand, DiscoveryReply, DiscoveryState};
 use super::object_store::{InterfaceMap, InterfaceRefreshToken, ObjectStore, PropertyMap};
 use super::operations::{
@@ -65,12 +66,14 @@ pub struct CoreSnapshot {
     pub pairing: bool,
     pub pairing_device_path: String,
     pub pairing_device_name: String,
+    pub pairing_device_kind: BluetoothDeviceKind,
     pub pairing_error: Option<String>,
     pub agent_request_active: bool,
     pub agent_request_id: u64,
     pub agent_request_kind: AgentPromptKind,
     pub agent_device_path: String,
     pub agent_device_name: String,
+    pub agent_device_kind: BluetoothDeviceKind,
     pub agent_passkey: Option<u32>,
     pub agent_entered: Option<u16>,
     pub agent_service_uuid: Option<String>,
@@ -715,7 +718,7 @@ impl BluetoothCore {
                 self.session_generation,
                 self.bluez_generation,
                 object_path,
-                &device.name,
+                &device.display_name,
                 Instant::now(),
             )
             .ok()?;
@@ -1252,7 +1255,7 @@ impl BluetoothCore {
             if device.connected {
                 connected_count += 1;
                 if connected_name.is_empty() {
-                    connected_name.clone_from(&device.name);
+                    connected_name.clone_from(&device.display_name);
                 }
             }
         }
@@ -1272,11 +1275,23 @@ impl BluetoothCore {
             selected_info.powered
         };
         let pairing = self.pairing.snapshot();
-        let agent_prompt = self.agent_prompt.clone();
-        let agent_device_name = devices
+        let pairing_device = devices
             .iter()
-            .find(|device| device.object_path == agent_prompt.device_path)
-            .map_or_else(String::new, |device| device.name.clone());
+            .find(|device| device.object_path == pairing.pairing_device_path);
+        let pairing_device_name = pairing_device.map_or_else(
+            || pairing.pairing_device_name.clone(),
+            |device| device.display_name.clone(),
+        );
+        let pairing_device_kind =
+            pairing_device.map_or(BluetoothDeviceKind::Unknown, |device| device.kind);
+        let agent_prompt = self.agent_prompt.clone();
+        let agent_device = devices
+            .iter()
+            .find(|device| device.object_path == agent_prompt.device_path);
+        let agent_device_name =
+            agent_device.map_or_else(String::new, |device| device.display_name.clone());
+        let agent_device_kind =
+            agent_device.map_or(BluetoothDeviceKind::Unknown, |device| device.kind);
         self.snapshot = CoreSnapshot {
             session_generation: self.session_generation,
             state: if daemon_available {
@@ -1298,13 +1313,15 @@ impl BluetoothCore {
             devices,
             pairing: pairing.pairing,
             pairing_device_path: pairing.pairing_device_path,
-            pairing_device_name: pairing.pairing_device_name,
+            pairing_device_name,
+            pairing_device_kind,
             pairing_error: pairing.pairing_error,
             agent_request_active: agent_prompt.active,
             agent_request_id: agent_prompt.request_id,
             agent_request_kind: agent_prompt.kind,
             agent_device_path: agent_prompt.device_path,
             agent_device_name,
+            agent_device_kind,
             agent_passkey: agent_prompt.passkey,
             agent_entered: agent_prompt.entered,
             agent_service_uuid: agent_prompt.service_uuid,

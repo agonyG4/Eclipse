@@ -30,12 +30,14 @@ class BluetoothService final : public QObject {
     Q_PROPERTY(bool pairing READ pairing NOTIFY pairingChanged)
     Q_PROPERTY(QString pairingDevicePath READ pairingDevicePath NOTIFY pairingChanged)
     Q_PROPERTY(QString pairingDeviceName READ pairingDeviceName NOTIFY pairingChanged)
+    Q_PROPERTY(BluetoothDeviceKind pairingDeviceKind READ pairingDeviceKind NOTIFY pairingChanged)
     Q_PROPERTY(QString pairingError READ pairingError NOTIFY pairingChanged)
     Q_PROPERTY(bool agentRequestActive READ agentRequestActive NOTIFY agentRequestChanged)
     Q_PROPERTY(quint64 agentRequestId READ agentRequestId NOTIFY agentRequestChanged)
     Q_PROPERTY(BluetoothAgentRequestKind agentRequestKind READ agentRequestKind NOTIFY agentRequestChanged)
     Q_PROPERTY(QString agentDevicePath READ agentDevicePath NOTIFY agentRequestChanged)
     Q_PROPERTY(QString agentDeviceName READ agentDeviceName NOTIFY agentRequestChanged)
+    Q_PROPERTY(BluetoothDeviceKind agentDeviceKind READ agentDeviceKind NOTIFY agentRequestChanged)
     Q_PROPERTY(quint32 agentPasskey READ agentPasskey NOTIFY agentRequestChanged)
     Q_PROPERTY(int agentEntered READ agentEntered NOTIFY agentRequestChanged)
     Q_PROPERTY(QString agentServiceUuid READ agentServiceUuid NOTIFY agentRequestChanged)
@@ -64,12 +66,14 @@ public:
     bool pairing() const { return m_pairing; }
     QString pairingDevicePath() const { return m_pairingDevicePath; }
     QString pairingDeviceName() const { return m_pairingDeviceName; }
+    BluetoothDeviceKind pairingDeviceKind() const { return m_pairingDeviceKind; }
     QString pairingError() const { return m_pairingError; }
     bool agentRequestActive() const { return m_agentRequestActive; }
     quint64 agentRequestId() const { return m_agentRequestId; }
     BluetoothAgentRequestKind agentRequestKind() const { return m_agentRequestKind; }
     QString agentDevicePath() const { return m_agentDevicePath; }
     QString agentDeviceName() const { return m_agentDeviceName; }
+    BluetoothDeviceKind agentDeviceKind() const { return m_agentDeviceKind; }
     quint32 agentPasskey() const { return m_agentPasskey; }
     int agentEntered() const { return m_agentEntered; }
     QString agentServiceUuid() const { return m_agentServiceUuid; }
@@ -129,12 +133,14 @@ private:
     bool m_pairing = false;
     QString m_pairingDevicePath;
     QString m_pairingDeviceName;
+    BluetoothDeviceKind m_pairingDeviceKind = BluetoothDeviceKind::Unknown;
     QString m_pairingError;
     bool m_agentRequestActive = false;
     quint64 m_agentRequestId = 0;
     BluetoothAgentRequestKind m_agentRequestKind = BluetoothAgentRequestKind::None;
     QString m_agentDevicePath;
     QString m_agentDeviceName;
+    BluetoothDeviceKind m_agentDeviceKind = BluetoothDeviceKind::Unknown;
     quint32 m_agentPasskey = 0;
     int m_agentEntered = -1;
     QString m_agentServiceUuid;

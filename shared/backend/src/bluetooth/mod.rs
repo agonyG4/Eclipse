@@ -4,6 +4,7 @@ pub mod agent;
 pub mod bluez;
 pub mod bridge;
 pub mod device;
+pub mod device_identity;
 pub mod discovery;
 pub mod engine;
 pub mod object_store;

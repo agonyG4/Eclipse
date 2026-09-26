@@ -8,6 +8,7 @@ use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 use super::agent::{AgentPromptKind, AgentSubmitResult};
 use super::bluez::client::BluetoothWorker;
 use super::device::BluetoothDevice;
+use super::device_identity::BluetoothDeviceKind;
 use super::engine::{CoreSnapshot, ServiceState};
 use super::service_catalog::BluetoothServiceCategory;
 
@@ -40,6 +41,7 @@ pub mod qobject {
         #[qproperty(bool, pairing, READ = pairing, NOTIFY = snapshot_changed)]
         #[qproperty(QString, pairing_device_path, cxx_name = "pairingDevicePath", READ = pairing_device_path, NOTIFY = snapshot_changed)]
         #[qproperty(QString, pairing_device_name, cxx_name = "pairingDeviceName", READ = pairing_device_name, NOTIFY = snapshot_changed)]
+        #[qproperty(i32, pairing_device_kind, cxx_name = "pairingDeviceKind", READ = pairing_device_kind, NOTIFY = snapshot_changed)]
         #[qproperty(QString, pairing_error, cxx_name = "pairingError", READ = pairing_error, NOTIFY = snapshot_changed)]
         #[qproperty(bool, agent_request_active, cxx_name = "agentRequestActive", READ = agent_request_active, NOTIFY = snapshot_changed)]
         #[qproperty(u64, agent_request_id, cxx_name = "agentRequestId", READ = agent_request_id, NOTIFY = snapshot_changed)]
@@ -47,6 +49,7 @@ pub mod qobject {
         #[qproperty(i32, agent_service_category, cxx_name = "agentServiceCategory", READ = agent_service_category, NOTIFY = snapshot_changed)]
         #[qproperty(QString, agent_device_path, cxx_name = "agentDevicePath", READ = agent_device_path, NOTIFY = snapshot_changed)]
         #[qproperty(QString, agent_device_name, cxx_name = "agentDeviceName", READ = agent_device_name, NOTIFY = snapshot_changed)]
+        #[qproperty(i32, agent_device_kind, cxx_name = "agentDeviceKind", READ = agent_device_kind, NOTIFY = snapshot_changed)]
         #[qproperty(u32, agent_passkey, cxx_name = "agentPasskey", READ = agent_passkey, NOTIFY = snapshot_changed)]
         #[qproperty(i32, agent_entered, cxx_name = "agentEntered", READ = agent_entered, NOTIFY = snapshot_changed)]
         #[qproperty(QString, agent_service_uuid, cxx_name = "agentServiceUuid", READ = agent_service_uuid, NOTIFY = snapshot_changed)]
@@ -81,6 +84,8 @@ pub mod qobject {
         fn pairing_device_path(self: &RustBluetoothEngine) -> QString;
         #[cxx_name = "pairingDeviceName"]
         fn pairing_device_name(self: &RustBluetoothEngine) -> QString;
+        #[cxx_name = "pairingDeviceKind"]
+        fn pairing_device_kind(self: &RustBluetoothEngine) -> i32;
         #[cxx_name = "pairingError"]
         fn pairing_error(self: &RustBluetoothEngine) -> QString;
         #[cxx_name = "agentRequestActive"]
@@ -95,6 +100,8 @@ pub mod qobject {
         fn agent_device_path(self: &RustBluetoothEngine) -> QString;
         #[cxx_name = "agentDeviceName"]
         fn agent_device_name(self: &RustBluetoothEngine) -> QString;
+        #[cxx_name = "agentDeviceKind"]
+        fn agent_device_kind(self: &RustBluetoothEngine) -> i32;
         #[cxx_name = "agentPasskey"]
         fn agent_passkey(self: &RustBluetoothEngine) -> u32;
         #[cxx_name = "agentEntered"]
@@ -301,6 +308,10 @@ impl qobject::RustBluetoothEngine {
         QString::from(&self.rust().snapshot.pairing_device_name)
     }
 
+    fn pairing_device_kind(&self) -> i32 {
+        bluetooth_device_kind_code(self.rust().snapshot.pairing_device_kind)
+    }
+
     fn pairing_error(&self) -> QString {
         self.rust()
             .snapshot
@@ -331,6 +342,10 @@ impl qobject::RustBluetoothEngine {
 
     fn agent_device_name(&self) -> QString {
         QString::from(&self.rust().snapshot.agent_device_name)
+    }
+
+    fn agent_device_kind(&self) -> i32 {
+        bluetooth_device_kind_code(self.rust().snapshot.agent_device_kind)
     }
 
     fn agent_passkey(&self) -> u32 {
@@ -575,7 +590,11 @@ fn device_variant_map(device: &BluetoothDevice) -> QMap<QMapPair_QString_QVarian
     insert_string(&mut map, "id", &device.id);
     insert_string(&mut map, "objectPath", &device.object_path);
     insert_string(&mut map, "address", &device.address);
-    insert_string(&mut map, "name", &device.name);
+    insert_string(&mut map, "name", &device.display_name);
+    map.insert(
+        QString::from("deviceKind"),
+        QVariant::from(&bluetooth_device_kind_code(device.kind)),
+    );
     insert_bool(&mut map, "paired", device.paired);
     insert_bool(&mut map, "trusted", device.trusted);
     insert_bool(&mut map, "connected", device.connected);
@@ -627,10 +646,34 @@ fn agent_service_category_code(category: BluetoothServiceCategory) -> i32 {
     }
 }
 
+// Stable integer contract mirrored by Astrea::System::BluetoothDeviceKind.
+// Keep these explicit so Rust enum declaration order never changes the Qt value.
+fn bluetooth_device_kind_code(kind: BluetoothDeviceKind) -> i32 {
+    match kind {
+        BluetoothDeviceKind::Unknown => 0,
+        BluetoothDeviceKind::Audio => 1,
+        BluetoothDeviceKind::Headset => 2,
+        BluetoothDeviceKind::Headphones => 3,
+        BluetoothDeviceKind::Speaker => 4,
+        BluetoothDeviceKind::Keyboard => 5,
+        BluetoothDeviceKind::Mouse => 6,
+        BluetoothDeviceKind::Gamepad => 7,
+        BluetoothDeviceKind::Phone => 8,
+        BluetoothDeviceKind::Computer => 9,
+        BluetoothDeviceKind::Tablet => 10,
+        BluetoothDeviceKind::Printer => 11,
+        BluetoothDeviceKind::Camera => 12,
+        BluetoothDeviceKind::Network => 13,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::agent_service_category_code;
+    use super::{agent_service_category_code, bluetooth_device_kind_code, device_variant_map};
+    use crate::bluetooth::device::BluetoothDevice;
+    use crate::bluetooth::device_identity::BluetoothDeviceKind;
     use crate::bluetooth::service_catalog::BluetoothServiceCategory;
+    use cxx_qt_lib::{QMapPair_QString_QVariant, QString};
 
     #[test]
     fn agent_service_category_codes_match_the_qt_contract() {
@@ -648,5 +691,58 @@ mod tests {
         ] {
             assert_eq!(agent_service_category_code(category), code);
         }
+    }
+
+    #[test]
+    fn bluetooth_device_kind_codes_match_the_qt_contract() {
+        for (kind, code) in [
+            (BluetoothDeviceKind::Unknown, 0),
+            (BluetoothDeviceKind::Audio, 1),
+            (BluetoothDeviceKind::Headset, 2),
+            (BluetoothDeviceKind::Headphones, 3),
+            (BluetoothDeviceKind::Speaker, 4),
+            (BluetoothDeviceKind::Keyboard, 5),
+            (BluetoothDeviceKind::Mouse, 6),
+            (BluetoothDeviceKind::Gamepad, 7),
+            (BluetoothDeviceKind::Phone, 8),
+            (BluetoothDeviceKind::Computer, 9),
+            (BluetoothDeviceKind::Tablet, 10),
+            (BluetoothDeviceKind::Printer, 11),
+            (BluetoothDeviceKind::Camera, 12),
+            (BluetoothDeviceKind::Network, 13),
+        ] {
+            assert_eq!(bluetooth_device_kind_code(kind), code);
+        }
+    }
+
+    #[test]
+    fn device_variant_map_exposes_resolved_name_and_kind_without_raw_names() {
+        let device = BluetoothDevice {
+            id: "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF".to_owned(),
+            object_path: "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF".to_owned(),
+            address: "AA:BB:CC:DD:EE:FF".to_owned(),
+            alias: "LE_4A8C19FE".to_owned(),
+            remote_name: "LE_4A8C19FE".to_owned(),
+            display_name: "WH-1000XM3".to_owned(),
+            kind: BluetoothDeviceKind::Headphones,
+            ..BluetoothDevice::default()
+        };
+
+        let map: cxx_qt_lib::QMap<QMapPair_QString_QVariant> = device_variant_map(&device);
+        let name = map
+            .get(&QString::from("name"))
+            .expect("resolved device name is present")
+            .value_or_default::<QString>();
+        let kind = map
+            .get(&QString::from("deviceKind"))
+            .expect("semantic device kind is present")
+            .value_or_default::<i32>();
+
+        assert_eq!(name, QString::from("WH-1000XM3"));
+        assert_eq!(kind, 3);
+        assert!(map.contains(&QString::from("objectPath")));
+        assert!(map.contains(&QString::from("address")));
+        assert!(!map.contains(&QString::from("alias")));
+        assert!(!map.contains(&QString::from("remoteName")));
     }
 }

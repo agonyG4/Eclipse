@@ -1,5 +1,6 @@
 use astrea_system_backend::bluetooth::agent::{AgentPromptKind, AgentPromptView};
 use astrea_system_backend::bluetooth::device::BluetoothDevice;
+use astrea_system_backend::bluetooth::device_identity::BluetoothDeviceKind;
 use astrea_system_backend::bluetooth::discovery::DiscoveryReply;
 use astrea_system_backend::bluetooth::engine::{
     AgentRegistrationToken, BluetoothCore, CoreAction, ServiceState,
@@ -37,6 +38,7 @@ fn snapshot_objects() -> BTreeMap<String, InterfaceMap> {
                     ("Address", PropertyValue::String(String::from("AA"))),
                     ("Paired", PropertyValue::Boolean(true)),
                     ("Alias", PropertyValue::String(String::from("Headphones"))),
+                    ("Icon", PropertyValue::String(String::from("audio-headset"))),
                     ("Connected", PropertyValue::Boolean(false)),
                 ]),
             )]),
@@ -79,7 +81,7 @@ fn daemon_owner_change_invalidates_objects_and_all_older_events() {
     let mut core = BluetoothCore::default();
     let (session, old_bluez) = start_ready(&mut core);
     let old_device: BluetoothDevice = core.snapshot().devices[0].clone();
-    assert_eq!(old_device.name, "Headphones");
+    assert_eq!(old_device.display_name, "Headphones");
 
     let vanished = core.owner_changed(session, None);
     assert!(vanished.is_empty());
@@ -153,7 +155,7 @@ fn stale_getall_reply_and_stale_session_events_cannot_replace_new_state() {
         &token,
         props([("Alias", PropertyValue::String(String::from("Old name")))]),
     ));
-    assert_eq!(core.snapshot().devices[0].name, "Newer name");
+    assert_eq!(core.snapshot().devices[0].display_name, "Newer name");
 
     core.stop();
     core.start();
@@ -289,7 +291,7 @@ fn initial_snapshot_replays_events_received_while_probe_is_pending() {
         core.snapshot()
             .devices
             .iter()
-            .any(|device| device.name == "Newer name")
+            .any(|device| device.display_name == "Newer name")
     );
     assert!(
         core.snapshot()
@@ -858,6 +860,11 @@ fn active_agent_prompt_must_match_the_current_pairing_identity() {
     let CoreAction::RegisterAgent { pairing_epoch, .. } = register else {
         panic!("registration action");
     };
+    assert_eq!(core.snapshot().pairing_device_name, "Headphones");
+    assert_eq!(
+        core.snapshot().pairing_device_kind,
+        BluetoothDeviceKind::Headset
+    );
 
     let valid_prompt = AgentPromptView {
         active: true,
@@ -872,6 +879,11 @@ fn active_agent_prompt_must_match_the_current_pairing_identity() {
         ..AgentPromptView::default()
     };
     assert!(core.agent_prompt_changed(session_generation, bluez_generation, valid_prompt.clone()));
+    assert_eq!(core.snapshot().agent_device_name, "Headphones");
+    assert_eq!(
+        core.snapshot().agent_device_kind,
+        BluetoothDeviceKind::Headset
+    );
     assert_eq!(
         core.snapshot().agent_service_uuid.as_deref(),
         Some("0000110e-0000-1000-8000-00805f9b34fb")

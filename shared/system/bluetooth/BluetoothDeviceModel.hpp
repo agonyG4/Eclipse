@@ -1,5 +1,7 @@
 #pragma once
 
+#include "system/SystemServiceState.hpp"
+
 #include <QAbstractListModel>
 #include <QString>
 #include <QVector>
@@ -11,6 +13,7 @@ struct BluetoothDevice {
     QString objectPath;
     QString address;
     QString name;
+    BluetoothDeviceKind deviceKind = BluetoothDeviceKind::Unknown;
     bool paired = false;
     bool trusted = false;
     bool connected = false;
@@ -38,6 +41,7 @@ public:
         IconRole,
         RssiRole,
         BatteryPercentRole,
+        DeviceKindRole,
     };
     Q_ENUM(Role)
 

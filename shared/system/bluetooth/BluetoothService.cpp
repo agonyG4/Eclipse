@@ -136,12 +136,14 @@ void BluetoothService::applySnapshot(const BluetoothSnapshot &snapshot)
     const bool pairingValuesChanged = m_pairing != snapshot.pairing
         || m_pairingDevicePath != snapshot.pairingDevicePath
         || m_pairingDeviceName != snapshot.pairingDeviceName
+        || m_pairingDeviceKind != snapshot.pairingDeviceKind
         || m_pairingError != snapshot.pairingError;
     const bool agentValuesChanged = m_agentRequestActive != snapshot.agentRequestActive
         || m_agentRequestId != snapshot.agentRequestId
         || m_agentRequestKind != snapshot.agentRequestKind
         || m_agentDevicePath != snapshot.agentDevicePath
         || m_agentDeviceName != snapshot.agentDeviceName
+        || m_agentDeviceKind != snapshot.agentDeviceKind
         || m_agentPasskey != snapshot.agentPasskey || m_agentEntered != snapshot.agentEntered
         || m_agentServiceUuid != snapshot.agentServiceUuid
         || m_agentServiceCategory != snapshot.agentServiceCategory
@@ -165,12 +167,14 @@ void BluetoothService::applySnapshot(const BluetoothSnapshot &snapshot)
     m_pairing = snapshot.pairing;
     m_pairingDevicePath = snapshot.pairingDevicePath;
     m_pairingDeviceName = snapshot.pairingDeviceName;
+    m_pairingDeviceKind = snapshot.pairingDeviceKind;
     m_pairingError = snapshot.pairingError;
     m_agentRequestActive = snapshot.agentRequestActive;
     m_agentRequestId = snapshot.agentRequestId;
     m_agentRequestKind = snapshot.agentRequestKind;
     m_agentDevicePath = snapshot.agentDevicePath;
     m_agentDeviceName = snapshot.agentDeviceName;
+    m_agentDeviceKind = snapshot.agentDeviceKind;
     m_agentPasskey = snapshot.agentPasskey;
     m_agentEntered = snapshot.agentEntered;
     m_agentServiceUuid = snapshot.agentServiceUuid;

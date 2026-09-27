@@ -8,6 +8,7 @@
 #include "statusnotifier/StatusNotifierIconStore.hpp"
 #include "statusnotifier/StatusNotifierTypes.hpp"
 #include "platform/wayland/effects/AstreaBackdropRegion.hpp"
+#include "shared/system/SystemServiceState.hpp"
 
 #include <QAbstractListModel>
 #include <QGuiApplication>
@@ -22,6 +23,8 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSignalSpy>
+#include <QMetaEnum>
+#include <QMetaProperty>
 #include <QTest>
 #include <QTemporaryDir>
 #include <QUrl>
@@ -128,6 +131,7 @@ public:
         ConnectedRole,
         RssiRole,
         BatteryPercentRole,
+        DeviceKindRole,
     };
 
     struct Device {
@@ -138,6 +142,8 @@ public:
         bool connected = false;
         int rssi = -1;
         int batteryPercent = -1;
+        Astrea::System::BluetoothDeviceKind deviceKind =
+            Astrea::System::BluetoothDeviceKind::Unknown;
     };
 
     explicit FakeBluetoothDeviceModel(QObject *parent = nullptr)
@@ -163,6 +169,7 @@ public:
         case ConnectedRole: return device.connected;
         case RssiRole: return device.rssi;
         case BatteryPercentRole: return device.batteryPercent;
+        case DeviceKindRole: return QVariant::fromValue(device.deviceKind);
         case Qt::DisplayRole: return device.name;
         default: return {};
         }
@@ -178,6 +185,7 @@ public:
             {ConnectedRole, "connected"},
             {RssiRole, "rssi"},
             {BatteryPercentRole, "batteryPercent"},
+            {DeviceKindRole, "deviceKind"},
         };
     }
 
@@ -305,6 +313,7 @@ private slots:
     void networkPopupProjectsOneCoherentConnectionState();
     void menuItemMatchesReferenceRightPadding();
     void bluetoothPopupOrganizesPairedAndAvailableDevices();
+    void bluetoothPopupUsesSemanticDeviceIdentity();
     void popupOverlayRejectsUnsupportedKinds();
     void workspaceDelegatesExposeReferenceHitboxes();
     void workspaceAndLauncherReserveStableWidth();
@@ -1485,6 +1494,132 @@ void BarQmlSmokeTest::bluetoothPopupOrganizesPairedAndAvailableDevices()
     QTRY_COMPARE_WITH_TIMEOUT(
         QQmlProperty(scanAction, QStringLiteral("border.width")).read().toInt(), 1, 500);
     QVERIFY(separator->property("visible").toBool());
+
+    delete popup;
+}
+
+void BarQmlSmokeTest::bluetoothPopupUsesSemanticDeviceIdentity()
+{
+    using Astrea::System::BluetoothDeviceKind;
+    using Device = FakeBluetoothDeviceModel::Device;
+
+    struct ExpectedDevice {
+        QString id;
+        QString objectPath;
+        QString name;
+        BluetoothDeviceKind kind;
+        QString displayName;
+    };
+
+    const QVector<ExpectedDevice> expectedDevices{
+        {QStringLiteral("unknown"), QStringLiteral("/org/bluez/hci0/dev_TEST_00"),
+         QString(), BluetoothDeviceKind::Unknown, QStringLiteral("Bluetooth device")},
+        {QStringLiteral("audio"), QStringLiteral("/org/bluez/hci0/dev_TEST_01"),
+         QString(), BluetoothDeviceKind::Audio, QStringLiteral("Bluetooth audio device")},
+        {QStringLiteral("headset"), QStringLiteral("/org/bluez/hci0/dev_TEST_02"),
+         QString(), BluetoothDeviceKind::Headset, QStringLiteral("Bluetooth headset")},
+        {QStringLiteral("headphones"), QStringLiteral("/org/bluez/hci0/dev_TEST_03"),
+         QString(), BluetoothDeviceKind::Headphones, QStringLiteral("Bluetooth headphones")},
+        {QStringLiteral("speaker"), QStringLiteral("/org/bluez/hci0/dev_TEST_04"),
+         QString(), BluetoothDeviceKind::Speaker, QStringLiteral("Bluetooth speaker")},
+        {QStringLiteral("keyboard"), QStringLiteral("/org/bluez/hci0/dev_TEST_05"),
+         QString(), BluetoothDeviceKind::Keyboard, QStringLiteral("Bluetooth keyboard")},
+        {QStringLiteral("mouse"), QStringLiteral("/org/bluez/hci0/dev_TEST_06"),
+         QString(), BluetoothDeviceKind::Mouse, QStringLiteral("Bluetooth mouse")},
+        {QStringLiteral("gamepad"), QStringLiteral("/org/bluez/hci0/dev_TEST_07"),
+         QString(), BluetoothDeviceKind::Gamepad, QStringLiteral("Bluetooth controller")},
+        {QStringLiteral("phone"), QStringLiteral("/org/bluez/hci0/dev_TEST_08"),
+         QString(), BluetoothDeviceKind::Phone, QStringLiteral("Phone")},
+        {QStringLiteral("computer"), QStringLiteral("/org/bluez/hci0/dev_TEST_09"),
+         QString(), BluetoothDeviceKind::Computer, QStringLiteral("Computer")},
+        {QStringLiteral("tablet"), QStringLiteral("/org/bluez/hci0/dev_TEST_10"),
+         QString(), BluetoothDeviceKind::Tablet, QStringLiteral("Tablet")},
+        {QStringLiteral("printer"), QStringLiteral("/org/bluez/hci0/dev_TEST_11"),
+         QString(), BluetoothDeviceKind::Printer, QStringLiteral("Bluetooth printer")},
+        {QStringLiteral("camera"), QStringLiteral("/org/bluez/hci0/dev_TEST_12"),
+         QString(), BluetoothDeviceKind::Camera, QStringLiteral("Bluetooth camera")},
+        {QStringLiteral("network"), QStringLiteral("/org/bluez/hci0/dev_TEST_13"),
+         QString(), BluetoothDeviceKind::Network, QStringLiteral("Bluetooth network device")},
+        {QStringLiteral("headset-duplicate"), QStringLiteral("/org/bluez/hci0/dev_TEST_14"),
+         QString(), BluetoothDeviceKind::Headset, QStringLiteral("Bluetooth headset")},
+        {QStringLiteral("named-headphones"), QStringLiteral("/org/bluez/hci0/dev_TEST_15"),
+         QStringLiteral("WH-1000XM5"), BluetoothDeviceKind::Headphones,
+         QStringLiteral("WH-1000XM5")},
+        {QStringLiteral("whitespace-headset"), QStringLiteral("/org/bluez/hci0/dev_TEST_16"),
+         QStringLiteral(" \t "), BluetoothDeviceKind::Headset,
+         QStringLiteral("Bluetooth headset")},
+        {QStringLiteral("markup-headphones"), QStringLiteral("/org/bluez/hci0/dev_TEST_17"),
+         QStringLiteral("<b>Headphones</b>"), BluetoothDeviceKind::Headphones,
+         QStringLiteral("<b>Headphones</b>")},
+    };
+
+    QQmlEngine engine;
+    FakeBluetoothService bluetooth;
+    QQmlComponent component(
+        &engine, QUrl(QStringLiteral(
+            "qrc:/qt/qml/Astrea/Shell/Bar/qml/BluetoothPopup.qml")));
+    QVERIFY2(component.status() == QQmlComponent::Ready,
+             qPrintable(component.errors().isEmpty()
+                 ? QStringLiteral("BluetoothPopup is not ready")
+                 : component.errors().constFirst().toString()));
+    QObject *popup = component.createWithInitialProperties({
+        {QStringLiteral("bluetoothService"), QVariant::fromValue(&bluetooth)},
+    });
+    QVERIFY(popup != nullptr);
+
+    QVector<Device> devices;
+    devices.reserve(expectedDevices.size());
+    for (const ExpectedDevice &expected : expectedDevices) {
+        Device device{expected.id, expected.objectPath, expected.name, true, false, -1, -1};
+        device.deviceKind = expected.kind;
+        devices.append(std::move(device));
+    }
+    bluetooth.setDevices(std::move(devices));
+
+    auto *pairedRows = qobject_cast<QQuickItem *>(
+        popup->findChild<QObject *>(QStringLiteral("pairedRows")));
+    QVERIFY(pairedRows != nullptr);
+    QQuickItem *headsetRow = nullptr;
+    QQuickItem *duplicateHeadsetRow = nullptr;
+    for (const ExpectedDevice &expected : expectedDevices) {
+        auto findRow = [&]() -> QQuickItem * {
+            for (QQuickItem *child : pairedRows->childItems()) {
+                if (child->objectName() == QStringLiteral("pairedDeviceRow")
+                    && child->property("objectPath").toString() == expected.objectPath) {
+                    return child;
+                }
+            }
+            return nullptr;
+        };
+        QTRY_VERIFY_WITH_TIMEOUT(findRow() != nullptr, 500);
+        QQuickItem *row = findRow();
+        QCOMPARE(row->property("objectPath").toString(), expected.objectPath);
+        QCOMPARE(row->property("displayName").toString(), expected.displayName);
+
+        QObject *nameText = row->findChild<QObject *>(QStringLiteral("deviceNameText"));
+        QVERIFY(nameText != nullptr);
+        QCOMPARE(nameText->property("text").toString(), expected.displayName);
+        const int textFormatIndex = nameText->metaObject()->indexOfProperty("textFormat");
+        QVERIFY(textFormatIndex >= 0);
+        const QMetaProperty textFormatProperty = nameText->metaObject()->property(textFormatIndex);
+        const QMetaEnum textFormatEnum = textFormatProperty.enumerator();
+        QVERIFY(textFormatEnum.isValid());
+        QCOMPARE(QString::fromLatin1(textFormatEnum.valueToKey(
+                     nameText->property("textFormat").toInt())),
+                 QStringLiteral("PlainText"));
+
+        if (expected.id == QStringLiteral("headset"))
+            headsetRow = row;
+        else if (expected.id == QStringLiteral("headset-duplicate"))
+            duplicateHeadsetRow = row;
+    }
+
+    QVERIFY(headsetRow != nullptr);
+    QVERIFY(duplicateHeadsetRow != nullptr);
+    QCOMPARE(headsetRow->property("displayName").toString(),
+             duplicateHeadsetRow->property("displayName").toString());
+    QVERIFY(headsetRow->property("objectPath").toString()
+            != duplicateHeadsetRow->property("objectPath").toString());
 
     delete popup;
 }

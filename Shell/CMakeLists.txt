@@ -134,6 +134,7 @@ target_include_directories(astrea-shell PRIVATE
 target_link_libraries(astrea-shell PRIVATE
     astrea-shell-runtime
     astrea-shared-coreplugin
+    astrea-shared-system-qtplugin
     astrea-shared-wayland-effects
     astrea-shared-wayland-effectsplugin
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Network Qt6::Core5Compat
@@ -444,10 +445,12 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     target_link_libraries(bar-qml-smoke-test PRIVATE
         astrea-shell-runtime
         astrea-shared-coreplugin
+        astrea-shared-system-qtplugin
         astrea-shared-wayland-effects
         astrea-shared-wayland-effectsplugin
         Qt6::Qml Qt6::Quick Qt6::Test
     )
+    qt_import_qml_plugins(bar-qml-smoke-test)
     shell_enable_sanitizers(bar-qml-smoke-test)
     add_test(NAME bar-qml-smoke-test COMMAND bar-qml-smoke-test)
 

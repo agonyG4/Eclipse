@@ -1,3 +1,4 @@
+import Astrea.System 1.0
 import QtQuick
 import "components"
 
@@ -17,6 +18,43 @@ PopupCard {
     readonly property bool powerPending: Boolean(root.bluetoothService && root.bluetoothService.powerPending)
     readonly property var devicesModel: root.bluetoothService && root.powered
         ? root.bluetoothService.devicesModel : null
+
+    function deviceNameOrFallback(name, kind) {
+        const cleanName = String(name || "").trim()
+        if (cleanName.length > 0)
+            return cleanName
+
+        switch (kind) {
+        case System.BluetoothDeviceKind.Audio:
+            return "Bluetooth audio device"
+        case System.BluetoothDeviceKind.Headset:
+            return "Bluetooth headset"
+        case System.BluetoothDeviceKind.Headphones:
+            return "Bluetooth headphones"
+        case System.BluetoothDeviceKind.Speaker:
+            return "Bluetooth speaker"
+        case System.BluetoothDeviceKind.Keyboard:
+            return "Bluetooth keyboard"
+        case System.BluetoothDeviceKind.Mouse:
+            return "Bluetooth mouse"
+        case System.BluetoothDeviceKind.Gamepad:
+            return "Bluetooth controller"
+        case System.BluetoothDeviceKind.Phone:
+            return "Phone"
+        case System.BluetoothDeviceKind.Computer:
+            return "Computer"
+        case System.BluetoothDeviceKind.Tablet:
+            return "Tablet"
+        case System.BluetoothDeviceKind.Printer:
+            return "Bluetooth printer"
+        case System.BluetoothDeviceKind.Camera:
+            return "Bluetooth camera"
+        case System.BluetoothDeviceKind.Network:
+            return "Bluetooth network device"
+        default:
+            return "Bluetooth device"
+        }
+    }
 
     objectName: "bluetoothPopupCard"
     implicitWidth: 280
@@ -204,12 +242,15 @@ PopupCard {
     component BluetoothDeviceRow: Rectangle {
         id: deviceRow
         required property string name
+        required property int deviceKind
         required property string objectPath
         required property bool paired
         required property bool connected
         required property int rssi
         required property int batteryPercent
         property bool showPaired: true
+        readonly property string displayName:
+            root.deviceNameOrFallback(name, deviceKind)
 
         objectName: showPaired ? "pairedDeviceRow" : "availableDeviceRow"
         width: root.width
@@ -235,8 +276,10 @@ PopupCard {
             }
 
             Text {
+                objectName: "deviceNameText"
                 anchors.verticalCenter: parent.verticalCenter
-                text: name || "Bluetooth device"
+                text: deviceRow.displayName
+                textFormat: Text.PlainText
                 color: connected ? theme.shellTextActive : theme.shellTextSecondary
                 width: parent.width - 28 - theme.spacingMedium
                     - (deviceStatus.visible

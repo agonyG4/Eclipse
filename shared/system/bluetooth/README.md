@@ -37,9 +37,11 @@ BlueZ `Alias` and `Name` are retained as raw presentation evidence in the Rust
 device projection. Astrea resolves that evidence into a concrete
 `display_name` and a semantic `BluetoothDeviceKind`. The Qt device model keeps
 its `name` role for the resolved concrete display name and adds a `deviceKind`
-role. When no concrete name is available, Settings localizes a fallback from
-the kind. Raw aliases, remote names, addresses, and object paths are not sent
-to QML as the primary display name.
+role. Rust owns semantic classification, `BluetoothDeviceModel` transports the
+kind, and QML presentation surfaces own user-facing fallback copy. Settings
+localizes its fallbacks, while the Shell Bar uses matching English copy in its
+existing QML presentation. Raw aliases, remote names, addresses, and object
+paths are not sent to QML as the primary display name.
 
 Resolution is conservative. A non-empty Alias that differs from a non-empty
 Name is treated as a user alias and always wins, including when it resembles a
@@ -53,8 +55,10 @@ Model-like names, punctuation, capitalization, and ordinary Unicode are
 preserved. The resolver trims and sanitizes control characters for one-line
 display while retaining the raw BlueZ values internally.
 
-`BluetoothDeviceKind` comes from exact BlueZ `Icon` values. Settings owns all
-localized fallback strings. Classification does not affect pairing,
+`BluetoothDeviceKind` comes from exact BlueZ `Icon` values. Technical object
+identity is separate from presentation identity: Bluetooth operations remain
+keyed by object path, while Settings and the Shell Bar present resolved names
+or kind-based fallbacks. Classification does not affect pairing,
 authorization, Trust, cancellation, deadlines, generations, or stale-response
 handling. The resolver does not probe devices, read GATT services, spawn
 metadata lookup processes, or consult a product database. Unknown and

@@ -134,6 +134,8 @@ astrea_shared_enable_sanitizers(astrea-shared-dock)
 add_library(astrea-shared-spatial-audio STATIC
     system/audio/spatial/PipeWireSpatialHost.cpp
     system/audio/spatial/PipeWireSpatialHost.hpp
+    system/audio/spatial/PipeWireSpatialHostSupport.cpp
+    system/audio/spatial/PipeWireSpatialHostSupport.hpp
     system/audio/spatial/SpatialAudioBlockBridge.cpp
     system/audio/spatial/SpatialAudioBlockBridge.hpp
     system/audio/spatial/SpatialAudioCAPI.h
@@ -695,6 +697,19 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     )
     astrea_shared_enable_sanitizers(system-services-test)
     add_test(NAME system-services-test COMMAND system-services-test)
+
+    add_executable(spatial-audio-pipewire-host-test
+        system/tests/PipeWireSpatialHostTest.cpp
+    )
+    target_include_directories(spatial-audio-pipewire-host-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_link_libraries(spatial-audio-pipewire-host-test PRIVATE
+        astrea-shared-spatial-audio
+        Qt6::Test
+    )
+    astrea_shared_enable_sanitizers(spatial-audio-pipewire-host-test)
+    add_test(NAME spatial-audio-pipewire-host-test COMMAND spatial-audio-pipewire-host-test)
 
     add_executable(statusnotifier-test
         tests/StatusNotifierTest.cpp

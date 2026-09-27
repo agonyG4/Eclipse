@@ -20,7 +20,7 @@ public:
   bool isPrepared() const noexcept { return m_handle != nullptr; }
   bool isRunning() const noexcept;
   int preparationError() const noexcept { return m_preparationError; }
-  int hostError() const noexcept { return m_hostError; }
+  int hostError() const noexcept;
 
   bool start();
   void stop() noexcept;

@@ -2,17 +2,63 @@
 
 ## Ownership and threads
 
-`ShellRuntime` owns one `SpatialAudioEngine`. That facade owns the Rust engine handle and its
-dedicated `pw_filter` host. The existing `AudioService` and `PipeWireAudioBackend` remain device
+`ShellRuntime` owns one persistent `SpatialAudioEngine`. That facade owns the Rust engine handle and
+one `PipeWireSpatialHost`. The existing `AudioService` and `PipeWireAudioBackend` remain device
 control and observation components.
 
+The host owns one PipeWire thread loop, context, and core connection for a paired set of streams:
+
+```text
+application playback
+    -> Astrea Spatial Audio main stream (7.1 Audio/Sink)
+    -> SpatialAudioBlockBridge and the existing Rust DSP
+    -> Astrea playback stream (stereo Stream/Output/Audio)
+    -> WirePlumber-selected physical Audio/Sink
+```
+
+The main stream is a virtual sink named `astrea_spatial_audio` and described as `Astrea Spatial
+Audio`. Its negotiated format is planar F32 at 48 kHz, with exactly `FL, FR, FC, LFE, RL, RR, SL,
+SR` channel order. The playback stream is planar F32 at 48 kHz with `FL, FR`; it is passive and
+sets `stream.dont-remix=true`.
+
+Both streams share one per-instance `node.group` and `node.link-group`. The main node is exposed as
+the `astrea-spatial-audio` WirePlumber smart filter and is targetable by applications. WirePlumber
+recognizes the link-group pair as one filter: clients can target the main virtual sink, and the
+playback stream follows standard default-target policy unless a target is configured externally.
+The host does not select a physical output or make Astrea the global default sink. The Astrea
+virtual endpoint and the physical device receiving its stereo output remain separate nodes.
+
 The Shell control thread loads built-in WAVs from `/usr/share/astrea/hrtf`, validates them, prepares
-FFT plans and immutable kernel banks, then starts the PipeWire host. The PipeWire realtime callback
-uses only the native planar block bridge and Rust process API. It does not call Qt or enter the
-device-control backend. The host disconnects and destroys the filter under the PipeWire thread-loop
-lock. PipeWire removes the realtime callback from its data loop before filter destruction returns;
-only then does the host clear its port and handle pointers, stop its control loop, and allow the Rust
-handle and prepared memory to be destroyed off the realtime thread.
+FFT plans and immutable kernel banks, then starts the paired PipeWire streams. Each stream reports
+its negotiated `SPA_PARAM_Format`; the Rust processor is called only while both sides match the
+fixed 48 kHz planar F32 boundary and canonical channel positions. PipeWire's graph or device rate
+does not determine the Rust stream format; PipeWire adapters handle rate conversion outside the
+Astrea stream pair.
+
+Capture processing only triggers the playback stream. The playback process callback dequeues the
+newest available capture buffer, recycles stale buffers, obtains one playback buffer, validates
+each planar mapping and chunk range, calls the existing block bridge, then recycles or queues both
+buffers. If output is available but capture data or the negotiated format is unusable, the valid
+stereo F32P output range is filled with silence. An unknown or non-F32P playback layout is left
+uninterpreted until a safe writable format is negotiated. A failed playback trigger drains and
+recycles queued capture buffers. This pair uses PipeWire scheduling directly and adds neither an
+Astrea ring buffer nor a second DSP thread.
+
+Neither realtime process callback allocates or frees memory, locks or waits, accesses files, calls
+Qt, or logs. The host propagates PipeWire latency and process-latency parameters using the
+paired-stream behavior of PipeWire's filter-chain module. No DSP latency value or latency mode is
+invented here.
+
+Startup is transactional: a failure while creating the loop, context, core, streams, formats, or
+connections tears down the resources already acquired. Shutdown closes realtime callback entry,
+waits for active processing to leave the Rust handle, disconnects both streams before destroying
+either, destroys both stream listeners and streams, disconnects the core and context, then stops
+and destroys the loop. Only after the callback lifetime is closed can the Rust handle and prepared
+memory be destroyed off the realtime thread.
+
+Default-output policy remains deferred. This host does not make Astrea the global default sink,
+select a backing device, or set a physical `filter.smart.target`; the playback stream uses normal
+WirePlumber default-target behavior when no external target is configured.
 
 ## HRTF representation and convolution
 

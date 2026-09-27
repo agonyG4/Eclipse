@@ -17,6 +17,15 @@ bool SpatialAudioEngine::isRunning() const noexcept {
   return m_host && m_host->isRunning();
 }
 
+int SpatialAudioEngine::hostError() const noexcept {
+  if (m_host) {
+    const int runtimeError = m_host->hostError();
+    if (runtimeError != 0)
+      return runtimeError;
+  }
+  return m_hostError;
+}
+
 bool SpatialAudioEngine::start() {
   if (!m_handle)
     return false;

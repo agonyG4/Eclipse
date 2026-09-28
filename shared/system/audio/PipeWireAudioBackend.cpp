@@ -7,6 +7,7 @@
 #include <pipewire/keys.h>
 #include <pipewire/node.h>
 #include <pipewire/pipewire.h>
+#include <pipewire/proxy.h>
 #include <pipewire/thread-loop.h>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -47,6 +48,8 @@ struct PipeWireAudioBackend::Impl {
     pw_metadata *metadata = nullptr;
     quint32 metadataId = 0;
     bool threadStarted = false;
+    bool coreListenerAdded = false;
+    bool registryListenerAdded = false;
     spa_hook registryListener{};
     spa_hook coreListener{};
     spa_hook metadataListener{};
@@ -61,6 +64,44 @@ struct PipeWireAudioBackend::Impl {
     quint64 attemptGeneration = 0;
     QString defaultName;
     quint32 metadataDefaultId = 0;
+
+    void releaseMetadataProxy()
+    {
+        if (metadata) {
+            spa_hook_remove(&metadataListener);
+            pw_proxy_destroy(reinterpret_cast<pw_proxy *>(metadata));
+            metadata = nullptr;
+        }
+        metadataId = 0;
+    }
+
+    void releaseNodeProxy(quint32 id)
+    {
+        const auto bindingIt = nodeBindings.find(id);
+        const auto nodeIt = nodes.find(id);
+        pw_node *node = nodeIt != nodes.end() && nodeIt->second
+            ? nodeIt->second
+            : bindingIt != nodeBindings.end() && bindingIt->second
+                ? bindingIt->second->node
+                : nullptr;
+
+        if (bindingIt != nodeBindings.end() && bindingIt->second)
+            spa_hook_remove(&bindingIt->second->listener);
+        if (node)
+            pw_proxy_destroy(reinterpret_cast<pw_proxy *>(node));
+        if (bindingIt != nodeBindings.end())
+            nodeBindings.erase(bindingIt);
+        if (nodeIt != nodes.end())
+            nodes.erase(nodeIt);
+    }
+
+    void releaseAllNodeProxies()
+    {
+        while (!nodes.empty())
+            releaseNodeProxy(nodes.begin()->first);
+        while (!nodeBindings.empty())
+            releaseNodeProxy(nodeBindings.begin()->first);
+    }
 
     quint32 defaultNodeId() const
     {
@@ -144,21 +185,13 @@ struct PipeWireAudioBackend::Impl {
     static void registryGlobalRemove(void *data, uint32_t id)
     {
         auto *impl = static_cast<Impl *>(data);
-        if (id == impl->metadataId) {
-            spa_hook_remove(&impl->metadataListener);
-            if (impl->metadata && impl->core)
-                pw_core_destroy(impl->core, impl->metadata);
-            impl->metadata = nullptr;
-            impl->metadataId = 0;
+        if (impl->metadata && id == impl->metadataId) {
+            impl->releaseMetadataProxy();
             impl->state.clearMetadataDefault();
             impl->publishOutputs();
             return;
         }
-        const auto nodeIt = impl->nodes.find(id);
-        if (nodeIt != impl->nodes.end() && nodeIt->second && impl->core)
-            pw_core_destroy(impl->core, nodeIt->second);
-        impl->nodes.erase(id);
-        impl->nodeBindings.erase(id);
+        impl->releaseNodeProxy(id);
         impl->outputs.erase(id);
         impl->state.removeNode(id);
         impl->publishOutputs();
@@ -340,11 +373,13 @@ bool PipeWireAudioBackend::start(const Callbacks &callbacks, QString *errorOut)
     m_impl->coreEvents.error = &Impl::coreError;
     pw_core_add_listener(m_impl->core, &m_impl->coreListener, &m_impl->coreEvents,
                          m_impl.get());
+    m_impl->coreListenerAdded = true;
     m_impl->registryEvents.version = PW_VERSION_REGISTRY_EVENTS;
     m_impl->registryEvents.global = &Impl::registryGlobal;
     m_impl->registryEvents.global_remove = &Impl::registryGlobalRemove;
     pw_registry_add_listener(m_impl->registry, &m_impl->registryListener,
                              &m_impl->registryEvents, m_impl.get());
+    m_impl->registryListenerAdded = true;
     if (pw_thread_loop_start(m_impl->loop) < 0) {
         if (errorOut)
             *errorOut = QStringLiteral("PipeWire thread loop could not start");
@@ -357,50 +392,45 @@ bool PipeWireAudioBackend::start(const Callbacks &callbacks, QString *errorOut)
 
 void PipeWireAudioBackend::stop()
 {
-    if (!m_impl->loop)
-        return;
-    if (m_impl->threadStarted)
-        pw_thread_loop_lock(m_impl->loop);
+    pw_thread_loop *loop = m_impl->loop;
+    const bool threadStarted = m_impl->threadStarted;
+    if (loop && threadStarted)
+        pw_thread_loop_lock(loop);
     m_impl->callbacks = {};
-    if (m_impl->registry)
-        spa_hook_remove(&m_impl->registryListener);
-    if (m_impl->core)
-        spa_hook_remove(&m_impl->coreListener);
-    if (m_impl->metadata)
-        spa_hook_remove(&m_impl->metadataListener);
-    if (m_impl->metadata && m_impl->core)
-        pw_core_destroy(m_impl->core, m_impl->metadata);
-    m_impl->metadata = nullptr;
-    m_impl->metadataId = 0;
-    for (auto &[id, binding] : m_impl->nodeBindings) {
-        Q_UNUSED(id)
-        if (binding)
-            spa_hook_remove(&binding->listener);
-    }
-    m_impl->nodeBindings.clear();
-    for (const auto &[id, node] : m_impl->nodes) {
-        Q_UNUSED(id)
-        if (node && m_impl->core)
-            pw_core_destroy(m_impl->core, node);
-    }
-    m_impl->nodes.clear();
+
+    m_impl->releaseMetadataProxy();
+    m_impl->releaseAllNodeProxies();
     m_impl->outputs.clear();
-    if (m_impl->threadStarted) {
-        pw_thread_loop_unlock(m_impl->loop);
-        pw_thread_loop_stop(m_impl->loop);
-        m_impl->threadStarted = false;
+
+    if (m_impl->registry && m_impl->registryListenerAdded) {
+        spa_hook_remove(&m_impl->registryListener);
+        m_impl->registryListenerAdded = false;
     }
-    if (m_impl->core)
+    if (m_impl->registry) {
+        pw_proxy_destroy(reinterpret_cast<pw_proxy *>(m_impl->registry));
+        m_impl->registry = nullptr;
+    }
+    if (m_impl->core && m_impl->coreListenerAdded) {
+        spa_hook_remove(&m_impl->coreListener);
+        m_impl->coreListenerAdded = false;
+    }
+    if (m_impl->core) {
         pw_core_disconnect(m_impl->core);
-    if (m_impl->context)
+        m_impl->core = nullptr;
+    }
+    if (m_impl->context) {
         pw_context_destroy(m_impl->context);
-    pw_thread_loop_destroy(m_impl->loop);
-    m_impl->loop = nullptr;
-    m_impl->context = nullptr;
-    m_impl->core = nullptr;
-    m_impl->registry = nullptr;
-    m_impl->metadata = nullptr;
-    m_impl->metadataId = 0;
+        m_impl->context = nullptr;
+    }
+    if (loop && threadStarted) {
+        pw_thread_loop_unlock(loop);
+        pw_thread_loop_stop(loop);
+    }
+    m_impl->threadStarted = false;
+    if (loop) {
+        pw_thread_loop_destroy(loop);
+        m_impl->loop = nullptr;
+    }
 }
 
 bool PipeWireAudioBackend::setDefaultOutput(quint32 nodeId)

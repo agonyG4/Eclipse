@@ -39,22 +39,18 @@ impl KernelBank {
             return Err(KernelPrepareError::InvalidGeometry);
         }
 
-        let mut effective_frames = 0;
+        let effective_frames = response.effective_length();
         for source in SourceChannel::ALL {
             for ear in 0..2 {
-                for (frame, coefficient) in response.channel(source.index(), ear).iter().enumerate()
-                {
+                for coefficient in response.channel(source.index(), ear) {
                     if !coefficient.is_finite() {
                         return Err(KernelPrepareError::InvalidResponse);
-                    }
-                    if *coefficient != 0.0 {
-                        effective_frames = effective_frames.max(frame + 1);
                     }
                 }
             }
         }
 
-        let effective_partitions = effective_frames.div_ceil(frames).max(1);
+        let effective_partitions = effective_frames.div_ceil(frames);
         let bins = geometry.spectrum_bins;
         let mut spectra = vec![Complex::new(0.0, 0.0); 8 * 2 * effective_partitions * bins];
         let mut scratch = vec![Complex::new(0.0, 0.0); geometry.fft_size];

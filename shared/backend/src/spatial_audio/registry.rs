@@ -8,6 +8,7 @@ use super::hrtf::{HrtfError, HrtfImpulseResponse, HrtfPresetId};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PrepareError {
+    MissingRequiredPreset,
     InvalidPartitionGeometry,
     DuplicatePreset,
     KernelPreparationFailed,
@@ -26,10 +27,6 @@ impl PreparedBankRegistry {
         banks: Vec<(HrtfPresetId, HrtfImpulseResponse)>,
         partition_frames: usize,
     ) -> Result<Self, PrepareError> {
-        if partition_frames == 0 || partition_frames > u16::MAX as usize {
-            return Err(PrepareError::InvalidPartitionGeometry);
-        }
-
         let mut seen = [false; 8];
         let mut maximum_ir_frames = 1;
         for (preset, response) in &banks {
@@ -37,7 +34,13 @@ impl PreparedBankRegistry {
                 return Err(PrepareError::DuplicatePreset);
             }
             seen[preset.index()] = true;
-            maximum_ir_frames = maximum_ir_frames.max(response.length());
+            maximum_ir_frames = maximum_ir_frames.max(response.effective_length());
+        }
+        if !seen[HrtfPresetId::Astrea.index()] {
+            return Err(PrepareError::MissingRequiredPreset);
+        }
+        if partition_frames == 0 || partition_frames > u16::MAX as usize {
+            return Err(PrepareError::InvalidPartitionGeometry);
         }
 
         let partition_count = maximum_ir_frames.div_ceil(partition_frames);
@@ -75,7 +78,15 @@ impl PreparedBankRegistry {
     ) -> Result<Self, PrepareError> {
         let mut responses = Vec::with_capacity(HrtfPresetId::ALL.len());
         let mut failed_asset_mask = 0;
+        let required_path = directory.join(format!("{}.wav", HrtfPresetId::Astrea.as_str()));
+        let required_response = HrtfImpulseResponse::from_wav(&required_path)
+            .map_err(|_| PrepareError::MissingRequiredPreset)?;
+        responses.push((HrtfPresetId::Astrea, required_response));
+
         for preset in HrtfPresetId::ALL {
+            if preset == HrtfPresetId::Astrea {
+                continue;
+            }
             let path = directory.join(format!("{}.wav", preset.as_str()));
             match HrtfImpulseResponse::from_wav(&path) {
                 Ok(response) => responses.push((preset, response)),

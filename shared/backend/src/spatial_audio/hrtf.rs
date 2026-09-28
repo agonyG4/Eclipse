@@ -221,6 +221,21 @@ impl HrtfImpulseResponse {
         self.length
     }
 
+    /// Returns the last exactly non-zero canonical coefficient frame, or one for a valid
+    /// all-zero response. Tiny finite values remain significant.
+    pub fn effective_length(&self) -> usize {
+        self.channels
+            .iter()
+            .filter_map(|channel| {
+                channel
+                    .iter()
+                    .rposition(|coefficient| *coefficient != 0.0)
+                    .map(|frame| frame + 1)
+            })
+            .max()
+            .unwrap_or(1)
+    }
+
     pub(crate) fn channel(&self, source: usize, ear: usize) -> &[f32] {
         &self.channels[source * 2 + ear]
     }

@@ -25,6 +25,7 @@ class DockController;
 class DockSurfaceGeometry;
 class GameModeMonitor;
 class SpotlightConfigWatcher;
+class SpatialAudioConfigWatcher;
 class SpotlightController;
 class ShellIpcServer;
 class ShellShortcutDispatcher;
@@ -94,6 +95,7 @@ public:
     DockConfigWatcher *dockConfig() const { return m_dockConfig.get(); }
     AltTabConfigWatcher *altTabConfig() const { return m_altTabConfig.get(); }
     SpotlightConfigWatcher *spotlightConfig() const { return m_spotlightConfig.get(); }
+    SpatialAudioConfigWatcher *spatialAudioConfig() const { return m_spatialAudioConfig.get(); }
     Astrea::System::AudioService *audioService() const { return m_audioService.get(); }
     Astrea::System::SpatialAudioEngine *spatialAudioEngine() const
     { return m_spatialAudioEngine.get(); }
@@ -145,6 +147,7 @@ private:
     std::unique_ptr<DockConfigPersistence> m_dockPersistence;
     std::unique_ptr<AltTabConfigWatcher> m_altTabConfig;
     std::unique_ptr<SpotlightConfigWatcher> m_spotlightConfig;
+    std::unique_ptr<SpatialAudioConfigWatcher> m_spatialAudioConfig;
     std::unique_ptr<GameModeMonitor> m_gameMode;
     std::unique_ptr<Astrea::System::AudioService> m_audioService;
     std::unique_ptr<Astrea::System::SpatialAudioEngine> m_spatialAudioEngine;

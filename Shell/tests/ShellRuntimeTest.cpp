@@ -1,6 +1,9 @@
 #include <QCoreApplication>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QProcessEnvironment>
+#include <QSaveFile>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -11,8 +14,10 @@
 #include "Spotlight/core/SpotlightController.hpp"
 #include "launch/ApplicationLauncher.hpp"
 #include "runtime/ShellRuntime.hpp"
+#include "services/SpatialAudioConfigWatcher.hpp"
 #include "theme/ThemeController.hpp"
 #include "system/audio/AudioService.hpp"
+#include "system/audio/spatial/SpatialAudioEngine.hpp"
 #include "system/network/NetworkService.hpp"
 #include "system/bluetooth/BluetoothService.hpp"
 
@@ -60,6 +65,13 @@ bool writeExecutable(const QString &path, const QByteArray &contents)
                                | QFileDevice::ExeOwner);
 }
 
+bool writeAtomically(const QString &path, const QByteArray &contents)
+{
+    QSaveFile file(path);
+    return file.open(QIODevice::WriteOnly) && file.write(contents) == contents.size()
+        && file.commit();
+}
+
 } // namespace
 
 class ShellRuntimeTest final : public QObject {
@@ -68,6 +80,9 @@ class ShellRuntimeTest final : public QObject {
 private slots:
     void createsOneSharedOwnershipGraph();
     void systemServicesRemainRestartableAcrossRuntimeLifecycle();
+    void spatialAudioConfigurationDefaultsDisabledAndUsesXdgPath();
+    void spatialAudioConfigurationWatcherHandlesAtomicReplacementAndSemanticChanges();
+    void malformedSpatialAudioConfigurationFailsSafelyDisabled();
     void selectsTyphonShellControlBridgeForTyphonRuntime();
     void sharedLauncherUsesTyphonBridgeAndPreservesHelperEnvironment();
     void desktopActionExecExpansionIsBoundedAndFieldAware();
@@ -76,6 +91,11 @@ private slots:
 
 void ShellRuntimeTest::createsOneSharedOwnershipGraph()
 {
+    EnvironmentGuard environmentGuard({"XDG_CONFIG_HOME"});
+    QTemporaryDir configHome;
+    QVERIFY(configHome.isValid());
+    qputenv("XDG_CONFIG_HOME", configHome.path().toUtf8());
+
     ShellRuntime runtime;
     QString error;
     QVERIFY2(runtime.initialize(QStringLiteral("auto"), &error), qPrintable(error));
@@ -104,6 +124,9 @@ void ShellRuntimeTest::createsOneSharedOwnershipGraph()
     QCOMPARE(runtime.barController()->workspaceModel(), runtime.workspaceModel());
     QVERIFY(runtime.audioService());
     QVERIFY(runtime.spatialAudioEngine());
+    QVERIFY(runtime.spatialAudioConfig());
+    QVERIFY(!runtime.spatialAudioEngine()->enabled());
+    QVERIFY(!runtime.spatialAudioEngine()->isPrepared());
     QVERIFY(runtime.networkService());
     QVERIFY(runtime.bluetoothService());
     QVERIFY(static_cast<QObject *>(runtime.audioService())
@@ -116,6 +139,11 @@ void ShellRuntimeTest::createsOneSharedOwnershipGraph()
 
 void ShellRuntimeTest::systemServicesRemainRestartableAcrossRuntimeLifecycle()
 {
+    EnvironmentGuard environmentGuard({"XDG_CONFIG_HOME"});
+    QTemporaryDir configHome;
+    QVERIFY(configHome.isValid());
+    qputenv("XDG_CONFIG_HOME", configHome.path().toUtf8());
+
     ShellRuntime runtime;
     QString error;
     QVERIFY2(runtime.initialize(QStringLiteral("auto"), &error), qPrintable(error));
@@ -131,6 +159,77 @@ void ShellRuntimeTest::systemServicesRemainRestartableAcrossRuntimeLifecycle()
     QCOMPARE(runtime.networkService(), network);
     QCOMPARE(runtime.bluetoothService(), bluetooth);
     runtime.stop();
+}
+
+void ShellRuntimeTest::spatialAudioConfigurationDefaultsDisabledAndUsesXdgPath()
+{
+    EnvironmentGuard environmentGuard({"XDG_CONFIG_HOME"});
+    QTemporaryDir configHome;
+    QVERIFY(configHome.isValid());
+    qputenv("XDG_CONFIG_HOME", configHome.path().toUtf8());
+
+    const QString expected = QDir(configHome.path()).filePath(
+        QStringLiteral("AstreaOS/audio/spatial.json"));
+    QCOMPARE(SpatialAudioConfigWatcher::defaultConfigPath(), expected);
+
+    SpatialAudioConfigWatcher watcher(expected);
+    QVERIFY(!watcher.enabled());
+    QVERIFY(watcher.errorString().isEmpty());
+
+    QString fallbackHome = configHome.path();
+    qunsetenv("XDG_CONFIG_HOME");
+    QCOMPARE(SpatialAudioConfigWatcher::defaultConfigPath(),
+             QDir(QDir::home().filePath(QStringLiteral(".config")))
+                 .filePath(QStringLiteral("AstreaOS/audio/spatial.json")));
+    qputenv("XDG_CONFIG_HOME", fallbackHome.toUtf8());
+}
+
+void ShellRuntimeTest::spatialAudioConfigurationWatcherHandlesAtomicReplacementAndSemanticChanges()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = QDir(directory.path()).filePath(
+        QStringLiteral("AstreaOS/audio/spatial.json"));
+    SpatialAudioConfigWatcher watcher(path);
+    QSignalSpy enabledSpy(&watcher, &SpatialAudioConfigWatcher::enabledChanged);
+    QVERIFY(enabledSpy.isValid());
+    QVERIFY(!watcher.enabled());
+
+    QVERIFY(QDir().mkpath(QFileInfo(path).absolutePath()));
+    QVERIFY(writeAtomically(path, R"({"enabled":true})"));
+    QTRY_VERIFY_WITH_TIMEOUT(watcher.enabled(), 3000);
+    QCOMPARE(enabledSpy.count(), 1);
+
+    QVERIFY(writeAtomically(path, R"({"enabled":true})"));
+    QTest::qWait(350);
+    QCOMPARE(enabledSpy.count(), 1);
+    QVERIFY(watcher.enabled());
+
+    QVERIFY(writeAtomically(path, R"({"enabled":false})"));
+    QTRY_VERIFY_WITH_TIMEOUT(!watcher.enabled(), 3000);
+    QCOMPARE(enabledSpy.count(), 2);
+}
+
+void ShellRuntimeTest::malformedSpatialAudioConfigurationFailsSafelyDisabled()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = QDir(directory.path()).filePath(
+        QStringLiteral("AstreaOS/audio/spatial.json"));
+    SpatialAudioConfigWatcher watcher(path);
+    QVERIFY(!watcher.enabled());
+
+    QVERIFY(QDir().mkpath(QFileInfo(path).absolutePath()));
+    QVERIFY(writeAtomically(path, R"({"enabled":true})"));
+    QTRY_VERIFY_WITH_TIMEOUT(watcher.enabled(), 3000);
+
+    QVERIFY(writeAtomically(path, QByteArrayLiteral("{")));
+    QTRY_VERIFY_WITH_TIMEOUT(!watcher.errorString().isEmpty(), 3000);
+    QVERIFY(!watcher.enabled());
+
+    QVERIFY(writeAtomically(path, QByteArrayLiteral("{}")));
+    QTRY_VERIFY_WITH_TIMEOUT(watcher.errorString().isEmpty(), 3000);
+    QVERIFY(!watcher.enabled());
 }
 
 void ShellRuntimeTest::selectsTyphonShellControlBridgeForTyphonRuntime()

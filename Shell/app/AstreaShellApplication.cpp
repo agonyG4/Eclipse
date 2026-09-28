@@ -28,6 +28,7 @@
 #include "screenshot/ScreenshotImageProvider.hpp"
 #include "theme/ThemeController.hpp"
 #include "system/audio/AudioService.hpp"
+#include "system/audio/spatial/SpatialAudioEngine.hpp"
 #include "system/network/NetworkService.hpp"
 #include "system/bluetooth/BluetoothService.hpp"
 
@@ -578,12 +579,13 @@ QString AstreaShellApplication::statusJson() const
             {QStringLiteral("popupOpen"),
              m_barSurfaceManager && m_barSurfaceManager->popupOpen()},
             {QStringLiteral("layerConfigurationRequested"),
-             m_barSurfaceManager && m_barSurfaceManager->layerConfigurationRequested()}}}
-        , {QStringLiteral("system"), QJsonObject{
+             m_barSurfaceManager && m_barSurfaceManager->layerConfigurationRequested()}}},
+        {QStringLiteral("system"), QJsonObject{
             {QStringLiteral("audio"), runtime->audioService()->healthJson()},
+            {QStringLiteral("spatialAudio"), runtime->spatialAudioEngine()->healthJson()},
             {QStringLiteral("network"), runtime->networkService()->healthJson()},
-            {QStringLiteral("bluetooth"), runtime->bluetoothService()->healthJson()}}}
-        , {QStringLiteral("statusNotifier"), runtime->statusNotifier()->healthJson()}
+            {QStringLiteral("bluetooth"), runtime->bluetoothService()->healthJson()}}},
+        {QStringLiteral("statusNotifier"), runtime->statusNotifier()->healthJson()}
     };
     return QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact));
 }

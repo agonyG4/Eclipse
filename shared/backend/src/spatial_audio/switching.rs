@@ -159,7 +159,10 @@ impl RealtimeSpatialEngine {
         registry: PreparedBankRegistry,
         transition_frames: usize,
     ) -> Result<Self, PrepareError> {
-        if transition_frames == 0 || !registry.contains(HrtfPresetId::Astrea) {
+        if !registry.contains(HrtfPresetId::Astrea) {
+            return Err(PrepareError::MissingRequiredPreset);
+        }
+        if transition_frames == 0 {
             return Err(PrepareError::InvalidPartitionGeometry);
         }
         let state = RtSwitchState {

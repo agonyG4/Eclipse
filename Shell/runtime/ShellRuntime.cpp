@@ -20,6 +20,7 @@
 #include "Spotlight/platform/runtime/SpotlightRuntimePaths.hpp"
 #include "Spotlight/services/GameModeMonitor.hpp"
 #include "Spotlight/services/SpotlightConfigWatcher.hpp"
+#include "services/SpatialAudioConfigWatcher.hpp"
 #include "apps/DesktopEntryCatalog.hpp"
 #include "launch/ApplicationLauncher.hpp"
 #include "platform/ipc/ShellIpcServer.hpp"
@@ -138,6 +139,20 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
     m_gameMode = std::make_unique<GameModeMonitor>();
     m_audioService = std::make_unique<Astrea::System::AudioService>();
     m_spatialAudioEngine = std::make_unique<Astrea::System::SpatialAudioEngine>();
+    m_spatialAudioConfig = std::make_unique<SpatialAudioConfigWatcher>(
+        SpatialAudioConfigWatcher::defaultConfigPath());
+    m_spatialAudioEngine->setConfigurationError(m_spatialAudioConfig->errorString());
+    m_spatialAudioEngine->setEnabled(m_spatialAudioConfig->enabled());
+    connect(m_spatialAudioConfig.get(), &SpatialAudioConfigWatcher::enabledChanged, this,
+            [this](bool enabled) {
+        if (m_spatialAudioEngine)
+            m_spatialAudioEngine->setEnabled(enabled);
+    });
+    connect(m_spatialAudioConfig.get(), &SpatialAudioConfigWatcher::errorChanged, this,
+            [this](const QString &error) {
+        if (m_spatialAudioEngine)
+            m_spatialAudioEngine->setConfigurationError(error);
+    });
     m_networkService = std::make_unique<Astrea::System::NetworkService>();
     m_bluetoothService = std::make_unique<Astrea::System::BluetoothService>();
     m_statusNotifier = std::make_unique<Astrea::StatusNotifier::StatusNotifierService>();

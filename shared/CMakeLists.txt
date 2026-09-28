@@ -149,6 +149,7 @@ target_include_directories(astrea-shared-spatial-audio PUBLIC
 target_link_libraries(astrea-shared-spatial-audio PUBLIC
     astrea_system_backend
     PkgConfig::ASTREA_PIPEWIRE
+    Qt6::Core
 )
 if(NOT MSVC)
     target_compile_options(astrea-shared-spatial-audio PRIVATE -Wall -Wextra -Wpedantic)
@@ -710,6 +711,19 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     )
     astrea_shared_enable_sanitizers(spatial-audio-pipewire-host-test)
     add_test(NAME spatial-audio-pipewire-host-test COMMAND spatial-audio-pipewire-host-test)
+
+    add_executable(spatial-audio-engine-test
+        system/tests/SpatialAudioEngineTest.cpp
+    )
+    target_include_directories(spatial-audio-engine-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_link_libraries(spatial-audio-engine-test PRIVATE
+        astrea-shared-spatial-audio
+        Qt6::Test
+    )
+    astrea_shared_enable_sanitizers(spatial-audio-engine-test)
+    add_test(NAME spatial-audio-engine-test COMMAND spatial-audio-engine-test)
 
     add_executable(statusnotifier-test
         tests/StatusNotifierTest.cpp

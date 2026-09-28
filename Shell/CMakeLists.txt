@@ -76,6 +76,8 @@ add_library(astrea-shell-runtime STATIC
     ../Spotlight/services/AstreaI18n.cpp
     ../Spotlight/services/GameModeMonitor.cpp
     ../Spotlight/services/SpotlightConfigWatcher.cpp
+    services/SpatialAudioConfigWatcher.cpp
+    services/SpatialAudioConfigWatcher.hpp
 )
 
 target_include_directories(astrea-shell-runtime PUBLIC

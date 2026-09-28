@@ -3,8 +3,8 @@ use std::cell::Cell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use astrea_system_backend::spatial_audio::{
-    Ear, HrtfImpulseResponse, HrtfPresetId, RealtimeSpatialEngine, SourceChannel, SwitchPhase,
-    crossfade_gains,
+    Ear, HrtfImpulseResponse, HrtfPresetId, PrepareError, PreparedBankRegistry,
+    RealtimeSpatialEngine, SourceChannel, SwitchPhase, crossfade_gains,
 };
 
 struct CountingAllocator;
@@ -455,14 +455,15 @@ fn new_bank_matches_expected_response_to_pre_switch_samples() {
 }
 
 #[test]
-fn long_and_short_banks_share_one_history_geometry() {
+fn global_history_uses_longest_effective_response_and_banks_share_geometry() {
     let short = hesuvi_response(16, &[(6, 0, 1.0), (13, 0, 1.0)]);
-    let long = hesuvi_response(PARTITION_FRAMES * 9, &[(6, PARTITION_FRAMES * 8, 0.5)]);
+    let long = hesuvi_response(PARTITION_FRAMES * 9, &[(6, PARTITION_FRAMES * 2, 0.5)]);
     let mut banks = all_presets_with(short.clone());
     banks[HrtfPresetId::AstreaDolby as usize] = (HrtfPresetId::AstreaDolby, long);
-    let engine = RealtimeSpatialEngine::with_prepared_banks(banks, PARTITION_FRAMES, 480).unwrap();
+    let registry = PreparedBankRegistry::from_responses(banks, PARTITION_FRAMES).unwrap();
 
-    assert_eq!(engine.partition_geometry().input_history_partitions, 9);
+    assert_eq!(registry.geometry().input_history_partitions, 3);
+    let engine = RealtimeSpatialEngine::from_registry(registry, 480).unwrap();
     assert_eq!(
         engine.partition_geometry(),
         engine.bank_partition_geometry(HrtfPresetId::AstreaDolby)
@@ -471,6 +472,65 @@ fn long_and_short_banks_share_one_history_geometry() {
         engine.bank_partition_geometry(HrtfPresetId::Astrea),
         engine.partition_geometry()
     );
+}
+
+#[test]
+fn tiny_nonzero_trailing_coefficient_extends_global_history_geometry() {
+    let short = hesuvi_response(1, &[(6, 0, 1.0)]);
+    let physical_length = PARTITION_FRAMES * 9;
+    let final_frame = PARTITION_FRAMES * 4 + 1;
+    let long = hesuvi_response(physical_length, &[(6, final_frame, f32::MIN_POSITIVE)]);
+    assert_eq!(long.length(), physical_length);
+    assert_eq!(long.effective_length(), final_frame + 1);
+
+    let mut banks = all_presets_with(short);
+    banks[HrtfPresetId::AstreaDolby as usize] = (HrtfPresetId::AstreaDolby, long);
+    let registry = PreparedBankRegistry::from_responses(banks, PARTITION_FRAMES).unwrap();
+    assert_eq!(registry.geometry().input_history_partitions, 5);
+}
+
+#[test]
+fn all_zero_responses_keep_one_frame_of_global_history() {
+    let response = hesuvi_response(PARTITION_FRAMES * 9, &[]);
+    assert_eq!(response.effective_length(), 1);
+    let registry =
+        PreparedBankRegistry::from_responses(all_presets_with(response), PARTITION_FRAMES).unwrap();
+    assert_eq!(registry.geometry().input_history_partitions, 1);
+}
+
+#[test]
+fn required_astrea_preset_is_validated_before_optional_bank_preparation() {
+    let optional_response = hesuvi_response(PARTITION_FRAMES * 16, &[(6, 0, 0.5)]);
+    let banks = HrtfPresetId::ALL
+        .into_iter()
+        .filter(|preset| *preset != HrtfPresetId::Astrea)
+        .map(|preset| (preset, optional_response.clone()))
+        .collect();
+    assert_eq!(
+        PreparedBankRegistry::from_responses(banks, PARTITION_FRAMES).err(),
+        Some(PrepareError::MissingRequiredPreset)
+    );
+}
+
+#[test]
+fn missing_astrea_asset_fails_before_optional_assets_are_read() {
+    let unique = format!(
+        "astrea-spatial-missing-required-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+    let directory = std::env::temp_dir().join(unique);
+    std::fs::create_dir_all(&directory).unwrap();
+    std::fs::write(directory.join("astrea-movie.wav"), b"optional fixture").unwrap();
+
+    assert_eq!(
+        PreparedBankRegistry::from_asset_directory(&directory, PARTITION_FRAMES).err(),
+        Some(PrepareError::MissingRequiredPreset)
+    );
+    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]

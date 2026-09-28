@@ -34,6 +34,10 @@ list(FIND registered_qml_files "pages/system/Bluetooth.qml" bluetooth_qml_index)
 if(bluetooth_qml_index EQUAL -1)
     message(FATAL_ERROR "Bluetooth.qml is not registered in the Settings QML module")
 endif()
+list(FIND registered_qml_files "pages/system/Audio.qml" audio_qml_index)
+if(audio_qml_index EQUAL -1)
+    message(FATAL_ERROR "Audio.qml is not registered in the Settings QML module")
+endif()
 list(FIND registered_qml_files "pages/appearance/Themes.qml" old_themes_qml_index)
 if(NOT old_themes_qml_index EQUAL -1)
     message(FATAL_ERROR "The old Themes.qml route remains registered")
@@ -116,8 +120,13 @@ if(EXISTS "${SETTINGS_SOURCE_DIR}/../cmake/AstreaCxxQtBackend.cmake")
 endif()
 file(READ "${SETTINGS_SOURCE_DIR}/tests/CMakeLists.txt" settings_tests_cmake)
 file(READ "${SETTINGS_SOURCE_DIR}/app/SettingsApplication.cpp" settings_application_source)
+file(READ "${SETTINGS_SOURCE_DIR}/app/SettingsApplication.hpp" settings_application_header)
+file(READ "${SETTINGS_SOURCE_DIR}/core/navigation/SettingsNavigationCatalog.cpp"
+    settings_navigation_catalog_source)
 file(READ "${SETTINGS_SOURCE_DIR}/tests/integration/SettingsBluetoothQmlTest.cpp"
     settings_bluetooth_qml_test_source)
+file(READ "${SETTINGS_SOURCE_DIR}/tests/integration/SettingsAudioQmlTest.cpp"
+    settings_audio_qml_test_source)
 file(READ "${SETTINGS_SOURCE_DIR}/../shared/CMakeLists.txt" shared_cmake)
 file(READ "${SETTINGS_SOURCE_DIR}/../shared/system/SystemServiceState.hpp"
     shared_system_service_state_header)
@@ -159,6 +168,9 @@ foreach(core_boundary_token IN ITEMS
 endforeach()
 if(settings_core_cmake MATCHES "system/bluetooth/[^ \t\r\n]*\\.cpp")
     message(FATAL_ERROR "Settings must consume Bluetooth production sources through astrea-shared-system")
+endif()
+if(settings_production_link_configuration MATCHES "system/audio/PipeWireAudio(Backend|State)\\.cpp")
+    message(FATAL_ERROR "Settings must consume shared audio production sources through astrea-shared-system")
 endif()
 foreach(rust_boundary_token IN ITEMS
     "find_package(CxxQt QUIET)"
@@ -228,6 +240,7 @@ endif()
 foreach(redundant_context_property IN ITEMS
     "setContextProperty(QStringLiteral(\"WallpaperController\")"
     "setContextProperty(QStringLiteral(\"BluetoothService\")"
+    "setContextProperty(QStringLiteral(\"AudioService\")"
 )
     string(FIND "${settings_application_source}" "${redundant_context_property}" context_property_position)
     if(NOT context_property_position EQUAL -1)
@@ -260,13 +273,42 @@ if(system_namespace_qml_type_position EQUAL -1)
 endif()
 string(FIND "${settings_application_source}" "m_controller->bluetooth()->start();"
     bluetooth_start_position)
+string(FIND "${settings_application_source}" "m_controller->audio()->start();"
+    audio_start_position)
 string(FIND "${settings_application_source}" "if (!initializeQml())" qml_initialization_position)
 string(FIND "${settings_application_source}" "m_engine->load(" qml_load_position)
-if(bluetooth_start_position EQUAL -1 OR qml_initialization_position EQUAL -1
-   OR qml_load_position EQUAL -1 OR bluetooth_start_position GREATER_EQUAL qml_initialization_position
+if(bluetooth_start_position EQUAL -1 OR audio_start_position EQUAL -1
+   OR qml_initialization_position EQUAL -1 OR qml_load_position EQUAL -1
+   OR bluetooth_start_position GREATER_EQUAL audio_start_position
+   OR audio_start_position GREATER_EQUAL qml_initialization_position
    OR qml_initialization_position GREATER_EQUAL qml_load_position)
-    message(FATAL_ERROR "Settings must start Bluetooth after controller construction and before QML load")
+    message(FATAL_ERROR "Settings must start Bluetooth and Audio after controller construction and before QML load")
 endif()
+string(FIND "${settings_navigation_catalog_source}"
+    "qrc:/qt/qml/Astrea/Settings/qml/pages/system/Audio.qml" audio_route_position)
+if(audio_route_position EQUAL -1)
+    message(FATAL_ERROR "The Audio navigation entry must resolve through SettingsNavigationCatalog")
+endif()
+if(settings_application_source MATCHES "setContextProperty\\([^)]*AudioService")
+    message(FATAL_ERROR "Settings must expose Audio through SettingsController.audio only")
+endif()
+string(FIND "${settings_application_header}" "m_controller;" controller_member_position)
+string(FIND "${settings_application_header}" "m_engine;" engine_member_position)
+if(controller_member_position EQUAL -1 OR engine_member_position EQUAL -1
+   OR controller_member_position GREATER_EQUAL engine_member_position)
+    message(FATAL_ERROR "The QML engine must be destroyed before SettingsController and its services")
+endif()
+foreach(audio_qml_test_token IN ITEMS
+    "m_controller->selectedPageSource()"
+    "AudioService::uiPercentToLinear(75.0)"
+    "defaultOutputRequests"
+    "virtualOutputRemainsVisibleAndSelectable"
+)
+    string(FIND "${settings_audio_qml_test_source}" "${audio_qml_test_token}" audio_test_position)
+    if(audio_test_position EQUAL -1)
+        message(FATAL_ERROR "Settings Audio QML integration coverage is missing '${audio_qml_test_token}'")
+    endif()
+endforeach()
 foreach(required_icon_provider_binding IN ITEMS
     "addImageProvider(QStringLiteral(\"astrea-icon\"), m_iconProvider)"
     "setContextProperty(QStringLiteral(\"AstreaIconProvider\")"

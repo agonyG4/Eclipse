@@ -39,6 +39,7 @@ public:
 
     bool start();
     void stop();
+    Q_INVOKABLE bool setVolume(double percent);
     Q_INVOKABLE void adjustVolume(double deltaPercent);
     Q_INVOKABLE void setMuted(bool muted);
     Q_INVOKABLE bool setDefaultOutput(quint32 nodeId);

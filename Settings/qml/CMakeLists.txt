@@ -37,6 +37,7 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     pages/navigation/Hub.qml
     pages/system/Compositor.qml
     pages/system/Bluetooth.qml
+    pages/system/Audio.qml
     pages/appearance/Appearance.qml
     pages/appearance/VisualEffects.qml
     pages/appearance/Icons.qml

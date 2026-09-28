@@ -171,16 +171,24 @@ void AudioService::stop()
     setState(SystemServiceState::Stopped);
 }
 
-void AudioService::adjustVolume(double deltaPercent)
+bool AudioService::setVolume(double percent)
 {
-    const double next = std::clamp(m_volume + deltaPercent, 0.0, 150.0);
+    if (!std::isfinite(percent) || !m_defaultNodeId || !m_defaultStateAvailable)
+        return false;
+
+    const double next = std::clamp(percent, 0.0, 150.0);
     if (qFuzzyCompare(next, m_volume))
-        return;
-    if (!m_defaultNodeId || !m_defaultStateAvailable
-        || !m_backend->setVolume(m_defaultNodeId, uiPercentToLinear(next)))
-        return;
+        return true;
+    if (!m_backend->setVolume(m_defaultNodeId, uiPercentToLinear(next)))
+        return false;
     m_volume = next;
     emit volumeChanged();
+    return true;
+}
+
+void AudioService::adjustVolume(double deltaPercent)
+{
+    setVolume(m_volume + deltaPercent);
 }
 
 void AudioService::setMuted(bool muted)

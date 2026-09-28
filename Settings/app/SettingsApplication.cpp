@@ -48,8 +48,10 @@ int SettingsApplication::run()
     m_controller = std::make_unique<SettingsController>(std::move(navigationModel), userProfile,
                                                          iconResolver,
                                                          std::unique_ptr<Astrea::System::BluetoothService>{},
+                                                         std::unique_ptr<Astrea::System::AudioService>{},
                                                          this);
     m_controller->bluetooth()->start();
+    m_controller->audio()->start();
     m_translationController = std::make_unique<SettingsTranslationController>();
     m_themeController = std::make_unique<ThemeController>();
     QObject::connect(m_controller->appearance(),

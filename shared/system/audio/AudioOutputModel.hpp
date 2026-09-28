@@ -28,6 +28,7 @@ public:
         DescriptionRole,
         NickRole,
         MediaClassRole,
+        DisplayNameRole,
         DefaultRole,
         VirtualRole,
     };

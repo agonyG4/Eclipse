@@ -116,6 +116,8 @@ void SettingsNavigationModelTest::exposesNativePageRoutes()
 
     QCOMPARE(model.pageSourceForId(QStringLiteral("compositor")), compositorRoute);
     QCOMPARE(model.pageSourceForId(QStringLiteral("bluetooth")), bluetoothRoute);
+    QCOMPARE(model.pageSourceForId(QStringLiteral("audio")),
+             QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Audio.qml")));
     QCOMPARE(model.pageSourceForId(QStringLiteral("customization")), customizationRoute);
     QCOMPARE(model.pageSourceForId(QStringLiteral("wallpaper")), wallpaperRoute);
     QCOMPARE(model.pageSourceForId(QStringLiteral("dock")), dockRoute);
@@ -183,6 +185,7 @@ void SettingsNavigationModelTest::appliesPageAndHubNavigabilityRules()
 
     QVERIFY(model.containsNavigableId(QStringLiteral("compositor")));
     QVERIFY(model.containsNavigableId(QStringLiteral("bluetooth")));
+    QVERIFY(model.containsNavigableId(QStringLiteral("audio")));
     QVERIFY(model.containsNavigableId(QStringLiteral("customization")));
     QVERIFY(model.containsNavigableId(QStringLiteral("wallpaper")));
     QVERIFY(model.containsNavigableId(QStringLiteral("dock")));

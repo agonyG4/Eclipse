@@ -70,6 +70,7 @@ endfunction()
 add_settings_qml_integration_test(settings-qml-smoke-test integration/SettingsQmlSmokeTest.cpp)
 add_settings_qml_integration_test(settings-component-smoke-test integration/SettingsComponentSmokeTest.cpp)
 add_settings_qml_integration_test(settings-bluetooth-qml-test integration/SettingsBluetoothQmlTest.cpp)
+add_settings_qml_integration_test(settings-audio-qml-test integration/SettingsAudioQmlTest.cpp)
 
 add_test(NAME compositor-page-source-test
     COMMAND ${CMAKE_COMMAND}

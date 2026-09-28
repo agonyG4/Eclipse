@@ -3,6 +3,22 @@
 #include <algorithm>
 
 namespace Astrea::System {
+namespace {
+
+QString displayNameFor(const AudioOutput &output)
+{
+    const QString description = output.description.trimmed();
+    if (!description.isEmpty())
+        return description;
+
+    const QString nick = output.nick.trimmed();
+    if (!nick.isEmpty())
+        return nick;
+
+    return output.name.trimmed();
+}
+
+} // namespace
 
 AudioOutputModel::AudioOutputModel(QObject *parent)
     : QAbstractListModel(parent)
@@ -25,9 +41,10 @@ QVariant AudioOutputModel::data(const QModelIndex &index, int role) const
     case DescriptionRole: return output.description;
     case NickRole: return output.nick;
     case MediaClassRole: return output.mediaClass;
+    case DisplayNameRole: return displayNameFor(output);
     case DefaultRole: return output.isDefault;
     case VirtualRole: return output.isVirtual;
-    case Qt::DisplayRole: return output.name;
+    case Qt::DisplayRole: return displayNameFor(output);
     default: return {};
     }
 }
@@ -40,6 +57,7 @@ QHash<int, QByteArray> AudioOutputModel::roleNames() const
         {DescriptionRole, "description"},
         {NickRole, "nick"},
         {MediaClassRole, "mediaClass"},
+        {DisplayNameRole, "displayName"},
         {DefaultRole, "isDefault"},
         {VirtualRole, "isVirtual"},
     };
@@ -54,8 +72,8 @@ void AudioOutputModel::replace(QVector<AudioOutput> outputs, quint32 defaultNode
                                                  const AudioOutput &right) {
         if (left.isDefault != right.isDefault)
             return left.isDefault > right.isDefault;
-        const QString leftKey = left.name.isEmpty() ? left.description : left.name;
-        const QString rightKey = right.name.isEmpty() ? right.description : right.name;
+        const QString leftKey = displayNameFor(left);
+        const QString rightKey = displayNameFor(right);
         const int nameCompare = QString::compare(leftKey, rightKey, Qt::CaseInsensitive);
         return nameCompare == 0 ? left.nodeId < right.nodeId : nameCompare < 0;
     });

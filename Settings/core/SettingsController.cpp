@@ -6,12 +6,13 @@
 #include <utility>
 
 SettingsController::SettingsController(QObject *parent)
-    : SettingsController(std::make_unique<SettingsNavigationModel>(), {}, {}, {}, parent)
+    : SettingsController(std::make_unique<SettingsNavigationModel>(), {}, {}, {}, {}, parent)
 {
 }
 
 SettingsController::SettingsController(SettingsUserProfile userProfile, QObject *parent)
-    : SettingsController(std::make_unique<SettingsNavigationModel>(), std::move(userProfile), {}, {}, parent)
+    : SettingsController(std::make_unique<SettingsNavigationModel>(), std::move(userProfile),
+                         {}, {}, {}, parent)
 {
 }
 
@@ -19,6 +20,7 @@ SettingsController::SettingsController(std::unique_ptr<SettingsNavigationModel> 
                                        SettingsUserProfile userProfile,
                                        SettingsIconResolver iconResolver,
                                        std::unique_ptr<Astrea::System::BluetoothService> bluetoothService,
+                                       std::unique_ptr<Astrea::System::AudioService> audioService,
                                        QObject *parent)
     : QObject(parent)
     , m_navigationModel(std::move(navigationModel))
@@ -26,6 +28,8 @@ SettingsController::SettingsController(std::unique_ptr<SettingsNavigationModel> 
     , m_iconResolver(std::move(iconResolver))
     , m_bluetoothService(bluetoothService ? std::move(bluetoothService)
                                           : std::make_unique<Astrea::System::BluetoothService>())
+    , m_audioService(audioService ? std::move(audioService)
+                                  : std::make_unique<Astrea::System::AudioService>())
 {
     if (!m_navigationModel)
         m_navigationModel = std::make_unique<SettingsNavigationModel>();

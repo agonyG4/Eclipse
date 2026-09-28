@@ -21,6 +21,8 @@ SettingsIconResolver
   -> SettingsController
       -> Astrea::System::BluetoothService
           -> shared Rust Bluetooth engine -> BlueZ/system D-Bus
+      -> Astrea::System::AudioService
+          -> shared PipeWireAudioBackend -> PipeWire
 ThemeController
 SettingsTranslationController
 SettingsDockController -> shared DockConfigStore
@@ -52,13 +54,13 @@ The provider is owned by the QML engine and is not duplicated as a context
 property. It also owns metadata, QML startup, fatal warning reporting, and
 exactly-one-root validation.
 
-`SettingsApplication` starts `SettingsController.bluetooth` after constructing
-the controller and before loading QML. It registers the shared
-`Astrea::System` enum namespace before creating the QML engine. Bluetooth
-startup failure remains service state and does not prevent Settings from
-opening. The engine is destroyed before the controller, so page teardown can
-release its discovery lease and cancel an active pairing before the shared
-service is stopped by its destructor.
+`SettingsApplication` starts `SettingsController.bluetooth` and
+`SettingsController.audio` after constructing the controller and before
+loading QML. It registers the shared `Astrea::System` enum namespace before
+creating the QML engine. Audio and Bluetooth startup failures remain service
+state and do not prevent Settings from opening. The engine is destroyed before
+the controller, so page teardown can release its discovery lease and cancel an
+active pairing before the shared services are stopped by their destructors.
 
 ## Target Boundaries
 
@@ -72,6 +74,11 @@ header. The Settings Rust target is built by the supported CXX-Qt CMake
 integration; its generated QObject header is consumed by the C++ composition
 root. The shared system target supplies `BluetoothService`; Settings does not
 compile Bluetooth production sources or own another BlueZ/D-Bus implementation.
+It also supplies the same `AudioService` and `PipeWireAudioBackend` used by
+Shell. Settings and Shell own independent process-local service instances,
+while PipeWire remains the external authority that synchronizes their state.
+Settings does not compile PipeWire audio production sources or define a
+Settings-specific audio backend or PipeWire policy.
 The core does not link Qt QML, Qt Quick, Quick Controls, LayerShellQt, or a
 compositor library.
 
@@ -161,6 +168,7 @@ index and no QML route-ID condition. The current routable descriptors are:
 
 ```text
 qrc:/qt/qml/Astrea/Settings/qml/pages/system/Bluetooth.qml
+qrc:/qt/qml/Astrea/Settings/qml/pages/system/Audio.qml
 qrc:/qt/qml/Astrea/Settings/qml/pages/system/Compositor.qml
 qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Appearance.qml
 qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/VisualEffects.qml
@@ -210,6 +218,18 @@ exists, it owns the `settings-bluetooth-page` discovery token, including while
 power is off. Page destruction releases that token and cancels an active
 pairing so an Agent1 request cannot outlive the page that can answer it. Pair,
 Trust, and Connect remain separate user actions; the page does not chain them.
+
+`SettingsController.audio` owns a process-local instance of the shared
+`Astrea::System::AudioService`. `Audio.qml` consumes its health, volume, mute,
+and `AudioOutputModel` properties directly. The shared service owns the cubic
+0–150 UI volume scale and maps absolute `setVolume()` requests to PipeWire;
+Settings does not calculate deltas, persist audio values, or mirror output
+selection. `AudioOutputModel` projects trimmed description, nick, then name as
+the common display identity and keeps virtual outputs available. The page
+marks only the default reported by PipeWire. Settings Stage 1 covers output
+discovery and selection, system volume, mute, service health, and empty or
+incomplete states. Input devices, per-application mixing, profiles, routing,
+device management, and Spatial Audio controls remain future work.
 
 ### Animations backend migration
 

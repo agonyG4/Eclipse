@@ -49,6 +49,7 @@ public:
 
     bool setVolume(quint32 nodeId, double linear) override
     {
+        ++setVolumeCount;
         volumeNodeId = nodeId;
         volumeLinear = linear;
         return actionResult;
@@ -79,6 +80,7 @@ public:
     bool actionResult = true;
     int startCount = 0;
     int stopCount = 0;
+    int setVolumeCount = 0;
     quint32 defaultNodeId = 0;
     quint32 volumeNodeId = 0;
     double volumeLinear = 0.0;
@@ -301,6 +303,9 @@ private slots:
     void audioRuntimeFailureReconnects();
     void audioLateAttemptCallbacksAreIgnored();
     void audioUsesCubicUiScaleAndStableModelOrder();
+    void audioAbsoluteVolumeMutationClampsAndUsesCubicScale();
+    void audioAbsoluteVolumeRequiresAuthoritativeStateAndBackendAcceptance();
+    void audioOutputModelUsesHumanNamesAndDeterministicSorting();
     void networkWifiAvailabilityAndScanningAreAuthoritative();
     void networkOldWirelessRefreshCannotCompleteNewRefresh();
     void networkPrimaryWifiReplacesFallbackDiscoveryAdapter();
@@ -418,6 +423,132 @@ void SystemServicesTest::audioUsesCubicUiScaleAndStableModelOrder()
                    output(2, QStringLiteral("alpha"), true),
                    output(3, QStringLiteral("beta"))}, 2);
     QCOMPARE(resetSpy.count(), 1);
+}
+
+void SystemServicesTest::audioAbsoluteVolumeMutationClampsAndUsesCubicScale()
+{
+    auto backend = std::make_unique<FakeAudioBackend>();
+    auto *backendPtr = backend.get();
+    AudioService service(std::move(backend));
+    QVERIFY(service.start());
+
+    backendPtr->publish({output(9, QStringLiteral("speakers"))}, 9);
+    QTRY_COMPARE_WITH_TIMEOUT(service.outputsModel()->rowCount(), 1, 500);
+    backendPtr->currentCallbacks().volumeChanged(1.0, false);
+    QTRY_VERIFY_WITH_TIMEOUT(service.defaultStateAvailable(), 500);
+    QCOMPARE(service.volume(), 100.0);
+
+    QSignalSpy volumeSpy(&service, &AudioService::volumeChanged);
+    QVERIFY(service.setVolume(50.0));
+    QCOMPARE(backendPtr->setVolumeCount, 1);
+    QCOMPARE(backendPtr->volumeNodeId, quint32(9));
+    QCOMPARE(backendPtr->volumeLinear, 0.125);
+    QCOMPARE(service.volume(), 50.0);
+    QCOMPARE(volumeSpy.count(), 1);
+
+    QVERIFY(service.setVolume(50.0));
+    QCOMPARE(backendPtr->setVolumeCount, 1);
+    QCOMPARE(volumeSpy.count(), 1);
+
+    QVERIFY(service.setVolume(-20.0));
+    QCOMPARE(backendPtr->volumeLinear, 0.0);
+    QCOMPARE(service.volume(), 0.0);
+    QVERIFY(service.setVolume(180.0));
+    QCOMPARE(backendPtr->volumeLinear, 3.375);
+    QCOMPARE(service.volume(), 150.0);
+
+    service.adjustVolume(-75.0);
+    QCOMPARE(backendPtr->setVolumeCount, 4);
+    QCOMPARE(backendPtr->volumeLinear, 0.421875);
+    QCOMPARE(service.volume(), 75.0);
+}
+
+void SystemServicesTest::audioAbsoluteVolumeRequiresAuthoritativeStateAndBackendAcceptance()
+{
+    auto noDefaultBackend = std::make_unique<FakeAudioBackend>();
+    auto *noDefaultBackendPtr = noDefaultBackend.get();
+    AudioService noDefaultService(std::move(noDefaultBackend));
+    QVERIFY(noDefaultService.start());
+    QSignalSpy noDefaultVolumeSpy(&noDefaultService, &AudioService::volumeChanged);
+    QVERIFY(!noDefaultService.setVolume(75.0));
+    QCOMPARE(noDefaultBackendPtr->setVolumeCount, 0);
+    QCOMPARE(noDefaultService.volume(), 100.0);
+    QCOMPARE(noDefaultVolumeSpy.count(), 0);
+
+    auto incompleteBackend = std::make_unique<FakeAudioBackend>();
+    auto *incompleteBackendPtr = incompleteBackend.get();
+    AudioService incompleteService(std::move(incompleteBackend));
+    QVERIFY(incompleteService.start());
+    incompleteBackendPtr->publish({output(11, QStringLiteral("headphones"))}, 11);
+    QTRY_COMPARE_WITH_TIMEOUT(incompleteService.outputsModel()->rowCount(), 1, 500);
+    QVERIFY(!incompleteService.defaultStateAvailable());
+    QVERIFY(!incompleteService.setVolume(75.0));
+    QCOMPARE(incompleteBackendPtr->setVolumeCount, 0);
+    QCOMPARE(incompleteService.volume(), 100.0);
+
+    auto rejectedBackend = std::make_unique<FakeAudioBackend>();
+    auto *rejectedBackendPtr = rejectedBackend.get();
+    AudioService rejectedService(std::move(rejectedBackend));
+    QVERIFY(rejectedService.start());
+    rejectedBackendPtr->publish({output(13, QStringLiteral("monitor"))}, 13);
+    QTRY_COMPARE_WITH_TIMEOUT(rejectedService.outputsModel()->rowCount(), 1, 500);
+    rejectedBackendPtr->currentCallbacks().volumeChanged(0.125, false);
+    QTRY_VERIFY_WITH_TIMEOUT(rejectedService.defaultStateAvailable(), 500);
+    rejectedBackendPtr->actionResult = false;
+    QSignalSpy rejectedVolumeSpy(&rejectedService, &AudioService::volumeChanged);
+
+    QVERIFY(!rejectedService.setVolume(75.0));
+    QCOMPARE(rejectedBackendPtr->setVolumeCount, 1);
+    QCOMPARE(rejectedService.volume(), 50.0);
+    QCOMPARE(rejectedVolumeSpy.count(), 0);
+}
+
+void SystemServicesTest::audioOutputModelUsesHumanNamesAndDeterministicSorting()
+{
+    AudioOutputModel model;
+    QSignalSpy resetSpy(&model, &QAbstractItemModel::modelReset);
+
+    AudioOutput technical(5, QStringLiteral("technical.name"),
+                          QStringLiteral("   "), QString(), QStringLiteral("Audio/Sink"),
+                          false, true);
+    AudioOutput speakers(3, QStringLiteral("alsa_output.usb-desk"), QString(),
+                         QStringLiteral(" Desk Speakers "), QStringLiteral("Audio/Sink"),
+                         false, false);
+    AudioOutput dac(8, QStringLiteral("alsa_output.usb-dac"),
+                    QStringLiteral(" USB DAC "), QStringLiteral("DAC"),
+                    QStringLiteral("Audio/Sink"), false, false);
+    AudioOutput defaultOutput(2, QStringLiteral("alsa_output.default"),
+                              QStringLiteral(" Default output "), QString(),
+                              QStringLiteral("Audio/Sink"), false, false);
+
+    model.replace({technical, dac, defaultOutput, speakers}, 2);
+    QCOMPARE(model.rowCount(), 4);
+    const auto displayName = [&model](int row) {
+        return model.data(model.index(row, 0), AudioOutputModel::DisplayNameRole).toString();
+    };
+    QCOMPARE(displayName(0), QStringLiteral("Default output"));
+    QCOMPARE(displayName(1), QStringLiteral("Desk Speakers"));
+    QCOMPARE(displayName(2), QStringLiteral("technical.name"));
+    QCOMPARE(displayName(3), QStringLiteral("USB DAC"));
+    QCOMPARE(model.data(model.index(3, 0), AudioOutputModel::NameRole).toString(),
+             QStringLiteral("alsa_output.usb-dac"));
+    QCOMPARE(model.data(model.index(3, 0), AudioOutputModel::DescriptionRole).toString(),
+             QStringLiteral(" USB DAC "));
+    QCOMPARE(model.data(model.index(3, 0), AudioOutputModel::NickRole).toString(),
+             QStringLiteral("DAC"));
+    QVERIFY(model.data(model.index(2, 0), AudioOutputModel::VirtualRole).toBool());
+    QCOMPARE(model.roleNames().value(AudioOutputModel::DisplayNameRole), QByteArray("displayName"));
+
+    model.replace({speakers, technical, defaultOutput, dac}, 2);
+    QCOMPARE(resetSpy.count(), 1);
+
+    AudioOutput sameNameHigherId(21, QStringLiteral("node-a"), QStringLiteral("Alpha"), {},
+                                 QStringLiteral("Audio/Sink"), false, false);
+    AudioOutput sameNameLowerId(19, QStringLiteral("node-b"), QStringLiteral("alpha"), {},
+                                QStringLiteral("Audio/Sink"), false, false);
+    model.replace({sameNameHigherId, sameNameLowerId}, 0);
+    QCOMPARE(model.data(model.index(0, 0), AudioOutputModel::NodeIdRole).toUInt(), quint32(19));
+    QCOMPARE(model.data(model.index(1, 0), AudioOutputModel::NodeIdRole).toUInt(), quint32(21));
 }
 
 void SystemServicesTest::networkWifiAvailabilityAndScanningAreAuthoritative()

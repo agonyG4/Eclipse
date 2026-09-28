@@ -1,5 +1,7 @@
 #include "core/SettingsController.hpp"
 #include "core/navigation/SettingsNavigationModel.hpp"
+#include "system/audio/AudioBackend.hpp"
+#include "system/audio/AudioService.hpp"
 #include "system/bluetooth/BluetoothBackend.hpp"
 #include "system/bluetooth/BluetoothService.hpp"
 
@@ -32,6 +34,21 @@ public:
     int startCount = 0;
 };
 
+class ControllerAudioBackend final : public Astrea::System::AudioBackend {
+public:
+    bool start(const Callbacks &, QString *) override
+    {
+        ++startCount;
+        return true;
+    }
+    void stop() override {}
+    bool setDefaultOutput(quint32) override { return true; }
+    bool setVolume(quint32, double) override { return true; }
+    bool setMute(quint32, bool) override { return true; }
+
+    int startCount = 0;
+};
+
 } // namespace
 
 class SettingsControllerTest final : public QObject {
@@ -40,6 +57,7 @@ class SettingsControllerTest final : public QObject {
 private slots:
     void startsWithPreferredCompositorDestination();
     void navigatesToBluetoothPage();
+    void navigatesToAudioPage();
     void navigatesToCustomizationHub();
     void nestedDestinationsKeepSidebarAncestorSelected();
     void directNestedNavigationDerivesSidebarAncestor();
@@ -51,6 +69,8 @@ private slots:
     void usesInjectedProfileForIsSudo();
     void ownsBluetoothServiceWithoutStartingIt();
     void preservesInjectedBluetoothServiceWithoutStartingIt();
+    void ownsAudioServiceWithoutStartingIt();
+    void preservesInjectedAudioServiceWithoutStartingIt();
     void exposesRustBackedVisualEffectsController();
 };
 
@@ -75,6 +95,17 @@ void SettingsControllerTest::navigatesToBluetoothPage()
     QCOMPARE(controller.selectedSidebarId(), QStringLiteral("bluetooth"));
     QCOMPARE(controller.selectedPageSource(),
              QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Bluetooth.qml")));
+}
+
+void SettingsControllerTest::navigatesToAudioPage()
+{
+    SettingsController controller;
+
+    QVERIFY(controller.navigateTo(QStringLiteral("audio")));
+    QCOMPARE(controller.currentDestinationId(), QStringLiteral("audio"));
+    QCOMPARE(controller.selectedSidebarId(), QStringLiteral("audio"));
+    QCOMPARE(controller.selectedPageSource(),
+             QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Audio.qml")));
 }
 
 void SettingsControllerTest::navigatesToCustomizationHub()
@@ -260,6 +291,31 @@ void SettingsControllerTest::preservesInjectedBluetoothServiceWithoutStartingIt(
     QCOMPARE(controller.bluetooth(), servicePointer);
     QCOMPARE(backendPointer->startCount, 0);
     QCOMPARE(controller.bluetooth()->state(), Astrea::System::SystemServiceState::Stopped);
+}
+
+void SettingsControllerTest::ownsAudioServiceWithoutStartingIt()
+{
+    SettingsController controller;
+
+    QVERIFY(controller.audio() != nullptr);
+    QCOMPARE(controller.audio()->state(), Astrea::System::SystemServiceState::Stopped);
+    QCOMPARE(controller.property("audio").value<Astrea::System::AudioService *>(),
+             controller.audio());
+}
+
+void SettingsControllerTest::preservesInjectedAudioServiceWithoutStartingIt()
+{
+    auto backend = std::make_unique<ControllerAudioBackend>();
+    ControllerAudioBackend *backendPointer = backend.get();
+    auto service = std::make_unique<Astrea::System::AudioService>(std::move(backend));
+    Astrea::System::AudioService *servicePointer = service.get();
+    auto navigationModel = std::make_unique<SettingsNavigationModel>();
+
+    SettingsController controller(std::move(navigationModel), {}, {}, {}, std::move(service));
+
+    QCOMPARE(controller.audio(), servicePointer);
+    QCOMPARE(backendPointer->startCount, 0);
+    QCOMPARE(controller.audio()->state(), Astrea::System::SystemServiceState::Stopped);
 }
 
 void SettingsControllerTest::exposesRustBackedVisualEffectsController()

@@ -13,6 +13,9 @@ FocusScope {
     readonly property var audio:
         typeof SettingsController !== "undefined" && SettingsController
             ? SettingsController.audio : null
+    readonly property var spatialAudio:
+        typeof SettingsController !== "undefined" && SettingsController
+            ? SettingsController.spatialAudio : null
     readonly property bool hasDefaultState: root.audio ? root.audio.defaultStateAvailable : false
     readonly property bool canMutateDefault:
         root.audio ? root.audio.available && root.audio.ready
@@ -316,6 +319,55 @@ FocusScope {
                 font.family: Components.Theme.fontFamily
                 font.pixelSize: Components.Theme.fontSizeMedium
                 horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        Form.SectionHeader {
+            text: I18n.tr("apps.settings.pages.system.audio.section.spatial_audio", "SPATIAL AUDIO")
+            Layout.bottomMargin: 12
+        }
+
+        Form.FormCard {
+            Layout.bottomMargin: 24
+
+            Form.SettingRow {
+                label: I18n.tr("apps.settings.pages.system.audio.label.spatial_audio",
+                               "Spatial Audio")
+                sublabel: root.spatialAudio && root.spatialAudio.spatialAudioEnabled
+                    ? I18n.tr("apps.settings.pages.system.audio.sublabel.spatial_audio.enabled",
+                              "Creates the Astrea 7.1 spatial output while the Astrea audio runtime is active.")
+                    : I18n.tr("apps.settings.pages.system.audio.sublabel.spatial_audio.disabled",
+                              "Enable Astrea binaural spatial processing.")
+                isLast: true
+
+                Controls.ToggleSwitch {
+                    objectName: "spatialAudioToggle"
+                    checked: root.spatialAudio
+                        ? root.spatialAudio.spatialAudioEnabled : false
+                    enabled: root.spatialAudio !== null
+                    accessibleName: I18n.tr("apps.settings.pages.system.audio.label.spatial_audio",
+                                            "Spatial Audio")
+                    onToggled: targetChecked => {
+                        if (root.spatialAudio)
+                            root.spatialAudio.setSpatialAudioEnabled(targetChecked)
+                    }
+                }
+            }
+
+            Text {
+                objectName: "spatialAudioConfigError"
+                Layout.fillWidth: true
+                Layout.leftMargin: Components.Theme.spacingLarge
+                Layout.rightMargin: Components.Theme.spacingLarge
+                Layout.bottomMargin: Components.Theme.spacingLarge
+                visible: root.spatialAudio
+                    && root.spatialAudio.spatialAudioConfigError !== ""
+                text: root.spatialAudio
+                    ? root.spatialAudio.spatialAudioConfigError : ""
+                color: Components.Theme.textSecondary
+                font.family: Components.Theme.fontFamily
+                font.pixelSize: Components.Theme.fontSizeSmall
                 wrapMode: Text.WordWrap
             }
         }

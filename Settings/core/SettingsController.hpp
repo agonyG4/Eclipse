@@ -2,6 +2,7 @@
 
 #include "core/navigation/SettingsNavigationModel.hpp"
 #include "services/assets/SettingsIconResolver.hpp"
+#include "services/audio/SettingsSpatialAudioController.hpp"
 #include "services/dock/SettingsDockController.hpp"
 #include "services/profile/SettingsUserProfile.hpp"
 #include "services/wallpaper/SettingsWallpaperController.hpp"
@@ -43,6 +44,7 @@ class SettingsController final : public QObject {
     Q_PROPERTY(SettingsVisualEffectsController *visualEffects READ visualEffects CONSTANT)
     Q_PROPERTY(Astrea::System::BluetoothService *bluetooth READ bluetooth CONSTANT)
     Q_PROPERTY(Astrea::System::AudioService *audio READ audio CONSTANT)
+    Q_PROPERTY(SettingsSpatialAudioController *spatialAudio READ spatialAudio CONSTANT)
 
 public:
     explicit SettingsController(QObject *parent = nullptr);
@@ -73,6 +75,7 @@ public:
     SettingsVisualEffectsController *visualEffects() const { return m_visualEffectsController.get(); }
     Astrea::System::BluetoothService *bluetooth() const { return m_bluetoothService.get(); }
     Astrea::System::AudioService *audio() const { return m_audioService.get(); }
+    SettingsSpatialAudioController *spatialAudio() const { return m_spatialAudioController.get(); }
 
     Q_INVOKABLE bool navigateTo(const QString &id);
     Q_INVOKABLE void goBack();
@@ -94,6 +97,7 @@ private:
     const SettingsIconResolver m_iconResolver;
     std::unique_ptr<Astrea::System::BluetoothService> m_bluetoothService;
     std::unique_ptr<Astrea::System::AudioService> m_audioService;
+    std::unique_ptr<SettingsSpatialAudioController> m_spatialAudioController;
     std::unique_ptr<SettingsWallpaperController> m_wallpaperController;
     std::unique_ptr<SettingsDockController> m_dockController;
     std::unique_ptr<SettingsAnimationController> m_animationController;

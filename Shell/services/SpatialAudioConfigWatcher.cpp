@@ -1,12 +1,9 @@
 #include "services/SpatialAudioConfigWatcher.hpp"
 
+#include "system/audio/spatial/SpatialAudioConfig.hpp"
+
 #include <QDir>
-#include <QFile>
 #include <QFileInfo>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QJsonParseError>
-#include <QJsonValue>
 
 #include <utility>
 
@@ -32,59 +29,22 @@ SpatialAudioConfigWatcher::SpatialAudioConfigWatcher(const QString &configPath,
 }
 
 QString SpatialAudioConfigWatcher::defaultConfigPath() {
-    QString configHome = qEnvironmentVariable("XDG_CONFIG_HOME");
-    if (configHome.isEmpty())
-        configHome = QDir::home().filePath(QStringLiteral(".config"));
-    return QDir(configHome)
-        .filePath(QStringLiteral("AstreaOS/audio/spatial.json"));
+    return Astrea::System::SpatialAudioConfigStore::defaultPath();
 }
 
 void SpatialAudioConfigWatcher::scheduleRefresh() { m_debounce.start(); }
 
 void SpatialAudioConfigWatcher::refresh() {
-    bool enabled = false;
-    QString error;
-    const QFileInfo configInfo(m_configPath);
-    if (configInfo.exists()) {
-        QFile file(m_configPath);
-        if (!file.open(QIODevice::ReadOnly)) {
-            error =
-                QStringLiteral("Cannot read Spatial Audio configuration: %1")
-                    .arg(file.errorString());
-        } else {
-            QJsonParseError parseError;
-            const QJsonDocument document =
-                QJsonDocument::fromJson(file.readAll(), &parseError);
-            if (parseError.error != QJsonParseError::NoError) {
-                error =
-                    QStringLiteral("Invalid Spatial Audio configuration: %1")
-                        .arg(parseError.errorString());
-            } else if (!document.isObject()) {
-                error = QStringLiteral(
-                    "Spatial Audio configuration must be a JSON object");
-            } else {
-                const QJsonObject object = document.object();
-                const QJsonValue enabledValue =
-                    object.value(QStringLiteral("enabled"));
-                if (enabledValue.isUndefined()) {
-                    enabled = false;
-                } else if (enabledValue.isBool()) {
-                    enabled = enabledValue.toBool();
-                } else {
-                    error = QStringLiteral("Spatial Audio configuration "
-                                           "'enabled' must be boolean");
-                }
-            }
-        }
-    }
+    const auto snapshot =
+        Astrea::System::SpatialAudioConfigStore::read(m_configPath);
 
     refreshWatchPaths();
-    if (m_enabled != enabled) {
-        m_enabled = enabled;
+    if (m_enabled != snapshot.enabled) {
+        m_enabled = snapshot.enabled;
         emit enabledChanged(m_enabled);
     }
-    if (m_errorString != error) {
-        m_errorString = std::move(error);
+    if (m_errorString != snapshot.error) {
+        m_errorString = snapshot.error;
         emit errorChanged(m_errorString);
     }
 }

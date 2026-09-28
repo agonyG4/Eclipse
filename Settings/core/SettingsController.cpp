@@ -30,6 +30,7 @@ SettingsController::SettingsController(std::unique_ptr<SettingsNavigationModel> 
                                           : std::make_unique<Astrea::System::BluetoothService>())
     , m_audioService(audioService ? std::move(audioService)
                                   : std::make_unique<Astrea::System::AudioService>())
+    , m_spatialAudioController(std::make_unique<SettingsSpatialAudioController>())
 {
     if (!m_navigationModel)
         m_navigationModel = std::make_unique<SettingsNavigationModel>();

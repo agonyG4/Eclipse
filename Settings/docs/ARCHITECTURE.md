@@ -62,6 +62,14 @@ state and do not prevent Settings from opening. The engine is destroyed before
 the controller, so page teardown can release its discovery lease and cancel an
 active pairing before the shared services are stopped by their destructors.
 
+The Audio page's Spatial Audio toggle uses the independent
+`SettingsController.spatialAudio` controller and the shared
+`SpatialAudioConfigStore` to mutate the same `AstreaOS/audio/spatial.json`
+desired-state file watched by Shell. Settings owns that persisted user intent;
+Shell owns runtime preparation and teardown. The toggle does not report runtime
+health, and enabling it does not select Astrea as the default output. QML does
+not access the config file, HRTF assets, or DSP.
+
 ## Target Boundaries
 
 `astrea-settings-core` is a reusable static native library. Its public link

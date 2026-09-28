@@ -13,6 +13,8 @@ add_library(astrea-settings-core STATIC
     ${ASTREA_SETTINGS_BACKEND_CXXQT_HEADERS}
     ../services/wallpaper/SettingsWallpaperController.cpp
     ../services/wallpaper/SettingsWallpaperController.hpp
+    ../services/audio/SettingsSpatialAudioController.cpp
+    ../services/audio/SettingsSpatialAudioController.hpp
     navigation/SettingsNavigationCatalog.cpp
     navigation/SettingsNavigationCatalog.hpp
     navigation/SettingsNavigationEntry.hpp

@@ -5,12 +5,19 @@
 #include "system/audio/AudioService.hpp"
 #include "theme/ThemeController.hpp"
 
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QGuiApplication>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QSaveFile>
+#include <QTemporaryDir>
 #include <QtQml>
 #include <QtTest>
 
@@ -28,10 +35,48 @@ public:
 class NullAudioController final : public QObject {
     Q_OBJECT
     Q_PROPERTY(QObject *audio READ audio CONSTANT)
+    Q_PROPERTY(QObject *spatialAudio READ spatialAudio CONSTANT)
 
 public:
     QObject *audio() const { return nullptr; }
+    QObject *spatialAudio() const { return nullptr; }
 };
+
+class XdgConfigHome final {
+public:
+    explicit XdgConfigHome(const QString &path)
+        : m_wasSet(qEnvironmentVariableIsSet("XDG_CONFIG_HOME"))
+        , m_previous(qgetenv("XDG_CONFIG_HOME"))
+    {
+        qputenv("XDG_CONFIG_HOME", path.toUtf8());
+    }
+
+    ~XdgConfigHome()
+    {
+        if (m_wasSet)
+            qputenv("XDG_CONFIG_HOME", m_previous);
+        else
+            qunsetenv("XDG_CONFIG_HOME");
+    }
+
+private:
+    bool m_wasSet = false;
+    QByteArray m_previous;
+};
+
+QString spatialAudioConfigPath(const QString &configHome)
+{
+    return QDir(configHome).filePath(QStringLiteral("AstreaOS/audio/spatial.json"));
+}
+
+bool writeConfigAtomically(const QString &path, const QByteArray &contents)
+{
+    if (!QDir().mkpath(QFileInfo(path).absolutePath()))
+        return false;
+    QSaveFile file(path);
+    return file.open(QIODevice::WriteOnly) && file.write(contents) == contents.size()
+        && file.commit();
+}
 
 class PageAudioBackend final : public Astrea::System::AudioBackend {
 public:
@@ -117,6 +162,7 @@ class AudioPageFixture final {
 public:
     explicit AudioPageFixture(bool nullAudio = false, bool backendStarts = true)
     {
+        m_environmentGuard = std::make_unique<XdgConfigHome>(m_configHome.path());
         auto backend = std::make_unique<PageAudioBackend>();
         m_backend = backend.get();
         m_backend->startResult = backendStarts;
@@ -173,6 +219,7 @@ public:
     }
 
     QString componentErrors() const { return m_component->errorString(); }
+    QString configHomePath() const { return m_configHome.path(); }
     PageAudioBackend *backend() const { return m_backend; }
     SettingsController *controller() const { return m_controller.get(); }
     QQuickItem *page() const { return m_page; }
@@ -210,6 +257,8 @@ private:
         return nullptr;
     }
 
+    QTemporaryDir m_configHome;
+    std::unique_ptr<XdgConfigHome> m_environmentGuard;
     FakeI18n m_i18n;
     ThemeController m_theme;
     NullAudioController m_nullAudioController;
@@ -234,6 +283,7 @@ private slots:
     void emptyOutputStateAndServiceHealthRemainUsable();
     void virtualOutputRemainsVisibleAndSelectable();
     void nullAudioServiceHasStableUnavailablePresentation();
+    void spatialAudioToggleUsesPersistedStateWhenAudioServiceIsUnavailable();
 };
 
 void SettingsAudioQmlTest::pageLoadsFromAudioRouteAndShowsHumanOutputNames()
@@ -414,6 +464,67 @@ void SettingsAudioQmlTest::nullAudioServiceHasStableUnavailablePresentation()
     QVERIFY(!fixture.findObject(QStringLiteral("audioVolumeSlider"))->property("enabled").toBool());
     QVERIFY(!fixture.findObject(QStringLiteral("audioMuteToggle"))->property("enabled").toBool());
     QVERIFY(fixture.findObject(QStringLiteral("audioOutputsUnavailable"))->property("visible").toBool());
+}
+
+void SettingsAudioQmlTest::spatialAudioToggleUsesPersistedStateWhenAudioServiceIsUnavailable()
+{
+    AudioPageFixture fixture(false, false);
+    QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.componentErrors()));
+    QVERIFY(!fixture.controller()->audio()->available());
+
+    QObject *toggle = fixture.findObject(QStringLiteral("spatialAudioToggle"));
+    QVERIFY(toggle != nullptr);
+    QVERIFY(toggle->property("enabled").toBool());
+    QVERIFY(!toggle->property("checked").toBool());
+
+    QVERIFY(QMetaObject::invokeMethod(toggle, "toggled", Q_ARG(bool, true)));
+    QTRY_VERIFY_WITH_TIMEOUT(fixture.controller()->spatialAudio()->spatialAudioEnabled(), 1000);
+    QVERIFY(toggle->property("checked").toBool());
+    QVERIFY(fixture.controller()->spatialAudio()->spatialAudioConfigValid());
+    QVERIFY(fixture.controller()->spatialAudio()->spatialAudioConfigError().isEmpty());
+    QCOMPARE(fixture.backend()->defaultOutputRequests.size(), 0);
+
+    const QString path = spatialAudioConfigPath(fixture.configHomePath());
+    QFile saved(path);
+    QVERIFY(saved.open(QIODevice::ReadOnly));
+    QCOMPARE(QJsonDocument::fromJson(saved.readAll()).object()
+                 .value(QStringLiteral("enabled")).toBool(), true);
+
+    QVERIFY(writeConfigAtomically(path, QByteArrayLiteral(R"({"enabled":false})")));
+    QTRY_VERIFY_WITH_TIMEOUT(!fixture.controller()->spatialAudio()->spatialAudioEnabled(), 3000);
+    QVERIFY(!toggle->property("checked").toBool());
+    QCOMPARE(fixture.backend()->defaultOutputRequests.size(), 0);
+
+    const QString audioDirectory = QFileInfo(path).absolutePath();
+    QVERIFY(QDir().rename(audioDirectory, audioDirectory + QStringLiteral(".saved")));
+    QFile obstruction(audioDirectory);
+    QVERIFY(obstruction.open(QIODevice::WriteOnly));
+    QCOMPARE(obstruction.write(QByteArrayLiteral("blocked")), qsizetype(7));
+    obstruction.close();
+
+    QVERIFY(QMetaObject::invokeMethod(toggle, "toggled", Q_ARG(bool, true)));
+    QCoreApplication::processEvents();
+    QVERIFY(!toggle->property("checked").toBool());
+    QObject *diagnostic = fixture.findObject(QStringLiteral("spatialAudioConfigError"));
+    QVERIFY(diagnostic != nullptr);
+    QVERIFY(diagnostic->property("visible").toBool());
+    QVERIFY(!diagnostic->property("text").toString().isEmpty());
+
+    AudioPageFixture stoppedFixture;
+    stoppedFixture.controller()->audio()->stop();
+    QVERIFY(!stoppedFixture.controller()->audio()->available());
+    QVERIFY(!stoppedFixture.controller()->audio()->ready());
+    QVERIFY2(stoppedFixture.createPage() != nullptr,
+             qPrintable(stoppedFixture.componentErrors()));
+    QCOMPARE(stoppedFixture.findObject(QStringLiteral("audioServiceStatus"))
+                 ->property("text").toString(),
+             QStringLiteral("Audio service is inactive"));
+    QObject *stoppedToggle =
+        stoppedFixture.findObject(QStringLiteral("spatialAudioToggle"));
+    QVERIFY(stoppedToggle != nullptr);
+    QVERIFY(stoppedToggle->property("enabled").toBool());
+    QVERIFY(QMetaObject::invokeMethod(stoppedToggle, "toggled", Q_ARG(bool, true)));
+    QVERIFY(stoppedToggle->property("checked").toBool());
 }
 
 QTEST_MAIN(SettingsAudioQmlTest)

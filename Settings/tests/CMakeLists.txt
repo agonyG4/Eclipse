@@ -16,6 +16,7 @@ function(add_settings_unit_test target source)
 endfunction()
 
 add_settings_unit_test(settings-controller-test unit/SettingsControllerTest.cpp)
+add_settings_unit_test(settings-spatial-audio-controller-test unit/SettingsSpatialAudioControllerTest.cpp)
 add_settings_unit_test(settings-animation-controller-test unit/SettingsAnimationControllerTest.cpp)
 add_settings_unit_test(settings-visual-effects-controller-test unit/SettingsVisualEffectsControllerTest.cpp)
 add_settings_unit_test(settings-appearance-controller-test unit/SettingsAppearanceControllerTest.cpp)

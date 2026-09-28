@@ -16,6 +16,7 @@ struct pw_core;
 struct pw_stream;
 struct pw_thread_loop;
 struct spa_pod;
+class PipeWireSpatialHostTest;
 
 namespace Astrea::System {
 
@@ -27,7 +28,8 @@ public:
   PipeWireSpatialHost(const PipeWireSpatialHost &) = delete;
   PipeWireSpatialHost &operator=(const PipeWireSpatialHost &) = delete;
 
-  bool start(void *rustEngineHandle, int *errorCode = nullptr);
+  bool start(void *rustEngineHandle, int runtimeErrorNotifyFd,
+             int *errorCode = nullptr);
   void stop() noexcept;
   bool isRunning() const noexcept {
     return m_running.load(std::memory_order_acquire);
@@ -37,6 +39,8 @@ public:
   }
 
 private:
+  friend class ::PipeWireSpatialHostTest;
+
   static constexpr std::uint32_t CallbackClosingBit = 1U << 31U;
   static constexpr std::uint32_t CallbackCountMask = ~CallbackClosingBit;
 
@@ -111,6 +115,8 @@ private:
   std::atomic<bool> m_pairReady{false};
   std::atomic<bool> m_running{false};
   std::atomic<int> m_runtimeError{0};
+  // Borrowed from SpatialAudioEngine; the owner keeps it open through stop().
+  int m_runtimeErrorNotifyFd = -1;
 };
 
 } // namespace Astrea::System

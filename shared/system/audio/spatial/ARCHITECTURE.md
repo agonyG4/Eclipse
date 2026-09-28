@@ -87,6 +87,18 @@ then stops and destroys the loop. The facade destroys the host after this callba
 closed, then destroys the Rust handle and releases prepared banks, FFT plans, convolution history,
 and scratch state. It leaves the lightweight facade available for later reactivation.
 
+A fatal runtime host error is latched once while the stream pair is live. The callback publishes the
+atomic error and makes one nonblocking write to a per-activation `eventfd`; realtime code does not
+call Qt or destroy resources. A `QSocketNotifier` delivers the notification on the Shell control
+thread. Each host activation has a new notification channel and monotonically increasing epoch, so
+stale notifications cannot tear down a later activation. The control thread invalidates the epoch
+and disables the notifier, stops and destroys the host while its eventfd remains open, then closes
+the channel and destroys the Rust handle. Marking the pair inactive before intentional stream
+disconnect suppresses shutdown callbacks as runtime failures. A fatal runtime error therefore
+releases failed host and DSP resources while preserving `enabled = true` and lifecycle state
+`Failed`; automatic retry remains deferred. An explicit disable followed by enable is the recovery
+path.
+
 Default-output policy remains deferred. This host does not make Astrea the global default sink,
 select a backing device, or set a physical `filter.smart.target`; the playback stream uses normal
 WirePlumber default-target behavior when no external target is configured.

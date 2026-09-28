@@ -8,8 +8,12 @@
 
 #include <algorithm>
 #include <array>
+#include <cerrno>
 #include <cstdint>
+#include <fcntl.h>
 #include <string>
+#include <sys/eventfd.h>
+#include <unistd.h>
 #include <vector>
 
 #include <QTest>
@@ -121,6 +125,9 @@ private slots:
   void failedCaptureTriggerRecyclesAllPendingBuffers();
   void startupFailureAtEveryStageRollsBackOwnedResources();
   void repeatedStopIsSafe();
+  void activeRuntimeErrorIsLatchedAndNotifiedOnlyOnce();
+  void closingPairSuppressesStreamAndCoreErrors();
+  void failedNotificationWriteKeepsTheAtomicError();
 };
 
 void PipeWireSpatialHostTest::canonicalMainFormatIsSevenPointOneFloatPlanar() {
@@ -429,6 +436,70 @@ void PipeWireSpatialHostTest::repeatedStopIsSafe() {
   PipeWireSpatialHost host;
   host.stop();
   host.stop();
+  QVERIFY(!host.isRunning());
+}
+
+void PipeWireSpatialHostTest::activeRuntimeErrorIsLatchedAndNotifiedOnlyOnce() {
+  const int notifyFd = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+  QVERIFY(notifyFd >= 0);
+
+  PipeWireSpatialHost host;
+  host.m_runtimeErrorNotifyFd = notifyFd;
+  host.m_pairReady.store(true, std::memory_order_release);
+  host.m_running.store(true, std::memory_order_release);
+
+  host.publishRuntimeError(-EPIPE);
+  host.publishRuntimeError(ENODEV);
+
+  QCOMPARE(host.hostError(), EPIPE);
+  QVERIFY(!host.isRunning());
+  std::uint64_t notification = 0;
+  QCOMPARE(::read(notifyFd, &notification, sizeof(notification)),
+           static_cast<ssize_t>(sizeof(notification)));
+  QCOMPARE(notification, static_cast<std::uint64_t>(EPIPE));
+  errno = 0;
+  QCOMPARE(::read(notifyFd, &notification, sizeof(notification)),
+           static_cast<ssize_t>(-1));
+  QCOMPARE(errno, EAGAIN);
+
+  host.stop();
+  ::close(notifyFd);
+}
+
+void PipeWireSpatialHostTest::closingPairSuppressesStreamAndCoreErrors() {
+  const int notifyFd = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+  QVERIFY(notifyFd >= 0);
+
+  PipeWireSpatialHost host;
+  host.m_runtimeErrorNotifyFd = notifyFd;
+  host.m_pairReady.store(true, std::memory_order_release);
+  host.m_running.store(true, std::memory_order_release);
+  host.stop();
+
+  host.handleStreamState(false, PW_STREAM_STATE_STREAMING,
+                         PW_STREAM_STATE_UNCONNECTED, nullptr);
+  PipeWireSpatialHost::coreError(&host, 0, 0, -ENOTCONN, nullptr);
+
+  QCOMPARE(host.hostError(), 0);
+  QVERIFY(!host.isRunning());
+  std::uint64_t notification = 0;
+  errno = 0;
+  QCOMPARE(::read(notifyFd, &notification, sizeof(notification)),
+           static_cast<ssize_t>(-1));
+  QCOMPARE(errno, EAGAIN);
+  ::close(notifyFd);
+}
+
+void PipeWireSpatialHostTest::failedNotificationWriteKeepsTheAtomicError() {
+  PipeWireSpatialHost host;
+  host.m_runtimeErrorNotifyFd = -1;
+  host.m_pairReady.store(true, std::memory_order_release);
+  host.m_running.store(true, std::memory_order_release);
+
+  host.publishRuntimeError(0);
+  host.publishRuntimeError(ENODEV);
+
+  QCOMPARE(host.hostError(), EIO);
   QVERIFY(!host.isRunning());
 }
 

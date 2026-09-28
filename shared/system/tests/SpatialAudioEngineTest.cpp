@@ -3,9 +3,14 @@
 #include <QTest>
 
 #include <atomic>
+#include <cerrno>
 #include <condition_variable>
+#include <cstdint>
+#include <fcntl.h>
 #include <mutex>
 #include <string>
+#include <sys/eventfd.h>
+#include <unistd.h>
 #include <vector>
 
 using Astrea::System::SpatialAudioEngine;
@@ -21,6 +26,10 @@ struct LifecycleProbe {
   bool blockPreparation = false;
   bool failPreparation = false;
   bool failHostStart = false;
+  bool writeDuringHostStop = false;
+  bool notificationFdOpenDuringHostStop = false;
+  ssize_t stopWriteResult = -1;
+  std::vector<int> notificationFds;
   std::mutex mutex;
   std::condition_variable condition;
   bool releasePreparation = false;
@@ -69,9 +78,11 @@ SpatialAudioEngine::LifecycleHooks hooksFor(LifecycleProbe &probe) {
     ++probe.destroyCalls;
     delete reinterpret_cast<int *>(handle);
   };
-  hooks.startHost = [&probe](SpatialAudioHandle *handle, int *errorCode) {
+  hooks.startHost = [&probe](SpatialAudioHandle *handle, int notificationFd,
+                             int *errorCode) {
     probe.record("start");
     ++probe.hostStartCalls;
+    probe.notificationFds.push_back(notificationFd);
     if (!handle)
       return false;
     if (probe.failHostStart) {
@@ -86,8 +97,24 @@ SpatialAudioEngine::LifecycleHooks hooksFor(LifecycleProbe &probe) {
   hooks.stopHost = [&probe] {
     probe.record("stop");
     ++probe.hostStopCalls;
+    if (!probe.notificationFds.empty()) {
+      const int notificationFd = probe.notificationFds.back();
+      probe.notificationFdOpenDuringHostStop =
+          ::fcntl(notificationFd, F_GETFD) != -1;
+      if (probe.writeDuringHostStop) {
+        const std::uint64_t lateError = EIO;
+        probe.stopWriteResult =
+            ::write(notificationFd, &lateError, sizeof(lateError));
+      }
+    }
   };
   return hooks;
+}
+
+bool writeRuntimeError(int notificationFd, int errorCode) {
+  const auto error = static_cast<std::uint64_t>(errorCode);
+  return ::write(notificationFd, &error, sizeof(error)) ==
+         static_cast<ssize_t>(sizeof(error));
 }
 
 } // namespace
@@ -104,6 +131,10 @@ private slots:
   void rapidTogglesReuseTheInFlightPreparation();
   void preparationFailureDoesNotStartHost();
   void hostFailureDestroysPreparedHandle();
+  void runtimeHostFailureTearsDownAndPreservesHealth();
+  void queuedFailureIsIgnoredAfterDisable();
+  void queuedFailureIsIgnoredAfterRuntimeStop();
+  void staleFailureDoesNotStopTheNewActivation();
   void destructionJoinsPreparationAndDestroysItsResult();
 };
 
@@ -154,6 +185,11 @@ void SpatialAudioEngineTest::enablePreparesOnceAndStartsOneHost() {
   engine.start();
   QCOMPARE(probe.prepareCalls.load(), 1);
   QCOMPARE(probe.hostStartCalls.load(), 1);
+  QCOMPARE(probe.notificationFds.size(), std::size_t(1));
+  const int notificationFd = probe.notificationFds.back();
+  QVERIFY(notificationFd >= 0);
+  QVERIFY((::fcntl(notificationFd, F_GETFL) & O_NONBLOCK) != 0);
+  QVERIFY((::fcntl(notificationFd, F_GETFD) & FD_CLOEXEC) != 0);
   const QJsonObject health = engine.healthJson();
   QCOMPARE(health.value(QStringLiteral("state")).toString(),
            QStringLiteral("running"));
@@ -181,10 +217,15 @@ void SpatialAudioEngineTest::disableStopsHostBeforeDestroyAndIsIdempotent() {
   QCOMPARE(QString::fromStdString(events.at(0)), QStringLiteral("start"));
   QCOMPARE(QString::fromStdString(events.at(1)), QStringLiteral("stop"));
   QCOMPARE(QString::fromStdString(events.at(2)), QStringLiteral("destroy"));
+  QVERIFY(probe.notificationFdOpenDuringHostStop);
+  errno = 0;
+  QCOMPARE(::fcntl(probe.notificationFds.front(), F_GETFD), -1);
+  QCOMPARE(errno, EBADF);
 
   engine.setEnabled(false);
   QCOMPARE(probe.hostStopCalls.load(), 1);
   QCOMPARE(probe.destroyCalls.load(), 1);
+  QCOMPARE(engine.hostError(), 0);
 }
 
 void SpatialAudioEngineTest::stopReleasesResourcesAndRestartPreparesAgain() {
@@ -200,6 +241,14 @@ void SpatialAudioEngineTest::stopReleasesResourcesAndRestartPreparesAgain() {
   QVERIFY(engine.enabled());
   QVERIFY(!engine.isPrepared());
   QCOMPARE(engine.lifecycleStateName(), QStringLiteral("disabled"));
+  QCOMPARE(engine.hostError(), 0);
+  QCOMPARE(probe.hostStopCalls.load(), 1);
+  QCOMPARE(probe.destroyCalls.load(), 1);
+  QVERIFY(probe.notificationFdOpenDuringHostStop);
+  const int stoppedNotificationFd = probe.notificationFds.front();
+  errno = 0;
+  QCOMPARE(::fcntl(stoppedNotificationFd, F_GETFD), -1);
+  QCOMPARE(errno, EBADF);
 
   engine.start();
   QTRY_COMPARE_WITH_TIMEOUT(engine.lifecycleStateName(),
@@ -274,6 +323,119 @@ void SpatialAudioEngineTest::hostFailureDestroysPreparedHandle() {
   QVERIFY(!engine.isRunning());
   QCOMPARE(engine.hostError(), 73);
   QCOMPARE(probe.hostStartCalls.load(), 1);
+  QCOMPARE(probe.hostStopCalls.load(), 1);
+  QCOMPARE(probe.destroyCalls.load(), 1);
+}
+
+void SpatialAudioEngineTest::runtimeHostFailureTearsDownAndPreservesHealth() {
+  LifecycleProbe probe;
+  SpatialAudioEngine engine(hooksFor(probe));
+  engine.start();
+  engine.setEnabled(true);
+  QTRY_COMPARE_WITH_TIMEOUT(engine.lifecycleStateName(),
+                            QStringLiteral("running"), 3000);
+  QCOMPARE(probe.notificationFds.size(), std::size_t(1));
+
+  QVERIFY(writeRuntimeError(probe.notificationFds.front(), ENETDOWN));
+  QTRY_COMPARE_WITH_TIMEOUT(engine.lifecycleStateName(),
+                            QStringLiteral("failed"), 3000);
+
+  QVERIFY(engine.enabled());
+  QVERIFY(!engine.isPrepared());
+  QVERIFY(!engine.isRunning());
+  QCOMPARE(engine.hostError(), ENETDOWN);
+  QCOMPARE(probe.hostStopCalls.load(), 1);
+  QCOMPARE(probe.destroyCalls.load(), 1);
+  QVERIFY(probe.notificationFdOpenDuringHostStop);
+  const auto events = probe.recordedEvents();
+  QCOMPARE(events.size(), std::size_t(3));
+  QCOMPARE(QString::fromStdString(events.at(0)), QStringLiteral("start"));
+  QCOMPARE(QString::fromStdString(events.at(1)), QStringLiteral("stop"));
+  QCOMPARE(QString::fromStdString(events.at(2)), QStringLiteral("destroy"));
+
+  const QJsonObject health = engine.healthJson();
+  QCOMPARE(health.value(QStringLiteral("state")).toString(),
+           QStringLiteral("failed"));
+  QVERIFY(health.value(QStringLiteral("enabled")).toBool());
+  QVERIFY(!health.value(QStringLiteral("prepared")).toBool());
+  QVERIFY(!health.value(QStringLiteral("running")).toBool());
+  QCOMPARE(health.value(QStringLiteral("hostError")).toInt(), ENETDOWN);
+}
+
+void SpatialAudioEngineTest::queuedFailureIsIgnoredAfterDisable() {
+  LifecycleProbe probe;
+  SpatialAudioEngine engine(hooksFor(probe));
+  engine.start();
+  engine.setEnabled(true);
+  QTRY_COMPARE_WITH_TIMEOUT(engine.lifecycleStateName(),
+                            QStringLiteral("running"), 3000);
+
+  QVERIFY(writeRuntimeError(probe.notificationFds.back(), EPIPE));
+  probe.writeDuringHostStop = true;
+  engine.setEnabled(false);
+  QTest::qWait(25);
+
+  QCOMPARE(engine.lifecycleStateName(), QStringLiteral("disabled"));
+  QVERIFY(!engine.enabled());
+  QVERIFY(!engine.isPrepared());
+  QVERIFY(!engine.isRunning());
+  QCOMPARE(engine.hostError(), 0);
+  QCOMPARE(probe.hostStopCalls.load(), 1);
+  QCOMPARE(probe.destroyCalls.load(), 1);
+  QVERIFY(probe.notificationFdOpenDuringHostStop);
+  QCOMPARE(probe.stopWriteResult, static_cast<ssize_t>(sizeof(std::uint64_t)));
+  QCOMPARE(probe.recordedEvents().size(), std::size_t(3));
+}
+
+void SpatialAudioEngineTest::queuedFailureIsIgnoredAfterRuntimeStop() {
+  LifecycleProbe probe;
+  SpatialAudioEngine engine(hooksFor(probe));
+  engine.start();
+  engine.setEnabled(true);
+  QTRY_COMPARE_WITH_TIMEOUT(engine.lifecycleStateName(),
+                            QStringLiteral("running"), 3000);
+
+  QVERIFY(writeRuntimeError(probe.notificationFds.back(), ENETDOWN));
+  probe.writeDuringHostStop = true;
+  engine.stop();
+  QTest::qWait(25);
+
+  QVERIFY(engine.enabled());
+  QVERIFY(!engine.isPrepared());
+  QVERIFY(!engine.isRunning());
+  QCOMPARE(engine.lifecycleStateName(), QStringLiteral("disabled"));
+  QCOMPARE(engine.hostError(), 0);
+  QCOMPARE(probe.hostStopCalls.load(), 1);
+  QCOMPARE(probe.destroyCalls.load(), 1);
+  QVERIFY(probe.notificationFdOpenDuringHostStop);
+  QCOMPARE(probe.stopWriteResult, static_cast<ssize_t>(sizeof(std::uint64_t)));
+}
+
+void SpatialAudioEngineTest::staleFailureDoesNotStopTheNewActivation() {
+  LifecycleProbe probe;
+  SpatialAudioEngine engine(hooksFor(probe));
+  engine.start();
+  engine.setEnabled(true);
+  QTRY_COMPARE_WITH_TIMEOUT(engine.lifecycleStateName(),
+                            QStringLiteral("running"), 3000);
+  const int oldNotificationFd = probe.notificationFds.back();
+  QVERIFY(writeRuntimeError(oldNotificationFd, EPIPE));
+
+  engine.setEnabled(false);
+  engine.setEnabled(true);
+  QTRY_COMPARE_WITH_TIMEOUT(engine.lifecycleStateName(),
+                            QStringLiteral("running"), 3000);
+  QCOMPARE(probe.notificationFds.size(), std::size_t(2));
+  const int newNotificationFd = probe.notificationFds.back();
+  QVERIFY(newNotificationFd >= 0);
+  QTest::qWait(25);
+
+  QCOMPARE(engine.lifecycleStateName(), QStringLiteral("running"));
+  QVERIFY(engine.enabled());
+  QVERIFY(engine.isPrepared());
+  QVERIFY(engine.isRunning());
+  QCOMPARE(engine.hostError(), 0);
+  QCOMPARE(probe.hostStartCalls.load(), 2);
   QCOMPARE(probe.hostStopCalls.load(), 1);
   QCOMPARE(probe.destroyCalls.load(), 1);
 }

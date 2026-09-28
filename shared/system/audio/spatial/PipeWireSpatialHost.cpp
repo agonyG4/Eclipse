@@ -52,7 +52,8 @@ bool hasCanonicalFormat(const spa_pod *param,
 int positiveError(int errorCode) noexcept {
   if (errorCode == INT_MIN)
     return INT_MAX;
-  return errorCode < 0 ? -errorCode : errorCode;
+  const int normalized = errorCode < 0 ? -errorCode : errorCode;
+  return normalized == 0 ? EIO : normalized;
 }
 
 } // namespace
@@ -68,7 +69,8 @@ PipeWireSpatialHost::CallbackGuard::~CallbackGuard() {
 
 PipeWireSpatialHost::~PipeWireSpatialHost() { stop(); }
 
-bool PipeWireSpatialHost::start(void *rustEngineHandle, int *errorCode) {
+bool PipeWireSpatialHost::start(void *rustEngineHandle,
+                                int runtimeErrorNotifyFd, int *errorCode) {
   if (isRunning()) {
     if (errorCode)
       *errorCode = 0;
@@ -76,9 +78,9 @@ bool PipeWireSpatialHost::start(void *rustEngineHandle, int *errorCode) {
   }
   if (m_loop || m_context || m_core || m_capture || m_playback)
     stop();
-  if (!rustEngineHandle) {
+  if (!rustEngineHandle || runtimeErrorNotifyFd < 0) {
     if (errorCode)
-      *errorCode = 1;
+      *errorCode = EINVAL;
     return false;
   }
 
@@ -95,6 +97,7 @@ bool PipeWireSpatialHost::start(void *rustEngineHandle, int *errorCode) {
   m_running.store(false, std::memory_order_relaxed);
   m_callbackState.store(0, std::memory_order_release);
   m_rustEngineHandle = rustEngineHandle;
+  m_runtimeErrorNotifyFd = runtimeErrorNotifyFd;
   m_linkGroup = makeLinkGroup();
   m_latencies[SPA_DIRECTION_INPUT] = SPA_LATENCY_INFO(SPA_DIRECTION_INPUT);
   m_latencies[SPA_DIRECTION_OUTPUT] = SPA_LATENCY_INFO(SPA_DIRECTION_OUTPUT);
@@ -300,6 +303,7 @@ void PipeWireSpatialHost::stop() noexcept {
     m_loop = nullptr;
   }
   m_linkGroup.clear();
+  m_runtimeErrorNotifyFd = -1;
 }
 
 void PipeWireSpatialHost::captureProcess(void *data) noexcept {
@@ -486,12 +490,23 @@ void PipeWireSpatialHost::updateLatency(spa_direction direction,
 }
 
 void PipeWireSpatialHost::publishRuntimeError(int errorCode) noexcept {
+  if (!m_pairReady.load(std::memory_order_acquire))
+    return;
+
   const int normalized = positiveError(errorCode);
   int expected = 0;
   if (m_runtimeError.compare_exchange_strong(expected, normalized,
                                              std::memory_order_release,
-                                             std::memory_order_relaxed))
+                                             std::memory_order_relaxed)) {
+    m_pairReady.store(false, std::memory_order_release);
     m_running.store(false, std::memory_order_release);
+
+    if (m_runtimeErrorNotifyFd >= 0) {
+      const auto notification = static_cast<std::uint64_t>(normalized);
+      static_cast<void>(
+          ::write(m_runtimeErrorNotifyFd, &notification, sizeof(notification)));
+    }
+  }
 }
 
 bool PipeWireSpatialHost::enterCallback() noexcept {

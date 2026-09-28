@@ -344,10 +344,13 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     )
     target_link_libraries(context-menu-qml-interaction-test PRIVATE
         astrea-shell-runtime
+        astrea-shared-coreplugin
+        astrea-shared-system-qtplugin
         astrea-shared-wayland-effects
         astrea-shared-wayland-effectsplugin
         Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test
     )
+    qt_import_qml_plugins(context-menu-qml-interaction-test)
     shell_enable_sanitizers(context-menu-qml-interaction-test)
     add_test(NAME context-menu-qml-interaction-test COMMAND context-menu-qml-interaction-test)
     set_tests_properties(

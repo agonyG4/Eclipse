@@ -4,6 +4,7 @@
 #include "system/network/WifiNetworkModel.hpp"
 
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 #include <functional>
@@ -21,6 +22,14 @@ struct NetworkSnapshot {
     bool connected = false;
     QString connectionName;
     QString interfaceName;
+    QString hardwareAddress;
+    quint32 mtu = 0;
+    bool linkCarrier = false;
+    quint32 linkSpeedMbps = 0;
+    QStringList ipv4Addresses;
+    QString ipv4Gateway;
+    QStringList ipv6Addresses;
+    QString ipv6Gateway;
     quint64 downloadBytesPerSecond = 0;
     quint64 uploadBytesPerSecond = 0;
     QVector<WifiNetwork> wifiNetworks;

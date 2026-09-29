@@ -42,6 +42,10 @@ private:
     void probe();
     void refreshDevices();
     void refreshActiveConnection(const QString &objectPath);
+    void refreshPrimaryRuntimeDetails(bool refreshWired = true, bool refreshIpv4 = true,
+                                     bool refreshIpv6 = true);
+    void refreshWiredProperties(const QString &devicePath);
+    void refreshPrimaryIpConfig(bool ipv4);
     void refreshAccessPoints();
     void refreshAccessPoint(const QString &objectPath);
     void publishUnavailable();
@@ -78,6 +82,9 @@ private:
     QString m_trafficInterface;
     QString m_activeConnectionPath;
     quint64 m_primaryEpoch = 0;
+    quint64 m_wiredPropertiesRequestId = 0;
+    quint64 m_ipv4ConfigRequestId = 0;
+    quint64 m_ipv6ConfigRequestId = 0;
     int m_pendingAccessPointProperties = 0;
     quint64 m_accessPointRefreshGeneration = 0;
     NetworkWirelessRefreshState m_wirelessRefresh;

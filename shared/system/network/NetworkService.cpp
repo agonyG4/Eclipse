@@ -102,6 +102,20 @@ void NetworkService::stop()
     m_wifiAvailable = false;
     m_wifiHardwareEnabled = false;
     m_wifiScanning = false;
+    m_connected = false;
+    m_connectionType = NetworkConnectionType::None;
+    m_connectionName.clear();
+    m_interfaceName.clear();
+    m_hardwareAddress.clear();
+    m_mtu = 0;
+    m_linkCarrier = false;
+    m_linkSpeedMbps = 0;
+    m_ipv4Addresses.clear();
+    m_ipv4Gateway.clear();
+    m_ipv6Addresses.clear();
+    m_ipv6Gateway.clear();
+    m_downloadBytesPerSecond = 0;
+    m_uploadBytesPerSecond = 0;
     emit healthChanged();
     if (oldWifiAvailable)
         emit wifiAvailabilityChanged();
@@ -110,6 +124,8 @@ void NetworkService::stop()
     if (oldPending)
         emit wifiPendingChanged();
     emit wifiScanningChanged();
+    emit connectionChanged();
+    emit trafficChanged();
     setState(SystemServiceState::Stopped);
 }
 
@@ -204,6 +220,15 @@ void NetworkService::applySnapshot(const NetworkSnapshot &snapshot)
     m_connected = snapshot.connected;
     m_connectionName = snapshot.connectionName;
     m_interfaceName = snapshot.interfaceName;
+    const bool hasRuntimeConnection = snapshot.daemonAvailable && snapshot.connected;
+    m_hardwareAddress = hasRuntimeConnection ? snapshot.hardwareAddress : QString();
+    m_mtu = hasRuntimeConnection ? snapshot.mtu : 0;
+    m_linkCarrier = hasRuntimeConnection && snapshot.linkCarrier;
+    m_linkSpeedMbps = hasRuntimeConnection ? snapshot.linkSpeedMbps : 0;
+    m_ipv4Addresses = hasRuntimeConnection ? snapshot.ipv4Addresses : QStringList();
+    m_ipv4Gateway = hasRuntimeConnection ? snapshot.ipv4Gateway : QString();
+    m_ipv6Addresses = hasRuntimeConnection ? snapshot.ipv6Addresses : QStringList();
+    m_ipv6Gateway = hasRuntimeConnection ? snapshot.ipv6Gateway : QString();
     m_downloadBytesPerSecond = snapshot.downloadBytesPerSecond;
     m_uploadBytesPerSecond = snapshot.uploadBytesPerSecond;
     m_wifiModel->replace(snapshot.wifiNetworks);

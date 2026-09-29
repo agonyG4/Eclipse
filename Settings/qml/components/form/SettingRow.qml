@@ -6,6 +6,7 @@ Item {
     id: sr
     property string label: ""
     property string sublabel: ""
+    property int sublabelTextFormat: Text.AutoText
     property bool   isLast:  false
     property bool   clickable: false
     property bool   controlBlocksRowClick: true
@@ -52,6 +53,7 @@ Item {
             Text {
                 visible: sr.sublabel !== "";
                 text: sr.sublabel
+                textFormat: sr.sublabelTextFormat
                 color: sr.textSecondary;
                 font.family: Components.Theme.fontFamily
                 font.pixelSize: Components.Theme.fontSizeSmall;

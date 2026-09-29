@@ -64,13 +64,29 @@ constexpr auto managerPath = "/org/freedesktop/NetworkManager";
 constexpr auto managerInterface = "org.freedesktop.NetworkManager";
 constexpr auto propertiesInterface = "org.freedesktop.DBus.Properties";
 constexpr auto deviceInterface = "org.freedesktop.NetworkManager.Device";
+constexpr uint ethernetDeviceType = 1;
+constexpr auto wiredInterface = "org.freedesktop.NetworkManager.Device.Wired";
 constexpr auto activeConnectionInterface = "org.freedesktop.NetworkManager.Connection.Active";
+constexpr auto ip4ConfigInterface = "org.freedesktop.NetworkManager.IP4Config";
+constexpr auto ip6ConfigInterface = "org.freedesktop.NetworkManager.IP6Config";
 constexpr auto wirelessInterface = "org.freedesktop.NetworkManager.Device.Wireless";
 constexpr auto accessPointInterface = "org.freedesktop.NetworkManager.AccessPoint";
 
 QString objectPathString(const QVariant &value)
 {
     return value.value<QDBusObjectPath>().path();
+}
+
+QVariantMap propertyMapFromDbus(const QVariant &value)
+{
+    if (value.metaType() != QMetaType::fromType<QDBusArgument>())
+        return value.toMap();
+    QDBusArgument argument = value.value<QDBusArgument>();
+    if (argument.currentType() != QDBusArgument::MapType)
+        return {};
+    QVariantMap properties;
+    argument >> properties;
+    return properties;
 }
 
 void reportAsyncError(QDBusPendingCallWatcher *watcher,
@@ -342,7 +358,7 @@ void NetworkManagerBackend::probe()
                 m_callbacks.errorChanged(reply.errorMessage());
             publishUnavailable();
         } else if (!reply.arguments().isEmpty()) {
-            publishFromProperties(reply.arguments().constFirst().toMap());
+            publishFromProperties(propertyMapFromDbus(reply.arguments().constFirst()));
         } else {
             publishFromProperties({});
         }
@@ -360,9 +376,16 @@ void NetworkManagerBackend::refreshDevices()
     m_activeAccessPointPath.clear();
     m_wifiDevicePath.clear();
     m_state.clearPrimary();
+    m_primaryEpoch = m_state.primaryEpoch();
     m_state.clearAccessPoints();
+    ++m_wiredPropertiesRequestId;
+    ++m_ipv4ConfigRequestId;
+    ++m_ipv6ConfigRequestId;
     m_deviceProperties.clear();
     rebuildPropertyWatchers();
+    m_snapshot = m_state.snapshot();
+    m_snapshot.wifiScanning = m_scanState.active();
+    publishReconciledSnapshot();
     m_pendingDeviceProperties = 0;
     QDBusMessage call = QDBusMessage::createMethodCall(
         QString::fromLatin1(serviceName), QString::fromLatin1(managerPath),
@@ -411,8 +434,8 @@ void NetworkManagerBackend::refreshDevices()
                     const QDBusMessage deviceReply = deviceWatcher->reply();
                     if (deviceReply.type() != QDBusMessage::ErrorMessage
                         && !deviceReply.arguments().isEmpty())
-                        m_deviceProperties.insert(path,
-                                                  deviceReply.arguments().constFirst().toMap());
+                        m_deviceProperties.insert(
+                            path, propertyMapFromDbus(deviceReply.arguments().constFirst()));
                     if (--m_pendingDeviceProperties == 0) {
                         rebuildPropertyWatchers();
                         reconcileDevices(generation);
@@ -459,8 +482,8 @@ void NetworkManagerBackend::reconcileDevices(quint64 generation)
                 }
                 const QDBusMessage reply = finished->reply();
                 if (reply.type() != QDBusMessage::ErrorMessage && !reply.arguments().isEmpty())
-                    m_state.setWirelessProperties(path,
-                                                   reply.arguments().constFirst().toMap());
+                    m_state.setWirelessProperties(
+                        path, propertyMapFromDbus(reply.arguments().constFirst()));
                 if (m_wirelessRefresh.complete())
                     finishDeviceReconciliation(generation);
                 finished->deleteLater();
@@ -524,6 +547,13 @@ void NetworkManagerBackend::refreshActiveConnection(const QString &objectPath)
     const quint64 primaryEpoch = m_state.beginPrimaryRequest(objectPath);
     m_primaryEpoch = primaryEpoch;
     m_activeConnectionPath = objectPath;
+    ++m_wiredPropertiesRequestId;
+    ++m_ipv4ConfigRequestId;
+    ++m_ipv6ConfigRequestId;
+    m_snapshot = m_state.snapshot();
+    m_snapshot.wifiScanning = m_scanState.active();
+    rebuildPropertyWatchers();
+    publishReconciledSnapshot();
     QDBusMessage call = QDBusMessage::createMethodCall(
         QString::fromLatin1(serviceName), objectPath,
         QString::fromLatin1(propertiesInterface), QStringLiteral("GetAll"));
@@ -540,15 +570,17 @@ void NetworkManagerBackend::refreshActiveConnection(const QString &objectPath)
         }
         const QDBusMessage reply = finished->reply();
         bool wifiDeviceChanged = false;
+        bool primaryReplyApplied = false;
         if (reply.type() == QDBusMessage::ErrorMessage) {
             if (m_callbacks.errorChanged)
                 m_callbacks.errorChanged(reply.errorMessage());
         } else if (!reply.arguments().isEmpty()) {
-            const QVariantMap properties = reply.arguments().constFirst().toMap();
+            const QVariantMap properties = propertyMapFromDbus(reply.arguments().constFirst());
             if (!m_state.applyPrimaryReply(objectPath, primaryEpoch, properties)) {
                 finished->deleteLater();
                 return;
             }
+            primaryReplyApplied = true;
             wifiDeviceChanged = reconcileSelectedWifiDevice();
             m_snapshot = m_state.snapshot();
             m_snapshot.wifiScanning = m_scanState.active();
@@ -557,6 +589,139 @@ void NetworkManagerBackend::refreshActiveConnection(const QString &objectPath)
             publishReconciledSnapshot();
             if (m_snapshot.wifiAvailable)
                 refreshAccessPoints();
+        }
+        if (primaryReplyApplied) {
+            rebuildPropertyWatchers();
+            refreshPrimaryRuntimeDetails();
+        }
+        finished->deleteLater();
+    });
+}
+
+void NetworkManagerBackend::refreshPrimaryRuntimeDetails(bool refreshWired,
+                                                         bool refreshIpv4,
+                                                         bool refreshIpv6)
+{
+    if (!m_running || m_activeConnectionPath.isEmpty()
+        || m_state.primaryPath() != m_activeConnectionPath
+        || m_state.primaryEpoch() != m_primaryEpoch)
+        return;
+
+    const QString devicePath = m_state.primaryDevicePath();
+    const auto device = m_state.devices().constFind(devicePath);
+    const bool connected = !devicePath.isEmpty()
+        && m_state.snapshot().connected;
+    if (!connected)
+        return;
+
+    if (refreshWired && device != m_state.devices().cend()
+        && device->deviceProperties.value(QStringLiteral("DeviceType")).toUInt()
+            == ethernetDeviceType)
+        refreshWiredProperties(devicePath);
+    if (refreshIpv4 && !m_state.primaryIpv4Config().objectPath.isEmpty())
+        refreshPrimaryIpConfig(true);
+    if (refreshIpv6 && !m_state.primaryIpv6Config().objectPath.isEmpty())
+        refreshPrimaryIpConfig(false);
+}
+
+void NetworkManagerBackend::refreshWiredProperties(const QString &devicePath)
+{
+    if (!m_running || devicePath.isEmpty() || devicePath != m_state.primaryDevicePath()
+        || m_state.primaryPath() != m_activeConnectionPath
+        || m_state.primaryEpoch() != m_primaryEpoch)
+        return;
+    const auto device = m_state.devices().constFind(devicePath);
+    if (device == m_state.devices().cend()
+        || device->deviceProperties.value(QStringLiteral("DeviceType")).toUInt()
+            != ethernetDeviceType
+        || !m_state.snapshot().connected)
+        return;
+
+    const quint64 generation = m_generation;
+    const quint64 refreshGeneration = m_refreshGeneration;
+    const quint64 primaryEpoch = m_primaryEpoch;
+    const quint64 requestId = ++m_wiredPropertiesRequestId;
+    const QString activeConnectionPath = m_activeConnectionPath;
+    QDBusMessage call = QDBusMessage::createMethodCall(
+        QString::fromLatin1(serviceName), devicePath,
+        QString::fromLatin1(propertiesInterface), QStringLiteral("GetAll"));
+    call << QString::fromLatin1(wiredInterface);
+    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(call), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, generation, refreshGeneration, primaryEpoch, requestId,
+             activeConnectionPath, devicePath](QDBusPendingCallWatcher *finished) {
+        if (generation != m_generation || refreshGeneration != m_refreshGeneration
+            || primaryEpoch != m_primaryEpoch || requestId != m_wiredPropertiesRequestId
+            || activeConnectionPath != m_activeConnectionPath || !m_running
+            || devicePath != m_state.primaryDevicePath()) {
+            finished->deleteLater();
+            return;
+        }
+        const QDBusMessage reply = finished->reply();
+        QVariantMap properties;
+        if (reply.type() != QDBusMessage::ErrorMessage && !reply.arguments().isEmpty())
+            properties = propertyMapFromDbus(reply.arguments().constFirst());
+        if (m_state.applyWiredPropertiesReply(activeConnectionPath, primaryEpoch,
+                                              devicePath, std::move(properties))) {
+            m_snapshot = m_state.snapshot();
+            m_snapshot.wifiScanning = m_scanState.active();
+            publishReconciledSnapshot();
+        }
+        finished->deleteLater();
+    });
+}
+
+void NetworkManagerBackend::refreshPrimaryIpConfig(bool ipv4)
+{
+    if (!m_running || m_activeConnectionPath.isEmpty()
+        || m_state.primaryPath() != m_activeConnectionPath
+        || m_state.primaryEpoch() != m_primaryEpoch
+        || !m_state.snapshot().connected)
+        return;
+    const PrimaryIpConfigState &config = ipv4 ? m_state.primaryIpv4Config()
+                                               : m_state.primaryIpv6Config();
+    if (config.objectPath.isEmpty() || config.objectPath == QLatin1String("/"))
+        return;
+
+    const quint64 generation = m_generation;
+    const quint64 refreshGeneration = m_refreshGeneration;
+    const quint64 primaryEpoch = m_primaryEpoch;
+    const QString activeConnectionPath = m_activeConnectionPath;
+    const QString configPath = config.objectPath;
+    quint64 requestId = 0;
+    if (ipv4)
+        requestId = ++m_ipv4ConfigRequestId;
+    else
+        requestId = ++m_ipv6ConfigRequestId;
+    const QString interfaceName = QString::fromLatin1(
+        ipv4 ? ip4ConfigInterface : ip6ConfigInterface);
+    QDBusMessage call = QDBusMessage::createMethodCall(
+        QString::fromLatin1(serviceName), configPath,
+        QString::fromLatin1(propertiesInterface), QStringLiteral("GetAll"));
+    call << interfaceName;
+    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(call), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, ipv4, generation, refreshGeneration, primaryEpoch, requestId,
+             activeConnectionPath, configPath, interfaceName](QDBusPendingCallWatcher *finished) {
+        const quint64 currentRequestId = ipv4 ? m_ipv4ConfigRequestId : m_ipv6ConfigRequestId;
+        const PrimaryIpConfigState &currentConfig = ipv4 ? m_state.primaryIpv4Config()
+                                                          : m_state.primaryIpv6Config();
+        if (generation != m_generation || refreshGeneration != m_refreshGeneration
+            || primaryEpoch != m_primaryEpoch || requestId != currentRequestId
+            || activeConnectionPath != m_activeConnectionPath
+            || configPath != currentConfig.objectPath || !m_running) {
+            finished->deleteLater();
+            return;
+        }
+        const QDBusMessage reply = finished->reply();
+        QVariantMap properties;
+        if (reply.type() != QDBusMessage::ErrorMessage && !reply.arguments().isEmpty())
+            properties = propertyMapFromDbus(reply.arguments().constFirst());
+        if (m_state.applyPrimaryIpConfigReply(activeConnectionPath, primaryEpoch,
+                                              configPath, ipv4, std::move(properties))) {
+            m_snapshot = m_state.snapshot();
+            m_snapshot.wifiScanning = m_scanState.active();
+            publishReconciledSnapshot();
         }
         finished->deleteLater();
     });
@@ -621,7 +786,8 @@ void NetworkManagerBackend::refreshAccessPoints()
                     const QDBusMessage apReply = apWatcher->reply();
                     if (apReply.type() != QDBusMessage::ErrorMessage
                         && !apReply.arguments().isEmpty()) {
-                        const QVariantMap properties = apReply.arguments().constFirst().toMap();
+                        const QVariantMap properties = propertyMapFromDbus(
+                            apReply.arguments().constFirst());
                         m_state.upsertAccessPoint(path, properties);
                     }
                     if (--m_pendingAccessPointProperties == 0) {
@@ -659,7 +825,8 @@ void NetworkManagerBackend::refreshAccessPoint(const QString &objectPath)
             && wifiDevicePath == m_wifiDevicePath && m_running) {
             const QDBusMessage reply = finished->reply();
             if (reply.type() != QDBusMessage::ErrorMessage && !reply.arguments().isEmpty()) {
-                m_state.upsertAccessPoint(objectPath, reply.arguments().constFirst().toMap());
+                m_state.upsertAccessPoint(
+                    objectPath, propertyMapFromDbus(reply.arguments().constFirst()));
                 m_snapshot = m_state.snapshot();
                 m_snapshot.wifiScanning = m_scanState.active();
                 publishReconciledSnapshot();
@@ -738,6 +905,8 @@ void NetworkManagerBackend::rebuildPropertyWatchers()
         return;
     QStringList paths = m_deviceProperties.keys();
     paths.append(m_activeConnectionPath);
+    paths.append(m_state.primaryIpv4Config().objectPath);
+    paths.append(m_state.primaryIpv6Config().objectPath);
     for (auto it = m_state.accessPoints().cbegin(); it != m_state.accessPoints().cend(); ++it)
         paths.append(it.key());
     paths.removeDuplicates();
@@ -750,6 +919,41 @@ void NetworkManagerBackend::rebuildPropertyWatchers()
                        const QVariantMap &changed, const QStringList &invalidated) {
             if (!m_running)
                 return;
+            if (interfaceName == QString::fromLatin1(wiredInterface)) {
+                if (path != m_state.primaryDevicePath())
+                    return;
+                ++m_wiredPropertiesRequestId;
+                m_state.updateDeviceProperties(path, interfaceName, changed, invalidated);
+                m_snapshot = m_state.snapshot();
+                m_snapshot.wifiScanning = m_scanState.active();
+                publishReconciledSnapshot();
+                if (!invalidated.isEmpty())
+                    refreshWiredProperties(path);
+                return;
+            }
+            const bool isIpv4Config = interfaceName == QString::fromLatin1(ip4ConfigInterface);
+            const bool isIpv6Config = interfaceName == QString::fromLatin1(ip6ConfigInterface);
+            if (isIpv4Config || isIpv6Config) {
+                const bool relevantChanged = changed.contains(QStringLiteral("AddressData"))
+                    || changed.contains(QStringLiteral("Gateway"));
+                const bool relevantInvalidated = invalidated.contains(
+                    QStringLiteral("AddressData"))
+                    || invalidated.contains(QStringLiteral("Gateway"));
+                if (!relevantChanged && !relevantInvalidated)
+                    return;
+                if (!m_state.updatePrimaryIpConfigProperties(path, interfaceName,
+                                                              changed, invalidated))
+                    return;
+                if (isIpv4Config)
+                    ++m_ipv4ConfigRequestId;
+                else
+                    ++m_ipv6ConfigRequestId;
+                m_snapshot = m_state.snapshot();
+                m_snapshot.wifiScanning = m_scanState.active();
+                publishReconciledSnapshot();
+                refreshPrimaryIpConfig(isIpv4Config);
+                return;
+            }
             if (interfaceName == QString::fromLatin1(deviceInterface)
                 || interfaceName == QString::fromLatin1(wirelessInterface)) {
                 m_state.updateDeviceProperties(path, interfaceName, changed, invalidated);
@@ -781,15 +985,25 @@ void NetworkManagerBackend::rebuildPropertyWatchers()
             }
             if (interfaceName == QString::fromLatin1(activeConnectionInterface)
                 && path == m_activeConnectionPath) {
+                const QString oldDevicePath = m_state.primaryDevicePath();
+                const QString oldIpv4Path = m_state.primaryIpv4Config().objectPath;
+                const QString oldIpv6Path = m_state.primaryIpv6Config().objectPath;
                 m_state.updatePrimaryProperties(changed, invalidated);
-                if (!invalidated.isEmpty()) {
+                if (!invalidated.isEmpty() || changed.contains(QStringLiteral("State"))) {
                     refreshActiveConnection(path);
                     return;
                 }
+                const bool deviceChanged = oldDevicePath != m_state.primaryDevicePath();
+                const bool ipv4Changed = oldIpv4Path != m_state.primaryIpv4Config().objectPath;
+                const bool ipv6Changed = oldIpv6Path != m_state.primaryIpv6Config().objectPath;
                 reconcileSelectedWifiDevice();
                 m_snapshot = m_state.snapshot();
                 m_snapshot.wifiScanning = m_scanState.active();
+                if (ipv4Changed || ipv6Changed)
+                    rebuildPropertyWatchers();
                 publishReconciledSnapshot();
+                if (deviceChanged || ipv4Changed || ipv6Changed)
+                    refreshPrimaryRuntimeDetails(deviceChanged, ipv4Changed, ipv6Changed);
                 return;
             }
             if (interfaceName == QString::fromLatin1(accessPointInterface)) {

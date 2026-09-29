@@ -12,10 +12,17 @@ struct NetworkDeviceState {
     QString objectPath;
     QVariantMap deviceProperties;
     QVariantMap wirelessProperties;
+    QVariantMap wiredProperties;
     bool wirelessInterfacePresent = false;
+    bool wiredInterfacePresent = false;
 };
 
 struct NetworkAccessPointState {
+    QString objectPath;
+    QVariantMap properties;
+};
+
+struct PrimaryIpConfigState {
     QString objectPath;
     QVariantMap properties;
 };
@@ -27,6 +34,8 @@ public:
     void updateManagerProperties(const QVariantMap &changed, const QStringList &invalidated);
     void upsertDevice(const QString &path, QVariantMap properties);
     void setWirelessProperties(const QString &path, QVariantMap properties);
+    bool applyWiredPropertiesReply(const QString &activeConnectionPath, quint64 primaryEpoch,
+                                   const QString &devicePath, QVariantMap properties);
     void updateDeviceProperties(const QString &path, const QString &interfaceName,
                                 const QVariantMap &changed, const QStringList &invalidated);
     void removeDevice(const QString &path);
@@ -39,12 +48,22 @@ public:
     quint64 beginPrimaryRequest(const QString &path);
     bool applyPrimaryReply(const QString &path, quint64 epoch, QVariantMap properties);
     void updatePrimaryProperties(const QVariantMap &changed, const QStringList &invalidated);
+    bool applyPrimaryIpConfigReply(const QString &activeConnectionPath, quint64 primaryEpoch,
+                                   const QString &configPath, bool ipv4,
+                                   QVariantMap properties);
+    bool updatePrimaryIpConfigProperties(const QString &configPath,
+                                         const QString &interfaceName,
+                                         const QVariantMap &changed,
+                                         const QStringList &invalidated);
     void clearPrimary();
 
     const QMap<QString, NetworkDeviceState> &devices() const { return m_devices; }
     const QMap<QString, NetworkAccessPointState> &accessPoints() const { return m_accessPoints; }
     const QString &primaryPath() const { return m_primaryPath; }
     quint64 primaryEpoch() const { return m_primaryEpoch; }
+    QString primaryDevicePath() const { return physicalDeviceForPrimary(); }
+    const PrimaryIpConfigState &primaryIpv4Config() const { return m_primaryIpv4Config; }
+    const PrimaryIpConfigState &primaryIpv6Config() const { return m_primaryIpv6Config; }
     QString selectedWifiDevicePath() const;
     QString activeAccessPointPath() const;
     NetworkSnapshot snapshot() const;
@@ -52,6 +71,8 @@ public:
 private:
     static void applyProperties(QVariantMap &target, const QVariantMap &changed,
                                 const QStringList &invalidated);
+    void synchronizePrimaryIpConfigPaths();
+    void clearPrimaryRuntimeDetails();
     QString physicalDeviceForPrimary() const;
     static QString objectPath(const QVariant &value);
     static QVector<QString> objectPaths(const QVariant &value);
@@ -61,6 +82,8 @@ private:
     QMap<QString, NetworkAccessPointState> m_accessPoints;
     QString m_primaryPath;
     QVariantMap m_primaryProperties;
+    PrimaryIpConfigState m_primaryIpv4Config;
+    PrimaryIpConfigState m_primaryIpv6Config;
     quint64 m_primaryEpoch = 0;
 };
 

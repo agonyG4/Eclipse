@@ -28,6 +28,14 @@ class NetworkService final : public QObject {
     Q_PROPERTY(bool connected READ connected NOTIFY connectionChanged)
     Q_PROPERTY(QString connectionName READ connectionName NOTIFY connectionChanged)
     Q_PROPERTY(QString interfaceName READ interfaceName NOTIFY connectionChanged)
+    Q_PROPERTY(QString hardwareAddress READ hardwareAddress NOTIFY connectionChanged)
+    Q_PROPERTY(quint32 mtu READ mtu NOTIFY connectionChanged)
+    Q_PROPERTY(bool linkCarrier READ linkCarrier NOTIFY connectionChanged)
+    Q_PROPERTY(quint32 linkSpeedMbps READ linkSpeedMbps NOTIFY connectionChanged)
+    Q_PROPERTY(QStringList ipv4Addresses READ ipv4Addresses NOTIFY connectionChanged)
+    Q_PROPERTY(QString ipv4Gateway READ ipv4Gateway NOTIFY connectionChanged)
+    Q_PROPERTY(QStringList ipv6Addresses READ ipv6Addresses NOTIFY connectionChanged)
+    Q_PROPERTY(QString ipv6Gateway READ ipv6Gateway NOTIFY connectionChanged)
     Q_PROPERTY(quint64 downloadBytesPerSecond READ downloadBytesPerSecond NOTIFY trafficChanged)
     Q_PROPERTY(quint64 uploadBytesPerSecond READ uploadBytesPerSecond NOTIFY trafficChanged)
     Q_PROPERTY(QString downloadRate READ downloadRate NOTIFY trafficChanged)
@@ -51,6 +59,14 @@ public:
     bool connected() const { return m_connected; }
     QString connectionName() const { return m_connectionName; }
     QString interfaceName() const { return m_interfaceName; }
+    QString hardwareAddress() const { return m_hardwareAddress; }
+    quint32 mtu() const { return m_mtu; }
+    bool linkCarrier() const { return m_linkCarrier; }
+    quint32 linkSpeedMbps() const { return m_linkSpeedMbps; }
+    QStringList ipv4Addresses() const { return m_ipv4Addresses; }
+    QString ipv4Gateway() const { return m_ipv4Gateway; }
+    QStringList ipv6Addresses() const { return m_ipv6Addresses; }
+    QString ipv6Gateway() const { return m_ipv6Gateway; }
     quint64 downloadBytesPerSecond() const { return m_downloadBytesPerSecond; }
     quint64 uploadBytesPerSecond() const { return m_uploadBytesPerSecond; }
     QString downloadRate() const { return formatRate(m_downloadBytesPerSecond); }
@@ -100,6 +116,14 @@ private:
     bool m_connected = false;
     QString m_connectionName;
     QString m_interfaceName;
+    QString m_hardwareAddress;
+    quint32 m_mtu = 0;
+    bool m_linkCarrier = false;
+    quint32 m_linkSpeedMbps = 0;
+    QStringList m_ipv4Addresses;
+    QString m_ipv4Gateway;
+    QStringList m_ipv6Addresses;
+    QString m_ipv6Gateway;
     quint64 m_downloadBytesPerSecond = 0;
     quint64 m_uploadBytesPerSecond = 0;
     quint64 m_generation = 0;

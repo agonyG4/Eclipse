@@ -313,6 +313,9 @@ private slots:
     void networkPrimaryDeviceChangeReselectsWifiAdapter();
     void networkStateSeparatesWirelessAndPrimaryState();
     void networkSnapshotProjectsHardwareAndAccessPointSecurity();
+    void networkSnapshotProjectsPrimaryRuntimeDetails();
+    void networkPrimaryRuntimeDetailsArePathQualifiedAndCleared();
+    void networkServiceProjectsAndClearsPrimaryRuntimeDetails();
     void networkScanUsesLastScanAndCoalesces();
     void networkLateRequestScanReplyCannotSettleNewRequest();
     void networkOldDeviceScanReplyRejectedAfterWifiSwitch();
@@ -755,6 +758,324 @@ void SystemServicesTest::networkSnapshotProjectsHardwareAndAccessPointSecurity()
         }
     }
     QVERIFY(foundExactPath);
+}
+
+void SystemServicesTest::networkSnapshotProjectsPrimaryRuntimeDetails()
+{
+    NetworkManagerState state;
+    state.upsertDevice(QStringLiteral("/device/ethernet0"),
+                       {{QStringLiteral("DeviceType"), 1},
+                        {QStringLiteral("Interface"), QStringLiteral("enp4s0")},
+                        {QStringLiteral("HwAddress"), QStringLiteral("AA:BB:CC:DD:EE:FF")},
+                        {QStringLiteral("Mtu"), 1500},
+                        {QStringLiteral("InterfaceFlags"), 0x00010002u}});
+    state.setPrimaryProperties(QStringLiteral("/active/wired"),
+                               {{QStringLiteral("Id"), QStringLiteral("Wired connection 1")},
+                                {QStringLiteral("State"), 2},
+                                {QStringLiteral("Devices"), QVariantList{
+                                     QVariant::fromValue(QDBusObjectPath(
+                                         QStringLiteral("/device/ethernet0"))) }},
+                                {QStringLiteral("Ip4Config"), QVariant::fromValue(
+                                     QDBusObjectPath(QStringLiteral("/ip4/one")))},
+                                {QStringLiteral("Ip6Config"), QVariant::fromValue(
+                                     QDBusObjectPath(QStringLiteral("/ip6/one")))}});
+    const quint64 epoch = state.primaryEpoch();
+    QVERIFY(state.applyWiredPropertiesReply(
+        QStringLiteral("/active/wired"), epoch, QStringLiteral("/device/ethernet0"),
+        {{QStringLiteral("Speed"), 1000}}));
+    QVERIFY(state.applyPrimaryIpConfigReply(
+        QStringLiteral("/active/wired"), epoch, QStringLiteral("/ip4/one"), true,
+        {{QStringLiteral("AddressData"), QVariantList{
+             QVariantMap{{QStringLiteral("address"), QStringLiteral("192.168.1.50")},
+                         {QStringLiteral("prefix"), 24}},
+             QVariantMap{{QStringLiteral("address"), QStringLiteral("192.168.1.50")},
+                         {QStringLiteral("prefix"), 24}},
+             QVariantMap{{QStringLiteral("address"), QStringLiteral("not-an-address")},
+                         {QStringLiteral("prefix"), 24}},
+             QVariantMap{{QStringLiteral("address"), QStringLiteral("192.168.1.51")},
+                         {QStringLiteral("prefix"), 99}}}},
+         {QStringLiteral("Gateway"), QStringLiteral("192.168.1.1")}}));
+    QVERIFY(state.applyPrimaryIpConfigReply(
+        QStringLiteral("/active/wired"), epoch, QStringLiteral("/ip6/one"), false,
+        {{QStringLiteral("AddressData"), QVariantList{
+             QVariantMap{{QStringLiteral("address"), QStringLiteral("2804:abcd::1234")},
+                         {QStringLiteral("prefix"), 64}},
+             QVariantMap{{QStringLiteral("address"), QStringLiteral("fe80::1")},
+                         {QStringLiteral("prefix"), 64}}}},
+         {QStringLiteral("Gateway"), QStringLiteral("fe80::1")}}));
+
+    const NetworkSnapshot snapshot = state.snapshot();
+    QVERIFY(snapshot.connected);
+    QCOMPARE(snapshot.connectionType, NetworkConnectionType::Wired);
+    QCOMPARE(snapshot.hardwareAddress, QStringLiteral("AA:BB:CC:DD:EE:FF"));
+    QCOMPARE(snapshot.mtu, quint32(1500));
+    QVERIFY(snapshot.linkCarrier);
+    QCOMPARE(snapshot.linkSpeedMbps, quint32(1000));
+    QCOMPARE(snapshot.ipv4Addresses, QStringList{QStringLiteral("192.168.1.50/24")});
+    QCOMPARE(snapshot.ipv4Gateway, QStringLiteral("192.168.1.1"));
+    QCOMPARE(snapshot.ipv6Addresses,
+             (QStringList{QStringLiteral("2804:abcd::1234/64"), QStringLiteral("fe80::1/64")}));
+    QCOMPARE(snapshot.ipv6Gateway, QStringLiteral("fe80::1"));
+
+    state.updateDeviceProperties(QStringLiteral("/device/ethernet0"),
+                                 QStringLiteral("org.freedesktop.NetworkManager.Device.Wired"),
+                                 {{QStringLiteral("Speed"), 2500}}, {});
+    QVERIFY(state.updatePrimaryIpConfigProperties(
+        QStringLiteral("/ip4/one"), QStringLiteral("org.freedesktop.NetworkManager.IP4Config"),
+        {{QStringLiteral("Gateway"), QStringLiteral("192.168.1.254")}}, {}));
+    QVERIFY(state.updatePrimaryIpConfigProperties(
+        QStringLiteral("/ip4/one"), QStringLiteral("org.freedesktop.NetworkManager.IP4Config"),
+        {{QStringLiteral("AddressData"), QVariantList{
+             QVariantMap{{QStringLiteral("address"), QStringLiteral("192.168.1.52")},
+                         {QStringLiteral("prefix"), 24}}}}}, {}));
+    const NetworkSnapshot updated = state.snapshot();
+    QCOMPARE(updated.linkSpeedMbps, quint32(2500));
+    QCOMPARE(updated.ipv4Addresses, QStringList{QStringLiteral("192.168.1.52/24")});
+    QCOMPARE(updated.ipv4Gateway, QStringLiteral("192.168.1.254"));
+    QVERIFY(state.updatePrimaryIpConfigProperties(
+        QStringLiteral("/ip4/one"), QStringLiteral("org.freedesktop.NetworkManager.IP4Config"),
+        {}, {QStringLiteral("AddressData"), QStringLiteral("Gateway")}));
+    QVERIFY(state.snapshot().ipv4Addresses.isEmpty());
+    QVERIFY(state.snapshot().ipv4Gateway.isEmpty());
+    QVERIFY(state.updatePrimaryIpConfigProperties(
+        QStringLiteral("/ip4/one"), QStringLiteral("org.freedesktop.NetworkManager.IP4Config"),
+        {{QStringLiteral("AddressData"), QStringLiteral("malformed")}}, {}));
+    QVERIFY(state.snapshot().ipv4Addresses.isEmpty());
+
+    NetworkManagerState empty;
+    empty.upsertDevice(QStringLiteral("/device/ethernet0"),
+                       {{QStringLiteral("DeviceType"), 1},
+                        {QStringLiteral("Interface"), QStringLiteral("enp4s0")},
+                        {QStringLiteral("InterfaceFlags"), 0u}});
+    empty.setPrimaryProperties(QStringLiteral("/active/wired"),
+                               {{QStringLiteral("State"), 2},
+                                {QStringLiteral("Devices"), QVariantList{
+                                     QVariant::fromValue(QDBusObjectPath(
+                                         QStringLiteral("/device/ethernet0"))) }},
+                                {QStringLiteral("Ip4Config"), QVariant::fromValue(
+                                     QDBusObjectPath(QStringLiteral("/ip4/empty")))}});
+    QVERIFY(empty.applyPrimaryIpConfigReply(
+        QStringLiteral("/active/wired"), empty.primaryEpoch(), QStringLiteral("/ip4/empty"),
+        true, {{QStringLiteral("AddressData"), QVariantList{}}}));
+    const NetworkSnapshot emptySnapshot = empty.snapshot();
+    QVERIFY(!emptySnapshot.linkCarrier);
+    QVERIFY(emptySnapshot.ipv4Addresses.isEmpty());
+    QVERIFY(emptySnapshot.ipv4Gateway.isEmpty());
+
+    NetworkManagerState other;
+    other.upsertDevice(QStringLiteral("/device/virtual"),
+                       {{QStringLiteral("DeviceType"), 42},
+                        {QStringLiteral("Interface"), QStringLiteral("tun-test")},
+                        {QStringLiteral("HwAddress"), QStringLiteral("02:00:00:00:00:01")},
+                        {QStringLiteral("Mtu"), 1400}});
+    other.setPrimaryProperties(QStringLiteral("/active/other"),
+                               {{QStringLiteral("State"), 2},
+                                {QStringLiteral("Devices"), QVariantList{
+                                     QVariant::fromValue(QDBusObjectPath(
+                                         QStringLiteral("/device/virtual"))) }},
+                                {QStringLiteral("Ip4Config"), QVariant::fromValue(
+                                     QDBusObjectPath(QStringLiteral("/ip4/other")))}});
+    QVERIFY(other.applyPrimaryIpConfigReply(
+        QStringLiteral("/active/other"), other.primaryEpoch(), QStringLiteral("/ip4/other"),
+        true, {{QStringLiteral("Gateway"), QStringLiteral("10.0.0.1")}}));
+    const NetworkSnapshot otherSnapshot = other.snapshot();
+    QVERIFY(otherSnapshot.connected);
+    QCOMPARE(otherSnapshot.connectionType, NetworkConnectionType::Other);
+    QCOMPARE(otherSnapshot.interfaceName, QStringLiteral("tun-test"));
+    QCOMPARE(otherSnapshot.hardwareAddress, QStringLiteral("02:00:00:00:00:01"));
+    QCOMPARE(otherSnapshot.mtu, quint32(1400));
+    QCOMPARE(otherSnapshot.linkSpeedMbps, quint32(0));
+    QCOMPARE(otherSnapshot.ipv4Gateway, QStringLiteral("10.0.0.1"));
+}
+
+void SystemServicesTest::networkPrimaryRuntimeDetailsArePathQualifiedAndCleared()
+{
+    NetworkManagerState state;
+    state.upsertDevice(QStringLiteral("/device/ethernet0"),
+                       {{QStringLiteral("DeviceType"), 1},
+                        {QStringLiteral("Interface"), QStringLiteral("enp4s0")},
+                        {QStringLiteral("HwAddress"), QStringLiteral("AA:00:00:00:00:01")},
+                        {QStringLiteral("Mtu"), 1500},
+                        {QStringLiteral("InterfaceFlags"), 0x00010000u}});
+    state.upsertDevice(QStringLiteral("/device/ethernet1"),
+                       {{QStringLiteral("DeviceType"), 1},
+                        {QStringLiteral("Interface"), QStringLiteral("enp5s0")},
+                        {QStringLiteral("HwAddress"), QStringLiteral("AA:00:00:00:00:02")},
+                        {QStringLiteral("Mtu"), 9000},
+                        {QStringLiteral("InterfaceFlags"), 0u}});
+    const auto activeProperties = [](const QString &devicePath, const QString &ip4Path,
+                                     const QString &ip6Path) {
+        return QVariantMap{
+            {QStringLiteral("State"), 2},
+            {QStringLiteral("Devices"), QVariantList{
+                 QVariant::fromValue(QDBusObjectPath(devicePath))}},
+            {QStringLiteral("Ip4Config"), QVariant::fromValue(QDBusObjectPath(ip4Path))},
+            {QStringLiteral("Ip6Config"), QVariant::fromValue(QDBusObjectPath(ip6Path))}};
+    };
+
+    state.setPrimaryProperties(QStringLiteral("/active/A"), activeProperties(
+        QStringLiteral("/device/ethernet0"), QStringLiteral("/ip4/1"),
+        QStringLiteral("/ip6/1")));
+    const quint64 epochA = state.primaryEpoch();
+    QVERIFY(state.applyWiredPropertiesReply(
+        QStringLiteral("/active/A"), epochA, QStringLiteral("/device/ethernet0"),
+        {{QStringLiteral("Speed"), 1000}}));
+    const QVariantMap ipv4Properties{{QStringLiteral("AddressData"), QVariantList{
+        QVariantMap{{QStringLiteral("address"), QStringLiteral("10.0.0.10")},
+                    {QStringLiteral("prefix"), 24}}}}};
+    const QVariantMap ipv6Properties{{QStringLiteral("AddressData"), QVariantList{
+        QVariantMap{{QStringLiteral("address"), QStringLiteral("2001:db8::1")},
+                    {QStringLiteral("prefix"), 64}}}}};
+    QVERIFY(state.applyPrimaryIpConfigReply(
+        QStringLiteral("/active/A"), epochA, QStringLiteral("/ip4/1"), true,
+        ipv4Properties));
+    QVERIFY(state.applyPrimaryIpConfigReply(
+        QStringLiteral("/active/A"), epochA, QStringLiteral("/ip6/1"), false,
+        ipv6Properties));
+
+    state.setPrimaryProperties(QStringLiteral("/active/B"), activeProperties(
+        QStringLiteral("/device/ethernet1"), QStringLiteral("/ip4/2"),
+        QStringLiteral("/ip6/2")));
+    const quint64 epochB = state.primaryEpoch();
+    QVERIFY(epochB > epochA);
+    QVERIFY(!state.applyWiredPropertiesReply(
+        QStringLiteral("/active/A"), epochA, QStringLiteral("/device/ethernet0"),
+        {{QStringLiteral("Speed"), 10000}}));
+    QVERIFY(!state.applyPrimaryIpConfigReply(
+        QStringLiteral("/active/A"), epochA, QStringLiteral("/ip4/1"), true,
+        {{QStringLiteral("Gateway"), QStringLiteral("10.0.0.1")}}));
+    QVERIFY(!state.applyPrimaryIpConfigReply(
+        QStringLiteral("/active/A"), epochA, QStringLiteral("/ip6/1"), false,
+        {{QStringLiteral("Gateway"), QStringLiteral("2001:db8::ff")}}));
+    NetworkSnapshot switched = state.snapshot();
+    QVERIFY(switched.ipv4Addresses.isEmpty());
+    QVERIFY(switched.ipv4Gateway.isEmpty());
+    QVERIFY(switched.ipv6Addresses.isEmpty());
+    QVERIFY(switched.ipv6Gateway.isEmpty());
+    QCOMPARE(switched.hardwareAddress, QStringLiteral("AA:00:00:00:00:02"));
+    QCOMPARE(switched.mtu, quint32(9000));
+    QCOMPARE(switched.linkSpeedMbps, quint32(0));
+
+    QVERIFY(state.applyWiredPropertiesReply(
+        QStringLiteral("/active/B"), epochB, QStringLiteral("/device/ethernet1"),
+        {{QStringLiteral("Speed"), 2500}}));
+    QVERIFY(state.applyPrimaryIpConfigReply(
+        QStringLiteral("/active/B"), epochB, QStringLiteral("/ip4/2"), true,
+        {{QStringLiteral("Gateway"), QStringLiteral("192.168.1.1")}}));
+    QVERIFY(state.applyPrimaryIpConfigReply(
+        QStringLiteral("/active/B"), epochB, QStringLiteral("/ip6/2"), false,
+        {{QStringLiteral("Gateway"), QStringLiteral("fe80::1")}}));
+    QCOMPARE(state.snapshot().linkSpeedMbps, quint32(2500));
+    QCOMPARE(state.snapshot().ipv4Gateway, QStringLiteral("192.168.1.1"));
+    QCOMPARE(state.snapshot().ipv6Gateway, QStringLiteral("fe80::1"));
+
+    state.updatePrimaryProperties(
+        {{QStringLiteral("Ip4Config"), QVariant::fromValue(QDBusObjectPath(
+              QStringLiteral("/ip4/3")))},
+         {QStringLiteral("Ip6Config"), QVariant::fromValue(QDBusObjectPath(
+              QStringLiteral("/ip6/3")))}}, {});
+    QVERIFY(!state.updatePrimaryIpConfigProperties(
+        QStringLiteral("/ip4/2"), QStringLiteral("org.freedesktop.NetworkManager.IP4Config"),
+        {{QStringLiteral("Gateway"), QStringLiteral("stale signal")}}, {}));
+    QVERIFY(!state.applyPrimaryIpConfigReply(
+        QStringLiteral("/active/B"), epochB, QStringLiteral("/ip4/2"), true,
+        {{QStringLiteral("Gateway"), QStringLiteral("stale v4")}}));
+    QVERIFY(!state.applyPrimaryIpConfigReply(
+        QStringLiteral("/active/B"), epochB, QStringLiteral("/ip6/2"), false,
+        {{QStringLiteral("Gateway"), QStringLiteral("stale v6")}}));
+    QVERIFY(state.applyPrimaryIpConfigReply(
+        QStringLiteral("/active/B"), epochB, QStringLiteral("/ip4/3"), true,
+        {{QStringLiteral("Gateway"), QStringLiteral("192.168.2.1")}}));
+    QVERIFY(state.applyPrimaryIpConfigReply(
+        QStringLiteral("/active/B"), epochB, QStringLiteral("/ip6/3"), false,
+        {{QStringLiteral("Gateway"), QStringLiteral("fe80::2")}}));
+    QCOMPARE(state.snapshot().ipv4Gateway, QStringLiteral("192.168.2.1"));
+    QCOMPARE(state.snapshot().ipv6Gateway, QStringLiteral("fe80::2"));
+
+    state.updatePrimaryProperties({{QStringLiteral("State"), 1}}, {});
+    const NetworkSnapshot disconnected = state.snapshot();
+    QVERIFY(!disconnected.connected);
+    QVERIFY(disconnected.hardwareAddress.isEmpty());
+    QCOMPARE(disconnected.mtu, quint32(0));
+    QVERIFY(!disconnected.linkCarrier);
+    QCOMPARE(disconnected.linkSpeedMbps, quint32(0));
+    QVERIFY(disconnected.ipv4Addresses.isEmpty());
+    QVERIFY(disconnected.ipv4Gateway.isEmpty());
+    QVERIFY(disconnected.ipv6Addresses.isEmpty());
+    QVERIFY(disconnected.ipv6Gateway.isEmpty());
+
+    NetworkManagerState deviceSwitch;
+    deviceSwitch.upsertDevice(QStringLiteral("/device/ethernet0"),
+                              {{QStringLiteral("DeviceType"), 1}});
+    deviceSwitch.upsertDevice(QStringLiteral("/device/ethernet1"),
+                              {{QStringLiteral("DeviceType"), 1}});
+    deviceSwitch.setPrimaryProperties(QStringLiteral("/active/device-switch"), activeProperties(
+        QStringLiteral("/device/ethernet0"), QStringLiteral("/ip4/one"),
+        QStringLiteral("/ip6/one")));
+    const quint64 deviceSwitchEpoch = deviceSwitch.primaryEpoch();
+    QVERIFY(deviceSwitch.applyWiredPropertiesReply(
+        QStringLiteral("/active/device-switch"), deviceSwitchEpoch,
+        QStringLiteral("/device/ethernet0"), {{QStringLiteral("Speed"), 1000}}));
+    deviceSwitch.updatePrimaryProperties(
+        {{QStringLiteral("Devices"), QVariantList{
+             QVariant::fromValue(QDBusObjectPath(QStringLiteral("/device/ethernet1")))}}}, {});
+    QVERIFY(!deviceSwitch.applyWiredPropertiesReply(
+        QStringLiteral("/active/device-switch"), deviceSwitchEpoch,
+        QStringLiteral("/device/ethernet0"), {{QStringLiteral("Speed"), 10000}}));
+    QVERIFY(deviceSwitch.applyWiredPropertiesReply(
+        QStringLiteral("/active/device-switch"), deviceSwitchEpoch,
+        QStringLiteral("/device/ethernet1"), {{QStringLiteral("Speed"), 2500}}));
+    QCOMPARE(deviceSwitch.snapshot().linkSpeedMbps, quint32(2500));
+}
+
+void SystemServicesTest::networkServiceProjectsAndClearsPrimaryRuntimeDetails()
+{
+    auto backend = std::make_unique<FakeNetworkBackend>();
+    auto *backendPtr = backend.get();
+    NetworkService service(std::move(backend));
+    QVERIFY(service.start());
+    NetworkSnapshot snapshot;
+    snapshot.daemonAvailable = true;
+    snapshot.connected = true;
+    snapshot.connectionType = NetworkConnectionType::Wired;
+    snapshot.hardwareAddress = QStringLiteral("AA:BB:CC:DD:EE:FF");
+    snapshot.mtu = 1500;
+    snapshot.linkCarrier = true;
+    snapshot.linkSpeedMbps = 1000;
+    snapshot.ipv4Addresses = {QStringLiteral("192.168.1.50/24")};
+    snapshot.ipv4Gateway = QStringLiteral("192.168.1.1");
+    snapshot.ipv6Addresses = {QStringLiteral("2001:db8::1/64")};
+    snapshot.ipv6Gateway = QStringLiteral("fe80::1");
+    backendPtr->publish(snapshot);
+    QTRY_COMPARE_WITH_TIMEOUT(service.hardwareAddress(), snapshot.hardwareAddress, 500);
+    QCOMPARE(service.mtu(), quint32(1500));
+    QVERIFY(service.linkCarrier());
+    QCOMPARE(service.linkSpeedMbps(), quint32(1000));
+    QCOMPARE(service.ipv4Addresses(), snapshot.ipv4Addresses);
+    QCOMPARE(service.ipv4Gateway(), snapshot.ipv4Gateway);
+    QCOMPARE(service.ipv6Addresses(), snapshot.ipv6Addresses);
+    QCOMPARE(service.ipv6Gateway(), snapshot.ipv6Gateway);
+
+    snapshot.connected = false;
+    snapshot.connectionType = NetworkConnectionType::None;
+    snapshot.hardwareAddress.clear();
+    snapshot.mtu = 0;
+    snapshot.linkCarrier = false;
+    snapshot.linkSpeedMbps = 0;
+    snapshot.ipv4Addresses.clear();
+    snapshot.ipv4Gateway.clear();
+    snapshot.ipv6Addresses.clear();
+    snapshot.ipv6Gateway.clear();
+    backendPtr->publish(snapshot);
+    QTRY_VERIFY_WITH_TIMEOUT(!service.connected(), 500);
+    QVERIFY(service.hardwareAddress().isEmpty());
+    QCOMPARE(service.mtu(), quint32(0));
+    QVERIFY(!service.linkCarrier());
+    QCOMPARE(service.linkSpeedMbps(), quint32(0));
+    QVERIFY(service.ipv4Addresses().isEmpty());
+    QVERIFY(service.ipv4Gateway().isEmpty());
+    QVERIFY(service.ipv6Addresses().isEmpty());
+    QVERIFY(service.ipv6Gateway().isEmpty());
 }
 
 void SystemServicesTest::networkScanUsesLastScanAndCoalesces()

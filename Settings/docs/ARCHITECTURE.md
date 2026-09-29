@@ -23,6 +23,8 @@ SettingsIconResolver
           -> shared Rust Bluetooth engine -> BlueZ/system D-Bus
       -> Astrea::System::AudioService
           -> shared PipeWireAudioBackend -> PipeWire
+      -> Astrea::System::NetworkService
+          -> NetworkManagerBackend -> NetworkManagerState -> system D-Bus
 ThemeController
 SettingsTranslationController
 SettingsDockController -> shared DockConfigStore
@@ -55,13 +57,16 @@ The provider is owned by the QML engine and is not duplicated as a context
 property. It also owns metadata, QML startup, fatal warning reporting, and
 exactly-one-root validation.
 
-`SettingsApplication` starts `SettingsController.bluetooth` and
-`SettingsController.audio` after constructing the controller and before
-loading QML. It registers the shared `Astrea::System` enum namespace before
-creating the QML engine. Audio and Bluetooth startup failures remain service
-state and do not prevent Settings from opening. The engine is destroyed before
-the controller, so page teardown can release its discovery lease and cancel an
-active pairing before the shared services are stopped by their destructors.
+`SettingsApplication` starts `SettingsController.bluetooth`,
+`SettingsController.audio`, and `SettingsController.network` after constructing
+the controller and before loading QML. It registers the shared
+`Astrea::System` enum namespace before creating the QML engine. Audio,
+Bluetooth, and NetworkManager startup failures remain service state and do not
+prevent Settings from opening. Internet pages consume the controller-owned
+`NetworkService`; page creation and navigation do not start another service.
+The engine is destroyed before the controller, so page teardown can release its
+discovery lease and cancel an active pairing before the shared services are
+stopped by their destructors.
 
 The Audio page's Spatial Audio toggle uses the independent
 `SettingsController.spatialAudio` controller and the shared
@@ -88,6 +93,23 @@ Shell. Settings and Shell own independent process-local service instances,
 while PipeWire remains the external authority that synchronizes their state.
 Settings does not compile PipeWire audio production sources or define a
 Settings-specific audio backend or PipeWire policy.
+Settings consumes the shared `NetworkService` for network health, the primary
+active connection, traffic rates, Wi-Fi power and scanning, and the visible
+Wi-Fi model. The authority chain is NetworkManager system D-Bus,
+`NetworkManagerBackend`, reconciled `NetworkManagerState`, typed
+`NetworkSnapshot`, and `NetworkService`. NetworkManager owns network truth,
+the backend owns D-Bus interaction, state owns reconciled raw properties and
+snapshot construction, and the service owns the Qt-facing semantic properties,
+power/scan request lifecycle, queued publication, and formatted traffic rates.
+`WifiNetworkModel` owns the projected visible network list. Settings does not
+access D-Bus or run network utilities. `wifiAvailable` means a Wi-Fi device is selected,
+`wifiHardwareEnabled` reflects NetworkManager's hardware/rfkill state,
+`wifiEnabled` reflects software power, `wifiPending` tracks a requested power
+transition, and `wifiScanning` reflects backend scan progress. Network names
+use SSID as presentation identity; `WifiNetworkModel` also carries the exact
+ephemeral AccessPoint object path for future operations. That path is not
+persistent identity and is not exposed in Settings UI. Active IP, gateway, MAC,
+MTU, carrier, and wired speed values are read-only runtime projections.
 The core does not link Qt QML, Qt Quick, Quick Controls, LayerShellQt, or a
 compositor library.
 
@@ -206,6 +228,7 @@ index and no QML route-ID condition. The current routable descriptors are:
 ```text
 qrc:/qt/qml/Astrea/Settings/qml/pages/system/Bluetooth.qml
 qrc:/qt/qml/Astrea/Settings/qml/pages/system/Audio.qml
+qrc:/qt/qml/Astrea/Settings/qml/pages/system/Internet.qml
 qrc:/qt/qml/Astrea/Settings/qml/pages/system/Compositor.qml
 qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Appearance.qml
 qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/VisualEffects.qml

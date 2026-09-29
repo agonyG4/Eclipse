@@ -18,6 +18,14 @@ FocusScope {
     readonly property bool isConnected:
         root.serviceReady && root.network.connected
             && root.network.connectionType !== System.NetworkConnectionType.None
+    readonly property bool showConnectionDetails: root.serviceReady && root.isConnected
+    readonly property bool isWiredConnection: root.showConnectionDetails
+        && root.network.connectionType === System.NetworkConnectionType.Wired
+    readonly property bool hasConnectionDetailValue: root.network
+        && (root.network.ipv4Addresses.length > 0 || root.network.ipv4Gateway !== ""
+            || root.network.ipv6Addresses.length > 0 || root.network.ipv6Gateway !== ""
+            || root.network.hardwareAddress !== "" || root.network.mtu > 0
+            || root.isWiredConnection)
     readonly property bool canSetWifi:
         root.serviceReady && root.network.available && root.network.wifiAvailable
             && root.network.wifiHardwareEnabled && !root.network.wifiPending
@@ -66,6 +74,26 @@ FocusScope {
         if (frequencyMHz < 5925)
             return I18n.tr("settings.internet.network.band_5", "5 GHz")
         return I18n.tr("settings.internet.network.band_6", "6 GHz")
+    }
+
+    function linkText() {
+        return root.network && root.network.linkCarrier
+            ? I18n.tr("settings.internet.details.link_up", "Up")
+            : I18n.tr("settings.internet.details.link_down", "Down")
+    }
+
+    function linkSpeedText(speedMbps) {
+        if (speedMbps <= 0)
+            return ""
+        if (speedMbps < 1000) {
+            return I18n.tr("settings.internet.details.speed_mbps", "{speed} Mbps")
+                .replace("{speed}", String(speedMbps))
+        }
+        const gigabits = speedMbps / 1000
+        const value = Number.isInteger(gigabits) ? String(gigabits)
+                                                 : String(Number(gigabits.toFixed(1)))
+        return I18n.tr("settings.internet.details.speed_gbps", "{speed} Gbps")
+            .replace("{speed}", value)
     }
 
     Form.ScrollPage {
@@ -187,6 +215,7 @@ FocusScope {
                             ? I18n.tr("settings.internet.connection.interface",
                                       "Interface: {name}").replace("{name}", root.network.interfaceName)
                             : ""
+                        textFormat: Text.PlainText
                         color: Components.Theme.textSecondary
                         font.family: Components.Theme.fontFamily
                         font.pixelSize: Components.Theme.fontSizeSmall
@@ -201,6 +230,7 @@ FocusScope {
                             objectName: "downloadRate"
                             text: I18n.tr("settings.internet.connection.download",
                                           "Download: {rate}").replace("{rate}", root.network.downloadRate)
+                            textFormat: Text.PlainText
                             color: Components.Theme.textSecondary
                             font.family: Components.Theme.fontFamily
                             font.pixelSize: Components.Theme.fontSizeSmall
@@ -210,11 +240,125 @@ FocusScope {
                             objectName: "uploadRate"
                             text: I18n.tr("settings.internet.connection.upload",
                                           "Upload: {rate}").replace("{rate}", root.network.uploadRate)
+                            textFormat: Text.PlainText
                             color: Components.Theme.textSecondary
                             font.family: Components.Theme.fontFamily
                             font.pixelSize: Components.Theme.fontSizeSmall
                         }
                     }
+                }
+            }
+        }
+
+        Form.SectionHeader {
+            objectName: "connectionDetailsSection"
+            visible: root.showConnectionDetails
+            text: I18n.tr("settings.internet.section.connection_details", "CONNECTION DETAILS")
+            Layout.bottomMargin: 12
+        }
+
+        Form.FormCard {
+            objectName: "connectionDetailsCard"
+            visible: root.showConnectionDetails
+            Layout.bottomMargin: 24
+
+            ColumnLayout {
+                width: parent.width
+                spacing: 0
+
+                Form.SettingRow {
+                    objectName: "connectionIpv4Addresses"
+                    visible: root.network && root.network.ipv4Addresses.length > 0
+                    label: I18n.tr("settings.internet.details.ipv4_address", "IPv4 address")
+                    sublabel: visible ? root.network.ipv4Addresses.join("\n") : ""
+                    sublabelTextFormat: Text.PlainText
+                    isLast: !root.network || (root.network.ipv4Gateway === ""
+                        && root.network.ipv6Addresses.length === 0
+                        && root.network.ipv6Gateway === ""
+                        && root.network.hardwareAddress === "" && root.network.mtu <= 0
+                        && !root.isWiredConnection)
+                }
+
+                Form.SettingRow {
+                    objectName: "connectionIpv4Gateway"
+                    visible: root.network && root.network.ipv4Gateway !== ""
+                    label: I18n.tr("settings.internet.details.ipv4_gateway", "IPv4 gateway")
+                    sublabel: visible ? root.network.ipv4Gateway : ""
+                    sublabelTextFormat: Text.PlainText
+                    isLast: !root.network || (root.network.ipv6Addresses.length === 0
+                        && root.network.ipv6Gateway === ""
+                        && root.network.hardwareAddress === "" && root.network.mtu <= 0
+                        && !root.isWiredConnection)
+                }
+
+                Form.SettingRow {
+                    objectName: "connectionIpv6Addresses"
+                    visible: root.network && root.network.ipv6Addresses.length > 0
+                    label: I18n.tr("settings.internet.details.ipv6_address", "IPv6 address")
+                    sublabel: visible ? root.network.ipv6Addresses.join("\n") : ""
+                    sublabelTextFormat: Text.PlainText
+                    isLast: !root.network || (root.network.ipv6Gateway === ""
+                        && root.network.hardwareAddress === "" && root.network.mtu <= 0
+                        && !root.isWiredConnection)
+                }
+
+                Form.SettingRow {
+                    objectName: "connectionIpv6Gateway"
+                    visible: root.network && root.network.ipv6Gateway !== ""
+                    label: I18n.tr("settings.internet.details.ipv6_gateway", "IPv6 gateway")
+                    sublabel: visible ? root.network.ipv6Gateway : ""
+                    sublabelTextFormat: Text.PlainText
+                    isLast: !root.network || (root.network.hardwareAddress === ""
+                        && root.network.mtu <= 0 && !root.isWiredConnection)
+                }
+
+                Form.SettingRow {
+                    objectName: "connectionHardwareAddress"
+                    visible: root.network && root.network.hardwareAddress !== ""
+                    label: I18n.tr("settings.internet.details.hardware_address", "MAC address")
+                    sublabel: visible ? root.network.hardwareAddress : ""
+                    sublabelTextFormat: Text.PlainText
+                    isLast: !root.network || (root.network.mtu <= 0 && !root.isWiredConnection)
+                }
+
+                Form.SettingRow {
+                    objectName: "connectionMtu"
+                    visible: root.network && root.network.mtu > 0
+                    label: I18n.tr("settings.internet.details.mtu", "MTU")
+                    sublabel: visible ? String(root.network.mtu) : ""
+                    sublabelTextFormat: Text.PlainText
+                    isLast: !root.isWiredConnection
+                }
+
+                Form.SettingRow {
+                    objectName: "connectionLink"
+                    visible: root.isWiredConnection
+                    label: I18n.tr("settings.internet.details.link", "Link")
+                    sublabel: visible ? root.linkText() : ""
+                    sublabelTextFormat: Text.PlainText
+                    isLast: !root.network || root.network.linkSpeedMbps <= 0
+                }
+
+                Form.SettingRow {
+                    objectName: "connectionLinkSpeed"
+                    visible: root.isWiredConnection && root.network.linkSpeedMbps > 0
+                    label: I18n.tr("settings.internet.details.link_speed", "Link speed")
+                    sublabel: visible ? root.linkSpeedText(root.network.linkSpeedMbps) : ""
+                    sublabelTextFormat: Text.PlainText
+                    isLast: true
+                }
+
+                Text {
+                    objectName: "connectionDetailsEmpty"
+                    visible: root.showConnectionDetails && !root.hasConnectionDetailValue
+                    Layout.fillWidth: true
+                    Layout.margins: Components.Theme.spacingLarge
+                    text: I18n.tr("settings.internet.details.empty",
+                                  "No runtime connection details are available.")
+                    color: Components.Theme.textSecondary
+                    font.family: Components.Theme.fontFamily
+                    font.pixelSize: Components.Theme.fontSizeSmall
+                    wrapMode: Text.WordWrap
                 }
             }
         }

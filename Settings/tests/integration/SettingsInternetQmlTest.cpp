@@ -228,6 +228,7 @@ class SettingsInternetQmlTest final : public QObject {
     Q_OBJECT
 private slots:
     void serviceHealthAndConnectionProjection();
+    void wiredConnectionDetailsProjectAndClear();
     void wifiPowerAndScanAreAuthoritative();
     void availableNetworksRemainInformationalPlainTextRows();
 };
@@ -296,6 +297,122 @@ void SettingsInternetQmlTest::serviceHealthAndConnectionProjection()
              Astrea::System::SystemServiceState::Unavailable);
     QCOMPARE(unavailable.find(QStringLiteral("networkServiceError"))->property("text").toString(),
              QStringLiteral("NetworkManager is not available"));
+}
+
+void SettingsInternetQmlTest::wiredConnectionDetailsProjectAndClear()
+{
+    Page page;
+    QVERIFY2(page.create(), qPrintable(page.errors()));
+    QVERIFY(page.controller->network()->start());
+
+    auto snapshot = ready();
+    snapshot.connected = true;
+    snapshot.connectionType = Astrea::System::NetworkConnectionType::Wired;
+    snapshot.connectionName = QStringLiteral("Wired connection 1");
+    snapshot.interfaceName = QStringLiteral("enp4s0");
+    snapshot.hardwareAddress = QStringLiteral("AA:BB:CC:DD:EE:FF");
+    snapshot.mtu = 1500;
+    snapshot.linkCarrier = true;
+    snapshot.linkSpeedMbps = 1000;
+    snapshot.ipv4Addresses = {QStringLiteral("192.168.1.50/24"),
+                              QStringLiteral("192.168.1.51/24")};
+    snapshot.ipv4Gateway = QStringLiteral("192.168.1.1");
+    snapshot.ipv6Addresses = {QStringLiteral("2804:abcd::1234/64")};
+    snapshot.ipv6Gateway = QStringLiteral("fe80::1");
+    page.publish(snapshot);
+
+    QCOMPARE(page.find(QStringLiteral("connectionDetailsSection"))->property("visible").toBool(),
+             true);
+    QCOMPARE(page.find(QStringLiteral("connectionIpv4Addresses"))->property("visible").toBool(),
+             true);
+    QCOMPARE(page.find(QStringLiteral("connectionIpv4Addresses"))->property("sublabel").toString(),
+             QStringLiteral("192.168.1.50/24\n192.168.1.51/24"));
+    QCOMPARE(page.find(QStringLiteral("connectionIpv4Gateway"))->property("sublabel").toString(),
+             QStringLiteral("192.168.1.1"));
+    QCOMPARE(page.find(QStringLiteral("connectionIpv6Addresses"))->property("sublabel").toString(),
+             QStringLiteral("2804:abcd::1234/64"));
+    QCOMPARE(page.find(QStringLiteral("connectionIpv6Gateway"))->property("sublabel").toString(),
+             QStringLiteral("fe80::1"));
+    QCOMPARE(page.find(QStringLiteral("connectionHardwareAddress"))->property("sublabel").toString(),
+             QStringLiteral("AA:BB:CC:DD:EE:FF"));
+    QCOMPARE(page.find(QStringLiteral("connectionMtu"))->property("sublabel").toString(),
+             QStringLiteral("1500"));
+    QCOMPARE(page.find(QStringLiteral("connectionLink"))->property("sublabel").toString(),
+             QStringLiteral("Up"));
+    QCOMPARE(page.find(QStringLiteral("connectionLinkSpeed"))->property("sublabel").toString(),
+             QStringLiteral("1 Gbps"));
+    for (const QString &name : {QStringLiteral("connectionIpv4Addresses"),
+                                QStringLiteral("connectionIpv4Gateway"),
+                                QStringLiteral("connectionIpv6Addresses"),
+                                QStringLiteral("connectionIpv6Gateway"),
+                                QStringLiteral("connectionHardwareAddress"),
+                                QStringLiteral("connectionMtu"),
+                                QStringLiteral("connectionLink"),
+                                QStringLiteral("connectionLinkSpeed")}) {
+        QCOMPARE(page.find(name)->property("sublabelTextFormat").toInt(), 0);
+    }
+
+    snapshot.linkSpeedMbps = 2500;
+    page.publish(snapshot);
+    QCOMPARE(page.find(QStringLiteral("connectionLinkSpeed"))->property("sublabel").toString(),
+             QStringLiteral("2.5 Gbps"));
+
+    snapshot.connectionType = Astrea::System::NetworkConnectionType::Wifi;
+    snapshot.linkSpeedMbps = 0;
+    page.publish(snapshot);
+    QVERIFY(!page.find(QStringLiteral("connectionLink"))->property("visible").toBool());
+    QVERIFY(!page.find(QStringLiteral("connectionLinkSpeed"))->property("visible").toBool());
+
+    snapshot.connectionType = Astrea::System::NetworkConnectionType::Other;
+    snapshot.ipv4Addresses = {QStringLiteral("10.0.0.5/24")};
+    page.publish(snapshot);
+    QVERIFY(page.find(QStringLiteral("connectionIpv4Addresses"))->property("visible").toBool());
+    QVERIFY(!page.find(QStringLiteral("connectionLink"))->property("visible").toBool());
+    QVERIFY(!page.find(QStringLiteral("connectionLinkSpeed"))->property("visible").toBool());
+
+    snapshot.connectionType = Astrea::System::NetworkConnectionType::Wired;
+    snapshot.hardwareAddress.clear();
+    snapshot.mtu = 0;
+    snapshot.linkCarrier = false;
+    snapshot.ipv4Addresses.clear();
+    snapshot.ipv4Gateway.clear();
+    snapshot.ipv6Addresses.clear();
+    snapshot.ipv6Gateway.clear();
+    page.publish(snapshot);
+    QVERIFY(!page.find(QStringLiteral("connectionIpv4Addresses"))->property("visible").toBool());
+    QVERIFY(!page.find(QStringLiteral("connectionIpv4Gateway"))->property("visible").toBool());
+    QVERIFY(!page.find(QStringLiteral("connectionIpv6Addresses"))->property("visible").toBool());
+    QVERIFY(!page.find(QStringLiteral("connectionIpv6Gateway"))->property("visible").toBool());
+    QVERIFY(!page.find(QStringLiteral("connectionHardwareAddress"))->property("visible").toBool());
+    QVERIFY(!page.find(QStringLiteral("connectionMtu"))->property("visible").toBool());
+    QCOMPARE(page.find(QStringLiteral("connectionLink"))->property("sublabel").toString(),
+             QStringLiteral("Down"));
+    QVERIFY(!page.find(QStringLiteral("connectionDetailsEmpty"))->property("visible").toBool());
+
+    snapshot.connected = false;
+    snapshot.connectionType = Astrea::System::NetworkConnectionType::None;
+    snapshot.connectionName = QStringLiteral("stale ethernet name");
+    snapshot.hardwareAddress = QStringLiteral("stale mac");
+    snapshot.mtu = 1500;
+    snapshot.linkCarrier = true;
+    snapshot.linkSpeedMbps = 1000;
+    snapshot.ipv4Addresses = {QStringLiteral("stale address")};
+    snapshot.ipv4Gateway = QStringLiteral("stale gateway");
+    snapshot.ipv6Addresses = {QStringLiteral("stale ipv6")};
+    snapshot.ipv6Gateway = QStringLiteral("stale ipv6 gateway");
+    page.publish(snapshot);
+    QVERIFY(!page.find(QStringLiteral("connectionDetailsSection"))->property("visible").toBool());
+    for (const QString &name : {QStringLiteral("connectionIpv4Addresses"),
+                                QStringLiteral("connectionIpv4Gateway"),
+                                QStringLiteral("connectionIpv6Addresses"),
+                                QStringLiteral("connectionIpv6Gateway"),
+                                QStringLiteral("connectionHardwareAddress"),
+                                QStringLiteral("connectionMtu"),
+                                QStringLiteral("connectionLink"),
+                                QStringLiteral("connectionLinkSpeed")}) {
+        QVERIFY(!page.find(name)->property("visible").toBool());
+        QVERIFY(page.find(name)->property("sublabel").toString().isEmpty());
+    }
 }
 
 void SettingsInternetQmlTest::wifiPowerAndScanAreAuthoritative()

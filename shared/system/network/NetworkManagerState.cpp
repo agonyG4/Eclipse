@@ -2,6 +2,9 @@
 
 #include <QDBusArgument>
 #include <QDBusObjectPath>
+#include <QDBusVariant>
+#include <QHostAddress>
+#include <QSet>
 
 #include <algorithm>
 #include <tuple>
@@ -14,6 +17,82 @@ constexpr uint ethernetType = 1;
 constexpr uint wifiType = 2;
 constexpr uint activatedState = 2;
 constexpr uint accessPointPrivacyFlag = 0x00000001;
+constexpr uint interfaceLowerUpFlag = 0x00000002;
+constexpr uint interfaceCarrierFlag = 0x00010000;
+
+QVariant unwrapDbusVariant(QVariant value)
+{
+    while (value.metaType() == QMetaType::fromType<QDBusVariant>())
+        value = value.value<QDBusVariant>().variant();
+    return value;
+}
+
+QVector<QVariantMap> decodeDictionaryArray(const QVariant &value)
+{
+    QVector<QVariantMap> result;
+    const QVariant unwrapped = unwrapDbusVariant(value);
+    if (unwrapped.metaType() == QMetaType::fromType<QVariantList>()) {
+        for (const QVariant &entry : unwrapped.toList()) {
+            const QVariant item = unwrapDbusVariant(entry);
+            if (item.metaType() == QMetaType::fromType<QVariantMap>())
+                result.append(item.toMap());
+        }
+        return result;
+    }
+    if (unwrapped.metaType() != QMetaType::fromType<QDBusArgument>())
+        return result;
+
+    QDBusArgument argument = unwrapped.value<QDBusArgument>();
+    if (argument.currentType() != QDBusArgument::ArrayType)
+        return result;
+    argument.beginArray();
+    while (!argument.atEnd()) {
+        if (argument.currentType() != QDBusArgument::MapType) {
+            QVariant ignored;
+            argument >> ignored;
+            continue;
+        }
+        QVariantMap entry;
+        argument >> entry;
+        result.append(std::move(entry));
+    }
+    argument.endArray();
+    return result;
+}
+
+QStringList projectAddresses(const QVariant &value, QAbstractSocket::NetworkLayerProtocol family)
+{
+    QStringList result;
+    QSet<QString> seen;
+    const int maxPrefix = family == QAbstractSocket::IPv4Protocol ? 32 : 128;
+    for (const QVariantMap &entry : decodeDictionaryArray(value)) {
+        const QString rawAddress = unwrapDbusVariant(entry.value(QStringLiteral("address")))
+                                       .toString();
+        bool prefixOk = false;
+        const uint prefix = unwrapDbusVariant(entry.value(QStringLiteral("prefix")))
+                                .toUInt(&prefixOk);
+        QHostAddress address;
+        if (!prefixOk || prefix > static_cast<uint>(maxPrefix)
+            || !address.setAddress(rawAddress) || address.protocol() != family)
+            continue;
+        const QString projected = QStringLiteral("%1/%2").arg(address.toString()).arg(prefix);
+        if (seen.contains(projected))
+            continue;
+        seen.insert(projected);
+        result.append(projected);
+    }
+    return result;
+}
+
+QString projectGateway(const QVariant &value, QAbstractSocket::NetworkLayerProtocol family)
+{
+    const QString rawAddress = unwrapDbusVariant(value).toString();
+    if (rawAddress.isEmpty())
+        return {};
+    QHostAddress address;
+    return address.setAddress(rawAddress) && address.protocol() == family
+        ? address.toString() : QString();
+}
 
 QVector<QString> sorted(const QVector<QString> &paths)
 {
@@ -60,6 +139,8 @@ void NetworkManagerState::upsertDevice(const QString &path, QVariantMap properti
     device.deviceProperties = std::move(properties);
     device.wirelessInterfacePresent = device.deviceProperties.value(QStringLiteral("DeviceType"))
                                       .toUInt() == wifiType;
+    device.wiredInterfacePresent = false;
+    device.wiredProperties.clear();
 }
 
 void NetworkManagerState::setWirelessProperties(const QString &path, QVariantMap properties)
@@ -68,6 +149,24 @@ void NetworkManagerState::setWirelessProperties(const QString &path, QVariantMap
     device.objectPath = path;
     device.wirelessProperties = std::move(properties);
     device.wirelessInterfacePresent = true;
+}
+
+bool NetworkManagerState::applyWiredPropertiesReply(const QString &activeConnectionPath,
+                                                    quint64 primaryEpoch,
+                                                    const QString &devicePath,
+                                                    QVariantMap properties)
+{
+    if (activeConnectionPath != m_primaryPath || primaryEpoch != m_primaryEpoch
+        || m_primaryProperties.value(QStringLiteral("State")).toUInt() != activatedState
+        || physicalDeviceForPrimary() != devicePath)
+        return false;
+    auto device = m_devices.find(devicePath);
+    if (device == m_devices.end()
+        || device->deviceProperties.value(QStringLiteral("DeviceType")).toUInt() != ethernetType)
+        return false;
+    device->wiredProperties = std::move(properties);
+    device->wiredInterfacePresent = true;
+    return true;
 }
 
 void NetworkManagerState::updateDeviceProperties(const QString &path, const QString &interfaceName,
@@ -79,6 +178,15 @@ void NetworkManagerState::updateDeviceProperties(const QString &path, const QStr
     if (interfaceName == QLatin1String("org.freedesktop.NetworkManager.Device.Wireless")) {
         device.wirelessInterfacePresent = true;
         applyProperties(device.wirelessProperties, changed, invalidated);
+    } else if (interfaceName == QLatin1String("org.freedesktop.NetworkManager.Device.Wired")) {
+        if (path != physicalDeviceForPrimary()
+            || device.deviceProperties.value(QStringLiteral("DeviceType")).toUInt() != ethernetType)
+            return;
+        device.wiredInterfacePresent = true;
+        for (const QString &key : invalidated)
+            device.wiredProperties.remove(key);
+        for (auto it = changed.cbegin(); it != changed.cend(); ++it)
+            device.wiredProperties.insert(it.key(), it.value());
     } else {
         applyProperties(device.deviceProperties, changed, invalidated);
         device.wirelessInterfacePresent = device.deviceProperties.value(
@@ -130,10 +238,10 @@ void NetworkManagerState::setPrimaryProperties(const QString &path, QVariantMap 
 
 quint64 NetworkManagerState::beginPrimaryRequest(const QString &path)
 {
-    if (m_primaryPath != path)
-        ++m_primaryEpoch;
+    ++m_primaryEpoch;
     m_primaryPath = path;
     m_primaryProperties.clear();
+    clearPrimaryRuntimeDetails();
     return m_primaryEpoch;
 }
 
@@ -143,13 +251,64 @@ bool NetworkManagerState::applyPrimaryReply(const QString &path, quint64 epoch,
     if (path != m_primaryPath || epoch != m_primaryEpoch)
         return false;
     m_primaryProperties = std::move(properties);
+    synchronizePrimaryIpConfigPaths();
+    if (m_primaryProperties.value(QStringLiteral("State")).toUInt() != activatedState)
+        clearPrimaryRuntimeDetails();
     return true;
 }
 
 void NetworkManagerState::updatePrimaryProperties(const QVariantMap &changed,
                                                   const QStringList &invalidated)
 {
+    const uint previousState = m_primaryProperties.value(QStringLiteral("State")).toUInt();
     applyProperties(m_primaryProperties, changed, invalidated);
+    for (const QString &key : invalidated) {
+        if (key == QLatin1String("Ip4Config") || key == QLatin1String("Ip6Config"))
+            m_primaryProperties.remove(key);
+    }
+    synchronizePrimaryIpConfigPaths();
+    const uint currentState = m_primaryProperties.value(QStringLiteral("State")).toUInt();
+    if (previousState == activatedState && currentState != activatedState) {
+        ++m_primaryEpoch;
+        clearPrimaryRuntimeDetails();
+    }
+}
+
+bool NetworkManagerState::applyPrimaryIpConfigReply(const QString &activeConnectionPath,
+                                                    quint64 primaryEpoch,
+                                                    const QString &configPath, bool ipv4,
+                                                    QVariantMap properties)
+{
+    PrimaryIpConfigState &config = ipv4 ? m_primaryIpv4Config : m_primaryIpv6Config;
+    if (activeConnectionPath != m_primaryPath || primaryEpoch != m_primaryEpoch
+        || m_primaryProperties.value(QStringLiteral("State")).toUInt() != activatedState
+        || configPath.isEmpty() || configPath == QLatin1String("/")
+        || config.objectPath != configPath)
+        return false;
+    config.properties = std::move(properties);
+    return true;
+}
+
+bool NetworkManagerState::updatePrimaryIpConfigProperties(const QString &configPath,
+                                                          const QString &interfaceName,
+                                                          const QVariantMap &changed,
+                                                          const QStringList &invalidated)
+{
+    PrimaryIpConfigState *config = nullptr;
+    if (interfaceName == QLatin1String("org.freedesktop.NetworkManager.IP4Config"))
+        config = &m_primaryIpv4Config;
+    else if (interfaceName == QLatin1String("org.freedesktop.NetworkManager.IP6Config"))
+        config = &m_primaryIpv6Config;
+    if (!config || configPath != config->objectPath || configPath.isEmpty()
+        || m_primaryProperties.value(QStringLiteral("State")).toUInt() != activatedState)
+        return false;
+    for (const QString &key : invalidated) {
+        if (key == QLatin1String("AddressData") || key == QLatin1String("Gateway"))
+            config->properties.remove(key);
+    }
+    for (auto it = changed.cbegin(); it != changed.cend(); ++it)
+        config->properties.insert(it.key(), it.value());
+    return true;
 }
 
 void NetworkManagerState::clearPrimary()
@@ -158,6 +317,32 @@ void NetworkManagerState::clearPrimary()
         ++m_primaryEpoch;
     m_primaryPath.clear();
     m_primaryProperties.clear();
+    clearPrimaryRuntimeDetails();
+}
+
+void NetworkManagerState::synchronizePrimaryIpConfigPaths()
+{
+    const auto update = [this](PrimaryIpConfigState &config, const QString &key) {
+        QString path = objectPath(m_primaryProperties.value(key));
+        if (path == QLatin1String("/"))
+            path.clear();
+        if (config.objectPath == path)
+            return;
+        config.objectPath = std::move(path);
+        config.properties.clear();
+    };
+    update(m_primaryIpv4Config, QStringLiteral("Ip4Config"));
+    update(m_primaryIpv6Config, QStringLiteral("Ip6Config"));
+}
+
+void NetworkManagerState::clearPrimaryRuntimeDetails()
+{
+    m_primaryIpv4Config = {};
+    m_primaryIpv6Config = {};
+    for (auto it = m_devices.begin(); it != m_devices.end(); ++it) {
+        it->wiredProperties.clear();
+        it->wiredInterfacePresent = false;
+    }
 }
 
 QString NetworkManagerState::objectPath(const QVariant &value)
@@ -222,15 +407,19 @@ QString NetworkManagerState::activeAccessPointPath() const
 QString NetworkManagerState::physicalDeviceForPrimary() const
 {
     QVector<QString> physical;
+    QVector<QString> primaryDevices;
     for (const QString &path : objectPaths(m_primaryProperties.value(QStringLiteral("Devices")))) {
         const auto device = m_devices.constFind(path);
         if (device == m_devices.cend())
             continue;
+        primaryDevices.append(path);
         const uint type = device->deviceProperties.value(QStringLiteral("DeviceType")).toUInt();
         if (type == ethernetType || type == wifiType)
             physical.append(path);
     }
-    return physical.isEmpty() ? QString() : sorted(physical).constFirst();
+    if (!physical.isEmpty())
+        return sorted(physical).constFirst();
+    return primaryDevices.isEmpty() ? QString() : sorted(primaryDevices).constFirst();
 }
 
 NetworkSnapshot NetworkManagerState::snapshot() const
@@ -259,9 +448,41 @@ NetworkSnapshot NetworkManagerState::snapshot() const
         result.connected = primaryState.value(QStringLiteral("State")).toUInt() == activatedState
             && !physicalPath.isEmpty();
         result.connectionName = primaryState.value(QStringLiteral("Id")).toString();
-        if (result.connected && device != m_devices.cend())
+        if (result.connected && device != m_devices.cend()) {
             result.interfaceName = device->deviceProperties.value(QStringLiteral("Interface"))
                                         .toString();
+            result.hardwareAddress = device->deviceProperties.value(
+                QStringLiteral("HwAddress")).toString();
+            result.mtu = device->deviceProperties.value(QStringLiteral("Mtu")).toUInt();
+            if (type == ethernetType) {
+                const uint flags = device->deviceProperties.value(
+                    QStringLiteral("InterfaceFlags")).toUInt();
+                const bool carrier = (flags & interfaceCarrierFlag) != 0;
+                const bool lowerLayerUp = (flags & interfaceLowerUpFlag) != 0;
+                result.linkCarrier = carrier || lowerLayerUp;
+                if (device->wiredInterfacePresent)
+                    result.linkSpeedMbps = device->wiredProperties.value(
+                        QStringLiteral("Speed")).toUInt();
+            }
+            if (m_primaryIpv4Config.objectPath
+                == objectPath(primaryState.value(QStringLiteral("Ip4Config")))) {
+                result.ipv4Addresses = projectAddresses(
+                    m_primaryIpv4Config.properties.value(QStringLiteral("AddressData")),
+                    QAbstractSocket::IPv4Protocol);
+                result.ipv4Gateway = projectGateway(
+                    m_primaryIpv4Config.properties.value(QStringLiteral("Gateway")),
+                    QAbstractSocket::IPv4Protocol);
+            }
+            if (m_primaryIpv6Config.objectPath
+                == objectPath(primaryState.value(QStringLiteral("Ip6Config")))) {
+                result.ipv6Addresses = projectAddresses(
+                    m_primaryIpv6Config.properties.value(QStringLiteral("AddressData")),
+                    QAbstractSocket::IPv6Protocol);
+                result.ipv6Gateway = projectGateway(
+                    m_primaryIpv6Config.properties.value(QStringLiteral("Gateway")),
+                    QAbstractSocket::IPv6Protocol);
+            }
+        }
     }
 
     const QString activePath = activeAccessPointPath();

@@ -49,9 +49,11 @@ int SettingsApplication::run()
                                                          iconResolver,
                                                          std::unique_ptr<Astrea::System::BluetoothService>{},
                                                          std::unique_ptr<Astrea::System::AudioService>{},
+                                                         std::unique_ptr<Astrea::System::NetworkService>{},
                                                          this);
     m_controller->bluetooth()->start();
     m_controller->audio()->start();
+    m_controller->network()->start();
     m_translationController = std::make_unique<SettingsTranslationController>();
     m_themeController = std::make_unique<ThemeController>();
     QObject::connect(m_controller->appearance(),

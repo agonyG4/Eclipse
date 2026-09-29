@@ -38,6 +38,7 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     pages/system/Compositor.qml
     pages/system/Bluetooth.qml
     pages/system/Audio.qml
+    pages/system/Internet.qml
     pages/appearance/Appearance.qml
     pages/appearance/VisualEffects.qml
     pages/appearance/MaterialProgramParameterEditor.qml

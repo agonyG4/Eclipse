@@ -115,6 +115,8 @@ void SettingsNavigationModelTest::exposesNativePageRoutes()
         QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Icons.qml"));
 
     QCOMPARE(model.pageSourceForId(QStringLiteral("compositor")), compositorRoute);
+    QCOMPARE(model.pageSourceForId(QStringLiteral("internet")),
+             QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Internet.qml")));
     QCOMPARE(model.pageSourceForId(QStringLiteral("bluetooth")), bluetoothRoute);
     QCOMPARE(model.pageSourceForId(QStringLiteral("audio")),
              QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Audio.qml")));
@@ -176,7 +178,7 @@ void SettingsNavigationModelTest::startsWithFirstNavigableSidebarDestination()
 {
     SettingsNavigationModel model;
 
-    QCOMPARE(model.firstNavigableSidebarDestination(), QStringLiteral("bluetooth"));
+    QCOMPARE(model.firstNavigableSidebarDestination(), QStringLiteral("internet"));
 }
 
 void SettingsNavigationModelTest::appliesPageAndHubNavigabilityRules()

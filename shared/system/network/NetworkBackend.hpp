@@ -13,6 +13,7 @@ namespace Astrea::System {
 struct NetworkSnapshot {
     bool daemonAvailable = false;
     bool wifiAvailable = false;
+    bool wifiHardwareEnabled = false;
     bool wifiEnabled = false;
     bool wifiPending = false;
     bool wifiScanning = false;

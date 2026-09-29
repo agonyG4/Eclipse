@@ -13,6 +13,7 @@ namespace {
 constexpr uint ethernetType = 1;
 constexpr uint wifiType = 2;
 constexpr uint activatedState = 2;
+constexpr uint accessPointPrivacyFlag = 0x00000001;
 
 QVector<QString> sorted(const QVector<QString> &paths)
 {
@@ -237,6 +238,8 @@ NetworkSnapshot NetworkManagerState::snapshot() const
     NetworkSnapshot result;
     result.daemonAvailable = true;
     result.wifiAvailable = !selectedWifiDevicePath().isEmpty();
+    result.wifiHardwareEnabled = m_managerProperties.value(
+        QStringLiteral("WirelessHardwareEnabled")).toBool();
     result.wifiEnabled = m_managerProperties.value(QStringLiteral("WirelessEnabled")).toBool();
     result.wifiScanning = false;
     result.connectionType = NetworkConnectionType::None;
@@ -269,7 +272,9 @@ NetworkSnapshot NetworkManagerState::snapshot() const
         network.strength = properties.value(QStringLiteral("Strength")).toInt();
         network.frequencyMHz = properties.value(QStringLiteral("Frequency")).toInt();
         network.bssid = properties.value(QStringLiteral("HwAddress")).toString();
-        network.secured = properties.value(QStringLiteral("Flags")).toUInt() != 0
+        network.accessPointPath = it->objectPath;
+        network.secured = (properties.value(QStringLiteral("Flags")).toUInt()
+                           & accessPointPrivacyFlag) != 0
             || properties.value(QStringLiteral("WpaFlags")).toUInt() != 0
             || properties.value(QStringLiteral("RsnFlags")).toUInt() != 0;
         network.active = it.key() == activePath;

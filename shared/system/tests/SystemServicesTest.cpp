@@ -10,6 +10,7 @@
 #include "system/bluetooth/BluetoothDeviceModel.hpp"
 
 #include <QDBusObjectPath>
+#include <QHash>
 #include <QJsonObject>
 #include <QCoreApplication>
 #include <QSet>
@@ -311,6 +312,7 @@ private slots:
     void networkPrimaryWifiReplacesFallbackDiscoveryAdapter();
     void networkPrimaryDeviceChangeReselectsWifiAdapter();
     void networkStateSeparatesWirelessAndPrimaryState();
+    void networkSnapshotProjectsHardwareAndAccessPointSecurity();
     void networkScanUsesLastScanAndCoalesces();
     void networkLateRequestScanReplyCannotSettleNewRequest();
     void networkOldDeviceScanReplyRejectedAfterWifiSwitch();
@@ -557,21 +559,28 @@ void SystemServicesTest::networkWifiAvailabilityAndScanningAreAuthoritative()
     auto *backendPtr = backend.get();
     NetworkService service(std::move(backend));
     QVERIFY(service.start());
+    QSignalSpy hardwareSpy(&service, &NetworkService::wifiHardwareEnabledChanged);
 
     NetworkSnapshot snapshot;
     snapshot.daemonAvailable = true;
     snapshot.wifiEnabled = true;
+    snapshot.wifiHardwareEnabled = true;
     snapshot.wifiAvailable = false;
     snapshot.wifiScanning = false;
     backendPtr->publish(snapshot);
     QTRY_VERIFY_WITH_TIMEOUT(service.wifiEnabled(), 500);
+    QVERIFY(service.wifiHardwareEnabled());
+    QCOMPARE(hardwareSpy.count(), 1);
     QVERIFY(!service.wifiAvailable());
     QVERIFY(!service.wifiScanning());
 
     snapshot.wifiAvailable = true;
+    snapshot.wifiHardwareEnabled = false;
     snapshot.wifiScanning = true;
     backendPtr->publish(snapshot);
     QTRY_VERIFY_WITH_TIMEOUT(service.wifiAvailable() && service.wifiScanning(), 500);
+    QVERIFY(!service.wifiHardwareEnabled());
+    QCOMPARE(hardwareSpy.count(), 2);
 }
 
 void SystemServicesTest::networkOldWirelessRefreshCannotCompleteNewRefresh()
@@ -646,7 +655,8 @@ void SystemServicesTest::networkPrimaryDeviceChangeReselectsWifiAdapter()
 void SystemServicesTest::networkStateSeparatesWirelessAndPrimaryState()
 {
     NetworkManagerState state;
-    state.setManagerProperties({{QStringLiteral("WirelessEnabled"), true}});
+    state.setManagerProperties({{QStringLiteral("WirelessEnabled"), true},
+                                {QStringLiteral("WirelessHardwareEnabled"), true}});
     state.upsertDevice(QStringLiteral("/device/wifi"),
                        {{QStringLiteral("DeviceType"), 2},
                         {QStringLiteral("Interface"), QStringLiteral("wlan-test")},
@@ -669,8 +679,13 @@ void SystemServicesTest::networkStateSeparatesWirelessAndPrimaryState()
     QCOMPARE(snapshot.connectionType, NetworkConnectionType::Wifi);
     QVERIFY(snapshot.connected);
     QCOMPARE(snapshot.interfaceName, QStringLiteral("wlan-test"));
+    QVERIFY(snapshot.wifiAvailable);
+    QVERIFY(snapshot.wifiHardwareEnabled);
+    QVERIFY(snapshot.wifiEnabled);
     QCOMPARE(snapshot.wifiNetworks.size(), 1);
     QVERIFY(snapshot.wifiNetworks.constFirst().active);
+    QCOMPARE(snapshot.wifiNetworks.constFirst().accessPointPath,
+             QStringLiteral("/ap/active"));
     QCOMPARE(state.activeAccessPointPath(), QStringLiteral("/ap/active"));
     const quint64 epochA = state.beginPrimaryRequest(QStringLiteral("/active/A"));
     const quint64 epochB = state.beginPrimaryRequest(QStringLiteral("/active/B"));
@@ -680,6 +695,66 @@ void SystemServicesTest::networkStateSeparatesWirelessAndPrimaryState()
     QVERIFY(state.applyPrimaryReply(QStringLiteral("/active/B"), epochB,
                                     {{QStringLiteral("State"), 2}}));
     QCOMPARE(state.primaryPath(), QStringLiteral("/active/B"));
+}
+
+void SystemServicesTest::networkSnapshotProjectsHardwareAndAccessPointSecurity()
+{
+    constexpr uint accessPointWpsFlag = 0x00000002;
+    NetworkManagerState state;
+    state.setManagerProperties({{QStringLiteral("WirelessEnabled"), false},
+                                {QStringLiteral("WirelessHardwareEnabled"), false}});
+    state.upsertDevice(QStringLiteral("/device/wifi"),
+                       {{QStringLiteral("DeviceType"), 2},
+                        {QStringLiteral("Interface"), QStringLiteral("wlan-test")}});
+    state.setWirelessProperties(QStringLiteral("/device/wifi"), {});
+    const auto addPoint = [&state](const QString &path, const QByteArray &ssid, uint flags,
+                                   uint wpaFlags, uint rsnFlags) {
+        state.upsertAccessPoint(path,
+                                {{QStringLiteral("Ssid"), ssid},
+                                 {QStringLiteral("Strength"), 50},
+                                 {QStringLiteral("Frequency"), 2412},
+                                 {QStringLiteral("HwAddress"), path},
+                                 {QStringLiteral("Flags"), flags},
+                                 {QStringLiteral("WpaFlags"), wpaFlags},
+                                 {QStringLiteral("RsnFlags"), rsnFlags}});
+    };
+    addPoint(QStringLiteral("/ap/open"), QByteArrayLiteral("Open"), 0, 0, 0);
+    addPoint(QStringLiteral("/ap/wps"), QByteArrayLiteral("WPS"), accessPointWpsFlag, 0, 0);
+    addPoint(QStringLiteral("/ap/privacy"), QByteArrayLiteral("Privacy"), 1, 0, 0);
+    addPoint(QStringLiteral("/ap/wpa"), QByteArrayLiteral("WPA"), 0, 1, 0);
+    addPoint(QStringLiteral("/ap/rsn"), QByteArrayLiteral("RSN"), 0, 0, 1);
+
+    const NetworkSnapshot snapshot = state.snapshot();
+    QVERIFY(snapshot.wifiAvailable);
+    QVERIFY(!snapshot.wifiHardwareEnabled);
+    QVERIFY(!snapshot.wifiEnabled);
+    QCOMPARE(snapshot.wifiNetworks.size(), 5);
+
+    QHash<QString, WifiNetwork> projectedBySsid;
+    for (const WifiNetwork &network : snapshot.wifiNetworks)
+        projectedBySsid.insert(network.ssid, network);
+    QVERIFY(!projectedBySsid.value(QStringLiteral("Open")).secured);
+    QVERIFY(!projectedBySsid.value(QStringLiteral("WPS")).secured);
+    QVERIFY(projectedBySsid.value(QStringLiteral("Privacy")).secured);
+    QVERIFY(projectedBySsid.value(QStringLiteral("WPA")).secured);
+    QVERIFY(projectedBySsid.value(QStringLiteral("RSN")).secured);
+    QCOMPARE(projectedBySsid.value(QStringLiteral("WPS")).accessPointPath,
+             QStringLiteral("/ap/wps"));
+
+    WifiNetworkModel model;
+    model.replace(snapshot.wifiNetworks);
+    const auto roleNames = model.roleNames();
+    const int accessPointPathRole = roleNames.key(QByteArrayLiteral("accessPointPath"), -1);
+    QVERIFY(accessPointPathRole >= 0);
+    bool foundExactPath = false;
+    for (int row = 0; row < model.rowCount(); ++row) {
+        const QModelIndex index = model.index(row, 0);
+        if (model.data(index, WifiNetworkModel::SsidRole).toString() == QStringLiteral("WPS")) {
+            QCOMPARE(model.data(index, accessPointPathRole).toString(), QStringLiteral("/ap/wps"));
+            foundExactPath = true;
+        }
+    }
+    QVERIFY(foundExactPath);
 }
 
 void SystemServicesTest::networkScanUsesLastScanAndCoalesces()
@@ -750,20 +825,49 @@ void SystemServicesTest::wifiModelDeduplicatesAndAvoidsSemanticReset()
 {
     WifiNetworkModel model;
     QSignalSpy resetSpy(&model, &QAbstractItemModel::modelReset);
-    const WifiNetwork duplicateA{QStringLiteral("Cafe"), 40, false, true, 2412,
-                                 QStringLiteral("a")};
-    const WifiNetwork duplicateB{QStringLiteral("Cafe"), 80, true, true, 2412,
-                                 QStringLiteral("b")};
+    const WifiNetwork duplicateA{QStringLiteral("Cafe"), 93, false, true, 5180,
+                                 QStringLiteral("AA"), QStringLiteral("/ap/strong")};
+    const WifiNetwork duplicateB{QStringLiteral("Cafe"), 38, true, false, 2412,
+                                 QStringLiteral("BB"), QStringLiteral("/ap/active")};
     const WifiNetwork office{QStringLiteral("Office"), 60, false, false, 5180,
                              QStringLiteral("c")};
     model.replace({duplicateA, office, duplicateB});
     QCOMPARE(model.rowCount(), 2);
     QCOMPARE(model.data(model.index(0, 0), WifiNetworkModel::SsidRole).toString(),
              QStringLiteral("Cafe"));
-    QCOMPARE(model.data(model.index(0, 0), WifiNetworkModel::StrengthRole).toInt(), 80);
+    QCOMPARE(model.data(model.index(0, 0), WifiNetworkModel::StrengthRole).toInt(), 38);
     QVERIFY(model.data(model.index(0, 0), WifiNetworkModel::ActiveRole).toBool());
+    QVERIFY(!model.data(model.index(0, 0), WifiNetworkModel::SecuredRole).toBool());
+    QCOMPARE(model.data(model.index(0, 0), WifiNetworkModel::FrequencyRole).toInt(), 2412);
+    QCOMPARE(model.data(model.index(0, 0), WifiNetworkModel::BssidRole).toString(),
+             QStringLiteral("BB"));
+    QCOMPARE(model.data(model.index(0, 0), WifiNetworkModel::AccessPointPathRole).toString(),
+             QStringLiteral("/ap/active"));
+    const auto roles = model.roleNames();
+    QCOMPARE(roles.value(WifiNetworkModel::SsidRole), QByteArray("ssid"));
+    QCOMPARE(roles.value(WifiNetworkModel::StrengthRole), QByteArray("strength"));
+    QCOMPARE(roles.value(WifiNetworkModel::ActiveRole), QByteArray("active"));
+    QCOMPARE(roles.value(WifiNetworkModel::SecuredRole), QByteArray("secured"));
+    QCOMPARE(roles.value(WifiNetworkModel::FrequencyRole), QByteArray("frequencyMHz"));
+    QCOMPARE(roles.value(WifiNetworkModel::BssidRole), QByteArray("bssid"));
+    QCOMPARE(roles.value(WifiNetworkModel::AccessPointPathRole), QByteArray("accessPointPath"));
+
+    WifiNetwork noLongerActive = duplicateB;
+    noLongerActive.active = false;
+    model.replace({duplicateA, noLongerActive, office});
+    QCOMPARE(model.data(model.index(0, 0), WifiNetworkModel::SsidRole).toString(),
+             QStringLiteral("Cafe"));
+    QCOMPARE(model.data(model.index(0, 0), WifiNetworkModel::StrengthRole).toInt(), 93);
+    QVERIFY(!model.data(model.index(0, 0), WifiNetworkModel::ActiveRole).toBool());
+    QVERIFY(model.data(model.index(0, 0), WifiNetworkModel::SecuredRole).toBool());
+    QCOMPARE(model.data(model.index(0, 0), WifiNetworkModel::FrequencyRole).toInt(), 5180);
+    QCOMPARE(model.data(model.index(0, 0), WifiNetworkModel::BssidRole).toString(),
+             QStringLiteral("AA"));
+    QCOMPARE(model.data(model.index(0, 0), WifiNetworkModel::AccessPointPathRole).toString(),
+             QStringLiteral("/ap/strong"));
+    QCOMPARE(resetSpy.count(), 2);
     model.replace({duplicateA, office, duplicateB});
-    QCOMPARE(resetSpy.count(), 1);
+    QCOMPARE(resetSpy.count(), 3);
 }
 
 void SystemServicesTest::pipewireStateUsesMetadataAndPerNodeCache()

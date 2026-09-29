@@ -96,13 +96,17 @@ void NetworkService::stop()
     m_available = false;
     m_ready = false;
     const bool oldWifiAvailable = m_wifiAvailable;
+    const bool oldWifiHardwareEnabled = m_wifiHardwareEnabled;
     const bool oldPending = m_wifiPending;
     m_wifiPending = false;
     m_wifiAvailable = false;
+    m_wifiHardwareEnabled = false;
     m_wifiScanning = false;
     emit healthChanged();
     if (oldWifiAvailable)
         emit wifiAvailabilityChanged();
+    if (oldWifiHardwareEnabled)
+        emit wifiHardwareEnabledChanged();
     if (oldPending)
         emit wifiPendingChanged();
     emit wifiScanningChanged();
@@ -133,6 +137,7 @@ QJsonObject NetworkService::healthJson() const
 {
     QJsonObject result = serviceHealthJson(m_state, m_available, m_ready, m_errorString);
     result.insert(QStringLiteral("wifiAvailable"), m_wifiAvailable);
+    result.insert(QStringLiteral("wifiHardwareEnabled"), m_wifiHardwareEnabled);
     result.insert(QStringLiteral("wifiEnabled"), m_wifiEnabled);
     result.insert(QStringLiteral("wifiScanning"), m_wifiScanning);
     result.insert(QStringLiteral("connected"), m_connected);
@@ -179,9 +184,11 @@ void NetworkService::applySnapshot(const NetworkSnapshot &snapshot)
     m_ready = snapshot.daemonAvailable;
     const bool oldWifiAvailable = m_wifiAvailable;
     const bool oldWifiScanning = m_wifiScanning;
+    const bool oldWifiHardwareEnabled = m_wifiHardwareEnabled;
     const bool oldWifiEnabled = m_wifiEnabled;
     const bool oldWifiPending = m_wifiPending;
     m_wifiAvailable = snapshot.wifiAvailable;
+    m_wifiHardwareEnabled = snapshot.wifiHardwareEnabled;
     m_wifiEnabled = snapshot.wifiEnabled;
     if (!snapshot.daemonAvailable || !snapshot.wifiAvailable) {
         m_wifiRequestId = 0;
@@ -204,6 +211,8 @@ void NetworkService::applySnapshot(const NetworkSnapshot &snapshot)
         emit healthChanged();
     if (oldWifiAvailable != m_wifiAvailable)
         emit wifiAvailabilityChanged();
+    if (oldWifiHardwareEnabled != m_wifiHardwareEnabled)
+        emit wifiHardwareEnabledChanged();
     if (oldWifiEnabled != m_wifiEnabled)
         emit wifiEnabledChanged();
     if (oldWifiPending != m_wifiPending)

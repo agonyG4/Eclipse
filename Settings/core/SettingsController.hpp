@@ -8,6 +8,7 @@
 #include "services/wallpaper/SettingsWallpaperController.hpp"
 #include "system/audio/AudioService.hpp"
 #include "system/bluetooth/BluetoothService.hpp"
+#include "system/network/NetworkService.hpp"
 
 #include <astrea_settings_backend/src/animation/qobject.cxxqt.h>
 #include <astrea_settings_backend/src/appearance/qobject.cxxqt.h>
@@ -44,6 +45,7 @@ class SettingsController final : public QObject {
     Q_PROPERTY(SettingsVisualEffectsController *visualEffects READ visualEffects CONSTANT)
     Q_PROPERTY(Astrea::System::BluetoothService *bluetooth READ bluetooth CONSTANT)
     Q_PROPERTY(Astrea::System::AudioService *audio READ audio CONSTANT)
+    Q_PROPERTY(Astrea::System::NetworkService *network READ network CONSTANT)
     Q_PROPERTY(SettingsSpatialAudioController *spatialAudio READ spatialAudio CONSTANT)
 
 public:
@@ -54,6 +56,7 @@ public:
                        SettingsIconResolver iconResolver,
                        std::unique_ptr<Astrea::System::BluetoothService> bluetoothService = {},
                        std::unique_ptr<Astrea::System::AudioService> audioService = {},
+                       std::unique_ptr<Astrea::System::NetworkService> networkService = {},
                        QObject *parent = nullptr);
 
     SettingsNavigationModel *navigationModel();
@@ -75,6 +78,7 @@ public:
     SettingsVisualEffectsController *visualEffects() const { return m_visualEffectsController.get(); }
     Astrea::System::BluetoothService *bluetooth() const { return m_bluetoothService.get(); }
     Astrea::System::AudioService *audio() const { return m_audioService.get(); }
+    Astrea::System::NetworkService *network() const { return m_networkService.get(); }
     SettingsSpatialAudioController *spatialAudio() const { return m_spatialAudioController.get(); }
 
     Q_INVOKABLE bool navigateTo(const QString &id);
@@ -97,6 +101,7 @@ private:
     const SettingsIconResolver m_iconResolver;
     std::unique_ptr<Astrea::System::BluetoothService> m_bluetoothService;
     std::unique_ptr<Astrea::System::AudioService> m_audioService;
+    std::unique_ptr<Astrea::System::NetworkService> m_networkService;
     std::unique_ptr<SettingsSpatialAudioController> m_spatialAudioController;
     std::unique_ptr<SettingsWallpaperController> m_wallpaperController;
     std::unique_ptr<SettingsDockController> m_dockController;

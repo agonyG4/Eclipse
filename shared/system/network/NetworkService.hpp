@@ -20,6 +20,7 @@ class NetworkService final : public QObject {
     Q_PROPERTY(bool ready READ ready NOTIFY healthChanged)
     Q_PROPERTY(QString errorString READ errorString NOTIFY errorStringChanged)
     Q_PROPERTY(bool wifiAvailable READ wifiAvailable NOTIFY wifiAvailabilityChanged)
+    Q_PROPERTY(bool wifiHardwareEnabled READ wifiHardwareEnabled NOTIFY wifiHardwareEnabledChanged)
     Q_PROPERTY(bool wifiEnabled READ wifiEnabled NOTIFY wifiEnabledChanged)
     Q_PROPERTY(bool wifiPending READ wifiPending NOTIFY wifiPendingChanged)
     Q_PROPERTY(bool wifiScanning READ wifiScanning NOTIFY wifiScanningChanged)
@@ -42,6 +43,7 @@ public:
     bool ready() const { return m_ready; }
     QString errorString() const { return m_errorString; }
     bool wifiAvailable() const { return m_wifiAvailable; }
+    bool wifiHardwareEnabled() const { return m_wifiHardwareEnabled; }
     bool wifiEnabled() const { return m_wifiEnabled; }
     bool wifiPending() const { return m_wifiPending; }
     bool wifiScanning() const { return m_wifiScanning; }
@@ -68,6 +70,7 @@ signals:
     void healthChanged();
     void errorStringChanged();
     void wifiAvailabilityChanged();
+    void wifiHardwareEnabledChanged();
     void wifiEnabledChanged();
     void wifiPendingChanged();
     void wifiScanningChanged();
@@ -88,6 +91,7 @@ private:
     bool m_ready = false;
     QString m_errorString;
     bool m_wifiAvailable = false;
+    bool m_wifiHardwareEnabled = false;
     bool m_wifiEnabled = false;
     bool m_wifiPending = false;
     bool m_wifiTarget = false;

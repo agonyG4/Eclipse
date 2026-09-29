@@ -4,6 +4,8 @@
 #include "system/audio/AudioService.hpp"
 #include "system/bluetooth/BluetoothBackend.hpp"
 #include "system/bluetooth/BluetoothService.hpp"
+#include "system/network/NetworkBackend.hpp"
+#include "system/network/NetworkService.hpp"
 
 #include <QSignalSpy>
 #include <QtTest>
@@ -49,6 +51,20 @@ public:
     int startCount = 0;
 };
 
+class ControllerNetworkBackend final : public Astrea::System::NetworkBackend {
+public:
+    bool start(const Callbacks &, QString *) override
+    {
+        ++startCount;
+        return true;
+    }
+    void stop() override {}
+    bool setWifiEnabled(bool, quint64) override { return true; }
+    bool requestWifiScan() override { return true; }
+
+    int startCount = 0;
+};
+
 } // namespace
 
 class SettingsControllerTest final : public QObject {
@@ -58,6 +74,7 @@ private slots:
     void startsWithPreferredCompositorDestination();
     void navigatesToBluetoothPage();
     void navigatesToAudioPage();
+    void navigatesToInternetPage();
     void navigatesToCustomizationHub();
     void nestedDestinationsKeepSidebarAncestorSelected();
     void directNestedNavigationDerivesSidebarAncestor();
@@ -71,6 +88,8 @@ private slots:
     void preservesInjectedBluetoothServiceWithoutStartingIt();
     void ownsAudioServiceWithoutStartingIt();
     void preservesInjectedAudioServiceWithoutStartingIt();
+    void ownsNetworkServiceWithoutStartingIt();
+    void preservesInjectedNetworkServiceWithoutStartingIt();
     void exposesRustBackedVisualEffectsController();
 };
 
@@ -106,6 +125,17 @@ void SettingsControllerTest::navigatesToAudioPage()
     QCOMPARE(controller.selectedSidebarId(), QStringLiteral("audio"));
     QCOMPARE(controller.selectedPageSource(),
              QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Audio.qml")));
+}
+
+void SettingsControllerTest::navigatesToInternetPage()
+{
+    SettingsController controller;
+
+    QVERIFY(controller.navigateTo(QStringLiteral("internet")));
+    QCOMPARE(controller.currentDestinationId(), QStringLiteral("internet"));
+    QCOMPARE(controller.selectedSidebarId(), QStringLiteral("internet"));
+    QCOMPARE(controller.selectedPageSource(),
+             QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Internet.qml")));
 }
 
 void SettingsControllerTest::navigatesToCustomizationHub()
@@ -316,6 +346,33 @@ void SettingsControllerTest::preservesInjectedAudioServiceWithoutStartingIt()
     QCOMPARE(controller.audio(), servicePointer);
     QCOMPARE(backendPointer->startCount, 0);
     QCOMPARE(controller.audio()->state(), Astrea::System::SystemServiceState::Stopped);
+}
+
+void SettingsControllerTest::ownsNetworkServiceWithoutStartingIt()
+{
+    SettingsController controller;
+
+    QVERIFY(controller.network() != nullptr);
+    QCOMPARE(controller.network()->state(), Astrea::System::SystemServiceState::Stopped);
+    QCOMPARE(controller.property("network").value<Astrea::System::NetworkService *>(),
+             controller.network());
+}
+
+void SettingsControllerTest::preservesInjectedNetworkServiceWithoutStartingIt()
+{
+    auto backend = std::make_unique<ControllerNetworkBackend>();
+    ControllerNetworkBackend *backendPointer = backend.get();
+    auto service = std::make_unique<Astrea::System::NetworkService>(std::move(backend));
+    Astrea::System::NetworkService *servicePointer = service.get();
+
+    SettingsController controller(std::make_unique<SettingsNavigationModel>(), {}, {}, {}, {},
+                                   std::move(service));
+
+    QCOMPARE(controller.network(), servicePointer);
+    QCOMPARE(controller.property("network").value<Astrea::System::NetworkService *>(),
+             servicePointer);
+    QCOMPARE(backendPointer->startCount, 0);
+    QCOMPARE(controller.network()->state(), Astrea::System::SystemServiceState::Stopped);
 }
 
 void SettingsControllerTest::exposesRustBackedVisualEffectsController()

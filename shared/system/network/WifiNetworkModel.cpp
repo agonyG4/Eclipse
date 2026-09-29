@@ -28,6 +28,7 @@ QVariant WifiNetworkModel::data(const QModelIndex &index, int role) const
     case SecuredRole: return network.secured;
     case FrequencyRole: return network.frequencyMHz;
     case BssidRole: return network.bssid;
+    case AccessPointPathRole: return network.accessPointPath;
     case Qt::DisplayRole: return network.ssid;
     default: return {};
     }
@@ -42,6 +43,7 @@ QHash<int, QByteArray> WifiNetworkModel::roleNames() const
         {SecuredRole, "secured"},
         {FrequencyRole, "frequencyMHz"},
         {BssidRole, "bssid"},
+        {AccessPointPathRole, "accessPointPath"},
     };
 }
 

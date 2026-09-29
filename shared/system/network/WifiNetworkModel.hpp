@@ -13,6 +13,7 @@ struct WifiNetwork {
     bool secured = false;
     int frequencyMHz = 0;
     QString bssid;
+    QString accessPointPath;
 
     friend bool operator==(const WifiNetwork &, const WifiNetwork &) = default;
 };
@@ -28,6 +29,7 @@ public:
         SecuredRole,
         FrequencyRole,
         BssidRole,
+        AccessPointPathRole,
     };
     Q_ENUM(Role)
 

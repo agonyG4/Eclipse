@@ -88,6 +88,19 @@ class VisualEffectsPageTestController final : public QObject {
     Q_PROPERTY(bool noiseOverridden READ noiseOverridden CONSTANT)
     Q_PROPERTY(bool hasOverrides READ hasOverrides NOTIFY snapshotChanged)
     Q_PROPERTY(QString lastError READ lastError CONSTANT)
+    Q_PROPERTY(bool materialProgramAvailable READ materialProgramAvailable CONSTANT)
+    Q_PROPERTY(bool materialProgramRenderingAvailable READ materialProgramRenderingAvailable CONSTANT)
+    Q_PROPERTY(bool materialProgramBusy READ materialProgramBusy CONSTANT)
+    Q_PROPERTY(bool materialProgramEditingAvailable READ materialProgramEditingAvailable CONSTANT)
+    Q_PROPERTY(QVariantList materialProgramCatalog READ materialProgramCatalog CONSTANT)
+    Q_PROPERTY(QString materialProgramRequested READ materialProgramRequested CONSTANT)
+    Q_PROPERTY(QString materialProgramPendingSelection READ materialProgramPendingSelection CONSTANT)
+    Q_PROPERTY(QString materialProgramEffective READ materialProgramEffective CONSTANT)
+    Q_PROPERTY(QString materialProgramFallbackReason READ materialProgramFallbackReason CONSTANT)
+    Q_PROPERTY(QString materialProgramEffectiveOrigin READ materialProgramEffectiveOrigin CONSTANT)
+    Q_PROPERTY(QVariantList materialProgramParameters READ materialProgramParameters CONSTANT)
+    Q_PROPERTY(bool materialProgramHasOverrides READ materialProgramHasOverrides CONSTANT)
+    Q_PROPERTY(QString materialProgramError READ materialProgramError CONSTANT)
 
 public:
     bool available() const { return true; }
@@ -107,6 +120,24 @@ public:
     bool noiseOverridden() const { return false; }
     bool hasOverrides() const { return m_hasOverrides; }
     QString lastError() const { return {}; }
+    bool materialProgramAvailable() const { return true; }
+    bool materialProgramRenderingAvailable() const { return true; }
+    bool materialProgramBusy() const { return false; }
+    bool materialProgramEditingAvailable() const { return true; }
+    QVariantList materialProgramCatalog() const
+    {
+        return {QVariantMap{{QStringLiteral("name"), QStringLiteral("system.background_blur")},
+                            {QStringLiteral("origin"), QStringLiteral("system")},
+                            {QStringLiteral("parameterCount"), 0}}};
+    }
+    QString materialProgramRequested() const { return QStringLiteral("system.background_blur"); }
+    QString materialProgramPendingSelection() const { return {}; }
+    QString materialProgramEffective() const { return QStringLiteral("system.background_blur"); }
+    QString materialProgramFallbackReason() const { return {}; }
+    QString materialProgramEffectiveOrigin() const { return QStringLiteral("system"); }
+    QVariantList materialProgramParameters() const { return {}; }
+    bool materialProgramHasOverrides() const { return false; }
+    QString materialProgramError() const { return {}; }
 
     void setCapabilities(bool blur, bool saturation, bool noise)
     {
@@ -135,6 +166,13 @@ public:
     Q_INVOKABLE void resetOverrides() {}
     Q_INVOKABLE void restoreDefaults() {}
     Q_INVOKABLE void flush() {}
+    Q_INVOKABLE void selectMaterialProgram(const QString &) {}
+    Q_INVOKABLE void setMaterialProgramFloatParameter(const QString &, double) {}
+    Q_INVOKABLE void setMaterialProgramIntParameter(const QString &, int) {}
+    Q_INVOKABLE void setMaterialProgramVectorComponent(const QString &, int, double) {}
+    Q_INVOKABLE void clearMaterialProgramParameter(const QString &) {}
+    Q_INVOKABLE void resetMaterialProgramParameters() {}
+    Q_INVOKABLE void flushMaterialProgramParameters() {}
 
 signals:
     void snapshotChanged();
@@ -605,7 +643,14 @@ void SettingsQmlSmokeTest::loadsVisualEffectsRouteFromHubOffscreen()
         QStringLiteral("visualEffectsPage")));
     QVERIFY(page != nullptr);
     QVERIFY(page->findChild<QObject *>(QStringLiteral("visualEffectsMaterialPreview")) != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("materialProgramSelector")) != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("materialProgramParameterEditor")) != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("materialProgramFallbackStatus")) != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("materialProgramRenderingStatus")) != nullptr);
     QVERIFY(page->findChild<QObject *>(QStringLiteral("materialPositionSlider")) != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("materialProgramSelector")) != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("materialProgramParameterEditor")) != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("trustedProgramBuiltInMaterialNote")) != nullptr);
     QVERIFY(page->findChild<QObject *>(QStringLiteral("visualEffectsAdvancedToggle")) != nullptr);
     QVERIFY(page->findChild<QObject *>(QStringLiteral("visualEffectsUnavailable")) != nullptr);
     QVERIFY(page->findChild<QObject *>(QStringLiteral("materialOption-default")) == nullptr);

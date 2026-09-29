@@ -40,9 +40,10 @@ SettingsController.icons
 VisualEffects.qml
   -> SettingsController.visualEffects
       -> CXX-Qt SettingsVisualEffectsController QObject
-          -> Rust material state and typed Typhon control client
-              -> astrea.control v1 -> Typhon MaterialConfiguration
-                  -> Typhon-owned material.json and canonical Effects graph
+          -> Rust Phase 2A MaterialConfiguration state
+          -> Rust Phase 2B Material Program state
+              -> one bounded typed Typhon control client
+                  -> astrea.control v1 -> Typhon-owned material configuration and programs
 theme.json
   -> ThemeController watcher and legacy Shell/Dock/Bar projections
 QQmlApplicationEngine
@@ -134,11 +135,39 @@ bridge while visible when that capability exists. `MaterialShowcase.qml` is a
 deterministic local approximation used only when a live compositor preview
 cannot be made. It is not a renderer frame or intensity transport.
 
-Visual Effects presents one Glass ↔ Frosted material position. Its supported
-Phase 2A overrides are Blur Strength, Saturation, and Noise. Eclipse keeps the
-requested configuration for typed requests and Qt projection; Typhon alone
-validates, persists, resolves, and applies the material curve. Eclipse does
-not mirror MaterialConfiguration into `theme.json`.
+`SettingsController.visualEffects` projects two independent Typhon-owned
+domains through the same Rust-backed QObject. Phase 2A is
+`MaterialConfiguration`; Phase 2B is Material Program selection and parameter
+overrides. They share the existing bounded worker and request-ID ownership, but
+keep separate Rust state and availability projections.
+
+The Material Program bootstrap uses the atomic `material.program.state.get`
+response, which contains catalog and selection captured from one registry
+generation. Eclipse then describes the effective program with
+`material.program.describe`. Descriptions and mutation completions are accepted
+only when registry, effective program, and schema signature still match the
+Rust-owned state. A stale-schema rejection is identified by Typhon's structured
+`stale_material_program_schema` detail; Eclipse drops edits tied to that schema
+and refreshes state and description without rebasing values by parameter name.
+The same worker serializes refresh, describe, selection, and complete override
+configuration requests.
+
+QML receives catalog names, requested/effective program labels, status, and
+typed parameter descriptors as read-only QVariant projections. Registry and
+selection generations and the 64-bit schema signature remain in Rust; QML
+never constructs or returns schema or persistence identity. Typed invokables
+carry scalar, integer, or vector-component edits. Typhon remains the only
+qualification, validation, persistence, and rendering authority. Eclipse does
+not inspect or render trusted shaders.
+
+Visual Effects retains the Glass ↔ Frosted material position and the Phase 2A
+Blur Strength, Saturation, and Noise controls. Those controls configure
+Typhon's built-in material independently of Material Program overrides. When a
+trusted-local program is effective, the page says that these controls tune the
+built-in fallback material. Eclipse keeps the Phase 2A requested configuration
+for typed requests and Qt projection; Typhon alone validates, persists,
+resolves, and applies the material curve. Eclipse does not mirror either domain
+into `theme.json`.
 
 Unit tests link `astrea-settings-core`. Integration tests link both reusable
 production targets. No test target lists a production `.cpp` file owned by the
@@ -314,8 +343,8 @@ Eclipse Visual Effects
     = presentation and user mutation client through astrea.control
 ```
 
-Phase 2A has no shader UI. Phase 2B may expose only qualified named trusted
-material programs from Typhon's registry. Renderer configuration remains in
+The Phase 2B Settings UI exposes only Typhon's qualified named Material Program
+catalog and typed parameter descriptors. Renderer configuration remains in
 Typhon's private material store, never in Eclipse `theme.json`.
 
 The single System Theme entry in Appearance is the built-in Astrea theme card;

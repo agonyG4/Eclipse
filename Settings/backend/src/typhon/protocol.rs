@@ -1,4 +1,9 @@
 use crate::animation::state::{AnimationConfiguration, AnimationSnapshot};
+use crate::typhon::material_program::{
+    MaterialProgramConfiguration, MaterialProgramDescriptionSnapshot, MaterialProgramNameArguments,
+    MaterialProgramParameterConfiguration, MaterialProgramParameterConfigurationSnapshot,
+    MaterialProgramStateSnapshot,
+};
 use crate::visual_effects::{MaterialConfiguration, MaterialSnapshot};
 use serde::Serialize;
 use serde_json::Number;
@@ -20,9 +25,18 @@ pub enum MaterialRequest {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum MaterialProgramRequest {
+    StateGet,
+    Describe(MaterialProgramNameArguments),
+    Set(MaterialProgramConfiguration),
+    ParametersSet(MaterialProgramParameterConfiguration),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum ControlRequest {
     Animation(AnimationRequest),
     Material(MaterialRequest),
+    MaterialProgram(MaterialProgramRequest),
 }
 
 impl From<AnimationRequest> for ControlRequest {
@@ -48,12 +62,23 @@ pub enum ProtocolError {
 pub enum ControlSuccess {
     Animation(AnimationSnapshot),
     Material(MaterialSnapshot),
+    MaterialProgramState(MaterialProgramStateSnapshot),
+    MaterialProgramDescription(MaterialProgramDescriptionSnapshot),
+    MaterialProgramSelection(crate::typhon::material_program::MaterialProgramSelectionSnapshot),
+    MaterialProgramParameters(MaterialProgramParameterConfigurationSnapshot),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ControlRejection {
+    pub code: Option<String>,
+    pub message: String,
+    pub detail: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ProtocolOutcome {
     Success(ControlSuccess),
-    ServerRejected(String),
+    ServerRejected(ControlRejection),
 }
 
 #[derive(Serialize)]
@@ -71,6 +96,9 @@ enum WireArguments {
     Get(GetArguments),
     AnimationSet(AnimationSetArguments),
     MaterialSet(MaterialConfiguration),
+    MaterialProgramName(MaterialProgramNameArguments),
+    MaterialProgramSelection(MaterialProgramConfiguration),
+    MaterialProgramParameters(MaterialProgramParameterConfiguration),
 }
 
 #[derive(Serialize)]
@@ -110,6 +138,22 @@ pub fn encode_control_request(id: u64, request: ControlRequest) -> Result<Vec<u8
         ControlRequest::Material(MaterialRequest::Set(configuration)) => (
             "material.config.set",
             WireArguments::MaterialSet(configuration),
+        ),
+        ControlRequest::MaterialProgram(MaterialProgramRequest::StateGet) => (
+            "material.program.state.get",
+            WireArguments::Get(GetArguments {}),
+        ),
+        ControlRequest::MaterialProgram(MaterialProgramRequest::Describe(arguments)) => (
+            "material.program.describe",
+            WireArguments::MaterialProgramName(arguments),
+        ),
+        ControlRequest::MaterialProgram(MaterialProgramRequest::Set(configuration)) => (
+            "material.program.set",
+            WireArguments::MaterialProgramSelection(configuration),
+        ),
+        ControlRequest::MaterialProgram(MaterialProgramRequest::ParametersSet(configuration)) => (
+            "material.program.parameters.set",
+            WireArguments::MaterialProgramParameters(configuration),
         ),
     };
     let request = WireRequest {
@@ -192,19 +236,71 @@ pub fn decode_control_response(
                     .map_err(|_| ProtocolError::InvalidJson)?;
                 ControlSuccess::Material(snapshot)
             }
+            ControlRequest::MaterialProgram(MaterialProgramRequest::StateGet) => {
+                let snapshot: MaterialProgramStateSnapshot = serde_json::from_value(result.clone())
+                    .map_err(|_| ProtocolError::InvalidJson)?;
+                snapshot
+                    .validate()
+                    .map_err(|_| ProtocolError::InvalidJson)?;
+                ControlSuccess::MaterialProgramState(snapshot)
+            }
+            ControlRequest::MaterialProgram(MaterialProgramRequest::Describe(_)) => {
+                let description: MaterialProgramDescriptionSnapshot =
+                    serde_json::from_value(result.clone())
+                        .map_err(|_| ProtocolError::InvalidJson)?;
+                description
+                    .validate()
+                    .map_err(|_| ProtocolError::InvalidJson)?;
+                ControlSuccess::MaterialProgramDescription(description)
+            }
+            ControlRequest::MaterialProgram(MaterialProgramRequest::Set(_)) => {
+                let selection: crate::typhon::material_program::MaterialProgramSelectionSnapshot =
+                    serde_json::from_value(result.clone())
+                        .map_err(|_| ProtocolError::InvalidJson)?;
+                selection
+                    .validate()
+                    .map_err(|_| ProtocolError::InvalidJson)?;
+                ControlSuccess::MaterialProgramSelection(selection)
+            }
+            ControlRequest::MaterialProgram(MaterialProgramRequest::ParametersSet(_)) => {
+                let snapshot: MaterialProgramParameterConfigurationSnapshot =
+                    serde_json::from_value(result.clone())
+                        .map_err(|_| ProtocolError::InvalidJson)?;
+                snapshot
+                    .validate()
+                    .map_err(|_| ProtocolError::InvalidJson)?;
+                ControlSuccess::MaterialProgramParameters(snapshot)
+            }
         };
         Ok(ProtocolOutcome::Success(success))
     } else {
         let Some(error) = object.get("error").and_then(serde_json::Value::as_object) else {
             return Err(ProtocolError::MissingError);
         };
+        let code = optional_rejection_string(error, "code")?;
+        let detail = optional_rejection_string(error, "detail")?;
         let message = error
             .get("message")
             .and_then(serde_json::Value::as_str)
             .filter(|message| !message.is_empty())
             .map(str::to_owned)
             .unwrap_or_else(|| String::from("Typhon control: server rejected request"));
-        Ok(ProtocolOutcome::ServerRejected(message))
+        Ok(ProtocolOutcome::ServerRejected(ControlRejection {
+            code,
+            message,
+            detail,
+        }))
+    }
+}
+
+fn optional_rejection_string(
+    error: &serde_json::Map<String, serde_json::Value>,
+    field: &str,
+) -> Result<Option<String>, ProtocolError> {
+    match error.get(field) {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(serde_json::Value::String(value)) => Ok(Some(value.clone())),
+        Some(_) => Err(ProtocolError::InvalidJson),
     }
 }
 
@@ -220,6 +316,9 @@ fn integral_id(number: &Number) -> Option<u64> {
 mod tests {
     use super::*;
     use crate::animation::state::AnimationConfiguration;
+    use crate::typhon::material_program::{
+        MaterialProgramFallbackReason, MaterialProgramParameterValue,
+    };
     use serde_json::{Value, json};
 
     #[test]
@@ -300,6 +399,299 @@ mod tests {
         assert_eq!(set_value["args"]["version"], 1);
         assert_eq!(set_value["args"]["position"], 0.74);
         assert_eq!(set_value["args"]["overrides"]["blur"], 0.82);
+    }
+
+    #[test]
+    fn material_program_requests_encode_canonical_commands_and_complete_arguments() {
+        let state = encode_control_request(
+            51,
+            ControlRequest::MaterialProgram(MaterialProgramRequest::StateGet),
+        )
+        .unwrap();
+        let state: Value = serde_json::from_slice(&state[..state.len() - 1]).unwrap();
+        assert_eq!(state["command"], "material.program.state.get");
+        assert_eq!(state["args"], json!({}));
+
+        let describe = encode_control_request(
+            52,
+            ControlRequest::MaterialProgram(MaterialProgramRequest::Describe(
+                MaterialProgramNameArguments {
+                    name: "studio.soft_glow".to_owned(),
+                },
+            )),
+        )
+        .unwrap();
+        let describe: Value = serde_json::from_slice(&describe[..describe.len() - 1]).unwrap();
+        assert_eq!(describe["command"], "material.program.describe");
+        assert_eq!(describe["args"], json!({"name": "studio.soft_glow"}));
+        assert_eq!(describe["args"].as_object().unwrap().len(), 1);
+
+        let selection = MaterialProgramConfiguration {
+            version: 1,
+            requested_program: "studio.soft_glow".to_owned(),
+        };
+        let set = encode_control_request(
+            53,
+            ControlRequest::MaterialProgram(MaterialProgramRequest::Set(selection)),
+        )
+        .unwrap();
+        let set: Value = serde_json::from_slice(&set[..set.len() - 1]).unwrap();
+        assert_eq!(set["command"], "material.program.set");
+        assert_eq!(
+            set["args"],
+            json!({"version": 1, "requestedProgram": "studio.soft_glow"})
+        );
+
+        let parameters = MaterialProgramParameterConfiguration {
+            version: 1,
+            program: "studio.soft_glow".to_owned(),
+            schema_signature: 9_007_199_254_741_113,
+            overrides: [
+                (
+                    "intensity".to_owned(),
+                    MaterialProgramParameterValue::Float(0.8),
+                ),
+                (
+                    "offset".to_owned(),
+                    MaterialProgramParameterValue::Vec3([0.1, 0.2, 0.3]),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        };
+        let set = encode_control_request(
+            54,
+            ControlRequest::MaterialProgram(MaterialProgramRequest::ParametersSet(parameters)),
+        )
+        .unwrap();
+        let set: Value = serde_json::from_slice(&set[..set.len() - 1]).unwrap();
+        assert_eq!(set["command"], "material.program.parameters.set");
+        assert_eq!(set["args"]["version"], 1);
+        assert_eq!(set["args"]["program"], "studio.soft_glow");
+        assert_eq!(set["args"]["schemaSignature"], 9_007_199_254_741_113u64);
+        assert_eq!(
+            set["args"]["overrides"]["intensity"],
+            json!({"type": "float", "value": 0.8})
+        );
+        assert_eq!(
+            set["args"]["overrides"]["offset"],
+            json!({"type": "vec3", "value": [0.1, 0.2, 0.3]})
+        );
+    }
+
+    #[test]
+    fn material_program_state_response_is_atomic_and_strict() {
+        let request = ControlRequest::MaterialProgram(MaterialProgramRequest::StateGet);
+        let outcome =
+            decode_control_response(&program_response(61, valid_program_state()), 61, &request)
+                .unwrap();
+        let ProtocolOutcome::Success(ControlSuccess::MaterialProgramState(snapshot)) = outcome
+        else {
+            panic!("state.get must return the combined catalog and selection snapshot");
+        };
+        assert_eq!(snapshot.catalog.registry_generation, 19);
+        assert_eq!(snapshot.selection.registry_generation, 19);
+        assert_eq!(
+            snapshot.selection.configuration.requested_program,
+            "missing.request"
+        );
+        assert_eq!(
+            snapshot.selection.effective_program,
+            "system.background_blur"
+        );
+        assert_eq!(
+            snapshot.selection.fallback_reason,
+            Some(MaterialProgramFallbackReason::Missing)
+        );
+
+        let mut mismatched = valid_program_state();
+        mismatched["selection"]["registryGeneration"] = json!(20);
+        assert_eq!(
+            decode_control_response(&program_response(61, mismatched), 61, &request),
+            Err(ProtocolError::InvalidJson)
+        );
+
+        let mut unknown_field = valid_program_state();
+        unknown_field["catalog"]["rendererId"] = json!(7);
+        assert_eq!(
+            decode_control_response(&program_response(61, unknown_field), 61, &request),
+            Err(ProtocolError::InvalidJson)
+        );
+    }
+
+    #[test]
+    fn material_program_description_decodes_all_typed_parameters_and_ranges() {
+        let request = ControlRequest::MaterialProgram(MaterialProgramRequest::Describe(
+            MaterialProgramNameArguments {
+                name: "studio.soft_glow".to_owned(),
+            },
+        ));
+        let description = json!({
+            "registryGeneration": 19,
+            "parameterGeneration": 4,
+            "name": "studio.soft_glow",
+            "origin": "trusted_local",
+            "schemaSignature": 9007199254741113u64,
+            "parameters": [
+                {"name":"amount","parameterType":"float","range":{"type":"float","min":0.0,"max":1.0},"default":{"type":"float","value":0.2},"effective":{"type":"float","value":0.4},"overridden":true},
+                {"name":"offset","parameterType":"vec2","range":{"type":"float_components","components":2,"min":[-1.0,-1.0],"max":[1.0,1.0]},"default":{"type":"vec2","value":[0.0,0.0]},"effective":{"type":"vec2","value":[0.2,0.4]},"overridden":false},
+                {"name":"tint","parameterType":"vec3","range":null,"default":{"type":"vec3","value":[1.0,1.0,1.0]},"effective":{"type":"vec3","value":[0.8,0.9,1.0]},"overridden":false},
+                {"name":"weights","parameterType":"vec4","range":{"type":"float_components","components":4,"min":[0.0,0.0,0.0,0.0],"max":[1.0,1.0,1.0,1.0]},"default":{"type":"vec4","value":[0.1,0.2,0.3,0.4]},"effective":{"type":"vec4","value":[0.1,0.2,0.3,0.4]},"overridden":false},
+                {"name":"steps","parameterType":"int","range":{"type":"int","min":1,"max":8},"default":{"type":"int","value":2},"effective":{"type":"int","value":3},"overridden":true}
+            ]
+        });
+        let outcome =
+            decode_control_response(&program_response(62, description), 62, &request).unwrap();
+        let ProtocolOutcome::Success(ControlSuccess::MaterialProgramDescription(description)) =
+            outcome
+        else {
+            panic!("describe must return typed parameter descriptors");
+        };
+        assert_eq!(description.parameters.len(), 5);
+        assert_eq!(description.schema_signature, 9_007_199_254_741_113);
+        assert!(matches!(
+            description.parameters[0].default,
+            MaterialProgramParameterValue::Float(_)
+        ));
+        assert!(matches!(
+            description.parameters[1].effective,
+            MaterialProgramParameterValue::Vec2(_)
+        ));
+        assert!(matches!(
+            description.parameters[2].effective,
+            MaterialProgramParameterValue::Vec3(_)
+        ));
+        assert!(matches!(
+            description.parameters[3].effective,
+            MaterialProgramParameterValue::Vec4(_)
+        ));
+        assert!(matches!(
+            description.parameters[4].effective,
+            MaterialProgramParameterValue::Int(_)
+        ));
+    }
+
+    #[test]
+    fn tagged_values_round_trip_and_reject_malformed_numbers_and_vectors() {
+        let values = [
+            MaterialProgramParameterValue::Float(0.25),
+            MaterialProgramParameterValue::Vec2([0.1, 0.2]),
+            MaterialProgramParameterValue::Vec3([0.1, 0.2, 0.3]),
+            MaterialProgramParameterValue::Vec4([0.1, 0.2, 0.3, 0.4]),
+            MaterialProgramParameterValue::Int(7),
+        ];
+        for value in values {
+            let encoded = serde_json::to_value(value).unwrap();
+            let decoded: MaterialProgramParameterValue = serde_json::from_value(encoded).unwrap();
+            assert_eq!(decoded, value);
+        }
+        for malformed in [
+            json!({"type":"vec2","value":[0.1]}),
+            json!({"type":"vec3","value":[0.1,0.2,0.3,0.4]}),
+            json!({"type":"vec4","value":[0.1,0.2,0.3]}),
+            json!({"type":"float","value":0.2,"extra":true}),
+        ] {
+            assert!(serde_json::from_value::<MaterialProgramParameterValue>(malformed).is_err());
+        }
+        assert!(
+            serde_json::from_str::<MaterialProgramParameterValue>(
+                r#"{"type":"float","value":1e999}"#
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn malformed_parameter_ranges_and_missing_required_nullable_fields_are_rejected() {
+        let request = ControlRequest::MaterialProgram(MaterialProgramRequest::Describe(
+            MaterialProgramNameArguments {
+                name: "studio.soft_glow".to_owned(),
+            },
+        ));
+        for range in [
+            json!({"type":"float","min":1.0,"max":0.0}),
+            json!({"type":"float","min":0.0,"max":1.0,"extra":true}),
+            json!({"type":"float_components","components":1,"min":[0.0],"max":[1.0]}),
+            json!({"type":"float_components","components":3,"min":[0.0,0.0],"max":[1.0,1.0]}),
+            json!({"type":"int","min":9,"max":2}),
+        ] {
+            let mut description = valid_program_description();
+            description["parameters"][0]["range"] = range;
+            assert_eq!(
+                decode_control_response(&program_response(63, description), 63, &request),
+                Err(ProtocolError::InvalidJson)
+            );
+        }
+
+        let request = ControlRequest::MaterialProgram(MaterialProgramRequest::ParametersSet(
+            valid_parameter_configuration(),
+        ));
+        let nullable = json!({
+            "registryGeneration":19,
+            "parameterGeneration":5,
+            "configuration": {
+                "version":1,
+                "program":"studio.soft_glow",
+                "schemaSignature":9007199254741113u64,
+                "overrides":{}
+            },
+            "description":null
+        });
+        assert!(matches!(
+            decode_control_response(&program_response(64, nullable.clone()), 64, &request),
+            Ok(ProtocolOutcome::Success(
+                ControlSuccess::MaterialProgramParameters(_)
+            ))
+        ));
+        let mut missing_description = nullable;
+        missing_description
+            .as_object_mut()
+            .unwrap()
+            .remove("description");
+        assert_eq!(
+            decode_control_response(&program_response(64, missing_description), 64, &request),
+            Err(ProtocolError::InvalidJson)
+        );
+    }
+
+    #[test]
+    fn structured_server_rejection_preserves_code_message_and_detail() {
+        let response = rejection_response(
+            65,
+            json!({
+                "code":"invalid_argument",
+                "message":"material program parameter schema is stale",
+                "detail":"stale_material_program_schema"
+            }),
+        );
+        assert_eq!(
+            decode_control_response(
+                &response,
+                65,
+                &ControlRequest::MaterialProgram(MaterialProgramRequest::ParametersSet(
+                    valid_parameter_configuration()
+                ))
+            ),
+            Ok(ProtocolOutcome::ServerRejected(ControlRejection {
+                code: Some("invalid_argument".to_owned()),
+                message: "material program parameter schema is stale".to_owned(),
+                detail: Some("stale_material_program_schema".to_owned()),
+            }))
+        );
+
+        let legacy = rejection_response(66, json!({"message":"rejected"}));
+        assert_eq!(
+            decode_control_response(
+                &legacy,
+                66,
+                &ControlRequest::Animation(AnimationRequest::Get)
+            ),
+            Ok(ProtocolOutcome::ServerRejected(ControlRejection {
+                code: None,
+                message: "rejected".to_owned(),
+                detail: None,
+            }))
+        );
     }
 
     #[test]
@@ -427,7 +819,11 @@ mod tests {
         let response = response_with(json!({"ok": false, "error": {"message": "rejected"}}));
         assert_eq!(
             decode_response(&response, 1),
-            Ok(ProtocolOutcome::ServerRejected("rejected".to_owned()))
+            Ok(ProtocolOutcome::ServerRejected(ControlRejection {
+                code: None,
+                message: "rejected".to_owned(),
+                detail: None,
+            }))
         );
         let response = response_with(json!({"ok": false}));
         assert_eq!(
@@ -505,6 +901,85 @@ mod tests {
         .into_iter()
         .chain(*b"\n")
         .collect()
+    }
+
+    fn program_response(id: u64, result: Value) -> Vec<u8> {
+        serde_json::to_vec(&json!({
+            "protocol": "astrea.control",
+            "version": 1,
+            "id": id,
+            "ok": true,
+            "result": result,
+        }))
+        .unwrap()
+        .into_iter()
+        .chain(*b"\n")
+        .collect()
+    }
+
+    fn rejection_response(id: u64, error: Value) -> Vec<u8> {
+        serde_json::to_vec(&json!({
+            "protocol": "astrea.control",
+            "version": 1,
+            "id": id,
+            "ok": false,
+            "error": error,
+        }))
+        .unwrap()
+        .into_iter()
+        .chain(*b"\n")
+        .collect()
+    }
+
+    fn valid_program_state() -> Value {
+        json!({
+            "catalog": {
+                "registryGeneration": 19,
+                "renderingAvailable": true,
+                "programs": [{
+                    "name": "system.background_blur",
+                    "origin": "system",
+                    "schemaSignature": 1,
+                    "parameterCount": 0
+                }]
+            },
+            "selection": {
+                "generation": 7,
+                "source": "runtime",
+                "configuration": {"version":1,"requestedProgram":"missing.request"},
+                "effectiveProgram": "system.background_blur",
+                "registryGeneration": 19,
+                "renderingAvailable": true,
+                "fallbackReason": "missing"
+            }
+        })
+    }
+
+    fn valid_program_description() -> Value {
+        json!({
+            "registryGeneration": 19,
+            "parameterGeneration": 4,
+            "name": "studio.soft_glow",
+            "origin": "trusted_local",
+            "schemaSignature": 9007199254741113u64,
+            "parameters": [{
+                "name":"amount",
+                "parameterType":"float",
+                "range":{"type":"float","min":0.0,"max":1.0},
+                "default":{"type":"float","value":0.2},
+                "effective":{"type":"float","value":0.4},
+                "overridden":true
+            }]
+        })
+    }
+
+    fn valid_parameter_configuration() -> MaterialProgramParameterConfiguration {
+        MaterialProgramParameterConfiguration {
+            version: 1,
+            program: "studio.soft_glow".to_owned(),
+            schema_signature: 9_007_199_254_741_113,
+            overrides: Default::default(),
+        }
     }
 
     fn material_response(result: Value) -> Vec<u8> {

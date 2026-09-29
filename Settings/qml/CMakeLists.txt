@@ -40,6 +40,7 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     pages/system/Audio.qml
     pages/appearance/Appearance.qml
     pages/appearance/VisualEffects.qml
+    pages/appearance/MaterialProgramParameterEditor.qml
     pages/appearance/Icons.qml
     pages/appearance/MaterialPreview.qml
     pages/appearance/MaterialShowcase.qml

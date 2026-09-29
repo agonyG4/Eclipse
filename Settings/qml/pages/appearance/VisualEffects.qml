@@ -14,6 +14,17 @@ Item {
     readonly property bool hasAdvancedCapabilities: controller &&
         (controller.blurOverrideSupported || controller.saturationOverrideSupported
          || controller.noiseOverrideSupported)
+    readonly property var materialProgramCatalog: controller && controller.materialProgramCatalog
+        ? controller.materialProgramCatalog : []
+    readonly property var materialProgramOptions: materialProgramCatalog.map(entry => entry.name)
+    readonly property int selectedMaterialProgramIndex: {
+        if (!controller)
+            return -1
+        const pending = String(controller.materialProgramPendingSelection || "")
+        const effective = String(controller.materialProgramEffective || "")
+        const selected = pending.length > 0 ? pending : effective
+        return materialProgramOptions.indexOf(selected)
+    }
     property bool advancedExpanded: false
 
     Component.onCompleted: {
@@ -44,6 +55,182 @@ Item {
             wallpaperFit: root.wallpaperController
                 ? root.wallpaperController.effectiveFit : "cover"
             themeVariant: Components.Theme.isLight ? "light" : "dark"
+        }
+
+        Form.FormCard {
+            objectName: "materialProgramCard"
+            Layout.fillWidth: true
+            Layout.bottomMargin: 12
+            margins: 16
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Text {
+                    text: I18n.tr("apps.settings.pages.visual_effects.program", "Material Program")
+                    color: Components.Theme.textPrimary
+                    font.family: Components.Theme.fontFamily
+                    font.pixelSize: Components.Theme.fontSizeNormal
+                    font.weight: Components.Theme.fontWeightMedium
+                }
+
+                Controls.SelectButton {
+                    objectName: "materialProgramSelector"
+                    Layout.fillWidth: true
+                    label: root.controller && String(root.controller.materialProgramEffective || "").length > 0
+                        ? root.controller.materialProgramEffective
+                        : I18n.tr("apps.settings.pages.visual_effects.program_loading", "Loading Material Programs…")
+                    options: root.materialProgramOptions
+                    selectedIndex: root.selectedMaterialProgramIndex
+                    enabled: root.controller && root.controller.materialProgramAvailable
+                    Accessible.name: I18n.tr("apps.settings.pages.visual_effects.program", "Material Program")
+                    onSelected: index => {
+                        if (index >= 0 && root.controller)
+                            root.controller.selectMaterialProgram(root.materialProgramCatalog[index].name)
+                    }
+                }
+
+                Text {
+                    objectName: "materialProgramFallbackStatus"
+                    visible: root.controller && String(root.controller.materialProgramRequested || "").length > 0
+                        && root.controller.materialProgramRequested !== root.controller.materialProgramEffective
+                    Layout.fillWidth: true
+                    text: visible
+                        ? I18n.tr("apps.settings.pages.visual_effects.program_fallback_requested", "Requested")
+                            + " " + root.controller.materialProgramRequested + ", "
+                            + I18n.tr("apps.settings.pages.visual_effects.program_fallback_using", "using")
+                            + " " + root.controller.materialProgramEffective + " ("
+                            + root.controller.materialProgramFallbackReason + " "
+                            + I18n.tr("apps.settings.pages.visual_effects.program_fallback_label", "fallback") + ")."
+                        : ""
+                    color: Components.Theme.warningColor
+                    font.family: Components.Theme.fontFamily
+                    font.pixelSize: Components.Theme.fontSizeSmall
+                    wrapMode: Text.WordWrap
+                    maximumLineCount: 3
+                    elide: Text.ElideRight
+                    Accessible.role: Accessible.AlertMessage
+                }
+
+                Text {
+                    objectName: "materialProgramUnavailableStatus"
+                    visible: root.controller && !root.controller.materialProgramAvailable
+                    Layout.fillWidth: true
+                    text: visible
+                        ? (String(root.controller.materialProgramError || "").length > 0
+                            ? root.controller.materialProgramError
+                            : I18n.tr("apps.settings.pages.visual_effects.program_unavailable",
+                                      "Material Program controls are unavailable while Typhon reconnects."))
+                        : ""
+                    color: Components.Theme.errorColor
+                    font.family: Components.Theme.fontFamily
+                    font.pixelSize: Components.Theme.fontSizeSmall
+                    wrapMode: Text.WordWrap
+                    maximumLineCount: 3
+                    elide: Text.ElideRight
+                    Accessible.role: Accessible.AlertMessage
+                }
+
+                QQC2.Button {
+                    objectName: "refreshMaterialPrograms"
+                    visible: root.controller && (!root.controller.materialProgramAvailable
+                        || String(root.controller.materialProgramError || "").length > 0)
+                    enabled: root.controller && !root.controller.busy
+                    text: I18n.tr("apps.settings.pages.visual_effects.refresh_programs", "Refresh Material Programs")
+                    onClicked: root.controller.refresh()
+                }
+
+                Text {
+                    objectName: "materialProgramRenderingStatus"
+                    visible: root.controller && root.controller.materialProgramAvailable
+                        && !root.controller.materialProgramRenderingAvailable
+                    Layout.fillWidth: true
+                    text: visible
+                        ? I18n.tr("apps.settings.pages.visual_effects.rendering_unavailable",
+                                  "Typhon rendering is unavailable. Program selection can still be configured.")
+                        : ""
+                    color: Components.Theme.textSecondary
+                    font.family: Components.Theme.fontFamily
+                    font.pixelSize: Components.Theme.fontSizeSmall
+                    wrapMode: Text.WordWrap
+                    maximumLineCount: 3
+                    elide: Text.ElideRight
+                }
+
+                Text {
+                    visible: root.controller && String(root.controller.materialProgramError || "").length > 0
+                        && root.controller.materialProgramAvailable
+                    Layout.fillWidth: true
+                    text: visible ? root.controller.materialProgramError : ""
+                    color: Components.Theme.errorColor
+                    font.family: Components.Theme.fontFamily
+                    font.pixelSize: Components.Theme.fontSizeSmall
+                    wrapMode: Text.WordWrap
+                    maximumLineCount: 3
+                    elide: Text.ElideRight
+                    Accessible.role: Accessible.AlertMessage
+                }
+            }
+        }
+
+        Form.FormCard {
+            objectName: "materialProgramParametersCard"
+            visible: root.controller && root.controller.materialProgramAvailable
+                && String(root.controller.materialProgramEffective || "").length > 0
+            Layout.fillWidth: true
+            Layout.bottomMargin: 16
+            margins: 16
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text {
+                        Layout.fillWidth: true
+                        text: I18n.tr("apps.settings.pages.visual_effects.parameters", "Program Parameters")
+                        color: Components.Theme.textPrimary
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeNormal
+                        font.weight: Components.Theme.fontWeightMedium
+                    }
+                    QQC2.Button {
+                        objectName: "resetMaterialProgramParameters"
+                        visible: root.controller && root.controller.materialProgramHasOverrides
+                        enabled: root.controller && root.controller.materialProgramAvailable
+                        text: I18n.tr("apps.settings.pages.visual_effects.reset_program_parameters",
+                                      "Reset Program Parameters")
+                        onClicked: root.controller.resetMaterialProgramParameters()
+                    }
+                }
+
+                MaterialProgramParameterEditor {
+                    objectName: "materialProgramParameterEditor"
+                    Layout.fillWidth: true
+                    controller: root.controller
+                    parameters: root.controller ? root.controller.materialProgramParameters : []
+                    enabled: root.controller && root.controller.materialProgramEditingAvailable
+                }
+            }
+        }
+
+        Form.FormCard {
+            objectName: "trustedProgramBuiltInMaterialNote"
+            visible: root.controller && root.controller.materialProgramEffectiveOrigin === "trusted_local"
+            Layout.fillWidth: true
+            Layout.bottomMargin: 12
+            margins: 12
+            Text {
+                Layout.fillWidth: true
+                text: I18n.tr("apps.settings.pages.visual_effects.built_in_material_note",
+                              "Glass / Frosted, Blur Strength, Saturation, and Noise tune Typhon’s built-in fallback material. They do not change the active trusted Material Program.")
+                color: Components.Theme.textSecondary
+                font.family: Components.Theme.fontFamily
+                font.pixelSize: Components.Theme.fontSizeSmall
+                wrapMode: Text.WordWrap
+            }
         }
 
         Form.FormCard {

@@ -203,7 +203,13 @@ impl SettingsAnimationControllerRust {
                     }
                 }
             }
-            Ok(ProtocolOutcome::Success(ControlSuccess::Material(_))) => {
+            Ok(ProtocolOutcome::Success(
+                ControlSuccess::Material(_)
+                | ControlSuccess::MaterialProgramState(_)
+                | ControlSuccess::MaterialProgramDescription(_)
+                | ControlSuccess::MaterialProgramSelection(_)
+                | ControlSuccess::MaterialProgramParameters(_),
+            )) => {
                 effects.error_changed = self.set_error_value(String::from(
                     "Typhon returned a material snapshot to the animation controller.",
                 ));
@@ -213,7 +219,7 @@ impl SettingsAnimationControllerRust {
                     self.state.set_unavailable();
                     effects.availability_changed = true;
                 }
-                effects.error_changed = self.set_error_value(error);
+                effects.error_changed = self.set_error_value(error.message);
             }
             Err(error) => {
                 let should_mark_unavailable = refresh

@@ -23,6 +23,7 @@ if(animations_qml_index EQUAL -1)
 endif()
 foreach(new_appearance_page IN ITEMS
     "pages/appearance/VisualEffects.qml"
+    "pages/appearance/MaterialProgramParameterEditor.qml"
     "pages/appearance/Icons.qml"
 )
     list(FIND registered_qml_files "${new_appearance_page}" appearance_page_index)
@@ -636,10 +637,36 @@ foreach(visual_effects_required_token IN ITEMS
     "materialSaturationSlider"
     "materialNoiseSlider"
     "root.controller.resetOverrides()"
+    "objectName: \"materialProgramSelector\""
+    "root.controller.selectMaterialProgram"
+    "materialProgramFallbackStatus"
+    "materialProgramRenderingStatus"
+    "MaterialProgramParameterEditor"
+    "trustedProgramBuiltInMaterialNote"
 )
     string(FIND "${visual_effects_source}" "${visual_effects_required_token}" visual_effects_position)
     if(visual_effects_position EQUAL -1)
         message(FATAL_ERROR "Visual Effects material controller is missing '${visual_effects_required_token}'")
+    endif()
+endforeach()
+file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/MaterialProgramParameterEditor.qml"
+    material_program_editor_source)
+foreach(material_program_editor_required_token IN ITEMS
+    "parameterType === \"float\""
+    "parameterType === \"int\""
+    "parameterType === \"vec2\""
+    "parameterType === \"vec3\""
+    "parameterType === \"vec4\""
+    "setMaterialProgramFloatParameter"
+    "setMaterialProgramIntParameter"
+    "setMaterialProgramVectorComponent"
+    "clearMaterialProgramParameter"
+    "flushMaterialProgramParameters"
+)
+    string(FIND "${material_program_editor_source}" "${material_program_editor_required_token}"
+        material_program_editor_position)
+    if(material_program_editor_position EQUAL -1)
+        message(FATAL_ERROR "Material Program editor is missing '${material_program_editor_required_token}'")
     endif()
 endforeach()
 foreach(visual_effects_forbidden_token IN ITEMS
@@ -742,6 +769,7 @@ endforeach()
 foreach(qml_path IN ITEMS
     qml/pages/appearance/Appearance.qml
     qml/pages/appearance/VisualEffects.qml
+    qml/pages/appearance/MaterialProgramParameterEditor.qml
     qml/pages/appearance/Icons.qml
 )
     file(READ "${SETTINGS_SOURCE_DIR}/${qml_path}" qml_page_source)
@@ -750,6 +778,21 @@ foreach(qml_path IN ITEMS
             filesystem_mutation_position)
         if(NOT filesystem_mutation_position EQUAL -1)
             message(FATAL_ERROR "QML page ${qml_path} owns config/filesystem logic '${filesystem_mutation_token}'")
+        endif()
+    endforeach()
+endforeach()
+foreach(qml_boundary_source IN ITEMS visual_effects_source material_program_editor_source)
+    foreach(material_program_qml_forbidden_token IN ITEMS
+        "schemaSignature" "schema_signature" "rendererId" "renderer_id"
+        "shaderSource" "shaderPath" "GLSL" "theme.json" "QLocalSocket"
+        "QLocalServer" "connectToServer" "ControlRequest" "material.program.state.get"
+        "compositor.protocol" "WaylandConnection"
+    )
+        string(FIND "${${qml_boundary_source}}" "${material_program_qml_forbidden_token}"
+            material_program_qml_forbidden_position)
+        if(NOT material_program_qml_forbidden_position EQUAL -1)
+            message(FATAL_ERROR
+                "QML owns Material Program schema, rendering, persistence, or IPC token '${material_program_qml_forbidden_token}'")
         endif()
     endforeach()
 endforeach()

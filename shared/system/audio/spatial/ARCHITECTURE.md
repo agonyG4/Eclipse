@@ -58,6 +58,11 @@ the fixed 48 kHz planar F32 boundary and canonical channel positions. PipeWire's
 rate does not determine the Rust stream format; PipeWire adapters handle rate conversion outside the
 Astrea stream pair.
 
+Startup connects capture before playback while holding the PipeWire thread-loop lock. The capture
+callback cannot trigger playback until both connects succeed and `m_pairReady` becomes true, so the
+pair is not exposed in a partially connected state. The playback-first order used by module-loopback
+is not needed for this gated startup sequence.
+
 When enabled and prepared, the virtual 7.1 sink and stereo playback half stay resident even when no
 client routes audio through them. PipeWire and WirePlumber may suspend or passivate normal graph
 processing while idle. This is feature-level activation, not per-stream demand activation; an idle
@@ -68,11 +73,13 @@ select a physical output or make Astrea the global default sink.
 Capture processing only triggers the playback stream. The playback process callback dequeues the
 newest available capture buffer, recycles stale buffers, obtains one playback buffer, validates
 each planar mapping and chunk range, calls the existing block bridge, then recycles or queues both
-buffers. If output is available but capture data or the negotiated format is unusable, the valid
-stereo F32P output range is filled with silence. An unknown or non-F32P playback layout is left
-uninterpreted until a safe writable format is negotiated. A failed playback trigger drains and
-recycles queued capture buffers. This pair uses PipeWire scheduling directly and adds neither an
-Astrea ring buffer nor a second DSP thread.
+buffers. When valid captured audio exists, capture determines the frame count; playback `requested`
+is advisory and is used only as a bounded silence fallback when no usable captured frame count
+exists. A zero request with no usable capture produces an empty output chunk. Structurally valid
+capture with a DSP-incompatible format keeps its captured frame count and produces silence. An
+unknown or non-F32P playback layout is left uninterpreted until a safe writable format is negotiated.
+A failed playback trigger drains and recycles queued capture buffers. This pair uses PipeWire
+scheduling directly and adds neither an Astrea ring buffer nor a second DSP thread.
 
 Neither realtime process callback allocates or frees memory, locks or waits, accesses files, calls
 Qt, or logs. The host propagates PipeWire latency and process-latency parameters using the

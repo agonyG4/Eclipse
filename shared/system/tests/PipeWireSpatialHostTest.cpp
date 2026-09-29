@@ -76,6 +76,13 @@ int probeProcessor(void *context, const float *const *inputs,
   return 0;
 }
 
+int failingProcessor(void *, const float *const *, float *const *outputs,
+                     std::uint32_t frames) noexcept {
+  for (std::size_t channel = 0; channel < 2; ++channel)
+    std::fill_n(outputs[channel], frames, 123.0f);
+  return -1;
+}
+
 struct PendingQueue {
   std::array<void *, 4> buffers{};
   std::size_t count = 0;
@@ -119,10 +126,18 @@ private slots:
   void bothStreamsShareTheInstanceLinkGroup();
   void playbackIsPassiveAndDoesNotRemix();
   void malformedCaptureProducesBoundedSilence();
+  void validCaptureShorterThanRequestKeepsCaptureFrameCount();
+  void validCaptureLargerThanRequestIsNotTruncated();
+  void missingCaptureUsesBoundedRequestedSilence();
+  void missingCaptureWithZeroRequestProducesNoFrames();
+  void incompatibleCaptureFormatKeepsSafeCaptureFrameCount();
   void insufficientOutputCapacityBoundsProcessing();
   void incompatiblePlaybackLayoutIsNotInterpretedAsFloat();
   void processorReceivesEightCanonicalInputPlanesAndTwoOutputs();
+  void processorFailureWritesBoundedSilenceAndKeepsChunkMetadata();
   void failedCaptureTriggerRecyclesAllPendingBuffers();
+  void newestCaptureBufferIsRecycledExactlyOnce();
+  void dequeuedCaptureAndPlaybackBuffersAreQueuedExactlyOnce();
   void startupFailureAtEveryStageRollsBackOwnedResources();
   void repeatedStopIsSafe();
   void activeRuntimeErrorIsLatchedAndNotifiedOnlyOnce();
@@ -267,34 +282,116 @@ void PipeWireSpatialHostTest::malformedCaptureProducesBoundedSilence() {
     QCOMPARE(output.storage[1][frame], 0.0f);
   }
   QCOMPARE(probe.calls, 0U);
+}
 
-  input.data[3].data = input.storage[3].data();
-  input.chunks[5].size = sizeof(float);
-  output.storage[0][0] = 8.0f;
-  output.storage[0][1] = 8.0f;
-  output.storage[1][0] = 8.0f;
-  output.storage[1][1] = 8.0f;
-  const auto shortPlane = Support::processBufferPair(
+void PipeWireSpatialHostTest::
+    validCaptureShorterThanRequestKeepsCaptureFrameCount() {
+  PlanarBuffer input(8, 2);
+  PlanarBuffer output(2, 7);
+  for (auto &plane : output.storage)
+    std::fill(plane.begin(), plane.end(), 9.0f);
+  input.storage[0] = {1.0f, 2.0f};
+  input.storage[1] = {3.0f, 4.0f};
+  input.storage[6] = {30.0f, 40.0f};
+  input.storage[7] = {10.0f, 20.0f};
+
+  ProcessProbe probe;
+  for (std::size_t channel = 0; channel < input.storage.size(); ++channel)
+    probe.expectedInputs[channel] = input.storage[channel].data();
+  probe.expectedOutputs = {output.storage[0].data(), output.storage[1].data()};
+
+  const auto result = Support::processBufferPair(
+      &input.buffer, &output.buffer, 7, true, true, &probeProcessor, &probe);
+
+  QVERIFY(result.processed);
+  QCOMPARE(result.frames, 2U);
+  QCOMPARE(probe.calls, 1U);
+  QCOMPARE(probe.frames, 2U);
+  QCOMPARE(output.chunks[0].size, 2U * sizeof(float));
+  QCOMPARE(output.chunks[1].size, 2U * sizeof(float));
+  QCOMPARE(output.storage[0][0], 11.0f);
+  QCOMPARE(output.storage[0][1], 22.0f);
+  QCOMPARE(output.storage[1][0], 33.0f);
+  QCOMPARE(output.storage[1][1], 44.0f);
+  QCOMPARE(output.storage[0][2], 9.0f);
+  QCOMPARE(output.storage[1][2], 9.0f);
+}
+
+void PipeWireSpatialHostTest::validCaptureLargerThanRequestIsNotTruncated() {
+  PlanarBuffer input(8, 7);
+  PlanarBuffer output(2, 7);
+  ProcessProbe probe;
+
+  const auto result = Support::processBufferPair(
       &input.buffer, &output.buffer, 2, true, true, &probeProcessor, &probe);
-  QCOMPARE(shortPlane.frames, 2U);
-  QVERIFY(!shortPlane.processed);
-  for (std::size_t channel = 0; channel < 2; ++channel)
-    for (std::size_t frame = 0; frame < 2; ++frame)
-      QCOMPARE(output.storage[channel][frame], 0.0f);
-  QCOMPARE(probe.calls, 0U);
 
-  input.chunks[5].size = input.data[5].maxsize;
-  std::fill(output.storage[0].begin(), output.storage[0].end(), 3.0f);
-  std::fill(output.storage[1].begin(), output.storage[1].end(), 4.0f);
-  const auto unsupportedFormat = Support::processBufferPair(
-      &input.buffer, &output.buffer, 2, false, true, &probeProcessor, &probe);
-  QCOMPARE(unsupportedFormat.frames, 2U);
-  QVERIFY(!unsupportedFormat.processed);
-  QCOMPARE(output.storage[0][0], 0.0f);
-  QCOMPARE(output.storage[0][1], 0.0f);
-  QCOMPARE(output.storage[1][0], 0.0f);
-  QCOMPARE(output.storage[1][1], 0.0f);
+  QVERIFY(result.processed);
+  QCOMPARE(result.frames, 7U);
+  QCOMPARE(probe.calls, 1U);
+  QCOMPARE(probe.frames, 7U);
+  QCOMPARE(output.chunks[0].size, 7U * sizeof(float));
+  QCOMPARE(output.chunks[1].size, 7U * sizeof(float));
+}
+
+void PipeWireSpatialHostTest::missingCaptureUsesBoundedRequestedSilence() {
+  PlanarBuffer output(2, 5);
+  ProcessProbe probe;
+  for (auto &plane : output.storage)
+    std::fill(plane.begin(), plane.end(), 8.0f);
+
+  const auto result = Support::processBufferPair(
+      nullptr, &output.buffer, 7, true, true, &probeProcessor, &probe);
+
+  QVERIFY(!result.processed);
+  QCOMPARE(result.frames, 5U);
   QCOMPARE(probe.calls, 0U);
+  QCOMPARE(output.chunks[0].size, 5U * sizeof(float));
+  QCOMPARE(output.chunks[1].size, 5U * sizeof(float));
+  for (const auto &plane : output.storage)
+    for (const auto sample : plane)
+      QCOMPARE(sample, 0.0f);
+}
+
+void PipeWireSpatialHostTest::missingCaptureWithZeroRequestProducesNoFrames() {
+  PlanarBuffer output(2, 5);
+  ProcessProbe probe;
+  for (auto &plane : output.storage)
+    std::fill(plane.begin(), plane.end(), 8.0f);
+
+  const auto result = Support::processBufferPair(
+      nullptr, &output.buffer, 0, true, true, &probeProcessor, &probe);
+
+  QVERIFY(!result.processed);
+  QCOMPARE(result.frames, 0U);
+  QCOMPARE(probe.calls, 0U);
+  QCOMPARE(output.chunks[0].size, 0U);
+  QCOMPARE(output.chunks[1].size, 0U);
+  for (const auto &plane : output.storage)
+    for (const auto sample : plane)
+      QCOMPARE(sample, 8.0f);
+}
+
+void PipeWireSpatialHostTest::
+    incompatibleCaptureFormatKeepsSafeCaptureFrameCount() {
+  PlanarBuffer input(8, 4);
+  PlanarBuffer output(2, 8);
+  ProcessProbe probe;
+  for (auto &plane : output.storage)
+    std::fill(plane.begin(), plane.end(), 8.0f);
+
+  const auto result = Support::processBufferPair(
+      &input.buffer, &output.buffer, 7, false, true, &probeProcessor, &probe);
+
+  QVERIFY(!result.processed);
+  QCOMPARE(result.frames, 4U);
+  QCOMPARE(probe.calls, 0U);
+  QCOMPARE(output.chunks[0].size, 4U * sizeof(float));
+  QCOMPARE(output.chunks[1].size, 4U * sizeof(float));
+  for (const auto &plane : output.storage)
+    for (std::size_t frame = 0; frame < 4; ++frame)
+      QCOMPARE(plane[frame], 0.0f);
+  QCOMPARE(output.storage[0][4], 8.0f);
+  QCOMPARE(output.storage[1][4], 8.0f);
 }
 
 void PipeWireSpatialHostTest::insufficientOutputCapacityBoundsProcessing() {
@@ -383,6 +480,32 @@ void PipeWireSpatialHostTest::
   QCOMPARE(output.chunks[1].size, 3U * sizeof(float));
 }
 
+void PipeWireSpatialHostTest::
+    processorFailureWritesBoundedSilenceAndKeepsChunkMetadata() {
+  PlanarBuffer input(8, 5);
+  PlanarBuffer output(2, 7);
+  ProcessProbe probe;
+  for (auto &plane : output.storage)
+    std::fill(plane.begin(), plane.end(), 8.0f);
+
+  const auto result = Support::processBufferPair(
+      &input.buffer, &output.buffer, 2, true, true, &failingProcessor, &probe);
+
+  QVERIFY(!result.processed);
+  QCOMPARE(result.frames, 5U);
+  QCOMPARE(output.chunks[0].offset, 0U);
+  QCOMPARE(output.chunks[1].offset, 0U);
+  QCOMPARE(output.chunks[0].size, 5U * sizeof(float));
+  QCOMPARE(output.chunks[1].size, 5U * sizeof(float));
+  QCOMPARE(output.chunks[0].stride, static_cast<std::int32_t>(sizeof(float)));
+  QCOMPARE(output.chunks[1].stride, static_cast<std::int32_t>(sizeof(float)));
+  for (const auto &plane : output.storage)
+    for (std::size_t frame = 0; frame < 5; ++frame)
+      QCOMPARE(plane[frame], 0.0f);
+  QCOMPARE(output.storage[0][5], 8.0f);
+  QCOMPARE(output.storage[1][5], 8.0f);
+}
+
 void PipeWireSpatialHostTest::failedCaptureTriggerRecyclesAllPendingBuffers() {
   int a = 1;
   int b = 2;
@@ -403,6 +526,65 @@ void PipeWireSpatialHostTest::failedCaptureTriggerRecyclesAllPendingBuffers() {
   QCOMPARE(newest.recycleCount, 2U);
   QCOMPARE(newest.recycled[0], static_cast<void *>(&a));
   QCOMPARE(newest.recycled[1], static_cast<void *>(&b));
+}
+
+void PipeWireSpatialHostTest::newestCaptureBufferIsRecycledExactlyOnce() {
+  int a = 1;
+  int b = 2;
+  int c = 3;
+  PendingQueue queue{{&a, &b, &c, nullptr}, 3};
+
+  void *newest = Support::dequeueNewestBuffer(queue.api());
+  QCOMPARE(newest, static_cast<void *>(&c));
+  QCOMPARE(queue.recycleCount, 2U);
+  queue.queue(&queue, newest);
+
+  QCOMPARE(queue.recycleCount, 3U);
+  QCOMPARE(queue.recycled[0], static_cast<void *>(&a));
+  QCOMPARE(queue.recycled[1], static_cast<void *>(&b));
+  QCOMPARE(queue.recycled[2], static_cast<void *>(&c));
+  QCOMPARE(queue.next, 3U);
+}
+
+void PipeWireSpatialHostTest::
+    dequeuedCaptureAndPlaybackBuffersAreQueuedExactlyOnce() {
+  int staleCapture = 1;
+  int newestCapture = 2;
+  int playbackBuffer = 3;
+  PendingQueue capture{{&staleCapture, &newestCapture, nullptr, nullptr}, 2};
+  PendingQueue playback{};
+
+  void *retained = Support::dequeueNewestBuffer(capture.api());
+  Support::queueBufferPair(capture.api(), retained, playback.api(),
+                           &playbackBuffer);
+
+  QCOMPARE(capture.recycleCount, 2U);
+  QCOMPARE(capture.recycled[0], static_cast<void *>(&staleCapture));
+  QCOMPARE(capture.recycled[1], static_cast<void *>(&newestCapture));
+  QCOMPARE(playback.recycleCount, 1U);
+  QCOMPARE(playback.recycled[0], static_cast<void *>(&playbackBuffer));
+
+  int captureWithoutPlayback = 4;
+  PendingQueue captureOnly{{&captureWithoutPlayback, nullptr, nullptr, nullptr},
+                           1};
+  PendingQueue noPlayback{};
+  Support::queueBufferPair(captureOnly.api(),
+                           Support::dequeueNewestBuffer(captureOnly.api()),
+                           noPlayback.api(), nullptr);
+  QCOMPARE(captureOnly.recycleCount, 1U);
+  QCOMPARE(captureOnly.recycled[0],
+           static_cast<void *>(&captureWithoutPlayback));
+  QCOMPARE(noPlayback.recycleCount, 0U);
+
+  int playbackWithoutCapture = 5;
+  PendingQueue noCapture{};
+  PendingQueue playbackOnly{};
+  Support::queueBufferPair(noCapture.api(), nullptr, playbackOnly.api(),
+                           &playbackWithoutCapture);
+  QCOMPARE(noCapture.recycleCount, 0U);
+  QCOMPARE(playbackOnly.recycleCount, 1U);
+  QCOMPARE(playbackOnly.recycled[0],
+           static_cast<void *>(&playbackWithoutCapture));
 }
 
 void PipeWireSpatialHostTest::

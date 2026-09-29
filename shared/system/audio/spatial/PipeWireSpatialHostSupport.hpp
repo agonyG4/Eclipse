@@ -54,6 +54,8 @@ struct BufferQueue {
 
 void recyclePendingBuffers(BufferQueue queue) noexcept;
 void *dequeueNewestBuffer(BufferQueue queue) noexcept;
+void queueBufferPair(BufferQueue captureQueue, void *captureBuffer,
+                     BufferQueue playbackQueue, void *playbackBuffer) noexcept;
 
 struct BufferProcessResult {
   std::uint32_t frames = 0;

@@ -93,6 +93,14 @@ void *dequeueNewestBuffer(BufferQueue queue) noexcept {
   return newest;
 }
 
+void queueBufferPair(BufferQueue captureQueue, void *captureBuffer,
+                     BufferQueue playbackQueue, void *playbackBuffer) noexcept {
+  if (captureBuffer && captureQueue.queue)
+    captureQueue.queue(captureQueue.context, captureBuffer);
+  if (playbackBuffer && playbackQueue.queue)
+    playbackQueue.queue(playbackQueue.context, playbackBuffer);
+}
+
 spa_audio_info_raw canonicalMainFormat() noexcept {
   spa_audio_info_raw info{};
   info.format = SPA_AUDIO_FORMAT_F32P;
@@ -187,11 +195,8 @@ processBufferPair(const spa_buffer *capture, spa_buffer *playback,
     outputCapacity = std::min(outputCapacity, outputPlanes[channel].capacity);
   }
 
-  const bool hasRequest = requestedFrames != 0;
   const auto boundedRequest = static_cast<std::uint32_t>(
-      std::min<std::uint64_t>(hasRequest ? requestedFrames : outputCapacity,
-                              std::numeric_limits<std::uint32_t>::max()));
-  const auto silenceFrames = std::min(outputCapacity, boundedRequest);
+      std::min<std::uint64_t>(requestedFrames, outputCapacity));
 
   std::array<ReadPlane, kInputChannels> inputPlanes{};
   std::array<const float *, kInputChannels> inputs{};
@@ -208,13 +213,11 @@ processBufferPair(const spa_buffer *capture, spa_buffer *playback,
     }
   }
 
-  std::uint32_t frames = silenceFrames;
-  bool inputCanProcess = captureValid;
-  if (captureValid && hasRequest && captureCapacity < boundedRequest)
-    inputCanProcess = false;
-  if (inputCanProcess) {
-    frames = std::min({outputCapacity, captureCapacity,
-                       hasRequest ? boundedRequest : captureCapacity});
+  const bool hasCaptureFrames = captureValid && captureCapacity != 0;
+  const std::uint32_t frames = hasCaptureFrames
+                                   ? std::min(outputCapacity, captureCapacity)
+                                   : boundedRequest;
+  if (hasCaptureFrames) {
     for (std::size_t channel = 0; channel < inputPlanes.size(); ++channel)
       inputs[channel] = inputPlanes[channel].samples;
   }
@@ -230,7 +233,7 @@ processBufferPair(const spa_buffer *capture, spa_buffer *playback,
   std::array<float *, kOutputChannels> outputs = {outputPlanes[0].samples,
                                                   outputPlanes[1].samples};
   const bool shouldProcess = captureFormatSupported &&
-                             playbackFormatSupported && inputCanProcess &&
+                             playbackFormatSupported && hasCaptureFrames &&
                              process && frames != 0;
   result.processed = SpatialAudioBlockBridge::process(
       inputs, outputs, frames, shouldProcess ? process : nullptr, context);

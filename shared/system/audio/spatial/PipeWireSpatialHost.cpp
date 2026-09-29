@@ -49,6 +49,13 @@ bool hasCanonicalFormat(const spa_pod *param,
                     actual.position);
 }
 
+void queueStreamBuffer(void *context, void *buffer) noexcept {
+  auto *stream = static_cast<pw_stream *>(context);
+  if (stream && buffer)
+    static_cast<void>(
+        pw_stream_queue_buffer(stream, static_cast<pw_buffer *>(buffer)));
+}
+
 int positiveError(int errorCode) noexcept {
   if (errorCode == INT_MIN)
     return INT_MAX;
@@ -370,13 +377,17 @@ void PipeWireSpatialHost::coreError(void *data, std::uint32_t, int, int result,
 }
 
 void PipeWireSpatialHost::processStreams() noexcept {
-  auto *captureBuffer = static_cast<pw_buffer *>(Support::dequeueNewestBuffer(
-      {this, &PipeWireSpatialHost::dequeueCaptureBuffer,
-       &PipeWireSpatialHost::queueCaptureBuffer}));
+  const Support::BufferQueue captureQueue = {
+      this, &PipeWireSpatialHost::dequeueCaptureBuffer,
+      &PipeWireSpatialHost::queueCaptureBuffer};
+  const Support::BufferQueue playbackQueue = {m_playback, nullptr,
+                                              &queueStreamBuffer};
+  auto *captureBuffer =
+      static_cast<pw_buffer *>(Support::dequeueNewestBuffer(captureQueue));
   auto *playbackBuffer = pw_stream_dequeue_buffer(m_playback);
   if (!playbackBuffer) {
-    if (captureBuffer)
-      pw_stream_queue_buffer(m_capture, captureBuffer);
+    Support::queueBufferPair(captureQueue, captureBuffer, playbackQueue,
+                             nullptr);
     return;
   }
 
@@ -393,9 +404,8 @@ void PipeWireSpatialHost::processStreams() noexcept {
       &PipeWireSpatialHost::processRust, m_rustEngineHandle,
       m_playbackPlanarFloat.load(std::memory_order_acquire));
 
-  if (captureBuffer)
-    pw_stream_queue_buffer(m_capture, captureBuffer);
-  pw_stream_queue_buffer(m_playback, playbackBuffer);
+  Support::queueBufferPair(captureQueue, captureBuffer, playbackQueue,
+                           playbackBuffer);
 }
 
 void PipeWireSpatialHost::handleStreamState(bool capture,

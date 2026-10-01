@@ -36,6 +36,18 @@ class NetworkService final : public QObject {
     Q_PROPERTY(QString ipv4Gateway READ ipv4Gateway NOTIFY connectionChanged)
     Q_PROPERTY(QStringList ipv6Addresses READ ipv6Addresses NOTIFY connectionChanged)
     Q_PROPERTY(QString ipv6Gateway READ ipv6Gateway NOTIFY connectionChanged)
+    Q_PROPERTY(QStringList activeIpv4DnsServers READ activeIpv4DnsServers NOTIFY dnsChanged)
+    Q_PROPERTY(QStringList activeIpv6DnsServers READ activeIpv6DnsServers NOTIFY dnsChanged)
+    Q_PROPERTY(NetworkDnsMode dnsMode READ dnsMode NOTIFY dnsChanged)
+    Q_PROPERTY(QStringList configuredIpv4DnsServers READ configuredIpv4DnsServers NOTIFY dnsChanged)
+    Q_PROPERTY(QStringList configuredIpv6DnsServers READ configuredIpv6DnsServers NOTIFY dnsChanged)
+    Q_PROPERTY(bool dnsEditable READ dnsEditable NOTIFY dnsChanged)
+    Q_PROPERTY(bool dnsPending READ dnsPending NOTIFY dnsChanged)
+    Q_PROPERTY(QString dnsErrorString READ dnsErrorString NOTIFY dnsChanged)
+    Q_PROPERTY(bool dnsNeedsReconnect READ dnsNeedsReconnect NOTIFY dnsChanged)
+    Q_PROPERTY(QString activeConnectionPath READ activeConnectionPath NOTIFY connectionChanged)
+    Q_PROPERTY(QString profilePath READ profilePath NOTIFY connectionChanged)
+    Q_PROPERTY(QString devicePath READ devicePath NOTIFY connectionChanged)
     Q_PROPERTY(quint64 downloadBytesPerSecond READ downloadBytesPerSecond NOTIFY trafficChanged)
     Q_PROPERTY(quint64 uploadBytesPerSecond READ uploadBytesPerSecond NOTIFY trafficChanged)
     Q_PROPERTY(QString downloadRate READ downloadRate NOTIFY trafficChanged)
@@ -67,6 +79,18 @@ public:
     QString ipv4Gateway() const { return m_ipv4Gateway; }
     QStringList ipv6Addresses() const { return m_ipv6Addresses; }
     QString ipv6Gateway() const { return m_ipv6Gateway; }
+    QStringList activeIpv4DnsServers() const { return m_activeIpv4DnsServers; }
+    QStringList activeIpv6DnsServers() const { return m_activeIpv6DnsServers; }
+    NetworkDnsMode dnsMode() const { return m_dnsMode; }
+    QStringList configuredIpv4DnsServers() const { return m_configuredIpv4DnsServers; }
+    QStringList configuredIpv6DnsServers() const { return m_configuredIpv6DnsServers; }
+    bool dnsEditable() const { return m_dnsEditable; }
+    bool dnsPending() const { return m_dnsPending; }
+    QString dnsErrorString() const { return m_dnsErrorString; }
+    bool dnsNeedsReconnect() const { return m_dnsNeedsReconnect; }
+    QString activeConnectionPath() const { return m_activeConnectionPath; }
+    QString profilePath() const { return m_profilePath; }
+    QString devicePath() const { return m_devicePath; }
     quint64 downloadBytesPerSecond() const { return m_downloadBytesPerSecond; }
     quint64 uploadBytesPerSecond() const { return m_uploadBytesPerSecond; }
     QString downloadRate() const { return formatRate(m_downloadBytesPerSecond); }
@@ -77,6 +101,8 @@ public:
     void stop();
     Q_INVOKABLE bool setWifiEnabled(bool enabled);
     Q_INVOKABLE bool requestWifiScan();
+    Q_INVOKABLE bool applyDns(NetworkDnsMode mode, const QStringList &servers);
+    Q_INVOKABLE QVariantMap validateDnsServers(const QStringList &servers) const;
     QJsonObject healthJson() const;
 
     static QString formatRate(double bytesPerSecond);
@@ -92,6 +118,8 @@ signals:
     void wifiScanningChanged();
     void connectionChanged();
     void trafficChanged();
+    void dnsChanged();
+    void dnsOperationFinished(NetworkDnsOutcome outcome, const QString &error);
 
 private:
     void setState(SystemServiceState state);
@@ -99,6 +127,8 @@ private:
     void applySnapshot(const NetworkSnapshot &snapshot);
     void handleOperationFinished(const NetworkOperationResult &result);
     void finishWifiPending(bool success, const QString &errorString = {});
+    void finishDnsPending(const NetworkOperationResult &result);
+    void setDnsErrorString(const QString &errorString);
 
     std::unique_ptr<NetworkBackend> m_backend;
     WifiNetworkModel *m_wifiModel = nullptr;
@@ -124,12 +154,27 @@ private:
     QString m_ipv4Gateway;
     QStringList m_ipv6Addresses;
     QString m_ipv6Gateway;
+    QStringList m_activeIpv4DnsServers;
+    QStringList m_activeIpv6DnsServers;
+    NetworkDnsMode m_dnsMode = NetworkDnsMode::Advanced;
+    QStringList m_configuredIpv4DnsServers;
+    QStringList m_configuredIpv6DnsServers;
+    bool m_dnsEditable = false;
+    bool m_dnsPending = false;
+    QString m_dnsErrorString;
+    bool m_dnsNeedsReconnect = false;
+    QString m_activeConnectionPath;
+    QString m_profilePath;
+    QString m_devicePath;
     quint64 m_downloadBytesPerSecond = 0;
     quint64 m_uploadBytesPerSecond = 0;
     quint64 m_generation = 0;
     quint64 m_wifiOperationId = 0;
     quint64 m_wifiRequestId = 0;
     QTimer m_wifiTimer;
+    QTimer m_dnsTimer;
+    quint64 m_dnsOperationId = 0;
+    quint64 m_dnsRequestId = 0;
 };
 
 } // namespace Astrea::System

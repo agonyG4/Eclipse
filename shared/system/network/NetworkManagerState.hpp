@@ -27,6 +27,13 @@ struct PrimaryIpConfigState {
     QVariantMap properties;
 };
 
+struct PrimaryConnectionProfileState {
+    QString objectPath;
+    NetworkConnectionSettings settings;
+    quint64 versionId = 0;
+    bool available = false;
+};
+
 class NetworkManagerState final {
 public:
     void reset();
@@ -55,6 +62,11 @@ public:
                                          const QString &interfaceName,
                                          const QVariantMap &changed,
                                          const QStringList &invalidated);
+    bool applyPrimaryProfileReply(const QString &activeConnectionPath, quint64 primaryEpoch,
+                                  const QString &profilePath,
+                                  NetworkConnectionSettings settings, quint64 versionId);
+    void invalidatePrimaryProfile();
+    void clearPrimaryProfile();
     void clearPrimary();
 
     const QMap<QString, NetworkDeviceState> &devices() const { return m_devices; }
@@ -64,6 +76,8 @@ public:
     QString primaryDevicePath() const { return physicalDeviceForPrimary(); }
     const PrimaryIpConfigState &primaryIpv4Config() const { return m_primaryIpv4Config; }
     const PrimaryIpConfigState &primaryIpv6Config() const { return m_primaryIpv6Config; }
+    const PrimaryConnectionProfileState &primaryProfile() const { return m_primaryProfile; }
+    QString primaryProfilePath() const;
     QString selectedWifiDevicePath() const;
     QString activeAccessPointPath() const;
     NetworkSnapshot snapshot() const;
@@ -84,6 +98,7 @@ private:
     QVariantMap m_primaryProperties;
     PrimaryIpConfigState m_primaryIpv4Config;
     PrimaryIpConfigState m_primaryIpv6Config;
+    PrimaryConnectionProfileState m_primaryProfile;
     quint64 m_primaryEpoch = 0;
 };
 

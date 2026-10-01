@@ -2,6 +2,7 @@
 
 #include "system/SystemServiceState.hpp"
 #include "system/network/WifiNetworkModel.hpp"
+#include "system/network/NetworkDns.hpp"
 
 #include <QString>
 #include <QStringList>
@@ -30,6 +31,15 @@ struct NetworkSnapshot {
     QString ipv4Gateway;
     QStringList ipv6Addresses;
     QString ipv6Gateway;
+    QStringList activeIpv4DnsServers;
+    QStringList activeIpv6DnsServers;
+    NetworkDnsMode dnsMode = NetworkDnsMode::Advanced;
+    QStringList configuredIpv4DnsServers;
+    QStringList configuredIpv6DnsServers;
+    bool dnsEditable = false;
+    QString activeConnectionPath;
+    QString profilePath;
+    QString devicePath;
     quint64 downloadBytesPerSecond = 0;
     quint64 uploadBytesPerSecond = 0;
     QVector<WifiNetwork> wifiNetworks;
@@ -37,6 +47,7 @@ struct NetworkSnapshot {
 
 enum class NetworkOperationKind {
     WifiEnabled,
+    DnsConfiguration,
 };
 
 struct NetworkOperationResult {
@@ -44,6 +55,7 @@ struct NetworkOperationResult {
     quint64 requestId = 0;
     bool success = false;
     QString error;
+    NetworkDnsOutcome dnsOutcome = NetworkDnsOutcome::Failed;
 };
 
 class NetworkBackend {
@@ -59,6 +71,9 @@ public:
     virtual void stop() = 0;
     virtual bool setWifiEnabled(bool enabled, quint64 requestId) = 0;
     virtual bool requestWifiScan() = 0;
+    virtual bool applyDns(NetworkDnsMode mode, const QStringList &servers,
+                          quint64 requestId, QString *errorOut) = 0;
+    virtual void cancelDnsOperation(quint64 requestId) = 0;
 };
 
 } // namespace Astrea::System

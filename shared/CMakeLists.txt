@@ -208,6 +208,8 @@ add_library(astrea-shared-system-qt STATIC
     system/network/WifiNetworkModel.cpp
     system/network/WifiNetworkModel.hpp
     system/network/NetworkBackend.hpp
+    system/network/NetworkDns.cpp
+    system/network/NetworkDns.hpp
     system/network/NetworkService.cpp
     system/network/NetworkService.hpp
     system/network/NetworkManagerState.cpp
@@ -698,6 +700,19 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     )
     astrea_shared_enable_sanitizers(system-services-test)
     add_test(NAME system-services-test COMMAND system-services-test)
+
+    add_executable(network-dns-test
+        system/tests/NetworkDnsTest.cpp
+    )
+    target_include_directories(network-dns-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_link_libraries(network-dns-test PRIVATE
+        astrea-shared-system
+        Qt6::Test
+    )
+    astrea_shared_enable_sanitizers(network-dns-test)
+    add_test(NAME network-dns-test COMMAND network-dns-test)
 
     add_executable(spatial-audio-pipewire-host-test
         system/tests/PipeWireSpatialHostTest.cpp

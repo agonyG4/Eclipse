@@ -2,6 +2,7 @@
 
 #include <QDBusArgument>
 #include <QDBusConnection>
+#include <QDBusMetaType>
 #include <QDBusMessage>
 #include <QDBusPendingCallWatcher>
 #include <QDBusServiceWatcher>
@@ -31,6 +32,8 @@ signals:
                            const QVariantMap &changed, const QStringList &invalidated);
     void accessPointAddedSignal(const QString &path);
     void accessPointRemovedSignal(const QString &path);
+    void profileUpdatedSignal(const QString &path);
+    void profileRemovedSignal(const QString &path);
 
 public slots:
     void propertiesChanged(const QString &interfaceName, const QVariantMap &changed,
@@ -55,6 +58,9 @@ public slots:
     {
         emit accessPointRemovedSignal(point.path());
     }
+
+    void profileUpdated() { emit profileUpdatedSignal(path); }
+    void profileRemoved() { emit profileRemovedSignal(path); }
 };
 
 namespace {
@@ -67,10 +73,12 @@ constexpr auto deviceInterface = "org.freedesktop.NetworkManager.Device";
 constexpr uint ethernetDeviceType = 1;
 constexpr auto wiredInterface = "org.freedesktop.NetworkManager.Device.Wired";
 constexpr auto activeConnectionInterface = "org.freedesktop.NetworkManager.Connection.Active";
+constexpr auto settingsConnectionInterface = "org.freedesktop.NetworkManager.Settings.Connection";
 constexpr auto ip4ConfigInterface = "org.freedesktop.NetworkManager.IP4Config";
 constexpr auto ip6ConfigInterface = "org.freedesktop.NetworkManager.IP6Config";
 constexpr auto wirelessInterface = "org.freedesktop.NetworkManager.Device.Wireless";
 constexpr auto accessPointInterface = "org.freedesktop.NetworkManager.AccessPoint";
+constexpr quint32 settingsUpdate2FlagToDisk = 0x1;
 
 QString objectPathString(const QVariant &value)
 {
@@ -87,6 +95,57 @@ QVariantMap propertyMapFromDbus(const QVariant &value)
     QVariantMap properties;
     argument >> properties;
     return properties;
+}
+
+NetworkConnectionSettings connectionSettingsFromDbus(const QVariant &value, bool *ok)
+{
+    NetworkConnectionSettings settings;
+    const QVariant unwrapped = value.metaType() == QMetaType::fromType<QDBusVariant>()
+        ? value.value<QDBusVariant>().variant() : value;
+    if (unwrapped.metaType() == QMetaType::fromType<QDBusArgument>()) {
+        QDBusArgument argument = unwrapped.value<QDBusArgument>();
+        if (argument.currentType() == QDBusArgument::MapType) {
+            argument >> settings;
+            if (ok)
+                *ok = true;
+        } else if (ok) {
+            *ok = false;
+        }
+    } else if (unwrapped.canConvert<NetworkConnectionSettings>()) {
+        settings = unwrapped.value<NetworkConnectionSettings>();
+        if (ok)
+            *ok = true;
+    } else if (ok) {
+        *ok = false;
+    }
+    return settings;
+}
+
+bool profileVersionFromProperties(const QVariantMap &properties, quint64 *version)
+{
+    const auto it = properties.constFind(QStringLiteral("VersionId"));
+    if (it == properties.cend())
+        return false;
+    bool ok = false;
+    const quint64 parsed = it->toULongLong(&ok);
+    if (!ok || parsed == 0)
+        return false;
+    *version = parsed;
+    return true;
+}
+
+QString safeDbusFailure(const QDBusMessage &reply)
+{
+    const QString name = reply.errorName();
+    if (name.contains(QStringLiteral("AccessDenied"), Qt::CaseInsensitive)
+        || name.contains(QStringLiteral("Permission"), Qt::CaseInsensitive))
+        return QStringLiteral("Permission was denied while saving DNS settings");
+    return QStringLiteral("Could not save DNS settings");
+}
+
+bool isVersionConflict(const QDBusMessage &reply)
+{
+    return dnsUpdateErrorOutcome(reply.errorName()) == NetworkDnsOutcome::Conflict;
 }
 
 void reportAsyncError(QDBusPendingCallWatcher *watcher,
@@ -124,6 +183,9 @@ bool NetworkManagerBackend::start(const Callbacks &callbacks, QString *errorOut)
 
     m_running = true;
     ++m_generation;
+    m_dnsRequestId = 0;
+    m_profileRequestId = 0;
+    qDBusRegisterMetaType<NetworkConnectionSettings>();
     m_state.reset();
     m_scanState.invalidate();
     m_scanClock.start();
@@ -254,6 +316,39 @@ bool NetworkManagerBackend::setWifiEnabled(bool enabled, quint64 requestId)
         finished->deleteLater();
     });
     return true;
+}
+
+bool NetworkManagerBackend::applyDns(NetworkDnsMode mode, const QStringList &servers,
+                                     quint64 requestId, QString *errorOut)
+{
+    const PrimaryConnectionProfileState &profile = m_state.primaryProfile();
+    const NetworkDnsPatchResult validation = patchDnsSettings(profile.settings, mode, servers);
+    if (!m_running || !m_snapshot.connected || m_snapshot.devicePath.isEmpty()
+        || m_snapshot.profilePath.isEmpty() || !profile.available || profile.versionId == 0
+        || !m_snapshot.dnsEditable) {
+        if (errorOut)
+            *errorOut = QStringLiteral("The active connection profile is not editable");
+        return false;
+    }
+    if (!validation.valid) {
+        if (errorOut)
+            *errorOut = validation.error;
+        return false;
+    }
+    if (m_snapshot.connectionType != NetworkConnectionType::Wired
+        && m_snapshot.connectionType != NetworkConnectionType::Wifi) {
+        if (errorOut)
+            *errorOut = QStringLiteral("DNS changes are supported on physical connections only");
+        return false;
+    }
+    beginDnsOperation(mode, servers, requestId);
+    return true;
+}
+
+void NetworkManagerBackend::cancelDnsOperation(quint64 requestId)
+{
+    if (requestId != 0 && requestId == m_dnsRequestId)
+        m_dnsRequestId = 0;
 }
 
 bool NetworkManagerBackend::requestWifiScan()
@@ -547,6 +642,7 @@ void NetworkManagerBackend::refreshActiveConnection(const QString &objectPath)
     const quint64 primaryEpoch = m_state.beginPrimaryRequest(objectPath);
     m_primaryEpoch = primaryEpoch;
     m_activeConnectionPath = objectPath;
+    ++m_profileRequestId;
     ++m_wiredPropertiesRequestId;
     ++m_ipv4ConfigRequestId;
     ++m_ipv6ConfigRequestId;
@@ -593,6 +689,7 @@ void NetworkManagerBackend::refreshActiveConnection(const QString &objectPath)
         if (primaryReplyApplied) {
             rebuildPropertyWatchers();
             refreshPrimaryRuntimeDetails();
+            refreshPrimaryConnectionProfile();
         }
         finished->deleteLater();
     });
@@ -725,6 +822,411 @@ void NetworkManagerBackend::refreshPrimaryIpConfig(bool ipv4)
         }
         finished->deleteLater();
     });
+}
+
+void NetworkManagerBackend::refreshProfileVersion(
+    const QString &profilePath, std::function<void(bool, quint64)> completion)
+{
+    QDBusMessage call = QDBusMessage::createMethodCall(
+        QString::fromLatin1(serviceName), profilePath,
+        QString::fromLatin1(propertiesInterface), QStringLiteral("GetAll"));
+    call << QString::fromLatin1(settingsConnectionInterface);
+    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(call), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [completion = std::move(completion)](QDBusPendingCallWatcher *finished) mutable {
+        const QDBusMessage reply = finished->reply();
+        quint64 version = 0;
+        const bool success = reply.type() != QDBusMessage::ErrorMessage
+            && !reply.arguments().isEmpty()
+            && profileVersionFromProperties(propertyMapFromDbus(reply.arguments().constFirst()),
+                                            &version);
+        completion(success, version);
+        finished->deleteLater();
+    });
+}
+
+void NetworkManagerBackend::readCoherentDnsProfile(
+    quint64 daemonGeneration, quint64 refreshGeneration, quint64 primaryEpoch,
+    quint64 profileRequestId, const QString &activeConnectionPath, const QString &profilePath,
+    int attempt,
+    std::function<void(bool, NetworkConnectionSettings, quint64)> completion)
+{
+    const auto current = [this, daemonGeneration, refreshGeneration, primaryEpoch,
+                          profileRequestId, activeConnectionPath, profilePath] {
+        return m_running && daemonGeneration == m_generation
+            && refreshGeneration == m_refreshGeneration && primaryEpoch == m_primaryEpoch
+            && profileRequestId == m_profileRequestId
+            && activeConnectionPath == m_activeConnectionPath
+            && activeConnectionPath == m_state.primaryPath()
+            && profilePath == m_state.primaryProfilePath()
+            && !profilePath.isEmpty() && profilePath != QLatin1String("/");
+    };
+    if (!current()) {
+        completion(false, {}, 0);
+        return;
+    }
+
+    refreshProfileVersion(profilePath,
+        [this, daemonGeneration, refreshGeneration, primaryEpoch, profileRequestId,
+         activeConnectionPath, profilePath, attempt, completion, current]
+        (bool hasFirstVersion, quint64 firstVersion) mutable {
+        if (!current())
+            return;
+        if (!hasFirstVersion) {
+            completion(false, {}, 0);
+            return;
+        }
+        QDBusMessage call = QDBusMessage::createMethodCall(
+            QString::fromLatin1(serviceName), profilePath,
+            QString::fromLatin1(settingsConnectionInterface), QStringLiteral("GetSettings"));
+        auto *watcher = new QDBusPendingCallWatcher(
+            QDBusConnection::systemBus().asyncCall(call), this);
+        connect(watcher, &QDBusPendingCallWatcher::finished, this,
+                [this, daemonGeneration, refreshGeneration, primaryEpoch, profileRequestId,
+                 activeConnectionPath, profilePath, attempt, firstVersion, completion,
+                 current](QDBusPendingCallWatcher *finished) mutable {
+            const QDBusMessage reply = finished->reply();
+            if (!current()) {
+                finished->deleteLater();
+                return;
+            }
+            bool decoded = false;
+            NetworkConnectionSettings settings;
+            if (reply.type() != QDBusMessage::ErrorMessage && !reply.arguments().isEmpty())
+                settings = connectionSettingsFromDbus(reply.arguments().constFirst(), &decoded);
+            if (!decoded) {
+                completion(false, {}, 0);
+                finished->deleteLater();
+                return;
+            }
+            refreshProfileVersion(profilePath,
+                [this, daemonGeneration, refreshGeneration, primaryEpoch, profileRequestId,
+                 activeConnectionPath, profilePath, attempt, firstVersion,
+                 settings = std::move(settings), completion, current]
+                (bool hasSecondVersion, quint64 secondVersion) mutable {
+                if (!current())
+                    return;
+                const NetworkDnsProfileReadDecision decision = dnsProfileReadDecision(
+                    true, true, hasSecondVersion, firstVersion, secondVersion, attempt);
+                if (decision == NetworkDnsProfileReadDecision::Proceed) {
+                    completion(true, std::move(settings), secondVersion);
+                    return;
+                }
+                if (decision != NetworkDnsProfileReadDecision::Retry) {
+                    completion(false, {}, 0);
+                    return;
+                }
+                readCoherentDnsProfile(daemonGeneration, refreshGeneration, primaryEpoch,
+                    profileRequestId, activeConnectionPath, profilePath, attempt + 1,
+                    std::move(completion));
+            });
+            finished->deleteLater();
+        });
+    });
+}
+
+void NetworkManagerBackend::refreshPrimaryConnectionProfile()
+{
+    if (!m_running)
+        return;
+    const QString profilePath = m_state.primaryProfilePath();
+    const quint64 profileRequestId = ++m_profileRequestId;
+    m_state.invalidatePrimaryProfile();
+    m_snapshot = m_state.snapshot();
+    m_snapshot.wifiScanning = m_scanState.active();
+    publishReconciledSnapshot();
+    if (profilePath.isEmpty() || profilePath == QLatin1String("/"))
+        return;
+
+    const quint64 daemonGeneration = m_generation;
+    const quint64 refreshGeneration = m_refreshGeneration;
+    const quint64 primaryEpoch = m_primaryEpoch;
+    const QString activeConnectionPath = m_activeConnectionPath;
+    readCoherentDnsProfile(daemonGeneration, refreshGeneration, primaryEpoch,
+        profileRequestId, activeConnectionPath, profilePath, 0,
+        [this, daemonGeneration, refreshGeneration, primaryEpoch, profileRequestId,
+         activeConnectionPath, profilePath]
+        (bool success, NetworkConnectionSettings settings, quint64 versionId) {
+        if (!m_running || daemonGeneration != m_generation
+            || refreshGeneration != m_refreshGeneration || primaryEpoch != m_primaryEpoch
+            || profileRequestId != m_profileRequestId
+            || activeConnectionPath != m_activeConnectionPath
+            || activeConnectionPath != m_state.primaryPath()
+            || profilePath != m_state.primaryProfilePath())
+            return;
+        if (success)
+            m_state.applyPrimaryProfileReply(activeConnectionPath, primaryEpoch, profilePath,
+                                             std::move(settings), versionId);
+        else
+            m_state.invalidatePrimaryProfile();
+        m_snapshot = m_state.snapshot();
+        m_snapshot.wifiScanning = m_scanState.active();
+        publishReconciledSnapshot();
+    });
+}
+
+void NetworkManagerBackend::beginDnsOperation(NetworkDnsMode mode, const QStringList &servers,
+                                              quint64 requestId)
+{
+    m_dnsRequestId = requestId;
+    const quint64 daemonGeneration = m_generation;
+    const quint64 refreshGeneration = m_refreshGeneration;
+    const quint64 primaryEpoch = m_primaryEpoch;
+    const QString activeConnectionPath = m_activeConnectionPath;
+    const QString profilePath = m_state.primaryProfilePath();
+    const QString devicePath = m_state.primaryDevicePath();
+    continueDnsOperation(daemonGeneration, refreshGeneration, primaryEpoch, requestId,
+                         activeConnectionPath, profilePath, devicePath, mode, servers, 0);
+}
+
+bool NetworkManagerBackend::dnsRequestCurrent(quint64, quint64 requestId) const
+{
+    return m_running && requestId != 0 && requestId == m_dnsRequestId;
+}
+
+bool NetworkManagerBackend::dnsIdentityCurrent(
+    quint64 daemonGeneration, quint64 refreshGeneration, quint64 primaryEpoch,
+    quint64 requestId, const QString &activeConnectionPath, const QString &profilePath,
+    const QString &devicePath) const
+{
+    const NetworkDnsOperationIdentity captured{true, daemonGeneration, primaryEpoch,
+        requestId, activeConnectionPath, profilePath, devicePath};
+    const NetworkDnsOperationIdentity current{m_running, m_generation, m_primaryEpoch,
+        m_dnsRequestId, m_activeConnectionPath, m_state.primaryProfilePath(),
+        m_state.primaryDevicePath()};
+    return dnsRequestCurrent(daemonGeneration, requestId)
+        && sameNetworkDnsOperationIdentity(captured, current)
+        && refreshGeneration == m_refreshGeneration && activeConnectionPath == m_state.primaryPath()
+        && m_snapshot.connected
+        && (m_snapshot.connectionType == NetworkConnectionType::Wired
+            || m_snapshot.connectionType == NetworkConnectionType::Wifi);
+}
+
+void NetworkManagerBackend::continueDnsOperation(
+    quint64 daemonGeneration, quint64 refreshGeneration, quint64 primaryEpoch,
+    quint64 requestId, const QString &activeConnectionPath, const QString &profilePath,
+    const QString &devicePath, NetworkDnsMode mode, const QStringList &servers, int attempt)
+{
+    if (!dnsIdentityCurrent(daemonGeneration, refreshGeneration, primaryEpoch, requestId,
+                            activeConnectionPath, profilePath, devicePath)) {
+        finishDnsOperation(daemonGeneration, requestId, NetworkDnsOutcome::Conflict);
+        return;
+    }
+    refreshProfileVersion(profilePath,
+        [this, daemonGeneration, refreshGeneration, primaryEpoch, requestId,
+         activeConnectionPath, profilePath, devicePath, mode, servers, attempt]
+        (bool hasFirstVersion, quint64 firstVersion) {
+        if (!dnsIdentityCurrent(daemonGeneration, refreshGeneration, primaryEpoch, requestId,
+                                activeConnectionPath, profilePath, devicePath)) {
+            finishDnsOperation(daemonGeneration, requestId, NetworkDnsOutcome::Conflict);
+            return;
+        }
+        if (!hasFirstVersion) {
+            finishDnsOperation(daemonGeneration, requestId, NetworkDnsOutcome::Failed,
+                               QStringLiteral("Could not read the current DNS profile version"));
+            return;
+        }
+        QDBusMessage call = QDBusMessage::createMethodCall(
+            QString::fromLatin1(serviceName), profilePath,
+            QString::fromLatin1(settingsConnectionInterface), QStringLiteral("GetSettings"));
+        auto *watcher = new QDBusPendingCallWatcher(
+            QDBusConnection::systemBus().asyncCall(call), this);
+        connect(watcher, &QDBusPendingCallWatcher::finished, this,
+                [this, daemonGeneration, refreshGeneration, primaryEpoch, requestId,
+                 activeConnectionPath, profilePath, devicePath, mode, servers, attempt,
+                 firstVersion](QDBusPendingCallWatcher *finished) {
+            const QDBusMessage reply = finished->reply();
+            if (!dnsIdentityCurrent(daemonGeneration, refreshGeneration, primaryEpoch,
+                                    requestId, activeConnectionPath, profilePath, devicePath)) {
+                finishDnsOperation(daemonGeneration, requestId, NetworkDnsOutcome::Conflict);
+                finished->deleteLater();
+                return;
+            }
+            bool decoded = false;
+            NetworkConnectionSettings settings;
+            if (reply.type() != QDBusMessage::ErrorMessage && !reply.arguments().isEmpty())
+                settings = connectionSettingsFromDbus(reply.arguments().constFirst(), &decoded);
+            if (!decoded) {
+                finishDnsOperation(daemonGeneration, requestId, NetworkDnsOutcome::Failed,
+                                   QStringLiteral("Could not read the current DNS profile"));
+                finished->deleteLater();
+                return;
+            }
+            refreshProfileVersion(profilePath,
+                [this, daemonGeneration, refreshGeneration, primaryEpoch, requestId,
+                 activeConnectionPath, profilePath, devicePath, mode, servers, attempt,
+                 firstVersion, settings = std::move(settings)]
+                (bool hasSecondVersion, quint64 secondVersion) mutable {
+                if (!dnsIdentityCurrent(daemonGeneration, refreshGeneration, primaryEpoch,
+                                        requestId, activeConnectionPath, profilePath, devicePath)) {
+                    finishDnsOperation(daemonGeneration, requestId, NetworkDnsOutcome::Conflict);
+                    return;
+                }
+                const NetworkDnsProfileReadDecision decision = dnsProfileReadDecision(
+                    true, true, hasSecondVersion, firstVersion, secondVersion, attempt);
+                if (decision == NetworkDnsProfileReadDecision::Retry) {
+                    continueDnsOperation(daemonGeneration, refreshGeneration, primaryEpoch,
+                        requestId, activeConnectionPath, profilePath, devicePath,
+                        mode, servers, attempt + 1);
+                    return;
+                }
+                if (decision == NetworkDnsProfileReadDecision::Conflict) {
+                    finishDnsOperation(daemonGeneration, requestId,
+                                       NetworkDnsOutcome::Conflict);
+                    return;
+                }
+                if (decision == NetworkDnsProfileReadDecision::Failed) {
+                    finishDnsOperation(daemonGeneration, requestId, NetworkDnsOutcome::Failed,
+                                       QStringLiteral("Could not verify the current DNS profile version"));
+                    return;
+                }
+                const NetworkDnsPatchResult patched = patchDnsSettings(settings, mode, servers);
+                if (!patched.valid) {
+                    finishDnsOperation(daemonGeneration, requestId, NetworkDnsOutcome::Failed,
+                                       patched.error);
+                    return;
+                }
+                persistDnsOperation(daemonGeneration, refreshGeneration, primaryEpoch,
+                    requestId, activeConnectionPath, profilePath, devicePath,
+                    patched.settings, secondVersion);
+            });
+            finished->deleteLater();
+        });
+    });
+}
+
+void NetworkManagerBackend::persistDnsOperation(
+    quint64 daemonGeneration, quint64 refreshGeneration, quint64 primaryEpoch,
+    quint64 requestId, const QString &activeConnectionPath, const QString &profilePath,
+    const QString &devicePath, NetworkConnectionSettings settings, quint64 profileVersionId)
+{
+    if (!dnsIdentityCurrent(daemonGeneration, refreshGeneration, primaryEpoch, requestId,
+                            activeConnectionPath, profilePath, devicePath)) {
+        finishDnsOperation(daemonGeneration, requestId, NetworkDnsOutcome::Conflict);
+        return;
+    }
+    QDBusMessage call = QDBusMessage::createMethodCall(
+        QString::fromLatin1(serviceName), profilePath,
+        QString::fromLatin1(settingsConnectionInterface), QStringLiteral("Update2"));
+    const QVariantMap arguments{{QStringLiteral("version-id"), QVariant::fromValue(profileVersionId)}};
+    call << QVariant::fromValue(settings) << settingsUpdate2FlagToDisk << arguments;
+    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(call), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, daemonGeneration, refreshGeneration, primaryEpoch, requestId,
+             activeConnectionPath, profilePath, devicePath](QDBusPendingCallWatcher *finished) {
+        const QDBusMessage reply = finished->reply();
+        if (reply.type() == QDBusMessage::ErrorMessage) {
+            const bool conflict = !dnsIdentityCurrent(daemonGeneration, refreshGeneration,
+                    primaryEpoch, requestId, activeConnectionPath, profilePath, devicePath)
+                || isVersionConflict(reply);
+            if (m_state.primaryProfilePath() == profilePath)
+                refreshPrimaryConnectionProfile();
+            finishDnsOperation(daemonGeneration, requestId,
+                conflict ? NetworkDnsOutcome::Conflict : NetworkDnsOutcome::Failed,
+                conflict ? QString() : safeDbusFailure(reply));
+            finished->deleteLater();
+            return;
+        }
+        refreshPrimaryConnectionProfile();
+        if (!dnsRequestCurrent(daemonGeneration, requestId)) {
+            finished->deleteLater();
+            return;
+        }
+        if (!dnsIdentityCurrent(daemonGeneration, refreshGeneration, primaryEpoch, requestId,
+                                activeConnectionPath, profilePath, devicePath)) {
+            finishDnsOperation(daemonGeneration, requestId,
+                               NetworkDnsOutcome::SavedNeedsReconnect);
+        } else {
+            reapplyDnsOperation(daemonGeneration, refreshGeneration, primaryEpoch,
+                                requestId, activeConnectionPath, profilePath, devicePath);
+        }
+        finished->deleteLater();
+    });
+}
+
+void NetworkManagerBackend::reapplyDnsOperation(
+    quint64 daemonGeneration, quint64 refreshGeneration, quint64 primaryEpoch,
+    quint64 requestId, const QString &activeConnectionPath, const QString &profilePath,
+    const QString &devicePath)
+{
+    if (!dnsIdentityCurrent(daemonGeneration, refreshGeneration, primaryEpoch, requestId,
+                            activeConnectionPath, profilePath, devicePath)) {
+        finishDnsOperation(daemonGeneration, requestId,
+                           NetworkDnsOutcome::SavedNeedsReconnect);
+        return;
+    }
+    QDBusMessage call = QDBusMessage::createMethodCall(
+        QString::fromLatin1(serviceName), devicePath,
+        QString::fromLatin1(deviceInterface), QStringLiteral("GetAppliedConnection"));
+    call << quint32(0);
+    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(call), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, daemonGeneration, refreshGeneration, primaryEpoch, requestId,
+             activeConnectionPath, profilePath, devicePath](QDBusPendingCallWatcher *finished) {
+        const QDBusMessage reply = finished->reply();
+        if (!dnsRequestCurrent(daemonGeneration, requestId)) {
+            finished->deleteLater();
+            return;
+        }
+        if (!dnsIdentityCurrent(daemonGeneration, refreshGeneration, primaryEpoch, requestId,
+                                activeConnectionPath, profilePath, devicePath)
+            || reply.type() == QDBusMessage::ErrorMessage || reply.arguments().size() < 2) {
+            finishDnsOperation(daemonGeneration, requestId,
+                               NetworkDnsOutcome::SavedNeedsReconnect);
+            finished->deleteLater();
+            return;
+        }
+        const quint32 appliedVersionId = reply.arguments().at(1).toUInt();
+        if (appliedVersionId == 0) {
+            finishDnsOperation(daemonGeneration, requestId,
+                               NetworkDnsOutcome::SavedNeedsReconnect);
+            finished->deleteLater();
+            return;
+        }
+        QDBusMessage reapply = QDBusMessage::createMethodCall(
+            QString::fromLatin1(serviceName), devicePath,
+            QString::fromLatin1(deviceInterface), QStringLiteral("Reapply"));
+        reapply << QVariant::fromValue(NetworkConnectionSettings{}) << appliedVersionId << quint32(0);
+        auto *reapplyWatcher = new QDBusPendingCallWatcher(
+            QDBusConnection::systemBus().asyncCall(reapply), this);
+        connect(reapplyWatcher, &QDBusPendingCallWatcher::finished, this,
+                [this, daemonGeneration, refreshGeneration, primaryEpoch, requestId,
+                 activeConnectionPath, profilePath, devicePath]
+                (QDBusPendingCallWatcher *reapplyFinished) {
+            const QDBusMessage reapplyReply = reapplyFinished->reply();
+            if (!dnsRequestCurrent(daemonGeneration, requestId)) {
+                reapplyFinished->deleteLater();
+                return;
+            }
+            if (reapplyReply.type() == QDBusMessage::ErrorMessage
+                || !dnsIdentityCurrent(daemonGeneration, refreshGeneration, primaryEpoch,
+                                       requestId, activeConnectionPath, profilePath, devicePath)) {
+                finishDnsOperation(daemonGeneration, requestId,
+                                   NetworkDnsOutcome::SavedNeedsReconnect);
+            } else {
+                refreshPrimaryIpConfig(true);
+                refreshPrimaryIpConfig(false);
+                finishDnsOperation(daemonGeneration, requestId, NetworkDnsOutcome::Applied);
+            }
+            reapplyFinished->deleteLater();
+        });
+        finished->deleteLater();
+    });
+}
+
+void NetworkManagerBackend::finishDnsOperation(quint64 daemonGeneration, quint64 requestId,
+                                               NetworkDnsOutcome outcome,
+                                               const QString &error)
+{
+    if (!dnsRequestCurrent(daemonGeneration, requestId) || !m_callbacks.operationFinished)
+        return;
+    NetworkOperationResult result;
+    result.kind = NetworkOperationKind::DnsConfiguration;
+    result.requestId = requestId;
+    result.success = outcome == NetworkDnsOutcome::Applied;
+    result.error = error;
+    result.dnsOutcome = outcome;
+    m_callbacks.operationFinished(std::move(result));
 }
 
 void NetworkManagerBackend::refreshAccessPoints()
@@ -893,6 +1395,12 @@ void NetworkManagerBackend::rebuildPropertyWatchers()
                        QString::fromLatin1(activeConnectionInterface), QStringLiteral("StateChanged"),
                        watcher, nullptr);
         bus.disconnect(QString::fromLatin1(serviceName), watcher->path,
+                       QString::fromLatin1(settingsConnectionInterface), QStringLiteral("Updated"),
+                       watcher, nullptr);
+        bus.disconnect(QString::fromLatin1(serviceName), watcher->path,
+                       QString::fromLatin1(settingsConnectionInterface), QStringLiteral("Removed"),
+                       watcher, nullptr);
+        bus.disconnect(QString::fromLatin1(serviceName), watcher->path,
                        QString::fromLatin1(wirelessInterface), QStringLiteral("AccessPointAdded"),
                        watcher, nullptr);
         bus.disconnect(QString::fromLatin1(serviceName), watcher->path,
@@ -907,6 +1415,7 @@ void NetworkManagerBackend::rebuildPropertyWatchers()
     paths.append(m_activeConnectionPath);
     paths.append(m_state.primaryIpv4Config().objectPath);
     paths.append(m_state.primaryIpv6Config().objectPath);
+    paths.append(m_state.primaryProfilePath());
     for (auto it = m_state.accessPoints().cbegin(); it != m_state.accessPoints().cend(); ++it)
         paths.append(it.key());
     paths.removeDuplicates();
@@ -935,10 +1444,14 @@ void NetworkManagerBackend::rebuildPropertyWatchers()
             const bool isIpv6Config = interfaceName == QString::fromLatin1(ip6ConfigInterface);
             if (isIpv4Config || isIpv6Config) {
                 const bool relevantChanged = changed.contains(QStringLiteral("AddressData"))
-                    || changed.contains(QStringLiteral("Gateway"));
+                    || changed.contains(QStringLiteral("Gateway"))
+                    || changed.contains(QStringLiteral("NameserverData"))
+                    || changed.contains(QStringLiteral("DnsPriority"));
                 const bool relevantInvalidated = invalidated.contains(
                     QStringLiteral("AddressData"))
-                    || invalidated.contains(QStringLiteral("Gateway"));
+                    || invalidated.contains(QStringLiteral("Gateway"))
+                    || invalidated.contains(QStringLiteral("NameserverData"))
+                    || invalidated.contains(QStringLiteral("DnsPriority"));
                 if (!relevantChanged && !relevantInvalidated)
                     return;
                 if (!m_state.updatePrimaryIpConfigProperties(path, interfaceName,
@@ -988,7 +1501,13 @@ void NetworkManagerBackend::rebuildPropertyWatchers()
                 const QString oldDevicePath = m_state.primaryDevicePath();
                 const QString oldIpv4Path = m_state.primaryIpv4Config().objectPath;
                 const QString oldIpv6Path = m_state.primaryIpv6Config().objectPath;
+                const QString oldProfilePath = m_state.primaryProfilePath();
                 m_state.updatePrimaryProperties(changed, invalidated);
+                const bool profileChanged = oldProfilePath != m_state.primaryProfilePath();
+                if (profileChanged) {
+                    ++m_profileRequestId;
+                    rebuildPropertyWatchers();
+                }
                 if (!invalidated.isEmpty() || changed.contains(QStringLiteral("State"))) {
                     refreshActiveConnection(path);
                     return;
@@ -1004,6 +1523,13 @@ void NetworkManagerBackend::rebuildPropertyWatchers()
                 publishReconciledSnapshot();
                 if (deviceChanged || ipv4Changed || ipv6Changed)
                     refreshPrimaryRuntimeDetails(deviceChanged, ipv4Changed, ipv6Changed);
+                if (profileChanged)
+                    refreshPrimaryConnectionProfile();
+                return;
+            }
+            if (interfaceName == QString::fromLatin1(settingsConnectionInterface)
+                && path == m_state.primaryProfilePath()) {
+                refreshPrimaryConnectionProfile();
                 return;
             }
             if (interfaceName == QString::fromLatin1(accessPointInterface)) {
@@ -1033,6 +1559,29 @@ void NetworkManagerBackend::rebuildPropertyWatchers()
             bus.connect(QString::fromLatin1(serviceName), watcher->path,
                         QString::fromLatin1(activeConnectionInterface), QStringLiteral("StateChanged"),
                         watcher, SLOT(activeStateChanged(uint,uint)));
+        if (watcher->path == m_state.primaryProfilePath()) {
+            bus.connect(QString::fromLatin1(serviceName), watcher->path,
+                        QString::fromLatin1(settingsConnectionInterface), QStringLiteral("Updated"),
+                        watcher, SLOT(profileUpdated()));
+            bus.connect(QString::fromLatin1(serviceName), watcher->path,
+                        QString::fromLatin1(settingsConnectionInterface), QStringLiteral("Removed"),
+                        watcher, SLOT(profileRemoved()));
+            connect(watcher, &NetworkPropertyWatcher::profileUpdatedSignal, this,
+                    [this](const QString &profilePath) {
+                if (profilePath == m_state.primaryProfilePath())
+                    refreshPrimaryConnectionProfile();
+            });
+            connect(watcher, &NetworkPropertyWatcher::profileRemovedSignal, this,
+                    [this](const QString &profilePath) {
+                if (profilePath != m_state.primaryProfilePath())
+                    return;
+                ++m_profileRequestId;
+                m_state.invalidatePrimaryProfile();
+                m_snapshot = m_state.snapshot();
+                m_snapshot.wifiScanning = m_scanState.active();
+                publishReconciledSnapshot();
+            });
+        }
         if (watcher->path == m_wifiDevicePath) {
             bus.connect(QString::fromLatin1(serviceName), watcher->path,
                         QString::fromLatin1(wirelessInterface), QStringLiteral("AccessPointAdded"),

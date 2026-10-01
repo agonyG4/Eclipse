@@ -7,6 +7,7 @@
 #include <QMap>
 #include <QObject>
 #include <QElapsedTimer>
+#include <functional>
 #include <QSet>
 #include <QVector>
 
@@ -28,6 +29,9 @@ public:
     void stop() override;
     bool setWifiEnabled(bool enabled, quint64 requestId) override;
     bool requestWifiScan() override;
+    bool applyDns(NetworkDnsMode mode, const QStringList &servers,
+                  quint64 requestId, QString *errorOut) override;
+    void cancelDnsOperation(quint64 requestId) override;
 
 private slots:
     void managerPropertiesChanged(const QString &interfaceName,
@@ -46,6 +50,37 @@ private:
                                      bool refreshIpv6 = true);
     void refreshWiredProperties(const QString &devicePath);
     void refreshPrimaryIpConfig(bool ipv4);
+    void refreshPrimaryConnectionProfile();
+    void refreshProfileVersion(const QString &profilePath,
+                              std::function<void(bool, quint64)> completion);
+    void readCoherentDnsProfile(quint64 daemonGeneration, quint64 refreshGeneration,
+                                quint64 primaryEpoch, quint64 profileRequestId,
+                                const QString &activeConnectionPath,
+                                const QString &profilePath, int attempt,
+                                std::function<void(bool, NetworkConnectionSettings, quint64)> completion);
+    void beginDnsOperation(NetworkDnsMode mode, const QStringList &servers,
+                           quint64 requestId);
+    void continueDnsOperation(quint64 daemonGeneration, quint64 refreshGeneration,
+                              quint64 primaryEpoch, quint64 requestId,
+                              const QString &activeConnectionPath, const QString &profilePath,
+                              const QString &devicePath, NetworkDnsMode mode,
+                              const QStringList &servers, int attempt);
+    void persistDnsOperation(quint64 daemonGeneration, quint64 refreshGeneration,
+                             quint64 primaryEpoch, quint64 requestId,
+                             const QString &activeConnectionPath, const QString &profilePath,
+                             const QString &devicePath, NetworkConnectionSettings settings,
+                             quint64 profileVersionId);
+    void reapplyDnsOperation(quint64 daemonGeneration, quint64 refreshGeneration,
+                             quint64 primaryEpoch, quint64 requestId,
+                             const QString &activeConnectionPath, const QString &profilePath,
+                             const QString &devicePath);
+    bool dnsRequestCurrent(quint64 daemonGeneration, quint64 requestId) const;
+    bool dnsIdentityCurrent(quint64 daemonGeneration, quint64 refreshGeneration,
+                            quint64 primaryEpoch, quint64 requestId,
+                            const QString &activeConnectionPath, const QString &profilePath,
+                            const QString &devicePath) const;
+    void finishDnsOperation(quint64 daemonGeneration, quint64 requestId,
+                            NetworkDnsOutcome outcome, const QString &error = {});
     void refreshAccessPoints();
     void refreshAccessPoint(const QString &objectPath);
     void publishUnavailable();
@@ -85,6 +120,8 @@ private:
     quint64 m_wiredPropertiesRequestId = 0;
     quint64 m_ipv4ConfigRequestId = 0;
     quint64 m_ipv6ConfigRequestId = 0;
+    quint64 m_profileRequestId = 0;
+    quint64 m_dnsRequestId = 0;
     int m_pendingAccessPointProperties = 0;
     quint64 m_accessPointRefreshGeneration = 0;
     NetworkWirelessRefreshState m_wirelessRefresh;

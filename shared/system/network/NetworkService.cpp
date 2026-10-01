@@ -22,6 +22,19 @@ NetworkService::NetworkService(std::unique_ptr<NetworkBackend> backend, QObject 
         if (m_wifiPending)
             finishWifiPending(false, QStringLiteral("Wi-Fi power update timed out"));
     });
+    m_dnsTimer.setSingleShot(true);
+    m_dnsTimer.setInterval(5000);
+    connect(&m_dnsTimer, &QTimer::timeout, this, [this] {
+        if (!m_dnsPending)
+            return;
+        m_backend->cancelDnsOperation(m_dnsRequestId);
+        m_dnsRequestId = 0;
+        m_dnsTimer.stop();
+        m_dnsPending = false;
+        setDnsErrorString(QStringLiteral("DNS settings update timed out"));
+        emit dnsChanged();
+        emit dnsOperationFinished(NetworkDnsOutcome::Failed, m_dnsErrorString);
+    });
 }
 
 NetworkService::~NetworkService()
@@ -35,6 +48,8 @@ bool NetworkService::start()
         return true;
     ++m_generation;
     m_wifiRequestId = 0;
+    m_dnsRequestId = 0;
+    m_dnsRequestId = 0;
     setState(SystemServiceState::Starting);
     setErrorString({});
     const QPointer<NetworkService> self(this);
@@ -91,6 +106,7 @@ void NetworkService::stop()
     ++m_generation;
     m_wifiRequestId = 0;
     m_wifiTimer.stop();
+    m_dnsTimer.stop();
     m_backend->stop();
     m_wifiModel->replace({});
     m_available = false;
@@ -98,7 +114,12 @@ void NetworkService::stop()
     const bool oldWifiAvailable = m_wifiAvailable;
     const bool oldWifiHardwareEnabled = m_wifiHardwareEnabled;
     const bool oldPending = m_wifiPending;
+    const bool oldDnsState = m_dnsPending || m_dnsEditable || m_dnsNeedsReconnect
+        || !m_dnsErrorString.isEmpty() || !m_profilePath.isEmpty()
+        || !m_activeIpv4DnsServers.isEmpty() || !m_activeIpv6DnsServers.isEmpty()
+        || !m_configuredIpv4DnsServers.isEmpty() || !m_configuredIpv6DnsServers.isEmpty();
     m_wifiPending = false;
+    m_dnsPending = false;
     m_wifiAvailable = false;
     m_wifiHardwareEnabled = false;
     m_wifiScanning = false;
@@ -114,6 +135,17 @@ void NetworkService::stop()
     m_ipv4Gateway.clear();
     m_ipv6Addresses.clear();
     m_ipv6Gateway.clear();
+    m_activeIpv4DnsServers.clear();
+    m_activeIpv6DnsServers.clear();
+    m_dnsMode = NetworkDnsMode::Advanced;
+    m_configuredIpv4DnsServers.clear();
+    m_configuredIpv6DnsServers.clear();
+    m_dnsEditable = false;
+    m_dnsErrorString.clear();
+    m_dnsNeedsReconnect = false;
+    m_activeConnectionPath.clear();
+    m_profilePath.clear();
+    m_devicePath.clear();
     m_downloadBytesPerSecond = 0;
     m_uploadBytesPerSecond = 0;
     emit healthChanged();
@@ -123,6 +155,8 @@ void NetworkService::stop()
         emit wifiHardwareEnabledChanged();
     if (oldPending)
         emit wifiPendingChanged();
+    if (oldDnsState)
+        emit dnsChanged();
     emit wifiScanningChanged();
     emit connectionChanged();
     emit trafficChanged();
@@ -147,6 +181,57 @@ bool NetworkService::setWifiEnabled(bool enabled)
 bool NetworkService::requestWifiScan()
 {
     return m_backend->requestWifiScan();
+}
+
+bool NetworkService::applyDns(NetworkDnsMode mode, const QStringList &servers)
+{
+    if (m_dnsPending)
+        return false;
+    if (!m_ready || !m_connected || !m_dnsEditable || m_activeConnectionPath.isEmpty()
+        || m_profilePath.isEmpty() || m_devicePath.isEmpty()) {
+        setDnsErrorString(QStringLiteral("DNS settings are unavailable for this connection"));
+        emit dnsChanged();
+        return false;
+    }
+    if (mode == NetworkDnsMode::Advanced) {
+        setDnsErrorString(QStringLiteral("Choose Automatic or Custom DNS to apply settings"));
+        emit dnsChanged();
+        return false;
+    }
+    QStringList canonicalServers;
+    if (mode == NetworkDnsMode::Custom) {
+        const NetworkDnsValidation validation = canonicalizeDnsServers(servers);
+        if (!validation.valid) {
+            setDnsErrorString(validation.error);
+            emit dnsChanged();
+            return false;
+        }
+        canonicalServers = validation.servers;
+    }
+
+    const quint64 requestId = ++m_dnsOperationId;
+    QString error;
+    if (!m_backend->applyDns(mode, canonicalServers, requestId, &error)) {
+        setDnsErrorString(error.isEmpty() ? QStringLiteral("Could not start DNS update") : error);
+        emit dnsChanged();
+        return false;
+    }
+    m_dnsRequestId = requestId;
+    m_dnsPending = true;
+    setDnsErrorString({});
+    m_dnsTimer.start();
+    emit dnsChanged();
+    return true;
+}
+
+QVariantMap NetworkService::validateDnsServers(const QStringList &servers) const
+{
+    const NetworkDnsValidation validation = canonicalizeDnsServers(servers);
+    return {{QStringLiteral("valid"), validation.valid},
+            {QStringLiteral("servers"), validation.servers},
+            {QStringLiteral("ipv4Servers"), validation.ipv4Servers},
+            {QStringLiteral("ipv6Servers"), validation.ipv6Servers},
+            {QStringLiteral("error"), validation.error}};
 }
 
 QJsonObject NetworkService::healthJson() const
@@ -195,6 +280,15 @@ void NetworkService::setErrorString(const QString &errorString)
 
 void NetworkService::applySnapshot(const NetworkSnapshot &snapshot)
 {
+    const bool dnsIdentityChanged = m_activeConnectionPath != snapshot.activeConnectionPath
+        || m_profilePath != snapshot.profilePath || m_devicePath != snapshot.devicePath;
+    m_activeConnectionPath = snapshot.activeConnectionPath;
+    m_profilePath = snapshot.profilePath;
+    m_devicePath = snapshot.devicePath;
+    if (dnsIdentityChanged) {
+        m_dnsNeedsReconnect = false;
+        setDnsErrorString({});
+    }
     const bool healthChangedValue = m_available != snapshot.daemonAvailable;
     m_available = snapshot.daemonAvailable;
     m_ready = snapshot.daemonAvailable;
@@ -229,6 +323,12 @@ void NetworkService::applySnapshot(const NetworkSnapshot &snapshot)
     m_ipv4Gateway = hasRuntimeConnection ? snapshot.ipv4Gateway : QString();
     m_ipv6Addresses = hasRuntimeConnection ? snapshot.ipv6Addresses : QStringList();
     m_ipv6Gateway = hasRuntimeConnection ? snapshot.ipv6Gateway : QString();
+    m_activeIpv4DnsServers = hasRuntimeConnection ? snapshot.activeIpv4DnsServers : QStringList();
+    m_activeIpv6DnsServers = hasRuntimeConnection ? snapshot.activeIpv6DnsServers : QStringList();
+    m_dnsMode = snapshot.dnsMode;
+    m_configuredIpv4DnsServers = snapshot.configuredIpv4DnsServers;
+    m_configuredIpv6DnsServers = snapshot.configuredIpv6DnsServers;
+    m_dnsEditable = snapshot.daemonAvailable && snapshot.connected && snapshot.dnsEditable;
     m_downloadBytesPerSecond = snapshot.downloadBytesPerSecond;
     m_uploadBytesPerSecond = snapshot.uploadBytesPerSecond;
     m_wifiModel->replace(snapshot.wifiNetworks);
@@ -245,6 +345,7 @@ void NetworkService::applySnapshot(const NetworkSnapshot &snapshot)
     if (oldWifiScanning != m_wifiScanning)
         emit wifiScanningChanged();
     emit connectionChanged();
+    emit dnsChanged();
     emit trafficChanged();
     setState(snapshot.daemonAvailable ? SystemServiceState::Ready
                                       : SystemServiceState::Unavailable);
@@ -261,11 +362,44 @@ void NetworkService::handleOperationFinished(const NetworkOperationResult &resul
             finishWifiPending(false, result.error);
         return;
     }
-    if (!result.success) {
-        if (!result.error.isEmpty())
-            setErrorString(result.error);
-        setState(SystemServiceState::Degraded);
+    if (result.kind == NetworkOperationKind::DnsConfiguration) {
+        if (!m_dnsPending || result.requestId != m_dnsRequestId)
+            return;
+        finishDnsPending(result);
     }
+}
+
+void NetworkService::finishDnsPending(const NetworkOperationResult &result)
+{
+    m_dnsTimer.stop();
+    m_dnsRequestId = 0;
+    m_dnsPending = false;
+    QString error = result.error;
+    switch (result.dnsOutcome) {
+    case NetworkDnsOutcome::Applied:
+        m_dnsNeedsReconnect = false;
+        error.clear();
+        break;
+    case NetworkDnsOutcome::SavedNeedsReconnect:
+        m_dnsNeedsReconnect = true;
+        error.clear();
+        break;
+    case NetworkDnsOutcome::Conflict:
+        error = QStringLiteral("The connection changed while editing. Reload the current settings and try again.");
+        break;
+    case NetworkDnsOutcome::Failed:
+        if (error.isEmpty())
+            error = QStringLiteral("Could not save DNS settings");
+        break;
+    }
+    setDnsErrorString(error);
+    emit dnsChanged();
+    emit dnsOperationFinished(result.dnsOutcome, error);
+}
+
+void NetworkService::setDnsErrorString(const QString &errorString)
+{
+    m_dnsErrorString = errorString;
 }
 
 void NetworkService::finishWifiPending(bool success, const QString &errorString)

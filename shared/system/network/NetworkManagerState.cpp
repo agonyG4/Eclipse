@@ -94,6 +94,25 @@ QString projectGateway(const QVariant &value, QAbstractSocket::NetworkLayerProto
         ? address.toString() : QString();
 }
 
+QStringList projectDnsServers(const QVariant &value,
+                              QAbstractSocket::NetworkLayerProtocol family)
+{
+    QStringList result;
+    QSet<QString> seen;
+    for (const QVariantMap &entry : decodeDictionaryArray(value)) {
+        const QString raw = unwrapDbusVariant(entry.value(QStringLiteral("address"))).toString();
+        QHostAddress address;
+        if (raw.isEmpty() || !address.setAddress(raw) || address.protocol() != family)
+            continue;
+        const QString canonical = address.toString();
+        if (seen.contains(canonical))
+            continue;
+        seen.insert(canonical);
+        result.append(canonical);
+    }
+    return result;
+}
+
 QVector<QString> sorted(const QVector<QString> &paths)
 {
     QVector<QString> result = paths;
@@ -242,6 +261,7 @@ quint64 NetworkManagerState::beginPrimaryRequest(const QString &path)
     m_primaryPath = path;
     m_primaryProperties.clear();
     clearPrimaryRuntimeDetails();
+    clearPrimaryProfile();
     return m_primaryEpoch;
 }
 
@@ -252,6 +272,11 @@ bool NetworkManagerState::applyPrimaryReply(const QString &path, quint64 epoch,
         return false;
     m_primaryProperties = std::move(properties);
     synchronizePrimaryIpConfigPaths();
+    const QString profilePath = primaryProfilePath();
+    if (m_primaryProfile.objectPath != profilePath) {
+        clearPrimaryProfile();
+        m_primaryProfile.objectPath = profilePath;
+    }
     if (m_primaryProperties.value(QStringLiteral("State")).toUInt() != activatedState)
         clearPrimaryRuntimeDetails();
     return true;
@@ -261,12 +286,19 @@ void NetworkManagerState::updatePrimaryProperties(const QVariantMap &changed,
                                                   const QStringList &invalidated)
 {
     const uint previousState = m_primaryProperties.value(QStringLiteral("State")).toUInt();
+    const QString previousProfilePath = primaryProfilePath();
     applyProperties(m_primaryProperties, changed, invalidated);
     for (const QString &key : invalidated) {
-        if (key == QLatin1String("Ip4Config") || key == QLatin1String("Ip6Config"))
+        if (key == QLatin1String("Ip4Config") || key == QLatin1String("Ip6Config")
+            || key == QLatin1String("Connection"))
             m_primaryProperties.remove(key);
     }
     synchronizePrimaryIpConfigPaths();
+    const QString currentProfilePath = primaryProfilePath();
+    if (previousProfilePath != currentProfilePath) {
+        clearPrimaryProfile();
+        m_primaryProfile.objectPath = currentProfilePath;
+    }
     const uint currentState = m_primaryProperties.value(QStringLiteral("State")).toUInt();
     if (previousState == activatedState && currentState != activatedState) {
         ++m_primaryEpoch;
@@ -303,12 +335,39 @@ bool NetworkManagerState::updatePrimaryIpConfigProperties(const QString &configP
         || m_primaryProperties.value(QStringLiteral("State")).toUInt() != activatedState)
         return false;
     for (const QString &key : invalidated) {
-        if (key == QLatin1String("AddressData") || key == QLatin1String("Gateway"))
+        if (key == QLatin1String("AddressData") || key == QLatin1String("Gateway")
+            || key == QLatin1String("NameserverData") || key == QLatin1String("DnsPriority"))
             config->properties.remove(key);
     }
     for (auto it = changed.cbegin(); it != changed.cend(); ++it)
         config->properties.insert(it.key(), it.value());
     return true;
+}
+
+bool NetworkManagerState::applyPrimaryProfileReply(
+    const QString &activeConnectionPath, quint64 primaryEpoch, const QString &profilePath,
+    NetworkConnectionSettings settings, quint64 versionId)
+{
+    if (activeConnectionPath != m_primaryPath || primaryEpoch != m_primaryEpoch
+        || profilePath.isEmpty() || profilePath == QLatin1String("/")
+        || profilePath != primaryProfilePath() || profilePath != m_primaryProfile.objectPath)
+        return false;
+    m_primaryProfile.settings = std::move(settings);
+    m_primaryProfile.versionId = versionId;
+    m_primaryProfile.available = true;
+    return true;
+}
+
+void NetworkManagerState::invalidatePrimaryProfile()
+{
+    const QString path = m_primaryProfile.objectPath;
+    m_primaryProfile = {};
+    m_primaryProfile.objectPath = path;
+}
+
+void NetworkManagerState::clearPrimaryProfile()
+{
+    m_primaryProfile = {};
 }
 
 void NetworkManagerState::clearPrimary()
@@ -318,6 +377,7 @@ void NetworkManagerState::clearPrimary()
     m_primaryPath.clear();
     m_primaryProperties.clear();
     clearPrimaryRuntimeDetails();
+    clearPrimaryProfile();
 }
 
 void NetworkManagerState::synchronizePrimaryIpConfigPaths()
@@ -343,6 +403,14 @@ void NetworkManagerState::clearPrimaryRuntimeDetails()
         it->wiredProperties.clear();
         it->wiredInterfacePresent = false;
     }
+}
+
+QString NetworkManagerState::primaryProfilePath() const
+{
+    QString path = objectPath(m_primaryProperties.value(QStringLiteral("Connection")));
+    if (path == QLatin1String("/"))
+        path.clear();
+    return path;
 }
 
 QString NetworkManagerState::objectPath(const QVariant &value)
@@ -435,6 +503,9 @@ NetworkSnapshot NetworkManagerState::snapshot() const
 
     const QString physicalPath = physicalDeviceForPrimary();
     const auto primaryState = m_primaryProperties;
+    result.activeConnectionPath = m_primaryPath;
+    result.profilePath = primaryProfilePath();
+    result.devicePath = physicalPath;
     if (!m_primaryPath.isEmpty()) {
         const auto device = m_devices.constFind(physicalPath);
         const uint type = device == m_devices.cend()
@@ -472,6 +543,9 @@ NetworkSnapshot NetworkManagerState::snapshot() const
                 result.ipv4Gateway = projectGateway(
                     m_primaryIpv4Config.properties.value(QStringLiteral("Gateway")),
                     QAbstractSocket::IPv4Protocol);
+                result.activeIpv4DnsServers = projectDnsServers(
+                    m_primaryIpv4Config.properties.value(QStringLiteral("NameserverData")),
+                    QAbstractSocket::IPv4Protocol);
             }
             if (m_primaryIpv6Config.objectPath
                 == objectPath(primaryState.value(QStringLiteral("Ip6Config")))) {
@@ -481,8 +555,23 @@ NetworkSnapshot NetworkManagerState::snapshot() const
                 result.ipv6Gateway = projectGateway(
                     m_primaryIpv6Config.properties.value(QStringLiteral("Gateway")),
                     QAbstractSocket::IPv6Protocol);
+                result.activeIpv6DnsServers = projectDnsServers(
+                    m_primaryIpv6Config.properties.value(QStringLiteral("NameserverData")),
+                    QAbstractSocket::IPv6Protocol);
             }
         }
+    }
+
+    if (m_primaryProfile.available
+        && m_primaryProfile.objectPath == result.profilePath) {
+        const NetworkDnsProjection dns = projectDns(m_primaryProfile.settings);
+        result.dnsMode = dns.mode;
+        result.configuredIpv4DnsServers = dns.configuredIpv4DnsServers;
+        result.configuredIpv6DnsServers = dns.configuredIpv6DnsServers;
+        result.dnsEditable = result.connected
+            && (result.connectionType == NetworkConnectionType::Wired
+                || result.connectionType == NetworkConnectionType::Wifi)
+            && dns.dnsEditable && m_primaryProfile.versionId != 0;
     }
 
     const QString activePath = activeAccessPointPath();

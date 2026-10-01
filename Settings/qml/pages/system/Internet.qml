@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import Astrea.System 1.0
 import "../../components" as Components
@@ -33,6 +34,243 @@ FocusScope {
         root.serviceReady && root.network.available && root.network.wifiAvailable
             && root.network.wifiHardwareEnabled && root.network.wifiEnabled
             && !root.network.wifiScanning && !root.network.wifiPending
+
+    readonly property var dnsPresets: [
+        { name: "Cloudflare", servers: ["1.1.1.1", "1.0.0.1",
+                                         "2606:4700:4700::1111", "2606:4700:4700::1001"] },
+        { name: "Quad9", servers: ["9.9.9.9", "149.112.112.112",
+                                    "2620:fe::fe", "2620:fe::9"] },
+        { name: "Google", servers: ["8.8.8.8", "8.8.4.4",
+                                     "2001:4860:4860::8888", "2001:4860:4860::8844"] },
+        { name: "Custom", servers: [] }
+    ]
+    readonly property var dnsPresetNames: root.dnsPresets.map(entry => entry.name)
+    property int dnsDraftMode: System.NetworkDnsMode.Advanced
+    property string dnsDraftText: ""
+    property string dnsSelectedPreset: "Custom"
+    property bool dnsDraftDirty: false
+    property bool dnsExternalChanged: false
+    property bool dnsAwaitingAuthoritative: false
+    property bool dnsLoadingDraft: false
+    property bool dnsEditorInitialized: false
+    property string dnsBaseFingerprint: ""
+    property int dnsExpectedMode: System.NetworkDnsMode.Advanced
+    property var dnsExpectedValidation: ({ valid: false, ipv4Servers: [], ipv6Servers: [] })
+    property string dnsOperationStatus: ""
+
+    readonly property var dnsDraftServers: root.dnsDraftText.split(/[\s,]+/).filter(value => value.length > 0)
+    readonly property var dnsDraftValidation: {
+        if (root.dnsDraftMode === System.NetworkDnsMode.Automatic)
+            return { valid: true, error: "", ipv4Servers: [], ipv6Servers: [] }
+        if (root.dnsDraftMode !== System.NetworkDnsMode.Custom || !root.network)
+            return { valid: false, error: "Choose Automatic or Custom DNS to apply settings",
+                     ipv4Servers: [], ipv6Servers: [] }
+        return root.network.validateDnsServers(root.dnsDraftServers)
+    }
+    readonly property bool dnsDraftMatchesAuthoritative: {
+        if (!root.network || root.dnsDraftMode !== root.network.dnsMode)
+            return false
+        if (root.dnsDraftMode === System.NetworkDnsMode.Automatic)
+            return root.network.configuredIpv4DnsServers.length === 0
+                && root.network.configuredIpv6DnsServers.length === 0
+        if (root.dnsDraftMode === System.NetworkDnsMode.Custom) {
+            return root.dnsDraftValidation.valid
+                && root.sameDnsServers(root.dnsDraftValidation.ipv4Servers,
+                                       root.network.configuredIpv4DnsServers)
+                && root.sameDnsServers(root.dnsDraftValidation.ipv6Servers,
+                                       root.network.configuredIpv6DnsServers)
+        }
+        return root.dnsDraftMode === System.NetworkDnsMode.Advanced
+    }
+    readonly property bool canApplyDns:
+        root.serviceReady && root.isConnected && root.network && root.network.dnsEditable
+        && !root.network.dnsPending && !root.dnsExternalChanged
+        && root.dnsDraftMode !== System.NetworkDnsMode.Advanced
+        && root.dnsDraftValidation.valid && !root.dnsDraftMatchesAuthoritative
+
+    function dnsModeText(mode) {
+        if (mode === System.NetworkDnsMode.Automatic)
+            return I18n.tr("settings.internet.dns.mode.automatic", "Automatic")
+        if (mode === System.NetworkDnsMode.Custom)
+            return I18n.tr("settings.internet.dns.mode.custom", "Custom")
+        return I18n.tr("settings.internet.dns.mode.advanced", "Advanced")
+    }
+
+    function dnsAuthorityFingerprint() {
+        if (!root.network)
+            return ""
+        return [root.network.activeConnectionPath, root.network.profilePath,
+                root.network.dnsMode, root.network.configuredIpv4DnsServers.join("\n"),
+                root.network.configuredIpv6DnsServers.join("\n")].join("|")
+    }
+
+    function sameDnsServers(left, right) {
+        if (!left || !right || left.length !== right.length)
+            return false
+        for (let index = 0; index < left.length; ++index) {
+            if (left[index] !== right[index])
+                return false
+        }
+        return true
+    }
+
+    function sameDnsSet(left, right) {
+        if (!left || !right || left.length !== right.length)
+            return false
+        const first = left.slice().sort()
+        const second = right.slice().sort()
+        return root.sameDnsServers(first, second)
+    }
+
+    function configuredDnsProvider() {
+        if (!root.network)
+            return "Advanced"
+        if (root.network.dnsMode === System.NetworkDnsMode.Automatic)
+            return I18n.tr("settings.internet.dns.provider.automatic", "Automatic")
+        if (root.network.dnsMode === System.NetworkDnsMode.Advanced)
+            return I18n.tr("settings.internet.dns.provider.advanced", "Advanced")
+        for (let index = 0; index < 3; ++index) {
+            const preset = root.dnsPresets[index]
+            const ipv4 = preset.servers.filter(address => address.indexOf(":") < 0)
+            const ipv6 = preset.servers.filter(address => address.indexOf(":") >= 0)
+            if (root.sameDnsSet(ipv4, root.network.configuredIpv4DnsServers)
+                && root.sameDnsSet(ipv6, root.network.configuredIpv6DnsServers))
+                return preset.name
+        }
+        return I18n.tr("settings.internet.dns.provider.custom", "Custom")
+    }
+
+    function loadDnsDraft() {
+        if (!root.network)
+            return
+        root.dnsLoadingDraft = true
+        root.dnsDraftMode = root.network.dnsMode
+        root.dnsDraftText = root.network.configuredIpv4DnsServers.concat(
+            root.network.configuredIpv6DnsServers).join("\n")
+        root.dnsSelectedPreset = root.configuredDnsProvider()
+        root.dnsBaseFingerprint = root.dnsAuthorityFingerprint()
+        root.dnsDraftDirty = false
+        root.dnsExternalChanged = false
+        root.dnsAwaitingAuthoritative = false
+        root.dnsEditorInitialized = true
+        root.dnsLoadingDraft = false
+    }
+
+    function updateDnsDraft() {
+        if (root.dnsLoadingDraft)
+            return
+        root.dnsOperationStatus = ""
+        root.dnsDraftDirty = !root.dnsDraftMatchesAuthoritative
+    }
+
+    function synchronizeDnsEditor() {
+        if (!root.dnsEditorInitialized || (!root.dnsDraftDirty && !root.dnsAwaitingAuthoritative)) {
+            root.loadDnsDraft()
+            return
+        }
+        if (root.dnsAwaitingAuthoritative) {
+            if (root.network && root.dnsExpectedMode === root.network.dnsMode) {
+                const expectedMatches = root.dnsExpectedMode === System.NetworkDnsMode.Automatic
+                    ? root.network.configuredIpv4DnsServers.length === 0
+                        && root.network.configuredIpv6DnsServers.length === 0
+                    : root.dnsExpectedValidation.valid
+                        && root.sameDnsServers(root.dnsExpectedValidation.ipv4Servers,
+                                               root.network.configuredIpv4DnsServers)
+                        && root.sameDnsServers(root.dnsExpectedValidation.ipv6Servers,
+                                               root.network.configuredIpv6DnsServers)
+                if (expectedMatches)
+                    root.loadDnsDraft()
+            }
+            return
+        }
+        if (root.dnsAuthorityFingerprint() !== root.dnsBaseFingerprint)
+            root.dnsExternalChanged = true
+    }
+
+    function selectDnsMode(index) {
+        if (index < 0)
+            return
+        root.dnsDraftMode = index === 0 ? System.NetworkDnsMode.Automatic
+                                        : System.NetworkDnsMode.Custom
+        if (root.dnsDraftMode === System.NetworkDnsMode.Custom
+            && root.dnsDraftText.length === 0 && root.network) {
+            root.dnsDraftText = root.network.configuredIpv4DnsServers.concat(
+                root.network.configuredIpv6DnsServers).join("\n")
+        }
+        root.updateDnsDraft()
+    }
+
+    function selectDnsPreset(index) {
+        if (index < 0 || index >= root.dnsPresets.length)
+            return
+        root.dnsDraftMode = System.NetworkDnsMode.Custom
+        root.dnsSelectedPreset = root.dnsPresets[index].name
+        if (index < 3)
+            root.dnsDraftText = root.dnsPresets[index].servers.join("\n")
+        root.updateDnsDraft()
+    }
+
+    function reloadDnsDraft() {
+        root.loadDnsDraft()
+        root.dnsOperationStatus = ""
+    }
+
+    function keepDnsDraft() {
+        root.dnsBaseFingerprint = root.dnsAuthorityFingerprint()
+        root.dnsExternalChanged = false
+        root.dnsDraftDirty = !root.dnsDraftMatchesAuthoritative
+    }
+
+    function applyDnsDraft() {
+        if (!root.canApplyDns || !root.network)
+            return
+        const servers = root.dnsDraftMode === System.NetworkDnsMode.Custom
+            ? root.dnsDraftValidation.servers : []
+        root.dnsExpectedMode = root.dnsDraftMode
+        root.dnsExpectedValidation = root.dnsDraftValidation
+        if (!root.network.applyDns(root.dnsDraftMode, servers))
+            root.dnsOperationStatus = root.network.dnsErrorString
+    }
+
+    Component.onCompleted: root.loadDnsDraft()
+
+    Connections {
+        target: root.network
+        ignoreUnknownSignals: true
+        function onDnsChanged() { root.synchronizeDnsEditor() }
+        function onDnsOperationFinished(outcome, error) {
+            if (outcome === System.NetworkDnsOutcome.Applied) {
+                root.dnsOperationStatus = I18n.tr(
+                    "settings.internet.dns.result.applied", "DNS settings updated for this connection.")
+                root.dnsDraftDirty = false
+                root.dnsAwaitingAuthoritative = true
+                dnsSuccessTimer.restart()
+            } else if (outcome === System.NetworkDnsOutcome.SavedNeedsReconnect) {
+                root.dnsOperationStatus = I18n.tr(
+                    "settings.internet.dns.result.saved_reconnect",
+                    "DNS settings were saved. Reconnect this network to apply them.")
+                root.dnsDraftDirty = false
+                root.dnsAwaitingAuthoritative = true
+            } else if (outcome === System.NetworkDnsOutcome.Conflict) {
+                root.dnsOperationStatus = I18n.tr(
+                    "settings.internet.dns.result.conflict",
+                    "The connection changed while editing. Reload the current settings and try again.")
+                root.dnsExternalChanged = true
+            } else {
+                root.dnsOperationStatus = error
+            }
+        }
+    }
+
+    Timer {
+        id: dnsSuccessTimer
+        interval: 4000
+        repeat: false
+        onTriggered: {
+            if (root.network && !root.network.dnsNeedsReconnect)
+                root.dnsOperationStatus = ""
+        }
+    }
 
     function serviceStatusText() {
         switch (root.serviceState) {
@@ -359,6 +597,215 @@ FocusScope {
                     font.family: Components.Theme.fontFamily
                     font.pixelSize: Components.Theme.fontSizeSmall
                     wrapMode: Text.WordWrap
+                }
+            }
+        }
+
+        Form.SectionHeader {
+            objectName: "dnsSection"
+            visible: root.showConnectionDetails
+            text: I18n.tr("settings.internet.section.dns", "DNS")
+            Layout.bottomMargin: 12
+        }
+
+        Form.FormCard {
+            objectName: "dnsCard"
+            visible: root.showConnectionDetails
+            Layout.bottomMargin: 24
+
+            ColumnLayout {
+                width: parent.width
+                spacing: 0
+
+                Form.SettingRow {
+                    objectName: "dnsConfiguredMode"
+                    label: I18n.tr("settings.internet.dns.label.mode", "Mode")
+                    sublabel: root.network ? root.dnsModeText(root.network.dnsMode) : "Advanced"
+                    sublabelTextFormat: Text.PlainText
+                }
+
+                Form.SettingRow {
+                    objectName: "dnsProviderValue"
+                    label: I18n.tr("settings.internet.dns.label.provider", "Provider")
+                    sublabel: root.configuredDnsProvider()
+                    sublabelTextFormat: Text.PlainText
+                }
+
+                Form.SettingRow {
+                    objectName: "dnsActiveServers"
+                    label: I18n.tr("settings.internet.dns.label.active_servers",
+                                   "DNS servers for this connection")
+                    sublabel: root.network
+                        ? root.network.activeIpv4DnsServers.concat(
+                            root.network.activeIpv6DnsServers).join("\n")
+                        : ""
+                    sublabelTextFormat: Text.PlainText
+                }
+
+                Form.SettingRow {
+                    objectName: "dnsModeDraftRow"
+                    label: I18n.tr("settings.internet.dns.label.choose_mode", "Choose DNS mode")
+                    sublabel: I18n.tr("settings.internet.dns.description.mode",
+                                      "Choose how this connection receives DNS servers.")
+                    sublabelTextFormat: Text.PlainText
+                    isLast: root.dnsDraftMode !== System.NetworkDnsMode.Custom
+                    Controls.SelectButton {
+                        objectName: "dnsModeSelector"
+                        Layout.preferredWidth: 190
+                        label: root.dnsModeText(root.dnsDraftMode)
+                        options: [root.dnsModeText(System.NetworkDnsMode.Automatic),
+                                  root.dnsModeText(System.NetworkDnsMode.Custom)]
+                        selectedIndex: root.dnsDraftMode === System.NetworkDnsMode.Automatic ? 0
+                                     : root.dnsDraftMode === System.NetworkDnsMode.Custom ? 1 : -1
+                        enabled: root.network && root.network.dnsEditable
+                            && !root.network.dnsPending && !root.dnsExternalChanged
+                        Accessible.name: I18n.tr("settings.internet.dns.label.choose_mode",
+                                                 "Choose DNS mode")
+                        onSelected: index => root.selectDnsMode(index)
+                    }
+                }
+
+                Form.SettingRow {
+                    objectName: "dnsPresetDraftRow"
+                    visible: root.dnsDraftMode === System.NetworkDnsMode.Custom
+                    label: I18n.tr("settings.internet.dns.label.preset", "DNS preset")
+                    sublabel: I18n.tr("settings.internet.dns.description.preset",
+                                      "Select a preset or enter server addresses below.")
+                    sublabelTextFormat: Text.PlainText
+                    Controls.SelectButton {
+                        objectName: "dnsPresetSelector"
+                        Layout.preferredWidth: 190
+                        label: root.dnsSelectedPreset
+                        options: root.dnsPresetNames
+                        selectedIndex: Math.max(0, root.dnsPresetNames.indexOf(root.dnsSelectedPreset))
+                        enabled: root.network && root.network.dnsEditable
+                            && !root.network.dnsPending && !root.dnsExternalChanged
+                        Accessible.name: I18n.tr("settings.internet.dns.label.preset", "DNS preset")
+                        onSelected: index => root.selectDnsPreset(index)
+                    }
+                }
+
+                ColumnLayout {
+                    visible: root.dnsDraftMode === System.NetworkDnsMode.Custom
+                    Layout.fillWidth: true
+                    Layout.leftMargin: Components.Theme.spacingLarge
+                    Layout.rightMargin: Components.Theme.spacingLarge
+                    Layout.topMargin: Components.Theme.spacingMedium
+                    Layout.bottomMargin: Components.Theme.spacingMedium
+                    spacing: Components.Theme.spacingSmall
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: I18n.tr("settings.internet.dns.label.custom_servers", "Custom DNS servers")
+                        color: Components.Theme.textPrimary
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeNormal
+                        font.weight: Components.Theme.fontWeightMedium
+                    }
+
+                    QQC2.TextArea {
+                        id: dnsCustomInput
+                        objectName: "dnsCustomInput"
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 86
+                        text: root.dnsDraftText
+                        placeholderText: I18n.tr("settings.internet.dns.placeholder.servers",
+                            "Enter IP addresses separated by commas, spaces, or new lines")
+                        wrapMode: TextEdit.Wrap
+                        selectByMouse: true
+                        enabled: root.network && root.network.dnsEditable
+                            && !root.network.dnsPending && !root.dnsExternalChanged
+                        onTextChanged: {
+                            if (root.dnsLoadingDraft)
+                                return
+                            root.dnsDraftText = text
+                            root.dnsSelectedPreset = "Custom"
+                            root.updateDnsDraft()
+                        }
+                    }
+
+                    Text {
+                        objectName: "dnsValidationError"
+                        Layout.fillWidth: true
+                        visible: root.dnsDraftMode === System.NetworkDnsMode.Custom
+                            && !root.dnsDraftValidation.valid
+                        text: visible ? root.dnsDraftValidation.error : ""
+                        textFormat: Text.PlainText
+                        color: Components.Theme.errorColor
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeSmall
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
+                ColumnLayout {
+                    visible: root.dnsExternalChanged
+                    Layout.fillWidth: true
+                    Layout.margins: Components.Theme.spacingLarge
+                    spacing: Components.Theme.spacingSmall
+
+                    Text {
+                        objectName: "dnsExternalChangeWarning"
+                        Layout.fillWidth: true
+                        text: I18n.tr("settings.internet.dns.external_changed",
+                            "This connection changed while you were editing. Reload its settings or explicitly apply your draft to the current connection.")
+                        textFormat: Text.PlainText
+                        color: Components.Theme.warningColor
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeSmall
+                        wrapMode: Text.WordWrap
+                    }
+
+                    RowLayout {
+                        Layout.alignment: Qt.AlignRight
+                        Controls.Button {
+                            objectName: "dnsReloadButton"
+                            label: I18n.tr("settings.internet.dns.action.reload", "Reload settings")
+                            enabled: root.network && !root.network.dnsPending
+                            onClicked: root.reloadDnsDraft()
+                        }
+                        Controls.Button {
+                            objectName: "dnsKeepDraftButton"
+                            label: I18n.tr("settings.internet.dns.action.keep_draft",
+                                           "Apply my draft to this connection")
+                            enabled: root.network && root.network.dnsEditable
+                                && !root.network.dnsPending
+                            onClicked: root.keepDnsDraft()
+                        }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: Components.Theme.spacingLarge
+                    Layout.rightMargin: Components.Theme.spacingLarge
+                    Layout.topMargin: Components.Theme.spacingMedium
+                    Layout.bottomMargin: Components.Theme.spacingLarge
+
+                    Text {
+                        objectName: "dnsOperationStatus"
+                        Layout.fillWidth: true
+                        visible: root.network && (root.network.dnsPending
+                            || root.network.dnsNeedsReconnect || root.dnsOperationStatus !== "")
+                        text: root.network && root.network.dnsPending
+                            ? I18n.tr("settings.internet.dns.pending", "Updating DNS settings…")
+                            : (root.dnsOperationStatus !== "" ? root.dnsOperationStatus
+                                                               : root.network.dnsErrorString)
+                        textFormat: Text.PlainText
+                        color: root.network && root.network.dnsNeedsReconnect
+                            ? Components.Theme.warningColor : Components.Theme.textSecondary
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeSmall
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Controls.Button {
+                        objectName: "dnsApplyButton"
+                        label: I18n.tr("settings.internet.dns.action.apply", "Apply")
+                        primary: true
+                        enabled: root.canApplyDns
+                        onClicked: root.applyDnsDraft()
+                    }
                 }
             }
         }

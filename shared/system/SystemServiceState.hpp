@@ -26,6 +26,21 @@ enum class NetworkConnectionType {
 };
 Q_ENUM_NS(NetworkConnectionType)
 
+enum class NetworkDnsMode {
+    Automatic,
+    Custom,
+    Advanced,
+};
+Q_ENUM_NS(NetworkDnsMode)
+
+enum class NetworkDnsOutcome {
+    Applied,
+    SavedNeedsReconnect,
+    Conflict,
+    Failed,
+};
+Q_ENUM_NS(NetworkDnsOutcome)
+
 enum class BluetoothAgentRequestKind {
     None,
     PinCodeInput,

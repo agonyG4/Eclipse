@@ -63,7 +63,6 @@ public:
     bool requestWifiScan() override { return true; }
     bool applyDns(Astrea::System::NetworkDnsMode, const QStringList &, quint64,
                   QString *) override { return true; }
-    void cancelDnsOperation(quint64) override {}
 
     int startCount = 0;
 };

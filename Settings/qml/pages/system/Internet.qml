@@ -51,11 +51,14 @@ FocusScope {
     property bool dnsDraftDirty: false
     property bool dnsExternalChanged: false
     property bool dnsAwaitingAuthoritative: false
+    property bool dnsReloadRequired: false
+    property bool dnsRecoveringFromFailedRefresh: false
     property bool dnsLoadingDraft: false
     property bool dnsEditorInitialized: false
     property string dnsBaseFingerprint: ""
     property int dnsExpectedMode: System.NetworkDnsMode.Advanced
     property var dnsExpectedValidation: ({ valid: false, ipv4Servers: [], ipv6Servers: [] })
+    property var dnsExpectedAuthorityRevision: 0
     property string dnsOperationStatus: ""
 
     readonly property var dnsDraftServers: root.dnsDraftText.split(/[\s,]+/).filter(value => value.length > 0)
@@ -84,7 +87,8 @@ FocusScope {
     }
     readonly property bool canApplyDns:
         root.serviceReady && root.isConnected && root.network && root.network.dnsEditable
-        && !root.network.dnsPending && !root.dnsExternalChanged
+        && !root.network.dnsPending && !root.dnsAwaitingAuthoritative
+        && !root.dnsReloadRequired && !root.dnsExternalChanged
         && root.dnsDraftMode !== System.NetworkDnsMode.Advanced
         && root.dnsDraftValidation.valid && !root.dnsDraftMatchesAuthoritative
 
@@ -99,8 +103,8 @@ FocusScope {
     function dnsAuthorityFingerprint() {
         if (!root.network)
             return ""
-        return [root.network.activeConnectionPath, root.network.profilePath,
-                root.network.dnsMode, root.network.configuredIpv4DnsServers.join("\n"),
+        return [String(root.network.dnsAuthorityRevision), root.network.dnsMode,
+                root.network.configuredIpv4DnsServers.join("\n"),
                 root.network.configuredIpv6DnsServers.join("\n")].join("|")
     }
 
@@ -152,6 +156,8 @@ FocusScope {
         root.dnsDraftDirty = false
         root.dnsExternalChanged = false
         root.dnsAwaitingAuthoritative = false
+        root.dnsReloadRequired = false
+        root.dnsRecoveringFromFailedRefresh = false
         root.dnsEditorInitialized = true
         root.dnsLoadingDraft = false
     }
@@ -164,11 +170,27 @@ FocusScope {
     }
 
     function synchronizeDnsEditor() {
+        if (root.network && root.network.dnsPending)
+            return
+        if (root.dnsRecoveringFromFailedRefresh) {
+            if (!root.network || !root.network.dnsEditable)
+                return
+            root.dnsRecoveringFromFailedRefresh = false
+            if (root.dnsAuthorityFingerprint() === root.dnsBaseFingerprint) {
+                root.dnsExternalChanged = false
+                return
+            }
+        }
         if (!root.dnsEditorInitialized || (!root.dnsDraftDirty && !root.dnsAwaitingAuthoritative)) {
             root.loadDnsDraft()
             return
         }
         if (root.dnsAwaitingAuthoritative) {
+            if (root.network
+                && root.network.dnsAuthorityRevision !== root.dnsExpectedAuthorityRevision) {
+                root.loadDnsDraft()
+                return
+            }
             if (root.network && root.dnsExpectedMode === root.network.dnsMode) {
                 const expectedMatches = root.dnsExpectedMode === System.NetworkDnsMode.Automatic
                     ? root.network.configuredIpv4DnsServers.length === 0
@@ -181,6 +203,12 @@ FocusScope {
                 if (expectedMatches)
                     root.loadDnsDraft()
             }
+            return
+        }
+        if (root.dnsReloadRequired) {
+            if (root.network
+                && root.network.dnsAuthorityRevision !== root.dnsExpectedAuthorityRevision)
+                root.loadDnsDraft()
             return
         }
         if (root.dnsAuthorityFingerprint() !== root.dnsBaseFingerprint)
@@ -218,6 +246,8 @@ FocusScope {
     function keepDnsDraft() {
         root.dnsBaseFingerprint = root.dnsAuthorityFingerprint()
         root.dnsExternalChanged = false
+        root.dnsReloadRequired = false
+        root.dnsRecoveringFromFailedRefresh = false
         root.dnsDraftDirty = !root.dnsDraftMatchesAuthoritative
     }
 
@@ -228,6 +258,8 @@ FocusScope {
             ? root.dnsDraftValidation.servers : []
         root.dnsExpectedMode = root.dnsDraftMode
         root.dnsExpectedValidation = root.dnsDraftValidation
+        root.dnsExpectedAuthorityRevision = root.network.dnsAuthorityRevision
+        root.dnsRecoveringFromFailedRefresh = false
         if (!root.network.applyDns(root.dnsDraftMode, servers))
             root.dnsOperationStatus = root.network.dnsErrorString
     }
@@ -242,22 +274,41 @@ FocusScope {
             if (outcome === System.NetworkDnsOutcome.Applied) {
                 root.dnsOperationStatus = I18n.tr(
                     "settings.internet.dns.result.applied", "DNS settings updated for this connection.")
-                root.dnsDraftDirty = false
+                root.dnsExternalChanged = false
+                root.dnsReloadRequired = false
+                root.dnsRecoveringFromFailedRefresh = false
                 root.dnsAwaitingAuthoritative = true
                 dnsSuccessTimer.restart()
+                root.synchronizeDnsEditor()
             } else if (outcome === System.NetworkDnsOutcome.SavedNeedsReconnect) {
                 root.dnsOperationStatus = I18n.tr(
                     "settings.internet.dns.result.saved_reconnect",
                     "DNS settings were saved. Reconnect this network to apply them.")
-                root.dnsDraftDirty = false
+                root.dnsExternalChanged = false
+                root.dnsReloadRequired = false
+                root.dnsRecoveringFromFailedRefresh = false
                 root.dnsAwaitingAuthoritative = true
+                root.synchronizeDnsEditor()
             } else if (outcome === System.NetworkDnsOutcome.Conflict) {
                 root.dnsOperationStatus = I18n.tr(
                     "settings.internet.dns.result.conflict",
                     "The connection changed while editing. Reload the current settings and try again.")
                 root.dnsExternalChanged = true
+                root.dnsAwaitingAuthoritative = false
+                root.dnsRecoveringFromFailedRefresh = false
+            } else if (outcome === System.NetworkDnsOutcome.Indeterminate) {
+                root.dnsOperationStatus = I18n.tr(
+                    "settings.internet.dns.result.indeterminate",
+                    "Astrea could not confirm whether the DNS settings were saved. Reload the current connection settings before trying again.")
+                root.dnsExternalChanged = false
+                root.dnsAwaitingAuthoritative = false
+                root.dnsReloadRequired = true
+                root.dnsRecoveringFromFailedRefresh = false
+                root.synchronizeDnsEditor()
             } else {
                 root.dnsOperationStatus = error
+                root.dnsRecoveringFromFailedRefresh = true
+                root.synchronizeDnsEditor()
             }
         }
     }
@@ -739,7 +790,7 @@ FocusScope {
                 }
 
                 ColumnLayout {
-                    visible: root.dnsExternalChanged
+                    visible: root.dnsExternalChanged || root.dnsReloadRequired
                     Layout.fillWidth: true
                     Layout.margins: Components.Theme.spacingLarge
                     spacing: Components.Theme.spacingSmall
@@ -747,8 +798,11 @@ FocusScope {
                     Text {
                         objectName: "dnsExternalChangeWarning"
                         Layout.fillWidth: true
-                        text: I18n.tr("settings.internet.dns.external_changed",
-                            "This connection changed while you were editing. Reload its settings or explicitly apply your draft to the current connection.")
+                        text: root.dnsReloadRequired
+                            ? I18n.tr("settings.internet.dns.result.indeterminate",
+                                "Astrea could not confirm whether the DNS settings were saved. Reload the current connection settings before trying again.")
+                            : I18n.tr("settings.internet.dns.external_changed",
+                                "This connection changed while you were editing. Reload its settings or explicitly apply your draft to the current connection.")
                         textFormat: Text.PlainText
                         color: Components.Theme.warningColor
                         font.family: Components.Theme.fontFamily
@@ -761,6 +815,7 @@ FocusScope {
                         Controls.Button {
                             objectName: "dnsReloadButton"
                             label: I18n.tr("settings.internet.dns.action.reload", "Reload settings")
+                            visible: root.dnsExternalChanged || root.dnsReloadRequired
                             enabled: root.network && !root.network.dnsPending
                             onClicked: root.reloadDnsDraft()
                         }
@@ -768,6 +823,7 @@ FocusScope {
                             objectName: "dnsKeepDraftButton"
                             label: I18n.tr("settings.internet.dns.action.keep_draft",
                                            "Apply my draft to this connection")
+                            visible: root.dnsExternalChanged
                             enabled: root.network && root.network.dnsEditable
                                 && !root.network.dnsPending
                             onClicked: root.keepDnsDraft()
@@ -788,7 +844,11 @@ FocusScope {
                         visible: root.network && (root.network.dnsPending
                             || root.network.dnsNeedsReconnect || root.dnsOperationStatus !== "")
                         text: root.network && root.network.dnsPending
-                            ? I18n.tr("settings.internet.dns.pending", "Updating DNS settings…")
+                            ? (root.network.dnsOperationSlow
+                                ? I18n.tr("settings.internet.dns.pending.slow",
+                                    "NetworkManager is taking longer than expected. The update is still in progress…")
+                                : I18n.tr("settings.internet.dns.pending",
+                                    "Updating DNS settings…"))
                             : (root.dnsOperationStatus !== "" ? root.dnsOperationStatus
                                                                : root.network.dnsErrorString)
                         textFormat: Text.PlainText

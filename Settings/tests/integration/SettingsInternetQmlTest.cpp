@@ -47,8 +47,6 @@ public:
         dnsRequests.append({mode, servers, id});
         return actionResult;
     }
-    void cancelDnsOperation(quint64) override {}
-
     void publish(const Astrea::System::NetworkSnapshot &snapshot)
     {
         if (callbacks_.snapshotChanged)
@@ -274,6 +272,13 @@ private slots:
     void dnsSectionProjectsModeProviderAndConnectionServers();
     void dnsPresetDraftRequiresExplicitApplyAndShowsPartialSuccess();
     void dnsInvalidDraftAndExternalChangeRemainExplicit();
+    void dnsOwnRefreshChurnDoesNotMarkDraftExternal();
+    void dnsFingerprintUsesOpaqueRevisionAndDnsState();
+    void dnsAuthoritySwitchLoadsNewDraftAfterPartialSuccess();
+    void dnsConflictPreservesDraftForExplicitResolution();
+    void dnsIndeterminateRequiresAuthoritativeReload();
+    void dnsFailedOutcomeKeepsDraftRetryable();
+    void dnsSlowStateRemainsPendingInPresentation();
 };
 
 void SettingsInternetQmlTest::serviceHealthAndConnectionProjection()
@@ -694,6 +699,297 @@ void SettingsInternetQmlTest::dnsInvalidDraftAndExternalChangeRemainExplicit()
     QVERIFY(!page.find(QStringLiteral("dnsExternalChangeWarning"))->property("visible").toBool());
     QCOMPARE(input->property("text").toString(),
              QStringLiteral("9.9.9.9\n2620:fe::fe"));
+}
+
+void SettingsInternetQmlTest::dnsOwnRefreshChurnDoesNotMarkDraftExternal()
+{
+    for (const auto outcome : {Astrea::System::NetworkDnsOutcome::Applied,
+                               Astrea::System::NetworkDnsOutcome::SavedNeedsReconnect}) {
+        Page page;
+        QVERIFY2(page.create(), qPrintable(page.errors()));
+        QVERIFY(page.controller->network()->start());
+        auto snapshot = connectedNetwork();
+        snapshot.dnsMode = Astrea::System::NetworkDnsMode::Automatic;
+        page.publish(snapshot);
+
+        QObject *mode = page.find(QStringLiteral("dnsModeSelector"));
+        QObject *preset = page.find(QStringLiteral("dnsPresetSelector"));
+        QObject *input = page.find(QStringLiteral("dnsCustomInput"));
+        QObject *apply = page.find(QStringLiteral("dnsApplyButton"));
+        QVERIFY(mode && preset && input && apply);
+        QVERIFY(QMetaObject::invokeMethod(mode, "selected", Qt::DirectConnection,
+                                         Q_ARG(int, 1)));
+        QVERIFY(QMetaObject::invokeMethod(preset, "selected", Qt::DirectConnection,
+                                         Q_ARG(int, 0)));
+        page.events();
+        const QString expectedDraft = input->property("text").toString();
+        QVERIFY(apply->property("enabled").toBool());
+        QVERIFY(QMetaObject::invokeMethod(apply, "clicked", Qt::DirectConnection));
+        QCOMPARE(page.fake->dnsRequests.size(), 1);
+        const quint64 requestId = page.fake->dnsRequests.constFirst().requestId;
+        QVERIFY(page.controller->network()->dnsPending());
+
+        snapshot.dnsMode = Astrea::System::NetworkDnsMode::Advanced;
+        snapshot.configuredIpv4DnsServers.clear();
+        snapshot.configuredIpv6DnsServers.clear();
+        snapshot.dnsEditable = false;
+        page.publish(snapshot);
+        QVERIFY(page.controller->network()->dnsPending());
+        QCOMPARE(input->property("text").toString(), expectedDraft);
+        QVERIFY(!page.find(QStringLiteral("dnsExternalChangeWarning"))
+                     ->property("visible").toBool());
+
+        snapshot.dnsMode = Astrea::System::NetworkDnsMode::Custom;
+        snapshot.configuredIpv4DnsServers = {QStringLiteral("1.1.1.1"),
+                                             QStringLiteral("1.0.0.1")};
+        snapshot.configuredIpv6DnsServers = {QStringLiteral("2606:4700:4700::1111"),
+                                             QStringLiteral("2606:4700:4700::1001")};
+        snapshot.dnsEditable = true;
+        page.publish(snapshot);
+        QVERIFY(page.controller->network()->dnsPending());
+        QCOMPARE(input->property("text").toString(), expectedDraft);
+        QVERIFY(!page.find(QStringLiteral("dnsExternalChangeWarning"))
+                     ->property("visible").toBool());
+
+        page.fake->completeDns(requestId, outcome);
+        QTRY_VERIFY_WITH_TIMEOUT(!page.controller->network()->dnsPending(), 1000);
+        QCOMPARE(input->property("text").toString(), expectedDraft);
+        QVERIFY(!page.root->property("dnsDraftDirty").toBool());
+        QVERIFY(!page.root->property("dnsAwaitingAuthoritative").toBool());
+        QVERIFY(!page.root->property("dnsExternalChanged").toBool());
+        if (outcome == Astrea::System::NetworkDnsOutcome::Applied) {
+            QCOMPARE(page.find(QStringLiteral("dnsOperationStatus"))->property("text").toString(),
+                     QStringLiteral("DNS settings updated for this connection."));
+            QVERIFY(!page.controller->network()->dnsNeedsReconnect());
+        } else {
+            QCOMPARE(page.find(QStringLiteral("dnsOperationStatus"))->property("text").toString(),
+                     QStringLiteral("DNS settings were saved. Reconnect this network to apply them."));
+            QVERIFY(page.controller->network()->dnsNeedsReconnect());
+        }
+    }
+}
+
+void SettingsInternetQmlTest::dnsFingerprintUsesOpaqueRevisionAndDnsState()
+{
+    Page page;
+    QVERIFY2(page.create(), qPrintable(page.errors()));
+    QVERIFY(page.controller->network()->start());
+    auto snapshot = connectedNetwork();
+    snapshot.dnsMode = Astrea::System::NetworkDnsMode::Automatic;
+    page.publish(snapshot);
+
+    const auto fingerprint = [&page] {
+        QVariant result;
+        const bool invoked = QMetaObject::invokeMethod(
+            page.root, "dnsAuthorityFingerprint", Qt::DirectConnection,
+            Q_RETURN_ARG(QVariant, result));
+        return invoked ? result.toString() : QString();
+    };
+    const quint64 revision = page.controller->network()
+        ->property("dnsAuthorityRevision").toULongLong();
+    const QString automatic = fingerprint();
+    QVERIFY(!automatic.isEmpty());
+    QVERIFY(automatic.startsWith(QString::number(revision) + QLatin1Char('|')));
+    QVERIFY(!automatic.contains(QStringLiteral("/active/1")));
+    QVERIFY(!automatic.contains(QStringLiteral("/settings/1")));
+
+    snapshot.dnsMode = Astrea::System::NetworkDnsMode::Custom;
+    snapshot.configuredIpv4DnsServers = {QStringLiteral("9.9.9.9")};
+    snapshot.dnsEditable = true;
+    page.publish(snapshot);
+    const QString semanticEdit = fingerprint();
+    QCOMPARE(page.controller->network()->property("dnsAuthorityRevision").toULongLong(),
+             revision);
+    QVERIFY(semanticEdit != automatic);
+
+    snapshot.activeConnectionPath = QStringLiteral("/active/2");
+    page.publish(snapshot);
+    const QString newAuthority = fingerprint();
+    QVERIFY(newAuthority != semanticEdit);
+    QVERIFY(newAuthority.startsWith(QString::number(revision + 1) + QLatin1Char('|')));
+    QVERIFY(!newAuthority.contains(QStringLiteral("/active/2")));
+}
+
+void SettingsInternetQmlTest::dnsAuthoritySwitchLoadsNewDraftAfterPartialSuccess()
+{
+    Page page;
+    QVERIFY2(page.create(), qPrintable(page.errors()));
+    QVERIFY(page.controller->network()->start());
+    auto snapshot = connectedNetwork();
+    snapshot.dnsMode = Astrea::System::NetworkDnsMode::Automatic;
+    page.publish(snapshot);
+    QObject *mode = page.find(QStringLiteral("dnsModeSelector"));
+    QObject *preset = page.find(QStringLiteral("dnsPresetSelector"));
+    QObject *input = page.find(QStringLiteral("dnsCustomInput"));
+    QObject *apply = page.find(QStringLiteral("dnsApplyButton"));
+    QVERIFY(mode && preset && input && apply);
+    QVERIFY(QMetaObject::invokeMethod(mode, "selected", Qt::DirectConnection, Q_ARG(int, 1)));
+    QVERIFY(QMetaObject::invokeMethod(preset, "selected", Qt::DirectConnection, Q_ARG(int, 0)));
+    page.events();
+    const QString oldDraft = input->property("text").toString();
+    QVERIFY(QMetaObject::invokeMethod(apply, "clicked", Qt::DirectConnection));
+    const quint64 requestId = page.fake->dnsRequests.constFirst().requestId;
+
+    snapshot.activeConnectionPath = QStringLiteral("/active/2");
+    snapshot.profilePath = QStringLiteral("/settings/2");
+    snapshot.devicePath = QStringLiteral("/device/ethernet1");
+    snapshot.dnsMode = Astrea::System::NetworkDnsMode::Custom;
+    snapshot.configuredIpv4DnsServers = {QStringLiteral("9.9.9.9")};
+    snapshot.configuredIpv6DnsServers = {QStringLiteral("2620:fe::fe")};
+    page.publish(snapshot);
+    QVERIFY(page.controller->network()->dnsPending());
+    QCOMPARE(input->property("text").toString(), oldDraft);
+
+    page.fake->completeDns(requestId, Astrea::System::NetworkDnsOutcome::SavedNeedsReconnect);
+    QTRY_VERIFY_WITH_TIMEOUT(!page.controller->network()->dnsPending(), 1000);
+    QCOMPARE(input->property("text").toString(),
+             QStringLiteral("9.9.9.9\n2620:fe::fe"));
+    QVERIFY(!page.root->property("dnsDraftDirty").toBool());
+    QVERIFY(!page.root->property("dnsExternalChanged").toBool());
+    QVERIFY(!page.root->property("dnsAwaitingAuthoritative").toBool());
+    QCOMPARE(page.find(QStringLiteral("dnsOperationStatus"))->property("text").toString(),
+             QStringLiteral("DNS settings were saved. Reconnect this network to apply them."));
+    QVERIFY(page.controller->network()->dnsNeedsReconnect());
+    QVERIFY(!apply->property("enabled").toBool());
+}
+
+void SettingsInternetQmlTest::dnsConflictPreservesDraftForExplicitResolution()
+{
+    Page page;
+    QVERIFY2(page.create(), qPrintable(page.errors()));
+    QVERIFY(page.controller->network()->start());
+    auto snapshot = connectedNetwork();
+    snapshot.dnsMode = Astrea::System::NetworkDnsMode::Automatic;
+    page.publish(snapshot);
+    QObject *mode = page.find(QStringLiteral("dnsModeSelector"));
+    QObject *preset = page.find(QStringLiteral("dnsPresetSelector"));
+    QObject *input = page.find(QStringLiteral("dnsCustomInput"));
+    QObject *apply = page.find(QStringLiteral("dnsApplyButton"));
+    QVERIFY(mode && preset && input && apply);
+    QVERIFY(QMetaObject::invokeMethod(mode, "selected", Qt::DirectConnection, Q_ARG(int, 1)));
+    QVERIFY(QMetaObject::invokeMethod(preset, "selected", Qt::DirectConnection, Q_ARG(int, 0)));
+    page.events();
+    const QString draft = input->property("text").toString();
+    QVERIFY(QMetaObject::invokeMethod(apply, "clicked", Qt::DirectConnection));
+    const quint64 requestId = page.fake->dnsRequests.constFirst().requestId;
+    page.fake->completeDns(requestId, Astrea::System::NetworkDnsOutcome::Conflict);
+    QTRY_VERIFY_WITH_TIMEOUT(!page.controller->network()->dnsPending(), 1000);
+
+    QCOMPARE(input->property("text").toString(), draft);
+    QVERIFY(page.root->property("dnsDraftDirty").toBool());
+    QVERIFY(page.root->property("dnsExternalChanged").toBool());
+    QVERIFY(page.find(QStringLiteral("dnsExternalChangeWarning"))->property("visible").toBool());
+    QVERIFY(!apply->property("enabled").toBool());
+    QVERIFY(page.fake->dnsRequests.size() == 1);
+}
+
+void SettingsInternetQmlTest::dnsIndeterminateRequiresAuthoritativeReload()
+{
+    Page page;
+    QVERIFY2(page.create(), qPrintable(page.errors()));
+    QVERIFY(page.controller->network()->start());
+    auto snapshot = connectedNetwork();
+    snapshot.dnsMode = Astrea::System::NetworkDnsMode::Automatic;
+    page.publish(snapshot);
+    QObject *mode = page.find(QStringLiteral("dnsModeSelector"));
+    QObject *preset = page.find(QStringLiteral("dnsPresetSelector"));
+    QObject *input = page.find(QStringLiteral("dnsCustomInput"));
+    QObject *apply = page.find(QStringLiteral("dnsApplyButton"));
+    QVERIFY(mode && preset && input && apply);
+    QVERIFY(QMetaObject::invokeMethod(mode, "selected", Qt::DirectConnection, Q_ARG(int, 1)));
+    QVERIFY(QMetaObject::invokeMethod(preset, "selected", Qt::DirectConnection, Q_ARG(int, 0)));
+    page.events();
+    const QString draft = input->property("text").toString();
+    QVERIFY(QMetaObject::invokeMethod(apply, "clicked", Qt::DirectConnection));
+    const quint64 requestId = page.fake->dnsRequests.constFirst().requestId;
+    page.fake->completeDns(requestId, Astrea::System::NetworkDnsOutcome::Indeterminate);
+    QTRY_VERIFY_WITH_TIMEOUT(!page.controller->network()->dnsPending(), 1000);
+
+    QCOMPARE(input->property("text").toString(), draft);
+    QVERIFY(page.root->property("dnsDraftDirty").toBool());
+    QVERIFY(!page.controller->network()->dnsNeedsReconnect());
+    QVERIFY(!apply->property("enabled").toBool());
+    QCOMPARE(page.find(QStringLiteral("dnsOperationStatus"))->property("text").toString(),
+             QStringLiteral("Astrea could not confirm whether the DNS settings were saved. Reload the current connection settings before trying again."));
+    QCOMPARE(page.fake->dnsRequests.size(), 1);
+    QObject *reload = page.find(QStringLiteral("dnsReloadButton"));
+    QVERIFY(reload && reload->property("visible").toBool());
+    QVERIFY(QMetaObject::invokeMethod(reload, "clicked", Qt::DirectConnection));
+    page.events();
+    QVERIFY(!page.root->property("dnsReloadRequired").toBool());
+    QVERIFY(!page.root->property("dnsDraftDirty").toBool());
+    QCOMPARE(page.fake->dnsRequests.size(), 1);
+}
+
+void SettingsInternetQmlTest::dnsFailedOutcomeKeepsDraftRetryable()
+{
+    Page page;
+    QVERIFY2(page.create(), qPrintable(page.errors()));
+    QVERIFY(page.controller->network()->start());
+    auto snapshot = connectedNetwork();
+    snapshot.dnsMode = Astrea::System::NetworkDnsMode::Automatic;
+    page.publish(snapshot);
+    QObject *mode = page.find(QStringLiteral("dnsModeSelector"));
+    QObject *preset = page.find(QStringLiteral("dnsPresetSelector"));
+    QObject *input = page.find(QStringLiteral("dnsCustomInput"));
+    QObject *apply = page.find(QStringLiteral("dnsApplyButton"));
+    QVERIFY(mode && preset && input && apply);
+    QVERIFY(QMetaObject::invokeMethod(mode, "selected", Qt::DirectConnection, Q_ARG(int, 1)));
+    QVERIFY(QMetaObject::invokeMethod(preset, "selected", Qt::DirectConnection, Q_ARG(int, 0)));
+    page.events();
+    const QString draft = input->property("text").toString();
+    QVERIFY(QMetaObject::invokeMethod(apply, "clicked", Qt::DirectConnection));
+    const quint64 requestId = page.fake->dnsRequests.constFirst().requestId;
+    snapshot.dnsMode = Astrea::System::NetworkDnsMode::Advanced;
+    snapshot.configuredIpv4DnsServers.clear();
+    snapshot.configuredIpv6DnsServers.clear();
+    snapshot.dnsEditable = false;
+    page.publish(snapshot);
+    QVERIFY(page.controller->network()->dnsPending());
+    page.fake->completeDns(requestId, Astrea::System::NetworkDnsOutcome::Failed,
+                           QStringLiteral("Could not save DNS settings"));
+    QTRY_VERIFY_WITH_TIMEOUT(!page.controller->network()->dnsPending(), 1000);
+
+    snapshot.dnsMode = Astrea::System::NetworkDnsMode::Automatic;
+    snapshot.dnsEditable = true;
+    page.publish(snapshot);
+
+    QCOMPARE(input->property("text").toString(), draft);
+    QVERIFY(page.root->property("dnsDraftDirty").toBool());
+    QVERIFY(!page.root->property("dnsExternalChanged").toBool());
+    QVERIFY(!page.controller->network()->dnsNeedsReconnect());
+    QCOMPARE(page.controller->network()->state(), Astrea::System::SystemServiceState::Ready);
+    QVERIFY(apply->property("enabled").toBool());
+    QCOMPARE(page.find(QStringLiteral("dnsOperationStatus"))->property("text").toString(),
+             QStringLiteral("Could not save DNS settings"));
+}
+
+void SettingsInternetQmlTest::dnsSlowStateRemainsPendingInPresentation()
+{
+    Page page;
+    QVERIFY2(page.create(), qPrintable(page.errors()));
+    QVERIFY(page.controller->network()->start());
+    auto snapshot = connectedNetwork();
+    snapshot.dnsMode = Astrea::System::NetworkDnsMode::Automatic;
+    page.publish(snapshot);
+    QObject *mode = page.find(QStringLiteral("dnsModeSelector"));
+    QObject *preset = page.find(QStringLiteral("dnsPresetSelector"));
+    QObject *apply = page.find(QStringLiteral("dnsApplyButton"));
+    QVERIFY(mode && preset && apply);
+    QVERIFY(QMetaObject::invokeMethod(mode, "selected", Qt::DirectConnection, Q_ARG(int, 1)));
+    QVERIFY(QMetaObject::invokeMethod(preset, "selected", Qt::DirectConnection, Q_ARG(int, 0)));
+    page.events();
+    QVERIFY(QMetaObject::invokeMethod(apply, "clicked", Qt::DirectConnection));
+    const quint64 requestId = page.fake->dnsRequests.constFirst().requestId;
+    QTRY_VERIFY_WITH_TIMEOUT(page.controller->network()
+                                 ->property("dnsOperationSlow").toBool(), 7000);
+    QVERIFY(page.controller->network()->dnsPending());
+    QVERIFY(!apply->property("enabled").toBool());
+    QCOMPARE(page.find(QStringLiteral("dnsOperationStatus"))->property("text").toString(),
+             QStringLiteral("NetworkManager is taking longer than expected. The update is still in progress…"));
+    page.fake->completeDns(requestId, Astrea::System::NetworkDnsOutcome::Applied);
+    QTRY_VERIFY_WITH_TIMEOUT(!page.controller->network()->dnsPending(), 1000);
+    QVERIFY(!page.controller->network()->property("dnsOperationSlow").toBool());
 }
 
 QTEST_MAIN(SettingsInternetQmlTest)

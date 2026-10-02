@@ -129,11 +129,6 @@ public:
         return actionResult;
     }
 
-    void cancelDnsOperation(quint64 requestId) override
-    {
-        cancelledDnsRequests.append(requestId);
-    }
-
     void publish(const NetworkSnapshot &snapshot)
     {
         if (m_callbacks.snapshotChanged)
@@ -173,8 +168,6 @@ public:
         quint64 requestId;
     };
     QVector<DnsRequest> dnsRequests;
-    QVector<quint64> cancelledDnsRequests;
-
 private:
     Callbacks m_callbacks;
 };
@@ -352,7 +345,10 @@ private slots:
     void networkServiceProjectsAndClearsPrimaryRuntimeDetails();
     void networkServiceProjectsActiveAndConfiguredDns();
     void networkDnsOperationIsIndependentAndDoesNotDegradeHealth();
-    void networkDnsTimeoutRejectsLateCompletion();
+    void networkDnsSlowOperationAcceptsLateCompletion();
+    void networkDnsCompletionPrecedesFinalDnsNotification();
+    void networkDnsAuthorityRevisionTracksOnlyIdentity();
+    void networkDnsQmlApiHidesObjectPaths();
     void networkScanUsesLastScanAndCoalesces();
     void networkLateRequestScanReplyCannotSettleNewRequest();
     void networkOldDeviceScanReplyRejectedAfterWifiSwitch();
@@ -1284,9 +1280,18 @@ void SystemServicesTest::networkDnsOperationIsIndependentAndDoesNotDegradeHealth
     QTRY_VERIFY_WITH_TIMEOUT(!service.dnsPending(), 500);
     QVERIFY(service.dnsNeedsReconnect());
     QCOMPARE(service.state(), SystemServiceState::Ready);
+
+    for (const NetworkDnsOutcome outcome : {NetworkDnsOutcome::Conflict,
+                                            NetworkDnsOutcome::Indeterminate}) {
+        QVERIFY(service.applyDns(NetworkDnsMode::Custom, {QStringLiteral("9.9.9.9")}));
+        const quint64 requestId = backendPtr->dnsRequests.constLast().requestId;
+        backendPtr->finishDns(requestId, outcome);
+        QTRY_VERIFY_WITH_TIMEOUT(!service.dnsPending(), 500);
+        QCOMPARE(service.state(), SystemServiceState::Ready);
+    }
 }
 
-void SystemServicesTest::networkDnsTimeoutRejectsLateCompletion()
+void SystemServicesTest::networkDnsSlowOperationAcceptsLateCompletion()
 {
     auto backend = std::make_unique<FakeNetworkBackend>();
     auto *backendPtr = backend.get();
@@ -1306,15 +1311,107 @@ void SystemServicesTest::networkDnsTimeoutRejectsLateCompletion()
     QVERIFY(service.applyDns(NetworkDnsMode::Automatic, {}));
     const quint64 requestId = backendPtr->dnsRequests.constLast().requestId;
 
-    QTRY_VERIFY_WITH_TIMEOUT(!service.dnsPending(), 7000);
-    QCOMPARE(backendPtr->cancelledDnsRequests, QVector<quint64>{requestId});
-    QCOMPARE(service.dnsErrorString(), QStringLiteral("DNS settings update timed out"));
-    QCOMPARE(finished.size(), 1);
+    QTRY_VERIFY_WITH_TIMEOUT(service.property("dnsOperationSlow").toBool(), 7000);
+    QVERIFY(service.dnsPending());
+    QCOMPARE(finished.size(), 0);
     backendPtr->finishDns(requestId, NetworkDnsOutcome::Applied);
-    QCoreApplication::processEvents();
+    QTRY_VERIFY_WITH_TIMEOUT(!service.dnsPending(), 500);
+    QVERIFY(!service.property("dnsOperationSlow").toBool());
     QCOMPARE(finished.size(), 1);
-    QCOMPARE(service.dnsErrorString(), QStringLiteral("DNS settings update timed out"));
+    QCOMPARE(qvariant_cast<NetworkDnsOutcome>(finished.constFirst().at(0)),
+             NetworkDnsOutcome::Applied);
+    QVERIFY(service.dnsErrorString().isEmpty());
     QCOMPARE(service.state(), SystemServiceState::Ready);
+}
+
+void SystemServicesTest::networkDnsCompletionPrecedesFinalDnsNotification()
+{
+    QStringList events;
+    auto backend = std::make_unique<FakeNetworkBackend>();
+    auto *backendPtr = backend.get();
+    NetworkService service(std::move(backend));
+    QVERIFY(service.start());
+    NetworkSnapshot snapshot;
+    snapshot.daemonAvailable = true;
+    snapshot.connected = true;
+    snapshot.connectionType = NetworkConnectionType::Wired;
+    snapshot.activeConnectionPath = QStringLiteral("/active/1");
+    snapshot.profilePath = QStringLiteral("/settings/1");
+    snapshot.devicePath = QStringLiteral("/device/ethernet0");
+    snapshot.dnsEditable = true;
+    backendPtr->publish(snapshot);
+    QTRY_VERIFY_WITH_TIMEOUT(service.dnsEditable(), 500);
+    QVERIFY(service.applyDns(NetworkDnsMode::Automatic, {}));
+    const quint64 requestId = backendPtr->dnsRequests.constLast().requestId;
+
+    connect(&service, &NetworkService::dnsOperationFinished, &service,
+            [&service, &events](NetworkDnsOutcome outcome, const QString &) {
+        QCOMPARE(outcome, NetworkDnsOutcome::Applied);
+        QVERIFY(!service.dnsPending());
+        QVERIFY(!service.property("dnsOperationSlow").toBool());
+        events.append(QStringLiteral("finished"));
+    });
+    connect(&service, &NetworkService::dnsChanged, &service,
+            [&events] { events.append(QStringLiteral("dnsChanged")); });
+
+    backendPtr->finishDns(requestId, NetworkDnsOutcome::Applied);
+    QTRY_COMPARE_WITH_TIMEOUT(events.size(), 2, 500);
+    QCOMPARE(events, (QStringList{QStringLiteral("finished"), QStringLiteral("dnsChanged")}));
+}
+
+void SystemServicesTest::networkDnsAuthorityRevisionTracksOnlyIdentity()
+{
+    auto backend = std::make_unique<FakeNetworkBackend>();
+    auto *backendPtr = backend.get();
+    NetworkService service(std::move(backend));
+    QVERIFY(service.start());
+    auto snapshot = NetworkSnapshot{};
+    snapshot.daemonAvailable = true;
+    snapshot.connected = true;
+    snapshot.connectionType = NetworkConnectionType::Wired;
+    snapshot.activeConnectionPath = QStringLiteral("/active/1");
+    snapshot.profilePath = QStringLiteral("/settings/1");
+    snapshot.devicePath = QStringLiteral("/device/ethernet0");
+    snapshot.dnsMode = NetworkDnsMode::Automatic;
+    snapshot.dnsEditable = true;
+    backendPtr->publish(snapshot);
+    QTRY_VERIFY_WITH_TIMEOUT(service.property("dnsAuthorityRevision").toULongLong() > 0, 500);
+    quint64 revision = service.property("dnsAuthorityRevision").toULongLong();
+
+    snapshot.dnsMode = NetworkDnsMode::Advanced;
+    snapshot.dnsEditable = false;
+    backendPtr->publish(snapshot);
+    QTRY_COMPARE_WITH_TIMEOUT(service.dnsMode(), NetworkDnsMode::Advanced, 500);
+    QCOMPARE(service.property("dnsAuthorityRevision").toULongLong(), revision);
+    snapshot.dnsMode = NetworkDnsMode::Custom;
+    snapshot.dnsEditable = true;
+    snapshot.configuredIpv4DnsServers = {QStringLiteral("1.1.1.1")};
+    backendPtr->publish(snapshot);
+    QTRY_COMPARE_WITH_TIMEOUT(service.dnsMode(), NetworkDnsMode::Custom, 500);
+    QCOMPARE(service.property("dnsAuthorityRevision").toULongLong(), revision);
+
+    snapshot.activeConnectionPath = QStringLiteral("/active/2");
+    backendPtr->publish(snapshot);
+    ++revision;
+    QTRY_COMPARE_WITH_TIMEOUT(service.property("dnsAuthorityRevision").toULongLong(), revision, 500);
+    snapshot.profilePath = QStringLiteral("/settings/2");
+    backendPtr->publish(snapshot);
+    ++revision;
+    QTRY_COMPARE_WITH_TIMEOUT(service.property("dnsAuthorityRevision").toULongLong(), revision, 500);
+    snapshot.devicePath = QStringLiteral("/device/ethernet1");
+    backendPtr->publish(snapshot);
+    ++revision;
+    QTRY_COMPARE_WITH_TIMEOUT(service.property("dnsAuthorityRevision").toULongLong(), revision, 500);
+}
+
+void SystemServicesTest::networkDnsQmlApiHidesObjectPaths()
+{
+    NetworkService service(std::make_unique<FakeNetworkBackend>());
+    const QMetaObject *metaObject = service.metaObject();
+    QVERIFY(metaObject->indexOfProperty("dnsAuthorityRevision") >= 0);
+    QVERIFY(metaObject->indexOfProperty("activeConnectionPath") < 0);
+    QVERIFY(metaObject->indexOfProperty("profilePath") < 0);
+    QVERIFY(metaObject->indexOfProperty("devicePath") < 0);
 }
 
 void SystemServicesTest::networkScanUsesLastScanAndCoalesces()

@@ -36,9 +36,24 @@ struct NetworkDnsPatchResult {
     QString error;
 };
 
+struct NetworkDnsIntent {
+    NetworkDnsMode mode = NetworkDnsMode::Advanced;
+    QStringList ipv4Servers;
+    QStringList ipv6Servers;
+    quint64 preCommitProfileVersionId = 0;
+};
+
+struct NetworkDnsReapplyPayload {
+    bool valid = false;
+    NetworkConnectionSettings settings;
+    quint32 appliedVersionId = 0;
+    QString error;
+};
+
 struct NetworkDnsOperationIdentity {
     bool running = false;
     quint64 daemonGeneration = 0;
+    quint64 refreshGeneration = 0;
     quint64 primaryEpoch = 0;
     quint64 requestId = 0;
     QString activeConnectionPath;
@@ -53,11 +68,27 @@ enum class NetworkDnsProfileReadDecision {
     Failed,
 };
 
+enum class NetworkDnsUpdateDisposition {
+    Conflict,
+    Rejected,
+    Verify,
+};
+
+enum class NetworkDnsPersistenceDecision {
+    Confirmed,
+    Failed,
+    Conflict,
+    Indeterminate,
+};
+
 NetworkDnsProjection projectDns(const NetworkConnectionSettings &settings);
 NetworkDnsValidation canonicalizeDnsServers(const QStringList &servers);
 NetworkDnsPatchResult patchDnsSettings(const NetworkConnectionSettings &settings,
                                        NetworkDnsMode mode,
                                        const QStringList &servers);
+NetworkDnsReapplyPayload prepareDnsReapply(const NetworkConnectionSettings &appliedSettings,
+                                           quint32 appliedVersionId,
+                                           const NetworkDnsIntent &intent);
 NetworkDnsProfileReadDecision dnsProfileReadDecision(bool firstVersionAvailable,
                                                      bool settingsAvailable,
                                                      bool secondVersionAvailable,
@@ -65,7 +96,10 @@ NetworkDnsProfileReadDecision dnsProfileReadDecision(bool firstVersionAvailable,
                                                      quint64 secondVersion,
                                                      int attempt,
                                                      int maximumAttempts = 3);
-NetworkDnsOutcome dnsUpdateErrorOutcome(const QString &errorName);
+NetworkDnsUpdateDisposition dnsUpdateErrorDisposition(const QString &errorName);
+NetworkDnsPersistenceDecision dnsPersistenceDecision(
+    bool profileAvailable, const NetworkDnsProjection &projection,
+    quint64 observedVersionId, const NetworkDnsIntent &intent);
 bool sameNetworkDnsOperationIdentity(const NetworkDnsOperationIdentity &captured,
                                      const NetworkDnsOperationIdentity &current);
 

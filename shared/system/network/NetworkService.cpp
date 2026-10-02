@@ -22,18 +22,13 @@ NetworkService::NetworkService(std::unique_ptr<NetworkBackend> backend, QObject 
         if (m_wifiPending)
             finishWifiPending(false, QStringLiteral("Wi-Fi power update timed out"));
     });
-    m_dnsTimer.setSingleShot(true);
-    m_dnsTimer.setInterval(5000);
-    connect(&m_dnsTimer, &QTimer::timeout, this, [this] {
-        if (!m_dnsPending)
+    m_dnsSlowTimer.setSingleShot(true);
+    m_dnsSlowTimer.setInterval(5000);
+    connect(&m_dnsSlowTimer, &QTimer::timeout, this, [this] {
+        if (!m_dnsPending || m_dnsOperationSlow)
             return;
-        m_backend->cancelDnsOperation(m_dnsRequestId);
-        m_dnsRequestId = 0;
-        m_dnsTimer.stop();
-        m_dnsPending = false;
-        setDnsErrorString(QStringLiteral("DNS settings update timed out"));
+        m_dnsOperationSlow = true;
         emit dnsChanged();
-        emit dnsOperationFinished(NetworkDnsOutcome::Failed, m_dnsErrorString);
     });
 }
 
@@ -48,7 +43,6 @@ bool NetworkService::start()
         return true;
     ++m_generation;
     m_wifiRequestId = 0;
-    m_dnsRequestId = 0;
     m_dnsRequestId = 0;
     setState(SystemServiceState::Starting);
     setErrorString({});
@@ -106,7 +100,7 @@ void NetworkService::stop()
     ++m_generation;
     m_wifiRequestId = 0;
     m_wifiTimer.stop();
-    m_dnsTimer.stop();
+    m_dnsSlowTimer.stop();
     m_backend->stop();
     m_wifiModel->replace({});
     m_available = false;
@@ -114,12 +108,19 @@ void NetworkService::stop()
     const bool oldWifiAvailable = m_wifiAvailable;
     const bool oldWifiHardwareEnabled = m_wifiHardwareEnabled;
     const bool oldPending = m_wifiPending;
-    const bool oldDnsState = m_dnsPending || m_dnsEditable || m_dnsNeedsReconnect
+    const bool dnsIdentityChanged = !m_activeConnectionPath.isEmpty()
+        || !m_profilePath.isEmpty() || !m_devicePath.isEmpty();
+    if (dnsIdentityChanged)
+        ++m_dnsAuthorityRevision;
+    const bool oldDnsState = m_dnsPending || m_dnsOperationSlow || m_dnsEditable || m_dnsNeedsReconnect
         || !m_dnsErrorString.isEmpty() || !m_profilePath.isEmpty()
+        || dnsIdentityChanged
         || !m_activeIpv4DnsServers.isEmpty() || !m_activeIpv6DnsServers.isEmpty()
         || !m_configuredIpv4DnsServers.isEmpty() || !m_configuredIpv6DnsServers.isEmpty();
     m_wifiPending = false;
     m_dnsPending = false;
+    m_dnsOperationSlow = false;
+    m_dnsRequestId = 0;
     m_wifiAvailable = false;
     m_wifiHardwareEnabled = false;
     m_wifiScanning = false;
@@ -218,8 +219,9 @@ bool NetworkService::applyDns(NetworkDnsMode mode, const QStringList &servers)
     }
     m_dnsRequestId = requestId;
     m_dnsPending = true;
+    m_dnsOperationSlow = false;
     setDnsErrorString({});
-    m_dnsTimer.start();
+    m_dnsSlowTimer.start();
     emit dnsChanged();
     return true;
 }
@@ -282,6 +284,8 @@ void NetworkService::applySnapshot(const NetworkSnapshot &snapshot)
 {
     const bool dnsIdentityChanged = m_activeConnectionPath != snapshot.activeConnectionPath
         || m_profilePath != snapshot.profilePath || m_devicePath != snapshot.devicePath;
+    if (dnsIdentityChanged)
+        ++m_dnsAuthorityRevision;
     m_activeConnectionPath = snapshot.activeConnectionPath;
     m_profilePath = snapshot.profilePath;
     m_devicePath = snapshot.devicePath;
@@ -371,9 +375,10 @@ void NetworkService::handleOperationFinished(const NetworkOperationResult &resul
 
 void NetworkService::finishDnsPending(const NetworkOperationResult &result)
 {
-    m_dnsTimer.stop();
+    m_dnsSlowTimer.stop();
     m_dnsRequestId = 0;
     m_dnsPending = false;
+    m_dnsOperationSlow = false;
     QString error = result.error;
     switch (result.dnsOutcome) {
     case NetworkDnsOutcome::Applied:
@@ -387,14 +392,18 @@ void NetworkService::finishDnsPending(const NetworkOperationResult &result)
     case NetworkDnsOutcome::Conflict:
         error = QStringLiteral("The connection changed while editing. Reload the current settings and try again.");
         break;
+    case NetworkDnsOutcome::Indeterminate:
+        if (error.isEmpty())
+            error = QStringLiteral("Astrea could not confirm whether the DNS settings were saved. Reload the current connection settings before trying again.");
+        break;
     case NetworkDnsOutcome::Failed:
         if (error.isEmpty())
             error = QStringLiteral("Could not save DNS settings");
         break;
     }
     setDnsErrorString(error);
-    emit dnsChanged();
     emit dnsOperationFinished(result.dnsOutcome, error);
+    emit dnsChanged();
 }
 
 void NetworkService::setDnsErrorString(const QString &errorString)

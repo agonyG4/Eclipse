@@ -43,11 +43,10 @@ class NetworkService final : public QObject {
     Q_PROPERTY(QStringList configuredIpv6DnsServers READ configuredIpv6DnsServers NOTIFY dnsChanged)
     Q_PROPERTY(bool dnsEditable READ dnsEditable NOTIFY dnsChanged)
     Q_PROPERTY(bool dnsPending READ dnsPending NOTIFY dnsChanged)
+    Q_PROPERTY(bool dnsOperationSlow READ dnsOperationSlow NOTIFY dnsChanged)
     Q_PROPERTY(QString dnsErrorString READ dnsErrorString NOTIFY dnsChanged)
     Q_PROPERTY(bool dnsNeedsReconnect READ dnsNeedsReconnect NOTIFY dnsChanged)
-    Q_PROPERTY(QString activeConnectionPath READ activeConnectionPath NOTIFY connectionChanged)
-    Q_PROPERTY(QString profilePath READ profilePath NOTIFY connectionChanged)
-    Q_PROPERTY(QString devicePath READ devicePath NOTIFY connectionChanged)
+    Q_PROPERTY(quint64 dnsAuthorityRevision READ dnsAuthorityRevision NOTIFY dnsChanged)
     Q_PROPERTY(quint64 downloadBytesPerSecond READ downloadBytesPerSecond NOTIFY trafficChanged)
     Q_PROPERTY(quint64 uploadBytesPerSecond READ uploadBytesPerSecond NOTIFY trafficChanged)
     Q_PROPERTY(QString downloadRate READ downloadRate NOTIFY trafficChanged)
@@ -86,11 +85,10 @@ public:
     QStringList configuredIpv6DnsServers() const { return m_configuredIpv6DnsServers; }
     bool dnsEditable() const { return m_dnsEditable; }
     bool dnsPending() const { return m_dnsPending; }
+    bool dnsOperationSlow() const { return m_dnsOperationSlow; }
     QString dnsErrorString() const { return m_dnsErrorString; }
     bool dnsNeedsReconnect() const { return m_dnsNeedsReconnect; }
-    QString activeConnectionPath() const { return m_activeConnectionPath; }
-    QString profilePath() const { return m_profilePath; }
-    QString devicePath() const { return m_devicePath; }
+    quint64 dnsAuthorityRevision() const { return m_dnsAuthorityRevision; }
     quint64 downloadBytesPerSecond() const { return m_downloadBytesPerSecond; }
     quint64 uploadBytesPerSecond() const { return m_uploadBytesPerSecond; }
     QString downloadRate() const { return formatRate(m_downloadBytesPerSecond); }
@@ -161,8 +159,10 @@ private:
     QStringList m_configuredIpv6DnsServers;
     bool m_dnsEditable = false;
     bool m_dnsPending = false;
+    bool m_dnsOperationSlow = false;
     QString m_dnsErrorString;
     bool m_dnsNeedsReconnect = false;
+    quint64 m_dnsAuthorityRevision = 0;
     QString m_activeConnectionPath;
     QString m_profilePath;
     QString m_devicePath;
@@ -172,7 +172,7 @@ private:
     quint64 m_wifiOperationId = 0;
     quint64 m_wifiRequestId = 0;
     QTimer m_wifiTimer;
-    QTimer m_dnsTimer;
+    QTimer m_dnsSlowTimer;
     quint64 m_dnsOperationId = 0;
     quint64 m_dnsRequestId = 0;
 };

@@ -250,6 +250,27 @@ NetworkDnsPatchResult patchDnsSettings(const NetworkConnectionSettings &settings
     return result;
 }
 
+NetworkDnsReapplyPayload prepareDnsReapply(const NetworkConnectionSettings &appliedSettings,
+                                           quint32 appliedVersionId,
+                                           const NetworkDnsIntent &intent)
+{
+    NetworkDnsReapplyPayload result;
+    if (appliedVersionId == 0) {
+        result.error = QStringLiteral("The active connection version is unavailable");
+        return result;
+    }
+    const NetworkDnsPatchResult patch = patchDnsSettings(
+        appliedSettings, intent.mode, intent.ipv4Servers + intent.ipv6Servers);
+    if (!patch.valid) {
+        result.error = patch.error;
+        return result;
+    }
+    result.valid = true;
+    result.settings = patch.settings;
+    result.appliedVersionId = appliedVersionId;
+    return result;
+}
+
 NetworkDnsProfileReadDecision dnsProfileReadDecision(bool firstVersionAvailable,
                                                      bool settingsAvailable,
                                                      bool secondVersionAvailable,
@@ -267,11 +288,36 @@ NetworkDnsProfileReadDecision dnsProfileReadDecision(bool firstVersionAvailable,
                                          : NetworkDnsProfileReadDecision::Conflict;
 }
 
-NetworkDnsOutcome dnsUpdateErrorOutcome(const QString &errorName)
+NetworkDnsUpdateDisposition dnsUpdateErrorDisposition(const QString &errorName)
 {
-    return errorName.contains(QStringLiteral("VersionIdMismatch"), Qt::CaseInsensitive)
-            || errorName.contains(QStringLiteral("Conflict"), Qt::CaseInsensitive)
-        ? NetworkDnsOutcome::Conflict : NetworkDnsOutcome::Failed;
+    if (errorName == QLatin1String(
+            "org.freedesktop.NetworkManager.Settings.Connection.Error.VersionIdMismatch"))
+        return NetworkDnsUpdateDisposition::Conflict;
+    if (errorName.isEmpty()
+        || errorName == QLatin1String("org.freedesktop.DBus.Error.NoReply")
+        || errorName == QLatin1String("org.freedesktop.DBus.Error.Timeout")
+        || errorName == QLatin1String("org.freedesktop.DBus.Error.Disconnected")
+        || errorName == QLatin1String("org.freedesktop.DBus.Error.ServiceUnknown")
+        || errorName == QLatin1String("org.freedesktop.DBus.Error.NameHasNoOwner")
+        || errorName == QLatin1String("org.freedesktop.DBus.Error.NoServer"))
+        return NetworkDnsUpdateDisposition::Verify;
+    return NetworkDnsUpdateDisposition::Rejected;
+}
+
+NetworkDnsPersistenceDecision dnsPersistenceDecision(
+    bool profileAvailable, const NetworkDnsProjection &projection,
+    quint64 observedVersionId, const NetworkDnsIntent &intent)
+{
+    if (!profileAvailable || observedVersionId == 0)
+        return NetworkDnsPersistenceDecision::Indeterminate;
+    if (projection.mode == intent.mode
+        && projection.configuredIpv4DnsServers == intent.ipv4Servers
+        && projection.configuredIpv6DnsServers == intent.ipv6Servers)
+        return NetworkDnsPersistenceDecision::Confirmed;
+    if (intent.preCommitProfileVersionId != 0
+        && observedVersionId == intent.preCommitProfileVersionId)
+        return NetworkDnsPersistenceDecision::Failed;
+    return NetworkDnsPersistenceDecision::Conflict;
 }
 
 bool sameNetworkDnsOperationIdentity(const NetworkDnsOperationIdentity &captured,
@@ -279,6 +325,7 @@ bool sameNetworkDnsOperationIdentity(const NetworkDnsOperationIdentity &captured
 {
     return captured.running && current.running
         && captured.daemonGeneration == current.daemonGeneration
+        && captured.refreshGeneration == current.refreshGeneration
         && captured.primaryEpoch == current.primaryEpoch
         && captured.requestId != 0 && captured.requestId == current.requestId
         && !captured.activeConnectionPath.isEmpty()

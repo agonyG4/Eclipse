@@ -47,7 +47,9 @@ private slots:
     void customPatchSplitsFamiliesAndPreservesUnrelatedSettings();
     void automaticPatchRemovesOnlyDnsProperties();
     void coherentProfileReadUsesBoundedVersionChecks();
-    void versionMismatchMapsToConflict();
+    void update2ErrorsHaveConservativeDispositions();
+    void ambiguousPersistenceIsVerifiedAgainstVersionAndDns();
+    void appliedConnectionPatchPreservesItsRuntimeBaseline();
     void dnsOperationIdentityIncludesEveryAuthority();
 };
 
@@ -211,19 +213,72 @@ void NetworkDnsTest::coherentProfileReadUsesBoundedVersionChecks()
              NetworkDnsProfileReadDecision::Failed);
 }
 
-void NetworkDnsTest::versionMismatchMapsToConflict()
+void NetworkDnsTest::update2ErrorsHaveConservativeDispositions()
 {
-    QCOMPARE(dnsUpdateErrorOutcome(QStringLiteral(
+    QCOMPARE(dnsUpdateErrorDisposition(QStringLiteral(
                  "org.freedesktop.NetworkManager.Settings.Connection.Error.VersionIdMismatch")),
-             NetworkDnsOutcome::Conflict);
-    QCOMPARE(dnsUpdateErrorOutcome(QStringLiteral(
+             NetworkDnsUpdateDisposition::Conflict);
+    QCOMPARE(dnsUpdateErrorDisposition(QStringLiteral(
                  "org.freedesktop.NetworkManager.Settings.Connection.Error.PermissionDenied")),
-             NetworkDnsOutcome::Failed);
+             NetworkDnsUpdateDisposition::Rejected);
+    for (const QString &errorName : {
+             QStringLiteral("org.freedesktop.DBus.Error.NoReply"),
+             QStringLiteral("org.freedesktop.DBus.Error.Timeout"),
+             QStringLiteral("org.freedesktop.DBus.Error.Disconnected")}) {
+        QCOMPARE(dnsUpdateErrorDisposition(errorName), NetworkDnsUpdateDisposition::Verify);
+    }
+}
+
+void NetworkDnsTest::ambiguousPersistenceIsVerifiedAgainstVersionAndDns()
+{
+    const NetworkDnsIntent intent{NetworkDnsMode::Custom,
+        {QStringLiteral("1.1.1.1")}, {QStringLiteral("2606:4700:4700::1111")}, 41};
+    const NetworkDnsProjection requested{NetworkDnsMode::Custom,
+        {QStringLiteral("1.1.1.1")}, {QStringLiteral("2606:4700:4700::1111")}, true};
+    const NetworkDnsProjection unchanged{NetworkDnsMode::Automatic, {}, {}, true};
+    const NetworkDnsProjection externalEdit{NetworkDnsMode::Custom,
+        {QStringLiteral("9.9.9.9")}, {QStringLiteral("2620:fe::fe")}, true};
+
+    QCOMPARE(dnsPersistenceDecision(true, requested, 42, intent),
+             NetworkDnsPersistenceDecision::Confirmed);
+    QCOMPARE(dnsPersistenceDecision(true, unchanged, 41, intent),
+             NetworkDnsPersistenceDecision::Failed);
+    QCOMPARE(dnsPersistenceDecision(true, externalEdit, 42, intent),
+             NetworkDnsPersistenceDecision::Conflict);
+    QCOMPARE(dnsPersistenceDecision(false, {}, 0, intent),
+             NetworkDnsPersistenceDecision::Indeterminate);
+}
+
+void NetworkDnsTest::appliedConnectionPatchPreservesItsRuntimeBaseline()
+{
+    NetworkConnectionSettings applied = profile(
+        family(QStringLiteral("auto"), false, {QStringLiteral("4.4.4.4")}),
+        family(QStringLiteral("auto"), false, {QStringLiteral("2001:4860:4860::8844")}));
+    applied.sections[QStringLiteral("connection")].insert(
+        QStringLiteral("id"), QStringLiteral("Live connection name"));
+    applied.sections[QStringLiteral("802-3-ethernet")].insert(
+        QStringLiteral("mtu"), 9000u);
+    const NetworkDnsIntent intent{NetworkDnsMode::Custom,
+        {QStringLiteral("1.1.1.1")}, {QStringLiteral("2606:4700:4700::1111")}, 99};
+
+    const NetworkDnsReapplyPayload payload = prepareDnsReapply(applied, 73, intent);
+
+    QVERIFY(payload.valid);
+    QCOMPARE(payload.appliedVersionId, 73u);
+    QCOMPARE(payload.settings.sections.value(QStringLiteral("connection"))
+                 .value(QStringLiteral("id")).toString(),
+             QStringLiteral("Live connection name"));
+    QCOMPARE(payload.settings.sections.value(QStringLiteral("802-3-ethernet"))
+                 .value(QStringLiteral("mtu")).toUInt(), 9000u);
+    const NetworkDnsProjection dns = projectDns(payload.settings);
+    QCOMPARE(dns.mode, NetworkDnsMode::Custom);
+    QCOMPARE(dns.configuredIpv4DnsServers, intent.ipv4Servers);
+    QCOMPARE(dns.configuredIpv6DnsServers, intent.ipv6Servers);
 }
 
 void NetworkDnsTest::dnsOperationIdentityIncludesEveryAuthority()
 {
-    const NetworkDnsOperationIdentity captured{true, 9, 4, 17,
+    const NetworkDnsOperationIdentity captured{true, 9, 12, 4, 17,
         QStringLiteral("/active/1"), QStringLiteral("/settings/1"), QStringLiteral("/device/1")};
     QVERIFY(sameNetworkDnsOperationIdentity(captured, captured));
 
@@ -234,6 +289,7 @@ void NetworkDnsTest::dnsOperationIdentityIncludesEveryAuthority()
     };
     QVERIFY(!changed([](auto &id) { id.running = false; }));
     QVERIFY(!changed([](auto &id) { ++id.daemonGeneration; }));
+    QVERIFY(!changed([](auto &id) { ++id.refreshGeneration; }));
     QVERIFY(!changed([](auto &id) { ++id.primaryEpoch; }));
     QVERIFY(!changed([](auto &id) { ++id.requestId; }));
     QVERIFY(!changed([](auto &id) { id.activeConnectionPath = QStringLiteral("/active/2"); }));

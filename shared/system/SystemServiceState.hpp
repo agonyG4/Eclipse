@@ -38,6 +38,7 @@ enum class NetworkDnsOutcome {
     SavedNeedsReconnect,
     Conflict,
     Failed,
+    Indeterminate,
 };
 Q_ENUM_NS(NetworkDnsOutcome)
 

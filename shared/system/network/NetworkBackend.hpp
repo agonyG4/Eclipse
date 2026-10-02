@@ -73,7 +73,6 @@ public:
     virtual bool requestWifiScan() = 0;
     virtual bool applyDns(NetworkDnsMode mode, const QStringList &servers,
                           quint64 requestId, QString *errorOut) = 0;
-    virtual void cancelDnsOperation(quint64 requestId) = 0;
 };
 
 } // namespace Astrea::System

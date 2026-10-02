@@ -31,7 +31,6 @@ public:
     bool requestWifiScan() override;
     bool applyDns(NetworkDnsMode mode, const QStringList &servers,
                   quint64 requestId, QString *errorOut) override;
-    void cancelDnsOperation(quint64 requestId) override;
 
 private slots:
     void managerPropertiesChanged(const QString &interfaceName,
@@ -57,7 +56,8 @@ private:
                                 quint64 primaryEpoch, quint64 profileRequestId,
                                 const QString &activeConnectionPath,
                                 const QString &profilePath, int attempt,
-                                std::function<void(bool, NetworkConnectionSettings, quint64)> completion);
+                                std::function<void(bool, NetworkConnectionSettings, quint64)> completion,
+                                bool requirePrimaryIdentity = true);
     void beginDnsOperation(NetworkDnsMode mode, const QStringList &servers,
                            quint64 requestId);
     void continueDnsOperation(quint64 daemonGeneration, quint64 refreshGeneration,
@@ -69,11 +69,15 @@ private:
                              quint64 primaryEpoch, quint64 requestId,
                              const QString &activeConnectionPath, const QString &profilePath,
                              const QString &devicePath, NetworkConnectionSettings settings,
-                             quint64 profileVersionId);
+                             NetworkDnsIntent intent);
+    void verifyDnsPersistence(quint64 daemonGeneration, quint64 refreshGeneration,
+                              quint64 primaryEpoch, quint64 requestId,
+                              const QString &activeConnectionPath, const QString &profilePath,
+                              const QString &devicePath, NetworkDnsIntent intent);
     void reapplyDnsOperation(quint64 daemonGeneration, quint64 refreshGeneration,
                              quint64 primaryEpoch, quint64 requestId,
                              const QString &activeConnectionPath, const QString &profilePath,
-                             const QString &devicePath);
+                             const QString &devicePath, NetworkDnsIntent intent);
     bool dnsRequestCurrent(quint64 daemonGeneration, quint64 requestId) const;
     bool dnsIdentityCurrent(quint64 daemonGeneration, quint64 refreshGeneration,
                             quint64 primaryEpoch, quint64 requestId,

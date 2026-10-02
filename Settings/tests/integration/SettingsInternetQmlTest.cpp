@@ -65,7 +65,7 @@ public:
                                       powerRequests.constLast().second, true, {}});
     }
     void completeDns(quint64 id, Astrea::System::NetworkDnsOutcome outcome,
-                     const QString &error = {})
+                     const QString &error = {}, bool dnsAuthorityCurrent = true)
     {
         if (!callbacks_.operationFinished)
             return;
@@ -75,6 +75,7 @@ public:
         result.dnsOutcome = outcome;
         result.success = outcome == Astrea::System::NetworkDnsOutcome::Applied;
         result.error = error;
+        result.dnsAuthorityCurrent = dnsAuthorityCurrent;
         callbacks_.operationFinished(result);
     }
 
@@ -840,7 +841,8 @@ void SettingsInternetQmlTest::dnsAuthoritySwitchLoadsNewDraftAfterPartialSuccess
     QVERIFY(page.controller->network()->dnsPending());
     QCOMPARE(input->property("text").toString(), oldDraft);
 
-    page.fake->completeDns(requestId, Astrea::System::NetworkDnsOutcome::SavedNeedsReconnect);
+    page.fake->completeDns(requestId, Astrea::System::NetworkDnsOutcome::SavedNeedsReconnect,
+                           {}, false);
     QTRY_VERIFY_WITH_TIMEOUT(!page.controller->network()->dnsPending(), 1000);
     QCOMPARE(input->property("text").toString(),
              QStringLiteral("9.9.9.9\n2620:fe::fe"));
@@ -848,9 +850,16 @@ void SettingsInternetQmlTest::dnsAuthoritySwitchLoadsNewDraftAfterPartialSuccess
     QVERIFY(!page.root->property("dnsExternalChanged").toBool());
     QVERIFY(!page.root->property("dnsAwaitingAuthoritative").toBool());
     QCOMPARE(page.find(QStringLiteral("dnsOperationStatus"))->property("text").toString(),
-             QStringLiteral("DNS settings were saved. Reconnect this network to apply them."));
-    QVERIFY(page.controller->network()->dnsNeedsReconnect());
-    QVERIFY(!apply->property("enabled").toBool());
+             QStringLiteral("DNS settings were saved for the previous connection and will apply the next time it connects."));
+    QVERIFY(!page.controller->network()->dnsNeedsReconnect());
+    QVERIFY(!page.root->property("dnsDraftDirty").toBool());
+    QCOMPARE(page.fake->dnsRequests.size(), 1);
+    input->setProperty("text", QStringLiteral("8.8.8.8"));
+    page.events();
+    QVERIFY(page.root->property("dnsDraftDirty").toBool());
+    QVERIFY(apply->property("enabled").toBool());
+    QVERIFY(QMetaObject::invokeMethod(apply, "clicked", Qt::DirectConnection));
+    QCOMPARE(page.fake->dnsRequests.size(), 2);
 }
 
 void SettingsInternetQmlTest::dnsConflictPreservesDraftForExplicitResolution()

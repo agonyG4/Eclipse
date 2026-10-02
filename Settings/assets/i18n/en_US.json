@@ -604,6 +604,7 @@
     "settings.internet.dns.result.conflict": "The connection changed while editing. Reload the current settings and try again.",
     "settings.internet.dns.result.indeterminate": "Astrea could not confirm whether the DNS settings were saved. Reload the current connection settings before trying again.",
     "settings.internet.dns.result.saved_reconnect": "DNS settings were saved. Reconnect this network to apply them.",
+    "settings.internet.dns.result.saved_previous_authority": "DNS settings were saved for the previous connection and will apply the next time it connects.",
     "settings.internet.network.band_2_4": "2.4 GHz",
     "settings.internet.network.band_5": "5 GHz",
     "settings.internet.network.band_6": "6 GHz",

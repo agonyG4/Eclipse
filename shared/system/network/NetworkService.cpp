@@ -386,7 +386,7 @@ void NetworkService::finishDnsPending(const NetworkOperationResult &result)
         error.clear();
         break;
     case NetworkDnsOutcome::SavedNeedsReconnect:
-        m_dnsNeedsReconnect = true;
+        m_dnsNeedsReconnect = result.dnsAuthorityCurrent;
         error.clear();
         break;
     case NetworkDnsOutcome::Conflict:

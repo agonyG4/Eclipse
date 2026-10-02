@@ -17,6 +17,7 @@ class QTimer;
 namespace Astrea::System {
 
 class NetworkPropertyWatcher;
+struct NetworkManagerBackendTestAccess;
 
 class NetworkManagerBackend final : public QObject, public NetworkBackend {
     Q_OBJECT
@@ -84,7 +85,9 @@ private:
                             const QString &activeConnectionPath, const QString &profilePath,
                             const QString &devicePath) const;
     void finishDnsOperation(quint64 daemonGeneration, quint64 requestId,
-                            NetworkDnsOutcome outcome, const QString &error = {});
+                            NetworkDnsOutcome outcome, const QString &error = {},
+                            bool dnsAuthorityCurrent = true);
+    NetworkDnsAuthorityLossResult takeDnsAuthorityLossResult(quint64 &requestId);
     void refreshAccessPoints();
     void refreshAccessPoint(const QString &objectPath);
     void publishUnavailable();
@@ -95,6 +98,8 @@ private:
     bool reconcileSelectedWifiDevice();
     void publishReconciledSnapshot();
     void sampleTraffic();
+
+    friend struct NetworkManagerBackendTestAccess;
 
     Callbacks m_callbacks;
     QDBusServiceWatcher *m_serviceWatcher = nullptr;
@@ -126,6 +131,7 @@ private:
     quint64 m_ipv6ConfigRequestId = 0;
     quint64 m_profileRequestId = 0;
     quint64 m_dnsRequestId = 0;
+    NetworkDnsTransactionPhase m_dnsTransactionPhase = NetworkDnsTransactionPhase::Idle;
     int m_pendingAccessPointProperties = 0;
     quint64 m_accessPointRefreshGeneration = 0;
     NetworkWirelessRefreshState m_wirelessRefresh;

@@ -56,6 +56,7 @@ struct NetworkOperationResult {
     bool success = false;
     QString error;
     NetworkDnsOutcome dnsOutcome = NetworkDnsOutcome::Failed;
+    bool dnsAuthorityCurrent = true;
 };
 
 class NetworkBackend {

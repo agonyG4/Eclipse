@@ -4,6 +4,7 @@
 
 #include <QMap>
 #include <QDBusArgument>
+#include <QList>
 #include <QStringList>
 #include <QVariantMap>
 
@@ -46,7 +47,7 @@ struct NetworkDnsIntent {
 struct NetworkDnsReapplyPayload {
     bool valid = false;
     NetworkConnectionSettings settings;
-    quint32 appliedVersionId = 0;
+    quint64 appliedVersionId = 0;
     QString error;
 };
 
@@ -81,14 +82,32 @@ enum class NetworkDnsPersistenceDecision {
     Indeterminate,
 };
 
+enum class NetworkDnsTransactionPhase {
+    Idle,
+    Preparing,
+    Persisting,
+    VerifyingPersistence,
+    ApplyingRuntime,
+};
+
+struct NetworkDnsAuthorityLossResult {
+    bool shouldComplete = false;
+    NetworkDnsOutcome outcome = NetworkDnsOutcome::Failed;
+    QString error;
+    bool dnsAuthorityCurrent = false;
+};
+
 NetworkDnsProjection projectDns(const NetworkConnectionSettings &settings);
 NetworkDnsValidation canonicalizeDnsServers(const QStringList &servers);
 NetworkDnsPatchResult patchDnsSettings(const NetworkConnectionSettings &settings,
                                        NetworkDnsMode mode,
                                        const QStringList &servers);
 NetworkDnsReapplyPayload prepareDnsReapply(const NetworkConnectionSettings &appliedSettings,
-                                           quint32 appliedVersionId,
+                                           quint64 appliedVersionId,
                                            const NetworkDnsIntent &intent);
+QList<QVariant> dnsReapplyArguments(const NetworkDnsReapplyPayload &payload);
+NetworkDnsAuthorityLossResult dnsAuthorityLossResult(NetworkDnsTransactionPhase phase);
+NetworkDnsTransactionPhase dnsTransactionPhaseAfterTerminalResult();
 NetworkDnsProfileReadDecision dnsProfileReadDecision(bool firstVersionAvailable,
                                                      bool settingsAvailable,
                                                      bool secondVersionAvailable,

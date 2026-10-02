@@ -1,5 +1,7 @@
 #include "system/network/NetworkDns.hpp"
 
+#include <QDBusMessage>
+#include <QDBusMetaType>
 #include <QtTest>
 
 using namespace Astrea::System;
@@ -50,6 +52,8 @@ private slots:
     void update2ErrorsHaveConservativeDispositions();
     void ambiguousPersistenceIsVerifiedAgainstVersionAndDns();
     void appliedConnectionPatchPreservesItsRuntimeBaseline();
+    void reapplyCallArgumentsUseDbusWireWidths();
+    void authorityLossUsesTransactionPhaseRules();
     void dnsOperationIdentityIncludesEveryAuthority();
 };
 
@@ -261,10 +265,11 @@ void NetworkDnsTest::appliedConnectionPatchPreservesItsRuntimeBaseline()
     const NetworkDnsIntent intent{NetworkDnsMode::Custom,
         {QStringLiteral("1.1.1.1")}, {QStringLiteral("2606:4700:4700::1111")}, 99};
 
-    const NetworkDnsReapplyPayload payload = prepareDnsReapply(applied, 73, intent);
+    constexpr quint64 appliedVersion = 0x1'0000'0001ULL;
+    const NetworkDnsReapplyPayload payload = prepareDnsReapply(applied, appliedVersion, intent);
 
     QVERIFY(payload.valid);
-    QCOMPARE(payload.appliedVersionId, 73u);
+    QCOMPARE(payload.appliedVersionId, appliedVersion);
     QCOMPARE(payload.settings.sections.value(QStringLiteral("connection"))
                  .value(QStringLiteral("id")).toString(),
              QStringLiteral("Live connection name"));
@@ -274,6 +279,71 @@ void NetworkDnsTest::appliedConnectionPatchPreservesItsRuntimeBaseline()
     QCOMPARE(dns.mode, NetworkDnsMode::Custom);
     QCOMPARE(dns.configuredIpv4DnsServers, intent.ipv4Servers);
     QCOMPARE(dns.configuredIpv6DnsServers, intent.ipv6Servers);
+}
+
+void NetworkDnsTest::reapplyCallArgumentsUseDbusWireWidths()
+{
+    const NetworkConnectionSettings applied = profile(
+        family(QStringLiteral("auto"), false), family(QStringLiteral("auto"), false));
+    const NetworkDnsIntent intent{NetworkDnsMode::Custom,
+        {QStringLiteral("1.1.1.1")}, {}, 99};
+    constexpr quint64 appliedVersion = 0x1'0000'0001ULL;
+    const NetworkDnsReapplyPayload payload = prepareDnsReapply(applied, appliedVersion, intent);
+    QVERIFY(payload.valid);
+
+    qDBusRegisterMetaType<NetworkConnectionSettings>();
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        QStringLiteral("org.freedesktop.NetworkManager"), QStringLiteral("/device/1"),
+        QStringLiteral("org.freedesktop.NetworkManager.Device"), QStringLiteral("Reapply"));
+    message.setArguments(dnsReapplyArguments(payload));
+
+    const QList<QVariant> arguments = message.arguments();
+    QCOMPARE(arguments.size(), 3);
+    const auto signatureFor = [](const QVariant &argument) {
+        return QString::fromLatin1(QDBusMetaType::typeToSignature(argument.metaType()));
+    };
+    QCOMPARE(signatureFor(arguments.at(0)), QStringLiteral("a{sa{sv}}"));
+    QCOMPARE(arguments.at(1).metaType(), QMetaType::fromType<qulonglong>());
+    QCOMPARE(arguments.at(1).toULongLong(), appliedVersion);
+    QCOMPARE(signatureFor(arguments.at(1)), QStringLiteral("t"));
+    QCOMPARE(arguments.at(2).metaType(), QMetaType::fromType<quint32>());
+    QCOMPARE(arguments.at(2).toUInt(), 0u);
+    QCOMPARE(signatureFor(arguments.at(2)), QStringLiteral("u"));
+    QCOMPARE(signatureFor(arguments.at(0)) + signatureFor(arguments.at(1))
+                 + signatureFor(arguments.at(2)),
+             QStringLiteral("a{sa{sv}}tu"));
+}
+
+void NetworkDnsTest::authorityLossUsesTransactionPhaseRules()
+{
+    const NetworkDnsAuthorityLossResult idle =
+        dnsAuthorityLossResult(NetworkDnsTransactionPhase::Idle);
+    QVERIFY(!idle.shouldComplete);
+
+    const NetworkDnsAuthorityLossResult preparing =
+        dnsAuthorityLossResult(NetworkDnsTransactionPhase::Preparing);
+    QVERIFY(preparing.shouldComplete);
+    QCOMPARE(preparing.outcome, NetworkDnsOutcome::Failed);
+    QCOMPARE(preparing.error,
+             QStringLiteral("NetworkManager became unavailable before DNS settings could be saved."));
+    QVERIFY(!preparing.dnsAuthorityCurrent);
+
+    for (const NetworkDnsTransactionPhase phase : {
+             NetworkDnsTransactionPhase::Persisting,
+             NetworkDnsTransactionPhase::VerifyingPersistence}) {
+        const NetworkDnsAuthorityLossResult result = dnsAuthorityLossResult(phase);
+        QVERIFY(result.shouldComplete);
+        QCOMPARE(result.outcome, NetworkDnsOutcome::Indeterminate);
+        QVERIFY(!result.error.isEmpty());
+        QVERIFY(!result.dnsAuthorityCurrent);
+    }
+
+    const NetworkDnsAuthorityLossResult applying =
+        dnsAuthorityLossResult(NetworkDnsTransactionPhase::ApplyingRuntime);
+    QVERIFY(applying.shouldComplete);
+    QCOMPARE(applying.outcome, NetworkDnsOutcome::SavedNeedsReconnect);
+    QVERIFY(!applying.dnsAuthorityCurrent);
+    QCOMPARE(dnsTransactionPhaseAfterTerminalResult(), NetworkDnsTransactionPhase::Idle);
 }
 
 void NetworkDnsTest::dnsOperationIdentityIncludesEveryAuthority()

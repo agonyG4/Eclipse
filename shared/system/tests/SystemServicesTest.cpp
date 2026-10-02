@@ -6,6 +6,7 @@
 #include "system/network/NetworkService.hpp"
 #include "system/network/WifiNetworkModel.hpp"
 #include "system/network/NetworkManagerState.hpp"
+#include "system/network/NetworkManagerBackend.hpp"
 #include "system/bluetooth/BluetoothService.hpp"
 #include "system/bluetooth/BluetoothDeviceModel.hpp"
 
@@ -142,7 +143,8 @@ public:
             m_callbacks.operationFinished({kind, requestId, success, error});
     }
 
-    void finishDns(quint64 requestId, NetworkDnsOutcome outcome, const QString &error = {})
+    void finishDns(quint64 requestId, NetworkDnsOutcome outcome, const QString &error = {},
+                   bool dnsAuthorityCurrent = true)
     {
         if (!m_callbacks.operationFinished)
             return;
@@ -152,6 +154,7 @@ public:
         result.dnsOutcome = outcome;
         result.success = outcome == NetworkDnsOutcome::Applied;
         result.error = error;
+        result.dnsAuthorityCurrent = dnsAuthorityCurrent;
         m_callbacks.operationFinished(result);
     }
 
@@ -321,6 +324,43 @@ int processSpatialFake(void *context, const float *const *inputs, float *const *
 
 } // namespace
 
+namespace Astrea::System {
+
+struct NetworkManagerBackendTestAccess {
+    static void seedDnsOperation(NetworkManagerBackend &backend,
+                                 const NetworkBackend::Callbacks &callbacks,
+                                 NetworkDnsTransactionPhase phase, quint64 requestId)
+    {
+        backend.m_running = true;
+        backend.m_generation = 17;
+        backend.m_callbacks = callbacks;
+        backend.m_dnsRequestId = requestId;
+        backend.m_dnsTransactionPhase = phase;
+    }
+
+    static void publishUnavailable(NetworkManagerBackend &backend)
+    {
+        backend.publishUnavailable();
+    }
+
+    static void deliverLateCompletion(NetworkManagerBackend &backend, quint64 requestId)
+    {
+        backend.finishDnsOperation(17, requestId, NetworkDnsOutcome::Failed);
+    }
+
+    static quint64 requestId(const NetworkManagerBackend &backend)
+    {
+        return backend.m_dnsRequestId;
+    }
+
+    static NetworkDnsTransactionPhase phase(const NetworkManagerBackend &backend)
+    {
+        return backend.m_dnsTransactionPhase;
+    }
+};
+
+} // namespace Astrea::System
+
 class SystemServicesTest final : public QObject {
     Q_OBJECT
 
@@ -345,6 +385,9 @@ private slots:
     void networkServiceProjectsAndClearsPrimaryRuntimeDetails();
     void networkServiceProjectsActiveAndConfiguredDns();
     void networkDnsOperationIsIndependentAndDoesNotDegradeHealth();
+    void networkDnsSavedReconnectIsScopedToItsAuthority();
+    void networkDnsDaemonRestartAllowsANewApply();
+    void networkManagerAuthorityLossSettlesDnsExactlyOnce();
     void networkDnsSlowOperationAcceptsLateCompletion();
     void networkDnsCompletionPrecedesFinalDnsNotification();
     void networkDnsAuthorityRevisionTracksOnlyIdentity();
@@ -1276,7 +1319,7 @@ void SystemServicesTest::networkDnsOperationIsIndependentAndDoesNotDegradeHealth
     backendPtr->finishDns(firstRequest, NetworkDnsOutcome::SavedNeedsReconnect);
     QCoreApplication::processEvents();
     QVERIFY(service.dnsPending());
-    backendPtr->finishDns(secondRequest, NetworkDnsOutcome::SavedNeedsReconnect);
+    backendPtr->finishDns(secondRequest, NetworkDnsOutcome::SavedNeedsReconnect, {}, true);
     QTRY_VERIFY_WITH_TIMEOUT(!service.dnsPending(), 500);
     QVERIFY(service.dnsNeedsReconnect());
     QCOMPARE(service.state(), SystemServiceState::Ready);
@@ -1289,6 +1332,165 @@ void SystemServicesTest::networkDnsOperationIsIndependentAndDoesNotDegradeHealth
         QTRY_VERIFY_WITH_TIMEOUT(!service.dnsPending(), 500);
         QCOMPARE(service.state(), SystemServiceState::Ready);
     }
+}
+
+void SystemServicesTest::networkDnsSavedReconnectIsScopedToItsAuthority()
+{
+    auto backend = std::make_unique<FakeNetworkBackend>();
+    auto *backendPtr = backend.get();
+    NetworkService service(std::move(backend));
+    QVERIFY(service.start());
+
+    NetworkSnapshot snapshot;
+    snapshot.daemonAvailable = true;
+    snapshot.connected = true;
+    snapshot.connectionType = NetworkConnectionType::Wired;
+    snapshot.activeConnectionPath = QStringLiteral("/active/A");
+    snapshot.profilePath = QStringLiteral("/settings/A");
+    snapshot.devicePath = QStringLiteral("/device/A");
+    snapshot.dnsMode = NetworkDnsMode::Automatic;
+    snapshot.dnsEditable = true;
+    backendPtr->publish(snapshot);
+    QTRY_VERIFY_WITH_TIMEOUT(service.dnsEditable(), 500);
+    const quint64 authorityA = service.dnsAuthorityRevision();
+
+    QVERIFY(service.applyDns(NetworkDnsMode::Custom, {QStringLiteral("1.1.1.1")}));
+    const quint64 oldRequest = backendPtr->dnsRequests.constLast().requestId;
+
+    snapshot.activeConnectionPath = QStringLiteral("/active/B");
+    snapshot.profilePath = QStringLiteral("/settings/B");
+    snapshot.devicePath = QStringLiteral("/device/B");
+    snapshot.dnsMode = NetworkDnsMode::Custom;
+    snapshot.configuredIpv4DnsServers = {QStringLiteral("9.9.9.9")};
+    backendPtr->publish(snapshot);
+    QTRY_COMPARE_WITH_TIMEOUT(service.dnsAuthorityRevision(), authorityA + 1, 500);
+    QVERIFY(service.dnsPending());
+    QVERIFY(service.dnsEditable());
+    QCOMPARE(service.dnsMode(), NetworkDnsMode::Custom);
+    QCOMPARE(service.configuredIpv4DnsServers(), QStringList{QStringLiteral("9.9.9.9")});
+
+    backendPtr->finishDns(oldRequest, NetworkDnsOutcome::SavedNeedsReconnect, {}, false);
+    QTRY_VERIFY_WITH_TIMEOUT(!service.dnsPending(), 500);
+    QVERIFY(!service.dnsNeedsReconnect());
+    QVERIFY(service.dnsEditable());
+    QCOMPARE(service.state(), SystemServiceState::Ready);
+
+    QVERIFY(service.applyDns(NetworkDnsMode::Custom, {QStringLiteral("8.8.8.8")}));
+    QCOMPARE(backendPtr->dnsRequests.size(), 2);
+    QVERIFY(service.dnsPending());
+}
+
+void SystemServicesTest::networkManagerAuthorityLossSettlesDnsExactlyOnce()
+{
+    struct Case {
+        NetworkDnsTransactionPhase phase;
+        bool active;
+        NetworkDnsOutcome outcome;
+    };
+    const QList<Case> cases{
+        {NetworkDnsTransactionPhase::Idle, false, NetworkDnsOutcome::Failed},
+        {NetworkDnsTransactionPhase::Preparing, true, NetworkDnsOutcome::Failed},
+        {NetworkDnsTransactionPhase::Persisting, true, NetworkDnsOutcome::Indeterminate},
+        {NetworkDnsTransactionPhase::VerifyingPersistence, true,
+         NetworkDnsOutcome::Indeterminate},
+        {NetworkDnsTransactionPhase::ApplyingRuntime, true,
+         NetworkDnsOutcome::SavedNeedsReconnect},
+    };
+
+    for (const Case &testCase : cases) {
+        NetworkManagerBackend backend;
+        QStringList events;
+        QList<NetworkOperationResult> results;
+        NetworkBackend::Callbacks callbacks;
+        callbacks.snapshotChanged = [&events](NetworkSnapshot snapshot) {
+            events.append(QStringLiteral("snapshot"));
+            QVERIFY(!snapshot.daemonAvailable);
+        };
+        callbacks.operationFinished = [&events, &results](NetworkOperationResult result) {
+            events.append(QStringLiteral("operation"));
+            results.append(std::move(result));
+        };
+        constexpr quint64 requestId = 41;
+        NetworkManagerBackendTestAccess::seedDnsOperation(
+            backend, callbacks, testCase.phase, testCase.active ? requestId : 0);
+
+        NetworkManagerBackendTestAccess::publishUnavailable(backend);
+        const QStringList expectedEvents = testCase.active
+            ? QStringList{QStringLiteral("snapshot"), QStringLiteral("operation")}
+            : QStringList{QStringLiteral("snapshot")};
+        QCOMPARE(events, expectedEvents);
+        QCOMPARE(results.size(), testCase.active ? 1 : 0);
+        QCOMPARE(NetworkManagerBackendTestAccess::requestId(backend), quint64(0));
+        QCOMPARE(NetworkManagerBackendTestAccess::phase(backend),
+                 NetworkDnsTransactionPhase::Idle);
+        if (testCase.active) {
+            QCOMPARE(results.constFirst().requestId, requestId);
+            QCOMPARE(results.constFirst().dnsOutcome, testCase.outcome);
+            QVERIFY(!results.constFirst().dnsAuthorityCurrent);
+        }
+
+        NetworkManagerBackendTestAccess::deliverLateCompletion(backend, requestId);
+        QCOMPARE(results.size(), testCase.active ? 1 : 0);
+    }
+
+    NetworkManagerBackend stoppedBackend;
+    QStringList stopEvents;
+    NetworkBackend::Callbacks stopCallbacks;
+    stopCallbacks.operationFinished = [&stopEvents](NetworkOperationResult) {
+        stopEvents.append(QStringLiteral("operation"));
+    };
+    NetworkManagerBackendTestAccess::seedDnsOperation(
+        stoppedBackend, stopCallbacks, NetworkDnsTransactionPhase::Persisting, 52);
+    stoppedBackend.stop();
+    QVERIFY(stopEvents.isEmpty());
+    QCOMPARE(NetworkManagerBackendTestAccess::requestId(stoppedBackend), quint64(0));
+    QCOMPARE(NetworkManagerBackendTestAccess::phase(stoppedBackend),
+             NetworkDnsTransactionPhase::Idle);
+}
+
+void SystemServicesTest::networkDnsDaemonRestartAllowsANewApply()
+{
+    auto backend = std::make_unique<FakeNetworkBackend>();
+    auto *backendPtr = backend.get();
+    NetworkService service(std::move(backend));
+    QVERIFY(service.start());
+
+    NetworkSnapshot snapshot;
+    snapshot.daemonAvailable = true;
+    snapshot.connected = true;
+    snapshot.connectionType = NetworkConnectionType::Wired;
+    snapshot.activeConnectionPath = QStringLiteral("/active/old");
+    snapshot.profilePath = QStringLiteral("/settings/old");
+    snapshot.devicePath = QStringLiteral("/device/old");
+    snapshot.dnsMode = NetworkDnsMode::Automatic;
+    snapshot.dnsEditable = true;
+    backendPtr->publish(snapshot);
+    QTRY_VERIFY_WITH_TIMEOUT(service.ready() && service.dnsEditable(), 500);
+
+    QVERIFY(service.applyDns(NetworkDnsMode::Custom, {QStringLiteral("1.1.1.1")}));
+    const quint64 oldRequest = backendPtr->dnsRequests.constLast().requestId;
+    QVERIFY(service.dnsPending());
+
+    backendPtr->publish(NetworkSnapshot{});
+    QTRY_COMPARE_WITH_TIMEOUT(service.state(), SystemServiceState::Unavailable, 500);
+    QVERIFY(service.dnsPending());
+    backendPtr->finishDns(oldRequest, NetworkDnsOutcome::Indeterminate,
+                          QStringLiteral("Astrea could not confirm whether the DNS settings were saved."),
+                          false);
+    QTRY_VERIFY_WITH_TIMEOUT(!service.dnsPending(), 500);
+    QVERIFY(!service.dnsOperationSlow());
+    QVERIFY(!service.dnsNeedsReconnect());
+    QCOMPARE(service.state(), SystemServiceState::Unavailable);
+
+    snapshot.activeConnectionPath = QStringLiteral("/active/new");
+    snapshot.profilePath = QStringLiteral("/settings/new");
+    snapshot.devicePath = QStringLiteral("/device/new");
+    backendPtr->publish(snapshot);
+    QTRY_VERIFY_WITH_TIMEOUT(service.ready() && service.dnsEditable(), 500);
+    QVERIFY(service.applyDns(NetworkDnsMode::Automatic, {}));
+    QCOMPARE(backendPtr->dnsRequests.size(), 2);
+    QVERIFY(service.dnsPending());
+    QCOMPARE(service.state(), SystemServiceState::Ready);
 }
 
 void SystemServicesTest::networkDnsSlowOperationAcceptsLateCompletion()

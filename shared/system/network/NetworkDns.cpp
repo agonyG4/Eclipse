@@ -251,7 +251,7 @@ NetworkDnsPatchResult patchDnsSettings(const NetworkConnectionSettings &settings
 }
 
 NetworkDnsReapplyPayload prepareDnsReapply(const NetworkConnectionSettings &appliedSettings,
-                                           quint32 appliedVersionId,
+                                           quint64 appliedVersionId,
                                            const NetworkDnsIntent &intent)
 {
     NetworkDnsReapplyPayload result;
@@ -269,6 +269,46 @@ NetworkDnsReapplyPayload prepareDnsReapply(const NetworkConnectionSettings &appl
     result.settings = patch.settings;
     result.appliedVersionId = appliedVersionId;
     return result;
+}
+
+QList<QVariant> dnsReapplyArguments(const NetworkDnsReapplyPayload &payload)
+{
+    return {QVariant::fromValue(payload.settings),
+            QVariant::fromValue<qulonglong>(
+                static_cast<qulonglong>(payload.appliedVersionId)),
+            QVariant::fromValue<quint32>(0)};
+}
+
+NetworkDnsAuthorityLossResult dnsAuthorityLossResult(NetworkDnsTransactionPhase phase)
+{
+    NetworkDnsAuthorityLossResult result;
+    switch (phase) {
+    case NetworkDnsTransactionPhase::Idle:
+        return result;
+    case NetworkDnsTransactionPhase::Preparing:
+        result.shouldComplete = true;
+        result.outcome = NetworkDnsOutcome::Failed;
+        result.error = QStringLiteral(
+            "NetworkManager became unavailable before DNS settings could be saved.");
+        return result;
+    case NetworkDnsTransactionPhase::Persisting:
+    case NetworkDnsTransactionPhase::VerifyingPersistence:
+        result.shouldComplete = true;
+        result.outcome = NetworkDnsOutcome::Indeterminate;
+        result.error = QStringLiteral(
+            "Astrea could not confirm whether the DNS settings were saved. Reload the current connection settings before trying again.");
+        return result;
+    case NetworkDnsTransactionPhase::ApplyingRuntime:
+        result.shouldComplete = true;
+        result.outcome = NetworkDnsOutcome::SavedNeedsReconnect;
+        return result;
+    }
+    return result;
+}
+
+NetworkDnsTransactionPhase dnsTransactionPhaseAfterTerminalResult()
+{
+    return NetworkDnsTransactionPhase::Idle;
 }
 
 NetworkDnsProfileReadDecision dnsProfileReadDecision(bool firstVersionAvailable,

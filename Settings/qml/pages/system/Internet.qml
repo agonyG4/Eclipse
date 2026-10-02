@@ -281,9 +281,17 @@ FocusScope {
                 dnsSuccessTimer.restart()
                 root.synchronizeDnsEditor()
             } else if (outcome === System.NetworkDnsOutcome.SavedNeedsReconnect) {
-                root.dnsOperationStatus = I18n.tr(
-                    "settings.internet.dns.result.saved_reconnect",
-                    "DNS settings were saved. Reconnect this network to apply them.")
+                if (root.network
+                    && root.network.dnsAuthorityRevision === root.dnsExpectedAuthorityRevision
+                    && root.network.dnsNeedsReconnect) {
+                    root.dnsOperationStatus = I18n.tr(
+                        "settings.internet.dns.result.saved_reconnect",
+                        "DNS settings were saved. Reconnect this network to apply them.")
+                } else {
+                    root.dnsOperationStatus = I18n.tr(
+                        "settings.internet.dns.result.saved_previous_authority",
+                        "DNS settings were saved for the previous connection and will apply the next time it connects.")
+                }
                 root.dnsExternalChanged = false
                 root.dnsReloadRequired = false
                 root.dnsRecoveringFromFailedRefresh = false

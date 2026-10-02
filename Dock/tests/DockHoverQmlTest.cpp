@@ -32,22 +32,41 @@ namespace {
 
 class FakeContextMenuController final : public QObject {
     Q_OBJECT
+    Q_PROPERTY(bool hasActivePresentation READ hasActivePresentation NOTIFY presentationChanged)
 
 public:
+    bool hasActivePresentation() const { return m_hasActivePresentation; }
+
     Q_INVOKABLE bool presentDock(const QString &desktopFileName, int x, int y, int width,
                                  int height, const QString &outputKey)
     {
         ++presentCount;
+        m_hasActivePresentation = true;
+        emit presentationChanged();
         lastDesktopFileName = desktopFileName;
         lastRectangle = QRect(x, y, width, height);
         lastOutputKey = outputKey;
         return true;
     }
 
+    Q_INVOKABLE void clearPresentation()
+    {
+        if (!m_hasActivePresentation)
+            return;
+        m_hasActivePresentation = false;
+        emit presentationChanged();
+    }
+
     int presentCount = 0;
     QString lastDesktopFileName;
     QRect lastRectangle;
     QString lastOutputKey;
+
+signals:
+    void presentationChanged();
+
+private:
+    bool m_hasActivePresentation = false;
 };
 
 class FakeInputRegionBridge final : public QObject {
@@ -70,6 +89,40 @@ public:
 
 signals:
     void windowReady();
+};
+
+class FakeTooltipSurface final : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(bool tooltipVisible READ tooltipVisible)
+
+public:
+    bool tooltipVisible() const { return m_tooltipVisible; }
+
+    Q_INVOKABLE void showTooltip(const QString &title, const QRect &anchorRect,
+                                 const QString &position)
+    {
+        m_tooltipVisible = !title.isEmpty();
+        lastTitle = title;
+        lastAnchorRect = anchorRect;
+        lastPosition = position;
+        ++showCount;
+    }
+
+    Q_INVOKABLE void hideTooltip()
+    {
+        m_tooltipVisible = false;
+        lastTitle.clear();
+        ++hideCount;
+    }
+
+    QString lastTitle;
+    QRect lastAnchorRect;
+    QString lastPosition;
+    int showCount = 0;
+    int hideCount = 0;
+
+private:
+    bool m_tooltipVisible = false;
 };
 
 class QmlCountingPersistence final : public DockConfigPersistence {
@@ -219,6 +272,7 @@ private slots:
     void runtimeOnlyQmlUsesTaskKeyForIdentityAndContextTarget();
     void magnifiedVisualRegionAcceptsContextMenu();
     void mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen();
+    void tooltipFollowsMagnifiedIconAndHidesForDockInteractions();
     void magnifiedInteractionTargetMatchesVisualBounds();
     void magnifiedInteractionRegionsResolveByVisualStacking();
     void exclusiveDragReleaseInEmptyHeadroomStaysOutsideDock();
@@ -1754,6 +1808,16 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
     QVERIFY2(window, qPrintable(component.errorString()));
     auto *panel = window->findChild<QQuickItem *>(QStringLiteral("dockPanel"));
     QVERIFY(panel);
+    auto *tooltipWindow = window->findChild<QQuickWindow *>(
+        QStringLiteral("dockTooltipSurface"));
+    QVERIFY2(tooltipWindow, "Dock Main must own the native tooltip surface");
+    auto *tooltipCard = tooltipWindow->findChild<QQuickItem *>(
+        QStringLiteral("dockTooltipCard"));
+    auto *tooltipPointer = tooltipWindow->findChild<QQuickItem *>(
+        QStringLiteral("dockTooltipPointer"));
+    auto *tooltipText = tooltipWindow->findChild<QQuickItem *>(
+        QStringLiteral("dockTooltipText"));
+    QVERIFY(tooltipCard && tooltipPointer && tooltipText);
     QVERIFY(window->metaObject()->indexOfProperty("outputWidth") >= 0);
     QVERIFY(window->metaObject()->indexOfProperty("outputHeight") >= 0);
 
@@ -1764,6 +1828,30 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
     window->setProperty("outputHeight", 1080);
     QTRY_COMPARE_WITH_TIMEOUT(panel->property("outputWidth").toInt(), 1920, 1000);
     QTRY_COMPARE_WITH_TIMEOUT(panel->property("outputHeight").toInt(), 1080, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(tooltipWindow->width(), 1920, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(tooltipWindow->height(), 1080, 1000);
+    QVERIFY(tooltipWindow->flags().testFlag(Qt::WindowTransparentForInput));
+    QVERIFY(tooltipWindow->flags().testFlag(Qt::WindowDoesNotAcceptFocus));
+    QVERIFY(!tooltipWindow->isVisible());
+
+    QVERIFY(QMetaObject::invokeMethod(
+        tooltipWindow, "showTooltip", Qt::DirectConnection,
+        Q_ARG(QVariant, QVariant(QStringLiteral("Tooltip App"))),
+        Q_ARG(QVariant, QVariant(QRect(1880, 1000, 48, 48))),
+        Q_ARG(QVariant, QVariant(QStringLiteral("bottom")))));
+    QTRY_VERIFY_WITH_TIMEOUT(tooltipCard->isVisible(), 1000);
+    QVERIFY(tooltipPointer->isVisible());
+    QCOMPARE(tooltipText->property("text").toString(), QStringLiteral("Tooltip App"));
+    QVERIFY(tooltipCard->property("radius").toReal() > 0);
+    QVERIFY(tooltipCard->property("color").value<QColor>().alpha() > 0);
+    const QRect tooltipRect = tooltipWindow->property("cardRect").toRect();
+    QVERIFY(tooltipRect.left() >= 0 && tooltipRect.right() < 1920);
+    QVERIFY(tooltipRect.top() >= 0 && tooltipRect.bottom() < 1080);
+    QCOMPARE(tooltipWindow->property("cardPlacement").toMap()
+                 .value(QStringLiteral("pointerEdge")).toString(),
+             QStringLiteral("bottom"));
+    QVERIFY(QMetaObject::invokeMethod(tooltipWindow, "hideTooltip", Qt::DirectConnection));
+    QTRY_VERIFY_WITH_TIMEOUT(!tooltipCard->isVisible(), 1000);
 
     window->show();
     QTRY_VERIFY_WITH_TIMEOUT(delegate(panel, QStringLiteral("one.desktop")) != nullptr, 1000);
@@ -1783,6 +1871,107 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
     QVERIFY(contextMenuController.lastRectangle.center().x() < 1120);
 
     delete window;
+}
+
+void DockHoverQmlTest::tooltipFollowsMagnifiedIconAndHidesForDockInteractions()
+{
+    DockController dockController;
+    dockController.applyConfig(configFor(QStringLiteral("magnification"), {
+        QStringLiteral("one.desktop"), QStringLiteral("two.desktop"),
+        QStringLiteral("three.desktop")
+    }));
+    FakeContextMenuController contextMenuController;
+    FakeTooltipSurface tooltipSurface;
+    DockSurfaceGeometry surfaceGeometry;
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &dockController);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    QQuickWindow window;
+    panel->setParentItem(window.contentItem());
+    window.resize(900, 220);
+    panel->setX((window.width() - panel->width()) / 2.0);
+    panel->setY((window.height() - panel->height()) / 2.0);
+    panel->setProperty("contextMenuController",
+                       QVariant::fromValue(static_cast<QObject *>(&contextMenuController)));
+    panel->setProperty("dockSurfaceGeometry",
+                       QVariant::fromValue(static_cast<QObject *>(&surfaceGeometry)));
+    panel->setProperty("dockTooltipSurface",
+                       QVariant::fromValue(static_cast<QObject *>(&tooltipSurface)));
+    panel->setProperty("outputKey", QStringLiteral("output-1"));
+    panel->setProperty("outputWidth", 900);
+    panel->setProperty("outputHeight", 600);
+    QTest::qWait(40);
+    QTRY_VERIFY_WITH_TIMEOUT(delegate(panel, QStringLiteral("one.desktop")) != nullptr, 1000);
+
+    auto *target = delegate(panel, QStringLiteral("one.desktop"));
+    QVERIFY(target);
+    const QRectF targetRegion = target->property("interactionRegion").toRectF();
+    const QPointF pointer(targetRegion.center());
+    QVERIFY(QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
+                                      Q_ARG(QVariant, QVariant(pointer.x())),
+                                      Q_ARG(QVariant, QVariant(pointer.y()))));
+    QTRY_VERIFY_WITH_TIMEOUT(target->property("magnificationScale").toReal() > 1.0, 1500);
+    QTRY_VERIFY_WITH_TIMEOUT(tooltipSurface.tooltipVisible(), 1500);
+
+    const QRectF visualRegion = target->property("interactionRegion").toRectF();
+    const QPointF windowTopLeft = panel->mapToItem(window.contentItem(), visualRegion.x(), visualRegion.y());
+    const QPointF windowBottomRight = panel->mapToItem(
+        window.contentItem(), visualRegion.x() + visualRegion.width(),
+        visualRegion.y() + visualRegion.height());
+    const QRectF windowRegion(windowTopLeft, windowBottomRight);
+    const QRect expectedAnchor = surfaceGeometry.outputLocalDelegateRect(
+        900, 600, panel->property("surfaceWidth").toInt(),
+        panel->property("surfaceHeight").toInt(), dockController.position(),
+        dockController.layerShellEdgeMargin(), windowRegion);
+    QCOMPARE(tooltipSurface.lastAnchorRect, expectedAnchor);
+    QCOMPARE(tooltipSurface.lastTitle, target->property("displayName").toString());
+    QCOMPARE(tooltipSurface.lastPosition, dockController.position());
+
+    const int previousShowCount = tooltipSurface.showCount;
+    const double initialScale = target->property("magnificationScale").toReal();
+    QVERIFY(QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
+                                      Q_ARG(QVariant, QVariant(pointer.x() + 18)),
+                                      Q_ARG(QVariant, QVariant(pointer.y()))));
+    QCOMPARE(panel->property("pointerTargetTaskKey").toString(),
+             QStringLiteral("desktop:one.desktop"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        qAbs(target->property("magnificationScale").toReal() - initialScale) > 0.01,
+        1000);
+    QTRY_VERIFY_WITH_TIMEOUT(tooltipSurface.showCount > previousShowCount, 1000);
+    QTest::qWait(160);
+    const QRectF updatedRegion = target->property("interactionRegion").toRectF();
+    const QPointF updatedTopLeft = panel->mapToItem(
+        window.contentItem(), updatedRegion.x(), updatedRegion.y());
+    const QPointF updatedBottomRight = panel->mapToItem(
+        window.contentItem(), updatedRegion.x() + updatedRegion.width(),
+        updatedRegion.y() + updatedRegion.height());
+    const QRect expectedUpdatedAnchor = surfaceGeometry.outputLocalDelegateRect(
+        900, 600, panel->property("surfaceWidth").toInt(),
+        panel->property("surfaceHeight").toInt(), dockController.position(),
+        dockController.layerShellEdgeMargin(),
+        QRectF(updatedTopLeft, updatedBottomRight));
+    QCOMPARE(tooltipSurface.lastAnchorRect, expectedUpdatedAnchor);
+
+    panel->setProperty("draggedDesktopFileName", QStringLiteral("one.desktop"));
+    QTRY_VERIFY_WITH_TIMEOUT(!tooltipSurface.tooltipVisible(), 500);
+    panel->setProperty("draggedDesktopFileName", QString());
+    QTRY_VERIFY_WITH_TIMEOUT(tooltipSurface.tooltipVisible(), 1500);
+
+    QVERIFY(contextMenuController.presentDock(QStringLiteral("one.desktop"), 0, 0,
+                                               48, 48, QStringLiteral("output-1")));
+    QTRY_VERIFY_WITH_TIMEOUT(!tooltipSurface.tooltipVisible(), 500);
+    contextMenuController.clearPresentation();
+    QMetaObject::invokeMethod(panel, "setPointerInside",
+                              Q_ARG(QVariant, QVariant(false)));
+    QTRY_VERIFY_WITH_TIMEOUT(!tooltipSurface.tooltipVisible(), 500);
+
+    delete panel;
 }
 
 void DockHoverQmlTest::hoverModesAndTransitions()

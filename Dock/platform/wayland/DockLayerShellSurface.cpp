@@ -63,6 +63,29 @@ AstreaLayerShellConfig DockLayerShellSurface::configurationFor(
     return layerConfig;
 }
 
+AstreaLayerShellConfig DockLayerShellSurface::tooltipConfigurationFor(QScreen *screen)
+{
+    AstreaLayerShellConfig layerConfig;
+    layerConfig.scope = QStringLiteral("astrea-dock-tooltip");
+    layerConfig.layer = AstreaLayerShellConfig::Layer::Top;
+    layerConfig.keyboardInteractivity = AstreaLayerShellConfig::KeyboardInteractivity::None;
+    layerConfig.anchorTop = true;
+    layerConfig.anchorBottom = true;
+    layerConfig.anchorLeft = true;
+    layerConfig.anchorRight = true;
+    layerConfig.exclusiveZone = 0;
+    layerConfig.screen = screen;
+    return layerConfig;
+}
+
+bool DockLayerShellSurface::configureTooltip(QQuickWindow *window, QScreen *screen,
+                                              QString *errorOut)
+{
+    if (!setOutputGeometry(window, screen, errorOut))
+        return false;
+    return AstreaLayerShellHelper::configure(window, tooltipConfigurationFor(screen), errorOut);
+}
+
 bool DockLayerShellSurface::setOutputGeometry(QQuickWindow *window, QScreen *screen,
                                               QString *errorOut)
 {

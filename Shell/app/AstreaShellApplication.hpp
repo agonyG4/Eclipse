@@ -54,6 +54,7 @@ private:
     std::unique_ptr<ScreenshotInputRegionBridge> m_screenshotInputRegion;
     std::unique_ptr<ScreenshotWaylandUiBarrier> m_screenshotUiBarrier;
     QPointer<QQuickWindow> m_dockWindow;
+    QPointer<QQuickWindow> m_dockTooltipWindow;
     QPointer<QScreen> m_dockScreen;
     QMetaObject::Connection m_dockGeometryConnection;
     QPointer<QQuickWindow> m_altTabWindow;

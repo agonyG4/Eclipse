@@ -34,6 +34,10 @@ QtObject {
         : (isDefault ? Qt.rgba(1, 1, 1, 0.11) : Qt.rgba(1, 1, 1, 0.14))
     readonly property color borderHover: isLight
         ? Qt.rgba(0, 0, 0, 0.20) : Qt.rgba(1, 1, 1, 0.28)
+    readonly property color textActive: isLight
+        ? Qt.rgba(0.04, 0.05, 0.06, 0.96) : "#ffffff"
+    readonly property color shadow: isLight
+        ? Qt.rgba(0, 0, 0, 0.22) : Qt.rgba(0, 0, 0, 0.48)
     readonly property color hover: isLight
         ? Qt.rgba(0, 0, 0, 0.055) : Qt.rgba(1, 1, 1, 0.08)
     readonly property color pressed: isLight
@@ -46,4 +50,6 @@ QtObject {
 
     readonly property real radiusLarge: 14
     readonly property real radiusMedium: 8
+    readonly property string fontFamily: "Inter Variable"
+    readonly property int fontSizeCaption: 11
 }

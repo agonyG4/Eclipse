@@ -26,6 +26,7 @@ Window {
         anchors.centerIn: parent
         contextMenuController: ContextMenuController
         dockSurfaceGeometry: DockSurfaceGeometry
+        dockTooltipSurface: tooltipSurface
         inputRegionBridge: DockInputRegion
         outputKey: window.outputKey
         outputWidth: window.outputWidth
@@ -36,4 +37,14 @@ Window {
             DockController.movePinned(desktopFileName, targetPinIndex)
         }
     }
+
+    DockTooltipSurface {
+        id: tooltipSurface
+        outputKey: window.outputKey
+        outputWidth: window.outputWidth
+        outputHeight: window.outputHeight
+        outputOriginX: window.outputOriginX
+        outputOriginY: window.outputOriginY
+    }
+
 }

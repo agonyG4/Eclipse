@@ -22,7 +22,7 @@ QtObject {
     readonly property color shellTextSecondary: isLight ? Qt.rgba(0.13, 0.15, 0.18, 0.68) : Qt.rgba(1, 1, 1, 0.60)
     readonly property color shellTextLight: isLight ? Qt.rgba(0.08, 0.09, 0.11, 0.86) : "#e0e0e5"
     readonly property color shellTextDim: isLight ? Qt.rgba(0.13, 0.15, 0.18, 0.54) : Qt.rgba(1, 1, 1, 0.65)
-    readonly property color shellTextActive: isLight ? Qt.rgba(0.04, 0.05, 0.06, 0.96) : "#ffffff"
+    readonly property color shellTextActive: material.textActive
     readonly property color shellIconMain: isLight ? Qt.rgba(0.10, 0.11, 0.13, 0.68) : Qt.rgba(1, 1, 1, 0.65)
     readonly property color shellIconActive: isLight ? Qt.rgba(0.03, 0.04, 0.05, 0.96) : "#ffffff"
     readonly property color shellIconMuted: isLight ? Qt.rgba(0.13, 0.15, 0.18, 0.32) : Qt.rgba(1, 1, 1, 0.25)
@@ -66,7 +66,7 @@ QtObject {
     readonly property color workspaceInactive: isLight
         ? Qt.rgba(0.05, 0.06, 0.07, 0.22) : Qt.rgba(1, 1, 1, 0.22)
     readonly property int pillHeight: 36
-    readonly property string fontFamily: "Inter Variable"
+    readonly property string fontFamily: material.fontFamily
     readonly property string fontFamilyDisplay: "Inter Display"
     readonly property string fontFamilyText: "Inter Regular"
     readonly property string iconFontFamily: "JetBrainsMonoNL Nerd Font"
@@ -75,7 +75,7 @@ QtObject {
     readonly property int fontSizeTitle: 13
     readonly property int fontSizeBody: 12
     readonly property int fontSizeSmall: 12
-    readonly property int fontSizeCaption: 11
+    readonly property int fontSizeCaption: material.fontSizeCaption
     readonly property int fontSizeExtraSmall: 10
     readonly property int fontSizeMicro: 9
     readonly property int fontSizeIcon: 16

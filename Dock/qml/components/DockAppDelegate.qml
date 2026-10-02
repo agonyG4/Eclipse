@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Controls.Basic
 import Astrea.Shared as Shared
 
 Item {
@@ -98,6 +97,7 @@ Item {
         interactionTarget.updateGeometry()
         if (root.dockPanel) {
             root.dockPanel.scheduleInputRegionUpdate()
+            root.dockPanel.refreshTooltipAnchor(root.taskKey)
         }
     }
 
@@ -287,12 +287,6 @@ Item {
             }
         }
     }
-
-    ToolTip.visible: root.pointerTarget
-    ToolTip.delay: 420
-    ToolTip.text: root.runtimeKnown && root.running
-        ? qsTr("%1 (%2 windows)").arg(root.displayName).arg(root.windowCount)
-        : qsTr("%1").arg(root.displayName)
 
     /*
      * The feedback rectangle follows the transformed icon, but remains below

@@ -1,6 +1,25 @@
 #include "core/DockSurfaceGeometry.hpp"
 
+#include <QMetaObject>
 #include <QTest>
+#include <QVariantMap>
+
+namespace {
+
+QVariantMap tooltipPlacement(DockSurfaceGeometry &geometry, int outputWidth,
+                             int outputHeight, const QRectF &anchorRect, int cardWidth,
+                             int cardHeight, const QString &position, bool *invoked)
+{
+    QVariantMap result;
+    *invoked = QMetaObject::invokeMethod(
+        &geometry, "tooltipPlacementInOutput", Qt::DirectConnection,
+        Q_RETURN_ARG(QVariantMap, result), Q_ARG(int, outputWidth),
+        Q_ARG(int, outputHeight), Q_ARG(QRectF, anchorRect), Q_ARG(int, cardWidth),
+        Q_ARG(int, cardHeight), Q_ARG(QString, position));
+    return result;
+}
+
+} // namespace
 
 class DockSurfaceGeometryTest final : public QObject {
     Q_OBJECT
@@ -15,6 +34,8 @@ private slots:
     void restingBottomAnchorUsesUnscaledIconGeometry();
     void restingVerticalAnchorsUseGlobalOutputOrigins();
     void restingAnchorIgnoresMagnificationScale();
+    void tooltipPlacementSupportsEveryDockEdge();
+    void tooltipPlacementClampsAndFlipsNearOutputEdges();
 };
 
 void DockSurfaceGeometryTest::centeredDockUsesOutputLocalCoordinates()
@@ -149,6 +170,79 @@ void DockSurfaceGeometryTest::restingAnchorIgnoresMagnificationScale()
 
     QCOMPARE(resting(1.0), resting(1.6));
     QCOMPARE(resting(1.6), resting(2.0));
+}
+
+void DockSurfaceGeometryTest::tooltipPlacementSupportsEveryDockEdge()
+{
+    DockSurfaceGeometry geometry;
+    bool invoked = false;
+    const QVariantMap bottom = tooltipPlacement(
+        geometry, 800, 600, QRectF(376, 500, 48, 48), 180, 34,
+        QStringLiteral("bottom"), &invoked);
+    QVERIFY2(invoked, "DockSurfaceGeometry must expose tooltip placement to QML");
+    QCOMPARE(bottom.value(QStringLiteral("cardRect")).toRect(), QRect(310, 450, 180, 34));
+    QCOMPARE(bottom.value(QStringLiteral("pointerEdge")).toString(), QStringLiteral("bottom"));
+    QCOMPARE(bottom.value(QStringLiteral("pointerCenter")).toInt(), 90);
+
+    const QVariantMap left = tooltipPlacement(
+        geometry, 800, 600, QRectF(10, 250, 48, 48), 180, 34,
+        QStringLiteral("left"), &invoked);
+    QVERIFY(invoked);
+    QCOMPARE(left.value(QStringLiteral("cardRect")).toRect(), QRect(74, 257, 180, 34));
+    QCOMPARE(left.value(QStringLiteral("pointerEdge")).toString(), QStringLiteral("left"));
+    QCOMPARE(left.value(QStringLiteral("pointerCenter")).toInt(), 17);
+
+    const QVariantMap right = tooltipPlacement(
+        geometry, 800, 600, QRectF(742, 250, 48, 48), 180, 34,
+        QStringLiteral("right"), &invoked);
+    QVERIFY(invoked);
+    QCOMPARE(right.value(QStringLiteral("cardRect")).toRect(), QRect(546, 257, 180, 34));
+    QCOMPARE(right.value(QStringLiteral("pointerEdge")).toString(), QStringLiteral("right"));
+    QCOMPARE(right.value(QStringLiteral("pointerCenter")).toInt(), 17);
+}
+
+void DockSurfaceGeometryTest::tooltipPlacementClampsAndFlipsNearOutputEdges()
+{
+    DockSurfaceGeometry geometry;
+    bool invoked = false;
+    const QVariantMap bottomAtCorner = tooltipPlacement(
+        geometry, 800, 600, QRectF(0, 500, 48, 48), 180, 34,
+        QStringLiteral("bottom"), &invoked);
+    QVERIFY2(invoked, "DockSurfaceGeometry must expose tooltip placement to QML");
+    const QRect bottomRect = bottomAtCorner.value(QStringLiteral("cardRect")).toRect();
+    QCOMPARE(bottomRect, QRect(8, 450, 180, 34));
+    QCOMPARE(bottomAtCorner.value(QStringLiteral("pointerCenter")).toInt(), 16);
+
+    const QVariantMap bottomFlipped = tooltipPlacement(
+        geometry, 800, 600, QRectF(376, 2, 48, 48), 180, 34,
+        QStringLiteral("bottom"), &invoked);
+    QVERIFY(invoked);
+    QCOMPARE(bottomFlipped.value(QStringLiteral("pointerEdge")).toString(), QStringLiteral("top"));
+    QCOMPARE(bottomFlipped.value(QStringLiteral("cardRect")).toRect(), QRect(310, 66, 180, 34));
+
+    const QVariantMap leftClamped = tooltipPlacement(
+        geometry, 800, 600, QRectF(10, 560, 48, 48), 180, 34,
+        QStringLiteral("left"), &invoked);
+    QVERIFY(invoked);
+    const QRect leftRect = leftClamped.value(QStringLiteral("cardRect")).toRect();
+    QCOMPARE(leftRect, QRect(74, 558, 180, 34));
+    QCOMPARE(leftClamped.value(QStringLiteral("pointerCenter")).toInt(), 20);
+    QVERIFY(leftRect.left() >= 0 && leftRect.right() < 800);
+    QVERIFY(leftRect.top() >= 0 && leftRect.bottom() < 600);
+
+    const QVariantMap leftFlipped = tooltipPlacement(
+        geometry, 800, 600, QRectF(740, 250, 48, 48), 180, 34,
+        QStringLiteral("left"), &invoked);
+    QVERIFY(invoked);
+    QCOMPARE(leftFlipped.value(QStringLiteral("cardRect")).toRect(), QRect(544, 257, 180, 34));
+    QCOMPARE(leftFlipped.value(QStringLiteral("pointerEdge")).toString(), QStringLiteral("right"));
+
+    const QVariantMap rightFlipped = tooltipPlacement(
+        geometry, 800, 600, QRectF(10, 250, 48, 48), 180, 34,
+        QStringLiteral("right"), &invoked);
+    QVERIFY(invoked);
+    QCOMPARE(rightFlipped.value(QStringLiteral("cardRect")).toRect(), QRect(74, 257, 180, 34));
+    QCOMPARE(rightFlipped.value(QStringLiteral("pointerEdge")).toString(), QStringLiteral("left"));
 }
 
 QTEST_GUILESS_MAIN(DockSurfaceGeometryTest)

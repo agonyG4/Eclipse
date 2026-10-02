@@ -64,6 +64,7 @@ Item {
             ? pointerTargetTaskKey.substring("desktop:".length) : pointerTargetTaskKey
     property var contextMenuController: null
     property var dockSurfaceGeometry: null
+    property var dockTooltipSurface: null
     property var inputRegionBridge: null
     property string outputKey: ""
     property int outputWidth: 1
@@ -85,8 +86,27 @@ Item {
 
     signal reorderRequested(string desktopFileName, int targetPinIndex)
 
+    function isTooltipEligible() {
+        return pointerInside && pointerTargetTaskKey.length > 0
+            && DockController.visible && DockController.revealed
+            && !isReordering()
+            && (!contextMenuController || !contextMenuController.hasActivePresentation)
+    }
+
     width: surfaceWidth
     height: surfaceHeight
+
+    onPointerInsideChanged: root.scheduleTooltip()
+    onPointerTargetTaskKeyChanged: root.scheduleTooltip()
+    onDraggedDesktopFileNameChanged: root.scheduleTooltip()
+
+    Timer {
+        id: tooltipDelay
+        objectName: "dockTooltipDelay"
+        interval: 420
+        repeat: false
+        onTriggered: root.presentTooltipForCurrentTarget()
+    }
 
     function animationDuration(base) {
         if (!DockController.animationsEnabled)
@@ -240,18 +260,30 @@ Item {
         target: DockController
         function onConfigChanged() {
             root.scheduleMinimizeAnchorPublication()
+            root.scheduleTooltip()
         }
         function onModelChanged() {
             root.scheduleMinimizeAnchorPublication()
+            if (root.dockTooltipSurface && root.dockTooltipSurface.tooltipVisible
+                && root.isTooltipEligible())
+                Qt.callLater(root.presentTooltipForCurrentTarget)
         }
+        function onVisibleChanged() { root.scheduleTooltip() }
         function onRevealedChanged() {
             root.updateHoverEffect()
             root.scheduleInputRegionUpdate()
+            root.scheduleTooltip()
         }
         function onSurfacePlacementChanged() {
             root.updateHoverEffect()
             root.scheduleInputRegionUpdate()
+            root.scheduleTooltip()
         }
+    }
+
+    Connections {
+        target: root.contextMenuController
+        function onPresentationChanged() { root.scheduleTooltip() }
     }
 
     onOutputKeyChanged: root.scheduleMinimizeAnchorPublication()
@@ -403,6 +435,59 @@ Item {
         inputRegionBridge.update(chromeRect, inputInteractionRects, appRepeater.count)
     }
 
+    function scheduleTooltip() {
+        tooltipDelay.stop()
+        if (dockTooltipSurface)
+            dockTooltipSurface.hideTooltip()
+        if (isTooltipEligible())
+            tooltipDelay.start()
+    }
+
+    function refreshTooltipAnchor(taskKey) {
+        if (taskKey !== pointerTargetTaskKey || !dockTooltipSurface
+            || !dockTooltipSurface.tooltipVisible || !isTooltipEligible())
+            return
+        Qt.callLater(root.presentTooltipForCurrentTarget)
+    }
+
+    function presentTooltipForCurrentTarget() {
+        if (!isTooltipEligible() || !dockTooltipSurface || !dockSurfaceGeometry) {
+            if (dockTooltipSurface)
+                dockTooltipSurface.hideTooltip()
+            return
+        }
+
+        var targetItem = null
+        for (var i = 0; i < appRepeater.count; ++i) {
+            const item = appRepeater.itemAt(i)
+            if (item && item.taskKey === pointerTargetTaskKey) {
+                targetItem = item
+                break
+            }
+        }
+        if (!targetItem) {
+            dockTooltipSurface.hideTooltip()
+            return
+        }
+
+        const region = targetItem.interactionRegion
+        if (!region || !isFinite(region.x) || !isFinite(region.y)
+            || !isFinite(region.width) || !isFinite(region.height)
+            || region.width <= 0 || region.height <= 0) {
+            dockTooltipSurface.hideTooltip()
+            return
+        }
+
+        const windowRegion = windowRect(region)
+        const outputRegion = dockSurfaceGeometry.outputLocalDelegateRect(
+            outputWidth, outputHeight, surfaceWidth, surfaceHeight,
+            DockController.position, DockController.layerShellEdgeMargin, windowRegion)
+        const title = targetItem.runtimeKnown && targetItem.running
+            ? qsTr("%1 (%2 windows)").arg(targetItem.displayName).arg(targetItem.windowCount)
+            : qsTr("%1").arg(targetItem.displayName)
+        dockTooltipSurface.showTooltip(title, outputRegion, DockController.position)
+    }
+
     function delegateRestingCenterInPanel(item) {
         if (!item || !item.parent)
             return NaN
@@ -479,6 +564,9 @@ Item {
                                  liftedItem ? liftedItem.objectName : "",
                                  computedScales, computedExtras, computedPrefixes)
         scheduleInputRegionUpdate()
+        if (dockTooltipSurface && dockTooltipSurface.tooltipVisible
+            && isTooltipEligible())
+            Qt.callLater(root.presentTooltipForCurrentTarget)
     }
 
     function previewIndexFor(originalIndex) {

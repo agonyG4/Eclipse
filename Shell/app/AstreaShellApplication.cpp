@@ -220,6 +220,12 @@ bool AstreaShellApplication::initializeQml()
                      &window))
         return false;
     m_dockWindow = window;
+    m_dockTooltipWindow = m_dockWindow->findChild<QQuickWindow *>(
+        QStringLiteral("dockTooltipSurface"));
+    if (!m_dockTooltipWindow) {
+        qCritical("Astrea shell Dock tooltip surface failed to load");
+        return false;
+    }
     m_dockInputRegion->setWindow(m_dockWindow);
 
     if (!loadSurface(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/AltTab/qml/Main.qml")),
@@ -418,17 +424,22 @@ bool AstreaShellApplication::configureDockSurface()
     if (!configured) {
         qCritical("Astrea shell Dock Layer Shell setup failed: %s", qPrintable(error));
         m_application.exit(1);
-    } else {
-        if (m_dockScreen != screen) {
-            QObject::disconnect(m_dockGeometryConnection);
-            m_dockScreen = screen;
-            m_dockGeometryConnection = connect(
-                screen, &QScreen::geometryChanged, this,
-                [this](const QRect &) { updateDockOutputGeometry(); });
-        }
-        m_dockLayerConfigurationRequested = true;
+        return false;
     }
-    return configured;
+    if (!DockLayerShellSurface::configureTooltip(m_dockTooltipWindow, screen, &error)) {
+        qCritical("Astrea shell Dock tooltip Layer Shell setup failed: %s", qPrintable(error));
+        m_application.exit(1);
+        return false;
+    }
+    if (m_dockScreen != screen) {
+        QObject::disconnect(m_dockGeometryConnection);
+        m_dockScreen = screen;
+        m_dockGeometryConnection = connect(
+            screen, &QScreen::geometryChanged, this,
+            [this](const QRect &) { updateDockOutputGeometry(); });
+    }
+    m_dockLayerConfigurationRequested = true;
+    return true;
 }
 
 void AstreaShellApplication::updateDockExclusiveZone()
@@ -445,11 +456,17 @@ void AstreaShellApplication::updateDockExclusiveZone()
 
 void AstreaShellApplication::updateDockOutputGeometry()
 {
-    if (!m_dockWindow || !m_dockScreen)
+    if (!m_dockWindow || !m_dockTooltipWindow || !m_dockScreen)
         return;
     QString error;
     if (!DockLayerShellSurface::setOutputGeometry(m_dockWindow, m_dockScreen, &error)) {
         qCritical("Astrea shell Dock output geometry update failed: %s", qPrintable(error));
+        m_application.exit(1);
+        return;
+    }
+    if (!DockLayerShellSurface::setOutputGeometry(m_dockTooltipWindow, m_dockScreen, &error)) {
+        qCritical("Astrea shell Dock tooltip output geometry update failed: %s",
+                  qPrintable(error));
         m_application.exit(1);
     }
 }

@@ -3,6 +3,22 @@
 
 #include <QtGlobal>
 
+namespace {
+
+qreal clampValue(qreal value, qreal minimum, qreal maximum)
+{
+    return qBound(minimum, value, qMax(minimum, maximum));
+}
+
+int clampedPointerCenter(qreal targetCenter, qreal cardOrigin, int edgeLength)
+{
+    const int cornerInset = qMin(14, edgeLength / 2);
+    return qRound(clampValue(targetCenter - cardOrigin, cornerInset,
+                             edgeLength - cornerInset));
+}
+
+} // namespace
+
 DockSurfacePlacement DockSurfaceGeometry::placementFor(const DockConfig &config,
                                                        bool autoHideActive)
 {
@@ -97,6 +113,93 @@ QRect DockSurfaceGeometry::delegateRectInOutput(const QSize &outputSize,
                  qRound(outputRect.width()), qRound(outputRect.height()));
 }
 
+DockTooltipPlacement DockSurfaceGeometry::calculateTooltipPlacement(
+    const QSize &outputSize, const QRectF &anchorRect, const QSize &cardSize,
+    const QString &position)
+{
+    constexpr qreal edgeInset = 8.0;
+    constexpr qreal cardGap = 8.0;
+    constexpr qreal pointerDepth = 8.0;
+    constexpr qreal spacing = cardGap + pointerDepth;
+
+    const int outputWidth = qMax(1, outputSize.width());
+    const int outputHeight = qMax(1, outputSize.height());
+    const qreal insetX = qMin(edgeInset, qMax(0.0, (outputWidth - 1) / 2.0));
+    const qreal insetY = qMin(edgeInset, qMax(0.0, (outputHeight - 1) / 2.0));
+    const int width = qMin(qMax(1, cardSize.width()),
+                           qMax(1, outputWidth - qRound(2 * insetX)));
+    const int height = qMin(qMax(1, cardSize.height()),
+                            qMax(1, outputHeight - qRound(2 * insetY)));
+    const qreal minimumX = insetX;
+    const qreal maximumX = outputWidth - insetX - width;
+    const qreal minimumY = insetY;
+    const qreal maximumY = outputHeight - insetY - height;
+    const qreal targetCenterX = anchorRect.x() + anchorRect.width() / 2.0;
+    const qreal targetCenterY = anchorRect.y() + anchorRect.height() / 2.0;
+    const qreal anchorRight = anchorRect.x() + anchorRect.width();
+    const qreal anchorBottom = anchorRect.y() + anchorRect.height();
+
+    qreal x = minimumX;
+    qreal y = minimumY;
+    QString edge;
+
+    if (position == QStringLiteral("left")) {
+        const qreal inwardX = anchorRight + spacing;
+        const qreal outwardX = anchorRect.x() - spacing - width;
+        const bool fitsInward = inwardX + width <= outputWidth - insetX;
+        const bool fitsOutward = outwardX >= minimumX;
+        if (fitsInward || (!fitsOutward
+                           && outputWidth - insetX - anchorRight
+                               >= anchorRect.x() - insetX)) {
+            x = clampValue(inwardX, minimumX, maximumX);
+            edge = QStringLiteral("left");
+        } else {
+            x = clampValue(outwardX, minimumX, maximumX);
+            edge = QStringLiteral("right");
+        }
+        y = clampValue(targetCenterY - height / 2.0, minimumY, maximumY);
+    } else if (position == QStringLiteral("right")) {
+        const qreal inwardX = anchorRect.x() - spacing - width;
+        const qreal outwardX = anchorRight + spacing;
+        const bool fitsInward = inwardX >= minimumX;
+        const bool fitsOutward = outwardX + width <= outputWidth - insetX;
+        if (fitsInward || (!fitsOutward
+                           && anchorRect.x() - insetX
+                               >= outputWidth - insetX - anchorRight)) {
+            x = clampValue(inwardX, minimumX, maximumX);
+            edge = QStringLiteral("right");
+        } else {
+            x = clampValue(outwardX, minimumX, maximumX);
+            edge = QStringLiteral("left");
+        }
+        y = clampValue(targetCenterY - height / 2.0, minimumY, maximumY);
+    } else {
+        const qreal aboveY = anchorRect.y() - spacing - height;
+        const qreal belowY = anchorBottom + spacing;
+        const bool fitsAbove = aboveY >= minimumY;
+        const bool fitsBelow = belowY <= maximumY;
+        if (fitsAbove || (!fitsBelow
+                          && anchorRect.y() - minimumY
+                              >= outputHeight - insetY - anchorBottom)) {
+            y = clampValue(aboveY, minimumY, maximumY);
+            edge = QStringLiteral("bottom");
+        } else {
+            y = clampValue(belowY, minimumY, maximumY);
+            edge = QStringLiteral("top");
+        }
+        x = clampValue(targetCenterX - width / 2.0, minimumX, maximumX);
+    }
+
+    DockTooltipPlacement result;
+    result.cardRect = QRect(qRound(x), qRound(y), width, height);
+    result.pointerEdge = edge;
+    result.pointerCenter = (edge == QStringLiteral("left")
+                            || edge == QStringLiteral("right"))
+        ? clampedPointerCenter(targetCenterY, y, height)
+        : clampedPointerCenter(targetCenterX, x, width);
+    return result;
+}
+
 QRect DockSurfaceGeometry::outputLocalDelegateRect(int outputWidth, int outputHeight,
                                                    int surfaceWidth, int surfaceHeight,
                                                    const QString &position, int edgeMargin,
@@ -105,6 +208,17 @@ QRect DockSurfaceGeometry::outputLocalDelegateRect(int outputWidth, int outputHe
     return delegateRectInOutput(QSize(outputWidth, outputHeight),
                                 QSize(surfaceWidth, surfaceHeight), position, edgeMargin,
                                 delegateRect);
+}
+
+QVariantMap DockSurfaceGeometry::tooltipPlacementInOutput(
+    int outputWidth, int outputHeight, const QRectF &anchorRect, int cardWidth,
+    int cardHeight, const QString &position) const
+{
+    const DockTooltipPlacement placement = calculateTooltipPlacement(
+        QSize(outputWidth, outputHeight), anchorRect, QSize(cardWidth, cardHeight), position);
+    return {{QStringLiteral("cardRect"), placement.cardRect},
+            {QStringLiteral("pointerEdge"), placement.pointerEdge},
+            {QStringLiteral("pointerCenter"), placement.pointerCenter}};
 }
 
 QRect DockSurfaceGeometry::restingIconRectInGlobal(int outputWidth, int outputHeight,

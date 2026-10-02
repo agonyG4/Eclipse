@@ -73,7 +73,7 @@ AstreaLayerShellConfig DockLayerShellSurface::tooltipConfigurationFor(QScreen *s
     layerConfig.anchorBottom = true;
     layerConfig.anchorLeft = true;
     layerConfig.anchorRight = true;
-    layerConfig.exclusiveZone = 0;
+    layerConfig.exclusiveZone = -1;
     layerConfig.screen = screen;
     return layerConfig;
 }

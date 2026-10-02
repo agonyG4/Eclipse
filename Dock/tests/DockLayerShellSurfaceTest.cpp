@@ -20,7 +20,7 @@ private slots:
     void runtimePlacementUsesPhysicalEdgeMargins();
     void placementSnapshotSelectsItsOwnAnchor();
     void explicitOutputGeometryDoesNotDependOnWindowScreen();
-    void tooltipSurfaceIsAFullOutputPassiveTopLayer();
+    void tooltipSurfaceIgnoresExclusiveZonesOnFullOutputPassiveTopLayer();
 };
 
 void DockLayerShellSurfaceTest::mappedReservationUsesRestingHeightNotVisualHeight()
@@ -189,14 +189,14 @@ void DockLayerShellSurfaceTest::explicitOutputGeometryDoesNotDependOnWindowScree
     delete window;
 }
 
-void DockLayerShellSurfaceTest::tooltipSurfaceIsAFullOutputPassiveTopLayer()
+void DockLayerShellSurfaceTest::tooltipSurfaceIgnoresExclusiveZonesOnFullOutputPassiveTopLayer()
 {
     const AstreaLayerShellConfig layer = DockLayerShellSurface::tooltipConfigurationFor();
     QCOMPARE(layer.scope, QStringLiteral("astrea-dock-tooltip"));
     QCOMPARE(layer.layer, AstreaLayerShellConfig::Layer::Top);
     QCOMPARE(layer.keyboardInteractivity,
              AstreaLayerShellConfig::KeyboardInteractivity::None);
-    QCOMPARE(layer.exclusiveZone, 0);
+    QCOMPARE(layer.exclusiveZone, -1);
     QVERIFY(layer.anchorTop);
     QVERIFY(layer.anchorBottom);
     QVERIFY(layer.anchorLeft);

@@ -105,6 +105,9 @@ public:
         lastTitle = title;
         lastAnchorRect = anchorRect;
         lastPosition = position;
+        shownTitles.append(title);
+        if (identitySource)
+            shownTaskKeys.append(identitySource->property("pointerTargetTaskKey").toString());
         ++showCount;
     }
 
@@ -118,6 +121,9 @@ public:
     QString lastTitle;
     QRect lastAnchorRect;
     QString lastPosition;
+    QStringList shownTitles;
+    QStringList shownTaskKeys;
+    QObject *identitySource = nullptr;
     int showCount = 0;
     int hideCount = 0;
 
@@ -273,6 +279,9 @@ private slots:
     void magnifiedVisualRegionAcceptsContextMenu();
     void mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen();
     void tooltipFollowsMagnifiedIconAndHidesForDockInteractions();
+    void visibleTooltipReanchorsAfterOutputGeometryChanges();
+    void pendingTooltipFollowsReplacementTarget();
+    void pendingTooltipDoesNotPresentRemovedTarget();
     void magnifiedInteractionTargetMatchesVisualBounds();
     void magnifiedInteractionRegionsResolveByVisualStacking();
     void exclusiveDragReleaseInEmptyHeadroomStaysOutsideDock();
@@ -1970,6 +1979,210 @@ void DockHoverQmlTest::tooltipFollowsMagnifiedIconAndHidesForDockInteractions()
     QMetaObject::invokeMethod(panel, "setPointerInside",
                               Q_ARG(QVariant, QVariant(false)));
     QTRY_VERIFY_WITH_TIMEOUT(!tooltipSurface.tooltipVisible(), 500);
+
+    delete panel;
+}
+
+void DockHoverQmlTest::visibleTooltipReanchorsAfterOutputGeometryChanges()
+{
+    for (const QString &position : {QStringLiteral("bottom"), QStringLiteral("left")}) {
+        DockController dockController;
+        DockConfig config = configFor(QStringLiteral("none"), {
+            QStringLiteral("one.desktop")
+        });
+        config.position = position;
+        dockController.applyConfig(config);
+        FakeTooltipSurface tooltipSurface;
+        DockSurfaceGeometry surfaceGeometry;
+
+        QQmlEngine engine;
+        engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+        engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+        engine.rootContext()->setContextProperty(QStringLiteral("DockController"),
+                                                 &dockController);
+        QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+        QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+        auto *panel = qobject_cast<QQuickItem *>(component.create());
+        QVERIFY2(panel, qPrintable(component.errorString()));
+        QQuickWindow window;
+        panel->setParentItem(window.contentItem());
+        window.resize(900, 600);
+        panel->setX((window.width() - panel->width()) / 2.0);
+        panel->setY((window.height() - panel->height()) / 2.0);
+        panel->setProperty("dockSurfaceGeometry",
+                           QVariant::fromValue(static_cast<QObject *>(&surfaceGeometry)));
+        panel->setProperty("dockTooltipSurface",
+                           QVariant::fromValue(static_cast<QObject *>(&tooltipSurface)));
+        panel->setProperty("outputWidth", 900);
+        panel->setProperty("outputHeight", 600);
+        tooltipSurface.identitySource = panel;
+        window.show();
+        QTest::qWait(40);
+
+        QQuickItem *target = delegate(panel, QStringLiteral("one.desktop"));
+        QVERIFY(target);
+        const QPointF pointer = target->property("interactionRegion").toRectF().center();
+        QVERIFY(QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
+                                          Q_ARG(QVariant, QVariant(pointer.x())),
+                                          Q_ARG(QVariant, QVariant(pointer.y()))));
+        QTRY_COMPARE_WITH_TIMEOUT(panel->property("pointerTargetTaskKey").toString(),
+                                  QStringLiteral("desktop:one.desktop"), 1000);
+        QTRY_VERIFY_WITH_TIMEOUT(tooltipSurface.tooltipVisible(), 1500);
+
+        const QRect previousAnchor = tooltipSurface.lastAnchorRect;
+        const QString previousTitle = tooltipSurface.lastTitle;
+        const QString previousTaskKey = tooltipSurface.shownTaskKeys.constLast();
+        const int previousShowCount = tooltipSurface.showCount;
+
+        panel->setProperty("outputWidth", 1200);
+        panel->setProperty("outputHeight", 760);
+        QTRY_VERIFY_WITH_TIMEOUT(tooltipSurface.showCount > previousShowCount, 300);
+        QVERIFY(tooltipSurface.tooltipVisible());
+        QCOMPARE(panel->property("pointerTargetTaskKey").toString(), previousTaskKey);
+        QCOMPARE(tooltipSurface.lastTitle, previousTitle);
+        QCOMPARE(tooltipSurface.shownTaskKeys.constLast(), previousTaskKey);
+
+        const QRectF visualRegion = target->property("interactionRegion").toRectF();
+        const QPointF topLeft = panel->mapToItem(window.contentItem(), visualRegion.topLeft());
+        const QPointF bottomRight = panel->mapToItem(window.contentItem(), visualRegion.bottomRight());
+        const QRect expectedAnchor = surfaceGeometry.outputLocalDelegateRect(
+            1200, 760, panel->property("surfaceWidth").toInt(),
+            panel->property("surfaceHeight").toInt(), dockController.position(),
+            dockController.layerShellEdgeMargin(), QRectF(topLeft, bottomRight));
+        QCOMPARE(tooltipSurface.lastAnchorRect, expectedAnchor);
+        QVERIFY(tooltipSurface.lastAnchorRect != previousAnchor);
+
+        delete panel;
+    }
+}
+
+void DockHoverQmlTest::pendingTooltipFollowsReplacementTarget()
+{
+    DockController dockController;
+    dockController.applyConfig(configFor(QStringLiteral("none"), {
+        QStringLiteral("one.desktop"), QStringLiteral("two.desktop")
+    }));
+    FakeTooltipSurface tooltipSurface;
+    DockSurfaceGeometry surfaceGeometry;
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &dockController);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    QQuickWindow window;
+    panel->setParentItem(window.contentItem());
+    window.resize(900, 220);
+    panel->setX((window.width() - panel->width()) / 2.0);
+    panel->setY((window.height() - panel->height()) / 2.0);
+    panel->setProperty("dockSurfaceGeometry",
+                       QVariant::fromValue(static_cast<QObject *>(&surfaceGeometry)));
+    panel->setProperty("dockTooltipSurface",
+                       QVariant::fromValue(static_cast<QObject *>(&tooltipSurface)));
+    panel->setProperty("outputWidth", 900);
+    panel->setProperty("outputHeight", 600);
+    tooltipSurface.identitySource = panel;
+    window.show();
+    QTest::qWait(40);
+
+    QObject *delay = panel->findChild<QObject *>(QStringLiteral("dockTooltipDelay"));
+    QVERIFY(delay);
+    constexpr int delayIntervalMs = 240;
+    QVERIFY(delay->setProperty("interval", delayIntervalMs));
+    QQuickItem *targetA = delegate(panel, QStringLiteral("one.desktop"));
+    QQuickItem *targetB = delegate(panel, QStringLiteral("two.desktop"));
+    QVERIFY(targetA && targetB);
+    const auto movePointerTo = [panel](QQuickItem *target) {
+        const QPointF point = target->property("interactionRegion").toRectF().center();
+        return QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
+                                         Q_ARG(QVariant, QVariant(point.x())),
+                                         Q_ARG(QVariant, QVariant(point.y())));
+    };
+
+    QVERIFY(movePointerTo(targetA));
+    QTRY_COMPARE_WITH_TIMEOUT(panel->property("pointerTargetTaskKey").toString(),
+                              QStringLiteral("desktop:one.desktop"), 1000);
+    QTest::qWait(120);
+    QVERIFY(movePointerTo(targetB));
+    QTRY_COMPARE_WITH_TIMEOUT(panel->property("pointerTargetTaskKey").toString(),
+                              QStringLiteral("desktop:two.desktop"), 1000);
+    QTest::qWait(125);
+
+    QVERIFY2(tooltipSurface.shownTitles.isEmpty(),
+             "target A must not be presented when its original delay expires");
+    QVERIFY(!tooltipSurface.shownTaskKeys.contains(QStringLiteral("desktop:one.desktop")));
+    QVERIFY(!tooltipSurface.tooltipVisible());
+
+    QTRY_COMPARE_WITH_TIMEOUT(tooltipSurface.shownTitles.size(), 1, 1000);
+    QCOMPARE(tooltipSurface.lastTitle, targetB->property("displayName").toString());
+    QCOMPARE(tooltipSurface.shownTitles.constLast(), targetB->property("displayName").toString());
+    QCOMPARE(tooltipSurface.shownTaskKeys.constLast(), QStringLiteral("desktop:two.desktop"));
+    QVERIFY(!tooltipSurface.shownTaskKeys.contains(QStringLiteral("desktop:one.desktop")));
+
+    delete panel;
+}
+
+void DockHoverQmlTest::pendingTooltipDoesNotPresentRemovedTarget()
+{
+    DockController dockController;
+    dockController.applyConfig(configFor(QStringLiteral("none"), {
+        QStringLiteral("one.desktop")
+    }));
+    FakeTooltipSurface tooltipSurface;
+    DockSurfaceGeometry surfaceGeometry;
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &dockController);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    QQuickWindow window;
+    panel->setParentItem(window.contentItem());
+    window.resize(900, 220);
+    panel->setX((window.width() - panel->width()) / 2.0);
+    panel->setY((window.height() - panel->height()) / 2.0);
+    panel->setProperty("dockSurfaceGeometry",
+                       QVariant::fromValue(static_cast<QObject *>(&surfaceGeometry)));
+    panel->setProperty("dockTooltipSurface",
+                       QVariant::fromValue(static_cast<QObject *>(&tooltipSurface)));
+    panel->setProperty("outputWidth", 900);
+    panel->setProperty("outputHeight", 600);
+    tooltipSurface.identitySource = panel;
+    window.show();
+    QTest::qWait(40);
+
+    QObject *delay = panel->findChild<QObject *>(QStringLiteral("dockTooltipDelay"));
+    QVERIFY(delay);
+    constexpr int delayIntervalMs = 240;
+    QVERIFY(delay->setProperty("interval", delayIntervalMs));
+    QQuickItem *target = delegate(panel, QStringLiteral("one.desktop"));
+    QVERIFY(target);
+    const QPointF pointer = target->property("interactionRegion").toRectF().center();
+    QVERIFY(QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
+                                      Q_ARG(QVariant, QVariant(pointer.x())),
+                                      Q_ARG(QVariant, QVariant(pointer.y()))));
+    QTRY_COMPARE_WITH_TIMEOUT(panel->property("pointerTargetTaskKey").toString(),
+                              QStringLiteral("desktop:one.desktop"), 1000);
+    QTest::qWait(100);
+
+    dockController.applyConfig(configFor(QStringLiteral("none"), {}));
+    QTRY_COMPARE_WITH_TIMEOUT(dockController.appModel()->rowCount(), 0, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(panel->property("pointerTargetTaskKey").toString(),
+                              QString(), 1000);
+    QTest::qWait(160);
+
+    QVERIFY2(tooltipSurface.shownTitles.isEmpty(),
+             "a task removed during the hover delay must never be presented");
+    QVERIFY(!tooltipSurface.shownTaskKeys.contains(QStringLiteral("desktop:one.desktop")));
+    QVERIFY(!tooltipSurface.tooltipVisible());
+    QVERIFY(tooltipSurface.lastTitle.isEmpty());
+    QVERIFY(tooltipSurface.lastAnchorRect.isNull());
 
     delete panel;
 }

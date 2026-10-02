@@ -287,8 +287,14 @@ Item {
     }
 
     onOutputKeyChanged: root.scheduleMinimizeAnchorPublication()
-    onOutputWidthChanged: root.scheduleMinimizeAnchorPublication()
-    onOutputHeightChanged: root.scheduleMinimizeAnchorPublication()
+    onOutputWidthChanged: {
+        root.scheduleMinimizeAnchorPublication()
+        root.refreshVisibleTooltip()
+    }
+    onOutputHeightChanged: {
+        root.scheduleMinimizeAnchorPublication()
+        root.refreshVisibleTooltip()
+    }
     onOutputOriginXChanged: root.scheduleMinimizeAnchorPublication()
     onOutputOriginYChanged: root.scheduleMinimizeAnchorPublication()
 
@@ -444,8 +450,13 @@ Item {
     }
 
     function refreshTooltipAnchor(taskKey) {
-        if (taskKey !== pointerTargetTaskKey || !dockTooltipSurface
-            || !dockTooltipSurface.tooltipVisible || !isTooltipEligible())
+        if (taskKey !== pointerTargetTaskKey)
+            return
+        refreshVisibleTooltip()
+    }
+
+    function refreshVisibleTooltip() {
+        if (!dockTooltipSurface || !dockTooltipSurface.tooltipVisible || !isTooltipEligible())
             return
         Qt.callLater(root.presentTooltipForCurrentTarget)
     }
@@ -564,9 +575,7 @@ Item {
                                  liftedItem ? liftedItem.objectName : "",
                                  computedScales, computedExtras, computedPrefixes)
         scheduleInputRegionUpdate()
-        if (dockTooltipSurface && dockTooltipSurface.tooltipVisible
-            && isTooltipEligible())
-            Qt.callLater(root.presentTooltipForCurrentTarget)
+        refreshVisibleTooltip()
     }
 
     function previewIndexFor(originalIndex) {

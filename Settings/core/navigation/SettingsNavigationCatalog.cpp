@@ -56,7 +56,7 @@ SettingsNavigationCatalog::SettingsNavigationCatalog()
                     {}, QStringLiteral("audio"),
                     QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Audio.qml"))),
           makeEntry(QStringLiteral("display"), QStringLiteral("Display"),
-                    QStringLiteral("settings.nav.display"), QStringLiteral("Native display information"),
+                    QStringLiteral("settings.nav.display"), QStringLiteral("Preferred modes and output status"),
                     {}, QStringLiteral("display"),
                     QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Display.qml")),
                     SettingsNavigationEntry::Kind::Page, true, true, {},

@@ -206,6 +206,7 @@ class SettingsQmlSmokeTest final : public QObject {
 
 private slots:
     void loadsCompositorRouteOffscreen();
+    void displaySidebarClickLoadsSelectedPageWithoutTyphon();
     void loadsCustomizationHubOffscreen();
     void loadsAnimationsRouteOffscreen();
     void plannedEffectTextUsesRequestedEffect();
@@ -480,6 +481,122 @@ void SettingsQmlSmokeTest::loadsCompositorRouteOffscreen()
                              1000);
     QVERIFY(!loadedPage()->property("animationsEnabled").isValid());
     QVERIFY2(qmlWarnings.isEmpty(), qPrintable(qmlWarnings.isEmpty() ? QString() : qmlWarnings.constFirst().toString()));
+}
+
+void SettingsQmlSmokeTest::displaySidebarClickLoadsSelectedPageWithoutTyphon()
+{
+    QTemporaryDir home;
+    QTemporaryDir runtime;
+    QVERIFY(home.isValid());
+    QVERIFY(runtime.isValid());
+    HomeEnvironmentGuard homeGuard(home.path());
+    RuntimeEnvironmentGuard runtimeGuard(runtime.path());
+
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
+    QVERIFY(window != nullptr);
+    window->show();
+    QCoreApplication::processEvents();
+    auto *sidebar = qobject_cast<QQuickItem *>(window->findChild<QObject *>(
+        QStringLiteral("settingsSidebar")));
+    QVERIFY(sidebar != nullptr);
+    auto *displayRow = findVisualItem(sidebar, QStringLiteral("settingsSidebarRow-display"));
+    auto *audioRow = findVisualItem(sidebar, QStringLiteral("settingsSidebarRow-audio"));
+    auto *componentsRow = findVisualItem(sidebar, QStringLiteral("settingsSidebarRow-components"));
+    QVERIFY(displayRow != nullptr);
+    QVERIFY(audioRow != nullptr);
+    QVERIFY(componentsRow != nullptr);
+    const qreal audioY = audioRow->mapToScene(QPointF(0, 0)).y();
+    const qreal displayY = displayRow->mapToScene(QPointF(0, 0)).y();
+    const qreal componentsY = componentsRow->mapToScene(QPointF(0, 0)).y();
+    QVERIFY2(audioY < displayY,
+             qPrintable(QStringLiteral("audio=%1 display=%2 components=%3")
+                            .arg(audioY).arg(displayY).arg(componentsY)));
+    QVERIFY2(displayY < componentsY,
+             qPrintable(QStringLiteral("audio=%1 display=%2 components=%3")
+                            .arg(audioY).arg(displayY).arg(componentsY)));
+    QCOMPARE(countVisualItems(sidebar, QRegularExpression(QStringLiteral("^settingsSidebarRow-display$"))), 1);
+
+    const auto display = settingsController.navigationModel()->descriptorForId(QStringLiteral("display"));
+    QCOMPARE(display.value(QStringLiteral("kind")).toString(), QStringLiteral("page"));
+    QVERIFY(display.value(QStringLiteral("parentId")).toString().isEmpty());
+    QCOMPARE(settingsController.navigationModel()->childDescriptorsForId(QStringLiteral("display")).size(), 0);
+    int displayDestinations = 0;
+    for (int row = 0; row < settingsController.navigationModel()->rowCount(); ++row) {
+        const auto parent = settingsController.navigationModel()->get(row);
+        const QString parentId = parent.value(QStringLiteral("entryId")).toString();
+        displayDestinations += parentId == QStringLiteral("display");
+        if (parentId.isEmpty())
+            continue;
+        const auto children = settingsController.navigationModel()->childDescriptorsForId(parentId);
+        for (const auto &child : children)
+            displayDestinations += child.toMap().value(QStringLiteral("entryId")).toString()
+                == QStringLiteral("display");
+    }
+    QCOMPARE(displayDestinations, 1);
+
+    QVERIFY(QFile::exists(QStringLiteral(":/Astrea/Settings/assets/icons/settings/display.svg")));
+    QVERIFY(QFile::exists(QStringLiteral(":/Astrea/Settings/assets/icons/settings/themes/dark/display.svg")));
+
+    auto *loader = window->findChild<QObject *>(QStringLiteral("settingsPageLoader"));
+    QVERIFY(loader != nullptr);
+    QSignalSpy sidebarSelectionSpy(sidebar, SIGNAL(selectId(QString)));
+    QVERIFY(sidebarSelectionSpy.isValid());
+    const auto loadedPage = [&loader] {
+        return qvariant_cast<QObject *>(loader->property("item"));
+    };
+    const QString initialDestinationId = settingsController.currentDestinationId();
+    QVERIFY(initialDestinationId != QStringLiteral("display"));
+
+    const QPoint clickPoint = displayRow->mapToItem(
+        window->contentItem(),
+        QPointF(displayRow->width() / 2.0, displayRow->height() / 2.0)).toPoint();
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, clickPoint);
+    QCOMPARE(sidebarSelectionSpy.size(), 1);
+    QCOMPARE(sidebarSelectionSpy.takeFirst().at(0).toString(), QStringLiteral("display"));
+
+    const QUrl displaySource(QStringLiteral(
+        "qrc:/qt/qml/Astrea/Settings/qml/pages/system/Display.qml"));
+    QTRY_COMPARE_WITH_TIMEOUT(settingsController.currentDestinationId(), QStringLiteral("display"), 1000);
+    QCOMPARE(settingsController.selectedSidebarId(), QStringLiteral("display"));
+    QCOMPARE(settingsController.selectedPageSource(), displaySource);
+    QTRY_VERIFY_WITH_TIMEOUT(loadedPage() != nullptr
+                                 && loadedPage()->objectName() == QStringLiteral("displayPage"),
+                             1000);
+    QTRY_VERIFY_WITH_TIMEOUT(!settingsController.display()->busy(), 2000);
+    QVERIFY(!settingsController.display()->available());
+    QVERIFY(settingsController.display()->outputs().isEmpty());
+    QVERIFY(!settingsController.display()->lastError().isEmpty());
+    QVERIFY(displayRow->property("selected").toBool());
+    QCOMPARE(qvariant_cast<QUrl>(loader->property("source")), displaySource);
+
+    QObject *displayError = window->findChild<QObject *>(QStringLiteral("displayError"));
+    QObject *displayRetry = window->findChild<QObject *>(QStringLiteral("displayRetry"));
+    QVERIFY(displayError != nullptr);
+    QVERIFY(displayError->property("visible").toBool());
+    QVERIFY(displayRetry != nullptr);
+    QVERIFY(displayRetry->property("visible").toBool());
+    QVERIFY(displayRetry->property("enabled").toBool());
+
+    QVERIFY(settingsController.canGoBack());
+    settingsController.goBack();
+    QTRY_COMPARE_WITH_TIMEOUT(settingsController.currentDestinationId(), initialDestinationId, 1000);
+    QVERIFY(settingsController.canGoForward());
+    settingsController.goForward();
+    QTRY_COMPARE_WITH_TIMEOUT(settingsController.currentDestinationId(), QStringLiteral("display"), 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(loadedPage() != nullptr
+                                 && loadedPage()->objectName() == QStringLiteral("displayPage"),
+                             1000);
+    QCOMPARE(settingsController.selectedSidebarId(), QStringLiteral("display"));
 }
 
 void SettingsQmlSmokeTest::loadsCustomizationHubOffscreen()

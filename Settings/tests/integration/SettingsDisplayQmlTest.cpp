@@ -16,7 +16,7 @@ class FakeDisplayController final : public QObject {
   Q_PROPERTY(bool busy READ busy CONSTANT)
   Q_PROPERTY(QVariantList outputs READ outputs NOTIFY snapshotChanged)
   Q_PROPERTY(quint32 outputCount READ outputCount NOTIFY snapshotChanged)
-  Q_PROPERTY(bool truncated READ truncated CONSTANT)
+  Q_PROPERTY(bool truncated READ truncated NOTIFY snapshotChanged)
   Q_PROPERTY(QString lastError READ lastError CONSTANT)
 
 public:
@@ -24,12 +24,19 @@ public:
   bool busy() const { return false; }
   QVariantList outputs() const { return m_outputs; }
   quint32 outputCount() const { return quint32(m_outputs.size()); }
-  bool truncated() const { return false; }
+  bool truncated() const { return m_truncated; }
   QString lastError() const { return {}; }
   Q_INVOKABLE void refresh() { ++refreshCount; }
 
   void setOutput(const QVariantMap &output) {
     m_outputs = {output};
+    emit snapshotChanged();
+  }
+
+  void setTruncated(bool truncated) {
+    if (m_truncated == truncated)
+      return;
+    m_truncated = truncated;
     emit snapshotChanged();
   }
 
@@ -40,6 +47,7 @@ signals:
 
 private:
   QVariantList m_outputs;
+  bool m_truncated = false;
 };
 
 class FakeWallpaper final : public QObject {
@@ -72,8 +80,8 @@ private:
 };
 
 QVariantMap
-nativeOutput(const QString &name = QStringLiteral("DP-1"),
-             const QString &model = QStringLiteral("Studio Panel")) {
+displayOutput(const QString &name = QStringLiteral("DP-1"),
+              const QString &model = QStringLiteral("Studio Panel")) {
   const QVariantList modes{
       QVariantMap{{QStringLiteral("width"), 1920},
                   {QStringLiteral("height"), 1080},
@@ -130,7 +138,7 @@ QObject *findObject(QQuickItem *item, const QString &name) {
 class DisplayPageFixture final {
 public:
   DisplayPageFixture() {
-    m_settings.display()->setOutput(nativeOutput());
+    m_settings.display()->setOutput(displayOutput());
     m_engine.addImportPath(QStringLiteral("qrc:/"));
     m_engine.rootContext()->setContextProperty(
         QStringLiteral("SettingsController"), &m_settings);
@@ -185,6 +193,9 @@ class SettingsDisplayQmlTest final : public QObject {
 
 private slots:
   void projectsAuthoritativeReadOnlyOutputSnapshot();
+  void showsPreferredModeSemantics();
+  void communicatesOutputListTruncation();
+  void preservesPerOutputModeTruncationNotice();
   void hostileOutputIdentityRemainsPlainText();
   void disabledOutputWithoutCurrentModeUsesSafePlaceholder();
 };
@@ -207,9 +218,15 @@ void SettingsDisplayQmlTest::projectsAuthoritativeReadOnlyOutputSnapshot() {
            QStringLiteral("DP-1"));
   QVERIFY(fixture.object(QStringLiteral("displayResolutionRow_1920x1080")) !=
           nullptr);
-  QVERIFY(fixture.object(QStringLiteral("displayNativeBadge_1920x1080"))
-              ->property("visible")
-              .toBool());
+  QObject *preferredBadge =
+      fixture.object(QStringLiteral("displayPreferredBadge_1920x1080"));
+  QVERIFY(preferredBadge != nullptr);
+  QVERIFY(preferredBadge->property("visible").toBool());
+  QObject *preferredLabel =
+      fixture.object(QStringLiteral("displayPreferredLabel_1920x1080"));
+  QVERIFY(preferredLabel != nullptr);
+  QCOMPARE(preferredLabel->property("text").toString(),
+           QStringLiteral("Preferred"));
   QCOMPARE(fixture.object(QStringLiteral("displayResolutionRates_1920x1080"))
                ->property("text")
                .toString(),
@@ -244,11 +261,58 @@ void SettingsDisplayQmlTest::projectsAuthoritativeReadOnlyOutputSnapshot() {
                "fill='%234d72c9'/%3E%3C/svg%3E")));
 }
 
+void SettingsDisplayQmlTest::showsPreferredModeSemantics() {
+  DisplayPageFixture fixture;
+  QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.errors()));
+
+  QObject *preferredBadge =
+      fixture.object(QStringLiteral("displayPreferredBadge_1920x1080"));
+  QVERIFY(preferredBadge != nullptr);
+  QVERIFY(preferredBadge->property("visible").toBool());
+  QObject *preferredLabel =
+      fixture.object(QStringLiteral("displayPreferredLabel_1920x1080"));
+  QVERIFY(preferredLabel != nullptr);
+  QCOMPARE(preferredLabel->property("text").toString(),
+           QStringLiteral("Preferred"));
+  QVERIFY(fixture.object(QStringLiteral("displayNativeBadge_1920x1080")) ==
+          nullptr);
+}
+
+void SettingsDisplayQmlTest::communicatesOutputListTruncation() {
+  DisplayPageFixture fixture;
+  QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.errors()));
+
+  QObject *notice = fixture.object(QStringLiteral("displayOutputsTruncated"));
+  QVERIFY(notice != nullptr);
+  QVERIFY(!notice->property("visible").toBool());
+
+  fixture.display()->setTruncated(true);
+  QTRY_VERIFY(notice->property("visible").toBool());
+  QCOMPARE(notice->property("text").toString(),
+           QStringLiteral("Additional displays are not shown."));
+}
+
+void SettingsDisplayQmlTest::preservesPerOutputModeTruncationNotice() {
+  DisplayPageFixture fixture;
+  QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.errors()));
+
+  QObject *notice = fixture.object(QStringLiteral("displayModesTruncated"));
+  QVERIFY(notice != nullptr);
+  QVERIFY(!notice->property("visible").toBool());
+
+  QVariantMap output = displayOutput();
+  output.insert(QStringLiteral("modesTruncated"), true);
+  fixture.display()->setOutput(output);
+  QTRY_VERIFY(notice->property("visible").toBool());
+  QCOMPARE(notice->property("text").toString(),
+           QStringLiteral("Some available modes are not shown."));
+}
+
 void SettingsDisplayQmlTest::hostileOutputIdentityRemainsPlainText() {
   DisplayPageFixture fixture;
   QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.errors()));
-  fixture.display()->setOutput(nativeOutput(QStringLiteral("<i>DP-1</i>"),
-                                            QStringLiteral("<b>Monitor</b>")));
+  fixture.display()->setOutput(displayOutput(QStringLiteral("<i>DP-1</i>"),
+                                             QStringLiteral("<b>Monitor</b>")));
   QCoreApplication::processEvents();
 
   QObject *title = fixture.object(QStringLiteral("displayOutputTitle"));
@@ -265,7 +329,7 @@ void SettingsDisplayQmlTest::hostileOutputIdentityRemainsPlainText() {
 void SettingsDisplayQmlTest::
     disabledOutputWithoutCurrentModeUsesSafePlaceholder() {
   DisplayPageFixture fixture;
-  QVariantMap output = nativeOutput();
+  QVariantMap output = displayOutput();
   output.insert(QStringLiteral("enabled"), false);
   output.insert(QStringLiteral("hasCurrentMode"), false);
   output.insert(QStringLiteral("currentWidth"), 0);

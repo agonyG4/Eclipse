@@ -114,7 +114,14 @@ Item {
 
         Item { width: 1; height: 4 }
 
-        Repeater {
+        ListView {
+            width: parent.width
+            height: contentHeight
+            implicitHeight: contentHeight
+            interactive: false
+            clip: false
+            spacing: 0
+
             model: root.model
             delegate: Item {
                 id: navDelegate

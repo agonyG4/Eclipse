@@ -408,11 +408,25 @@ FocusScope {
                         visible: root.outputs.length === 0
                         text: root.controller && root.controller.available
                             ? "No displays are currently available"
-                            : "Native display information is unavailable"
+                            : "Display information is unavailable"
                         color: Components.Theme.textSecondary
                         font.family: Components.Theme.fontFamily
                         font.pixelSize: Components.Theme.fontSizeNormal
                     }
+                }
+
+                Text {
+                    objectName: "displayOutputsTruncated"
+                    Layout.fillWidth: true
+                    Layout.leftMargin: Components.Theme.spacingMedium
+                    Layout.rightMargin: Components.Theme.spacingMedium
+                    visible: root.controller && root.controller.truncated
+                    text: "Additional displays are not shown."
+                    textFormat: Text.PlainText
+                    color: Components.Theme.textSecondary
+                    font.family: Components.Theme.fontFamily
+                    font.pixelSize: Components.Theme.fontSizeTiny
+                    wrapMode: Text.WordWrap
                 }
 
                 ColumnLayout {
@@ -452,7 +466,7 @@ FocusScope {
                         Layout.fillWidth: true
                         text: root.controller && root.controller.lastError !== ""
                             ? root.controller.lastError
-                            : "Connect to Typhon to read native display information."
+                            : "Connect to Typhon to read display information."
                         textFormat: Text.PlainText
                         color: Components.Theme.textSecondary
                         font.family: Components.Theme.fontFamily
@@ -520,16 +534,17 @@ FocusScope {
 
                             Rectangle {
                                 visible: modelData.preferred
-                                objectName: "displayNativeBadge_" + modelData.width + "x" + modelData.height
-                                Layout.preferredWidth: nativeText.implicitWidth + Components.Theme.spacingMedium
+                                objectName: "displayPreferredBadge_" + modelData.width + "x" + modelData.height
+                                Layout.preferredWidth: preferredText.implicitWidth + Components.Theme.spacingMedium
                                 Layout.preferredHeight: 24
                                 radius: Components.Theme.controlRadius
                                 color: Qt.rgba(Components.Theme.accent.r, Components.Theme.accent.g,
                                                Components.Theme.accent.b, Components.Theme.themeMode === 1 ? 0.10 : 0.18)
                                 Text {
-                                    id: nativeText
+                                    id: preferredText
+                                    objectName: "displayPreferredLabel_" + modelData.width + "x" + modelData.height
                                     anchors.centerIn: parent
-                                    text: "Native"
+                                    text: "Preferred"
                                     color: Components.Theme.accent
                                     font.family: Components.Theme.fontFamily
                                     font.pixelSize: Components.Theme.fontSizeTiny
@@ -585,6 +600,7 @@ FocusScope {
                     textFormat: Text.PlainText
                 }
                 Text {
+                    objectName: "displayModesTruncated"
                     Layout.fillWidth: true
                     Layout.leftMargin: Components.Theme.spacingXLarge
                     Layout.rightMargin: Components.Theme.spacingXLarge

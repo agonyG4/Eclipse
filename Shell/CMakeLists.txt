@@ -151,6 +151,7 @@ set(_shell_qml_files
     "${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/components/DockPanel.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/components/DockAppDelegate.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/components/DockTooltipSurface.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/components/DockTooltipBubble.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/../AltTab/qml/Main.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/../AltTab/qml/components/AltTabPanel.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/../AltTab/qml/components/AltTabWindowDelegate.qml"
@@ -180,6 +181,8 @@ set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/components/
     PROPERTIES QT_RESOURCE_ALIAS "Dock/qml/components/DockAppDelegate.qml")
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/components/DockTooltipSurface.qml"
     PROPERTIES QT_RESOURCE_ALIAS "Dock/qml/components/DockTooltipSurface.qml")
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/components/DockTooltipBubble.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Dock/qml/components/DockTooltipBubble.qml")
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../AltTab/qml/Main.qml"
     PROPERTIES QT_RESOURCE_ALIAS "AltTab/qml/Main.qml")
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../AltTab/qml/components/AltTabPanel.qml"

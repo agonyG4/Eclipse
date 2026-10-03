@@ -26,12 +26,26 @@ struct DockTooltipPlacement final {
 
 class DockSurfaceGeometry final : public QObject {
     Q_OBJECT
+    Q_PROPERTY(int tooltipBodyHeight READ tooltipBodyHeight CONSTANT)
+    Q_PROPERTY(int tooltipPointerWidth READ tooltipPointerWidth CONSTANT)
+    Q_PROPERTY(int tooltipPointerDepth READ tooltipPointerDepth CONSTANT)
+    Q_PROPERTY(int tooltipTargetGap READ tooltipTargetGap CONSTANT)
 
 public:
+    static constexpr int TooltipBodyHeight = 34;
+    static constexpr int TooltipPointerWidth = 14;
+    static constexpr int TooltipPointerDepth = 8;
+    static constexpr int TooltipTargetGap = 3;
+
     explicit DockSurfaceGeometry(QObject *parent = nullptr)
         : QObject(parent)
     {
     }
+
+    int tooltipBodyHeight() const { return TooltipBodyHeight; }
+    int tooltipPointerWidth() const { return TooltipPointerWidth; }
+    int tooltipPointerDepth() const { return TooltipPointerDepth; }
+    int tooltipTargetGap() const { return TooltipTargetGap; }
 
     static DockSurfacePlacement placementFor(const DockConfig &config, bool autoHideActive);
     static QRect delegateRectInOutput(const QSize &outputSize, const QSize &surfaceSize,

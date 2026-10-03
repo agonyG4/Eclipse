@@ -27,17 +27,29 @@ QtObject {
             : Qt.rgba(0.98, 0.98, 0.99, 0.92))
         : (isDefault ? Qt.rgba(0.11, 0.11, 0.12, 1)
             : Qt.rgba(0.11, 0.11, 0.12, 0.92))
+    // Tooltip materials are intentionally separate from the existing Shell
+    // surfaces: Frosted keeps a visible backdrop contribution, while
+    // Transparent follows the lighter existing Shell surface tint.
+    readonly property color tooltipSurface: isDefault ? surfaceElevated
+        : isFrosted
+            ? (isLight ? Qt.rgba(0.985, 0.99, 1, 0.44)
+                       : Qt.rgba(0.055, 0.065, 0.08, 0.46))
+            : surface
     readonly property color border: isLight
         ? (isDefault ? Qt.rgba(0, 0, 0, 0.12)
             : isFrosted ? Qt.rgba(0, 0, 0, 0.10)
             : Qt.rgba(0, 0, 0, 0.08))
         : (isDefault ? Qt.rgba(1, 1, 1, 0.11) : Qt.rgba(1, 1, 1, 0.14))
+    readonly property color tooltipBorder: isDefault ? border
+        : Qt.rgba(border.r, border.g, border.b, border.a * 0.72)
     readonly property color borderHover: isLight
         ? Qt.rgba(0, 0, 0, 0.20) : Qt.rgba(1, 1, 1, 0.28)
     readonly property color textActive: isLight
         ? Qt.rgba(0.04, 0.05, 0.06, 0.96) : "#ffffff"
     readonly property color shadow: isLight
         ? Qt.rgba(0, 0, 0, 0.22) : Qt.rgba(0, 0, 0, 0.48)
+    readonly property color tooltipShadow:
+        Qt.rgba(shadow.r, shadow.g, shadow.b, shadow.a * 0.55)
     readonly property color hover: isLight
         ? Qt.rgba(0, 0, 0, 0.055) : Qt.rgba(1, 1, 1, 0.08)
     readonly property color pressed: isLight
@@ -52,4 +64,5 @@ QtObject {
     readonly property real radiusMedium: 8
     readonly property string fontFamily: "Inter Variable"
     readonly property int fontSizeCaption: 11
+    readonly property int tooltipFontSize: 13
 }

@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Window
-import QtQuick.Effects
 import Astrea.Effects
 import Astrea.Shared as Shared
 
@@ -18,9 +17,9 @@ Window {
     property string dockPosition: "bottom"
     property bool tooltipVisible: false
 
-    readonly property int cardWidth: Math.min(260, Math.max(64, tooltipText.implicitWidth + 24))
-    readonly property int cardHeight: 34
-    readonly property int pointerSize: 12
+    readonly property int cardWidth: Math.min(280, Math.max(72, tooltipText.implicitWidth + 32))
+    readonly property int cardHeight: DockSurfaceGeometry.tooltipBodyHeight
+    readonly property int pointerDepth: DockSurfaceGeometry.tooltipPointerDepth
     readonly property var cardPlacement: DockSurfaceGeometry.tooltipPlacementInOutput(
         Math.max(1, outputWidth), Math.max(1, outputHeight), anchorRect,
         cardWidth, cardHeight, dockPosition)
@@ -33,7 +32,10 @@ Window {
     width: Math.max(1, outputWidth)
     height: Math.max(1, outputHeight)
 
-    Shared.ShellMaterialTheme { id: material }
+    Shared.ShellMaterialTheme {
+        id: material
+        objectName: "dockTooltipMaterial"
+    }
 
     function showTooltip(text, visualAnchorRect, position) {
         title = text
@@ -48,86 +50,62 @@ Window {
     }
 
     BackdropEffectRegions {
+        objectName: "dockTooltipBackdropRegions"
         anchors.fill: parent
-        enabled: material.isFrosted
+        enabled: material.isFrosted && window.tooltipVisible
 
         BackdropRegion {
-            item: tooltipCard
-            enabled: tooltipCard.visible
-            radius: tooltipCard.radius
+            item: tooltipBackdropBody
+            enabled: tooltipBackdropBody.visible
+            radius: window.cardHeight / 2
         }
     }
 
-    Rectangle {
-        id: tooltipPointer
-        objectName: "dockTooltipPointer"
-        z: 0
-        width: window.pointerSize
-        height: window.pointerSize
-        x: window.cardPlacement.pointerEdge === "left"
-            ? window.cardRect.x - width / 2
-            : window.cardPlacement.pointerEdge === "right"
-                ? window.cardRect.x + window.cardRect.width - width / 2
-                : window.cardRect.x + window.cardPlacement.pointerCenter - width / 2
-        y: window.cardPlacement.pointerEdge === "top"
-            ? window.cardRect.y - height / 2
-            : window.cardPlacement.pointerEdge === "bottom"
-                ? window.cardRect.y + window.cardRect.height - height / 2
-                : window.cardRect.y + window.cardPlacement.pointerCenter - height / 2
-        rotation: 45
-        transformOrigin: Item.Center
-        radius: 1
-        color: material.surfaceElevated
-        border.color: material.border
-        border.width: 1
-        visible: tooltipCard.visible
-
-        layer.enabled: visible
-        layer.effect: MultiEffect {
-            shadowEnabled: true
-            shadowColor: material.shadow
-            shadowBlur: 0.28
-            shadowVerticalOffset: 2
-        }
-    }
-
-    Rectangle {
-        id: tooltipCard
-        objectName: "dockTooltipCard"
-        z: 1
+    // The compositor rounds this body-only proxy. The vector tail shares its
+    // visual fill but is not registered as an independent glass surface.
+    Item {
+        id: tooltipBackdropBody
+        objectName: "dockTooltipBackdropBody"
         x: window.cardRect.x
         y: window.cardRect.y
         width: window.cardRect.width
         height: window.cardRect.height
-        radius: material.radiusMedium
-        color: material.surfaceElevated
-        border.color: material.border
-        border.width: 1
         visible: window.tooltipVisible && window.title.length > 0
+    }
 
-        layer.enabled: visible
-        layer.effect: MultiEffect {
-            shadowEnabled: true
-            shadowColor: material.shadow
-            shadowBlur: 0.36
-            shadowVerticalOffset: 3
-        }
+    DockTooltipBubble {
+        id: tooltipBubble
+        x: window.cardRect.x - (cardPlacement.pointerEdge === "left" ? pointerDepth : 0)
+        y: window.cardRect.y - (cardPlacement.pointerEdge === "top" ? pointerDepth : 0)
+        cardWidth: window.cardRect.width
+        bodyHeight: window.cardRect.height
+        pointerEdge: window.cardPlacement.pointerEdge
+        pointerCenter: window.cardPlacement.pointerCenter
+        fillColor: material.tooltipSurface
+        borderColor: material.tooltipBorder
+        shadowColor: material.tooltipShadow
+        visible: window.tooltipVisible && window.title.length > 0
+        z: 1
+    }
 
-        Text {
-            id: tooltipText
-            objectName: "dockTooltipText"
-            anchors.fill: parent
-            anchors.leftMargin: 12
-            anchors.rightMargin: 12
-            text: window.title
-            color: material.textActive
-            elide: Text.ElideRight
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-            maximumLineCount: 1
-            font.family: material.fontFamily
-            font.pixelSize: material.fontSizeCaption
-            font.weight: Font.Medium
-        }
+    Text {
+        id: tooltipText
+        objectName: "dockTooltipText"
+        x: window.cardRect.x + 16
+        y: window.cardRect.y
+        width: window.cardRect.width - 32
+        height: window.cardRect.height
+        text: window.title
+        color: material.textActive
+        elide: Text.ElideRight
+        wrapMode: Text.NoWrap
+        horizontalAlignment: Text.AlignHCenter
+        verticalAlignment: Text.AlignVCenter
+        maximumLineCount: 1
+        font.family: material.fontFamily
+        font.pixelSize: material.tooltipFontSize
+        font.weight: Font.Medium
+        visible: window.tooltipVisible && window.title.length > 0
+        z: 2
     }
 }

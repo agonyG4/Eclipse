@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the generic Dock app tooltip with a themed speech bubble anchored to the visually magnified icon.
+**Goal:** Present the Dock app tooltip as a compact themed pill bubble anchored to the visually magnified icon.
 
-**Architecture:** Keep hover and magnification in `DockPanel`; map its current `interactionRegion` using `DockSurfaceGeometry`; present it in a full-output input-transparent Layer Shell window. The card uses shared theme tokens and a pure placement calculation for bottom, left, and right Docks.
+**Architecture:** Keep hover and magnification in `DockPanel`; map its current `interactionRegion` using `DockSurfaceGeometry`; present it in a full-output input-transparent Layer Shell window. One closed Qt Quick Shapes path renders the pill body and integrated tail. The text uses the body rectangle, while Frosted blur registers a rounded body-only region.
 
 **Tech Stack:** C++20, Qt 6.6, Qt Quick/QML, LayerShellQt, Qt Test.
 
@@ -19,7 +19,7 @@
 
 ## Review Focus
 
-- Each Dock edge and preferred-side fallback: verify pointer edge, rectangle bounds, and output clamping in geometry tests.
+- Each Dock edge and preferred-side fallback: verify tail edge, target gap, pointer-center safe inset, body bounds, and output clamping in geometry tests.
 - Pointer target movement during the delay and target deletion: verify the stale target is not presented.
 - Magnification and drag reorder: verify the tooltip anchor follows the transformed interaction region and hides during reorder.
 - Dock autohide and context menus: verify tooltip visibility is suppressed.
@@ -66,9 +66,9 @@
 - `DockPanel` resolves the target delegate, obtains its `interactionRegion`, maps it through `windowRect` and `DockSurfaceGeometry.outputLocalDelegateRect`, and calls the surface after the existing delay.
 - `AstreaShellApplication` configures and refreshes the tooltip window on the same screen as the Dock.
 
-- [ ] Add QML regression assertions for the passive tooltip window, themed card/pointer, delayed target presentation, mapped magnified anchor, and hiding during context menus/reorder.
+- [ ] Add QML regression assertions for the passive tooltip window, unified vector bubble, delayed target presentation, mapped magnified anchor, and hiding during context menus/reorder.
 - [ ] Run the targeted QML test and confirm it fails before adding the presentation path.
-- [ ] Add shared material text/font/shadow tokens; render a one-line rounded card and a pointer with a subtle shadow and border.
+- [ ] Add shared material text/font/shadow tokens; render one one-line vector bubble with a subtle continuous outline and shadow.
 - [ ] Remove `QtQuick.Controls.Basic` and attached `ToolTip` properties from `DockAppDelegate.qml`.
 - [ ] Add the separate output-sized passive window, configure it with the new Dock Layer Shell policy, and wire DockPanel eligibility/anchor state to it.
 - [ ] Run the targeted QML test, geometry tests, Layer Shell test, and complete Dock hover QML test.
@@ -89,3 +89,31 @@
 - [x] Capture the tooltip lifecycle generation and `pointerTargetTaskKey` when queuing a refresh. Discard the callback at execution if either identity changed, the surface is missing or hidden, or the current presentation is ineligible.
 - [x] Coalesce refresh requests for the same generation and task so output width/height changes resolve once using final geometry. Route output geometry, magnification geometry, and `DockController.modelChanged` refreshes through this guarded path.
 - [x] Qualify replacement-target races for geometry and model changes, preserve pending-target/removal and interaction regressions, and assert one presentation for settled output geometry changes.
+
+### Visual Hardening Pass (2026-10-03)
+
+**Goal:** Replace the separate card and rotated-square pointer with one pill-shaped vector bubble while preserving tooltip placement, ownership, lifecycle, and Layer Shell behavior.
+
+**Architecture:** `DockSurfaceGeometry` is the explicit owner of the body height, pointer width/depth, and target gap consumed by both C++ placement and QML rendering. `DockTooltipBubble.qml` draws one closed `ShapePath` for the rounded body and integrated pointer. The tooltip text remains centered in the body rectangle. Frosted mode registers a rounded body-only backdrop proxy, then draws the single translucent silhouette above it with one outline and one shadow.
+
+**Files:**
+- Modify: `Dock/core/DockSurfaceGeometry.hpp` and `.cpp` for shared tooltip metrics, pill-safe pointer inset, and 3 px target gap.
+- Modify: `Dock/tests/DockSurfaceGeometryTest.cpp` for shared metrics, all edge orientations, rounded-corner exclusion, target gap, and clamped-pointer behavior.
+- Create: `Dock/qml/components/DockTooltipBubble.qml` for a single Qt Quick Shapes silhouette and one shadow.
+- Modify: `Dock/qml/components/DockTooltipSurface.qml` for the body-sized Frosted backdrop proxy, text layout, and bubble wiring; preserve surface flags and lifecycle calls.
+- Modify: `Shell/CMakeLists.txt` to add the new QML resource and alias.
+- Modify: `shared/qml/ShellMaterialTheme.qml` to add tooltip-specific surface, border, and shadow semantics without changing existing tokens.
+- Modify: `Dock/tests/DockHoverQmlTest.cpp` for unified-shape, pill radius, body text/backdrop bounds, translucency, single shadow, and orientation regressions.
+- Modify: this spec, this plan, and `.superpowers/sdd/2026-10-02-dock-app-tooltip/progress.md` after verification.
+
+**Execution steps:**
+
+- [x] Update the geometry and QML assertions first, build and run them from `/mnt/Aether/Desktop/GitHub/Eclipse-build`, and confirm the expected new-architecture or metric assertions fail.
+- [x] Add constant `DockSurfaceGeometry` properties for `tooltipBodyHeight`, `tooltipPointerWidth`, `tooltipPointerDepth`, and `tooltipTargetGap`; compute placement spacing from depth plus target gap and clamp pointer centers using `min(edgeLength / 2, bodyHeight / 2 + pointerWidth / 2)`.
+- [x] Implement `DockTooltipBubble.qml` with `Shape.CurveRenderer` and one closed path for top, bottom, left, and right tails; use the geometry object's pointer metrics and a single `MultiEffect` shadow on the vector shape.
+- [x] Rewire `DockTooltipSurface.qml` to use a 72–280 px body, 34 px height, 16 px horizontal text padding, 13 px text, and a non-rendering pill-body backdrop proxy; keep the body and text bounds separate from total bubble bounds.
+- [x] Add tooltip-specific shared material colors: opaque elevated default, approximately 0.44-alpha Frosted tint, more transparent existing-style tint for Transparent, an attenuated border, and one subtle shadow. Keep existing shared tokens intact.
+- [x] Add the new component to `Shell/CMakeLists.txt`, update the exact geometry/QML regressions, and revise the visual architecture wording in the spec without rewriting prior lifecycle history.
+- [x] Build `dock-hover-qml-test`, `dock-surface-geometry-test`, `astrea-shell`, and `bar-qml-smoke-test`; run the three requested focused tests, the complete Dock CTest set, and `git diff --check` from the verified Aether build tree.
+- [x] Inspect the available native Wayland session. No running Astrea Shell or Typhon process was available, and the desktop automation surface was unavailable, so native visual qualification could not be performed.
+- [x] Append a separate visual-hardening entry to progress after verification, review the final changed-file list and forbidden legacy tooltip constructions, then commit the logical change on `main`.

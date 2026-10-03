@@ -36,6 +36,8 @@ private slots:
     void restingAnchorIgnoresMagnificationScale();
     void tooltipPlacementSupportsEveryDockEdge();
     void tooltipPlacementClampsAndFlipsNearOutputEdges();
+    void tooltipMetricsMatchTheSharedBubbleGeometry();
+    void tooltipTipKeepsTheSmallTargetGapForEveryDockEdge();
 };
 
 void DockSurfaceGeometryTest::centeredDockUsesOutputLocalCoordinates()
@@ -180,7 +182,7 @@ void DockSurfaceGeometryTest::tooltipPlacementSupportsEveryDockEdge()
         geometry, 800, 600, QRectF(376, 500, 48, 48), 180, 34,
         QStringLiteral("bottom"), &invoked);
     QVERIFY2(invoked, "DockSurfaceGeometry must expose tooltip placement to QML");
-    QCOMPARE(bottom.value(QStringLiteral("cardRect")).toRect(), QRect(310, 450, 180, 34));
+    QCOMPARE(bottom.value(QStringLiteral("cardRect")).toRect(), QRect(310, 455, 180, 34));
     QCOMPARE(bottom.value(QStringLiteral("pointerEdge")).toString(), QStringLiteral("bottom"));
     QCOMPARE(bottom.value(QStringLiteral("pointerCenter")).toInt(), 90);
 
@@ -188,7 +190,7 @@ void DockSurfaceGeometryTest::tooltipPlacementSupportsEveryDockEdge()
         geometry, 800, 600, QRectF(10, 250, 48, 48), 180, 34,
         QStringLiteral("left"), &invoked);
     QVERIFY(invoked);
-    QCOMPARE(left.value(QStringLiteral("cardRect")).toRect(), QRect(74, 257, 180, 34));
+    QCOMPARE(left.value(QStringLiteral("cardRect")).toRect(), QRect(69, 257, 180, 34));
     QCOMPARE(left.value(QStringLiteral("pointerEdge")).toString(), QStringLiteral("left"));
     QCOMPARE(left.value(QStringLiteral("pointerCenter")).toInt(), 17);
 
@@ -196,7 +198,7 @@ void DockSurfaceGeometryTest::tooltipPlacementSupportsEveryDockEdge()
         geometry, 800, 600, QRectF(742, 250, 48, 48), 180, 34,
         QStringLiteral("right"), &invoked);
     QVERIFY(invoked);
-    QCOMPARE(right.value(QStringLiteral("cardRect")).toRect(), QRect(546, 257, 180, 34));
+    QCOMPARE(right.value(QStringLiteral("cardRect")).toRect(), QRect(551, 257, 180, 34));
     QCOMPARE(right.value(QStringLiteral("pointerEdge")).toString(), QStringLiteral("right"));
     QCOMPARE(right.value(QStringLiteral("pointerCenter")).toInt(), 17);
 }
@@ -210,23 +212,23 @@ void DockSurfaceGeometryTest::tooltipPlacementClampsAndFlipsNearOutputEdges()
         QStringLiteral("bottom"), &invoked);
     QVERIFY2(invoked, "DockSurfaceGeometry must expose tooltip placement to QML");
     const QRect bottomRect = bottomAtCorner.value(QStringLiteral("cardRect")).toRect();
-    QCOMPARE(bottomRect, QRect(8, 450, 180, 34));
-    QCOMPARE(bottomAtCorner.value(QStringLiteral("pointerCenter")).toInt(), 16);
+    QCOMPARE(bottomRect, QRect(8, 455, 180, 34));
+    QCOMPARE(bottomAtCorner.value(QStringLiteral("pointerCenter")).toInt(), 24);
 
     const QVariantMap bottomFlipped = tooltipPlacement(
         geometry, 800, 600, QRectF(376, 2, 48, 48), 180, 34,
         QStringLiteral("bottom"), &invoked);
     QVERIFY(invoked);
     QCOMPARE(bottomFlipped.value(QStringLiteral("pointerEdge")).toString(), QStringLiteral("top"));
-    QCOMPARE(bottomFlipped.value(QStringLiteral("cardRect")).toRect(), QRect(310, 66, 180, 34));
+    QCOMPARE(bottomFlipped.value(QStringLiteral("cardRect")).toRect(), QRect(310, 61, 180, 34));
 
     const QVariantMap leftClamped = tooltipPlacement(
         geometry, 800, 600, QRectF(10, 560, 48, 48), 180, 34,
         QStringLiteral("left"), &invoked);
     QVERIFY(invoked);
     const QRect leftRect = leftClamped.value(QStringLiteral("cardRect")).toRect();
-    QCOMPARE(leftRect, QRect(74, 558, 180, 34));
-    QCOMPARE(leftClamped.value(QStringLiteral("pointerCenter")).toInt(), 20);
+    QCOMPARE(leftRect, QRect(69, 558, 180, 34));
+    QCOMPARE(leftClamped.value(QStringLiteral("pointerCenter")).toInt(), 17);
     QVERIFY(leftRect.left() >= 0 && leftRect.right() < 800);
     QVERIFY(leftRect.top() >= 0 && leftRect.bottom() < 600);
 
@@ -234,15 +236,74 @@ void DockSurfaceGeometryTest::tooltipPlacementClampsAndFlipsNearOutputEdges()
         geometry, 800, 600, QRectF(740, 250, 48, 48), 180, 34,
         QStringLiteral("left"), &invoked);
     QVERIFY(invoked);
-    QCOMPARE(leftFlipped.value(QStringLiteral("cardRect")).toRect(), QRect(544, 257, 180, 34));
+    QCOMPARE(leftFlipped.value(QStringLiteral("cardRect")).toRect(), QRect(549, 257, 180, 34));
     QCOMPARE(leftFlipped.value(QStringLiteral("pointerEdge")).toString(), QStringLiteral("right"));
 
     const QVariantMap rightFlipped = tooltipPlacement(
         geometry, 800, 600, QRectF(10, 250, 48, 48), 180, 34,
         QStringLiteral("right"), &invoked);
     QVERIFY(invoked);
-    QCOMPARE(rightFlipped.value(QStringLiteral("cardRect")).toRect(), QRect(74, 257, 180, 34));
+    QCOMPARE(rightFlipped.value(QStringLiteral("cardRect")).toRect(), QRect(69, 257, 180, 34));
     QCOMPARE(rightFlipped.value(QStringLiteral("pointerEdge")).toString(), QStringLiteral("left"));
+}
+
+void DockSurfaceGeometryTest::tooltipMetricsMatchTheSharedBubbleGeometry()
+{
+    DockSurfaceGeometry geometry;
+    QCOMPARE(geometry.property("tooltipBodyHeight").toInt(), 34);
+    QCOMPARE(geometry.property("tooltipPointerWidth").toInt(), 14);
+    QCOMPARE(geometry.property("tooltipPointerDepth").toInt(), 8);
+    QCOMPARE(geometry.property("tooltipTargetGap").toInt(), 3);
+}
+
+void DockSurfaceGeometryTest::tooltipTipKeepsTheSmallTargetGapForEveryDockEdge()
+{
+    DockSurfaceGeometry geometry;
+    bool invoked = false;
+
+    const QRectF bottomAnchor(376, 500, 48, 48);
+    const QVariantMap bottom = tooltipPlacement(
+        geometry, 800, 600, bottomAnchor, 180, 34, QStringLiteral("bottom"), &invoked);
+    QVERIFY(invoked);
+    const QRect bottomCard = bottom.value(QStringLiteral("cardRect")).toRect();
+    const int bottomCenter = bottom.value(QStringLiteral("pointerCenter")).toInt();
+    QCOMPARE(bottom.value(QStringLiteral("pointerEdge")).toString(), QStringLiteral("bottom"));
+    QCOMPARE(bottomCard.x() + bottomCenter, qRound(bottomAnchor.center().x()));
+    QCOMPARE(bottomCard.y() + bottomCard.height() + 8, qRound(bottomAnchor.top()) - 3);
+
+    const QRectF leftAnchor(10, 250, 48, 48);
+    const QVariantMap left = tooltipPlacement(
+        geometry, 800, 600, leftAnchor, 180, 34, QStringLiteral("left"), &invoked);
+    QVERIFY(invoked);
+    const QRect leftCard = left.value(QStringLiteral("cardRect")).toRect();
+    QCOMPARE(left.value(QStringLiteral("pointerCenter")).toInt(), 17);
+    QCOMPARE(leftCard.x() - 8, qRound(leftAnchor.right()) + 3);
+    QCOMPARE(leftCard.y() + left.value(QStringLiteral("pointerCenter")).toInt(),
+             qRound(leftAnchor.center().y()));
+
+    const QRectF rightAnchor(742, 250, 48, 48);
+    const QVariantMap right = tooltipPlacement(
+        geometry, 800, 600, rightAnchor, 180, 34, QStringLiteral("right"), &invoked);
+    QVERIFY(invoked);
+    const QRect rightCard = right.value(QStringLiteral("cardRect")).toRect();
+    QCOMPARE(right.value(QStringLiteral("pointerCenter")).toInt(), 17);
+    QCOMPARE(rightCard.x() + rightCard.width() + 8, qRound(rightAnchor.left()) - 3);
+
+    // At the output's left edge the target falls inside the 17 px pill corner
+    // arc plus half the 14 px tail base. Clamping must stop at the closest
+    // safe center instead of cutting the rounded corner.
+    const QVariantMap clamped = tooltipPlacement(
+        geometry, 800, 600, QRectF(0, 500, 48, 48), 180, 34,
+        QStringLiteral("bottom"), &invoked);
+    QVERIFY(invoked);
+    const int safeInset = geometry.property("tooltipBodyHeight").toInt() / 2
+        + geometry.property("tooltipPointerWidth").toInt() / 2;
+    const QRect clampedCard = clamped.value(QStringLiteral("cardRect")).toRect();
+    QCOMPARE(clamped.value(QStringLiteral("pointerCenter")).toInt(), safeInset);
+    QVERIFY(clamped.value(QStringLiteral("pointerCenter")).toInt() >= safeInset);
+    const qreal desiredCenter = QRectF(0, 500, 48, 48).center().x() - clampedCard.x();
+    QCOMPARE(qAbs(clamped.value(QStringLiteral("pointerCenter")).toReal() - desiredCenter),
+             qreal(safeInset) - desiredCenter);
 }
 
 QTEST_GUILESS_MAIN(DockSurfaceGeometryTest)

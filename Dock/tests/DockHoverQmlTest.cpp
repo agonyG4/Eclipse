@@ -9,6 +9,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QFont>
 #include <QGuiApplication>
 #include <QImage>
 #include <QQmlComponent>
@@ -1801,6 +1802,10 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
     FakeContextMenuController contextMenuController;
     FakeInputRegionBridge inputRegionBridge;
     DockSurfaceGeometry surfaceGeometry;
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    ThemeController theme(temporary.filePath(QStringLiteral("missing-theme.json")));
+    theme.setShellStyle(2);
 
     QQmlEngine engine;
     engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
@@ -1811,6 +1816,7 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
                                               &surfaceGeometry);
     engine.rootContext()->setContextProperty(QStringLiteral("DockInputRegion"),
                                               &inputRegionBridge);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &theme);
 
     QQmlComponent component(&engine, QUrl::fromLocalFile(kDockMainPath));
     QVERIFY2(component.status() == QQmlComponent::Ready,
@@ -1822,13 +1828,30 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
     auto *tooltipWindow = window->findChild<QQuickWindow *>(
         QStringLiteral("dockTooltipSurface"));
     QVERIFY2(tooltipWindow, "Dock Main must own the native tooltip surface");
-    auto *tooltipCard = tooltipWindow->findChild<QQuickItem *>(
-        QStringLiteral("dockTooltipCard"));
-    auto *tooltipPointer = tooltipWindow->findChild<QQuickItem *>(
-        QStringLiteral("dockTooltipPointer"));
+    auto *tooltipBubble = tooltipWindow->findChild<QQuickItem *>(
+        QStringLiteral("dockTooltipBubble"));
+    auto *tooltipShape = tooltipWindow->findChild<QQuickItem *>(
+        QStringLiteral("dockTooltipShape"));
+    auto *tooltipBackdropBody = tooltipWindow->findChild<QQuickItem *>(
+        QStringLiteral("dockTooltipBackdropBody"));
     auto *tooltipText = tooltipWindow->findChild<QQuickItem *>(
         QStringLiteral("dockTooltipText"));
-    QVERIFY(tooltipCard && tooltipPointer && tooltipText);
+    auto *tooltipMaterial = tooltipWindow->findChild<QObject *>(
+        QStringLiteral("dockTooltipMaterial"));
+    QVERIFY(tooltipBubble && tooltipShape && tooltipBackdropBody && tooltipText
+            && tooltipMaterial);
+    QVERIFY(!tooltipWindow->findChild<QQuickItem *>(QStringLiteral("dockTooltipCard")));
+    QVERIFY(!tooltipWindow->findChild<QQuickItem *>(QStringLiteral("dockTooltipPointer")));
+    QCOMPARE(tooltipBubble->property("pointerWidth").toInt(), 14);
+    QCOMPARE(tooltipBubble->property("pointerDepth").toInt(), 8);
+    QFile bubbleSource(QString::fromUtf8(
+        DOCK_SOURCE_DIR "/qml/components/DockTooltipBubble.qml"));
+    QVERIFY(bubbleSource.open(QIODevice::ReadOnly));
+    const QString bubbleSourceText = QString::fromUtf8(bubbleSource.readAll());
+    QCOMPARE(bubbleSourceText.count(QStringLiteral("ShapePath {")), 1);
+    QCOMPARE(bubbleSourceText.count(QStringLiteral("MultiEffect {")), 1);
+    QVERIFY(bubbleSourceText.contains(QStringLiteral("preferredRendererType: Shape.CurveRenderer")));
+    QVERIFY(bubbleSourceText.contains(QStringLiteral("shadowEnabled: true")));
     QVERIFY(window->metaObject()->indexOfProperty("outputWidth") >= 0);
     QVERIFY(window->metaObject()->indexOfProperty("outputHeight") >= 0);
 
@@ -1844,27 +1867,125 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
     QVERIFY(tooltipWindow->flags().testFlag(Qt::WindowTransparentForInput));
     QVERIFY(tooltipWindow->flags().testFlag(Qt::WindowDoesNotAcceptFocus));
     QVERIFY(!tooltipWindow->isVisible());
+    window->show();
 
-    QVERIFY(QMetaObject::invokeMethod(
-        tooltipWindow, "showTooltip", Qt::DirectConnection,
-        Q_ARG(QVariant, QVariant(QStringLiteral("Tooltip App"))),
-        Q_ARG(QVariant, QVariant(QRect(1880, 1000, 48, 48))),
-        Q_ARG(QVariant, QVariant(QStringLiteral("bottom")))));
-    QTRY_VERIFY_WITH_TIMEOUT(tooltipCard->isVisible(), 1000);
-    QVERIFY(tooltipPointer->isVisible());
+    const auto showTooltip = [tooltipWindow](const QString &title, const QRect &anchor,
+                                             const QString &position) {
+        return QMetaObject::invokeMethod(
+            tooltipWindow, "showTooltip", Qt::DirectConnection,
+            Q_ARG(QVariant, QVariant(title)), Q_ARG(QVariant, QVariant(anchor)),
+            Q_ARG(QVariant, QVariant(position)));
+    };
+    const auto verifyPath = [tooltipBubble] {
+        const QString path = tooltipBubble->property("pathData").toString();
+        return path.startsWith(QStringLiteral("M "))
+            && path.count(QLatin1Char('M')) == 1 && path.count(QLatin1Char('Z')) == 1;
+    };
+    QVERIFY(showTooltip(QStringLiteral("Tooltip App"), QRect(1880, 1000, 48, 48),
+                        QStringLiteral("bottom")));
+    QTRY_VERIFY_WITH_TIMEOUT(tooltipBubble->isVisible(), 1000);
+    QVERIFY(tooltipShape->isVisible());
+    QCOMPARE(tooltipBubble->property("bodyHeight").toInt(), 34);
+    QCOMPARE(tooltipBubble->property("bodyRadius").toReal(), 17.0);
+    const QString bottomPath = tooltipBubble->property("pathData").toString();
+    QVERIFY(bottomPath.startsWith(QStringLiteral("M ")));
+    QCOMPARE(bottomPath.count(QLatin1Char('M')), 1);
+    QCOMPARE(bottomPath.count(QLatin1Char('Z')), 1);
     QCOMPARE(tooltipText->property("text").toString(), QStringLiteral("Tooltip App"));
-    QVERIFY(tooltipCard->property("radius").toReal() > 0);
-    QVERIFY(tooltipCard->property("color").value<QColor>().alpha() > 0);
+    const QColor frostedFill = tooltipBubble->property("fillColor").value<QColor>();
+    QVERIFY(frostedFill.alphaF() >= 0.35 && frostedFill.alphaF() <= 0.50);
     const QRect tooltipRect = tooltipWindow->property("cardRect").toRect();
     QVERIFY(tooltipRect.left() >= 0 && tooltipRect.right() < 1920);
     QVERIFY(tooltipRect.top() >= 0 && tooltipRect.bottom() < 1080);
+    QCOMPARE(tooltipText->x(), qreal(tooltipRect.x() + 16));
+    QCOMPARE(tooltipText->y(), qreal(tooltipRect.y()));
+    QCOMPARE(tooltipText->width(), qreal(tooltipRect.width() - 32));
+    QCOMPARE(tooltipText->height(), qreal(tooltipRect.height()));
+    QCOMPARE(tooltipText->property("font").value<QFont>().pixelSize(), 13);
+    QCOMPARE(tooltipText->property("font").value<QFont>().weight(), QFont::Medium);
+    QCOMPARE(tooltipBackdropBody->x(), qreal(tooltipRect.x()));
+    QCOMPARE(tooltipBackdropBody->y(), qreal(tooltipRect.y()));
+    QCOMPARE(tooltipBackdropBody->width(), qreal(tooltipRect.width()));
+    QCOMPARE(tooltipBackdropBody->height(), qreal(tooltipRect.height()));
+    QCOMPARE(tooltipBubble->property("cardWidth").toReal(), qreal(tooltipRect.width()));
     QCOMPARE(tooltipWindow->property("cardPlacement").toMap()
                  .value(QStringLiteral("pointerEdge")).toString(),
              QStringLiteral("bottom"));
-    QVERIFY(QMetaObject::invokeMethod(tooltipWindow, "hideTooltip", Qt::DirectConnection));
-    QTRY_VERIFY_WITH_TIMEOUT(!tooltipCard->isVisible(), 1000);
+    const auto effectRegions = tooltipWindow->findChildren<AstreaBackdropEffectRegions *>();
+    QCOMPARE(effectRegions.size(), 1);
+    QVERIFY(effectRegions.constFirst()->enabled());
+    auto *backdropDescriptor = tooltipWindow->findChild<AstreaBackdropRegion *>();
+    QVERIFY(backdropDescriptor);
+    QCOMPARE(backdropDescriptor->item(), tooltipBackdropBody);
+    QCOMPARE(backdropDescriptor->radius(), 17.0);
+    QTRY_VERIFY_WITH_TIMEOUT(!effectRegions.constFirst()->resolvedRegion().isEmpty(), 1000);
+    const QRect resolvedBackdropBounds =
+        backdropBounds(effectRegions.constFirst()->resolvedRegion());
+    QCOMPARE(resolvedBackdropBounds.top(), tooltipRect.top());
+    QCOMPARE(resolvedBackdropBounds.bottom(), tooltipRect.bottom());
+    QVERIFY(resolvedBackdropBounds.left() >= tooltipRect.left());
+    QVERIFY(resolvedBackdropBounds.right() <= tooltipRect.right());
+    QVERIFY(resolvedBackdropBounds.width() <= tooltipRect.width());
+    QVERIFY(resolvedBackdropBounds
+            != QRect(tooltipBubble->x(), tooltipBubble->y(),
+                     qRound(tooltipBubble->width()), qRound(tooltipBubble->height())));
 
-    window->show();
+    QVERIFY(showTooltip(QStringLiteral("A"), QRect(800, 800, 48, 48),
+                        QStringLiteral("bottom")));
+    QCOMPARE(tooltipWindow->property("cardRect").toRect().width(), 72);
+    QCOMPARE(tooltipText->width(), 40.0);
+    QVERIFY(showTooltip(QString(160, QLatin1Char('W')), QRect(800, 800, 48, 48),
+                        QStringLiteral("bottom")));
+    QCOMPARE(tooltipWindow->property("cardRect").toRect().width(), 280);
+    QCOMPARE(tooltipText->width(), 248.0);
+
+    struct TooltipMaterialExpectation {
+        int themeMode;
+        int shellStyle;
+        qreal fillAlpha;
+    };
+    const QList<TooltipMaterialExpectation> tooltipMaterials{
+        {0, 0, 0.06}, {0, 1, 1.0}, {0, 2, 0.46},
+        {1, 0, 0.22}, {1, 1, 1.0}, {1, 2, 0.44},
+    };
+    for (const auto &values : tooltipMaterials) {
+        theme.setThemeMode(values.themeMode);
+        theme.setShellStyle(values.shellStyle);
+        QCoreApplication::processEvents();
+        const QColor fill = tooltipBubble->property("fillColor").value<QColor>();
+        const QColor tokenFill = tooltipMaterial->property("tooltipSurface").value<QColor>();
+        QVERIFY(qAbs(fill.alphaF() - values.fillAlpha) < 0.01);
+        QVERIFY(qAbs(tokenFill.alphaF() - values.fillAlpha) < 0.01);
+    }
+    theme.setThemeMode(0);
+    theme.setShellStyle(2);
+    QCoreApplication::processEvents();
+
+    QVERIFY(showTooltip(QStringLiteral("Top"), QRect(800, 0, 48, 48),
+                        QStringLiteral("bottom")));
+    QVERIFY(verifyPath());
+    QCOMPARE(tooltipWindow->property("cardPlacement").toMap()
+                 .value(QStringLiteral("pointerEdge")).toString(), QStringLiteral("top"));
+    QVERIFY(showTooltip(QStringLiteral("Left"), QRect(0, 400, 48, 48),
+                        QStringLiteral("left")));
+    QVERIFY(verifyPath());
+    QCOMPARE(tooltipWindow->property("cardPlacement").toMap()
+                 .value(QStringLiteral("pointerEdge")).toString(), QStringLiteral("left"));
+    QVERIFY(showTooltip(QStringLiteral("Right"), QRect(1850, 400, 48, 48),
+                        QStringLiteral("right")));
+    QVERIFY(verifyPath());
+    QCOMPARE(tooltipWindow->property("cardPlacement").toMap()
+                 .value(QStringLiteral("pointerEdge")).toString(), QStringLiteral("right"));
+    QVERIFY(showTooltip(QStringLiteral("Clamped"), QRect(0, 800, 48, 48),
+                        QStringLiteral("bottom")));
+    QVERIFY(verifyPath());
+    QCOMPARE(tooltipWindow->property("cardPlacement").toMap()
+                 .value(QStringLiteral("pointerCenter")).toInt(),
+             surfaceGeometry.property("tooltipBodyHeight").toInt() / 2
+                 + surfaceGeometry.property("tooltipPointerWidth").toInt() / 2);
+    QVERIFY(QMetaObject::invokeMethod(tooltipWindow, "hideTooltip", Qt::DirectConnection));
+    QTRY_VERIFY_WITH_TIMEOUT(!tooltipBubble->isVisible(), 1000);
+
     QTRY_VERIFY_WITH_TIMEOUT(delegate(panel, QStringLiteral("one.desktop")) != nullptr, 1000);
     QTest::qWait(20);
     auto *delegateItem = delegate(panel, QStringLiteral("one.desktop"));

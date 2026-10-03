@@ -12,9 +12,10 @@ qreal clampValue(qreal value, qreal minimum, qreal maximum)
 
 int clampedPointerCenter(qreal targetCenter, qreal cardOrigin, int edgeLength)
 {
-    const int cornerInset = qMin(14, edgeLength / 2);
-    return qRound(clampValue(targetCenter - cardOrigin, cornerInset,
-                             edgeLength - cornerInset));
+    const int pillCornerRadius = DockSurfaceGeometry::TooltipBodyHeight / 2;
+    const int pointerHalfWidth = DockSurfaceGeometry::TooltipPointerWidth / 2;
+    const int safeInset = qMin(edgeLength / 2, pillCornerRadius + pointerHalfWidth);
+    return qRound(clampValue(targetCenter - cardOrigin, safeInset, edgeLength - safeInset));
 }
 
 } // namespace
@@ -118,9 +119,9 @@ DockTooltipPlacement DockSurfaceGeometry::calculateTooltipPlacement(
     const QString &position)
 {
     constexpr qreal edgeInset = 8.0;
-    constexpr qreal cardGap = 8.0;
-    constexpr qreal pointerDepth = 8.0;
-    constexpr qreal spacing = cardGap + pointerDepth;
+    constexpr qreal pointerDepth = DockSurfaceGeometry::TooltipPointerDepth;
+    constexpr qreal targetGap = DockSurfaceGeometry::TooltipTargetGap;
+    constexpr qreal spacing = targetGap + pointerDepth;
 
     const int outputWidth = qMax(1, outputSize.width());
     const int outputHeight = qMax(1, outputSize.height());

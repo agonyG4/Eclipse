@@ -136,6 +136,8 @@ void AstreaBackdropEffectRegions::connectRegion(AstreaBackdropRegion *region)
                                  &AstreaBackdropEffectRegions::scheduleSync));
     m_connections.append(connect(region, &AstreaBackdropRegion::radiusChanged, this,
                                  &AstreaBackdropEffectRegions::scheduleSync));
+    m_connections.append(connect(region, &AstreaBackdropRegion::localRectanglesChanged, this,
+                                 &AstreaBackdropEffectRegions::scheduleSync));
     refreshConnections();
 }
 
@@ -175,26 +177,38 @@ void AstreaBackdropEffectRegions::refreshConnections()
                                      &AstreaBackdropEffectRegions::scheduleSync));
         m_connections.append(connect(region, &AstreaBackdropRegion::radiusChanged, this,
                                      &AstreaBackdropEffectRegions::scheduleSync));
+        m_connections.append(connect(region, &AstreaBackdropRegion::localRectanglesChanged, this,
+                                     &AstreaBackdropEffectRegions::scheduleSync));
         if (auto *item = region->item()) {
             m_connections.append(connect(item, &QObject::destroyed, this, [this] {
                 scheduleSync();
             }));
-            m_connections.append(connect(item, &QQuickItem::xChanged, this,
-                                         &AstreaBackdropEffectRegions::scheduleSync));
-            m_connections.append(connect(item, &QQuickItem::yChanged, this,
-                                         &AstreaBackdropEffectRegions::scheduleSync));
-            m_connections.append(connect(item, &QQuickItem::widthChanged, this,
-                                         &AstreaBackdropEffectRegions::scheduleSync));
-            m_connections.append(connect(item, &QQuickItem::heightChanged, this,
-                                         &AstreaBackdropEffectRegions::scheduleSync));
-            m_connections.append(connect(item, &QQuickItem::visibleChanged, this,
-                                         &AstreaBackdropEffectRegions::scheduleSync));
-            m_connections.append(connect(item, &QQuickItem::opacityChanged, this,
-                                         &AstreaBackdropEffectRegions::scheduleSync));
-            m_connections.append(connect(item, &QQuickItem::scaleChanged, this,
-                                         &AstreaBackdropEffectRegions::scheduleSync));
-            m_connections.append(connect(item, &QQuickItem::windowChanged, this,
-                                         &AstreaBackdropEffectRegions::scheduleSync));
+            for (auto *transformedItem = item; transformedItem;
+                 transformedItem = transformedItem->parentItem()) {
+                m_connections.append(connect(transformedItem, &QQuickItem::xChanged, this,
+                                             &AstreaBackdropEffectRegions::scheduleSync));
+                m_connections.append(connect(transformedItem, &QQuickItem::yChanged, this,
+                                             &AstreaBackdropEffectRegions::scheduleSync));
+                m_connections.append(connect(transformedItem, &QQuickItem::widthChanged, this,
+                                             &AstreaBackdropEffectRegions::scheduleSync));
+                m_connections.append(connect(transformedItem, &QQuickItem::heightChanged, this,
+                                             &AstreaBackdropEffectRegions::scheduleSync));
+                m_connections.append(connect(transformedItem, &QQuickItem::visibleChanged, this,
+                                             &AstreaBackdropEffectRegions::scheduleSync));
+                m_connections.append(connect(transformedItem, &QQuickItem::opacityChanged, this,
+                                             &AstreaBackdropEffectRegions::scheduleSync));
+                m_connections.append(connect(transformedItem, &QQuickItem::scaleChanged, this,
+                                             &AstreaBackdropEffectRegions::scheduleSync));
+                m_connections.append(connect(transformedItem, &QQuickItem::rotationChanged, this,
+                                             &AstreaBackdropEffectRegions::scheduleSync));
+                m_connections.append(connect(transformedItem,
+                                             &QQuickItem::transformOriginChanged, this,
+                                             &AstreaBackdropEffectRegions::scheduleSync));
+                m_connections.append(connect(transformedItem, &QQuickItem::parentChanged, this,
+                                             &AstreaBackdropEffectRegions::refreshConnections));
+                m_connections.append(connect(transformedItem, &QQuickItem::windowChanged, this,
+                                             &AstreaBackdropEffectRegions::scheduleSync));
+            }
         }
     }
     scheduleSync();
@@ -208,19 +222,45 @@ QVector<QRect> AstreaBackdropEffectRegions::resolvedRegion() const
 
     const QRect surfaceBounds(QPoint(0, 0), window->size());
     QVector<RegionGeometry> geometries;
+    qsizetype explicitRectangleCount = 0;
     for (const auto *region : m_regions) {
         auto *item = region ? region->item() : nullptr;
         if (!region || !region->enabled() || !item || !itemIsVisible(item))
             continue;
         const QRect bounds = integerBounds(item->mapRectToItem(window->contentItem(),
                                                                item->boundingRect()));
-        const QRect clipped = bounds.intersected(surfaceBounds);
-        if (clipped.isEmpty())
-            continue;
         qreal radius = region->radius();
         if (item->width() > 0.0)
             radius *= qMax<qreal>(0.0, bounds.width() / item->width());
-        geometries.append({bounds, radius});
+        const QVariantList localRectangles = region->localRectangles();
+        if (localRectangles.isEmpty()) {
+            if (bounds.intersected(surfaceBounds).isEmpty())
+                continue;
+            geometries.append({bounds, radius});
+            continue;
+        }
+
+        for (const auto &value : localRectangles) {
+            if (!value.canConvert<QRectF>())
+                continue;
+            const QRectF localRectangle = value.toRectF();
+            if (localRectangle.isEmpty())
+                continue;
+            const QRect localBounds = integerBounds(item->mapRectToItem(
+                window->contentItem(), localRectangle));
+            if (localBounds.intersected(surfaceBounds).isEmpty())
+                continue;
+            ++explicitRectangleCount;
+            if (explicitRectangleCount > maxClientRegionRectangles) {
+                static std::once_flag warningOnce;
+                std::call_once(warningOnce, [] {
+                    qWarning() << "Backdrop effect explicit rectangles exceed the client region budget;"
+                                  " disabling this update";
+                });
+                return {};
+            }
+            geometries.append({localBounds, radius});
+        }
     }
 
     QVector<int> segmentLimits(geometries.size(), defaultCornerSegments);

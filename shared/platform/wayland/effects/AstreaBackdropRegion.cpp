@@ -31,3 +31,11 @@ void AstreaBackdropRegion::setRadius(const qreal radius)
     m_radius = bounded;
     emit radiusChanged();
 }
+
+void AstreaBackdropRegion::setLocalRectangles(const QVariantList &rectangles)
+{
+    if (m_localRectangles == rectangles)
+        return;
+    m_localRectangles = rectangles;
+    emit localRectanglesChanged();
+}

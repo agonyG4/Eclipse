@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QQuickItem>
+#include <QVariantList>
 
 #include <QtQml/qqmlregistration.h>
 
@@ -12,6 +13,8 @@ class AstreaBackdropRegion : public QObject {
     Q_PROPERTY(QQuickItem *item READ item WRITE setItem NOTIFY itemChanged)
     Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged)
     Q_PROPERTY(qreal radius READ radius WRITE setRadius NOTIFY radiusChanged)
+    Q_PROPERTY(QVariantList localRectangles READ localRectangles WRITE setLocalRectangles
+                   NOTIFY localRectanglesChanged)
 
 public:
     explicit AstreaBackdropRegion(QObject *parent = nullptr);
@@ -22,14 +25,18 @@ public:
     void setEnabled(bool enabled);
     qreal radius() const { return m_radius; }
     void setRadius(qreal radius);
+    QVariantList localRectangles() const { return m_localRectangles; }
+    void setLocalRectangles(const QVariantList &rectangles);
 
 signals:
     void itemChanged();
     void enabledChanged();
     void radiusChanged();
+    void localRectanglesChanged();
 
 private:
     QPointer<QQuickItem> m_item;
     bool m_enabled = true;
     qreal m_radius = 0.0;
+    QVariantList m_localRectangles;
 };

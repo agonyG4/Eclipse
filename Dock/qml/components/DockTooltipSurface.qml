@@ -59,10 +59,17 @@ Window {
             enabled: tooltipBackdropBody.visible
             radius: window.cardHeight / 2
         }
+
+        BackdropRegion {
+            item: tooltipBubble
+            enabled: tooltipBubble.visible
+            localRectangles: tooltipBubble.backdropTailRectangles
+            radius: 0
+        }
     }
 
-    // The compositor rounds this body-only proxy. The vector tail shares its
-    // visual fill but is not registered as an independent glass surface.
+    // The compositor rounds this body proxy; the vector tail contributes only
+    // bounded local scanlines from the same one-piece bubble geometry.
     Item {
         id: tooltipBackdropBody
         objectName: "dockTooltipBackdropBody"

@@ -4,7 +4,7 @@
 
 **Goal:** Present the Dock app tooltip as a compact themed pill bubble anchored to the visually magnified icon.
 
-**Architecture:** Keep hover and magnification in `DockPanel`; map its current `interactionRegion` using `DockSurfaceGeometry`; present it in a full-output input-transparent Layer Shell window. One closed Qt Quick Shapes path renders the pill body and integrated tail. The text uses the body rectangle, while Frosted blur registers a rounded body-only region.
+**Architecture:** Keep hover and magnification in `DockPanel`; map its current `interactionRegion` using `DockSurfaceGeometry`; present it in a full-output input-transparent Layer Shell window. One closed Qt Quick Shapes path renders the pill body and integrated tail with exact circular arcs. The text uses the body rectangle, while Frosted blur registers the rounded body unioned with bounded local tail scanlines through one effect binding.
 
 **Tech Stack:** C++20, Qt 6.6, Qt Quick/QML, LayerShellQt, Qt Test.
 
@@ -90,11 +90,38 @@
 - [x] Coalesce refresh requests for the same generation and task so output width/height changes resolve once using final geometry. Route output geometry, magnification geometry, and `DockController.modelChanged` refreshes through this guarded path.
 - [x] Qualify replacement-target races for geometry and model changes, preserve pending-target/removal and interaction regressions, and assert one presentation for settled output geometry changes.
 
+### Circular Side Tail and Frosted Region Integration (2026-10-03)
+
+**Goal:** Remove the vertical endcap stroke seam and blur the complete vector bubble in Frosted mode using the existing bounded rectangle protocol.
+
+**Architecture:** Keep one closed `ShapePath` for the pill and tail. Use exact circular SVG arcs and splice side tails between circle intersections derived from `radius - sqrt(radius² - halfPointer²)`. Extend `BackdropRegion` with optional item-local rectangles, map every rectangle through `QQuickItem::mapRectToItem`, and merge body and tail regions through the existing 96-rectangle budget.
+
+**Files:**
+- Modify: `Dock/qml/components/DockTooltipBubble.qml` for circular endcaps, side-tail intersections, and generated tail scanlines.
+- Modify: `Dock/qml/components/DockTooltipSurface.qml` for the shared Frosted body and tail descriptors.
+- Modify: `Dock/tests/DockHoverQmlTest.cpp` for semantic path, descriptor, union, clip, and rectangle-budget regressions.
+- Modify: `shared/platform/wayland/effects/AstreaBackdropRegion.hpp` and `.cpp` for `QVariantList localRectangles` and change notification.
+- Modify: `shared/platform/wayland/effects/AstreaBackdropEffectRegions.cpp` for transformed local rectangles in the existing aggregate budget.
+- Modify: `shared/tests/BackdropEffectRegionsTest.cpp` for exact local unions, transforms, empty-list compatibility, and budget behavior.
+- Modify: this spec and plan to record the final geometry and Frosted region model.
+- Modify: `.superpowers/sdd/2026-10-02-dock-app-tooltip/progress.md` only after verification.
+
+**Execution steps:**
+
+- [x] Add side-tail path and explicit-local-region regression assertions; run each focused test against the current implementation and confirm the expected failures.
+- [x] Add the backward-compatible `localRectangles` property and resolve each local rectangle through the owning item's coordinate transform and surface clip.
+- [x] Keep explicit rectangles in the existing 96-rectangle aggregation and conservative overflow path.
+- [x] Replace quadratic capsule corners with exact circular arcs; splice the left/right tails at the derived circle intersections.
+- [x] Generate no more than eight one-pixel tail scanlines from the same pointer geometry and register them beside the rounded body only while Frosted and visible.
+- [x] Build the requested targets in `/mnt/Aether/Desktop/GitHub/Eclipse-build`; run focused backdrop, geometry, and QML tests, the complete Dock set, and discovered shared-effects CTest cases.
+- [x] Update the spec/plan, inspect every changed file and forbidden legacy pattern, run `git diff --check`, and inspect for an available native Wayland session. No live Shell or Typhon process was available and the CUA native pipe could not attach, so native visual qualification remains outstanding.
+- [x] Append the verified result to progress and commit the logical change on `main`.
+
 ### Visual Hardening Pass (2026-10-03)
 
 **Goal:** Replace the separate card and rotated-square pointer with one pill-shaped vector bubble while preserving tooltip placement, ownership, lifecycle, and Layer Shell behavior.
 
-**Architecture:** `DockSurfaceGeometry` is the explicit owner of the body height, pointer width/depth, and target gap consumed by both C++ placement and QML rendering. `DockTooltipBubble.qml` draws one closed `ShapePath` for the rounded body and integrated pointer. The tooltip text remains centered in the body rectangle. Frosted mode registers a rounded body-only backdrop proxy, then draws the single translucent silhouette above it with one outline and one shadow.
+**Architecture:** `DockSurfaceGeometry` is the explicit owner of the body height, pointer width/depth, and target gap consumed by both C++ placement and QML rendering. `DockTooltipBubble.qml` draws one closed `ShapePath` for the rounded body and integrated pointer. The tooltip text remains centered in the body rectangle. Frosted mode registers a rounded body proxy unioned with bounded tail scanlines, then draws the single translucent silhouette above it with one outline and one shadow.
 
 **Files:**
 - Modify: `Dock/core/DockSurfaceGeometry.hpp` and `.cpp` for shared tooltip metrics, pill-safe pointer inset, and 3 px target gap.
@@ -117,3 +144,5 @@
 - [x] Build `dock-hover-qml-test`, `dock-surface-geometry-test`, `astrea-shell`, and `bar-qml-smoke-test`; run the three requested focused tests, the complete Dock CTest set, and `git diff --check` from the verified Aether build tree.
 - [x] Inspect the available native Wayland session. No running Astrea Shell or Typhon process was available, and the desktop automation surface was unavailable, so native visual qualification could not be performed.
 - [x] Append a separate visual-hardening entry to progress after verification, review the final changed-file list and forbidden legacy tooltip constructions, then commit the logical change on `main`.
+
+The initial visual-hardening implementation registered only the rounded body; the Circular Side Tail and Frosted Region Integration follow-up above supersedes that interim region description.

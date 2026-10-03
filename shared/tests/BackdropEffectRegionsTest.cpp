@@ -1,5 +1,6 @@
 #include "platform/wayland/effects/AstreaBackdropRegion.hpp"
 #include "platform/wayland/effects/AstreaBackdropEffectRegions.hpp"
+#include "platform/wayland/effects/RoundedEffectRegion.hpp"
 
 #include <QCoreApplication>
 #include <QQuickItem>
@@ -49,6 +50,142 @@ private slots:
         QCOMPARE(region.radius(), 12.5);
         region.setEnabled(false);
         QVERIFY(!region.enabled());
+    }
+
+    void explicitLocalRectanglesResolveToTheExactUnion()
+    {
+        QQuickWindow window;
+        window.resize(220, 120);
+        window.show();
+        auto *descriptors = new TestBackdropEffectRegions(window.contentItem());
+        auto *item = new QQuickItem(window.contentItem());
+        item->setSize({120.0, 60.0});
+        item->setPosition({30.0, 20.0});
+
+        AstreaBackdropRegion region(descriptors);
+        region.setItem(item);
+        const QVariantList localRectangles{
+            QVariant::fromValue(QRectF(10.0, 10.0, 18.0, 12.0)),
+            QVariant::fromValue(QRectF(64.0, 30.0, 16.0, 12.0)),
+        };
+        QVERIFY(region.metaObject()->indexOfProperty("localRectangles") >= 0);
+        QVERIFY(region.setProperty("localRectangles", localRectangles));
+        auto list = descriptors->regions();
+        list.append(&list, &region);
+        descriptors->completeForTest();
+        drainEvents();
+
+        const auto rectangles = descriptors->resolvedRegion();
+        QVERIFY(covered(rectangles, {45, 36}));
+        QVERIFY(covered(rectangles, {102, 55}));
+        QVERIFY2(!covered(rectangles, {60, 24}),
+                 "an explicit descriptor must not blur the rest of its item bounds");
+    }
+
+    void explicitLocalRectanglesFollowOwnerAndAncestorTransforms()
+    {
+        QQuickWindow window;
+        window.resize(360, 240);
+        window.show();
+        auto *parent = new QQuickItem(window.contentItem());
+        parent->setSize({220.0, 150.0});
+        parent->setPosition({15.0, 18.0});
+        auto *descriptors = new TestBackdropEffectRegions(parent);
+        auto *item = new QQuickItem(parent);
+        item->setSize({120.0, 100.0});
+        item->setPosition({20.0, 25.0});
+        const QRectF localRectangle(12.0, 14.0, 28.0, 22.0);
+        AstreaBackdropRegion region(descriptors);
+        region.setItem(item);
+        QVERIFY(region.setProperty("localRectangles", QVariantList{
+                                       QVariant::fromValue(localRectangle)}));
+        auto list = descriptors->regions();
+        list.append(&list, &region);
+        descriptors->completeForTest();
+        drainEvents();
+
+        const auto assertMappedCenterIsCovered = [&] {
+            const QPoint point = item->mapToItem(window.contentItem(),
+                                                 localRectangle.center()).toPoint();
+            QVERIFY(covered(descriptors->resolvedRegion(), point));
+        };
+        assertMappedCenterIsCovered();
+        QVERIFY(!covered(descriptors->resolvedRegion(),
+                         item->mapToItem(window.contentItem(), QPointF(90.0, 80.0)).toPoint()));
+
+        item->setPosition({55.0, 45.0});
+        parent->setScale(1.35);
+        QMetaObject::invokeMethod(&window, "afterAnimating", Qt::DirectConnection);
+        drainEvents();
+        assertMappedCenterIsCovered();
+        QVERIFY(!covered(descriptors->resolvedRegion(),
+                         item->mapToItem(window.contentItem(), QPointF(90.0, 80.0)).toPoint()));
+    }
+
+    void emptyExplicitLocalRectanglesKeepWholeItemRoundedBehavior()
+    {
+        QQuickWindow window;
+        window.resize(180, 100);
+        window.show();
+        auto *descriptors = new TestBackdropEffectRegions(window.contentItem());
+        auto *item = new QQuickItem(window.contentItem());
+        item->setSize({88.0, 36.0});
+        item->setPosition({20.0, 24.0});
+        AstreaBackdropRegion region(descriptors);
+        region.setItem(item);
+        region.setRadius(12.0);
+        QVERIFY(region.setProperty("localRectangles", QVariantList{}));
+        auto list = descriptors->regions();
+        list.append(&list, &region);
+        descriptors->completeForTest();
+        drainEvents();
+
+        auto expected = AstreaRoundedEffectRegion::rectangles(QSize(88, 36), 12.0);
+        for (auto &rectangle : expected)
+            rectangle.translate(20, 24);
+        QCOMPARE(descriptors->resolvedRegion(), expected);
+        QVERIFY(covered(expected, {64, 42}));
+        QVERIFY(!covered(expected, {20, 24}));
+    }
+
+    void explicitLocalRectanglesShareTheAggregate96RectangleBudget()
+    {
+        QQuickWindow window;
+        window.resize(500, 200);
+        window.show();
+        auto *descriptors = new TestBackdropEffectRegions(window.contentItem());
+
+        auto *body = new QQuickItem(window.contentItem());
+        body->setSize({100.0, 60.0});
+        body->setPosition({10.0, 100.0});
+        auto *bodyRegion = new AstreaBackdropRegion(descriptors);
+        bodyRegion->setItem(body);
+        bodyRegion->setRadius(30.0);
+        auto list = descriptors->regions();
+        list.append(&list, bodyRegion);
+
+        auto *tail = new QQuickItem(window.contentItem());
+        tail->setSize({490.0, 40.0});
+        tail->setPosition({0.0, 0.0});
+        auto *tailRegion = new AstreaBackdropRegion(descriptors);
+        tailRegion->setItem(tail);
+        QVariantList localRectangles;
+        for (int index = 0; index < 70; ++index)
+            localRectangles.append(QVariant::fromValue(QRectF(2.0 + 4.0 * index,
+                                                               20.0, 1.0, 1.0)));
+        QVERIFY(tailRegion->setProperty("localRectangles", localRectangles));
+        list.append(&list, tailRegion);
+
+        descriptors->completeForTest();
+        drainEvents();
+
+        const auto rectangles = descriptors->resolvedRegion();
+        QVERIFY2(rectangles.size() <= 96,
+                 qPrintable(QStringLiteral("resolved %1 rectangles").arg(rectangles.size())));
+        QVERIFY(rectangles.size() >= 70);
+        QVERIFY(covered(rectangles, {2, 20}));
+        QVERIFY(covered(rectangles, {278, 20}));
+        QVERIFY(covered(rectangles, {60, 130}));
     }
 
     void hiddenWindowResynchronizesWhenShown()

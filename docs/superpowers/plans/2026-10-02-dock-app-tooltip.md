@@ -78,7 +78,14 @@
 
 - [x] Use `exclusive_zone = -1`: the tooltip reserves no space and ignores other Layer Shell reservations. This is distinct from `exclusive_zone = 0`, which may move the surface around positive exclusive zones.
 - [x] Correct the policy regression to assert `-1`, Top layer, keyboard interactivity None, all four anchors, and the tooltip scope. The original qualification asserted 0 and did not test `-1`.
-- [x] On output dimension changes, re-present an already-visible tooltip through `presentTooltipForCurrentTarget()` after QML geometry settles. Hidden and delay-pending tooltips retain the normal 420 ms delay.
+- [x] On output dimension changes, re-present an already-visible tooltip through `presentTooltipForCurrentTarget()` after QML geometry settles. This records the geometry behavior; lifecycle revalidation is qualified separately below. Hidden and delay-pending tooltips retain the normal 420 ms delay.
 - [x] Cover bottom and left output resizing, target replacement during the delay, and target removal during the delay.
 - [x] Build `dock-layer-shell-surface-test`, `dock-surface-geometry-test`, `dock-hover-qml-test`, and `astrea-shell` in `/mnt/Aether/Desktop/GitHub/Eclipse-build`; focused CTest passed 3/3 and the complete Dock CTest set passed 14/14.
 - [x] `git diff --check` passed.
+
+### Tooltip Lifecycle Race Hardening (2026-10-02)
+
+- [x] Keep the 420 ms `tooltipDelay` as the sole hidden-to-visible presentation authority. Deferred visible refreshes update a tooltip only while its original presentation remains visible and eligible.
+- [x] Capture the tooltip lifecycle generation and `pointerTargetTaskKey` when queuing a refresh. Discard the callback at execution if either identity changed, the surface is missing or hidden, or the current presentation is ineligible.
+- [x] Coalesce refresh requests for the same generation and task so output width/height changes resolve once using final geometry. Route output geometry, magnification geometry, and `DockController.modelChanged` refreshes through this guarded path.
+- [x] Qualify replacement-target races for geometry and model changes, preserve pending-target/removal and interaction regressions, and assert one presentation for settled output geometry changes.

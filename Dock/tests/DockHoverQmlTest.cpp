@@ -280,6 +280,8 @@ private slots:
     void mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen();
     void tooltipFollowsMagnifiedIconAndHidesForDockInteractions();
     void visibleTooltipReanchorsAfterOutputGeometryChanges();
+    void queuedVisibleTooltipRefreshCannotPresentReplacementTarget();
+    void modelChangedTooltipRefreshCannotPresentReplacementTarget();
     void pendingTooltipFollowsReplacementTarget();
     void pendingTooltipDoesNotPresentRemovedTarget();
     void magnifiedInteractionTargetMatchesVisualBounds();
@@ -2036,7 +2038,7 @@ void DockHoverQmlTest::visibleTooltipReanchorsAfterOutputGeometryChanges()
 
         panel->setProperty("outputWidth", 1200);
         panel->setProperty("outputHeight", 760);
-        QTRY_VERIFY_WITH_TIMEOUT(tooltipSurface.showCount > previousShowCount, 300);
+        QTRY_COMPARE_WITH_TIMEOUT(tooltipSurface.showCount, previousShowCount + 1, 300);
         QVERIFY(tooltipSurface.tooltipVisible());
         QCOMPARE(panel->property("pointerTargetTaskKey").toString(), previousTaskKey);
         QCOMPARE(tooltipSurface.lastTitle, previousTitle);
@@ -2054,6 +2056,161 @@ void DockHoverQmlTest::visibleTooltipReanchorsAfterOutputGeometryChanges()
 
         delete panel;
     }
+}
+
+void DockHoverQmlTest::queuedVisibleTooltipRefreshCannotPresentReplacementTarget()
+{
+    DockController dockController;
+    dockController.applyConfig(configFor(QStringLiteral("none"), {
+        QStringLiteral("one.desktop"), QStringLiteral("two.desktop")
+    }));
+    FakeTooltipSurface tooltipSurface;
+    DockSurfaceGeometry surfaceGeometry;
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &dockController);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    QQuickWindow window;
+    panel->setParentItem(window.contentItem());
+    window.resize(900, 220);
+    panel->setX((window.width() - panel->width()) / 2.0);
+    panel->setY((window.height() - panel->height()) / 2.0);
+    panel->setProperty("dockSurfaceGeometry",
+                       QVariant::fromValue(static_cast<QObject *>(&surfaceGeometry)));
+    panel->setProperty("dockTooltipSurface",
+                       QVariant::fromValue(static_cast<QObject *>(&tooltipSurface)));
+    panel->setProperty("outputWidth", 900);
+    panel->setProperty("outputHeight", 600);
+    tooltipSurface.identitySource = panel;
+    window.show();
+    QTest::qWait(40);
+
+    QObject *delay = panel->findChild<QObject *>(QStringLiteral("dockTooltipDelay"));
+    QVERIFY(delay);
+    constexpr int delayIntervalMs = 320;
+    QVERIFY(delay->setProperty("interval", delayIntervalMs));
+    QQuickItem *targetA = delegate(panel, QStringLiteral("one.desktop"));
+    QQuickItem *targetB = delegate(panel, QStringLiteral("two.desktop"));
+    QVERIFY(targetA && targetB);
+    const auto movePointerTo = [panel](QQuickItem *target) {
+        const QPointF point = target->property("interactionRegion").toRectF().center();
+        return QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
+                                         Q_ARG(QVariant, QVariant(point.x())),
+                                         Q_ARG(QVariant, QVariant(point.y())));
+    };
+
+    QVERIFY(movePointerTo(targetA));
+    QTRY_COMPARE_WITH_TIMEOUT(panel->property("pointerTargetTaskKey").toString(),
+                              QStringLiteral("desktop:one.desktop"), 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(tooltipSurface.tooltipVisible(), 1000);
+    QCOMPARE(tooltipSurface.showCount, 1);
+    QCOMPARE(tooltipSurface.shownTaskKeys.constLast(), QStringLiteral("desktop:one.desktop"));
+
+    const int showCountBeforeRefresh = tooltipSurface.showCount;
+    panel->setProperty("outputWidth", 1200); // queues a visible refresh with Qt.callLater
+    QVERIFY(movePointerTo(targetB)); // keep this before event processing to preserve the race
+    QCOMPARE(panel->property("pointerTargetTaskKey").toString(),
+             QStringLiteral("desktop:two.desktop"));
+
+    QCoreApplication::processEvents();
+    QVERIFY(!tooltipSurface.tooltipVisible());
+    QCOMPARE(tooltipSurface.showCount, showCountBeforeRefresh);
+    QVERIFY(!tooltipSurface.shownTaskKeys.contains(QStringLiteral("desktop:two.desktop")));
+
+    QTest::qWait(80);
+    QVERIFY(!tooltipSurface.tooltipVisible());
+    QCOMPARE(tooltipSurface.showCount, showCountBeforeRefresh);
+    QVERIFY(!tooltipSurface.shownTaskKeys.contains(QStringLiteral("desktop:two.desktop")));
+
+    QTRY_COMPARE_WITH_TIMEOUT(tooltipSurface.showCount, showCountBeforeRefresh + 1, 1000);
+    QVERIFY(tooltipSurface.tooltipVisible());
+    QCOMPARE(tooltipSurface.shownTaskKeys.constLast(), QStringLiteral("desktop:two.desktop"));
+    QCOMPARE(tooltipSurface.lastTitle, targetB->property("displayName").toString());
+
+    delete panel;
+}
+
+void DockHoverQmlTest::modelChangedTooltipRefreshCannotPresentReplacementTarget()
+{
+    DockController dockController;
+    dockController.applyConfig(configFor(QStringLiteral("none"), {
+        QStringLiteral("one.desktop"), QStringLiteral("two.desktop")
+    }));
+    FakeTooltipSurface tooltipSurface;
+    DockSurfaceGeometry surfaceGeometry;
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &dockController);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    QQuickWindow window;
+    panel->setParentItem(window.contentItem());
+    window.resize(900, 220);
+    panel->setX((window.width() - panel->width()) / 2.0);
+    panel->setY((window.height() - panel->height()) / 2.0);
+    panel->setProperty("dockSurfaceGeometry",
+                       QVariant::fromValue(static_cast<QObject *>(&surfaceGeometry)));
+    panel->setProperty("dockTooltipSurface",
+                       QVariant::fromValue(static_cast<QObject *>(&tooltipSurface)));
+    panel->setProperty("outputWidth", 900);
+    panel->setProperty("outputHeight", 600);
+    tooltipSurface.identitySource = panel;
+    window.show();
+    QTest::qWait(40);
+
+    QObject *delay = panel->findChild<QObject *>(QStringLiteral("dockTooltipDelay"));
+    QVERIFY(delay);
+    constexpr int delayIntervalMs = 320;
+    QVERIFY(delay->setProperty("interval", delayIntervalMs));
+    QQuickItem *targetA = delegate(panel, QStringLiteral("one.desktop"));
+    QQuickItem *targetB = delegate(panel, QStringLiteral("two.desktop"));
+    QVERIFY(targetA && targetB);
+    const auto movePointerTo = [panel](QQuickItem *target) {
+        const QPointF point = target->property("interactionRegion").toRectF().center();
+        return QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
+                                         Q_ARG(QVariant, QVariant(point.x())),
+                                         Q_ARG(QVariant, QVariant(point.y())));
+    };
+
+    QVERIFY(movePointerTo(targetA));
+    QTRY_COMPARE_WITH_TIMEOUT(panel->property("pointerTargetTaskKey").toString(),
+                              QStringLiteral("desktop:one.desktop"), 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(tooltipSurface.tooltipVisible(), 1000);
+    QCOMPARE(tooltipSurface.showCount, 1);
+    QCOMPARE(tooltipSurface.shownTaskKeys.constLast(), QStringLiteral("desktop:one.desktop"));
+
+    const int showCountBeforeRefresh = tooltipSurface.showCount;
+    // Emit directly to qualify DockPanel's lifecycle boundary, independent of model mutation behavior.
+    emit dockController.modelChanged();
+    QVERIFY(movePointerTo(targetB)); // do not run the event loop between refresh and replacement
+    QCOMPARE(panel->property("pointerTargetTaskKey").toString(),
+             QStringLiteral("desktop:two.desktop"));
+
+    QCoreApplication::processEvents();
+    QVERIFY(!tooltipSurface.tooltipVisible());
+    QCOMPARE(tooltipSurface.showCount, showCountBeforeRefresh);
+    QVERIFY(!tooltipSurface.shownTaskKeys.contains(QStringLiteral("desktop:two.desktop")));
+
+    QTest::qWait(80);
+    QVERIFY(!tooltipSurface.tooltipVisible());
+    QCOMPARE(tooltipSurface.showCount, showCountBeforeRefresh);
+    QVERIFY(!tooltipSurface.shownTaskKeys.contains(QStringLiteral("desktop:two.desktop")));
+
+    QTRY_COMPARE_WITH_TIMEOUT(tooltipSurface.showCount, showCountBeforeRefresh + 1, 1000);
+    QVERIFY(tooltipSurface.tooltipVisible());
+    QCOMPARE(tooltipSurface.shownTaskKeys.constLast(), QStringLiteral("desktop:two.desktop"));
+    QCOMPARE(tooltipSurface.lastTitle, targetB->property("displayName").toString());
+
+    delete panel;
 }
 
 void DockHoverQmlTest::pendingTooltipFollowsReplacementTarget()

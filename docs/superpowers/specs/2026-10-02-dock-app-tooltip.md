@@ -19,6 +19,10 @@ Replace the Dock application's generic QtQuick Controls tooltip with a compact E
 
 `DockPanel` remains the owner of hover, magnification, drag, and target identity. It delays presentation and publishes the current delegate identity, title, placement, and mapped visual anchor to a passive `DockTooltipSurface` window. `DockSurfaceGeometry` owns output-local anchor and card placement calculations. `DockLayerShellSurface` configures the tooltip window as a full-output passive sibling surface. The QML card consumes `ShellMaterialTheme` tokens and does not use QtQuick Controls.
 
+## Tooltip Presentation Lifecycle
+
+Initial presentation and visible refresh are separate operations. A hidden tooltip becomes visible only when the existing 420 ms `tooltipDelay` timer resolves and presents the current eligible target. A refresh may be queued only for an already-visible tooltip; it is coalesced by lifecycle generation and task key, then revalidates both identities, tooltip visibility, and eligibility when the deferred callback executes. If the lifecycle or target changed, the surface disappeared or became hidden, or presentation became ineligible, the callback is discarded. A stale refresh never presents a replacement target or restarts a hidden tooltip.
+
 ## Constraints
 
 - Preserve output-local logical coordinates and the existing primary-output Dock behavior.

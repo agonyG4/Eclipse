@@ -59,6 +59,9 @@ Item {
     property real pointerX: 0
     property bool pointerInside: false
     property string pointerTargetTaskKey: ""
+    property int tooltipLifecycleEpoch: 0
+    property int tooltipRefreshQueuedEpoch: -1
+    property string tooltipRefreshQueuedTaskKey: ""
     readonly property string pointerTargetDesktopFileName:
         pointerTargetTaskKey.startsWith("desktop:")
             ? pointerTargetTaskKey.substring("desktop:".length) : pointerTargetTaskKey
@@ -264,9 +267,7 @@ Item {
         }
         function onModelChanged() {
             root.scheduleMinimizeAnchorPublication()
-            if (root.dockTooltipSurface && root.dockTooltipSurface.tooltipVisible
-                && root.isTooltipEligible())
-                Qt.callLater(root.presentTooltipForCurrentTarget)
+            root.refreshVisibleTooltip()
         }
         function onVisibleChanged() { root.scheduleTooltip() }
         function onRevealedChanged() {
@@ -442,6 +443,7 @@ Item {
     }
 
     function scheduleTooltip() {
+        ++tooltipLifecycleEpoch
         tooltipDelay.stop()
         if (dockTooltipSurface)
             dockTooltipSurface.hideTooltip()
@@ -458,7 +460,31 @@ Item {
     function refreshVisibleTooltip() {
         if (!dockTooltipSurface || !dockTooltipSurface.tooltipVisible || !isTooltipEligible())
             return
-        Qt.callLater(root.presentTooltipForCurrentTarget)
+
+        const refreshEpoch = tooltipLifecycleEpoch
+        const refreshTaskKey = pointerTargetTaskKey
+        if (tooltipRefreshQueuedEpoch === refreshEpoch
+            && tooltipRefreshQueuedTaskKey === refreshTaskKey)
+            return
+
+        tooltipRefreshQueuedEpoch = refreshEpoch
+        tooltipRefreshQueuedTaskKey = refreshTaskKey
+        Qt.callLater(function() {
+            if (root.tooltipRefreshQueuedEpoch === refreshEpoch
+                && root.tooltipRefreshQueuedTaskKey === refreshTaskKey) {
+                root.tooltipRefreshQueuedEpoch = -1
+                root.tooltipRefreshQueuedTaskKey = ""
+            }
+
+            if (root.tooltipLifecycleEpoch !== refreshEpoch
+                || root.pointerTargetTaskKey !== refreshTaskKey
+                || !root.dockTooltipSurface
+                || !root.dockTooltipSurface.tooltipVisible
+                || !root.isTooltipEligible())
+                return
+
+            root.presentTooltipForCurrentTarget()
+        })
     }
 
     function presentTooltipForCurrentTarget() {

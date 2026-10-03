@@ -638,6 +638,7 @@
     "settings.nav.audio": "Audio",
     "settings.nav.bluetooth": "Bluetooth",
     "settings.nav.display": "Display",
+    "settings.nav.display.subtitle": "Display layout, modes, and connector details",
     "settings.nav.internet": "Internet",
     "settings.nav.island": "Island",
     "settings.nav.language": "Language & Region",

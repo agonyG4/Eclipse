@@ -10,8 +10,8 @@ focused native boundaries.
 From the Eclipse checkout (build output belongs on Aether):
 
 ```bash
-export CARGO_TARGET_DIR=/mnt/Aether/Desktop/GitHub/Eclipse-settings-target
-export TMPDIR=/mnt/Aether/Desktop/GitHub/t
+export CARGO_TARGET_DIR=/mnt/Aether/Desktop/GitHub/Eclipse-build/cargo-target
+export TMPDIR=/mnt/Aether/Desktop/GitHub/Eclipse-build/tmp
 cmake -S . -B /mnt/Aether/Desktop/GitHub/Eclipse-build -G Ninja \
   -DASTREA_BUILD_TESTS=ON \
   -DASTREA_SETTINGS_BUILD_TESTS=ON
@@ -31,14 +31,14 @@ The native application includes:
 - the source-preserved legacy glass shell, profile composition, and sidebar;
 - catalogue-owned flat navigation with stable IDs, hub metadata, and native
   session history;
-- twelve sidebar rows including the non-selectable spacer, with Page, Hub, and
+- thirteen sidebar rows including the non-selectable spacer, with Page, Hub, and
   Spacer semantics; Appearance, Visual Effects, Icons, Wallpaper, Dock, and
   Animations are nested Customization destinations;
 - native theme configuration, translations, icon resolution, and user-profile
   services; Linux libc/NSS administrative-group detection recognizes only
   `wheel` and `sudo`;
-  - eight implemented page routes: the `Compositor` preview, the `Bluetooth`
-  system page, and the native `Appearance`, `Visual Effects`, `Icons`,
+  - nine implemented page routes: the `Compositor` preview, `Bluetooth`,
+  `Display`, and the native `Appearance`, `Visual Effects`, `Icons`,
   `Wallpaper`, `Dock`, and `Animations` routes
   under the `Customization` hub;
   unavailable catalogue entries remain visible but cannot select an empty
@@ -74,6 +74,25 @@ interaction; CXX-Qt is a thin generated Qt boundary for the migrated backend;
 Rust owns migrated animation/Typhon domain, protocol, discovery, and transport
 logic; C++ remains application composition and the remaining unmigrated
 Qt/system services.
+
+Display Settings Phase 1 is a read-only native output projection. The authority
+flow is DRM/KMS selected connector and modes -> Typhon `OutputSnapshot` -> the
+existing `astrea.control` `outputs` command -> `SettingsDisplayController` ->
+`Display.qml`. Connector presentation identity, physical dimensions, preferred
+mode evidence, current mode, and VRR capability come from the selected KMS
+connector and its exact sysfs connector match. Make, model, and serial remain
+empty until Typhon has authoritative EDID identity evidence. VRR capability is
+not runtime activation.
+
+Typhon currently owns one production output runtime and has no output hotplug
+lifecycle or desktop topology authority. The output list and Display preview
+are forward-compatible projections; they do not claim production multi-output
+support. Display Settings does not mutate output configuration. Future mode
+changes must validate an exact output generation and configuration, use KMS
+`TEST_ONLY` when applicable, apply a temporary modeset, and require a
+confirmation countdown. Keep persists; Revert or timeout restores the previous
+exact state. Future draggable topology waits for independent output runtimes,
+hotplug, and compositor-owned topology.
 
 Appearance mutations are backed by `SettingsController.appearance`, a thin
 CXX-Qt projection over the Rust Appearance backend. Rust owns

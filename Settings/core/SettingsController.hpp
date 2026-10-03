@@ -12,6 +12,7 @@
 
 #include <astrea_settings_backend/src/animation/qobject.cxxqt.h>
 #include <astrea_settings_backend/src/appearance/qobject.cxxqt.h>
+#include <astrea_settings_backend/src/display/qobject.cxxqt.h>
 #include <astrea_settings_backend/src/icons/qobject.cxxqt.h>
 #include <astrea_settings_backend/src/visual_effects/qobject.cxxqt.h>
 
@@ -43,6 +44,7 @@ class SettingsController final : public QObject {
     Q_PROPERTY(SettingsAppearanceController *appearance READ appearance CONSTANT)
     Q_PROPERTY(SettingsIconsController *icons READ icons CONSTANT)
     Q_PROPERTY(SettingsVisualEffectsController *visualEffects READ visualEffects CONSTANT)
+    Q_PROPERTY(SettingsDisplayController *display READ display CONSTANT)
     Q_PROPERTY(Astrea::System::BluetoothService *bluetooth READ bluetooth CONSTANT)
     Q_PROPERTY(Astrea::System::AudioService *audio READ audio CONSTANT)
     Q_PROPERTY(Astrea::System::NetworkService *network READ network CONSTANT)
@@ -76,6 +78,7 @@ public:
     SettingsAppearanceController *appearance() const { return m_appearanceController.get(); }
     SettingsIconsController *icons() const { return m_iconsController.get(); }
     SettingsVisualEffectsController *visualEffects() const { return m_visualEffectsController.get(); }
+    SettingsDisplayController *display() const { return m_displayController.get(); }
     Astrea::System::BluetoothService *bluetooth() const { return m_bluetoothService.get(); }
     Astrea::System::AudioService *audio() const { return m_audioService.get(); }
     Astrea::System::NetworkService *network() const { return m_networkService.get(); }
@@ -109,6 +112,7 @@ private:
     std::unique_ptr<SettingsAppearanceController> m_appearanceController;
     std::unique_ptr<SettingsIconsController> m_iconsController;
     std::unique_ptr<SettingsVisualEffectsController> m_visualEffectsController;
+    std::unique_ptr<SettingsDisplayController> m_displayController;
     QString m_currentDestinationId;
     QString m_selectedSidebarId;
     QVector<QString> m_history;

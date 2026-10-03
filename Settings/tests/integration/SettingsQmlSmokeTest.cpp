@@ -1961,7 +1961,7 @@ void SettingsQmlSmokeTest::sidebarHidesNestedDestinations()
     QVERIFY(sidebar != nullptr);
     QVERIFY(sidebar->findChild<QObject *>(QStringLiteral("settingsSidebarRow-wallpaper")) == nullptr);
     QVERIFY(sidebar->findChild<QObject *>(QStringLiteral("settingsSidebarRow-dock")) == nullptr);
-    QCOMPARE(settingsController.navigationModel()->rowCount(), 12);
+    QCOMPARE(settingsController.navigationModel()->rowCount(), 13);
 }
 
 void SettingsQmlSmokeTest::wallpaperTranslationKeysExist()

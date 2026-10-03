@@ -506,6 +506,9 @@ foreach(navigation_required_token IN ITEMS
     "Appearance.qml"
     "bluetooth"
     "pages/system/Bluetooth.qml"
+    "display"
+    "pages/system/Display.qml"
+    "settings.nav.display.subtitle"
     "Animations.qml"
     "visual-effects"
     "VisualEffects.qml"
@@ -525,6 +528,49 @@ foreach(navigation_required_token IN ITEMS
         "${navigation_required_token}" navigation_required_position)
     if(navigation_required_position EQUAL -1)
         message(FATAL_ERROR "Native destination graph is missing '${navigation_required_token}'")
+    endif()
+endforeach()
+file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/system/Display.qml" display_page_source)
+foreach(display_required_token IN ITEMS
+    "objectName: \"displayPage\""
+    "objectName: \"displayLayoutCard\""
+    "objectName: \"displayOutputPreview\""
+    "objectName: \"displayOutputTitle\""
+    "objectName: \"displayResolutionSection\""
+    "objectName: \"displayDetailsCard\""
+    "objectName: \"displayRefreshRate\""
+    "objectName: \"displayScale\""
+    "objectName: \"displayOrientation\""
+    "objectName: \"displayVrrState\""
+    "objectName: \"displayConnector\""
+    "objectName: \"displayError\""
+    "objectName: \"displayRetry\""
+    "SettingsController.wallpaper"
+    "effectivePreviewUrl"
+    "effectiveFit"
+    "Text.PlainText"
+    "modelData.preferred"
+    "root.controller.refresh()"
+    "RESOLUTION"
+    "DISPLAY DETAILS"
+)
+    string(FIND "${display_page_source}" "${display_required_token}" display_required_position)
+    if(display_required_position EQUAL -1)
+        message(FATAL_ERROR "Display page is missing '${display_required_token}'")
+    endif()
+endforeach()
+foreach(display_forbidden_token IN ITEMS
+    "Process {"
+    "hyprctl"
+    "xrandr"
+    "Apply"
+    "Keep Changes"
+    "ToggleSwitch"
+    "pointerShape: Qt.PointingHandCursor"
+)
+    string(FIND "${display_page_source}" "${display_forbidden_token}" display_forbidden_position)
+    if(NOT display_forbidden_position EQUAL -1)
+        message(FATAL_ERROR "Display Phase 1 must remain read-only; found '${display_forbidden_token}'")
     endif()
 endforeach()
 file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/Icons.qml" icons_source)

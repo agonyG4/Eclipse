@@ -4,6 +4,7 @@ use crate::typhon::material_program::{
     MaterialProgramParameterConfiguration, MaterialProgramParameterConfigurationSnapshot,
     MaterialProgramStateSnapshot,
 };
+use crate::typhon::output::{OutputListSnapshot, OutputRequest};
 use crate::visual_effects::{MaterialConfiguration, MaterialSnapshot};
 use serde::Serialize;
 use serde_json::Number;
@@ -37,11 +38,18 @@ pub enum ControlRequest {
     Animation(AnimationRequest),
     Material(MaterialRequest),
     MaterialProgram(MaterialProgramRequest),
+    Output(OutputRequest),
 }
 
 impl From<AnimationRequest> for ControlRequest {
     fn from(request: AnimationRequest) -> Self {
         Self::Animation(request)
+    }
+}
+
+impl From<OutputRequest> for ControlRequest {
+    fn from(request: OutputRequest) -> Self {
+        Self::Output(request)
     }
 }
 
@@ -66,6 +74,7 @@ pub enum ControlSuccess {
     MaterialProgramDescription(MaterialProgramDescriptionSnapshot),
     MaterialProgramSelection(crate::typhon::material_program::MaterialProgramSelectionSnapshot),
     MaterialProgramParameters(MaterialProgramParameterConfigurationSnapshot),
+    Outputs(OutputListSnapshot),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -99,6 +108,7 @@ enum WireArguments {
     MaterialProgramName(MaterialProgramNameArguments),
     MaterialProgramSelection(MaterialProgramConfiguration),
     MaterialProgramParameters(MaterialProgramParameterConfiguration),
+    OutputGet(GetArguments),
 }
 
 #[derive(Serialize)]
@@ -155,6 +165,9 @@ pub fn encode_control_request(id: u64, request: ControlRequest) -> Result<Vec<u8
             "material.program.parameters.set",
             WireArguments::MaterialProgramParameters(configuration),
         ),
+        ControlRequest::Output(OutputRequest::Get) => {
+            ("outputs", WireArguments::OutputGet(GetArguments {}))
+        }
     };
     let request = WireRequest {
         protocol: PROTOCOL,
@@ -271,6 +284,14 @@ pub fn decode_control_response(
                     .map_err(|_| ProtocolError::InvalidJson)?;
                 ControlSuccess::MaterialProgramParameters(snapshot)
             }
+            ControlRequest::Output(OutputRequest::Get) => {
+                let snapshot: OutputListSnapshot = serde_json::from_value(result.clone())
+                    .map_err(|_| ProtocolError::InvalidJson)?;
+                snapshot
+                    .validate()
+                    .map_err(|_| ProtocolError::InvalidJson)?;
+                ControlSuccess::Outputs(snapshot)
+            }
         };
         Ok(ProtocolOutcome::Success(success))
     } else {
@@ -331,6 +352,165 @@ mod tests {
         assert_eq!(request["id"], 7);
         assert_eq!(request["command"], "animation.config.get");
         assert_eq!(request["args"], json!({}));
+    }
+
+    #[test]
+    fn outputs_get_request_uses_the_existing_control_transport_shape() {
+        let encoded =
+            encode_control_request(9, crate::typhon::output::OutputRequest::Get.into()).unwrap();
+
+        assert_eq!(
+            encoded,
+            br#"{"protocol":"astrea.control","version":1,"id":9,"command":"outputs","args":{}}"#
+                .iter()
+                .copied()
+                .chain(*b"\n")
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn outputs_get_decodes_a_realistic_typed_snapshot() {
+        let request = ControlRequest::Output(crate::typhon::output::OutputRequest::Get);
+        let result = json!({
+            "outputs": [{
+                "id": "output-1",
+                "name": "DP-1",
+                "make": null,
+                "model": null,
+                "serial": null,
+                "enabled": true,
+                "currentMode": {"width": 1920, "height": 1080, "refreshMillihz": 165000},
+                "physicalSizeMm": {"widthMm": 600, "heightMm": 340},
+                "scaleMilli": 1000,
+                "transform": "normal",
+                "position": {"x": 0, "y": 0},
+                "focused": true,
+                "backend": "atomic",
+                "vrr": {"state": "available"},
+                "directScanout": {"state": "unavailable"},
+                "modes": [
+                    {"width": 1920, "height": 1080, "refreshMillihz": 60000, "preferred": true, "interlaced": false},
+                    {"width": 1920, "height": 1080, "refreshMillihz": 165000, "preferred": false, "interlaced": false},
+                    {"width": 1600, "height": 900, "refreshMillihz": 60000, "preferred": false, "interlaced": false}
+                ],
+                "modesTruncated": false
+            }],
+            "total": 1,
+            "truncated": false
+        });
+        let outcome = decode_control_response(&program_response(91, result), 91, &request)
+            .expect("a valid native output snapshot decodes");
+        let ProtocolOutcome::Success(ControlSuccess::Outputs(snapshot)) = outcome else {
+            panic!("outputs must decode to the explicit output success type");
+        };
+
+        assert_eq!(snapshot.outputs.len(), 1);
+        assert_eq!(snapshot.outputs[0].name, "DP-1");
+        assert_eq!(
+            snapshot.outputs[0]
+                .current_mode
+                .as_ref()
+                .unwrap()
+                .refresh_millihz,
+            165000
+        );
+        assert_eq!(snapshot.outputs[0].modes.len(), 3);
+        assert!(snapshot.outputs[0].modes[0].preferred);
+        assert_eq!(
+            snapshot.outputs[0]
+                .physical_size_mm
+                .as_ref()
+                .unwrap()
+                .width_mm,
+            600
+        );
+    }
+
+    #[test]
+    fn output_snapshot_validation_rejects_malformed_structure_and_bounds() {
+        let request = ControlRequest::Output(crate::typhon::output::OutputRequest::Get);
+        let mut duplicate_ids = valid_output_list();
+        duplicate_ids["outputs"] = json!([
+            valid_output(),
+            {"id":"output-1", "name":"HDMI-A-1", "make":null, "model":null,
+             "serial":null, "enabled":false, "currentMode":null, "physicalSizeMm":null,
+             "scaleMilli":1000, "transform":"normal", "position":{"x":0,"y":0},
+             "focused":false, "backend":"atomic", "vrr":{"state":"unavailable"},
+             "directScanout":{"state":"unavailable"}, "modes":[], "modesTruncated":false}
+        ]);
+        duplicate_ids["total"] = json!(2);
+
+        let mut invalid_mode_size = valid_output_list();
+        invalid_mode_size["outputs"][0]["modes"][0]["width"] = json!(0);
+        let mut invalid_refresh = valid_output_list();
+        invalid_refresh["outputs"][0]["modes"][0]["refreshMillihz"] = json!(0);
+        let mut invalid_scale = valid_output_list();
+        invalid_scale["outputs"][0]["scaleMilli"] = json!(0);
+        let mut invalid_physical_size = valid_output_list();
+        invalid_physical_size["outputs"][0]["physicalSizeMm"]["heightMm"] = json!(0);
+        let mut invalid_total = valid_output_list();
+        invalid_total["total"] = json!(0);
+        let mut missing_modes = valid_output_list();
+        missing_modes["outputs"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("modes");
+        let mut oversized_modes = valid_output_list();
+        let mode = oversized_modes["outputs"][0]["modes"][0].clone();
+        oversized_modes["outputs"][0]["modes"] = Value::Array(
+            std::iter::repeat_n(mode, crate::typhon::output::MAX_CONTROL_OUTPUT_MODES + 1)
+                .collect(),
+        );
+
+        for invalid in [
+            duplicate_ids,
+            invalid_mode_size,
+            invalid_refresh,
+            invalid_scale,
+            invalid_physical_size,
+            invalid_total,
+            missing_modes,
+            oversized_modes,
+        ] {
+            assert_eq!(
+                decode_control_response(&program_response(92, invalid), 92, &request),
+                Err(ProtocolError::InvalidJson)
+            );
+        }
+
+        let mut disabled_without_mode = valid_output_list();
+        disabled_without_mode["outputs"][0]["enabled"] = json!(false);
+        disabled_without_mode["outputs"][0]["currentMode"] = Value::Null;
+        disabled_without_mode["outputs"][0]["modes"] = json!([]);
+        assert!(
+            decode_control_response(&program_response(93, disabled_without_mode), 93, &request)
+                .is_ok()
+        );
+
+        let wrong_result_shape = json!([{"outputs": [], "total": 0, "truncated": false}]);
+        assert_eq!(
+            decode_control_response(&program_response(94, wrong_result_shape), 94, &request),
+            Err(ProtocolError::MissingResult)
+        );
+    }
+
+    fn valid_output_list() -> Value {
+        json!({"outputs": [valid_output()], "total": 1, "truncated": false})
+    }
+
+    fn valid_output() -> Value {
+        json!({
+            "id": "output-1", "name": "DP-1", "make": null, "model": null,
+            "serial": null, "enabled": true,
+            "currentMode": {"width":1920,"height":1080,"refreshMillihz":165000},
+            "physicalSizeMm": {"widthMm":600,"heightMm":340}, "scaleMilli":1000,
+            "transform":"normal", "position":{"x":0,"y":0}, "focused":true,
+            "backend":"atomic", "vrr":{"state":"available"},
+            "directScanout":{"state":"unavailable"},
+            "modes":[{"width":1920,"height":1080,"refreshMillihz":60000,
+                       "preferred":true,"interlaced":false}], "modesTruncated":false
+        })
     }
 
     #[test]

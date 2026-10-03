@@ -56,6 +56,10 @@ function(add_settings_qml_integration_test target source)
         ASTREA_ECLIPSE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     )
     qt_import_qml_plugins(${target})
+    # Keep QML integration links on the same Rust backend re-export as the app.
+    target_link_libraries(${target} PRIVATE
+        "$<LINK_GROUP:RESCAN,astrea-shared-system-qt,${CMAKE_BINARY_DIR}/Settings/libastrea_settings_backend.a>"
+    )
     settings_enable_warnings(${target})
     settings_enable_sanitizers(${target})
     add_test(NAME ${target} COMMAND ${target})
@@ -73,6 +77,7 @@ add_settings_qml_integration_test(settings-component-smoke-test integration/Sett
 add_settings_qml_integration_test(settings-bluetooth-qml-test integration/SettingsBluetoothQmlTest.cpp)
 add_settings_qml_integration_test(settings-audio-qml-test integration/SettingsAudioQmlTest.cpp)
 add_settings_qml_integration_test(settings-internet-qml-test integration/SettingsInternetQmlTest.cpp)
+add_settings_qml_integration_test(settings-display-qml-test integration/SettingsDisplayQmlTest.cpp)
 
 add_test(NAME compositor-page-source-test
     COMMAND ${CMAKE_COMMAND}

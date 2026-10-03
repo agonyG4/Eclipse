@@ -5,6 +5,7 @@ extern crate astrea_system_backend;
 
 pub mod animation;
 pub mod appearance;
+pub mod display;
 pub mod icons;
 pub mod theme_config;
 pub mod typhon;

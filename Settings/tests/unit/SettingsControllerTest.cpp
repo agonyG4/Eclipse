@@ -76,6 +76,7 @@ private slots:
     void startsWithPreferredCompositorDestination();
     void navigatesToBluetoothPage();
     void navigatesToAudioPage();
+    void navigatesToDisplayPage();
     void navigatesToInternetPage();
     void navigatesToCustomizationHub();
     void nestedDestinationsKeepSidebarAncestorSelected();
@@ -93,6 +94,7 @@ private slots:
     void ownsNetworkServiceWithoutStartingIt();
     void preservesInjectedNetworkServiceWithoutStartingIt();
     void exposesRustBackedVisualEffectsController();
+    void ownsRustBackedDisplayController();
 };
 
 void SettingsControllerTest::startsWithPreferredCompositorDestination()
@@ -127,6 +129,16 @@ void SettingsControllerTest::navigatesToAudioPage()
     QCOMPARE(controller.selectedSidebarId(), QStringLiteral("audio"));
     QCOMPARE(controller.selectedPageSource(),
              QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Audio.qml")));
+}
+
+void SettingsControllerTest::navigatesToDisplayPage()
+{
+    SettingsController controller;
+
+    QVERIFY(controller.navigateTo(QStringLiteral("display")));
+    QCOMPARE(controller.currentDestinationId(), QStringLiteral("display"));
+    QCOMPARE(controller.selectedPageSource(),
+             QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Display.qml")));
 }
 
 void SettingsControllerTest::navigatesToInternetPage()
@@ -387,6 +399,20 @@ void SettingsControllerTest::exposesRustBackedVisualEffectsController()
              controller.visualEffects());
     QCOMPARE(QString::fromLatin1(controller.visualEffects()->metaObject()->className()),
              QStringLiteral("SettingsVisualEffectsController"));
+}
+
+void SettingsControllerTest::ownsRustBackedDisplayController()
+{
+    SettingsController controller;
+
+    QVERIFY(controller.display() != nullptr);
+    QCOMPARE(controller.property("display").value<SettingsDisplayController *>(),
+             controller.display());
+    QCOMPARE(QString::fromLatin1(controller.display()->metaObject()->className()),
+             QStringLiteral("SettingsDisplayController"));
+    QCOMPARE(controller.display()->property("available").toBool(), false);
+    QCOMPARE(controller.display()->property("busy").toBool(), false);
+    QCOMPARE(controller.display()->property("outputs").toList().size(), 0);
 }
 
 QTEST_MAIN(SettingsControllerTest)

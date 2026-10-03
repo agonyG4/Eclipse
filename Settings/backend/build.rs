@@ -4,6 +4,7 @@ fn main() {
         .files([
             "src/animation/qobject.rs",
             "src/appearance/qobject.rs",
+            "src/display/qobject.rs",
             "src/icons/qobject.rs",
             "src/visual_effects/qobject.rs",
         ])

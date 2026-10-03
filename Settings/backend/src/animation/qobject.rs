@@ -208,7 +208,8 @@ impl SettingsAnimationControllerRust {
                 | ControlSuccess::MaterialProgramState(_)
                 | ControlSuccess::MaterialProgramDescription(_)
                 | ControlSuccess::MaterialProgramSelection(_)
-                | ControlSuccess::MaterialProgramParameters(_),
+                | ControlSuccess::MaterialProgramParameters(_)
+                | ControlSuccess::Outputs(_),
             )) => {
                 effects.error_changed = self.set_error_value(String::from(
                     "Typhon returned a material snapshot to the animation controller.",

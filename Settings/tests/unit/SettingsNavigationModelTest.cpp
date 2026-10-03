@@ -22,12 +22,13 @@ void SettingsNavigationModelTest::exposesExactSidebarOrder()
     SettingsNavigationModel model;
     const QStringList expected{
         QStringLiteral("system"), QStringLiteral("software-update"), QStringLiteral("internet"),
-        QStringLiteral("bluetooth"), QStringLiteral("audio"), QStringLiteral("components"),
+        QStringLiteral("bluetooth"), QStringLiteral("audio"), QStringLiteral("display"),
+        QStringLiteral("components"),
         QStringLiteral("services"), QStringLiteral("compositor"), QString(),
         QStringLiteral("performance"), QStringLiteral("customization"), QStringLiteral("more-settings"),
     };
 
-    QCOMPARE(model.rowCount(), 12);
+    QCOMPARE(model.rowCount(), 13);
     QCOMPARE(model.rowCount(), expected.size());
     for (int row = 0; row < expected.size(); ++row)
         QCOMPARE(model.get(row).value(QStringLiteral("entryId")).toString(), expected.at(row));
@@ -38,6 +39,7 @@ void SettingsNavigationModelTest::exposesCanonicalKindsAndVisibility()
     SettingsNavigationModel model;
     const QStringList expectedKinds{
         QStringLiteral("page"), QStringLiteral("page"), QStringLiteral("page"),
+        QStringLiteral("page"),
         QStringLiteral("page"), QStringLiteral("page"), QStringLiteral("page"),
         QStringLiteral("page"), QStringLiteral("page"), QStringLiteral("spacer"),
         QStringLiteral("hub"), QStringLiteral("hub"), QStringLiteral("hub"),
@@ -86,7 +88,7 @@ void SettingsNavigationModelTest::allCatalogueEntriesHaveUniqueStableIds()
 void SettingsNavigationModelTest::preservesSpacerBehavior()
 {
     SettingsNavigationModel model;
-    const QModelIndex spacer = model.index(8, 0);
+    const QModelIndex spacer = model.index(9, 0);
     QCOMPARE(model.data(spacer, SettingsNavigationModel::KindRole).toString(), QStringLiteral("spacer"));
     QVERIFY(!model.data(spacer, SettingsNavigationModel::EnabledRole).toBool());
     QCOMPARE(model.data(spacer, SettingsNavigationModel::ParentIdRole).toString(), QString());
@@ -120,6 +122,12 @@ void SettingsNavigationModelTest::exposesNativePageRoutes()
     QCOMPARE(model.pageSourceForId(QStringLiteral("bluetooth")), bluetoothRoute);
     QCOMPARE(model.pageSourceForId(QStringLiteral("audio")),
              QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Audio.qml")));
+    QCOMPARE(model.pageSourceForId(QStringLiteral("display")),
+             QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Display.qml")));
+    const QVariantMap display = model.descriptorForId(QStringLiteral("display"));
+    QCOMPARE(display.value(QStringLiteral("iconKey")).toString(), QStringLiteral("display"));
+    QCOMPARE(display.value(QStringLiteral("subtitleKey")).toString(),
+             QStringLiteral("settings.nav.display.subtitle"));
     QCOMPARE(model.pageSourceForId(QStringLiteral("customization")), customizationRoute);
     QCOMPARE(model.pageSourceForId(QStringLiteral("wallpaper")), wallpaperRoute);
     QCOMPARE(model.pageSourceForId(QStringLiteral("dock")), dockRoute);
@@ -188,6 +196,7 @@ void SettingsNavigationModelTest::appliesPageAndHubNavigabilityRules()
     QVERIFY(model.containsNavigableId(QStringLiteral("compositor")));
     QVERIFY(model.containsNavigableId(QStringLiteral("bluetooth")));
     QVERIFY(model.containsNavigableId(QStringLiteral("audio")));
+    QVERIFY(model.containsNavigableId(QStringLiteral("display")));
     QVERIFY(model.containsNavigableId(QStringLiteral("customization")));
     QVERIFY(model.containsNavigableId(QStringLiteral("wallpaper")));
     QVERIFY(model.containsNavigableId(QStringLiteral("dock")));
@@ -201,9 +210,9 @@ void SettingsNavigationModelTest::appliesPageAndHubNavigabilityRules()
     QVERIFY(!model.containsNavigableId(QStringLiteral("more-settings")));
     QVERIFY(!model.containsNavigableId(QStringLiteral("missing")));
 
-    QVERIFY(model.data(model.index(10, 0), SettingsNavigationModel::EnabledRole).toBool());
+    QVERIFY(model.data(model.index(11, 0), SettingsNavigationModel::EnabledRole).toBool());
     QVERIFY(!model.data(model.index(9, 0), SettingsNavigationModel::EnabledRole).toBool());
-    QVERIFY(!model.data(model.index(11, 0), SettingsNavigationModel::EnabledRole).toBool());
+    QVERIFY(!model.data(model.index(12, 0), SettingsNavigationModel::EnabledRole).toBool());
 }
 
 QTEST_GUILESS_MAIN(SettingsNavigationModelTest)

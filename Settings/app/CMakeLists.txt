@@ -26,6 +26,12 @@ target_link_libraries(astrea-settings PRIVATE
 )
 
 qt_import_qml_plugins(astrea-settings)
+# The static System QML plugin can introduce bridge references after the
+# Settings core link interface. Rescan the existing Settings backend re-export
+# with that bridge instead of linking a second Rust backend/runtime.
+target_link_libraries(astrea-settings PRIVATE
+    "$<LINK_GROUP:RESCAN,astrea-shared-system-qt,${CMAKE_BINARY_DIR}/Settings/libastrea_settings_backend.a>"
+)
 
 settings_enable_warnings(astrea-settings)
 settings_enable_sanitizers(astrea-settings)

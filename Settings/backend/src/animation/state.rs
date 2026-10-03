@@ -4,9 +4,16 @@ use std::collections::BTreeMap;
 pub const MIN_SPEED: f64 = 0.5;
 pub const MAX_SPEED: f64 = 2.0;
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AnimationConfiguration {
     pub enabled: bool,
+    #[serde(default = "default_true")]
+    pub animate_maximized_window_open: bool,
     pub preset: String,
     pub speed: f64,
     #[serde(default)]
@@ -17,6 +24,7 @@ impl Default for AnimationConfiguration {
     fn default() -> Self {
         Self {
             enabled: true,
+            animate_maximized_window_open: true,
             preset: String::from("astrea"),
             speed: 1.0,
             overrides: BTreeMap::new(),
@@ -84,6 +92,7 @@ pub struct AnimationSlotCapability {
 #[derive(Clone, Debug, PartialEq)]
 pub enum AnimationMutation {
     SetEnabled(bool),
+    SetAnimateMaximizedWindowOpen(bool),
     SetPreset(String),
     SetSlotEffect { slot_id: String, effect_id: String },
     ClearSlotOverride(String),
@@ -256,6 +265,9 @@ impl AnimationState {
 fn apply_mutation(configuration: &mut AnimationConfiguration, mutation: &AnimationMutation) {
     match mutation {
         AnimationMutation::SetEnabled(value) => configuration.enabled = *value,
+        AnimationMutation::SetAnimateMaximizedWindowOpen(value) => {
+            configuration.animate_maximized_window_open = *value
+        }
         AnimationMutation::SetPreset(value) => configuration.preset.clone_from(value),
         AnimationMutation::SetSlotEffect { slot_id, effect_id } => {
             configuration
@@ -281,6 +293,63 @@ mod tests {
         assert_eq!(state.configuration().preset, "astrea");
         assert_eq!(state.configuration().speed, 1.0);
         assert!(state.configuration().overrides.is_empty());
+        assert!(state.configuration().animate_maximized_window_open);
+    }
+
+    #[test]
+    fn legacy_typhon_snapshot_defaults_maximized_window_open_to_true() {
+        let legacy = serde_json::json!({
+            "generation": 12,
+            "source": "persisted",
+            "config": {
+                "enabled": false,
+                "preset": "macos",
+                "speed": 1.25,
+                "overrides": {"window.open": "window.glide"}
+            },
+            "requested": {"window.open": "window.glide"},
+            "effective": {"window.open": "window.glide"},
+            "catalog": {}
+        });
+        let snapshot: AnimationSnapshot = serde_json::from_value(legacy).unwrap();
+        let configuration = snapshot.config.unwrap();
+
+        assert!(!configuration.enabled);
+        assert_eq!(configuration.preset, "macos");
+        assert_eq!(configuration.speed, 1.25);
+        assert_eq!(configuration.overrides["window.open"], "window.glide");
+        assert!(configuration.animate_maximized_window_open);
+    }
+
+    #[test]
+    fn explicit_maximized_window_open_policy_false_round_trips() {
+        let configuration: AnimationConfiguration = serde_json::from_str(
+            r#"{"enabled":true,"preset":"astrea","speed":1.0,"overrides":{"window.open":"window.scale"},"animateMaximizedWindowOpen":false}"#,
+        )
+        .unwrap();
+
+        assert!(!configuration.animate_maximized_window_open);
+        assert_eq!(
+            serde_json::to_value(configuration).unwrap()["animateMaximizedWindowOpen"],
+            false
+        );
+    }
+
+    #[test]
+    fn maximized_open_policy_mutation_preserves_the_full_configuration() {
+        let mut state = AnimationState::default();
+        state
+            .apply_snapshot(test_snapshot("available", "none"))
+            .unwrap();
+        state.enqueue_mutation(AnimationMutation::SetAnimateMaximizedWindowOpen(false));
+
+        let configuration = state.pending_configuration().unwrap();
+
+        assert!(configuration.enabled);
+        assert_eq!(configuration.preset, "astrea");
+        assert_eq!(configuration.speed, 1.0);
+        assert_eq!(configuration.overrides, BTreeMap::new());
+        assert!(!configuration.animate_maximized_window_open);
     }
 
     #[test]
@@ -370,6 +439,7 @@ mod tests {
     fn test_configuration(_availability: &str) -> AnimationConfiguration {
         AnimationConfiguration {
             enabled: true,
+            animate_maximized_window_open: true,
             preset: "astrea".to_owned(),
             speed: 1.0,
             overrides: Default::default(),

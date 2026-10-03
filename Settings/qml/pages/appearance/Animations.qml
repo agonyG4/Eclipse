@@ -122,6 +122,17 @@ Item {
         Form.SectionHeader { text: I18n.tr("apps.settings.pages.animations.windows", "WINDOWS"); Layout.bottomMargin: 12 }
         Form.FormCard {
             Layout.bottomMargin: 24
+            Form.SettingRow {
+                label: I18n.tr("apps.settings.pages.animations.maximized_open.label", "Animate maximized window opening")
+                sublabel: I18n.tr("apps.settings.pages.animations.maximized_open.description", "When disabled, windows that open maximized appear immediately at their final size instead of playing the Window Open effect.")
+                Controls.ToggleSwitch {
+                    objectName: "animateMaximizedWindowOpenToggle"
+                    accessibleName: I18n.tr("apps.settings.pages.animations.maximized_open.label", "Animate maximized window opening")
+                    enabled: root.controller.available && !root.controller.busy
+                    checked: root.controller.animateMaximizedWindowOpen
+                    onToggled: targetChecked => root.controller.setAnimateMaximizedWindowOpen(targetChecked)
+                }
+            }
             Repeater {
                 model: ["window.open", "window.close", "window.minimize", "window.restore"]
                 delegate: Form.SettingRow {

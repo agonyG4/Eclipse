@@ -24,7 +24,8 @@ namespace {
 QJsonObject animationSnapshot(bool enabled, const QString &preset, double speed,
                               const QJsonObject &overrides = {},
                               const QString &lampAvailability = QStringLiteral("planned"),
-                              const QString &lampEffective = QStringLiteral("none"))
+                              const QString &lampEffective = QStringLiteral("none"),
+                              bool animateMaximizedWindowOpen = true)
 {
     const QJsonArray presets{
         QJsonObject{{QStringLiteral("id"), QStringLiteral("astrea")}},
@@ -59,6 +60,7 @@ QJsonObject animationSnapshot(bool enabled, const QString &preset, double speed,
             {QStringLiteral("preset"), preset},
             {QStringLiteral("speed"), speed},
             {QStringLiteral("overrides"), overrides},
+            {QStringLiteral("animateMaximizedWindowOpen"), animateMaximizedWindowOpen},
         }},
         {QStringLiteral("requested"), QJsonObject{
             {QStringLiteral("window.move"), preset == QStringLiteral("macos")
@@ -249,7 +251,9 @@ private:
                     m_snapshot = animationSnapshot(
                         args.value(QStringLiteral("enabled")).toBool(), requestedPreset,
                         args.value(QStringLiteral("speed")).toDouble(),
-                        args.value(QStringLiteral("overrides")).toObject());
+                        args.value(QStringLiteral("overrides")).toObject(),
+                        QStringLiteral("planned"), QStringLiteral("none"),
+                        args.value(QStringLiteral("animateMaximizedWindowOpen")).toBool(true));
                     response = makeResponse(request.value(QStringLiteral("id")).toInteger(), true,
                                             m_snapshot, {});
                 }
@@ -352,6 +356,7 @@ class SettingsAnimationControllerTest final : public QObject {
 private slots:
     void generatedPropertiesRetainQVariantListTypes();
     void controllerUsesAuthoritativeSnapshotsAndRejectsPlannedEffects();
+    void maximizedOpenPolicyUsesSnapshotsAndFullConfigurationWrites();
     void serverRejectedMutationKeepsControllerAvailable();
     void serverRejectedRefreshClearsControllerAvailability();
     void controllerProjectsUnavailableEffectsSeparately();
@@ -437,6 +442,58 @@ void SettingsAnimationControllerTest::controllerUsesAuthoritativeSnapshotsAndRej
     QVERIFY(controller.available());
     QCOMPARE(controller.preset(), QStringLiteral("macos"));
     QVERIFY(!controller.lastError().isEmpty());
+}
+
+void SettingsAnimationControllerTest::maximizedOpenPolicyUsesSnapshotsAndFullConfigurationWrites()
+{
+    QTemporaryDir runtime;
+    QVERIFY(runtime.isValid());
+    EnvironmentGuard environment(runtime.path().toUtf8(), QByteArrayLiteral("test"));
+    AnimationControlServer server(runtime.path());
+    const QJsonObject overrides{
+        {QStringLiteral("window.open"), QStringLiteral("window.glide")},
+        {QStringLiteral("window.move"), QStringLiteral("geometry.macos")},
+    };
+    server.setSnapshot(animationSnapshot(false, QStringLiteral("macos"), 1.25, overrides,
+                                        QStringLiteral("planned"), QStringLiteral("none"), false));
+
+    SettingsAnimationController controller;
+    controller.refresh();
+    QTRY_VERIFY2(controller.available(), qPrintable(controller.lastError()));
+    QVERIFY(!controller.animateMaximizedWindowOpen());
+    QVERIFY(!controller.enabled());
+    QCOMPARE(controller.preset(), QStringLiteral("macos"));
+    QCOMPARE(controller.speed(), 1.25);
+
+    controller.setAnimateMaximizedWindowOpen(true);
+    QTRY_VERIFY(!controller.busy());
+    const QJsonObject request = server.lastRequest();
+    QCOMPARE(request.value(QStringLiteral("command")).toString(),
+             QStringLiteral("animation.config.set"));
+    const QJsonObject args = request.value(QStringLiteral("args")).toObject();
+    QCOMPARE(args.value(QStringLiteral("animateMaximizedWindowOpen")).toBool(), true);
+    QCOMPARE(args.value(QStringLiteral("enabled")).toBool(), false);
+    QCOMPARE(args.value(QStringLiteral("preset")).toString(), QStringLiteral("macos"));
+    QCOMPARE(args.value(QStringLiteral("speed")).toDouble(), 1.25);
+    QCOMPARE(args.value(QStringLiteral("overrides")).toObject(), overrides);
+    QVERIFY(controller.animateMaximizedWindowOpen());
+
+    server.rejectNextSet();
+    controller.setAnimateMaximizedWindowOpen(false);
+    QTRY_VERIFY(!controller.busy());
+    QVERIFY(controller.available());
+    QVERIFY(controller.animateMaximizedWindowOpen());
+    QCOMPARE(controller.lastError(), QStringLiteral("rejected"));
+
+    QJsonObject legacySnapshot = animationSnapshot(
+        false, QStringLiteral("macos"), 1.25, overrides);
+    QJsonObject legacyConfig = legacySnapshot.value(QStringLiteral("config")).toObject();
+    legacyConfig.remove(QStringLiteral("animateMaximizedWindowOpen"));
+    legacySnapshot.insert(QStringLiteral("config"), legacyConfig);
+    server.setSnapshot(legacySnapshot);
+    controller.refresh();
+    QTRY_VERIFY(!controller.busy());
+    QVERIFY(controller.animateMaximizedWindowOpen());
 }
 
 void SettingsAnimationControllerTest::serverRejectedMutationKeepsControllerAvailable()

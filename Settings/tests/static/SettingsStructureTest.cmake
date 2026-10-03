@@ -21,6 +21,43 @@ list(FIND registered_qml_files "pages/appearance/Animations.qml" animations_qml_
 if(animations_qml_index EQUAL -1)
     message(FATAL_ERROR "Animations.qml is not registered in the Settings QML module")
 endif()
+file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/Animations.qml" animations_page_source)
+string(FIND "${animations_page_source}"
+    "WINDOWS" animations_windows_section)
+string(FIND "${animations_page_source}"
+    "objectName: \"animateMaximizedWindowOpenToggle\"" maximized_open_toggle)
+string(FIND "${animations_page_source}"
+    "apps.settings.pages.animations.window_management" animations_window_management_section)
+string(FIND "${animations_page_source}"
+    "checked: root.controller.animateMaximizedWindowOpen" maximized_open_binding)
+string(FIND "${animations_page_source}"
+    "onToggled: targetChecked => root.controller.setAnimateMaximizedWindowOpen(targetChecked)"
+    maximized_open_writer)
+string(FIND "${animations_page_source}"
+    "Animate maximized window opening" maximized_open_label)
+string(FIND "${animations_page_source}"
+    "When disabled, windows that open maximized appear immediately at their final size instead of playing the Window Open effect."
+    maximized_open_description)
+if(animations_windows_section LESS 0 OR maximized_open_toggle LESS animations_windows_section
+   OR animations_window_management_section LESS maximized_open_toggle
+   OR maximized_open_binding LESS 0 OR maximized_open_writer LESS 0
+   OR maximized_open_label LESS 0 OR maximized_open_description LESS 0)
+    message(FATAL_ERROR
+        "The maximized Window Open policy must be snapshot-bound inside the Animations Windows section")
+endif()
+file(GLOB_RECURSE settings_qml_sources "${SETTINGS_SOURCE_DIR}/qml/*.qml")
+set(maximized_open_toggle_count 0)
+foreach(qml_source IN LISTS settings_qml_sources)
+    file(READ "${qml_source}" qml_source_text)
+    string(REGEX MATCHALL "objectName: \"animateMaximizedWindowOpenToggle\""
+        page_policy_toggles "${qml_source_text}")
+    list(LENGTH page_policy_toggles page_policy_toggle_count)
+    math(EXPR maximized_open_toggle_count
+        "${maximized_open_toggle_count} + ${page_policy_toggle_count}")
+endforeach()
+if(NOT maximized_open_toggle_count EQUAL 1)
+    message(FATAL_ERROR "The maximized Window Open control must appear exactly once in QML")
+endif()
 foreach(new_appearance_page IN ITEMS
     "pages/appearance/VisualEffects.qml"
     "pages/appearance/MaterialProgramParameterEditor.qml"
@@ -543,6 +580,10 @@ foreach(display_required_token IN ITEMS
     "objectName: \"displayOrientation\""
     "objectName: \"displayVrrState\""
     "objectName: \"displayConnector\""
+    "objectName: \"displayPreferredBadge_\""
+    "objectName: \"displayPreferredLabel_\""
+    "objectName: \"displayOutputsTruncated\""
+    "objectName: \"displayModesTruncated\""
     "objectName: \"displayError\""
     "objectName: \"displayRetry\""
     "SettingsController.wallpaper"
@@ -550,6 +591,9 @@ foreach(display_required_token IN ITEMS
     "effectiveFit"
     "Text.PlainText"
     "modelData.preferred"
+    "Additional displays are not shown."
+    "Some available modes are not shown."
+    "Preferred"
     "root.controller.refresh()"
     "RESOLUTION"
     "DISPLAY DETAILS"
@@ -559,6 +603,10 @@ foreach(display_required_token IN ITEMS
         message(FATAL_ERROR "Display page is missing '${display_required_token}'")
     endif()
 endforeach()
+string(FIND "${display_page_source}" "Native" display_native_label_position)
+if(NOT display_native_label_position EQUAL -1)
+    message(FATAL_ERROR "Display preferred-mode evidence must not be labeled Native")
+endif()
 foreach(display_forbidden_token IN ITEMS
     "Process {"
     "hyprctl"

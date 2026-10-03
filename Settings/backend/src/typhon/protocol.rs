@@ -115,9 +115,11 @@ enum WireArguments {
 struct GetArguments {}
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct AnimationSetArguments {
     version: u8,
     enabled: bool,
+    animate_maximized_window_open: bool,
     preset: String,
     speed: f64,
     overrides: std::collections::BTreeMap<String, String>,
@@ -137,6 +139,7 @@ pub fn encode_control_request(id: u64, request: ControlRequest) -> Result<Vec<u8
             WireArguments::AnimationSet(AnimationSetArguments {
                 version: 1,
                 enabled: configuration.enabled,
+                animate_maximized_window_open: configuration.animate_maximized_window_open,
                 preset: configuration.preset,
                 speed: configuration.speed,
                 overrides: configuration.overrides,
@@ -517,6 +520,7 @@ mod tests {
     fn set_request_keeps_typed_configuration_inside_args() {
         let configuration = AnimationConfiguration {
             enabled: false,
+            animate_maximized_window_open: false,
             preset: "macos".to_owned(),
             speed: 1.25,
             overrides: [("window.move".to_owned(), "geometry.macos".to_owned())]
@@ -528,6 +532,7 @@ mod tests {
         assert_eq!(request["command"], "animation.config.set");
         assert_eq!(request["args"]["version"], 1);
         assert_eq!(request["args"]["enabled"], false);
+        assert_eq!(request["args"]["animateMaximizedWindowOpen"], false);
         assert_eq!(
             request["args"]["overrides"]["window.move"],
             "geometry.macos"

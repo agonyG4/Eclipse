@@ -21,6 +21,7 @@ pub mod qobject {
         #[qproperty(bool, available, READ = available, NOTIFY = availability_changed)]
         #[qproperty(bool, busy, READ = busy, NOTIFY = busy_changed)]
         #[qproperty(bool, enabled, READ = enabled, NOTIFY = snapshot_changed)]
+        #[qproperty(bool, animate_maximized_window_open, cxx_name = "animateMaximizedWindowOpen", READ = animate_maximized_window_open, NOTIFY = snapshot_changed)]
         #[qproperty(QString, preset, READ = preset, NOTIFY = snapshot_changed)]
         #[qproperty(f64, speed, READ = speed, NOTIFY = snapshot_changed)]
         #[qproperty(u64, generation, READ = generation, NOTIFY = snapshot_changed)]
@@ -36,6 +37,8 @@ pub mod qobject {
         fn available(self: &SettingsAnimationController) -> bool;
         fn busy(self: &SettingsAnimationController) -> bool;
         fn enabled(self: &SettingsAnimationController) -> bool;
+        #[cxx_name = "animateMaximizedWindowOpen"]
+        fn animate_maximized_window_open(self: &SettingsAnimationController) -> bool;
         fn preset(self: &SettingsAnimationController) -> QString;
         fn speed(self: &SettingsAnimationController) -> f64;
         fn generation(self: &SettingsAnimationController) -> u64;
@@ -66,6 +69,12 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "setEnabled"]
         fn set_enabled(self: Pin<&mut SettingsAnimationController>, value: bool);
+        #[qinvokable]
+        #[cxx_name = "setAnimateMaximizedWindowOpen"]
+        fn set_animate_maximized_window_open(
+            self: Pin<&mut SettingsAnimationController>,
+            value: bool,
+        );
         #[qinvokable]
         #[cxx_name = "setPreset"]
         fn set_preset(self: Pin<&mut SettingsAnimationController>, value: &QString);
@@ -257,6 +266,13 @@ impl qobject::SettingsAnimationController {
         self.rust().state.configuration().enabled
     }
 
+    fn animate_maximized_window_open(&self) -> bool {
+        self.rust()
+            .state
+            .configuration()
+            .animate_maximized_window_open
+    }
+
     fn preset(&self) -> QString {
         QString::from(&self.rust().state.configuration().preset)
     }
@@ -346,6 +362,14 @@ impl qobject::SettingsAnimationController {
             .rust_mut()
             .state
             .enqueue_mutation(AnimationMutation::SetEnabled(value));
+        self.submit_pending();
+    }
+
+    fn set_animate_maximized_window_open(mut self: Pin<&mut Self>, value: bool) {
+        self.as_mut()
+            .rust_mut()
+            .state
+            .enqueue_mutation(AnimationMutation::SetAnimateMaximizedWindowOpen(value));
         self.submit_pending();
     }
 

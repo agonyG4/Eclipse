@@ -54,8 +54,12 @@ Window {
         const inputRect = Qt.rect(card.x - (scaledWidth - card.width) / 2,
                                   card.y - (scaledHeight - card.height) / 2,
                                   scaledWidth, scaledHeight)
-        if (ScreenshotInputRegion)
-            ScreenshotInputRegion.update(inputRect)
+        if (ScreenshotInputRegion) {
+            if (nativeFileDragging)
+                ScreenshotInputRegion.suspend()
+            else
+                ScreenshotInputRegion.update(inputRect)
+        }
         ScreenshotController.thumbnailRect = inputRect
     }
 
@@ -130,6 +134,8 @@ Window {
                 if (root.visible)
                     root.entering = false
             })
+        } else if (ScreenshotInputRegion) {
+            ScreenshotInputRegion.suspend()
         }
     }
 

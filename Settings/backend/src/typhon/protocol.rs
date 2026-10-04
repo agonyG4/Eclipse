@@ -4,7 +4,9 @@ use crate::typhon::material_program::{
     MaterialProgramParameterConfiguration, MaterialProgramParameterConfigurationSnapshot,
     MaterialProgramStateSnapshot,
 };
-use crate::typhon::output::{OutputListSnapshot, OutputRequest};
+use crate::typhon::output::{
+    OutputConfigureRequest, OutputListSnapshot, OutputRequest, OutputTransactionRequest,
+};
 use crate::visual_effects::{MaterialConfiguration, MaterialSnapshot};
 use serde::Serialize;
 use serde_json::Number;
@@ -109,6 +111,8 @@ enum WireArguments {
     MaterialProgramSelection(MaterialProgramConfiguration),
     MaterialProgramParameters(MaterialProgramParameterConfiguration),
     OutputGet(GetArguments),
+    OutputConfigure(OutputConfigureRequest),
+    OutputTransaction(OutputTransactionRequest),
 }
 
 #[derive(Serialize)]
@@ -170,6 +174,33 @@ pub fn encode_control_request(id: u64, request: ControlRequest) -> Result<Vec<u8
         ),
         ControlRequest::Output(OutputRequest::Get) => {
             ("outputs", WireArguments::OutputGet(GetArguments {}))
+        }
+        ControlRequest::Output(OutputRequest::Configure(configuration)) => {
+            configuration
+                .validate()
+                .map_err(|_| ProtocolError::InvalidJson)?;
+            (
+                "outputs.configure",
+                WireArguments::OutputConfigure(configuration),
+            )
+        }
+        ControlRequest::Output(OutputRequest::Confirm(transaction)) => {
+            transaction
+                .validate()
+                .map_err(|_| ProtocolError::InvalidJson)?;
+            (
+                "outputs.configure.confirm",
+                WireArguments::OutputTransaction(transaction),
+            )
+        }
+        ControlRequest::Output(OutputRequest::Revert(transaction)) => {
+            transaction
+                .validate()
+                .map_err(|_| ProtocolError::InvalidJson)?;
+            (
+                "outputs.configure.revert",
+                WireArguments::OutputTransaction(transaction),
+            )
         }
     };
     let request = WireRequest {
@@ -287,7 +318,7 @@ pub fn decode_control_response(
                     .map_err(|_| ProtocolError::InvalidJson)?;
                 ControlSuccess::MaterialProgramParameters(snapshot)
             }
-            ControlRequest::Output(OutputRequest::Get) => {
+            ControlRequest::Output(_) => {
                 let snapshot: OutputListSnapshot = serde_json::from_value(result.clone())
                     .map_err(|_| ProtocolError::InvalidJson)?;
                 snapshot
@@ -373,6 +404,61 @@ mod tests {
     }
 
     #[test]
+    fn outputs_configure_request_encodes_exact_generation_qualified_mode_identity() {
+        use crate::typhon::output::{OutputConfigureRequest, OutputRequest, OutputTransform};
+
+        let request = ControlRequest::Output(OutputRequest::Configure(OutputConfigureRequest {
+            version: 1,
+            output_id: String::from("output-1"),
+            base_configuration_generation: 42,
+            mode_id: 7,
+            scale_milli: 1000,
+            transform: OutputTransform::Normal,
+        }));
+        let encoded = encode_control_request(11, request).unwrap();
+        let value: Value = serde_json::from_slice(&encoded[..encoded.len() - 1]).unwrap();
+
+        assert_eq!(value["protocol"], "astrea.control");
+        assert_eq!(value["command"], "outputs.configure");
+        assert_eq!(value["args"]["version"], 1);
+        assert_eq!(value["args"]["outputId"], "output-1");
+        assert_eq!(value["args"]["baseConfigurationGeneration"], 42);
+        assert_eq!(value["args"]["modeId"], 7);
+        assert_eq!(value["args"]["scaleMilli"], 1000);
+        assert_eq!(value["args"]["transform"], "normal");
+        assert_eq!(encoded.last(), Some(&b'\n'));
+    }
+
+    #[test]
+    fn outputs_confirm_and_revert_requests_encode_only_the_transaction_identity() {
+        use crate::typhon::output::{OutputRequest, OutputTransactionRequest};
+
+        for (request, command) in [
+            (
+                OutputRequest::Confirm(OutputTransactionRequest {
+                    version: 1,
+                    transaction_id: 19,
+                }),
+                "outputs.configure.confirm",
+            ),
+            (
+                OutputRequest::Revert(OutputTransactionRequest {
+                    version: 1,
+                    transaction_id: 19,
+                }),
+                "outputs.configure.revert",
+            ),
+        ] {
+            let encoded = encode_control_request(12, ControlRequest::Output(request)).unwrap();
+            let value: Value = serde_json::from_slice(&encoded[..encoded.len() - 1]).unwrap();
+            assert_eq!(value["protocol"], "astrea.control");
+            assert_eq!(value["command"], command);
+            assert_eq!(value["args"], json!({"version": 1, "transactionId": 19}));
+            assert_eq!(encoded.last(), Some(&b'\n'));
+        }
+    }
+
+    #[test]
     fn outputs_get_decodes_a_realistic_typed_snapshot() {
         let request = ControlRequest::Output(crate::typhon::output::OutputRequest::Get);
         let result = json!({
@@ -383,24 +469,34 @@ mod tests {
                 "model": null,
                 "serial": null,
                 "enabled": true,
-                "currentMode": {"width": 1920, "height": 1080, "refreshMillihz": 165000},
+                "currentMode": {"id": 2, "width": 1920, "height": 1080, "refreshMillihz": 165000},
                 "physicalSizeMm": {"widthMm": 600, "heightMm": 340},
+                "configurationGeneration": 9,
                 "scaleMilli": 1000,
                 "transform": "normal",
+                "mutationCapabilities": {
+                    "modeSelectionSupported": true,
+                    "scale": {"supported": false, "minMilli": null, "maxMilli": null, "valuesMilli": []},
+                    "transform": {"supported": false, "transforms": []},
+                    "enableDisableSupported": false,
+                    "topologySupported": false,
+                    "vrrMutationSupported": false
+                },
                 "position": {"x": 0, "y": 0},
                 "focused": true,
                 "backend": "atomic",
                 "vrr": {"state": "available"},
                 "directScanout": {"state": "unavailable"},
                 "modes": [
-                    {"width": 1920, "height": 1080, "refreshMillihz": 60000, "preferred": true, "interlaced": false},
-                    {"width": 1920, "height": 1080, "refreshMillihz": 165000, "preferred": false, "interlaced": false},
-                    {"width": 1600, "height": 900, "refreshMillihz": 60000, "preferred": false, "interlaced": false}
+                    {"id": 1, "width": 1920, "height": 1080, "refreshMillihz": 60000, "preferred": true, "interlaced": false},
+                    {"id": 2, "width": 1920, "height": 1080, "refreshMillihz": 165000, "preferred": false, "interlaced": false},
+                    {"id": 3, "width": 1600, "height": 900, "refreshMillihz": 60000, "preferred": false, "interlaced": false}
                 ],
                 "modesTruncated": false
             }],
             "total": 1,
-            "truncated": false
+            "truncated": false,
+            "transaction": null
         });
         let outcome = decode_control_response(&program_response(91, result), 91, &request)
             .expect("a valid native output snapshot decodes");
@@ -410,6 +506,7 @@ mod tests {
 
         assert_eq!(snapshot.outputs.len(), 1);
         assert_eq!(snapshot.outputs[0].name, "DP-1");
+        assert_eq!(snapshot.outputs[0].configuration_generation, 9);
         assert_eq!(
             snapshot.outputs[0]
                 .current_mode
@@ -418,7 +515,21 @@ mod tests {
                 .refresh_millihz,
             165000
         );
+        assert_eq!(snapshot.outputs[0].current_mode.as_ref().unwrap().id, 2);
         assert_eq!(snapshot.outputs[0].modes.len(), 3);
+        assert_eq!(snapshot.outputs[0].modes[1].id, 2);
+        assert!(
+            snapshot.outputs[0]
+                .mutation_capabilities
+                .mode_selection_supported
+        );
+        assert!(!snapshot.outputs[0].mutation_capabilities.scale.supported);
+        assert!(
+            !snapshot.outputs[0]
+                .mutation_capabilities
+                .transform
+                .supported
+        );
         assert!(snapshot.outputs[0].modes[0].preferred);
         assert_eq!(
             snapshot.outputs[0]
@@ -431,14 +542,131 @@ mod tests {
     }
 
     #[test]
+    fn active_output_transaction_is_recovered_from_an_ordinary_outputs_refresh() {
+        let request = ControlRequest::Output(crate::typhon::output::OutputRequest::Get);
+        let mut result = valid_output_list();
+        result["transaction"] = json!({
+            "id": 72,
+            "outputId": "output-1",
+            "state": "pending_confirmation",
+            "appliedConfigurationGeneration": 9,
+            "remainingMs": 7300,
+            "errorCode": null
+        });
+        let outcome = decode_control_response(&program_response(95, result), 95, &request)
+            .expect("active transaction is part of a complete output snapshot");
+        let ProtocolOutcome::Success(ControlSuccess::Outputs(snapshot)) = outcome else {
+            panic!("outputs refresh must decode the authoritative transaction");
+        };
+        let transaction = snapshot.transaction.unwrap();
+        assert_eq!(transaction.id, 72);
+        assert_eq!(transaction.applied_configuration_generation, 9);
+        assert_eq!(transaction.remaining_ms, 7300);
+        assert_eq!(transaction.error_code, None);
+    }
+
+    #[test]
+    fn output_snapshot_rejects_missing_nullable_fields_and_malformed_transactions() {
+        let request = ControlRequest::Output(crate::typhon::output::OutputRequest::Get);
+        let mut missing_transaction = valid_output_list();
+        missing_transaction
+            .as_object_mut()
+            .unwrap()
+            .remove("transaction");
+        let mut missing_scale_bound = valid_output_list();
+        missing_scale_bound["outputs"][0]["mutationCapabilities"]["scale"]
+            .as_object_mut()
+            .unwrap()
+            .remove("minMilli");
+        let mut missing_current_mode = valid_output_list();
+        missing_current_mode["outputs"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("currentMode");
+        let mut unknown_transaction_field = valid_output_list();
+        unknown_transaction_field["transaction"] = json!({
+            "id": 8, "outputId":"output-1", "state":"pending_confirmation",
+            "appliedConfigurationGeneration":9, "remainingMs":5000, "errorCode":null,
+            "rollbackMode":"1920x1080"
+        });
+        let mut excessive_remaining = valid_output_list();
+        excessive_remaining["transaction"] = json!({
+            "id": 8, "outputId":"output-1", "state":"pending_confirmation",
+            "appliedConfigurationGeneration":9, "remainingMs":15001, "errorCode":null
+        });
+        let mut missing_transaction_error = valid_output_list();
+        missing_transaction_error["transaction"] = json!({
+            "id": 8, "outputId":"output-1", "state":"pending_confirmation",
+            "appliedConfigurationGeneration":9, "remainingMs":5000
+        });
+
+        for invalid in [
+            missing_transaction,
+            missing_scale_bound,
+            missing_current_mode,
+            unknown_transaction_field,
+            excessive_remaining,
+            missing_transaction_error,
+        ] {
+            assert_eq!(
+                decode_control_response(&program_response(96, invalid), 96, &request),
+                Err(ProtocolError::InvalidJson)
+            );
+        }
+    }
+
+    #[test]
+    fn every_output_operation_decodes_to_the_same_complete_authoritative_snapshot_type() {
+        use crate::typhon::output::{
+            OutputConfigureRequest, OutputRequest, OutputTransactionRequest, OutputTransform,
+        };
+        let requests = [
+            OutputRequest::Get,
+            OutputRequest::Configure(OutputConfigureRequest {
+                version: 1,
+                output_id: "output-1".into(),
+                base_configuration_generation: 9,
+                mode_id: 2,
+                scale_milli: 1000,
+                transform: OutputTransform::Normal,
+            }),
+            OutputRequest::Confirm(OutputTransactionRequest {
+                version: 1,
+                transaction_id: 72,
+            }),
+            OutputRequest::Revert(OutputTransactionRequest {
+                version: 1,
+                transaction_id: 72,
+            }),
+        ];
+        for (index, request) in requests.into_iter().enumerate() {
+            let outcome = decode_control_response(
+                &program_response(100 + index as u64, valid_output_list()),
+                100 + index as u64,
+                &ControlRequest::Output(request),
+            )
+            .expect("each operation returns a complete output snapshot");
+            assert!(matches!(
+                outcome,
+                ProtocolOutcome::Success(ControlSuccess::Outputs(_))
+            ));
+        }
+    }
+
+    #[test]
     fn output_snapshot_validation_rejects_malformed_structure_and_bounds() {
         let request = ControlRequest::Output(crate::typhon::output::OutputRequest::Get);
         let mut duplicate_ids = valid_output_list();
         duplicate_ids["outputs"] = json!([
             valid_output(),
-            {"id":"output-1", "name":"HDMI-A-1", "make":null, "model":null,
+             {"id":"output-1", "name":"HDMI-A-1", "make":null, "model":null,
              "serial":null, "enabled":false, "currentMode":null, "physicalSizeMm":null,
-             "scaleMilli":1000, "transform":"normal", "position":{"x":0,"y":0},
+             "configurationGeneration":9, "scaleMilli":1000, "transform":"normal",
+             "mutationCapabilities":{"modeSelectionSupported":true,
+               "scale":{"supported":false,"minMilli":null,"maxMilli":null,"valuesMilli":[]},
+               "transform":{"supported":false,"transforms":[]},
+               "enableDisableSupported":false,"topologySupported":false,"vrrMutationSupported":false},
+             "position":{"x":0,"y":0},
              "focused":false, "backend":"atomic", "vrr":{"state":"unavailable"},
              "directScanout":{"state":"unavailable"}, "modes":[], "modesTruncated":false}
         ]);
@@ -499,20 +727,52 @@ mod tests {
     }
 
     fn valid_output_list() -> Value {
-        json!({"outputs": [valid_output()], "total": 1, "truncated": false})
+        json!({"outputs": [valid_output()], "total": 1, "truncated": false, "transaction": null})
+    }
+
+    #[test]
+    fn output_configure_encoding_rejects_invalid_versions_and_missing_identity() {
+        use crate::typhon::output::{OutputConfigureRequest, OutputRequest, OutputTransform};
+        for (version, output_id, generation, mode_id) in [
+            (2, "output-1", 9, 2),
+            (1, "", 9, 2),
+            (1, "output-1", 0, 2),
+            (1, "output-1", 9, 0),
+        ] {
+            let request =
+                ControlRequest::Output(OutputRequest::Configure(OutputConfigureRequest {
+                    version,
+                    output_id: output_id.into(),
+                    base_configuration_generation: generation,
+                    mode_id,
+                    scale_milli: 1000,
+                    transform: OutputTransform::Normal,
+                }));
+            assert_eq!(
+                encode_control_request(13, request),
+                Err(ProtocolError::InvalidJson)
+            );
+        }
     }
 
     fn valid_output() -> Value {
         json!({
             "id": "output-1", "name": "DP-1", "make": null, "model": null,
             "serial": null, "enabled": true,
-            "currentMode": {"width":1920,"height":1080,"refreshMillihz":165000},
-            "physicalSizeMm": {"widthMm":600,"heightMm":340}, "scaleMilli":1000,
-            "transform":"normal", "position":{"x":0,"y":0}, "focused":true,
+            "currentMode": {"id":2,"width":1920,"height":1080,"refreshMillihz":165000},
+            "physicalSizeMm": {"widthMm":600,"heightMm":340}, "configurationGeneration":9,
+            "scaleMilli":1000, "transform":"normal",
+            "mutationCapabilities":{"modeSelectionSupported":true,
+              "scale":{"supported":false,"minMilli":null,"maxMilli":null,"valuesMilli":[]},
+              "transform":{"supported":false,"transforms":[]},
+              "enableDisableSupported":false,"topologySupported":false,"vrrMutationSupported":false},
+            "position":{"x":0,"y":0}, "focused":true,
             "backend":"atomic", "vrr":{"state":"available"},
             "directScanout":{"state":"unavailable"},
-            "modes":[{"width":1920,"height":1080,"refreshMillihz":60000,
-                       "preferred":true,"interlaced":false}], "modesTruncated":false
+            "modes":[{"id":1,"width":1920,"height":1080,"refreshMillihz":60000,
+                       "preferred":true,"interlaced":false},
+                      {"id":2,"width":1920,"height":1080,"refreshMillihz":165000,
+                       "preferred":false,"interlaced":false}], "modesTruncated":false
         })
     }
 

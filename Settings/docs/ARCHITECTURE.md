@@ -373,6 +373,32 @@ Typhon's private material store, never in Eclipse `theme.json`.
 The single System Theme entry in Appearance is the built-in Astrea theme card;
 there is no persisted preset key or alternate preset catalogue in Phase 1.
 
+### Display output protocol foundation
+
+`SettingsDisplayController` continues to consume one complete typed
+`OutputListSnapshot` for `outputs`, configure, confirm, and revert responses.
+Output snapshots carry a semantic configuration generation, opaque native mode
+IDs, explicit mutation capabilities, and an optional active server transaction.
+Mode identity is not reconstructed from the displayed width, height, or refresh
+rate. A regular `outputs` refresh can recover a transaction after Settings
+restarts.
+
+The Rust Display state owns drafts keyed by output ID and base configuration
+generation. It checks mode identity and advertised scale/transform support
+before allowing Apply. A newer authoritative generation makes an edited draft
+stale; it cannot be silently rebased for Apply. A server mutation rejection
+finishes only that request and preserves the last authoritative snapshot and
+availability. A failed refresh or transport loss keeps the existing
+unavailable behavior and clears stale output data. The shared `ClientWorker`
+still admits one request at a time.
+
+The protocol encodes `outputs.configure`, `outputs.configure.confirm`, and
+`outputs.configure.revert`, but the current Typhon native output runtime
+advertises mode, scale, and transform mutation as unsupported. It has no safe
+runtime KMS modeset and rollback owner yet. The Settings API is ready for a
+later integration, while `Display.qml` remains a read-only projection with no
+mutation controls or local rollback timer.
+
 ## Exclusions
 
 Settings has no Quickshell import, LayerShellQt dependency, Hyprland command,

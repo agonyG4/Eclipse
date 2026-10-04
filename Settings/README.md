@@ -80,19 +80,28 @@ flow is DRM/KMS selected connector and modes -> Typhon `OutputSnapshot` -> the
 existing `astrea.control` `outputs` command -> `SettingsDisplayController` ->
 `Display.qml`. Connector presentation identity, physical dimensions, preferred
 mode evidence, current mode, and VRR capability come from the selected KMS
-connector and its exact sysfs connector match. Make, model, and serial remain
-empty until Typhon has authoritative EDID identity evidence. VRR capability is
-not runtime activation.
+connector and its exact sysfs connector match. Mode records have opaque IDs
+qualified by a semantic output configuration generation; Settings does not
+rebuild DRM modes from labels. Make, model, and serial remain empty until Typhon
+has authoritative EDID identity evidence. VRR capability is not runtime
+activation.
 
 Typhon currently owns one production output runtime and has no output hotplug
 lifecycle or desktop topology authority. The output list and Display preview
 are forward-compatible projections; they do not claim production multi-output
-support. Display Settings does not mutate output configuration. Future mode
-changes must validate an exact output generation and configuration, use KMS
-`TEST_ONLY` when applicable, apply a temporary modeset, and require a
-confirmation countdown. Keep persists; Revert or timeout restores the previous
-exact state. Future draggable topology waits for independent output runtimes,
-hotplug, and compositor-owned topology.
+support. The typed `outputs.configure`, `outputs.configure.confirm`, and
+`outputs.configure.revert` request shapes are present in the backend protocol.
+The Rust controller owns generation-keyed drafts and can consume an active
+transaction from an ordinary outputs refresh. Typhon currently advertises
+mode, scale, and transform mutation as
+unsupported because its native runtime does not yet have a safe runtime KMS
+reconfiguration and rollback owner. Configure, Keep, and Revert controls are
+not exposed; `Display.qml` remains read-only. The later implementation must
+validate the exact generation and native mode, use the same candidate for KMS
+`TEST_ONLY` and apply, keep the rollback deadline in Typhon, persist only after
+Keep, and validate persisted state against stable hardware identity at startup.
+Future draggable topology waits for independent output runtimes, hotplug, and
+compositor-owned topology.
 
 Appearance mutations are backed by `SettingsController.appearance`, a thin
 CXX-Qt projection over the Rust Appearance backend. Rust owns

@@ -519,10 +519,8 @@ Item {
         const outputRegion = dockSurfaceGeometry.outputLocalDelegateRect(
             outputWidth, outputHeight, surfaceWidth, surfaceHeight,
             DockController.position, DockController.layerShellEdgeMargin, windowRegion)
-        const title = targetItem.runtimeKnown && targetItem.running
-            ? qsTr("%1 (%2 windows)").arg(targetItem.displayName).arg(targetItem.windowCount)
-            : qsTr("%1").arg(targetItem.displayName)
-        dockTooltipSurface.showTooltip(title, outputRegion, DockController.position)
+        dockTooltipSurface.showTooltip(targetItem.displayName, outputRegion,
+                                       DockController.position)
     }
 
     function delegateRestingCenterInPanel(item) {

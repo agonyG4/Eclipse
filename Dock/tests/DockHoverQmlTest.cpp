@@ -10,8 +10,10 @@
 #include <QDir>
 #include <QFile>
 #include <QFont>
+#include <QFontMetricsF>
 #include <QGuiApplication>
 #include <QImage>
+#include <QMetaProperty>
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -282,6 +284,7 @@ private slots:
     void magnifiedVisualRegionAcceptsContextMenu();
     void mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen();
     void tooltipFollowsMagnifiedIconAndHidesForDockInteractions();
+    void runningTooltipUsesOnlyTheApplicationDisplayName();
     void visibleTooltipReanchorsAfterOutputGeometryChanges();
     void queuedVisibleTooltipRefreshCannotPresentReplacementTarget();
     void modelChangedTooltipRefreshCannotPresentReplacementTarget();
@@ -1834,18 +1837,23 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
         QStringLiteral("dockTooltipBubble"));
     auto *tooltipShape = tooltipWindow->findChild<QQuickItem *>(
         QStringLiteral("dockTooltipShape"));
-    auto *tooltipBackdropBody = tooltipWindow->findChild<QQuickItem *>(
-        QStringLiteral("dockTooltipBackdropBody"));
+    auto *tooltipStroke = tooltipWindow->findChild<QObject *>(
+        QStringLiteral("dockTooltipStroke"));
     auto *tooltipText = tooltipWindow->findChild<QQuickItem *>(
         QStringLiteral("dockTooltipText"));
+    auto *tooltipFontMetrics = tooltipWindow->findChild<QObject *>(
+        QStringLiteral("dockTooltipFontMetrics"));
     auto *tooltipMaterial = tooltipWindow->findChild<QObject *>(
         QStringLiteral("dockTooltipMaterial"));
-    QVERIFY(tooltipBubble && tooltipShape && tooltipBackdropBody && tooltipText
-            && tooltipMaterial);
+    QVERIFY(tooltipBubble && tooltipShape && tooltipStroke && tooltipText
+            && tooltipFontMetrics && tooltipMaterial);
+    QVERIFY(!tooltipWindow->findChild<QQuickItem *>(
+        QStringLiteral("dockTooltipBackdropBody")));
     QVERIFY(!tooltipWindow->findChild<QQuickItem *>(QStringLiteral("dockTooltipCard")));
     QVERIFY(!tooltipWindow->findChild<QQuickItem *>(QStringLiteral("dockTooltipPointer")));
     QCOMPARE(tooltipBubble->property("pointerWidth").toInt(), 14);
     QCOMPARE(tooltipBubble->property("pointerDepth").toInt(), 8);
+    QCOMPARE(tooltipStroke->property("strokeWidth").toReal(), 1.0);
     QFile bubbleSource(QString::fromUtf8(
         DOCK_SOURCE_DIR "/qml/components/DockTooltipBubble.qml"));
     QVERIFY(bubbleSource.open(QIODevice::ReadOnly));
@@ -1915,10 +1923,6 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
     QCOMPARE(tooltipText->height(), qreal(tooltipRect.height()));
     QCOMPARE(tooltipText->property("font").value<QFont>().pixelSize(), 13);
     QCOMPARE(tooltipText->property("font").value<QFont>().weight(), QFont::Medium);
-    QCOMPARE(tooltipBackdropBody->x(), qreal(tooltipRect.x()));
-    QCOMPARE(tooltipBackdropBody->y(), qreal(tooltipRect.y()));
-    QCOMPARE(tooltipBackdropBody->width(), qreal(tooltipRect.width()));
-    QCOMPARE(tooltipBackdropBody->height(), qreal(tooltipRect.height()));
     QCOMPARE(tooltipBubble->property("cardWidth").toReal(), qreal(tooltipRect.width()));
     QCOMPARE(tooltipWindow->property("cardPlacement").toMap()
                  .value(QStringLiteral("pointerEdge")).toString(),
@@ -1927,26 +1931,22 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
     QCOMPARE(effectRegions.size(), 1);
     QVERIFY(effectRegions.constFirst()->enabled());
     const auto backdropDescriptors = tooltipWindow->findChildren<AstreaBackdropRegion *>();
-    QCOMPARE(backdropDescriptors.size(), 2);
-    AstreaBackdropRegion *bodyDescriptor = nullptr;
-    AstreaBackdropRegion *tailDescriptor = nullptr;
-    for (auto *descriptor : backdropDescriptors) {
-        if (descriptor->item() == tooltipBackdropBody)
-            bodyDescriptor = descriptor;
-        if (descriptor->item() == tooltipBubble)
-            tailDescriptor = descriptor;
-    }
-    QVERIFY(bodyDescriptor);
-    QVERIFY(tailDescriptor);
-    QCOMPARE(bodyDescriptor->radius(), 17.0);
-    QVERIFY(bodyDescriptor->property("localRectangles").toList().isEmpty());
-    QCOMPARE(tailDescriptor->radius(), 0.0);
+    QCOMPARE(backdropDescriptors.size(), 1);
+    AstreaBackdropRegion *bubbleDescriptor = backdropDescriptors.constFirst();
+    QCOMPARE(bubbleDescriptor->item(), tooltipBubble);
+    QCOMPARE(bubbleDescriptor->radius(), 0.0);
+    const QVariantList bodyRectangles =
+        tooltipBubble->property("backdropBodyRectangles").toList();
     const QVariantList tailRectangles =
         tooltipBubble->property("backdropTailRectangles").toList();
+    const QVariantList bubbleRectangles =
+        tooltipBubble->property("backdropRectangles").toList();
+    QVERIFY(!bodyRectangles.isEmpty());
+    QVERIFY(bodyRectangles.size() <= tooltipBubble->property("bodyHeight").toInt());
     QVERIFY(!tailRectangles.isEmpty());
     QVERIFY(tailRectangles.size() <= tooltipBubble->property("pointerDepth").toInt());
-    QCOMPARE(tailDescriptor->property("localRectangles").toList().size(),
-             tailRectangles.size());
+    QCOMPARE(bubbleRectangles.size(), bodyRectangles.size() + tailRectangles.size());
+    QCOMPARE(bubbleDescriptor->localRectangles(), bubbleRectangles);
     QTRY_VERIFY_WITH_TIMEOUT(!effectRegions.constFirst()->resolvedRegion().isEmpty(), 1000);
 
     const auto verifyBackdropEdge = [&](const QString &edge, const QRect &anchor,
@@ -1972,6 +1972,116 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
         const qreal bodyHeight = tooltipBubble->property("bodyHeight").toReal();
         const qreal center = tooltipBubble->property("pointerCenter").toReal();
         const qreal depth = tooltipBubble->property("pointerDepth").toReal();
+        const qreal renderPadding = tooltipBubble->property("renderPadding").toReal();
+        QVERIFY(renderPadding > tooltipStroke->property("strokeWidth").toReal() / 2.0);
+        const QRectF bodyRect = tooltipBubble->mapRectToItem(
+            tooltipWindow->contentItem(), QRectF(bodyX, bodyY, cardWidth, bodyHeight));
+        QVERIFY(qAbs(bodyRect.x() - currentCardRect.x()) < 0.01);
+        QVERIFY(qAbs(bodyRect.y() - currentCardRect.y()) < 0.01);
+        QVERIFY(qAbs(bodyRect.width() - currentCardRect.width()) < 0.01);
+        QVERIFY(qAbs(bodyRect.height() - currentCardRect.height()) < 0.01);
+
+        const qreal pathLeft = edge == QStringLiteral("left") ? bodyX - depth : bodyX;
+        const qreal pathRight = edge == QStringLiteral("right")
+            ? bodyX + cardWidth + depth : bodyX + cardWidth;
+        const qreal pathTop = edge == QStringLiteral("top") ? bodyY - depth : bodyY;
+        const qreal pathBottom = edge == QStringLiteral("bottom")
+            ? bodyY + bodyHeight + depth : bodyY + bodyHeight;
+        QVERIFY(pathLeft > tooltipStroke->property("strokeWidth").toReal() / 2.0);
+        QVERIFY(pathTop > tooltipStroke->property("strokeWidth").toReal() / 2.0);
+        QVERIFY(tooltipBubble->width() - pathRight
+                > tooltipStroke->property("strokeWidth").toReal() / 2.0);
+        QVERIFY(tooltipBubble->height() - pathBottom
+                > tooltipStroke->property("strokeWidth").toReal() / 2.0);
+
+        QPointF tailTip;
+        if (edge == QStringLiteral("bottom"))
+            tailTip = {bodyX + center, bodyY + bodyHeight + depth};
+        else if (edge == QStringLiteral("top"))
+            tailTip = {bodyX + center, bodyY - depth};
+        else if (edge == QStringLiteral("left"))
+            tailTip = {bodyX - depth, bodyY + center};
+        else
+            tailTip = {bodyX + cardWidth + depth, bodyY + center};
+        const QPointF outputTip = tooltipBubble->mapToItem(
+            tooltipWindow->contentItem(), tailTip);
+        qreal expectedGap = 0.0;
+        if (edge == QStringLiteral("bottom")) {
+            QVERIFY(qAbs(outputTip.x() - (currentCardRect.x() + center)) < 0.01);
+            expectedGap = anchor.top() - outputTip.y();
+        } else if (edge == QStringLiteral("top")) {
+            QVERIFY(qAbs(outputTip.x() - (currentCardRect.x() + center)) < 0.01);
+            expectedGap = outputTip.y() - anchor.bottom() - 1;
+        } else if (edge == QStringLiteral("left")) {
+            QVERIFY(qAbs(outputTip.y() - (currentCardRect.y() + center)) < 0.01);
+            expectedGap = outputTip.x() - anchor.right() - 1;
+        } else {
+            QVERIFY(qAbs(outputTip.y() - (currentCardRect.y() + center)) < 0.01);
+            expectedGap = anchor.left() - outputTip.x();
+        }
+        QCOMPARE(expectedGap, qreal(3.0));
+
+        const QVariantList currentBodyRectangles =
+            tooltipBubble->property("backdropBodyRectangles").toList();
+        const QVariantList currentTailRectangles =
+            tooltipBubble->property("backdropTailRectangles").toList();
+        const QVariantList currentBubbleRectangles =
+            tooltipBubble->property("backdropRectangles").toList();
+        QCOMPARE(currentBubbleRectangles.size(),
+                 currentBodyRectangles.size() + currentTailRectangles.size());
+        QCOMPARE(bubbleDescriptor->localRectangles(), currentBubbleRectangles);
+        for (const QVariant &value : currentBodyRectangles) {
+            const QRectF rectangle = value.toRectF();
+            QVERIFY(qAbs(rectangle.x() - qRound(rectangle.x())) < 0.001);
+            QVERIFY(qAbs(rectangle.y() - qRound(rectangle.y())) < 0.001);
+            QVERIFY(qAbs(rectangle.width() - qRound(rectangle.width())) < 0.001);
+            QVERIFY(qAbs(rectangle.height() - 1.0) < 0.001);
+        }
+        for (const QVariant &value : currentTailRectangles) {
+            const QRectF rectangle = value.toRectF();
+            QVERIFY(qAbs(rectangle.x() - qRound(rectangle.x())) < 0.001);
+            QVERIFY(qAbs(rectangle.y() - qRound(rectangle.y())) < 0.001);
+            QVERIFY(qAbs(rectangle.width() - qRound(rectangle.width())) < 0.001);
+            QVERIFY(qAbs(rectangle.height() - qRound(rectangle.height())) < 0.001);
+        }
+        QVERIFY(currentBubbleRectangles.size() < 96);
+
+        const qreal radius = bodyHeight / 2.0;
+        const auto inVectorCapsule = [bodyX, bodyY, cardWidth, radius](QPointF point) {
+            const qreal nearestX = qBound(bodyX + radius, point.x(),
+                                          bodyX + cardWidth - radius);
+            const qreal dx = point.x() - nearestX;
+            const qreal dy = point.y() - (bodyY + radius);
+            return dx * dx + dy * dy < radius * radius;
+        };
+        const auto surfaceBodyPoint = [&](qreal x, qreal y) {
+            return tooltipBubble->mapToItem(tooltipWindow->contentItem(), QPointF(x, y))
+                .toPoint();
+        };
+        const QPoint centerPoint = surfaceBodyPoint(bodyX + cardWidth / 2.0,
+                                                     bodyY + bodyHeight / 2.0);
+        const QPoint topCenterPoint = surfaceBodyPoint(bodyX + cardWidth / 2.0, bodyY + 1.0);
+        const QPoint bottomCenterPoint = surfaceBodyPoint(
+            bodyX + cardWidth / 2.0, bodyY + bodyHeight - 2.0);
+        QVERIFY(backdropContains(resolved, centerPoint));
+        QVERIFY(backdropContains(resolved, topCenterPoint));
+        QVERIFY(backdropContains(resolved, bottomCenterPoint));
+        const QPointF insideCapsulePoint(bodyX + 2.0, bodyY + radius);
+        const QPointF outsideCapsulePoint(bodyX + 1.0, bodyY + 1.0);
+        QVERIFY(inVectorCapsule(insideCapsulePoint));
+        QVERIFY(!inVectorCapsule(outsideCapsulePoint));
+        QVERIFY(backdropContains(resolved, surfaceBodyPoint(insideCapsulePoint.x(),
+                                                            insideCapsulePoint.y())));
+        QVERIFY(!backdropContains(resolved, surfaceBodyPoint(outsideCapsulePoint.x(),
+                                                             outsideCapsulePoint.y())));
+        for (const QPointF corner : {
+                 QPointF(bodyX + 1.0, bodyY + 1.0),
+                 QPointF(bodyX + cardWidth - 2.0, bodyY + 1.0),
+                 QPointF(bodyX + 1.0, bodyY + bodyHeight - 2.0),
+                 QPointF(bodyX + cardWidth - 2.0, bodyY + bodyHeight - 2.0)}) {
+            QVERIFY(!backdropContains(resolved, surfaceBodyPoint(corner.x(), corner.y())));
+        }
+
         QPointF tailPoint;
         QPointF outsidePoint;
         if (edge == QStringLiteral("bottom")) {
@@ -2001,6 +2111,10 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
         QVERIFY2(!backdropContains(resolved, surfaceOutsidePoint),
                  qPrintable(QStringLiteral("%1 tail bounding box leaked blur at %2,%3")
                                 .arg(edge).arg(surfaceOutsidePoint.x()).arg(surfaceOutsidePoint.y())));
+        qInfo().noquote() << "tooltip backdrop rectangles" << edge
+                          << "body" << currentBodyRectangles.size()
+                          << "tail" << currentTailRectangles.size()
+                          << "resolved" << resolved.size();
     };
 
     const auto verifySideSplice = [&](const QString &edge, const qreal expectedBaseX,
@@ -2029,14 +2143,114 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
         QVERIFY(qAbs(match.captured(3).toDouble() - expectedBaseX) < 0.001);
     };
 
+    const QFont tooltipFont = tooltipText->property("font").value<QFont>();
+    const QFontMetricsF tooltipFontMetricsForTest(tooltipFont);
     QVERIFY(showTooltip(QStringLiteral("A"), QRect(800, 800, 48, 48),
                         QStringLiteral("bottom")));
-    QCOMPARE(tooltipWindow->property("cardRect").toRect().width(), 72);
-    QCOMPARE(tooltipText->width(), 40.0);
-    QVERIFY(showTooltip(QString(160, QLatin1Char('W')), QRect(800, 800, 48, 48),
+    QCOMPARE(tooltipWindow->property("cardWidth").toInt(),
+             tooltipWindow->property("minimumCardWidth").toInt());
+    QCOMPARE(tooltipText->width(), qreal(40.0));
+
+    const qreal zenNaturalWidth = tooltipFontMetricsForTest.horizontalAdvance(
+        QStringLiteral("Zen Browser"));
+    QVERIFY(showTooltip(QStringLiteral("Zen Browser"), QRect(800, 800, 48, 48),
                         QStringLiteral("bottom")));
-    QCOMPARE(tooltipWindow->property("cardRect").toRect().width(), 280);
-    QCOMPARE(tooltipText->width(), 248.0);
+    QCOMPARE(tooltipWindow->property("title").toString(), QStringLiteral("Zen Browser"));
+    QCOMPARE(tooltipText->property("text").toString(), QStringLiteral("Zen Browser"));
+    QVERIFY(!tooltipText->property("truncated").toBool());
+    QVERIFY(tooltipWindow->property("minimumCardWidth").toInt() == 72);
+    QVERIFY(tooltipWindow->property("cardWidth").toInt()
+            > tooltipWindow->property("minimumCardWidth").toInt());
+    QVERIFY(qAbs(tooltipWindow->property("naturalTextWidth").toReal()
+                 - zenNaturalWidth) < 0.01);
+    const int expectedZenCardWidth = qCeil(zenNaturalWidth)
+        + 2 * tooltipWindow->property("horizontalTextPadding").toInt();
+    QVERIFY(qAbs(tooltipWindow->property("cardWidth").toInt() - expectedZenCardWidth) <= 1);
+    QVERIFY(tooltipWindow->property("cardWidth").toInt()
+            < tooltipWindow->property("effectiveMaximumCardWidth").toInt());
+    qInfo() << "Zen Browser tooltip" << "advance width" << zenNaturalWidth
+            << "card width" << tooltipWindow->property("cardWidth").toInt()
+            << "effective maximum"
+            << tooltipWindow->property("effectiveMaximumCardWidth").toInt();
+
+    QString mediumLongName;
+    int mediumLongCardWidth = 0;
+    for (int length = 1; length <= 100; ++length) {
+        const QString candidate(length, QLatin1Char('W'));
+        const int candidateWidth = qCeil(tooltipFontMetricsForTest.horizontalAdvance(candidate))
+            + 2 * tooltipWindow->property("horizontalTextPadding").toInt();
+        if (candidateWidth > 280
+            && candidateWidth < tooltipWindow->property("effectiveMaximumCardWidth").toInt()) {
+            mediumLongName = candidate;
+            mediumLongCardWidth = candidateWidth;
+            break;
+        }
+    }
+    QVERIFY(!mediumLongName.isEmpty());
+    QVERIFY(showTooltip(mediumLongName, QRect(800, 800, 48, 48), QStringLiteral("bottom")));
+    QCOMPARE(tooltipWindow->property("cardWidth").toInt(), mediumLongCardWidth);
+    QVERIFY(tooltipWindow->property("cardWidth").toInt() > 280);
+    QVERIFY(!tooltipText->property("truncated").toBool());
+    QCOMPARE(tooltipText->property("maximumLineCount").toInt(), 1);
+    QCOMPARE(tooltipText->property("lineCount").toInt(), 1);
+    const int textFormatIndex = tooltipText->metaObject()->indexOfProperty("textFormat");
+    QVERIFY(textFormatIndex >= 0);
+    const QMetaProperty textFormatProperty = tooltipText->metaObject()->property(textFormatIndex);
+    QCOMPARE(QString::fromLatin1(textFormatProperty.enumerator().valueToKey(
+                 tooltipText->property("textFormat").toInt())),
+             QStringLiteral("PlainText"));
+
+    const QString veryLongName(1000, QLatin1Char('W'));
+    QVERIFY(showTooltip(veryLongName, QRect(800, 800, 48, 48), QStringLiteral("bottom")));
+    QCOMPARE(tooltipWindow->property("effectiveMaximumCardWidth").toInt(), 420);
+    QCOMPARE(tooltipWindow->property("cardWidth").toInt(), 420);
+    QVERIFY(tooltipWindow->property("naturalCardWidth").toInt() > 420);
+    QVERIFY(tooltipText->property("truncated").toBool());
+    const QRect designMaximumCard = tooltipWindow->property("cardRect").toRect();
+    QVERIFY(designMaximumCard.x() >= 8);
+    QVERIFY(designMaximumCard.x() + designMaximumCard.width() <= 1920 - 8);
+
+    tooltipWindow->setProperty("outputWidth", 330);
+    QTRY_COMPARE_WITH_TIMEOUT(tooltipWindow->width(), 330, 1000);
+    const QRect narrowOutputAnchor(140, 800, 48, 48);
+    QVERIFY(showTooltip(veryLongName, narrowOutputAnchor, QStringLiteral("bottom")));
+    QCOMPARE(tooltipWindow->property("cardWidth").toInt(),
+             tooltipWindow->property("effectiveMaximumCardWidth").toInt());
+    QCOMPARE(tooltipWindow->property("cardWidth").toInt(), 314);
+    QVERIFY(tooltipText->property("truncated").toBool());
+    QCOMPARE(tooltipText->property("maximumLineCount").toInt(), 1);
+    QCOMPARE(tooltipText->property("lineCount").toInt(), 1);
+    const QRect longNameCard = tooltipWindow->property("cardRect").toRect();
+    QVERIFY(longNameCard.x() >= 8);
+    QVERIFY(longNameCard.y() >= 8);
+    QVERIFY(longNameCard.x() + longNameCard.width() <= 330 - 8);
+    QVERIFY(longNameCard.y() + longNameCard.height() <= 1080 - 8);
+    QCOMPARE(tooltipWindow->property("cardPlacement").toMap()
+                 .value(QStringLiteral("pointerEdge")).toString(), QStringLiteral("bottom"));
+    const qreal longNameBodyX = tooltipBubble->property("bodyX").toReal();
+    const qreal longNameBodyY = tooltipBubble->property("bodyY").toReal();
+    const QPointF longNameTip = tooltipBubble->mapToItem(
+        tooltipWindow->contentItem(),
+        QPointF(longNameBodyX + tooltipBubble->property("pointerCenter").toReal(),
+                longNameBodyY + tooltipBubble->property("bodyHeight").toReal()
+                    + tooltipBubble->property("pointerDepth").toReal()));
+    QCOMPARE(longNameTip.y(), qreal(800 - 3));
+    QCOMPARE(longNameTip.x(), QRectF(narrowOutputAnchor).center().x());
+    QVERIFY(longNameTip.x() >= 0 && longNameTip.x() < 330);
+    const int wrapModeIndex = tooltipText->metaObject()->indexOfProperty("wrapMode");
+    QVERIFY(wrapModeIndex >= 0);
+    const QMetaProperty wrapModeProperty = tooltipText->metaObject()->property(wrapModeIndex);
+    QCOMPARE(QString::fromLatin1(wrapModeProperty.enumerator().valueToKey(
+                 tooltipText->property("wrapMode").toInt())),
+             QStringLiteral("NoWrap"));
+    const int elideIndex = tooltipText->metaObject()->indexOfProperty("elide");
+    QVERIFY(elideIndex >= 0);
+    const QMetaProperty elideProperty = tooltipText->metaObject()->property(elideIndex);
+    QCOMPARE(QString::fromLatin1(elideProperty.enumerator().valueToKey(
+                 tooltipText->property("elide").toInt())),
+             QStringLiteral("ElideRight"));
+    tooltipWindow->setProperty("outputWidth", 1920);
+    QTRY_COMPARE_WITH_TIMEOUT(tooltipWindow->width(), 1920, 1000);
 
     struct TooltipMaterialExpectation {
         int themeMode;
@@ -2220,6 +2434,68 @@ void DockHoverQmlTest::tooltipFollowsMagnifiedIconAndHidesForDockInteractions()
     QMetaObject::invokeMethod(panel, "setPointerInside",
                               Q_ARG(QVariant, QVariant(false)));
     QTRY_VERIFY_WITH_TIMEOUT(!tooltipSurface.tooltipVisible(), 500);
+
+    delete panel;
+}
+
+void DockHoverQmlTest::runningTooltipUsesOnlyTheApplicationDisplayName()
+{
+    DockController dockController;
+    dockController.applyConfig(configFor(QStringLiteral("none"), {
+        QStringLiteral("zen-browser.desktop")
+    }));
+    Astrea::Typhon::DockApplicationRuntimeState runtimeState;
+    runtimeState.taskKey = QStringLiteral("desktop:zen-browser.desktop");
+    runtimeState.desktopFileName = QStringLiteral("zen-browser.desktop");
+    runtimeState.displayName = QStringLiteral("Zen Browser");
+    runtimeState.running = true;
+    runtimeState.windowCount = 4;
+    Astrea::Typhon::DockApplicationRuntimeProjection projection;
+    projection.states.insert(runtimeState.taskKey, runtimeState);
+    projection.encounterOrder.append(runtimeState.taskKey);
+    dockController.appModel()->applyRuntimeProjection(projection);
+
+    FakeTooltipSurface tooltipSurface;
+    DockSurfaceGeometry surfaceGeometry;
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"),
+                                             &dockController);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    QQuickWindow window;
+    panel->setParentItem(window.contentItem());
+    window.resize(900, 220);
+    panel->setX((window.width() - panel->width()) / 2.0);
+    panel->setY((window.height() - panel->height()) / 2.0);
+    panel->setProperty("dockSurfaceGeometry",
+                       QVariant::fromValue(static_cast<QObject *>(&surfaceGeometry)));
+    panel->setProperty("dockTooltipSurface",
+                       QVariant::fromValue(static_cast<QObject *>(&tooltipSurface)));
+    panel->setProperty("outputKey", QStringLiteral("output-1"));
+    panel->setProperty("outputWidth", 900);
+    panel->setProperty("outputHeight", 600);
+    tooltipSurface.identitySource = panel;
+    window.show();
+
+    QQuickItem *target = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT(
+        (target = delegate(panel, QStringLiteral("zen-browser.desktop"))) != nullptr, 1000);
+    QVERIFY(target->property("runtimeKnown").toBool());
+    QVERIFY(target->property("running").toBool());
+    QCOMPARE(target->property("windowCount").toInt(), 4);
+    QCOMPARE(target->property("displayName").toString(), QStringLiteral("Zen Browser"));
+    const QPointF pointer = target->property("interactionRegion").toRectF().center();
+    QVERIFY(QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
+                                      Q_ARG(QVariant, QVariant(pointer.x())),
+                                      Q_ARG(QVariant, QVariant(pointer.y()))));
+    QTRY_VERIFY_WITH_TIMEOUT(tooltipSurface.tooltipVisible(), 1500);
+    QCOMPARE(tooltipSurface.lastTitle, QStringLiteral("Zen Browser"));
+    QCOMPARE(tooltipSurface.shownTitles.constLast(), QStringLiteral("Zen Browser"));
+    QCOMPARE(target->property("windowCount").toInt(), 4);
 
     delete panel;
 }

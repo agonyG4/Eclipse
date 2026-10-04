@@ -6,7 +6,7 @@ Replace the Dock application's generic QtQuick Controls tooltip with a compact E
 
 ## Behavior
 
-- Preserve the existing 420 ms hover delay and current title/window-count text.
+- Preserve the existing 420 ms hover delay. The tooltip label is the application's `displayName` only, regardless of runtime or window-count state.
 - Use `DockPanel.pointerTargetTaskKey` as the hover authority and the delegate's scale-aware `interactionRegion` as the anchor.
 - Map that panel-local rectangle to output-local coordinates with `DockSurfaceGeometry.outputLocalDelegateRect`.
 - Render the presentation as one closed vector bubble silhouette: a compact pill body and short integrated tail, with one subtle outline and one soft shadow. Use shared Shell tooltip material and font semantics.
@@ -17,7 +17,7 @@ Replace the Dock application's generic QtQuick Controls tooltip with a compact E
 
 ## Architecture
 
-`DockPanel` remains the owner of hover, magnification, drag, and target identity. It delays presentation and publishes the current delegate identity, title, placement, and mapped visual anchor to a passive `DockTooltipSurface` window. `DockSurfaceGeometry` owns output-local anchor and body placement calculations. `DockLayerShellSurface` configures the tooltip window as a full-output passive sibling surface. `DockTooltipBubble` renders the pill body and integrated tail in one vector path; the text is laid out in the body rectangle. The QML consumes `ShellMaterialTheme` tooltip tokens and does not use QtQuick Controls.
+`DockPanel` remains the owner of hover, magnification, drag, and target identity. It delays presentation and publishes the current delegate identity, application display name, placement, and mapped visual anchor to a passive `DockTooltipSurface` window. `DockSurfaceGeometry` owns output-local anchor and body placement calculations. `DockLayerShellSurface` configures the tooltip window as a full-output passive sibling surface. `DockTooltipBubble` renders the pill body and integrated tail in one vector path and derives its Frosted backdrop rectangles from that same geometry. A matching `FontMetrics` object measures the application name before placement; the `Text` item only renders into the resulting bounded body width. The QML consumes `ShellMaterialTheme` tooltip tokens and does not use QtQuick Controls.
 
 ## Tooltip Presentation Lifecycle
 
@@ -49,3 +49,14 @@ Initial presentation and visible refresh are separate operations. A hidden toolt
 The visual silhouette remains one Shape, one closed ShapePath, one fill, one outline, and one shadow. Top and bottom tails remain attached to the straight body edge; left and right tails replace only the center of the corresponding radius-17 endcap. Their base points are derived from bodyX + sideTailArcInset (left) and the mirrored right coordinate, with sideTailArcInset = radius - sqrt(radius² - halfPointer²). This avoids the old path's midpoint-to-base retrace, which stroked an internal vertical seam because a 34 px body has no straight side segment between its 17 px endcaps.
 
 Frosted blur is the rounded body region unioned with a bounded scanline approximation of the tail. The local-rectangle descriptor maps through the bubble's actual item transform, clips to the output surface, and shares the existing 96-rectangle client budget. The tail scanlines follow the same pointer width, depth, edge, center, and body coordinates as the vector path. No tail bounding-box blur or second effect binding is used. Default and Transparent continue to request no backdrop blur, and the tooltip material tokens and target-gap geometry remain unchanged.
+
+## Tooltip Text Sizing and Unified Frosted Silhouette (2026-10-04)
+
+This follow-up records the current text and rendering boundaries; the dated 2026-10-03 material and backdrop descriptions above preserve their original qualification history.
+
+- `DockPanel` supplies `targetItem.displayName` verbatim. Runtime-known/running state and `windowCount` remain application-model metadata and do not alter the tooltip label.
+- `DockTooltipSurface` uses `FontMetrics` with the same family, pixel size, and medium weight as the visual text. Its `advanceWidth(title)` is the natural text width; the natural card width is `ceil(advanceWidth) + 32 px`. The body is at least 72 px when output space allows, has 16 px horizontal padding per side, and grows to a 420 px design maximum. Its effective maximum is also bounded by the logical output width minus the existing 8 px inset on both sides. A one-line `NoWrap`, `PlainText`, `ElideRight` text item elides only after reaching that bound.
+- `DockTooltipBubble` remains the vector silhouette authority: the existing 34 px body, radius-17 circular arcs, 14 px pointer, 8 px depth, 3 px target gap, and one path/shadow are preserved. A 1 px `renderPadding` enlarges only the Shape drawing container, keeping the centered 1 px outline and antialiased source inside the texture. It is excluded from `cardRect`, body placement, target anchoring, and gap calculations.
+- Frosted uses one `BackdropRegion` descriptor on `DockTooltipBubble`, with `localRectangles` set to `backdropRectangles`. The bubble derives body and tail slices from its local path geometry and concatenates them. The 34 body rows use the capsule circle equation and integer-contained rectangles; integer-contained tail scanlines retain the bounded-tail architecture. The descriptor uses radius 0, so the compositor receives the exact body-and-tail rectangle union without a separate rounded-body proxy or full bounding-box blur.
+- The deterministic all-edge regression maps the resolved output region and confirms pill center/edge-center inclusion, rounded-corner exclusion, body/card equality, unchanged three-pixel tail gap, tail inclusion, outside-tail exclusion, and the existing 96-rectangle ceiling. Latest counts are bottom 34 body + 6 tail (40 resolved), top 34 + 6 (40), left 34 + 7 (41), and right 34 + 7 (41).
+- Default/Transparent/Frosted token values, hover ownership and timing, placement policy, Layer Shell policy, and Dock input behavior remain unchanged. Native Frosted visual qualification is recorded separately and remains unobserved when no attachable native desktop is available.

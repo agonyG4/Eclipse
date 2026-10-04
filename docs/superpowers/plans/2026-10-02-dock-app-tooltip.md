@@ -4,7 +4,7 @@
 
 **Goal:** Present the Dock app tooltip as a compact themed pill bubble anchored to the visually magnified icon.
 
-**Architecture:** Keep hover and magnification in `DockPanel`; map its current `interactionRegion` using `DockSurfaceGeometry`; present it in a full-output input-transparent Layer Shell window. One closed Qt Quick Shapes path renders the pill body and integrated tail with exact circular arcs. The text uses the body rectangle, while Frosted blur registers the rounded body unioned with bounded local tail scanlines through one effect binding.
+**Architecture:** Keep hover and magnification in `DockPanel`; map its current `interactionRegion` using `DockSurfaceGeometry`; present it in a full-output input-transparent Layer Shell window. One closed Qt Quick Shapes path renders the pill body and integrated tail with exact circular arcs. `FontMetrics` measures the application `displayName` and drives a 72–420 px output-bounded body width. `DockTooltipBubble` owns both the vector path and the combined integer-contained body/tail `backdropRectangles` used by the single Frosted effect descriptor.
 
 **Tech Stack:** C++20, Qt 6.6, Qt Quick/QML, LayerShellQt, Qt Test.
 
@@ -146,3 +146,20 @@
 - [x] Append a separate visual-hardening entry to progress after verification, review the final changed-file list and forbidden legacy tooltip constructions, then commit the logical change on `main`.
 
 The initial visual-hardening implementation registered only the rounded body; the Circular Side Tail and Frosted Region Integration follow-up above supersedes that interim region description.
+
+### Tooltip Text Sizing and Exact Frosted Pill Follow-up (2026-10-04)
+
+**Goal:** Show each application's full display name at natural width when possible, and make the Frosted effect follow the exact vector pill silhouette while preserving placement and lifecycle behavior.
+
+**Final architecture:** The Dock label is `displayName` alone. `FontMetrics` with the visual text's exact font measures the natural width; the card adds 32 px padding and clamps between 72 px and the smaller of a 420 px design maximum or the logical output width less two 8 px insets. `DockTooltipBubble` remains the vector authority and now derives `backdropBodyRectangles`, `backdropTailRectangles`, and their union from its own local geometry. Its 1 px render padding protects the centered outline and effect texture; `cardRect` and pointer placement do not include that padding.
+
+**Verification:**
+
+- [x] The explicit `Zen Browser` regression uses the Shell tooltip font metrics: advance width 78.5469 px, expected and actual card width 111 px, title and text match, and `truncated` is false.
+- [x] A measured medium-long name grows past the previous 280 px cap without truncation. A 1000-character name caps at 314 px on a 330 px output, stays inside the 8 px edge inset, and remains one-line `ElideRight` text.
+- [x] A running Zen Browser delegate with four windows still presents only `Zen Browser`; model `windowCount` remains four.
+- [x] For all pointer edges, the padded bubble body maps exactly to `cardRect`, the outline has room inside the Shape item, and the tail tip retains its 3 px target gap.
+- [x] Frosted uses one BackdropRegion on `DockTooltipBubble`. Resolved scanline counts: bottom 34 body + 6 tail = 40; top 34 + 6 = 40; left 34 + 7 = 41; right 34 + 7 = 41. Mapped tests include pill center/edge centers and tail points, and exclude all four radius-17 corners and points outside the tail.
+- [x] Built `dock-hover-qml-test`, `dock-surface-geometry-test`, `backdrop-effect-regions-test`, and `astrea-shell` in `/mnt/Aether/Desktop/GitHub/Eclipse-build`; focused tests passed 3/3, all Dock tests passed 14/14, and the shared-effects subset passed 3/3.
+- [x] `git diff --check` passed.
+- Native Frosted visual qualification remains unobserved: the Wayland session has no running Eclipse/Typhon window and the CUA native pipe is unavailable, so no live comparison to the macOS reference is claimed.

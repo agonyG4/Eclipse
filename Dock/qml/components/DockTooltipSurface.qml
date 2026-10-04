@@ -17,7 +17,21 @@ Window {
     property string dockPosition: "bottom"
     property bool tooltipVisible: false
 
-    readonly property int cardWidth: Math.min(280, Math.max(72, tooltipText.implicitWidth + 32))
+    readonly property int horizontalTextPadding: 16
+    readonly property int minimumCardWidth: 72
+    readonly property int designMaximumCardWidth: 420
+    readonly property int outputEdgeInset: 8
+    readonly property int availableWidth: Math.max(1, outputWidth - 2 * outputEdgeInset)
+    readonly property int effectiveMaximumCardWidth:
+        Math.min(designMaximumCardWidth, availableWidth)
+    readonly property int effectiveMinimumCardWidth:
+        Math.min(minimumCardWidth, effectiveMaximumCardWidth)
+    readonly property real naturalTextWidth: tooltipFontMetrics.advanceWidth(title)
+    readonly property int naturalCardWidth:
+        Math.ceil(naturalTextWidth) + 2 * horizontalTextPadding
+    readonly property int cardWidth: Math.max(effectiveMinimumCardWidth,
+                                               Math.min(naturalCardWidth,
+                                                        effectiveMaximumCardWidth))
     readonly property int cardHeight: DockSurfaceGeometry.tooltipBodyHeight
     readonly property int pointerDepth: DockSurfaceGeometry.tooltipPointerDepth
     readonly property var cardPlacement: DockSurfaceGeometry.tooltipPlacementInOutput(
@@ -35,6 +49,14 @@ Window {
     Shared.ShellMaterialTheme {
         id: material
         objectName: "dockTooltipMaterial"
+    }
+
+    FontMetrics {
+        id: tooltipFontMetrics
+        objectName: "dockTooltipFontMetrics"
+        font.family: material.fontFamily
+        font.pixelSize: material.tooltipFontSize
+        font.weight: Font.Medium
     }
 
     function showTooltip(text, visualAnchorRect, position) {
@@ -55,35 +77,21 @@ Window {
         enabled: material.isFrosted && window.tooltipVisible
 
         BackdropRegion {
-            item: tooltipBackdropBody
-            enabled: tooltipBackdropBody.visible
-            radius: window.cardHeight / 2
-        }
-
-        BackdropRegion {
             item: tooltipBubble
             enabled: tooltipBubble.visible
-            localRectangles: tooltipBubble.backdropTailRectangles
+            localRectangles: tooltipBubble.backdropRectangles
             radius: 0
         }
     }
 
-    // The compositor rounds this body proxy; the vector tail contributes only
-    // bounded local scanlines from the same one-piece bubble geometry.
-    Item {
-        id: tooltipBackdropBody
-        objectName: "dockTooltipBackdropBody"
-        x: window.cardRect.x
-        y: window.cardRect.y
-        width: window.cardRect.width
-        height: window.cardRect.height
-        visible: window.tooltipVisible && window.title.length > 0
-    }
-
     DockTooltipBubble {
         id: tooltipBubble
-        x: window.cardRect.x - (cardPlacement.pointerEdge === "left" ? pointerDepth : 0)
-        y: window.cardRect.y - (cardPlacement.pointerEdge === "top" ? pointerDepth : 0)
+        x: window.cardRect.x
+            - (cardPlacement.pointerEdge === "left" ? pointerDepth : 0)
+            - renderPadding
+        y: window.cardRect.y
+            - (cardPlacement.pointerEdge === "top" ? pointerDepth : 0)
+            - renderPadding
         cardWidth: window.cardRect.width
         bodyHeight: window.cardRect.height
         pointerEdge: window.cardPlacement.pointerEdge
@@ -98,20 +106,19 @@ Window {
     Text {
         id: tooltipText
         objectName: "dockTooltipText"
-        x: window.cardRect.x + 16
+        x: window.cardRect.x + window.horizontalTextPadding
         y: window.cardRect.y
-        width: window.cardRect.width - 32
+        width: window.cardRect.width - 2 * window.horizontalTextPadding
         height: window.cardRect.height
         text: window.title
+        textFormat: Text.PlainText
         color: material.textActive
         elide: Text.ElideRight
         wrapMode: Text.NoWrap
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         maximumLineCount: 1
-        font.family: material.fontFamily
-        font.pixelSize: material.tooltipFontSize
-        font.weight: Font.Medium
+        font: tooltipFontMetrics.font
         visible: window.tooltipVisible && window.title.length > 0
         z: 2
     }

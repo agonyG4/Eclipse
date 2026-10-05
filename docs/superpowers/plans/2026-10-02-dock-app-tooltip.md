@@ -4,7 +4,7 @@
 
 **Goal:** Present the Dock app tooltip as a compact themed pill bubble anchored to the visually magnified icon.
 
-**Architecture:** Keep hover and magnification in `DockPanel`; map its current `interactionRegion` using `DockSurfaceGeometry`; present it in a full-output input-transparent Layer Shell window. One closed Qt Quick Shapes path renders the pill body and integrated tail with exact circular arcs. `FontMetrics` measures the application `displayName` and drives a 72–420 px output-bounded body width. `DockTooltipBubble` owns both the vector path and the combined integer-contained body/tail `backdropRectangles` used by the single Frosted effect descriptor.
+**Architecture:** Keep hover and magnification in `DockPanel`; map its current `interactionRegion` using `DockSurfaceGeometry`; present it in a full-output input-transparent Layer Shell window. One closed Qt Quick Shapes path renders the pill body and integrated tail with exact circular arcs. `FontMetrics` measures the application `displayName` and drives a 72–420 px output-bounded body width. `DockTooltipBubble` owns both the vector path and the combined pixel-center binary body/tail `backdropRectangles` used by the single Frosted effect descriptor. The visual Shape is rendered through a local DPR-aware supersampled layer; the backdrop remains bounded by Wayland's integer region representation.
 
 **Tech Stack:** C++20, Qt 6.6, Qt Quick/QML, LayerShellQt, Qt Test.
 
@@ -163,3 +163,26 @@ The initial visual-hardening implementation registered only the rounded body; th
 - [x] Built `dock-hover-qml-test`, `dock-surface-geometry-test`, `backdrop-effect-regions-test`, and `astrea-shell` in `/mnt/Aether/Desktop/GitHub/Eclipse-build`; focused tests passed 3/3, all Dock tests passed 14/14, and the shared-effects subset passed 3/3.
 - [x] `git diff --check` passed.
 - Native Frosted visual qualification remains unobserved: the Wayland session has no running Eclipse/Typhon window and the CUA native pipe is unavailable, so no live comparison to the macOS reference is claimed.
+
+### Short Dock Tooltip Edge Aliasing (2026-10-05)
+
+**Goal:** Improve the small-width vector/stroke raster and replace excessive under-coverage in the Frosted body's and integrated tail's bounded binary mask without changing logical geometry, placement, lifecycle, or effect ownership.
+
+**Architecture:** Keep `Shape.CurveRenderer`, the existing single closed `ShapePath`, and the existing `MultiEffect`. Set the Shape layer texture to the ceiling of its logical dimensions multiplied by `max(2, validated Screen.devicePixelRatio)` and enable smooth linear sampling. Compute body rows and all four triangle-tail orientations by pixel-center inclusion against the existing analytic capsule/triangle geometry. Keep one `BackdropRegion` for `backdropRectangles`; do not change the generic Wayland rectangle protocol or its 96-rectangle budget.
+
+**Files:**
+- Modify: `Dock/qml/components/DockTooltipBubble.qml` for DPR-aware layer dimensions and pixel-center body/tail slices. `buildPathData()`, pill metrics, render padding, and placement inputs stay unchanged.
+- Modify: `Dock/tests/DockHoverQmlTest.cpp` for the compact Sober case, independent C++ capsule and triangle raster references, adjacent-pixel checks, source-level old/new comparison, and DPR texture assertions. Preserve and rerun Zen Browser sizing.
+- Modify: this spec and plan to record both raster domains and the `wl_region` coverage limit.
+- Append: `.superpowers/sdd/2026-10-02-dock-app-tooltip/progress.md` after the final verification pass.
+
+**Verification:**
+
+- [x] Add the regression assertions before the implementation; the focused test initially failed because the required `layer.textureSize` was absent.
+- [x] Compare the 72×34 analytic capsule against a C++ pixel-center reference. The first four top rows change from old/new widths 38/46, 48/52, 54/56, and 56/58; every included center is inside and the immediate left/right excluded centers are outside.
+- [x] Compare the QML tail slices against the independent analytic reference for bottom, top, left, and right. Final body/tail/resolved counts: top 34+7=41, bottom 34+7=41, left 34+8=42, right 34+8=42; maximum 42 remains below 96.
+- [x] Qualify Sober at its 72 px minimum width, 34 px height, radius 17, pointer width 14/depth 8, and 3 px gap. Its bottom bubble layer is 74×44 logical pixels and 148×88 at 2×. Zen Browser remains fully visible at its 111 px measured card width.
+- [x] Run the Sober DPR case at 1×, 1.5×, 2×, and 3×: raster scales are 2, 2, 2, and 3 respectively; texture sizes are 148×88, 148×88, 148×88, and 222×132.
+- [x] Build `dock-hover-qml-test`, `dock-surface-geometry-test`, `backdrop-effect-regions-test`, and `astrea-shell` in `/mnt/Aether/Desktop/GitHub/Eclipse-build`. Focused CTest passed 3/3; complete Dock CTest passed 14/14; relevant shared-effects CTest passed 3/3.
+- [x] Native Default/Frosted comparison was unavailable: the native app inventory was empty and CUA reported the native pipe unavailable. This pass does not attribute an unobserved live artifact or claim that `wl_region` has fractional antialiasing.
+- [x] Run `git diff --check`, complete the adversarial diff review, append progress, and commit the logical change on `main`.

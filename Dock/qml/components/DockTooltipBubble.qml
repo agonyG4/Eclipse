@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Effects
 import QtQuick.Shapes
+import QtQuick.Window
 
 Item {
     id: root
@@ -14,6 +15,17 @@ Item {
     property color borderColor: "transparent"
     property color shadowColor: "transparent"
     readonly property real renderPadding: 1
+    readonly property real effectiveDevicePixelRatio: {
+        var value = Screen.devicePixelRatio
+        if (!isFinite(value) || value <= 0)
+            value = 1
+        return Math.max(0.25, value)
+    }
+    readonly property real minimumRasterScale: 2.0
+    readonly property real rasterScale: Math.max(minimumRasterScale,
+                                                 effectiveDevicePixelRatio)
+    readonly property int rasterTextureWidth: Math.ceil(width * rasterScale)
+    readonly property int rasterTextureHeight: Math.ceil(height * rasterScale)
     readonly property int pointerWidth: DockSurfaceGeometry.tooltipPointerWidth
     readonly property int pointerDepth: DockSurfaceGeometry.tooltipPointerDepth
     readonly property real bodyRadius: bodyHeight / 2
@@ -117,15 +129,18 @@ Item {
 
         for (let row = 0; row < Math.ceil(bodyHeight); ++row) {
             const y = bodyY + row
-            const maximumDistance = Math.max(Math.abs(y - centerY),
-                                             Math.abs(y + 1 - centerY))
+            const sampleY = y + 0.5
+            const dy = Math.abs(sampleY - centerY)
             const radiusSquared = radius * radius
-            const inset = radius - Math.sqrt(Math.max(
-                0, radiusSquared - maximumDistance * maximumDistance))
-            const left = Math.ceil(bodyX + inset)
-            const right = Math.floor(bodyX + cardWidth - inset)
-            if (right > left)
-                rectangles.push(Qt.rect(left, y, right - left, 1))
+            if (dy > radius)
+                continue
+            const horizontalReach = Math.sqrt(Math.max(0, radiusSquared - dy * dy))
+            const leftExtent = bodyX + radius - horizontalReach
+            const rightExtent = bodyX + cardWidth - radius + horizontalReach
+            const firstPixel = Math.ceil(leftExtent - 0.5)
+            const lastPixel = Math.floor(rightExtent - 0.5)
+            if (lastPixel >= firstPixel)
+                rectangles.push(Qt.rect(firstPixel, y, lastPixel - firstPixel + 1, 1))
         }
         return rectangles
     }
@@ -139,46 +154,54 @@ Item {
 
         if (pointerEdge === "bottom" || pointerEdge === "top") {
             for (let index = 0; index < pointerDepth; ++index) {
-                const width = pointerWidth * (pointerDepth - index - 1) / pointerDepth
-                if (width <= 0)
-                    continue
-                const left = Math.ceil(centerX - width / 2)
-                const right = Math.floor(centerX + width / 2)
-                if (right <= left)
-                    continue
                 const y = pointerEdge === "bottom"
                     ? bodyY + bodyHeight + index
                     : bodyY - index - sliceThickness
-                rectangles.push(Qt.rect(left, y, right - left, sliceThickness))
+                const sampleY = y + 0.5
+                const baseY = pointerEdge === "bottom"
+                    ? bodyY + bodyHeight : bodyY
+                const distanceFromBase = Math.abs(sampleY - baseY)
+                const halfWidth = halfPointer
+                    * Math.max(0, 1 - distanceFromBase / pointerDepth)
+                if (halfWidth <= 0)
+                    continue
+                const leftExtent = centerX - halfWidth
+                const rightExtent = centerX + halfWidth
+                const firstPixel = Math.ceil(leftExtent - 0.5)
+                const lastPixel = Math.floor(rightExtent - 0.5)
+                if (lastPixel < firstPixel)
+                    continue
+                rectangles.push(Qt.rect(firstPixel, y,
+                                        lastPixel - firstPixel + 1, sliceThickness))
             }
             return rectangles
         }
 
         const sideTailLength = pointerDepth + sideTailArcInset
         const bodyRight = bodyX + cardWidth
-        const baseSliceHeight = pointerWidth * pointerDepth / sideTailLength
-        const appendSideSlice = function(x, height) {
-            const top = Math.ceil(centerY - height / 2)
-            const bottom = Math.floor(centerY + height / 2)
-            if (bottom > top)
-                rectangles.push(Qt.rect(x, top, sliceThickness, bottom - top))
+        const appendSideSlice = function(x, leftTail) {
+            const sampleX = x + 0.5
+            const distanceFromTip = leftTail
+                ? sampleX - (bodyX - pointerDepth)
+                : bodyRight + pointerDepth - sampleX
+            const height = pointerWidth * Math.max(
+                0, Math.min(1, distanceFromTip / sideTailLength))
+            if (height <= 0)
+                return
+            const topExtent = centerY - height / 2
+            const bottomExtent = centerY + height / 2
+            const firstPixel = Math.ceil(topExtent - 0.5)
+            const lastPixel = Math.floor(bottomExtent - 0.5)
+            if (lastPixel >= firstPixel)
+                rectangles.push(Qt.rect(x, firstPixel, sliceThickness,
+                                        lastPixel - firstPixel + 1))
         }
         if (pointerEdge === "left") {
-            appendSideSlice(bodyX, baseSliceHeight)
-            for (let index = 0; index < pointerDepth - 1; ++index) {
-                const height = pointerWidth * (pointerDepth - index - 1) / sideTailLength
-                if (height <= 0)
-                    continue
-                appendSideSlice(bodyX - index - sliceThickness, height)
-            }
+            for (let index = 0; index < pointerDepth; ++index)
+                appendSideSlice(bodyX - index, true)
         } else {
-            appendSideSlice(bodyRight - sliceThickness, baseSliceHeight)
-            for (let index = 0; index < pointerDepth - 1; ++index) {
-                const height = pointerWidth * (pointerDepth - index - 1) / sideTailLength
-                if (height <= 0)
-                    continue
-                appendSideSlice(bodyRight + index, height)
-            }
+            for (let index = 0; index < pointerDepth; ++index)
+                appendSideSlice(bodyRight - sliceThickness + index, false)
         }
         return rectangles
     }
@@ -190,6 +213,8 @@ Item {
         preferredRendererType: Shape.CurveRenderer
 
         layer.enabled: root.visible
+        layer.textureSize: Qt.size(root.rasterTextureWidth, root.rasterTextureHeight)
+        layer.smooth: true
         layer.effect: MultiEffect {
             shadowEnabled: true
             shadowColor: root.shadowColor

@@ -247,6 +247,139 @@ bool backdropContains(const QVector<QRect> &rectangles, const QPoint &point)
     return false;
 }
 
+QVector<QRect> integerRectangles(const QVariantList &values)
+{
+    QVector<QRect> result;
+    result.reserve(values.size());
+    for (const QVariant &value : values) {
+        const QRectF rectangle = value.toRectF();
+        result.append(QRect(qRound(rectangle.x()), qRound(rectangle.y()),
+                            qRound(rectangle.width()), qRound(rectangle.height())));
+    }
+    return result;
+}
+
+bool pixelCenterInsideCapsule(const QRectF &body, const QPointF &pixelCenter)
+{
+    const qreal radius = body.height() / 2.0;
+    const qreal centerY = body.y() + radius;
+    const qreal nearestX = qBound(body.x() + radius, pixelCenter.x(),
+                                  body.x() + body.width() - radius);
+    const qreal dx = pixelCenter.x() - nearestX;
+    const qreal dy = pixelCenter.y() - centerY;
+    return dx * dx + dy * dy <= radius * radius + 1e-9;
+}
+
+QVector<QRect> referenceCapsulePixelCenterRows(const QRectF &body)
+{
+    QVector<QRect> result;
+    const int firstRow = qFloor(body.y());
+    const int endRow = qCeil(body.y() + body.height());
+    const int firstColumn = qFloor(body.x()) - 1;
+    const int endColumn = qCeil(body.x() + body.width());
+    for (int y = firstRow; y < endRow; ++y) {
+        int runStart = -1;
+        for (int x = firstColumn; x <= endColumn; ++x) {
+            const bool covered = x < endColumn
+                && pixelCenterInsideCapsule(body, QPointF(x + 0.5, y + 0.5));
+            if (covered && runStart < 0)
+                runStart = x;
+            else if (!covered && runStart >= 0) {
+                result.append(QRect(runStart, y, x - runStart, 1));
+                runStart = -1;
+            }
+        }
+    }
+    return result;
+}
+
+QRect wholeBandContainedCapsuleRow(const QRectF &body, const int row)
+{
+    // Diagnostic reference for the old rule: both horizontal edges of the
+    // complete one-pixel row band had to stay inside the analytic capsule.
+    const qreal radius = body.height() / 2.0;
+    const qreal centerY = body.y() + radius;
+    const int y = qRound(body.y()) + row;
+    const qreal farthestDistance = qMax(qAbs(y - centerY),
+                                        qAbs(y + 1.0 - centerY));
+    const qreal reach = qSqrt(qMax<qreal>(0.0, radius * radius
+                                                - farthestDistance * farthestDistance));
+    const int left = qCeil(body.x() + radius - reach);
+    const int right = qFloor(body.x() + body.width() - radius + reach);
+    return QRect(left, y, qMax(0, right - left), 1);
+}
+
+QVector<QRect> referenceTailPixelCenterSlices(const QRectF &body, const QString &edge,
+                                               const qreal pointerCenter,
+                                               const qreal pointerWidth,
+                                               const qreal pointerDepth,
+                                               const qreal sideTailArcInset)
+{
+    QVector<QRect> result;
+    const qreal halfPointer = pointerWidth / 2.0;
+    if (edge == QStringLiteral("bottom") || edge == QStringLiteral("top")) {
+        const bool bottom = edge == QStringLiteral("bottom");
+        const qreal centerX = body.x() + pointerCenter;
+        const qreal baseY = bottom ? body.y() + body.height() : body.y();
+        const int sliceCount = qCeil(pointerDepth);
+        for (int slice = 0; slice < sliceCount; ++slice) {
+            const int y = bottom ? qFloor(baseY) + slice : qCeil(baseY) - slice - 1;
+            const qreal distanceFromBase = qAbs(y + 0.5 - baseY);
+            const qreal halfWidth = halfPointer
+                * qMax<qreal>(0.0, 1.0 - distanceFromBase / pointerDepth);
+            if (halfWidth <= 0.0)
+                continue;
+
+            const int firstColumn = qFloor(centerX - halfPointer) - 1;
+            const int endColumn = qCeil(centerX + halfPointer);
+            int runStart = -1;
+            for (int x = firstColumn; x <= endColumn; ++x) {
+                const bool covered = x < endColumn
+                    && qAbs(x + 0.5 - centerX) <= halfWidth + 1e-9;
+                if (covered && runStart < 0)
+                    runStart = x;
+                else if (!covered && runStart >= 0) {
+                    result.append(QRect(runStart, y, x - runStart, 1));
+                    runStart = -1;
+                }
+            }
+        }
+        return result;
+    }
+
+    const bool left = edge == QStringLiteral("left");
+    const qreal bodyRight = body.x() + body.width();
+    const qreal sideLength = pointerDepth + sideTailArcInset;
+    const qreal centerY = body.y() + pointerCenter;
+    for (int slice = 0; slice < qCeil(pointerDepth); ++slice) {
+        const int x = left ? qFloor(body.x()) - slice
+                           : qCeil(bodyRight) - 1 + slice;
+        const qreal sampleX = x + 0.5;
+        const qreal distanceFromTip = left
+            ? sampleX - (body.x() - pointerDepth)
+            : bodyRight + pointerDepth - sampleX;
+        const qreal halfHeight = halfPointer
+            * qBound<qreal>(0.0, distanceFromTip / sideLength, 1.0);
+        if (halfHeight <= 0.0)
+            continue;
+
+        const int firstRow = qFloor(centerY - halfPointer) - 1;
+        const int endRow = qCeil(centerY + halfPointer);
+        int runStart = -1;
+        for (int y = firstRow; y <= endRow; ++y) {
+            const bool covered = y < endRow
+                && qAbs(y + 0.5 - centerY) <= halfHeight + 1e-9;
+            if (covered && runStart < 0)
+                runStart = y;
+            else if (!covered && runStart >= 0) {
+                result.append(QRect(x, runStart, 1, y - runStart));
+                runStart = -1;
+            }
+        }
+    }
+    return result;
+}
+
 DockConfig configFor(const QString &hoverEffect, const QStringList &pins)
 {
     DockConfig config = DockConfig::defaults();
@@ -1861,6 +1994,8 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
     QCOMPARE(bubbleSourceText.count(QStringLiteral("ShapePath {")), 1);
     QCOMPARE(bubbleSourceText.count(QStringLiteral("MultiEffect {")), 1);
     QVERIFY(bubbleSourceText.contains(QStringLiteral("preferredRendererType: Shape.CurveRenderer")));
+    QVERIFY(bubbleSourceText.contains(QStringLiteral("layer.textureSize:")));
+    QVERIFY(bubbleSourceText.contains(QStringLiteral("layer.smooth: true")));
     QVERIFY(bubbleSourceText.contains(QStringLiteral("shadowEnabled: true")));
     QVERIFY(window->metaObject()->indexOfProperty("outputWidth") >= 0);
     QVERIFY(window->metaObject()->indexOfProperty("outputHeight") >= 0);
@@ -1972,6 +2107,9 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
         const qreal bodyHeight = tooltipBubble->property("bodyHeight").toReal();
         const qreal center = tooltipBubble->property("pointerCenter").toReal();
         const qreal depth = tooltipBubble->property("pointerDepth").toReal();
+        const qreal pointerWidth = tooltipBubble->property("pointerWidth").toReal();
+        const qreal sideTailArcInset =
+            tooltipBubble->property("sideTailArcInset").toReal();
         const qreal renderPadding = tooltipBubble->property("renderPadding").toReal();
         QVERIFY(renderPadding > tooltipStroke->property("strokeWidth").toReal() / 2.0);
         const QRectF bodyRect = tooltipBubble->mapRectToItem(
@@ -2027,9 +2165,28 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
             tooltipBubble->property("backdropTailRectangles").toList();
         const QVariantList currentBubbleRectangles =
             tooltipBubble->property("backdropRectangles").toList();
+        const QRectF analyticBody(bodyX, bodyY, cardWidth, bodyHeight);
         QCOMPARE(currentBubbleRectangles.size(),
                  currentBodyRectangles.size() + currentTailRectangles.size());
         QCOMPARE(bubbleDescriptor->localRectangles(), currentBubbleRectangles);
+        const QVector<QRect> actualBodyRows = integerRectangles(currentBodyRectangles);
+        const QVector<QRect> expectedBodyRows =
+            referenceCapsulePixelCenterRows(analyticBody);
+        QCOMPARE(actualBodyRows, expectedBodyRows);
+        for (const QRect &row : actualBodyRows) {
+            for (int x = row.x(); x < row.x() + row.width(); ++x) {
+                QVERIFY(pixelCenterInsideCapsule(
+                    analyticBody, QPointF(x + 0.5, row.y() + 0.5)));
+            }
+            QVERIFY(!pixelCenterInsideCapsule(
+                analyticBody, QPointF(row.x() - 0.5, row.y() + 0.5)));
+            QVERIFY(!pixelCenterInsideCapsule(
+                analyticBody, QPointF(row.x() + row.width() + 0.5,
+                                      row.y() + 0.5)));
+        }
+        QCOMPARE(integerRectangles(currentTailRectangles),
+                 referenceTailPixelCenterSlices(analyticBody, edge, center, pointerWidth,
+                                                depth, sideTailArcInset));
         for (const QVariant &value : currentBodyRectangles) {
             const QRectF rectangle = value.toRectF();
             QVERIFY(qAbs(rectangle.x() - qRound(rectangle.x())) < 0.001);
@@ -2116,6 +2273,79 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
                           << "tail" << currentTailRectangles.size()
                           << "resolved" << resolved.size();
     };
+
+    // Sober is a compact-label qualification: keep the 72 px pill and verify
+    // its curved endcap uses pixel-center coverage rather than whole-band
+    // containment, which removed eight pixels from this top scanline.
+    const QRect soberAnchor(900, 800, 48, 48);
+    QVERIFY(showTooltip(QStringLiteral("Sober"), soberAnchor, QStringLiteral("bottom")));
+    QCOMPARE(tooltipWindow->property("title").toString(), QStringLiteral("Sober"));
+    QCOMPARE(tooltipText->property("text").toString(), QStringLiteral("Sober"));
+    QVERIFY(!tooltipText->property("truncated").toBool());
+    const QFontMetricsF soberFontMetrics(tooltipText->property("font").value<QFont>());
+    const qreal soberNaturalWidth = soberFontMetrics.horizontalAdvance(QStringLiteral("Sober"));
+    QCOMPARE(tooltipWindow->property("naturalCardWidth").toInt(),
+             qCeil(soberNaturalWidth) + 32);
+    QCOMPARE(tooltipWindow->property("cardWidth").toInt(), 72);
+    QCOMPARE(tooltipWindow->property("minimumCardWidth").toInt(), 72);
+    QCOMPARE(tooltipBubble->property("bodyHeight").toReal(), 34.0);
+    QCOMPARE(tooltipBubble->property("bodyRadius").toReal(), 17.0);
+    QCOMPARE(tooltipBubble->property("pointerWidth").toInt(), 14);
+    QCOMPARE(tooltipBubble->property("pointerDepth").toInt(), 8);
+
+    const qreal effectiveDpr = tooltipBubble->property("effectiveDevicePixelRatio").toReal();
+    const qreal windowDpr = tooltipWindow->devicePixelRatio();
+    const qreal rasterScale = tooltipBubble->property("rasterScale").toReal();
+    QCOMPARE(tooltipBubble->property("minimumRasterScale").toReal(), 2.0);
+    QVERIFY(qAbs(effectiveDpr - windowDpr) < 0.001);
+    QCOMPARE(rasterScale, qMax<qreal>(2.0, effectiveDpr));
+    QCOMPARE(tooltipBubble->property("rasterTextureWidth").toInt(),
+             qCeil(tooltipBubble->width() * rasterScale));
+    QCOMPARE(tooltipBubble->property("rasterTextureHeight").toInt(),
+             qCeil(tooltipBubble->height() * rasterScale));
+    if (qAbs(windowDpr - 1.0) < 0.001) {
+        QVERIFY(tooltipBubble->property("rasterTextureWidth").toInt()
+                >= qCeil(tooltipBubble->width() * 2.0));
+        QVERIFY(tooltipBubble->property("rasterTextureHeight").toInt()
+                >= qCeil(tooltipBubble->height() * 2.0));
+    }
+    qInfo() << "Sober tooltip raster" << "DPR" << effectiveDpr
+            << "scale" << rasterScale << "texture"
+            << tooltipBubble->property("rasterTextureWidth").toInt() << "x"
+            << tooltipBubble->property("rasterTextureHeight").toInt();
+
+    const qreal soberBodyX = tooltipBubble->property("bodyX").toReal();
+    const qreal soberBodyY = tooltipBubble->property("bodyY").toReal();
+    const qreal soberBodyHeight = tooltipBubble->property("bodyHeight").toReal();
+    const qreal soberPointerCenter = tooltipBubble->property("pointerCenter").toReal();
+    const qreal soberPointerDepth = tooltipBubble->property("pointerDepth").toReal();
+    const QPointF soberTip = tooltipBubble->mapToItem(
+        tooltipWindow->contentItem(),
+        QPointF(soberBodyX + soberPointerCenter,
+                soberBodyY + soberBodyHeight + soberPointerDepth));
+    QCOMPARE(soberAnchor.top() - soberTip.y(), qreal(3.0));
+
+    const QRectF soberBody(soberBodyX, soberBodyY,
+                           tooltipBubble->property("cardWidth").toReal(),
+                           soberBodyHeight);
+    const QVector<QRect> soberRows = integerRectangles(
+        tooltipBubble->property("backdropBodyRectangles").toList());
+    QCOMPARE(soberRows, referenceCapsulePixelCenterRows(soberBody));
+    QVERIFY(soberRows.size() >= 4);
+    const QRect newTopRow = soberRows.constFirst();
+    const QRect oldTopRow = wholeBandContainedCapsuleRow(soberBody, 0);
+    QCOMPARE(oldTopRow.width(), 38);
+    QCOMPARE(newTopRow.width(), 46);
+    QVERIFY(newTopRow.width() > oldTopRow.width());
+    for (int row = 0; row < 4; ++row) {
+        const QRect oldSpan = wholeBandContainedCapsuleRow(soberBody, row);
+        const QRect newSpan = soberRows.at(row);
+        QCOMPARE(newSpan.y(), qRound(soberBody.y()) + row);
+        QVERIFY(newSpan.width() > oldSpan.width());
+        qInfo() << "Sober top mask row" << row << "old whole-band span" << oldSpan.x()
+                << "width" << oldSpan.width() << "pixel-center span" << newSpan.x()
+                << "width" << newSpan.width();
+    }
 
     const auto verifySideSplice = [&](const QString &edge, const qreal expectedBaseX,
                                       const qreal expectedTipX) {

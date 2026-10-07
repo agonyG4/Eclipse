@@ -247,6 +247,8 @@ pub struct OutputSnapshot {
 #[serde(rename_all = "snake_case")]
 pub enum OutputTransactionState {
     PendingConfirmation,
+    PersistencePending,
+    RollingBack,
     RollbackFailed,
 }
 
@@ -326,7 +328,13 @@ impl OutputListSnapshot {
                 || transaction.applied_configuration_generation == 0
                 || transaction.remaining_ms > OUTPUT_CONFIRMATION_TIMEOUT_MS
                 || match transaction.state {
-                    OutputTransactionState::PendingConfirmation => transaction.error_code.is_some(),
+                    OutputTransactionState::PendingConfirmation
+                    | OutputTransactionState::PersistencePending => {
+                        transaction.error_code.is_some()
+                    }
+                    OutputTransactionState::RollingBack => {
+                        transaction.remaining_ms != 0 || transaction.error_code.is_some()
+                    }
                     OutputTransactionState::RollbackFailed => {
                         transaction.remaining_ms != 0
                             || transaction.error_code.as_deref().is_none_or(str::is_empty)

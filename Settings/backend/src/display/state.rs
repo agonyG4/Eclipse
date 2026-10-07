@@ -211,7 +211,19 @@ impl DisplayState {
     }
 
     pub fn revert_request(&self) -> Option<OutputTransactionRequest> {
-        self.confirm_request()
+        self.transaction
+            .as_ref()
+            .filter(|transaction| {
+                matches!(
+                    transaction.state,
+                    crate::typhon::output::OutputTransactionState::PendingConfirmation
+                        | crate::typhon::output::OutputTransactionState::PersistencePending
+                )
+            })
+            .map(|transaction| OutputTransactionRequest {
+                version: 1,
+                transaction_id: transaction.id,
+            })
     }
 
     pub fn mutation_rejected(&mut self, message: String) {
@@ -498,6 +510,44 @@ mod tests {
         assert!(state.confirm_request().is_some());
         assert!(state.revert_request().is_some());
         assert!(!state.can_apply("output-1"));
+    }
+
+    #[test]
+    fn persistence_pending_exposes_revert_but_not_duplicate_confirm() {
+        let mut state = DisplayState::default();
+        let mut active = snapshot();
+        active.transaction = Some(crate::typhon::output::OutputTransactionSnapshot {
+            id: 7,
+            output_id: String::from("output-1"),
+            state: crate::typhon::output::OutputTransactionState::PersistencePending,
+            applied_configuration_generation: 1,
+            remaining_ms: 8_000,
+            error_code: None,
+        });
+
+        state.apply(active).unwrap();
+
+        assert!(state.confirm_request().is_none());
+        assert!(state.revert_request().is_some());
+    }
+
+    #[test]
+    fn rolling_back_is_visible_and_exposes_no_confirmation_action() {
+        let mut state = DisplayState::default();
+        let mut active = snapshot();
+        active.transaction = Some(crate::typhon::output::OutputTransactionSnapshot {
+            id: 7,
+            output_id: String::from("output-1"),
+            state: crate::typhon::output::OutputTransactionState::RollingBack,
+            applied_configuration_generation: 1,
+            remaining_ms: 0,
+            error_code: None,
+        });
+
+        state.apply(active).unwrap();
+
+        assert!(state.confirm_request().is_none());
+        assert!(state.revert_request().is_none());
     }
 
     #[test]

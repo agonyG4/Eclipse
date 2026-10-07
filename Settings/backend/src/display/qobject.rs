@@ -155,6 +155,10 @@ impl qobject::SettingsDisplayController {
                 crate::typhon::output::OutputTransactionState::PendingConfirmation => {
                     "pending_confirmation"
                 }
+                crate::typhon::output::OutputTransactionState::PersistencePending => {
+                    "persistence_pending"
+                }
+                crate::typhon::output::OutputTransactionState::RollingBack => "rolling_back",
                 crate::typhon::output::OutputTransactionState::RollbackFailed => "rollback_failed",
             });
         QString::from(value)

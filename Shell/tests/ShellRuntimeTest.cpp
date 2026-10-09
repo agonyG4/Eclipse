@@ -85,6 +85,8 @@ private slots:
     void malformedSpatialAudioConfigurationFailsSafelyDisabled();
     void selectsTyphonShellControlBridgeForTyphonRuntime();
     void sharedLauncherUsesTyphonBridgeAndPreservesHelperEnvironment();
+    void launcherRefreshesSystemdWaylandEnvironmentBeforeDispatch();
+    void launcherRejectsDispatchWhenSystemdEnvironmentSyncFails();
     void desktopActionExecExpansionIsBoundedAndFieldAware();
     void malformedDesktopActionExecIsRejected();
 };
@@ -334,6 +336,109 @@ void ShellRuntimeTest::sharedLauncherUsesTyphonBridgeAndPreservesHelperEnvironme
                             "XDG_RUNTIME_DIR=/run/user/1000 path\n"
                             "XDG_SESSION_TYPE=wayland\n"
                             "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus;guid=special value\n"));
+}
+
+void ShellRuntimeTest::launcherRefreshesSystemdWaylandEnvironmentBeforeDispatch()
+{
+    EnvironmentGuard guard({"ASTREA_COMPOSITOR", "ASTREA_COMPOSITOR_BACKEND",
+                            "ASTREA_SHELL_CONTROL_BRIDGE", "ASTREA_TEST_ARGS",
+                            "ASTREA_TEST_ORDER", "PATH", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR",
+                            "DISPLAY"});
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+
+    const QString updater = directory.filePath(QStringLiteral("dbus-update-activation-environment"));
+    const QString launcher = directory.filePath(QStringLiteral("astrea-launch"));
+    const QString argsPath = directory.filePath(QStringLiteral("activation args"));
+    const QString orderPath = directory.filePath(QStringLiteral("launch order"));
+    QVERIFY(writeExecutable(
+        updater,
+        QByteArrayLiteral("#!/bin/sh\n"
+                         "printf '%s\\n' \"$@\" > \"$ASTREA_TEST_ARGS\"\n"
+                         "printf 'sync\\n' >> \"$ASTREA_TEST_ORDER\"\n")));
+    QVERIFY(writeExecutable(
+        launcher,
+        QByteArrayLiteral("#!/bin/sh\n"
+                         "printf 'launch\\n' >> \"$ASTREA_TEST_ORDER\"\n")));
+
+    qunsetenv("ASTREA_COMPOSITOR");
+    qunsetenv("ASTREA_COMPOSITOR_BACKEND");
+    qunsetenv("ASTREA_SHELL_CONTROL_BRIDGE");
+    qputenv("ASTREA_TEST_ARGS", argsPath.toUtf8());
+    qputenv("ASTREA_TEST_ORDER", orderPath.toUtf8());
+    qputenv("PATH", directory.path().toUtf8());
+    qputenv("WAYLAND_DISPLAY", "wayland-before-launch");
+    qputenv("XDG_RUNTIME_DIR", "/run/user/before-launch");
+    qputenv("DISPLAY", ":42");
+
+    ApplicationLauncher appLauncher(launcher);
+    qputenv("WAYLAND_DISPLAY", "wayland-current");
+    qputenv("XDG_RUNTIME_DIR", "/run/user/1000");
+    QSignalSpy succeeded(&appLauncher, &ApplicationLauncher::launchSucceeded);
+    QSignalSpy failed(&appLauncher, &ApplicationLauncher::launchFailed);
+    QSignalSpy completed(&appLauncher, &ApplicationLauncher::launchCompleted);
+    appLauncher.launchDesktop(QStringLiteral("org.example.App"),
+                              QStringLiteral("org.example.App.desktop"), QString());
+
+    QTRY_COMPARE_WITH_TIMEOUT(succeeded.count(), 1, 2000);
+    QCOMPARE(failed.count(), 0);
+    QCOMPARE(completed.count(), 1);
+    QCOMPARE(completed.at(0).at(1).toBool(), true);
+
+    QFile argsFile(argsPath);
+    QVERIFY(argsFile.open(QIODevice::ReadOnly));
+    QCOMPARE(QString::fromUtf8(argsFile.readAll()),
+             QStringLiteral("--systemd\n"
+                            "WAYLAND_DISPLAY=wayland-current\n"
+                            "XDG_RUNTIME_DIR=/run/user/1000\n"));
+
+    QFile orderFile(orderPath);
+    QVERIFY(orderFile.open(QIODevice::ReadOnly));
+    QCOMPARE(QString::fromUtf8(orderFile.readAll()), QStringLiteral("sync\nlaunch\n"));
+}
+
+void ShellRuntimeTest::launcherRejectsDispatchWhenSystemdEnvironmentSyncFails()
+{
+    EnvironmentGuard guard({"ASTREA_COMPOSITOR", "ASTREA_COMPOSITOR_BACKEND",
+                            "ASTREA_SHELL_CONTROL_BRIDGE", "ASTREA_TEST_MARKER", "PATH",
+                            "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR"});
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+
+    const QString updater = directory.filePath(QStringLiteral("dbus-update-activation-environment"));
+    const QString launcher = directory.filePath(QStringLiteral("astrea-launch"));
+    const QString markerPath = directory.filePath(QStringLiteral("launch marker"));
+    QVERIFY(writeExecutable(
+        updater,
+        QByteArrayLiteral("#!/bin/sh\n"
+                         "printf 'activation sync failed\\n' >&2\n"
+                         "exit 7\n")));
+    QVERIFY(writeExecutable(
+        launcher,
+        QByteArrayLiteral("#!/bin/sh\n"
+                         ": > \"$ASTREA_TEST_MARKER\"\n")));
+
+    qunsetenv("ASTREA_COMPOSITOR");
+    qunsetenv("ASTREA_COMPOSITOR_BACKEND");
+    qunsetenv("ASTREA_SHELL_CONTROL_BRIDGE");
+    qputenv("ASTREA_TEST_MARKER", markerPath.toUtf8());
+    qputenv("PATH", directory.path().toUtf8());
+    qputenv("WAYLAND_DISPLAY", "wayland-current");
+    qputenv("XDG_RUNTIME_DIR", "/run/user/1000");
+
+    ApplicationLauncher appLauncher(launcher);
+    QSignalSpy succeeded(&appLauncher, &ApplicationLauncher::launchSucceeded);
+    QSignalSpy failed(&appLauncher, &ApplicationLauncher::launchFailed);
+    QSignalSpy completed(&appLauncher, &ApplicationLauncher::launchCompleted);
+    appLauncher.launchDesktop(QStringLiteral("org.example.App"),
+                              QStringLiteral("org.example.App.desktop"), QString());
+
+    QCOMPARE(succeeded.count(), 0);
+    QCOMPARE(failed.count(), 1);
+    QVERIFY(failed.at(0).at(1).toString().contains(QStringLiteral("activation sync failed")));
+    QCOMPARE(completed.count(), 1);
+    QCOMPARE(completed.at(0).at(1).toBool(), false);
+    QVERIFY(!QFileInfo::exists(markerPath));
 }
 
 void ShellRuntimeTest::desktopActionExecExpansionIsBoundedAndFieldAware()

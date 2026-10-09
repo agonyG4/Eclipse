@@ -3,10 +3,63 @@
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QProcessEnvironment>
 
 #include <utility>
 
 namespace {
+
+bool usesTyphonShellControlBridge(const QProcessEnvironment &environment)
+{
+    const bool isTyphon = environment.value(QStringLiteral("ASTREA_COMPOSITOR"))
+                              .compare(QStringLiteral("TYPHON"), Qt::CaseInsensitive)
+            == 0
+        || environment.value(QStringLiteral("ASTREA_COMPOSITOR_BACKEND"))
+                   .compare(QStringLiteral("typhon"), Qt::CaseInsensitive)
+            == 0;
+    return isTyphon && !environment.value(QStringLiteral("ASTREA_SHELL_CONTROL_BRIDGE")).isEmpty();
+}
+
+bool synchronizeSystemdActivationEnvironment(QString *errorOut)
+{
+    const QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    QStringList arguments{QStringLiteral("--systemd")};
+    for (const QString &name : {QStringLiteral("WAYLAND_DISPLAY"),
+                                QStringLiteral("XDG_RUNTIME_DIR")}) {
+        if (environment.contains(name))
+            arguments.append(name + QLatin1Char('=') + environment.value(name));
+    }
+    if (arguments.size() == 1)
+        return true;
+
+    QProcess process;
+    process.start(QStringLiteral("dbus-update-activation-environment"), arguments);
+    if (!process.waitForStarted(5000)) {
+        if (errorOut)
+            *errorOut = QStringLiteral("Failed to start activation environment updater: %1")
+                            .arg(process.errorString());
+        return false;
+    }
+    if (!process.waitForFinished(5000)) {
+        process.kill();
+        process.waitForFinished();
+        if (errorOut)
+            *errorOut = QStringLiteral("Timed out updating systemd activation environment");
+        return false;
+    }
+
+    const QString standardError = QString::fromUtf8(process.readAllStandardError()).trimmed();
+    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+        if (errorOut) {
+            *errorOut = standardError.isEmpty()
+                ? QStringLiteral("Activation environment updater exited with code %1")
+                      .arg(process.exitCode())
+                : standardError;
+        }
+        return false;
+    }
+    return true;
+}
 
 bool validDesktopFileName(const QString &fileName)
 {
@@ -136,6 +189,8 @@ ApplicationLauncher::ApplicationLauncher(const QString &astreaLaunchPath, QObjec
     : QObject(parent)
     , m_launchPath(resolveLauncherPath(astreaLaunchPath,
                                        QProcessEnvironment::systemEnvironment()))
+    , m_needsSystemdActivationEnvironmentSync(
+          !usesTyphonShellControlBridge(QProcessEnvironment::systemEnvironment()))
 {
 }
 
@@ -150,17 +205,8 @@ QStringList ApplicationLauncher::expandDesktopExec(const ApplicationLaunchReques
 QString ApplicationLauncher::resolveLauncherPath(const QString &fallbackPath,
                                                   const QProcessEnvironment &environment)
 {
-    const bool isTyphon = environment.value(QStringLiteral("ASTREA_COMPOSITOR"))
-                              .compare(QStringLiteral("TYPHON"), Qt::CaseInsensitive)
-            == 0
-        || environment.value(QStringLiteral("ASTREA_COMPOSITOR_BACKEND"))
-                   .compare(QStringLiteral("typhon"), Qt::CaseInsensitive)
-            == 0;
-    if (isTyphon) {
-        const QString bridge = environment.value(QStringLiteral("ASTREA_SHELL_CONTROL_BRIDGE"));
-        if (!bridge.isEmpty())
-            return bridge;
-    }
+    if (usesTyphonShellControlBridge(environment))
+        return environment.value(QStringLiteral("ASTREA_SHELL_CONTROL_BRIDGE"));
     return fallbackPath;
 }
 
@@ -213,6 +259,15 @@ void ApplicationLauncher::launchDesktop(const ApplicationLaunchRequest &request)
 
 void ApplicationLauncher::runSupervised(const QString &desktopId, const QStringList &args)
 {
+    if (m_needsSystemdActivationEnvironmentSync) {
+        QString error;
+        if (!synchronizeSystemdActivationEnvironment(&error)) {
+            emit launchFailed(desktopId, error);
+            emit launchCompleted(desktopId, false);
+            return;
+        }
+    }
+
     auto *process = new QProcess(this);
     auto *timeout = new QTimer(this);
     timeout->setSingleShot(true);

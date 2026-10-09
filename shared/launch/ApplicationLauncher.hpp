@@ -53,6 +53,7 @@ private:
     void complete(QProcess *process, bool success, const QString &error = {}, bool timedOut = false);
 
     QString m_launchPath;
+    bool m_needsSystemdActivationEnvironmentSync = false;
     QHash<QProcess *, PendingLaunch> m_pending;
     static constexpr int kMaximumExecLength = 4096;
     static constexpr int kMaximumExecTokens = 128;

@@ -551,6 +551,153 @@ mod tests {
     }
 
     #[test]
+    fn transaction_actions_match_server_eligibility_for_all_phases() {
+        use crate::typhon::output::OutputTransactionState;
+
+        let cases = [
+            (
+                OutputTransactionState::PendingConfirmation,
+                5_000,
+                None,
+                true,
+                true,
+            ),
+            (
+                OutputTransactionState::PersistencePending,
+                4_000,
+                None,
+                false,
+                true,
+            ),
+            (OutputTransactionState::RollingBack, 0, None, false, false),
+            (
+                OutputTransactionState::RollbackFailed,
+                0,
+                Some(String::from("output_rollback_failed")),
+                false,
+                false,
+            ),
+        ];
+
+        for (phase, remaining_ms, error_code, can_confirm, can_revert) in cases {
+            let mut state = DisplayState::default();
+            let mut active = snapshot();
+            active.transaction = Some(crate::typhon::output::OutputTransactionSnapshot {
+                id: 7,
+                output_id: String::from("output-1"),
+                state: phase,
+                applied_configuration_generation: 1,
+                remaining_ms,
+                error_code,
+            });
+            state
+                .apply(active)
+                .expect("each phase has a valid authoritative snapshot");
+            assert_eq!(state.confirm_request().is_some(), can_confirm);
+            assert_eq!(state.revert_request().is_some(), can_revert);
+        }
+    }
+
+    #[test]
+    fn confirmation_disconnect_recovers_server_phase_from_the_next_snapshot() {
+        use crate::typhon::output::OutputTransactionState;
+
+        let mut state = DisplayState::default();
+        let mut pending = snapshot();
+        pending.transaction = Some(crate::typhon::output::OutputTransactionSnapshot {
+            id: 7,
+            output_id: String::from("output-1"),
+            state: OutputTransactionState::PendingConfirmation,
+            applied_configuration_generation: 1,
+            remaining_ms: 5_000,
+            error_code: None,
+        });
+        state.apply(pending).unwrap();
+        assert_eq!(state.confirm_request().unwrap().transaction_id, 7);
+
+        state.fail(String::from("connection lost during confirmation"));
+        assert!(state.transaction().is_none());
+        assert!(!state.available());
+
+        let mut reconnected = snapshot();
+        reconnected.transaction = Some(crate::typhon::output::OutputTransactionSnapshot {
+            id: 7,
+            output_id: String::from("output-1"),
+            state: OutputTransactionState::PersistencePending,
+            applied_configuration_generation: 1,
+            remaining_ms: 3_000,
+            error_code: None,
+        });
+        state
+            .apply(reconnected)
+            .expect("reconnect refresh restores server-owned confirmation state");
+        assert!(state.available());
+        assert_eq!(
+            state.transaction().unwrap().state,
+            OutputTransactionState::PersistencePending
+        );
+        assert!(state.confirm_request().is_none());
+        assert!(state.revert_request().is_some());
+    }
+
+    #[test]
+    fn reconnect_during_rollback_recovers_terminal_phase_without_actions() {
+        use crate::typhon::output::OutputTransactionState;
+
+        let mut state = DisplayState::default();
+        let mut persistence_pending = snapshot();
+        persistence_pending.transaction = Some(crate::typhon::output::OutputTransactionSnapshot {
+            id: 7,
+            output_id: String::from("output-1"),
+            state: OutputTransactionState::PersistencePending,
+            applied_configuration_generation: 1,
+            remaining_ms: 2_000,
+            error_code: None,
+        });
+        state.apply(persistence_pending).unwrap();
+        state.fail(String::from("connection lost during persistence"));
+
+        let mut rolling_back = snapshot();
+        rolling_back.transaction = Some(crate::typhon::output::OutputTransactionSnapshot {
+            id: 7,
+            output_id: String::from("output-1"),
+            state: OutputTransactionState::RollingBack,
+            applied_configuration_generation: 1,
+            remaining_ms: 0,
+            error_code: None,
+        });
+        state
+            .apply(rolling_back)
+            .expect("reconnect recovers the server-owned rollback phase");
+        assert_eq!(
+            state.transaction().unwrap().state,
+            OutputTransactionState::RollingBack
+        );
+        assert!(state.confirm_request().is_none());
+        assert!(state.revert_request().is_none());
+
+        state.fail(String::from("connection lost during rollback"));
+        let mut rollback_failed = snapshot();
+        rollback_failed.transaction = Some(crate::typhon::output::OutputTransactionSnapshot {
+            id: 7,
+            output_id: String::from("output-1"),
+            state: OutputTransactionState::RollbackFailed,
+            applied_configuration_generation: 1,
+            remaining_ms: 0,
+            error_code: Some(String::from("output_rollback_failed")),
+        });
+        state
+            .apply(rollback_failed)
+            .expect("reconnect recovers a failed rollback as a terminal state");
+        assert_eq!(
+            state.transaction().unwrap().state,
+            OutputTransactionState::RollbackFailed
+        );
+        assert!(state.confirm_request().is_none());
+        assert!(state.revert_request().is_none());
+    }
+
+    #[test]
     fn draft_request_keeps_native_mode_id_and_generation_opaque() {
         let draft = OutputDraft {
             output_id: "output-1".into(),

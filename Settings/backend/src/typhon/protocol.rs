@@ -544,25 +544,63 @@ mod tests {
     #[test]
     fn active_output_transaction_is_recovered_from_an_ordinary_outputs_refresh() {
         let request = ControlRequest::Output(crate::typhon::output::OutputRequest::Get);
-        let mut result = valid_output_list();
-        result["transaction"] = json!({
-            "id": 72,
-            "outputId": "output-1",
-            "state": "pending_confirmation",
-            "appliedConfigurationGeneration": 9,
-            "remainingMs": 7300,
-            "errorCode": null
-        });
-        let outcome = decode_control_response(&program_response(95, result), 95, &request)
-            .expect("active transaction is part of a complete output snapshot");
-        let ProtocolOutcome::Success(ControlSuccess::Outputs(snapshot)) = outcome else {
-            panic!("outputs refresh must decode the authoritative transaction");
-        };
-        let transaction = snapshot.transaction.unwrap();
-        assert_eq!(transaction.id, 72);
-        assert_eq!(transaction.applied_configuration_generation, 9);
-        assert_eq!(transaction.remaining_ms, 7300);
-        assert_eq!(transaction.error_code, None);
+        use crate::typhon::output::OutputTransactionState;
+
+        let cases = [
+            (
+                "pending_confirmation",
+                7_300,
+                None,
+                OutputTransactionState::PendingConfirmation,
+            ),
+            (
+                "pending_confirmation",
+                0,
+                None,
+                OutputTransactionState::PendingConfirmation,
+            ),
+            (
+                "persistence_pending",
+                4_200,
+                None,
+                OutputTransactionState::PersistencePending,
+            ),
+            (
+                "persistence_pending",
+                0,
+                None,
+                OutputTransactionState::PersistencePending,
+            ),
+            ("rolling_back", 0, None, OutputTransactionState::RollingBack),
+            (
+                "rollback_failed",
+                0,
+                Some("output_rollback_failed"),
+                OutputTransactionState::RollbackFailed,
+            ),
+        ];
+        for (state, remaining_ms, error_code, expected_state) in cases {
+            let mut result = valid_output_list();
+            result["transaction"] = json!({
+                "id": 72,
+                "outputId": "output-1",
+                "state": state,
+                "appliedConfigurationGeneration": 9,
+                "remainingMs": remaining_ms,
+                "errorCode": error_code
+            });
+            let outcome = decode_control_response(&program_response(95, result), 95, &request)
+                .expect("active transaction is part of a complete output snapshot");
+            let ProtocolOutcome::Success(ControlSuccess::Outputs(snapshot)) = outcome else {
+                panic!("outputs refresh must decode the authoritative transaction");
+            };
+            let transaction = snapshot.transaction.unwrap();
+            assert_eq!(transaction.id, 72);
+            assert_eq!(transaction.state, expected_state);
+            assert_eq!(transaction.applied_configuration_generation, 9);
+            assert_eq!(transaction.remaining_ms, remaining_ms);
+            assert_eq!(transaction.error_code.as_deref(), error_code);
+        }
     }
 
     #[test]
@@ -599,6 +637,15 @@ mod tests {
             "id": 8, "outputId":"output-1", "state":"pending_confirmation",
             "appliedConfigurationGeneration":9, "remainingMs":5000
         });
+        let invalid_phase_combinations = [
+            ("pending_confirmation", 5_000, Some("unexpected_error")),
+            ("persistence_pending", 5_000, Some("unexpected_error")),
+            ("rolling_back", 1, None),
+            ("rolling_back", 0, Some("unexpected_error")),
+            ("rollback_failed", 1, Some("output_rollback_failed")),
+            ("rollback_failed", 0, None),
+            ("rollback_failed", 0, Some("")),
+        ];
 
         for invalid in [
             missing_transaction,
@@ -611,6 +658,22 @@ mod tests {
             assert_eq!(
                 decode_control_response(&program_response(96, invalid), 96, &request),
                 Err(ProtocolError::InvalidJson)
+            );
+        }
+        for (state, remaining_ms, error_code) in invalid_phase_combinations {
+            let mut invalid = valid_output_list();
+            invalid["transaction"] = json!({
+                "id": 8,
+                "outputId": "output-1",
+                "state": state,
+                "appliedConfigurationGeneration": 9,
+                "remainingMs": remaining_ms,
+                "errorCode": error_code,
+            });
+            assert_eq!(
+                decode_control_response(&program_response(97, invalid), 97, &request),
+                Err(ProtocolError::InvalidJson),
+                "invalid state combination: {state}, {remaining_ms}ms, {error_code:?}",
             );
         }
     }

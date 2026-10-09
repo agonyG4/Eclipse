@@ -42,6 +42,8 @@ public:
     bool reconnectPending() const { return m_reconnectTimer.isActive(); }
     Astrea::Typhon::TyphonActionCapabilityState actionCapability() const
     { return m_actionCapability; }
+    std::optional<quint64> handleTokenForWindowId(const QString &windowId) const
+    { return m_model.handleTokenForWindowId(windowId); }
     quint32 managerVersion() const
     { return m_adapter ? m_adapter->managerVersion() : 0; }
     std::optional<Astrea::Typhon::ToplevelActionError> requestAction(

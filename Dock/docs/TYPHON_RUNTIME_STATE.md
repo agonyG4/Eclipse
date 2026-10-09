@@ -83,3 +83,27 @@ Accepted and no-change results do not launch. Unavailable or failed actions
 reconcile the snapshot and never launch a duplicate application on that same
 click. Minimize anchors are stored by task key and published to every live
 WindowId in the group.
+
+## Minimize anchor publication
+
+The QML dock reports the resting icon rectangle in global compositor coordinates.
+The controller accepts a valid rectangle into its task-key cache even while Typhon
+action authentication is pending. The `setMinimizeAnchor()` boolean reports this
+local acceptance only; it does not report transport delivery or compositor
+acknowledgment.
+
+When Typhon becomes `ActionReadyV2`, the controller replays cached rectangles to
+the current exact `WindowId` handles without waiting for another snapshot. A
+successful client send is remembered for idempotence; transport errors remain
+eligible for a later runtime projection or capability-ready replay. Reconnects,
+handle changes, task migration, and rectangle changes are keyed against the live
+connection generation and handle token. Anchor clearing remains scoped to the
+exact live window.
+
+For bounded publication diagnostics, launch the Dock with
+`ASTREA_TYPHON_ANCHOR_DIAGNOSTICS=1`. Events use stable names such as
+`anchor_cached`, `publish_attempted`, `send_queued`,
+`deferred_not_authenticated`, `missing_handle`, `send_failed`, and
+`anchor_removed`. Output is rate-limited; `send_queued` means the client accepted
+the request for transport and is not a compositor acknowledgment. Authentication
+credentials are never logged.

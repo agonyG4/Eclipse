@@ -11,6 +11,7 @@
 #include "platform/typhon/RuntimeTaskIdentityTracker.hpp"
 
 #include <QHash>
+#include <QElapsedTimer>
 #include <QObject>
 #include <QRect>
 #include <QSet>
@@ -133,6 +134,8 @@ public:
     Q_INVOKABLE void activateOrLaunchTask(const QString &taskKey);
     Q_INVOKABLE bool setPinned(const QString &desktopFileName, bool pinned);
     Q_INVOKABLE bool movePinned(const QString &desktopFileName, int targetPinIndex);
+    // True means the valid rectangle was accepted into the local task cache.
+    // It does not mean Typhon queued it or acknowledged it.
     Q_INVOKABLE bool setMinimizeAnchor(const QString &taskKey, const QRect &rect);
     Q_INVOKABLE void clearMinimizeAnchor(const QString &taskKey);
     Q_INVOKABLE void show();
@@ -170,6 +173,33 @@ private:
     void publishMinimizeAnchor(const QString &taskKey);
     void publishAllMinimizeAnchors();
     void clearPublishedMinimizeAnchors(const QSet<QString> &liveWindowIds);
+    void replayMinimizeAnchors(TyphonToplevelConnection *connection);
+    QSet<QString> liveRuntimeWindowIds() const;
+    enum class MinimizeAnchorDiagnosticEvent {
+        AnchorCached,
+        PublishAttempted,
+        SendQueued,
+        DeferredNotAuthenticated,
+        MissingHandle,
+        SendFailed,
+        AnchorRemoved,
+    };
+    enum class MinimizeAnchorDiagnosticReason {
+        None,
+        LocalAcceptanceOnly,
+        TransportQueuedNoRemoteAck,
+        LocalCacheRemoved,
+        NotAuthenticated,
+        UnsupportedProtocol,
+        Disconnected,
+        LocalCapacityExceeded,
+        ToplevelNotLive,
+        InvalidRequest,
+    };
+    void diagnoseMinimizeAnchor(MinimizeAnchorDiagnosticEvent event,
+                                MinimizeAnchorDiagnosticReason reason,
+                                const QString &taskKey,
+                                const QString &windowId);
     void reconcileTyphonActionFailure(Astrea::Typhon::ToplevelActionError error);
     void resolveTaskIdentities();
     void launchItem(const DockAppInfo &item, bool activateRunning = true);
@@ -194,7 +224,17 @@ private:
     std::optional<Astrea::Typhon::Snapshot> m_runtimeSnapshot;
     QHash<QString, Astrea::Typhon::DockApplicationRuntimeState> m_runtimeStates;
     QHash<QString, QRect> m_minimizeAnchors;
-    QHash<QString, QRect> m_publishedMinimizeAnchors;
+    struct PublishedMinimizeAnchor {
+        QString taskKey;
+        QRect rect;
+        quint64 connectionGeneration = 0;
+        quint64 handleToken = 0;
+        quint64 capabilityEpoch = 0;
+    };
+    QHash<QString, PublishedMinimizeAnchor> m_publishedMinimizeAnchors;
+    quint64 m_minimizeAnchorCapabilityEpoch = 0;
+    QElapsedTimer m_minimizeAnchorDiagnosticWindow;
+    int m_minimizeAnchorDiagnosticCount = 0;
     QHash<quint64, QString> m_pendingActivations;
     struct PendingWindowAction {
         QString taskKey;

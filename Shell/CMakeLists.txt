@@ -361,7 +361,7 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     add_test(NAME context-menu-qml-interaction-test COMMAND context-menu-qml-interaction-test)
     set_tests_properties(
         context-menu-qml-smoke-test screenshot-overlay-qml-smoke-test context-menu-qml-interaction-test
-        PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+        PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QML_IMPORT_PATH=${CMAKE_BINARY_DIR}"
     )
 endif()
 

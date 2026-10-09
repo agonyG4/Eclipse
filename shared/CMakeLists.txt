@@ -687,6 +687,9 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     )
     astrea_shared_enable_sanitizers(astrea-app-icon-qml-test)
     add_test(NAME astrea-app-icon-qml-test COMMAND astrea-app-icon-qml-test)
+    set_tests_properties(astrea-app-icon-qml-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QML_IMPORT_PATH=${CMAKE_BINARY_DIR}"
+    )
 
     add_executable(system-services-test
         system/tests/SystemServicesTest.cpp

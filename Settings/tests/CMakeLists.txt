@@ -64,7 +64,10 @@ function(add_settings_qml_integration_test target source)
     settings_enable_sanitizers(${target})
     add_test(NAME ${target} COMMAND ${target})
 
-    set(test_environment "QT_QPA_PLATFORM=offscreen")
+    set(test_environment
+        "QT_QPA_PLATFORM=offscreen"
+        "QML_IMPORT_PATH=${CMAKE_BINARY_DIR}"
+    )
     if(ASTREA_ENABLE_ASAN)
         # Qt's offscreen graphics teardown leaks allocations in system font and GL libraries.
         list(APPEND test_environment "ASAN_OPTIONS=detect_leaks=0")

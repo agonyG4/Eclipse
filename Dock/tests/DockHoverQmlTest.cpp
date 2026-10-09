@@ -2,6 +2,7 @@
 #include "core/DockSurfaceGeometry.hpp"
 #include "platform/wayland/DockInputRegionBridge.hpp"
 #include "platform/wayland/effects/AstreaBackdropEffectRegions.hpp"
+#include "platform/wayland/effects/AstreaBackdropAnalyticCoverage.hpp"
 #include "services/DockConfigPersistence.hpp"
 #include "icons/AstreaIconProvider.hpp"
 #include "theme/ThemeController.hpp"
@@ -31,6 +32,7 @@
 
 Q_IMPORT_QML_PLUGIN(Astrea_EffectsPlugin)
 
+#include <algorithm>
 #include <functional>
 
 namespace {
@@ -270,6 +272,21 @@ bool pixelCenterInsideCapsule(const QRectF &body, const QPointF &pixelCenter)
     return dx * dx + dy * dy <= radius * radius + 1e-9;
 }
 
+bool pixelCenterInsideTriangle(const QPointF &a, const QPointF &b, const QPointF &c,
+                              const QPointF &pixelCenter)
+{
+    const auto cross = [](const QPointF &left, const QPointF &right,
+                          const QPointF &point) {
+        return (right.x() - left.x()) * (point.y() - left.y())
+            - (right.y() - left.y()) * (point.x() - left.x());
+    };
+    const qreal ab = cross(a, b, pixelCenter);
+    const qreal bc = cross(b, c, pixelCenter);
+    const qreal ca = cross(c, a, pixelCenter);
+    return (ab >= -1e-9 && bc >= -1e-9 && ca >= -1e-9)
+        || (ab <= 1e-9 && bc <= 1e-9 && ca <= 1e-9);
+}
+
 QVector<QRect> referenceCapsulePixelCenterRows(const QRectF &body)
 {
     QVector<QRect> result;
@@ -309,72 +326,53 @@ QRect wholeBandContainedCapsuleRow(const QRectF &body, const int row)
     return QRect(left, y, qMax(0, right - left), 1);
 }
 
-QVector<QRect> referenceTailPixelCenterSlices(const QRectF &body, const QString &edge,
-                                               const qreal pointerCenter,
-                                               const qreal pointerWidth,
-                                               const qreal pointerDepth,
-                                               const qreal sideTailArcInset)
+QVector<QRect> referenceTailPixelCenterSlices(const QPointF &a, const QPointF &b,
+                                               const QPointF &tip, const QRectF &body,
+                                               const QString &edge)
 {
     QVector<QRect> result;
-    const qreal halfPointer = pointerWidth / 2.0;
-    if (edge == QStringLiteral("bottom") || edge == QStringLiteral("top")) {
-        const bool bottom = edge == QStringLiteral("bottom");
-        const qreal centerX = body.x() + pointerCenter;
-        const qreal baseY = bottom ? body.y() + body.height() : body.y();
-        const int sliceCount = qCeil(pointerDepth);
-        for (int slice = 0; slice < sliceCount; ++slice) {
-            const int y = bottom ? qFloor(baseY) + slice : qCeil(baseY) - slice - 1;
-            const qreal distanceFromBase = qAbs(y + 0.5 - baseY);
-            const qreal halfWidth = halfPointer
-                * qMax<qreal>(0.0, 1.0 - distanceFromBase / pointerDepth);
-            if (halfWidth <= 0.0)
-                continue;
-
-            const int firstColumn = qFloor(centerX - halfPointer) - 1;
-            const int endColumn = qCeil(centerX + halfPointer);
-            int runStart = -1;
-            for (int x = firstColumn; x <= endColumn; ++x) {
-                const bool covered = x < endColumn
-                    && qAbs(x + 0.5 - centerX) <= halfWidth + 1e-9;
-                if (covered && runStart < 0)
-                    runStart = x;
-                else if (!covered && runStart >= 0) {
-                    result.append(QRect(runStart, y, x - runStart, 1));
-                    runStart = -1;
-                }
+    const bool horizontal = qAbs(a.y() - b.y()) < 1e-9;
+    const QPointF points[] = {a, b, tip};
+    const auto primary = [horizontal](const QPointF &point) {
+        return horizontal ? point.y() : point.x();
+    };
+    const auto secondary = [horizontal](const QPointF &point) {
+        return horizontal ? point.x() : point.y();
+    };
+    const qreal firstValue = qMin(primary(a), qMin(primary(b), primary(tip)));
+    const qreal endValue = qMax(primary(a), qMax(primary(b), primary(tip)));
+    int first = qFloor(firstValue);
+    int end = qCeil(endValue);
+    if (edge == QStringLiteral("left"))
+        end = qMin(end, qFloor(body.left()) + 1);
+    else if (edge == QStringLiteral("right"))
+        first = qMax(first, qCeil(body.right()) - 1);
+    const int edges[3][2] = {{0, 1}, {1, 2}, {2, 0}};
+    for (int slice = first; slice < end; ++slice) {
+        const qreal sample = slice + 0.5;
+        QVector<qreal> intersections;
+        for (const auto &edge : edges) {
+            const QPointF &p = points[edge[0]];
+            const QPointF &q = points[edge[1]];
+            const qreal pPrimary = primary(p);
+            const qreal qPrimary = primary(q);
+            if ((pPrimary <= sample && sample < qPrimary)
+                || (qPrimary <= sample && sample < pPrimary)) {
+                const qreal fraction = (sample - pPrimary) / (qPrimary - pPrimary);
+                intersections.append(secondary(p)
+                                     + fraction * (secondary(q) - secondary(p)));
             }
         }
-        return result;
-    }
-
-    const bool left = edge == QStringLiteral("left");
-    const qreal bodyRight = body.x() + body.width();
-    const qreal sideLength = pointerDepth + sideTailArcInset;
-    const qreal centerY = body.y() + pointerCenter;
-    for (int slice = 0; slice < qCeil(pointerDepth); ++slice) {
-        const int x = left ? qFloor(body.x()) - slice
-                           : qCeil(bodyRight) - 1 + slice;
-        const qreal sampleX = x + 0.5;
-        const qreal distanceFromTip = left
-            ? sampleX - (body.x() - pointerDepth)
-            : bodyRight + pointerDepth - sampleX;
-        const qreal halfHeight = halfPointer
-            * qBound<qreal>(0.0, distanceFromTip / sideLength, 1.0);
-        if (halfHeight <= 0.0)
+        if (intersections.size() < 2)
             continue;
-
-        const int firstRow = qFloor(centerY - halfPointer) - 1;
-        const int endRow = qCeil(centerY + halfPointer);
-        int runStart = -1;
-        for (int y = firstRow; y <= endRow; ++y) {
-            const bool covered = y < endRow
-                && qAbs(y + 0.5 - centerY) <= halfHeight + 1e-9;
-            if (covered && runStart < 0)
-                runStart = y;
-            else if (!covered && runStart >= 0) {
-                result.append(QRect(x, runStart, 1, y - runStart));
-                runStart = -1;
-            }
+        const qreal low = qMin(intersections.at(0), intersections.at(1));
+        const qreal high = qMax(intersections.at(0), intersections.at(1));
+        const int firstPixel = qCeil(low - 0.5);
+        const int lastPixel = qFloor(high - 0.5);
+        if (lastPixel >= firstPixel) {
+            result.append(horizontal
+                ? QRect(firstPixel, slice, lastPixel - firstPixel + 1, 1)
+                : QRect(slice, firstPixel, 1, lastPixel - firstPixel + 1));
         }
     }
     return result;
@@ -2065,6 +2063,11 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
     const auto effectRegions = tooltipWindow->findChildren<AstreaBackdropEffectRegions *>();
     QCOMPARE(effectRegions.size(), 1);
     QVERIFY(effectRegions.constFirst()->enabled());
+    auto *analyticDescriptor = effectRegions.constFirst()->analyticCoverage();
+    QVERIFY(analyticDescriptor);
+    QCOMPARE(analyticDescriptor->item(), tooltipBubble);
+    QVERIFY(analyticDescriptor->roundedRectEnabled());
+    QVERIFY(analyticDescriptor->triangleEnabled());
     const auto backdropDescriptors = tooltipWindow->findChildren<AstreaBackdropRegion *>();
     QCOMPARE(backdropDescriptors.size(), 1);
     AstreaBackdropRegion *bubbleDescriptor = backdropDescriptors.constFirst();
@@ -2107,9 +2110,9 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
         const qreal bodyHeight = tooltipBubble->property("bodyHeight").toReal();
         const qreal center = tooltipBubble->property("pointerCenter").toReal();
         const qreal depth = tooltipBubble->property("pointerDepth").toReal();
-        const qreal pointerWidth = tooltipBubble->property("pointerWidth").toReal();
-        const qreal sideTailArcInset =
-            tooltipBubble->property("sideTailArcInset").toReal();
+        const QPointF tailBaseA = tooltipBubble->property("tailBaseA").toPointF();
+        const QPointF tailBaseB = tooltipBubble->property("tailBaseB").toPointF();
+        const QPointF localTailTip = tooltipBubble->property("tailTip").toPointF();
         const qreal renderPadding = tooltipBubble->property("renderPadding").toReal();
         QVERIFY(renderPadding > tooltipStroke->property("strokeWidth").toReal() / 2.0);
         const QRectF bodyRect = tooltipBubble->mapRectToItem(
@@ -2132,17 +2135,8 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
         QVERIFY(tooltipBubble->height() - pathBottom
                 > tooltipStroke->property("strokeWidth").toReal() / 2.0);
 
-        QPointF tailTip;
-        if (edge == QStringLiteral("bottom"))
-            tailTip = {bodyX + center, bodyY + bodyHeight + depth};
-        else if (edge == QStringLiteral("top"))
-            tailTip = {bodyX + center, bodyY - depth};
-        else if (edge == QStringLiteral("left"))
-            tailTip = {bodyX - depth, bodyY + center};
-        else
-            tailTip = {bodyX + cardWidth + depth, bodyY + center};
         const QPointF outputTip = tooltipBubble->mapToItem(
-            tooltipWindow->contentItem(), tailTip);
+            tooltipWindow->contentItem(), localTailTip);
         qreal expectedGap = 0.0;
         if (edge == QStringLiteral("bottom")) {
             QVERIFY(qAbs(outputTip.x() - (currentCardRect.x() + center)) < 0.01);
@@ -2158,6 +2152,45 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
             expectedGap = anchor.left() - outputTip.x();
         }
         QCOMPARE(expectedGap, qreal(3.0));
+
+        const auto resolvedAnalytic = effectRegions.constFirst()->resolvedAnalyticCoverage();
+        QVERIFY(resolvedAnalytic.has_value());
+        QCOMPARE(resolvedAnalytic->roundedRect->rect, bodyRect);
+        QCOMPARE(resolvedAnalytic->roundedRect->radius, qreal(17.0));
+        QCOMPARE(resolvedAnalytic->triangle->a, tooltipBubble->mapToItem(
+                     tooltipWindow->contentItem(), tailBaseA));
+        QCOMPARE(resolvedAnalytic->triangle->b, tooltipBubble->mapToItem(
+                     tooltipWindow->contentItem(), tailBaseB));
+        QCOMPARE(resolvedAnalytic->triangle->c, outputTip);
+        const auto analyticWork = effectRegions.constFirst()->resolvedAnalyticWorkRegion();
+        QCOMPARE(analyticWork.size(), 1);
+        const QRectF triangleBounds(
+            qMin(tailBaseA.x(), qMin(tailBaseB.x(), localTailTip.x())),
+            qMin(tailBaseA.y(), qMin(tailBaseB.y(), localTailTip.y())),
+            qMax(tailBaseA.x(), qMax(tailBaseB.x(), localTailTip.x()))
+                - qMin(tailBaseA.x(), qMin(tailBaseB.x(), localTailTip.x())),
+            qMax(tailBaseA.y(), qMax(tailBaseB.y(), localTailTip.y()))
+                - qMin(tailBaseA.y(), qMin(tailBaseB.y(), localTailTip.y())));
+        const QRectF localShapeBounds = QRectF(bodyX, bodyY, cardWidth, bodyHeight)
+            .united(triangleBounds);
+        const QPointF mappedTopLeft = tooltipBubble->mapToItem(
+            tooltipWindow->contentItem(), localShapeBounds.topLeft());
+        const QPointF mappedBottomRight = tooltipBubble->mapToItem(
+            tooltipWindow->contentItem(), localShapeBounds.bottomRight());
+        const int expectedLeft = qMax(0, qFloor(mappedTopLeft.x())
+                                         - AstreaBackdropEffectRegions::analyticCoverageGuard);
+        const int expectedTop = qMax(0, qFloor(mappedTopLeft.y())
+                                        - AstreaBackdropEffectRegions::analyticCoverageGuard);
+        const int expectedRight = qMin(tooltipWindow->width(),
+                                       qCeil(mappedBottomRight.x())
+                                           + AstreaBackdropEffectRegions::analyticCoverageGuard);
+        const int expectedBottom = qMin(tooltipWindow->height(),
+                                        qCeil(mappedBottomRight.y())
+                                            + AstreaBackdropEffectRegions::analyticCoverageGuard);
+        QCOMPARE(analyticWork.constFirst(),
+                 QRect(expectedLeft, expectedTop, expectedRight - expectedLeft,
+                       expectedBottom - expectedTop));
+        QVERIFY(analyticWork != resolved);
 
         const QVariantList currentBodyRectangles =
             tooltipBubble->property("backdropBodyRectangles").toList();
@@ -2185,8 +2218,9 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
                                       row.y() + 0.5)));
         }
         QCOMPARE(integerRectangles(currentTailRectangles),
-                 referenceTailPixelCenterSlices(analyticBody, edge, center, pointerWidth,
-                                                depth, sideTailArcInset));
+                 referenceTailPixelCenterSlices(tailBaseA, tailBaseB, localTailTip,
+                                                QRectF(bodyX, bodyY, cardWidth, bodyHeight),
+                                                edge));
         for (const QVariant &value : currentBodyRectangles) {
             const QRectF rectangle = value.toRectF();
             QVERIFY(qAbs(rectangle.x() - qRound(rectangle.x())) < 0.001);
@@ -2202,6 +2236,35 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
             QVERIFY(qAbs(rectangle.height() - qRound(rectangle.height())) < 0.001);
         }
         QVERIFY(currentBubbleRectangles.size() < 96);
+        QCOMPARE(resolved.size(),
+                 (edge == QStringLiteral("top") || edge == QStringLiteral("bottom"))
+                     ? 41 : 42);
+
+        const qreal shapeLeft = qMin(analyticBody.left(),
+                                     qMin(tailBaseA.x(), qMin(tailBaseB.x(), localTailTip.x())));
+        const qreal shapeTop = qMin(analyticBody.top(),
+                                   qMin(tailBaseA.y(), qMin(tailBaseB.y(), localTailTip.y())));
+        const qreal shapeRight = qMax(analyticBody.right(),
+                                      qMax(tailBaseA.x(), qMax(tailBaseB.x(), localTailTip.x())));
+        const qreal shapeBottom = qMax(analyticBody.bottom(),
+                                       qMax(tailBaseA.y(), qMax(tailBaseB.y(), localTailTip.y())));
+        const int firstX = qFloor(shapeLeft);
+        const int firstY = qFloor(shapeTop);
+        const int endX = qCeil(shapeRight);
+        const int endY = qCeil(shapeBottom);
+        for (int y = firstY; y < endY; ++y) {
+            for (int x = firstX; x < endX; ++x) {
+                const QPointF sample(x + 0.5, y + 0.5);
+                const bool expected = pixelCenterInsideCapsule(analyticBody, sample)
+                    || pixelCenterInsideTriangle(tailBaseA, tailBaseB, localTailTip, sample);
+                const bool actual = std::any_of(
+                    currentBubbleRectangles.cbegin(), currentBubbleRectangles.cend(),
+                    [x, y](const QVariant &value) { return value.toRectF().contains(x + 0.5, y + 0.5); });
+                QVERIFY2(actual == expected,
+                         qPrintable(QStringLiteral("Fallback silhouette mismatch at (%1, %2) for %3")
+                                        .arg(x).arg(y).arg(edge)));
+            }
+        }
 
         const qreal radius = bodyHeight / 2.0;
         const auto inVectorCapsule = [bodyX, bodyY, cardWidth, radius](QPointF point) {
@@ -2317,12 +2380,9 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
     const qreal soberBodyX = tooltipBubble->property("bodyX").toReal();
     const qreal soberBodyY = tooltipBubble->property("bodyY").toReal();
     const qreal soberBodyHeight = tooltipBubble->property("bodyHeight").toReal();
-    const qreal soberPointerCenter = tooltipBubble->property("pointerCenter").toReal();
-    const qreal soberPointerDepth = tooltipBubble->property("pointerDepth").toReal();
+    const QPointF soberLocalTip = tooltipBubble->property("tailTip").toPointF();
     const QPointF soberTip = tooltipBubble->mapToItem(
-        tooltipWindow->contentItem(),
-        QPointF(soberBodyX + soberPointerCenter,
-                soberBodyY + soberBodyHeight + soberPointerDepth));
+        tooltipWindow->contentItem(), soberLocalTip);
     QCOMPARE(soberAnchor.top() - soberTip.y(), qreal(3.0));
 
     const QRectF soberBody(soberBodyX, soberBodyY,
@@ -2331,6 +2391,19 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
     const QVector<QRect> soberRows = integerRectangles(
         tooltipBubble->property("backdropBodyRectangles").toList());
     QCOMPARE(soberRows, referenceCapsulePixelCenterRows(soberBody));
+    QCOMPARE(tooltipBubble->property("bodyRect").toRectF().size(), QSizeF(72.0, 34.0));
+    const auto soberCoverage = effectRegions.constFirst()->resolvedAnalyticCoverage();
+    QVERIFY(soberCoverage.has_value());
+    QCOMPARE(soberCoverage->roundedRect->rect.size(), QSizeF(72.0, 34.0));
+    QCOMPARE(soberCoverage->roundedRect->radius, qreal(17.0));
+    QCOMPARE(soberCoverage->triangle->c, soberTip);
+    const auto soberWorkRegion = effectRegions.constFirst()->resolvedAnalyticWorkRegion();
+    QCOMPARE(soberWorkRegion.size(), 1);
+    QCOMPARE(soberWorkRegion.constFirst().size(), QSize(76, 46));
+    QVERIFY(soberWorkRegion.constFirst().contains(
+        tooltipBubble->mapToItem(tooltipWindow->contentItem(),
+                                 tooltipBubble->property("bodyRect").toRectF().center())
+            .toPoint()));
     QVERIFY(soberRows.size() >= 4);
     const QRect newTopRow = soberRows.constFirst();
     const QRect oldTopRow = wholeBandContainedCapsuleRow(soberBody, 0);
@@ -2350,27 +2423,33 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
     const auto verifySideSplice = [&](const QString &edge, const qreal expectedBaseX,
                                       const qreal expectedTipX) {
         const QString path = tooltipBubble->property("pathData").toString();
-        QString pattern;
+        const QPointF baseA = tooltipBubble->property("tailBaseA").toPointF();
+        const QPointF baseB = tooltipBubble->property("tailBaseB").toPointF();
+        const QPointF tip = tooltipBubble->property("tailTip").toPointF();
+        const auto number = [](const qreal value) {
+            return QString::number(qRound64(value * 1000.0) / 1000.0, 'g', 12);
+        };
+        QString segment;
         if (edge == QStringLiteral("left")) {
-            pattern = QStringLiteral("A 17 17 0 0 1 ([0-9.]+) 24 L ([0-9.]+) 17 L ")
-                + QStringLiteral("([0-9.]+) 10 A 17 17");
-            QVERIFY(!path.contains(QStringLiteral("V 24 L 0 17 L 8 10 V 17")));
+            segment = QStringLiteral("A 17 17 0 0 1 %1 %2 L %3 %4 L %5 %6 A 17 17")
+                .arg(number(baseB.x()), number(baseB.y()), number(tip.x()), number(tip.y()),
+                     number(baseA.x()), number(baseA.y()));
         } else {
-            pattern = QStringLiteral("A 17 17 0 0 1 ([0-9.]+) 10 L ([0-9.]+) 17 L ")
-                + QStringLiteral("([0-9.]+) 24 A 17 17");
-            const qreal bodyRight = tooltipBubble->property("bodyX").toReal()
-                + tooltipBubble->property("cardWidth").toReal();
-            QVERIFY(!path.contains(QStringLiteral("V 10 L %1 17 L %2 24 V 17")
-                                       .arg(bodyRight
-                                                + tooltipBubble->property("pointerDepth").toReal())
-                                       .arg(bodyRight)));
+            segment = QStringLiteral("A 17 17 0 0 1 %1 %2 L %3 %4 L %5 %6 A 17 17")
+                .arg(number(baseA.x()), number(baseA.y()), number(tip.x()), number(tip.y()),
+                     number(baseB.x()), number(baseB.y()));
         }
-        const auto match = QRegularExpression(pattern).match(path);
-        QVERIFY2(match.hasMatch(), qPrintable(QStringLiteral("side tail does not splice two arc points: %1")
-                                                  .arg(path)));
-        QVERIFY(qAbs(match.captured(1).toDouble() - expectedBaseX) < 0.001);
-        QVERIFY(qAbs(match.captured(2).toDouble() - expectedTipX) < 0.001);
-        QVERIFY(qAbs(match.captured(3).toDouble() - expectedBaseX) < 0.001);
+        QVERIFY2(path.contains(segment),
+                 qPrintable(QStringLiteral("side tail does not use exported points: %1")
+                                .arg(path)));
+        QVERIFY(qAbs(baseA.x() - expectedBaseX) < 0.001);
+        QVERIFY(qAbs(baseB.x() - expectedBaseX) < 0.001);
+        QVERIFY(qAbs(tip.x() - expectedTipX) < 0.001);
+        const qreal expectedCenterY = tooltipBubble->property("bodyY").toReal()
+            + tooltipBubble->property("pointerCenter").toReal();
+        QCOMPARE(baseA.y(), expectedCenterY - 7.0);
+        QCOMPARE(baseB.y(), expectedCenterY + 7.0);
+        QCOMPARE(tip.y(), expectedCenterY);
     };
 
     const QFont tooltipFont = tooltipText->property("font").value<QFont>();

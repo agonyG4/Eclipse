@@ -76,6 +76,17 @@ Window {
         anchors.fill: parent
         enabled: material.isFrosted && window.tooltipVisible
 
+        analyticCoverage: BackdropAnalyticCoverage {
+            item: tooltipBubble
+            roundedRectEnabled: true
+            roundedRect: tooltipBubble.bodyRect
+            radius: tooltipBubble.bodyRadius
+            triangleEnabled: true
+            triangleA: tooltipBubble.tailBaseA
+            triangleB: tooltipBubble.tailBaseB
+            triangleC: tooltipBubble.tailTip
+        }
+
         BackdropRegion {
             item: tooltipBubble
             enabled: tooltipBubble.visible

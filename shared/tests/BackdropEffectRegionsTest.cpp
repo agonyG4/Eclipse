@@ -1,9 +1,13 @@
 #include "platform/wayland/effects/AstreaBackdropRegion.hpp"
 #include "platform/wayland/effects/AstreaBackdropEffectRegions.hpp"
+#include "platform/wayland/effects/AstreaBackdropAnalyticCoverage.hpp"
 #include "platform/wayland/effects/RoundedEffectRegion.hpp"
 
 #include <QCoreApplication>
+#include <QQmlComponent>
+#include <QQmlEngine>
 #include <QQuickItem>
+#include <QQuickTransform>
 #include <QQuickWindow>
 #include <QSignalSpy>
 #include <QTest>
@@ -80,6 +84,125 @@ private slots:
         QVERIFY(covered(rectangles, {102, 55}));
         QVERIFY2(!covered(rectangles, {60, 24}),
                  "an explicit descriptor must not blur the rest of its item bounds");
+    }
+
+    void analyticShapeMapsToSurfaceLocalCoordinatesAndGetsOneGuardedWorkRect()
+    {
+        QQuickWindow window;
+        window.resize(200, 120);
+        window.show();
+        auto *descriptors = new TestBackdropEffectRegions(window.contentItem());
+        auto *item = new QQuickItem(window.contentItem());
+        item->setSize({74.0, 44.0});
+        item->setPosition({30.0, 35.0});
+        auto *coverage = new AstreaBackdropAnalyticCoverage(descriptors);
+        coverage->setItem(item);
+        coverage->setRoundedRectEnabled(true);
+        coverage->setRoundedRect(QRectF(1.0, 1.0, 72.0, 34.0));
+        coverage->setRadius(17.0);
+        coverage->setTriangleEnabled(true);
+        coverage->setTriangleA({30.0, 35.0});
+        coverage->setTriangleB({44.0, 35.0});
+        coverage->setTriangleC({37.0, 43.0});
+        descriptors->setAnalyticCoverage(coverage);
+
+        AstreaBackdropRegion fallback(descriptors);
+        fallback.setItem(item);
+        fallback.setProperty("localRectangles", QVariantList{
+            QVariant::fromValue(QRectF(1.0, 1.0, 72.0, 34.0)),
+            QVariant::fromValue(QRectF(30.0, 35.0, 14.0, 1.0)),
+            QVariant::fromValue(QRectF(31.0, 36.0, 12.0, 1.0)),
+            QVariant::fromValue(QRectF(32.0, 37.0, 10.0, 1.0)),
+            QVariant::fromValue(QRectF(33.0, 38.0, 8.0, 1.0)),
+            QVariant::fromValue(QRectF(34.0, 39.0, 6.0, 1.0)),
+            QVariant::fromValue(QRectF(35.0, 40.0, 4.0, 1.0)),
+            QVariant::fromValue(QRectF(36.0, 41.0, 2.0, 1.0)),
+        });
+        auto list = descriptors->regions();
+        list.append(&list, &fallback);
+        descriptors->completeForTest();
+        drainEvents();
+
+        const auto resolved = descriptors->resolvedAnalyticCoverage();
+        QVERIFY(resolved.has_value());
+        QCOMPARE(resolved->roundedRect->rect, QRectF(31.0, 36.0, 72.0, 34.0));
+        QCOMPARE(resolved->roundedRect->radius, 17.0);
+        QCOMPARE(resolved->triangle->a, QPointF(60.0, 70.0));
+        QCOMPARE(resolved->triangle->b, QPointF(74.0, 70.0));
+        QCOMPARE(resolved->triangle->c, QPointF(67.0, 78.0));
+
+        const auto work = descriptors->resolvedAnalyticWorkRegion();
+        QCOMPARE(work.size(), 1);
+        QCOMPARE(work.constFirst(), QRect(29, 34, 76, 46));
+        QCOMPARE(descriptors->resolvedRegion().size(), 8);
+        QCOMPARE(AstreaBackdropEffectRegions::analyticCoverageGuard, 2);
+    }
+
+    void analyticBoundsClipAtSurfaceButShapeCoordinatesDoNot()
+    {
+        const AstreaAnalyticBackdropCoverage coverage{
+            AstreaAnalyticRoundedRect{QRectF(188.5, 12.25, 72.0, 34.0), 17.0},
+            AstreaAnalyticTriangle{QPointF(218.5, 46.25), QPointF(232.5, 46.25),
+                                   QPointF(225.5, 54.25)}};
+        const auto work = AstreaBackdropEffectRegions::analyticWorkRegion(coverage,
+                                                                           QSize(200, 100));
+        QCOMPARE(work.size(), 1);
+        QCOMPARE(work.constFirst(), QRect(186, 10, 14, 47));
+        QCOMPARE(coverage.roundedRect->rect.x(), 188.5);
+        QCOMPARE(coverage.triangle->c, QPointF(225.5, 54.25));
+    }
+
+    void analyticRoundedRectRejectsRotationAndNonUniformScale()
+    {
+        QQuickWindow window;
+        window.resize(320, 200);
+        window.show();
+        auto *parent = new QQuickItem(window.contentItem());
+        parent->setPosition({14.0, 18.0});
+        auto *descriptors = new TestBackdropEffectRegions(parent);
+        auto *item = new QQuickItem(parent);
+        item->setPosition({24.0, 30.0});
+        item->setSize({72.0, 34.0});
+        auto *coverage = new AstreaBackdropAnalyticCoverage(descriptors);
+        coverage->setItem(item);
+        coverage->setRoundedRectEnabled(true);
+        coverage->setRoundedRect(QRectF(0.0, 0.0, 72.0, 34.0));
+        coverage->setRadius(17.0);
+        coverage->setTriangleEnabled(true);
+        coverage->setTriangleA({29.0, 34.0});
+        coverage->setTriangleB({43.0, 34.0});
+        coverage->setTriangleC({36.0, 42.0});
+        descriptors->setAnalyticCoverage(coverage);
+
+        AstreaBackdropRegion fallback(descriptors);
+        fallback.setItem(item);
+        auto list = descriptors->regions();
+        list.append(&list, &fallback);
+        descriptors->completeForTest();
+        drainEvents();
+
+        parent->setScale(1.5);
+        auto uniform = descriptors->resolvedAnalyticCoverage();
+        QVERIFY(uniform.has_value());
+        QCOMPARE(uniform->roundedRect->rect.size(), QSizeF(108.0, 51.0));
+        QCOMPARE(uniform->roundedRect->radius, 25.5);
+
+        parent->setRotation(17.0);
+        QVERIFY(!descriptors->resolvedAnalyticCoverage().has_value());
+        QVERIFY(!descriptors->resolvedRegion().isEmpty());
+
+        parent->setRotation(0.0);
+        parent->setScale(1.0);
+        QQmlEngine engine;
+        QQmlComponent scaleComponent(&engine);
+        scaleComponent.setData("import QtQuick\nScale { xScale: 1.5; yScale: 1.0 }", QUrl());
+        QVERIFY2(scaleComponent.isReady(), qPrintable(scaleComponent.errorString()));
+        auto *nonUniform = qobject_cast<QQuickTransform *>(scaleComponent.create());
+        QVERIFY2(nonUniform, qPrintable(scaleComponent.errorString()));
+        auto transforms = parent->transform();
+        transforms.append(&transforms, nonUniform);
+        QVERIFY(!descriptors->resolvedAnalyticCoverage().has_value());
+        QVERIFY(!descriptors->resolvedRegion().isEmpty());
     }
 
     void explicitLocalRectanglesFollowOwnerAndAncestorTransforms()

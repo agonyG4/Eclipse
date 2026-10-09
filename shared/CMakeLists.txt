@@ -330,7 +330,23 @@ endif()
 
 astrea_shared_enable_sanitizers(astrea-shared-layer-shell)
 
+add_library(astrea-shared-shell-auth STATIC
+    platform/typhon/TyphonShellAuthenticator.cpp
+    platform/typhon/TyphonShellAuthenticator.hpp
+)
+target_include_directories(astrea-shared-shell-auth PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(astrea-shared-shell-auth PUBLIC Qt6::Core Qt6::Gui)
+if(NOT MSVC)
+    target_compile_options(astrea-shared-shell-auth PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+astrea_shared_enable_sanitizers(astrea-shared-shell-auth)
+
 add_library(astrea-shared-wayland-effects STATIC
+    platform/wayland/effects/AstreaAnalyticBackdropCoverage.hpp
+    platform/wayland/effects/AstreaBackdropAnalyticCoverage.cpp
+    platform/wayland/effects/AstreaBackdropAnalyticCoverage.hpp
     platform/wayland/effects/AstreaBackgroundEffectBinding.cpp
     platform/wayland/effects/AstreaBackgroundEffectBinding.hpp
     platform/wayland/effects/AstreaBackdropEffectRegions.cpp
@@ -411,11 +427,50 @@ else()
     target_compile_definitions(astrea-shared-wayland-effects PUBLIC ASTREA_HAVE_WAYLAND_EFFECTS=0)
 endif()
 
+if(ASTREA_WAYLAND_EFFECTS_AVAILABLE AND ASTREA_TYPHON_WAYLAND_AVAILABLE)
+    set(ASTREA_COVERAGE_PROTOCOL_XML
+        "${CMAKE_CURRENT_SOURCE_DIR}/platform/typhon/protocols/astrea-background-effect-coverage-v1.xml")
+    set(ASTREA_COVERAGE_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/effects")
+    set(ASTREA_COVERAGE_GENERATED_HEADER
+        "${ASTREA_COVERAGE_GENERATED_DIR}/astrea-background-effect-coverage-v1-client-protocol.h")
+    set(ASTREA_COVERAGE_GENERATED_SOURCE
+        "${ASTREA_COVERAGE_GENERATED_DIR}/astrea-background-effect-coverage-v1-protocol.c")
+    add_custom_command(
+        OUTPUT "${ASTREA_COVERAGE_GENERATED_HEADER}" "${ASTREA_COVERAGE_GENERATED_SOURCE}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${ASTREA_COVERAGE_GENERATED_DIR}"
+        COMMAND "${ASTREA_WAYLAND_SCANNER}" client-header
+                "${ASTREA_COVERAGE_PROTOCOL_XML}" "${ASTREA_COVERAGE_GENERATED_HEADER}"
+        COMMAND "${ASTREA_WAYLAND_SCANNER}" private-code
+                "${ASTREA_COVERAGE_PROTOCOL_XML}" "${ASTREA_COVERAGE_GENERATED_SOURCE}"
+        DEPENDS "${ASTREA_COVERAGE_PROTOCOL_XML}"
+        VERBATIM
+    )
+    set_source_files_properties("${ASTREA_COVERAGE_GENERATED_SOURCE}" PROPERTIES LANGUAGE C)
+    target_sources(astrea-shared-wayland-effects PRIVATE
+        "${ASTREA_COVERAGE_GENERATED_HEADER}"
+        "${ASTREA_COVERAGE_GENERATED_SOURCE}"
+    )
+    target_include_directories(astrea-shared-wayland-effects PRIVATE
+        "${ASTREA_COVERAGE_GENERATED_DIR}"
+    )
+    target_link_libraries(astrea-shared-wayland-effects PRIVATE
+        astrea-shared-shell-auth PkgConfig::ASTREA_WAYLAND_CLIENT
+    )
+    target_compile_definitions(astrea-shared-wayland-effects PUBLIC
+        ASTREA_HAVE_ANALYTIC_COVERAGE=1
+    )
+else()
+    target_compile_definitions(astrea-shared-wayland-effects PUBLIC
+        ASTREA_HAVE_ANALYTIC_COVERAGE=0
+    )
+endif()
+
 qt_add_qml_module(astrea-shared-wayland-effects
     URI Astrea.Effects
     VERSION 1.0
     OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Astrea/Effects"
     SOURCES
+        platform/wayland/effects/AstreaBackdropAnalyticCoverage.hpp
         platform/wayland/effects/AstreaBackdropEffectRegions.hpp
         platform/wayland/effects/AstreaBackdropRegion.hpp
         platform/wayland/effects/AstreaEffectChildWindow.hpp
@@ -428,8 +483,6 @@ astrea_shared_enable_sanitizers(astrea-shared-wayland-effects)
 add_library(astrea-shared-typhon STATIC
     platform/typhon/TyphonProtocolAdapter.cpp
     platform/typhon/TyphonProtocolAdapter.hpp
-    platform/typhon/TyphonShellAuthenticator.cpp
-    platform/typhon/TyphonShellAuthenticator.hpp
     platform/typhon/TyphonProtocolTypes.hpp
     platform/typhon/TyphonActionState.cpp
     platform/typhon/TyphonActionState.hpp
@@ -465,7 +518,9 @@ if(NOT MSVC)
     target_compile_options(astrea-shared-typhon PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-target_link_libraries(astrea-shared-typhon PUBLIC Qt6::Core Qt6::Gui)
+target_link_libraries(astrea-shared-typhon PUBLIC
+    Qt6::Core Qt6::Gui astrea-shared-shell-auth
+)
 if(ASTREA_TYPHON_WAYLAND_AVAILABLE)
     set(ASTREA_TYPHON_PROTOCOL_XML
         "${CMAKE_CURRENT_SOURCE_DIR}/platform/typhon/protocols/astrea-toplevel-management-v1.xml")
@@ -580,8 +635,6 @@ if(ASTREA_TYPHON_WAYLAND_AVAILABLE)
         "${ASTREA_TYPHON_GENERATED_SOURCE}"
         "${ASTREA_SHORTCUT_GENERATED_HEADER}"
         "${ASTREA_SHORTCUT_GENERATED_SOURCE}"
-        "${ASTREA_SHELL_AUTH_GENERATED_HEADER}"
-        "${ASTREA_SHELL_AUTH_GENERATED_SOURCE}"
         "${ASTREA_SHELL_AUTH_SERVER_GENERATED_HEADER}"
         "${ASTREA_SHELL_AUTH_SERVER_GENERATED_SOURCE}"
         "${ASTREA_SCREEN_CAPTURE_GENERATED_HEADER}"
@@ -591,13 +644,23 @@ if(ASTREA_TYPHON_WAYLAND_AVAILABLE)
         "${ASTREA_EXT_WORKSPACE_GENERATED_HEADER}"
         "${ASTREA_EXT_WORKSPACE_GENERATED_SOURCE}"
     )
+    target_sources(astrea-shared-shell-auth PRIVATE
+        "${ASTREA_SHELL_AUTH_GENERATED_HEADER}"
+        "${ASTREA_SHELL_AUTH_GENERATED_SOURCE}"
+    )
     target_include_directories(astrea-shared-typhon PRIVATE "${ASTREA_TYPHON_GENERATED_DIR}")
+    target_include_directories(astrea-shared-shell-auth PRIVATE
+        "${ASTREA_TYPHON_GENERATED_DIR}"
+    )
     target_link_libraries(astrea-shared-typhon PRIVATE PkgConfig::ASTREA_WAYLAND_CLIENT)
+    target_link_libraries(astrea-shared-shell-auth PRIVATE PkgConfig::ASTREA_WAYLAND_CLIENT)
     target_compile_definitions(astrea-shared-typhon PUBLIC ASTREA_HAVE_TYPHON_WAYLAND=1)
     target_compile_definitions(astrea-shared-typhon PUBLIC ASTREA_HAVE_TYPHON_PROTOCOL=1)
+    target_compile_definitions(astrea-shared-shell-auth PUBLIC ASTREA_HAVE_TYPHON_PROTOCOL=1)
 else()
     target_compile_definitions(astrea-shared-typhon PUBLIC ASTREA_HAVE_TYPHON_WAYLAND=0)
     target_compile_definitions(astrea-shared-typhon PUBLIC ASTREA_HAVE_TYPHON_PROTOCOL=0)
+    target_compile_definitions(astrea-shared-shell-auth PUBLIC ASTREA_HAVE_TYPHON_PROTOCOL=0)
 endif()
 
 astrea_shared_enable_sanitizers(astrea-shared-typhon)
@@ -842,6 +905,52 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     )
     astrea_shared_enable_sanitizers(backdrop-effect-regions-test)
     add_test(NAME backdrop-effect-regions-test COMMAND backdrop-effect-regions-test)
+
+    if(ASTREA_TYPHON_WAYLAND_AVAILABLE AND ASTREA_WAYLAND_SERVER_FOUND)
+        set(ASTREA_BACKGROUND_COVERAGE_TEST_GENERATED_DIR
+            "${CMAKE_CURRENT_BINARY_DIR}/generated/background-effect-coverage-test")
+        set(ASTREA_BACKGROUND_COVERAGE_TEST_SERVER_HEADER
+            "${ASTREA_BACKGROUND_COVERAGE_TEST_GENERATED_DIR}/astrea-background-effect-coverage-v1-server-protocol.h")
+        set(ASTREA_BACKGROUND_EFFECT_TEST_SERVER_HEADER
+            "${ASTREA_BACKGROUND_COVERAGE_TEST_GENERATED_DIR}/ext-background-effect-v1-server-protocol.h")
+        add_custom_command(
+            OUTPUT "${ASTREA_BACKGROUND_COVERAGE_TEST_SERVER_HEADER}"
+                   "${ASTREA_BACKGROUND_EFFECT_TEST_SERVER_HEADER}"
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                    "${ASTREA_BACKGROUND_COVERAGE_TEST_GENERATED_DIR}"
+            COMMAND "${ASTREA_WAYLAND_SCANNER}" server-header
+                    "${CMAKE_CURRENT_SOURCE_DIR}/platform/typhon/protocols/astrea-background-effect-coverage-v1.xml"
+                    "${ASTREA_BACKGROUND_COVERAGE_TEST_SERVER_HEADER}"
+            COMMAND "${ASTREA_WAYLAND_SCANNER}" server-header
+                    "${CMAKE_CURRENT_SOURCE_DIR}/platform/wayland/protocols/ext-background-effect-v1.xml"
+                    "${ASTREA_BACKGROUND_EFFECT_TEST_SERVER_HEADER}"
+            DEPENDS
+                "${CMAKE_CURRENT_SOURCE_DIR}/platform/typhon/protocols/astrea-background-effect-coverage-v1.xml"
+                "${CMAKE_CURRENT_SOURCE_DIR}/platform/wayland/protocols/ext-background-effect-v1.xml"
+            VERBATIM
+        )
+        add_executable(background-effect-coverage-protocol-integration-test
+            tests/BackgroundEffectCoverageProtocolIntegrationTest.cpp
+            "${ASTREA_BACKGROUND_COVERAGE_TEST_SERVER_HEADER}"
+            "${ASTREA_BACKGROUND_EFFECT_TEST_SERVER_HEADER}"
+        )
+        target_include_directories(background-effect-coverage-protocol-integration-test PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+            "${ASTREA_BACKGROUND_COVERAGE_TEST_GENERATED_DIR}"
+            "${ASTREA_TYPHON_GENERATED_DIR}"
+            "${ASTREA_COVERAGE_GENERATED_DIR}"
+        )
+        target_link_libraries(background-effect-coverage-protocol-integration-test PRIVATE
+            astrea-shared-wayland-effects
+            astrea-shared-shell-auth
+            PkgConfig::ASTREA_WAYLAND_CLIENT
+            PkgConfig::ASTREA_WAYLAND_SERVER
+            Qt6::Test
+        )
+        astrea_shared_enable_sanitizers(background-effect-coverage-protocol-integration-test)
+        add_test(NAME background-effect-coverage-protocol-integration-test
+                 COMMAND background-effect-coverage-protocol-integration-test)
+    endif()
 
     function(add_typhon_shared_test TEST_NAME TEST_FILE)
         add_executable(${TEST_NAME}

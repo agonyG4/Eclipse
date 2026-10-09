@@ -25,7 +25,7 @@ bool AstreaEffectSurfaceController::sync()
     const auto rectangles = window
         ? AstreaRoundedEffectRegion::rectangles(window->size(), m_cornerRadius)
         : QVector<QRect>{};
-    m_active = m_binding->sync(rectangles, m_enabled, true);
+    m_active = m_binding->sync(rectangles, std::nullopt, m_enabled, true);
     m_available = m_binding->available();
     return m_active;
 }

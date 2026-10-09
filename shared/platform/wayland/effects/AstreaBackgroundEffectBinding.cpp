@@ -1,8 +1,10 @@
 #include "platform/wayland/effects/AstreaBackgroundEffectBinding.hpp"
 
+#include "platform/wayland/effects/AstreaBackdropEffectRegions.hpp"
 #include "platform/wayland/effects/AstreaWaylandEffects.hpp"
 #include "platform/wayland/effects/QtWaylandWindow.hpp"
 
+#include <QDebug>
 #include <QQuickWindow>
 
 bool AstreaBackgroundEffectLifecycleState::surfaceCreated(const quintptr surfaceToken)
@@ -11,17 +13,25 @@ bool AstreaBackgroundEffectLifecycleState::surfaceCreated(const quintptr surface
         return false;
     m_surfaceToken = surfaceToken;
     m_effectBound = false;
+    m_coverageBound = false;
+    m_mode = AstreaBackgroundEffectMode::Disabled;
+    m_publicRegion.clear();
+    m_coverage.reset();
     ++m_generation;
     return true;
 }
 
-bool AstreaBackgroundEffectLifecycleState::surfaceAboutToBeDestroyed(const quintptr surfaceToken)
+bool AstreaBackgroundEffectLifecycleState::surfaceAboutToBeDestroyed(
+    const quintptr surfaceToken)
 {
     if (surfaceToken == 0 || m_surfaceToken != surfaceToken)
         return false;
     m_surfaceToken = 0;
     m_effectBound = false;
-    m_syncedRegion.clear();
+    m_coverageBound = false;
+    m_mode = AstreaBackgroundEffectMode::Disabled;
+    m_publicRegion.clear();
+    m_coverage.reset();
     return true;
 }
 
@@ -34,22 +44,31 @@ bool AstreaBackgroundEffectLifecycleState::bindEffect()
     return true;
 }
 
-bool AstreaBackgroundEffectLifecycleState::recordRegionSync(const QVector<QRect> &region,
-                                                             const bool requestFrame)
+bool AstreaBackgroundEffectLifecycleState::bindCoverage()
 {
-    if (!hasEffect() || m_syncedRegion == region)
+    if (!hasSurface() || m_coverageBound)
         return false;
-    m_syncedRegion = region;
-    if (requestFrame)
-        ++m_qtFrameRequests;
+    m_coverageBound = true;
+    ++m_totalCoverageBindings;
     return true;
 }
 
-bool AstreaBackgroundEffectLifecycleState::clearRegion(const bool requestFrame)
+bool AstreaBackgroundEffectLifecycleState::matches(
+    const AstreaBackgroundEffectMode mode, const QVector<QRect> &publicRegion,
+    const std::optional<AstreaAnalyticBackdropCoverage> &coverage) const
 {
-    if (m_syncedRegion.isEmpty())
+    return m_mode == mode && m_publicRegion == publicRegion && m_coverage == coverage;
+}
+
+bool AstreaBackgroundEffectLifecycleState::recordSync(
+    const AstreaBackgroundEffectMode mode, const QVector<QRect> &publicRegion,
+    const std::optional<AstreaAnalyticBackdropCoverage> &coverage, const bool requestFrame)
+{
+    if (!hasSurface() || matches(mode, publicRegion, coverage))
         return false;
-    m_syncedRegion.clear();
+    m_mode = mode;
+    m_publicRegion = publicRegion;
+    m_coverage = coverage;
     if (requestFrame)
         ++m_qtFrameRequests;
     return true;
@@ -58,7 +77,11 @@ bool AstreaBackgroundEffectLifecycleState::clearRegion(const bool requestFrame)
 void AstreaBackgroundEffectLifecycleState::destroyEffect()
 {
     m_effectBound = false;
-    m_syncedRegion.clear();
+}
+
+void AstreaBackgroundEffectLifecycleState::destroyCoverage()
+{
+    m_coverageBound = false;
 }
 
 AstreaBackgroundEffectBinding::AstreaBackgroundEffectBinding(QQuickWindow *window)
@@ -71,9 +94,15 @@ AstreaBackgroundEffectBinding::~AstreaBackgroundEffectBinding()
     surfaceAboutToBeDestroyed();
 }
 
-bool AstreaBackgroundEffectBinding::sync(const QVector<QRect> &rectangles,
-                                         const bool requested, const bool requestFrame)
+bool AstreaBackgroundEffectBinding::sync(
+    const QVector<QRect> &fallbackRegion,
+    const std::optional<AstreaAnalyticBackdropCoverage> &analyticCoverage,
+    const bool requested, const bool requestFrame)
 {
+    m_lastFallbackRegion = fallbackRegion;
+    m_lastAnalyticCoverage = analyticCoverage;
+    m_lastRequested = requested;
+
     auto *window = m_window.data();
     auto *effects = AstreaWaylandEffects::instance();
     const bool initialized = effects && effects->initialize();
@@ -81,68 +110,161 @@ bool AstreaBackgroundEffectBinding::sync(const QVector<QRect> &rectangles,
 
     auto *resolvedSurface = window ? astreaQtWaylandSurface(window) : nullptr;
     if (resolvedSurface != m_surface) {
-        releaseEffect(false);
+        releaseSurfaceObjects();
         if (m_surface)
             m_lifecycle.surfaceAboutToBeDestroyed(reinterpret_cast<quintptr>(m_surface));
         m_surface = resolvedSurface;
-        m_lastRegion.clear();
         if (m_surface)
             m_lifecycle.surfaceCreated(reinterpret_cast<quintptr>(m_surface));
     }
 
-    if (!window || !m_available || !requested || rectangles.isEmpty() || !window->isVisible()
+    if (!window || !m_available || !requested || !window->isVisible()
         || window->width() <= 0 || window->height() <= 0 || !m_surface) {
-        releaseEffect(requestFrame);
-        return false;
+        return disable(requestFrame);
     }
 
-    if (!m_effect && effects->createEffect(m_surface, &m_effect))
+    bool newEffect = false;
+    if (!m_effect) {
+        if (!effects->createEffect(m_surface, &m_effect))
+            return false;
         m_lifecycle.bindEffect();
-    if (!m_effect)
-        return false;
+        newEffect = true;
+    }
 
-    if (m_active && m_lastRegion == rectangles)
+    std::optional<AstreaAnalyticBackdropCoverage> selectedCoverage;
+    AstreaBackgroundEffectMode selectedMode = AstreaBackgroundEffectMode::Fallback;
+    QVector<QRect> protocolRegion = fallbackRegion;
+    if (analyticCoverage && effects->analyticCoverageAvailable()) {
+        if (!m_coverage) {
+            if (effects->createCoverage(m_surface, &m_coverage))
+                m_lifecycle.bindCoverage();
+            else {
+                static bool diagnosticLogged = false;
+                if (!diagnosticLogged) {
+                    qWarning() << "Typhon analytic background coverage proxy creation failed;"
+                                   " using the public fallback";
+                    diagnosticLogged = true;
+                }
+            }
+        }
+        if (m_coverage) {
+            const auto workRegion = AstreaBackdropEffectRegions::analyticWorkRegion(
+                *analyticCoverage, window->size());
+            if (!workRegion.isEmpty()) {
+                selectedCoverage = analyticCoverage;
+                selectedMode = AstreaBackgroundEffectMode::Analytic;
+                protocolRegion = workRegion;
+            }
+        }
+    }
+
+    if (protocolRegion.isEmpty())
+        return disable(requestFrame);
+
+    const bool publicRegionChanged = newEffect || m_lifecycle.publicRegion() != protocolRegion;
+    const bool coverageChanged = selectedMode == AstreaBackgroundEffectMode::Analytic
+        && (m_lifecycle.mode() != AstreaBackgroundEffectMode::Analytic
+            || m_lifecycle.coverage() != selectedCoverage);
+    const bool clearCoverage = selectedMode != AstreaBackgroundEffectMode::Analytic
+        && m_coverage && m_lifecycle.mode() == AstreaBackgroundEffectMode::Analytic;
+    const bool stateChanged = !m_lifecycle.matches(selectedMode, protocolRegion,
+                                                   selectedCoverage);
+    if (!stateChanged && !newEffect)
         return true;
 
-    if (!effects->setBlurRegion(window, m_effect, rectangles, requestFrame)) {
-        m_lifecycle.clearRegion(false);
-        m_lastRegion.clear();
-        m_active = false;
+    wl_region *region = publicRegionChanged ? effects->createRegion(protocolRegion) : nullptr;
+    if (publicRegionChanged && !region) {
+        if (selectedMode == AstreaBackgroundEffectMode::Analytic) {
+            // No private request has been queued yet. Retry the portable region
+            // before changing any surface state.
+            const bool fallbackRegionChanged = newEffect
+                || m_lifecycle.publicRegion() != fallbackRegion;
+            if (fallbackRegion.isEmpty())
+                return disable(requestFrame);
+            wl_region *fallbackProxy = fallbackRegionChanged
+                ? effects->createRegion(fallbackRegion) : nullptr;
+            if (fallbackRegionChanged && !fallbackProxy)
+                return false;
+            const bool fallbackClear = m_coverage
+                && m_lifecycle.mode() == AstreaBackgroundEffectMode::Analytic;
+            effects->submitState(window, m_effect, m_coverage, fallbackProxy,
+                                 fallbackRegionChanged, std::nullopt, fallbackClear,
+                                 false, requestFrame);
+            m_lifecycle.recordSync(AstreaBackgroundEffectMode::Fallback, fallbackRegion,
+                                   std::nullopt, requestFrame);
+            m_active = true;
+            m_analyticActive = false;
+            return true;
+        }
         return false;
     }
-    m_lifecycle.recordRegionSync(rectangles, requestFrame);
-    m_lastRegion = rectangles;
+
+    const bool removePublicEffect = false;
+    effects->submitState(window, m_effect, m_coverage, region, publicRegionChanged,
+                         coverageChanged ? selectedCoverage : std::nullopt, clearCoverage,
+                         removePublicEffect, requestFrame);
+    m_lifecycle.recordSync(selectedMode, protocolRegion, selectedCoverage, requestFrame);
     m_active = true;
+    m_analyticActive = selectedMode == AstreaBackgroundEffectMode::Analytic;
+    return true;
+}
+
+bool AstreaBackgroundEffectBinding::disable(const bool requestFrame)
+{
+    auto *effects = AstreaWaylandEffects::instance();
+    const bool removePublicEffect = m_effect != nullptr;
+    const bool clearCoverage = m_coverage
+        && m_lifecycle.mode() == AstreaBackgroundEffectMode::Analytic;
+    const QVector<QRect> emptyRegion;
+    const bool stateChanged = !m_lifecycle.matches(AstreaBackgroundEffectMode::Disabled,
+                                                  emptyRegion, std::nullopt);
+    if (!removePublicEffect && !clearCoverage && !stateChanged) {
+        m_active = false;
+        m_analyticActive = false;
+        return false;
+    }
+
+    if (effects)
+        effects->submitState(m_window.data(), m_effect, m_coverage, nullptr, false,
+                             std::nullopt, clearCoverage, removePublicEffect, requestFrame);
+    if (removePublicEffect) {
+        m_effect = nullptr;
+        m_lifecycle.destroyEffect();
+    }
+    m_lifecycle.recordSync(AstreaBackgroundEffectMode::Disabled, emptyRegion,
+                           std::nullopt, requestFrame);
+    m_active = false;
+    m_analyticActive = false;
     return true;
 }
 
 void AstreaBackgroundEffectBinding::surfaceCreated()
 {
-    sync(m_lastRegion, !m_lastRegion.isEmpty(), false);
+    if (m_lastRequested)
+        sync(m_lastFallbackRegion, m_lastAnalyticCoverage, true, false);
 }
 
 void AstreaBackgroundEffectBinding::surfaceAboutToBeDestroyed()
 {
-    releaseEffect(false);
+    releaseSurfaceObjects();
     if (m_surface) {
         m_lifecycle.surfaceAboutToBeDestroyed(reinterpret_cast<quintptr>(m_surface));
         m_surface = nullptr;
     }
-    m_lastRegion.clear();
     m_active = false;
+    m_analyticActive = false;
 }
 
-void AstreaBackgroundEffectBinding::releaseEffect(const bool requestFrame)
+void AstreaBackgroundEffectBinding::releaseSurfaceObjects()
 {
-    if (!m_effect) {
-        m_active = false;
-        return;
+    if (m_effect || m_coverage) {
+        if (auto *effects = AstreaWaylandEffects::instance())
+            effects->destroySurfaceObjects(m_effect, m_coverage);
     }
-    if (auto *effects = AstreaWaylandEffects::instance())
-        effects->destroyEffect(m_window.data(), m_effect, requestFrame);
-    m_lifecycle.clearRegion(requestFrame);
     m_effect = nullptr;
+    m_coverage = nullptr;
     m_lifecycle.destroyEffect();
-    m_lastRegion.clear();
+    m_lifecycle.destroyCoverage();
     m_active = false;
+    m_analyticActive = false;
 }

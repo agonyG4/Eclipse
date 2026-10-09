@@ -186,3 +186,21 @@ The initial visual-hardening implementation registered only the rounded body; th
 - [x] Build `dock-hover-qml-test`, `dock-surface-geometry-test`, `backdrop-effect-regions-test`, and `astrea-shell` in `/mnt/Aether/Desktop/GitHub/Eclipse-build`. Focused CTest passed 3/3; complete Dock CTest passed 14/14; relevant shared-effects CTest passed 3/3.
 - [x] Native Default/Frosted comparison was unavailable: the native app inventory was empty and CUA reported the native pipe unavailable. This pass does not attribute an unobserved live artifact or claim that `wl_region` has fractional antialiasing.
 - [x] Run `git diff --check`, complete the adversarial diff review, append progress, and commit the logical change on `main`.
+
+### Typhon Analytic Background Coverage Follow-up (2026-10-09)
+
+**Architecture:** Preserve the current `resolvedRegion()` scanline decomposition as the standards-compatible `ext-background-effect-v1` fallback. Add one optional surface-local analytic rounded rectangle plus triangle descriptor to `BackdropEffectRegions`. When the Qt Wayland display exposes the private manager and same-display shell authentication succeeds, submit a single outward-rounded public work rectangle with a 2 logical px antialias guard and the private shape in one state batch. The work rectangle is an effect/capture/damage bound; it is not the visual coverage. The public `wl_region` remains binary, while Typhon's private final-composite coverage supplies fractional edges. The exact private XML comes from Typhon commit `a0a45fc411b3bf18920ffdff5457d05a72c345f0`.
+
+**Geometry:** Keep the analytic QML values item-local and resolve them in the shared effects layer. Accept translation, axis-aligned reflection, and uniform scale for the rounded rect; reject rotation, shear, and non-uniform scale to the public fallback. Use the Dock bubble's shared `bodyRect`/tail points for the vector path, fallback slices, and analytic triangle. The 1 px render-padding tangential offset is corrected. Keep Sober at 72×34, radius 17, with the existing pointer, gap, material, placement, lifecycle, and 2× raster minimum.
+
+**Lifecycle and authorization:** Discover public and private managers on the Qt Wayland connection. Reuse `TyphonShellAuthenticator` for that exact display; private auth failure must not affect public `available()`. Own no more than one public effect proxy and one lazy private coverage proxy per native surface generation, retain/clear the private proxy while inactive, and release both on surface replacement. Queue private state, public state, then one Qt frame request and one flush. Qt keeps ownership of `wl_surface.commit`.
+
+**Verification:**
+
+- [x] Copy and hash-check the exact Typhon protocol XML; generate optional production client code only and test-only fake-server headers.
+- [x] Add deterministic geometry/work-region, transform rejection, 96-rectangle fallback, state deduplication, transition, authentication, and same-client protocol tests.
+- [x] Build the required Wayland effects, Dock, Shell, Bar smoke, and private protocol test targets in `/mnt/Aether/Desktop/GitHub/Eclipse-build`.
+- [x] Focused tests passed 5/5; all Dock tests passed 14/14; relevant shared-effects/Typhon protocol tests passed 11/11; Bar/Shell smoke tests passed 2/2.
+- [x] Confirm fallback counts of 41 rectangles for top/bottom and 42 for left/right; analytic mode submits one guarded work rectangle. The private manager's absence and auth rejection both retain fallback behavior in the fake compositor.
+- [x] Native visual qualification was unavailable: the active Wayland registry advertises the public manager but no private coverage manager, and the native app/window inventory was empty. No Typhon Sober or Zen visual comparison is claimed.
+- [ ] Run final `git diff --check`, adversarial source/diff review, append the post-verification progress entry, and commit the logical Eclipse change on `main`.

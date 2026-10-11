@@ -14,6 +14,7 @@ Item {
     property string popupDirection: "down" // Adicionando a propriedade
     signal selected(int index)
     property bool isButton: false
+    property bool showChevron: true
 
     // ── Styling (Premium Defaults) ───────────────────────────────
     property color accent: Components.Theme.accent
@@ -30,25 +31,47 @@ Item {
     readonly property int popupPad:   Components.Theme.spacingSmall
     readonly property int listH: Math.min(sel.options.length, sel.maxVisible) * sel.itemH + popupPad * 2
     readonly property bool isLight: Components.Theme.themeMode === 1
-    readonly property bool isDefaultLight: isLight && Components.Theme.shellStyle === 1
-    readonly property color restingBg: isDefaultLight ? Qt.rgba(0.975, 0.978, 0.986, 1) : sel.cardBg
+    readonly property color restingBg: sel.cardBg
     readonly property color hoverBg: isLight ? Qt.rgba(0, 0, 0, 0.045) : Qt.rgba(1, 1, 1, 0.09)
     readonly property color pressedBg: isLight ? Qt.rgba(0, 0, 0, 0.07) : Qt.rgba(1, 1, 1, 0.12)
     readonly property color popupHoverBg: isLight ? Qt.rgba(0, 0, 0, 0.055) : Qt.rgba(1, 1, 1, 0.08)
     readonly property color popupBorder: isLight ? Qt.rgba(0, 0, 0, 0.12) : Qt.rgba(1, 1, 1, 0.10)
     readonly property color popupShadow: isLight ? Qt.rgba(0, 0, 0, 0.22) : Qt.rgba(0, 0, 0, 0.73)
 
+    activeFocusOnTab: enabled
+    Accessible.role: sel.isButton ? Accessible.Button : Accessible.ComboBox
+    Accessible.name: sel.label
+
+    Keys.onPressed: function(event) {
+        if (!sel.enabled)
+            return
+        if (event.key === Qt.Key_Space || event.key === Qt.Key_Return
+                || event.key === Qt.Key_Enter) {
+            if (sel.isButton)
+                sel.selected(-1)
+            else if (dropdown.visible)
+                dropdown.close()
+            else
+                dropdown.open()
+            event.accepted = true
+        }
+    }
+
     // ── Main Button ───────────────────────────────────────────────────────
     Rectangle {
         id: btnRect
         anchors.fill: parent
         radius: Components.Theme.controlRadius
-        color: btnArea.pressed ? sel.pressedBg : (btnArea.containsMouse ? sel.hoverBg : sel.restingBg)
+        color: !sel.enabled ? sel.cardBg
+            : (btnArea.pressed ? sel.pressedBg
+                : (btnArea.containsMouse ? sel.hoverBg : sel.restingBg))
         border.width: 1
-        border.color: (dropdown.visible || btnArea.pressed) ? sel.accent : sel.cardBorder
+        border.color: sel.enabled && (dropdown.visible || btnArea.pressed || sel.activeFocus)
+            ? sel.accent : sel.cardBorder
 
         // Premium Micro-animations
-        scale: btnArea.pressed ? 0.96 : (dropdown.visible ? 0.98 : 1.0)
+        scale: sel.enabled && btnArea.pressed ? 0.96
+            : (sel.enabled && dropdown.visible ? 0.98 : 1.0)
         Behavior on scale { NumberAnimation { duration: Components.Theme.animationFast; easing.type: Easing.OutCubic } }
         Behavior on color { ColorAnimation { duration: Components.Theme.animationNormal } }
         Behavior on border.color { ColorAnimation { duration: Components.Theme.animationNormal } }
@@ -59,7 +82,7 @@ Item {
             Text {
                 Layout.fillWidth: true
                 text: sel.label
-                color: sel.textPrimary
+                color: sel.enabled ? sel.textPrimary : sel.textSecondary
                 font.family: Components.Theme.fontFamily
                 font.pixelSize: Components.Theme.fontSizeNormal
                 font.weight: Components.Theme.fontWeightMedium
@@ -67,7 +90,7 @@ Item {
                 Behavior on color { ColorAnimation { duration: Components.Theme.animationFast } }
             }
             Text {
-                visible: !sel.isButton
+                visible: !sel.isButton && sel.showChevron && sel.enabled
                 text: dropdown.visible ? "⌃" : "⌄"
                 color: dropdown.visible ? sel.accent : sel.textSecondary
                 font.pixelSize: Components.Theme.fontSizeNormal
@@ -78,7 +101,7 @@ Item {
                 Behavior on rotation { NumberAnimation { duration: Components.Theme.animationNormal; easing.type: Easing.OutBack } }
             }
             Text {
-                visible: sel.isButton
+                visible: sel.isButton && sel.enabled
                 text: "\uf03e" // Icon font usually
                 font.family: "JetBrainsMono Nerd Font"
                 color: btnArea.containsMouse ? sel.accent : sel.textSecondary
@@ -89,9 +112,11 @@ Item {
 
         MouseArea {
             id: btnArea
+            objectName: "selectButtonMouseArea"
             anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
+            enabled: sel.enabled
+            hoverEnabled: sel.enabled
+            cursorShape: sel.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
             onClicked: {
                 if (sel.isButton) sel.selected(-1)
                 else dropdown.visible ? dropdown.close() : dropdown.open()
@@ -108,7 +133,7 @@ Item {
         padding: sel.popupPad
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         visible: false
-        enabled: !sel.isButton
+        enabled: sel.enabled && !sel.isButton
 
         // Anchor the popup scaling based on direction
         transformOrigin: sel.popupDirection === "up" ? Item.Bottom : Item.Top

@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 import "../../components" as Components
 import "../../components/controls" as Controls
 import "../../components/form" as Form
@@ -205,12 +206,49 @@ FocusScope {
     function currentMode(output) {
         if (!output || !Boolean(output.hasCurrentMode) || !output.modes)
             return null
-        const currentId = String(output.currentModeId)
+        return root.modeById(output, output.currentModeId)
+    }
+
+    function modeById(output, modeId) {
+        if (!output || !output.modes || modeId === undefined || modeId === null)
+            return null
+        const requestedId = String(modeId)
         for (let index = 0; index < output.modes.length; ++index) {
-            if (String(output.modes[index].id) === currentId)
+            if (String(output.modes[index].id) === requestedId)
                 return output.modes[index]
         }
         return null
+    }
+
+    function selectedMode(output) {
+        if (!output)
+            return null
+        const draft = Boolean(output.draftPresent)
+            ? root.modeById(output, output.draftModeId) : null
+        return draft || root.currentMode(output)
+    }
+
+    function selectedScaleMilli(output) {
+        if (!output)
+            return 0
+        const draftScale = Number(output.draftScaleMilli)
+        return Boolean(output.draftPresent) && draftScale > 0
+            ? draftScale : Number(output.scaleMilli)
+    }
+
+    function selectedTransform(output) {
+        if (!output)
+            return "normal"
+        return Boolean(output.draftPresent)
+            ? String(output.draftTransform) : String(output.transform)
+    }
+
+    function rateText(mode) {
+        if (!mode)
+            return "Unavailable"
+        const rate = root.formatRate(mode.refreshMilliHz)
+        return rate === "Unavailable" ? rate
+            : rate + " Hz" + (Boolean(mode.interlaced) ? " (interlaced)" : "")
     }
 
     function refreshLabel(output) {
@@ -221,6 +259,13 @@ FocusScope {
             return rate
         const mode = root.currentMode(output)
         return rate + " Hz" + (mode && mode.interlaced ? " (interlaced)" : "")
+    }
+
+    function selectedRefreshLabel(output) {
+        if (!output)
+            return "Unavailable"
+        const mode = root.selectedMode(output)
+        return mode ? root.rateText(mode) : root.refreshLabel(output)
     }
 
     function modeSummary(output) {
@@ -245,6 +290,12 @@ FocusScope {
         if (!output || !output.modes)
             return []
 
+        const selectionMode = root.selectedMode(output)
+        const selectionWidth = selectionMode
+            ? Number(selectionMode.width) : Number(output.currentWidth)
+        const selectionHeight = selectionMode
+            ? Number(selectionMode.height) : Number(output.currentHeight)
+
         const bySize = Object.create(null)
         for (let index = 0; index < output.modes.length; ++index) {
             const mode = output.modes[index]
@@ -258,9 +309,9 @@ FocusScope {
                     width: width,
                     height: height,
                     preferred: false,
-                    current: Boolean(output.hasCurrentMode)
-                        && Number(output.currentWidth) === width
-                        && Number(output.currentHeight) === height,
+                    current: (selectionMode !== null || Boolean(output.hasCurrentMode))
+                        && selectionWidth === width
+                        && selectionHeight === height,
                     rates: []
                 }
             }
@@ -302,6 +353,99 @@ FocusScope {
         return groups
     }
 
+    function modeForResolution(group, output) {
+        if (!group || !group.rates || group.rates.length === 0)
+            return null
+
+        const current = root.selectedMode(output)
+        if (current) {
+            const matching = group.rates.filter(mode =>
+                Number(mode.refreshMilliHz) === Number(current.refreshMilliHz)
+                    && Boolean(mode.interlaced) === Boolean(current.interlaced))
+            if (matching.length > 0)
+                return matching.sort((left, right) =>
+                    Number(left.id) - Number(right.id))[0]
+        }
+
+        const preferred = group.rates.filter(mode => Boolean(mode.preferred))
+        const candidates = preferred.length > 0 ? preferred : group.rates
+        const preservingInterlace = current
+            ? candidates.filter(mode =>
+                Boolean(mode.interlaced) === Boolean(current.interlaced)) : []
+        const ranked = (preservingInterlace.length > 0
+            ? preservingInterlace : candidates).slice().sort((left, right) =>
+                Number(right.refreshMilliHz) - Number(left.refreshMilliHz)
+                    || Number(left.interlaced) - Number(right.interlaced)
+                    || Number(left.id) - Number(right.id))
+        return ranked.length > 0 ? ranked[0] : null
+    }
+
+    function setDraftForMode(output, mode, scaleMilli, transform) {
+        if (!root.controller || !output || !mode)
+            return false
+        return root.controller.setDraft(String(output.id), Number(mode.id),
+            Number(scaleMilli), String(transform))
+    }
+
+    function selectResolution(group) {
+        const output = root.selectedOutput
+        if (!output || output.modeSelectionSupported !== true)
+            return
+        const mode = root.modeForResolution(group, output)
+        if (!mode)
+            return
+        root.setDraftForMode(output, mode, root.selectedScaleMilli(output),
+            root.selectedTransform(output))
+    }
+
+    function selectedRefreshIndex(output, group) {
+        if (!output || !group || !group.rates)
+            return -1
+        const selected = root.selectedMode(output)
+        if (!selected)
+            return -1
+        return group.rates.findIndex(mode => String(mode.id) === String(selected.id))
+    }
+
+    function selectRefresh(index) {
+        const output = root.selectedOutput
+        const group = root.currentResolutionGroup
+        if (!output || output.modeSelectionSupported !== true || !group
+                || index < 0 || index >= group.rates.length)
+            return
+        root.setDraftForMode(output, group.rates[index],
+            root.selectedScaleMilli(output), root.selectedTransform(output))
+    }
+
+    function scaleValues(output) {
+        if (!output || !output.scaleValuesMilli)
+            return []
+        return output.scaleValuesMilli.map(value => Number(value))
+    }
+
+    function scaleLabels(output) {
+        return root.scaleValues(output).map(value => root.formatScale(value))
+    }
+
+    function selectedScaleIndex(output) {
+        const values = root.scaleValues(output)
+        const selected = root.selectedScaleMilli(output)
+        return values.findIndex(value => Number(value) === selected)
+    }
+
+    function selectScale(index) {
+        const output = root.selectedOutput
+        const values = root.scaleValues(output)
+        if (!output || output.scaleMutationSupported !== true
+                || index < 0 || index >= values.length)
+            return
+        const mode = root.selectedMode(output)
+        if (!mode)
+            return
+        root.setDraftForMode(output, mode, values[index],
+            root.selectedTransform(output))
+    }
+
     function defaultResolutionSubset(groups) {
         if (!groups || groups.length <= 5)
             return groups || []
@@ -334,6 +478,8 @@ FocusScope {
         root.reconcileSelection()
         if (root.controller)
             root.controller.refresh()
+        if (root.wallpaper && !root.wallpaper.busy)
+            root.wallpaper.refresh()
     }
 
     Connections {
@@ -341,54 +487,11 @@ FocusScope {
         function onSnapshotChanged() { root.reconcileSelection() }
     }
 
-    component DisplayValueControl: Item {
-        id: valueControl
-        property string text: "Unavailable"
-        property var options: []
-        property var selectedModeId: 0
+    component DisplaySelector: Controls.SelectButton {
         property int controlWidth: 130
-        property bool showChevron: true
-
-        enabled: false
+        width: controlWidth
         implicitWidth: controlWidth
         implicitHeight: 36
-
-        Rectangle {
-            anchors.fill: parent
-            radius: Components.Theme.controlRadius
-            color: Qt.rgba(Components.Theme.cardBg.r,
-                           Components.Theme.cardBg.g,
-                           Components.Theme.cardBg.b, 0.72)
-            border.width: 1
-            border.color: Components.Theme.cardBorder
-        }
-
-        Text {
-            anchors.left: parent.left
-            anchors.leftMargin: Components.Theme.spacingMedium
-            anchors.right: valueControl.showChevron ? chevron.left : parent.right
-            anchors.rightMargin: Components.Theme.spacingSmall
-            anchors.verticalCenter: parent.verticalCenter
-            text: valueControl.text
-            textFormat: Text.PlainText
-            color: Components.Theme.textTertiary
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeNormal
-            font.weight: Components.Theme.fontWeightMedium
-            elide: Text.ElideRight
-        }
-
-        Text {
-            id: chevron
-            visible: valueControl.showChevron
-            anchors.right: parent.right
-            anchors.rightMargin: Components.Theme.spacingMedium
-            anchors.verticalCenter: parent.verticalCenter
-            text: "⌄"
-            textFormat: Text.PlainText
-            color: Components.Theme.textTertiary
-            font.pixelSize: Components.Theme.fontSizeNormal
-        }
     }
 
     component DisplayPreview: Item {
@@ -513,10 +616,10 @@ FocusScope {
                         clip: true
 
                         Rectangle {
+                            objectName: "displayWallpaperFallback_" + String(modelData.id)
                             anchors.fill: parent
                             visible: !modelData.enabled || !monitorItem.hasCurrentMode
-                                || !root.wallpaper
-                                || !root.nonEmpty(root.wallpaper.effectivePreviewUrl)
+                                || !wallpaperImage.hasUsableSource
                                 || wallpaperImage.status === Image.Error
                             radius: screenSurface.radius
                             gradient: Gradient {
@@ -534,13 +637,15 @@ FocusScope {
                         Image {
                             id: wallpaperImage
                             objectName: "displayWallpaperPreview"
+                            readonly property bool hasUsableSource:
+                                Boolean(root.wallpaper)
+                                    && root.nonEmpty(root.wallpaper.effectivePreviewUrl)
                             anchors.fill: parent
-                            visible: Boolean(Boolean(modelData.enabled)
+                            visible: Boolean(modelData.enabled)
                                 && monitorItem.hasCurrentMode
-                                && Boolean(root.wallpaper)
-                                && root.nonEmpty(root.wallpaper.effectivePreviewUrl)
-                                && status !== Image.Error)
-                            source: visible ? root.wallpaper.effectivePreviewUrl : ""
+                                && hasUsableSource && status !== Image.Error
+                            source: root.wallpaper
+                                ? root.wallpaper.effectivePreviewUrl : ""
                             fillMode: {
                                 if (!root.wallpaper
                                         || root.wallpaper.effectiveFit === "cover")
@@ -555,6 +660,13 @@ FocusScope {
                             }
                             asynchronous: true
                             cache: false
+                            retainWhileLoading: true
+                            smooth: true
+                            mipmap: true
+                            sourceSize.width: Math.max(1,
+                                Math.ceil(width * Screen.devicePixelRatio))
+                            sourceSize.height: Math.max(1,
+                                Math.ceil(height * Screen.devicePixelRatio))
                         }
 
                         Rectangle {
@@ -946,6 +1058,10 @@ FocusScope {
                         delegate: Rectangle {
                             required property var modelData
                             readonly property bool selected: Boolean(modelData.current)
+                            readonly property bool interactive:
+                                Boolean(root.selectedOutput)
+                                    && root.selectedOutput.modeSelectionSupported === true
+                                    && modelData.rates.length > 0
                             readonly property string key: root.resolutionKey(modelData)
 
                             objectName: "displayResolutionRow_" + key
@@ -957,9 +1073,26 @@ FocusScope {
                                 ? Qt.rgba(Components.Theme.accent.r,
                                           Components.Theme.accent.g,
                                           Components.Theme.accent.b, 0.12)
-                                : "transparent"
-                            border.width: selected ? 1 : 0
-                            border.color: Components.Theme.accent
+                                : (interactive && resolutionActivation.containsMouse
+                                    ? Qt.rgba(Components.Theme.accent.r,
+                                              Components.Theme.accent.g,
+                                              Components.Theme.accent.b, 0.06)
+                                    : "transparent")
+                            border.width: selected || (interactive && activeFocus) ? 1 : 0
+                            border.color: selected || (interactive && activeFocus)
+                                ? Components.Theme.accent : "transparent"
+                            activeFocusOnTab: interactive
+                            Accessible.role: Accessible.Button
+                            Accessible.name: root.formatResolution(modelData)
+
+                            Keys.onPressed: function(event) {
+                                if (interactive && (event.key === Qt.Key_Space
+                                        || event.key === Qt.Key_Return
+                                        || event.key === Qt.Key_Enter)) {
+                                    root.selectResolution(modelData)
+                                    event.accepted = true
+                                }
+                            }
 
                             Behavior on color {
                                 ColorAnimation { duration: Components.Theme.animationQuick }
@@ -1029,6 +1162,18 @@ FocusScope {
                                     font.weight: Components.Theme.fontWeightBold
                                 }
                             }
+
+                            MouseArea {
+                                id: resolutionActivation
+                                objectName: "displayResolutionActivation_" + key
+                                anchors.fill: parent
+                                enabled: interactive
+                                hoverEnabled: interactive
+                                cursorShape: interactive
+                                    ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                onPressed: parent.forceActiveFocus()
+                                onClicked: root.selectResolution(modelData)
+                            }
                         }
                     }
 
@@ -1085,14 +1230,21 @@ FocusScope {
                             label: "Refresh rate"
                             isLast: false
 
-                            DisplayValueControl {
+                            DisplaySelector {
                                 objectName: "displayRefreshControl"
                                 controlWidth: 130
-                                text: root.refreshLabel(root.selectedOutput)
+                                label: root.selectedRefreshLabel(root.selectedOutput)
                                 options: root.currentResolutionGroup
-                                    ? root.currentResolutionGroup.rates : []
-                                selectedModeId: root.selectedOutput
-                                    ? root.selectedOutput.currentModeId : 0
+                                    ? root.currentResolutionGroup.rates.map(
+                                        mode => root.rateText(mode)) : []
+                                selectedIndex: root.selectedRefreshIndex(
+                                    root.selectedOutput, root.currentResolutionGroup)
+                                enabled: Boolean(root.selectedOutput
+                                    && root.selectedOutput.modeSelectionSupported === true
+                                    && root.currentResolutionGroup
+                                    && root.currentResolutionGroup.rates.length > 0)
+                                showChevron: enabled
+                                onSelected: index => root.selectRefresh(index)
                             }
                         }
 
@@ -1101,10 +1253,14 @@ FocusScope {
                             label: "Color depth"
                             isLast: false
 
-                            DisplayValueControl {
+                            DisplaySelector {
                                 objectName: "displayColorDepthControl"
                                 controlWidth: 130
-                                text: "Unavailable"
+                                label: "Unavailable"
+                                enabled: false
+                                showChevron: false
+                                textPrimary: Components.Theme.textTertiary
+                                textSecondary: Components.Theme.textTertiary
                             }
                         }
 
@@ -1114,13 +1270,16 @@ FocusScope {
                             sublabel: "VRR / FreeSync / G-Sync mode when supported by the display"
                             isLast: false
 
-                            DisplayValueControl {
+                            DisplaySelector {
                                 objectName: "displayVrrControl"
                                 controlWidth: 160
-                                text: root.selectedOutput
+                                label: root.selectedOutput
                                     ? root.vrrText(root.selectedOutput.vrrState)
                                     : "Unavailable"
+                                enabled: false
                                 showChevron: false
+                                textPrimary: Components.Theme.textTertiary
+                                textSecondary: Components.Theme.textTertiary
                             }
                         }
 
@@ -1129,12 +1288,21 @@ FocusScope {
                             label: "Display scale"
                             isLast: true
 
-                            DisplayValueControl {
+                            DisplaySelector {
                                 objectName: "displayScaleControl"
                                 controlWidth: 130
-                                text: root.selectedOutput
-                                    ? root.formatScale(root.selectedOutput.scaleMilli)
+                                label: root.selectedOutput
+                                    ? root.formatScale(
+                                        root.selectedScaleMilli(root.selectedOutput))
                                     : "Unavailable"
+                                options: root.scaleLabels(root.selectedOutput)
+                                selectedIndex: root.selectedScaleIndex(root.selectedOutput)
+                                enabled: Boolean(root.selectedOutput
+                                    && root.selectedOutput.scaleMutationSupported === true
+                                    && root.selectedMode(root.selectedOutput)
+                                    && options.length > 0)
+                                showChevron: enabled
+                                onSelected: index => root.selectScale(index)
                             }
                         }
                     }
@@ -1161,60 +1329,84 @@ FocusScope {
                             label: "Night Shift"
                             sublabel: "Warm screen colors to reduce blue light at night"
                             isLast: false
-                            DisplayValueControl {
+                            DisplaySelector {
                                 objectName: "displayNightShiftControl"
                                 controlWidth: 130
-                                text: "Unavailable"
+                                label: "Unavailable"
+                                enabled: false
+                                showChevron: false
+                                textPrimary: Components.Theme.textTertiary
+                                textSecondary: Components.Theme.textTertiary
                             }
                         }
                         Form.SettingRow {
                             label: "Night Shift strength"
                             sublabel: "Unavailable because the current backend has no color adjustment control"
                             isLast: false
-                            DisplayValueControl {
+                            DisplaySelector {
                                 objectName: "displayNightShiftStrengthControl"
                                 controlWidth: 130
-                                text: "Unavailable"
+                                label: "Unavailable"
+                                enabled: false
+                                showChevron: false
+                                textPrimary: Components.Theme.textTertiary
+                                textSecondary: Components.Theme.textTertiary
                             }
                         }
                         Form.SettingRow {
                             label: "Schedule"
                             sublabel: "Turn Night Shift on and off automatically"
                             isLast: false
-                            DisplayValueControl {
+                            DisplaySelector {
                                 objectName: "displayNightShiftScheduleControl"
                                 controlWidth: 130
-                                text: "Unavailable"
+                                label: "Unavailable"
+                                enabled: false
+                                showChevron: false
+                                textPrimary: Components.Theme.textTertiary
+                                textSecondary: Components.Theme.textTertiary
                             }
                         }
                         Form.SettingRow {
                             label: "Start"
                             sublabel: "When Night Shift should turn on"
                             isLast: false
-                            DisplayValueControl {
+                            DisplaySelector {
                                 objectName: "displayNightShiftStartControl"
                                 controlWidth: 130
-                                text: "Unavailable"
+                                label: "Unavailable"
+                                enabled: false
+                                showChevron: false
+                                textPrimary: Components.Theme.textTertiary
+                                textSecondary: Components.Theme.textTertiary
                             }
                         }
                         Form.SettingRow {
                             label: "End"
                             sublabel: "When Night Shift should turn off"
                             isLast: false
-                            DisplayValueControl {
+                            DisplaySelector {
                                 objectName: "displayNightShiftEndControl"
                                 controlWidth: 130
-                                text: "Unavailable"
+                                label: "Unavailable"
+                                enabled: false
+                                showChevron: false
+                                textPrimary: Components.Theme.textTertiary
+                                textSecondary: Components.Theme.textTertiary
                             }
                         }
                         Form.SettingRow {
                             label: "Saturation"
                             sublabel: "Unavailable because saturation adjustment is not supported"
                             isLast: true
-                            DisplayValueControl {
+                            DisplaySelector {
                                 objectName: "displaySaturationControl"
                                 controlWidth: 130
-                                text: "Unavailable"
+                                label: "Unavailable"
+                                enabled: false
+                                showChevron: false
+                                textPrimary: Components.Theme.textTertiary
+                                textSecondary: Components.Theme.textTertiary
                             }
                         }
                     }
@@ -1229,22 +1421,16 @@ FocusScope {
 
                     Item { Layout.fillWidth: true }
 
-                    Text {
-                        objectName: "displayAppliedFeedback"
-                        visible: false
-                        text: "✓ Applied"
-                        textFormat: Text.PlainText
-                        color: Components.Theme.accent
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeNormal
-                        font.weight: Components.Theme.fontWeightMedium
-                    }
-
                     Controls.Button {
                         objectName: "displayApplyButton"
                         text: "Apply"
                         primary: true
-                        enabled: false
+                        enabled: Boolean(root.selectedOutput
+                            && root.selectedOutput.canApplyDraft === true)
+                        onClicked: {
+                            if (root.selectedOutput && root.controller)
+                                root.controller.applyDraft(root.selectedOutput.id)
+                        }
                     }
                 }
             }

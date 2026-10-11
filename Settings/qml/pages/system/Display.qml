@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import "../../components" as Components
 import "../../components/controls" as Controls
@@ -12,26 +13,66 @@ FocusScope {
         typeof SettingsController !== "undefined" && SettingsController
             ? SettingsController.display : null
     readonly property var outputs: root.controller ? root.controller.outputs : []
-    readonly property var wallpaper: typeof SettingsController !== "undefined" && SettingsController
-        ? SettingsController.wallpaper : null
+    readonly property var wallpaper:
+        typeof SettingsController !== "undefined" && SettingsController
+            ? SettingsController.wallpaper : null
+
     property string selectedOutputId: ""
+    property bool showAllResolutions: false
+
     readonly property var selectedOutput: {
         for (let index = 0; index < root.outputs.length; ++index) {
-            if (root.outputs[index].id === root.selectedOutputId)
+            if (String(root.outputs[index].id) === root.selectedOutputId)
                 return root.outputs[index]
         }
         return null
     }
     readonly property int selectedIndex: {
         for (let index = 0; index < root.outputs.length; ++index) {
-            if (root.outputs[index].id === root.selectedOutputId)
+            if (String(root.outputs[index].id) === root.selectedOutputId)
                 return index
         }
         return -1
     }
+    readonly property bool backendUnavailable:
+        !Boolean(root.controller) || !Boolean(root.controller.available)
+    readonly property bool refreshFailed:
+        Boolean(root.controller && root.nonEmpty(root.controller.lastError))
+    readonly property bool loading:
+        Boolean(root.controller && Boolean(root.controller.busy)
+            && root.outputs.length === 0 && !root.refreshFailed)
+    readonly property bool noOutputs:
+        Boolean(!root.backendUnavailable && !root.refreshFailed && !root.loading
+            && root.outputs.length === 0)
+    readonly property bool showDisplayContent:
+        Boolean(!root.backendUnavailable && !root.refreshFailed
+            && root.selectedOutput !== null)
+    readonly property var allResolutionGroups:
+        root.resolutionGroups(root.selectedOutput)
+    readonly property var defaultResolutionGroups:
+        root.defaultResolutionSubset(root.allResolutionGroups)
+    readonly property var visibleResolutionGroups:
+        root.showAllResolutions
+            ? root.allResolutionGroups : root.defaultResolutionGroups
+    readonly property var currentResolutionGroup: {
+        for (let index = 0; index < root.allResolutionGroups.length; ++index) {
+            if (root.allResolutionGroups[index].current)
+                return root.allResolutionGroups[index]
+        }
+        return null
+    }
+
+    onSelectedOutputIdChanged: root.showAllResolutions = false
 
     function nonEmpty(value) {
-        return value !== undefined && value !== null && String(value).trim().length > 0
+        return value !== undefined && value !== null
+            && String(value).trim().length > 0
+    }
+
+    function isBuiltIn(output) {
+        const name = output && root.nonEmpty(output.name)
+            ? String(output.name).toLowerCase() : ""
+        return name.startsWith("edp") || name.startsWith("lvds")
     }
 
     function titleFor(output) {
@@ -41,118 +82,161 @@ FocusScope {
             return String(output.model).trim()
         if (root.nonEmpty(output.make))
             return String(output.make).trim()
-        return root.nonEmpty(output.name) ? String(output.name) : "Display"
+        if (root.nonEmpty(output.name))
+            return String(output.name)
+        return root.isBuiltIn(output) ? "Laptop Display" : "Display"
     }
 
     function kindFor(output) {
-        const name = output && root.nonEmpty(output.name) ? String(output.name) : ""
-        return name.startsWith("eDP") || name.startsWith("LVDS") ? "Built-in display" : "External display"
+        return root.isBuiltIn(output) ? "Built-in display" : "External display"
     }
 
     function subtitleFor(output) {
         if (!output)
             return ""
         const pieces = [root.kindFor(output)]
-        if (root.nonEmpty(output.make) && String(output.make).trim() !== root.titleFor(output))
-            pieces.push(String(output.make).trim())
+        const make = root.nonEmpty(output.make) ? String(output.make).trim() : ""
+        if (make !== "" && make !== root.titleFor(output))
+            pieces.push(make)
         if (root.nonEmpty(output.name))
             pieces.push(String(output.name))
         return pieces.join(" · ")
     }
 
+    function monitorSelectorLabel(output) {
+        if (!output)
+            return "Display"
+        const title = root.titleFor(output)
+        const connector = root.nonEmpty(output.name) ? String(output.name) : ""
+        return connector !== "" && connector !== title
+            ? title + " · " + connector : title
+    }
+
+    function isQuarterTurn(output) {
+        const transform = output && output.transform !== undefined
+            ? String(output.transform) : "normal"
+        return transform === "90" || transform === "270"
+            || transform === "flipped_90" || transform === "flipped_270"
+    }
+
     function outputWidth(output) {
-        if (!output || !output.hasCurrentMode)
+        if (!output || !Boolean(output.hasCurrentMode))
             return 240
-        const width = Number(output.currentWidth) > 0 ? Number(output.currentWidth) : 240
-        const height = Number(output.currentHeight) > 0 ? Number(output.currentHeight) : 135
-        const transform = output ? String(output.transform) : "normal"
-        return transform === "90" || transform === "270" ? height : width
+        const width = Number(output.currentWidth)
+        const height = Number(output.currentHeight)
+        if (width <= 0 || height <= 0)
+            return 240
+        return root.isQuarterTurn(output) ? height : width
     }
 
     function outputHeight(output) {
-        if (!output || !output.hasCurrentMode)
+        if (!output || !Boolean(output.hasCurrentMode))
             return 135
-        const width = Number(output.currentWidth) > 0 ? Number(output.currentWidth) : 240
-        const height = Number(output.currentHeight) > 0 ? Number(output.currentHeight) : 135
-        const transform = output ? String(output.transform) : "normal"
-        return transform === "90" || transform === "270" ? width : height
+        const width = Number(output.currentWidth)
+        const height = Number(output.currentHeight)
+        if (width <= 0 || height <= 0)
+            return 135
+        return root.isQuarterTurn(output) ? width : height
     }
 
-    function worldMinX() {
-        let value = 0
-        for (let i = 0; i < root.outputs.length; ++i)
-            value = Math.min(value, Number(root.outputs[i].x) || 0)
-        return value
-    }
+    function boundsForOutputs() {
+        if (root.outputs.length === 0)
+            return { minX: 0, minY: 0, width: 1920, height: 1080 }
 
-    function worldMinY() {
-        let value = 0
-        for (let i = 0; i < root.outputs.length; ++i)
-            value = Math.min(value, Number(root.outputs[i].y) || 0)
-        return value
-    }
-
-    function worldWidth() {
-        let value = 1
-        for (let i = 0; i < root.outputs.length; ++i) {
-            const output = root.outputs[i]
-            value = Math.max(value, (Number(output.x) || 0) - root.worldMinX() + root.outputWidth(output))
+        let minX = Number(root.outputs[0].x) || 0
+        let minY = Number(root.outputs[0].y) || 0
+        let maxX = minX + root.outputWidth(root.outputs[0])
+        let maxY = minY + root.outputHeight(root.outputs[0])
+        for (let index = 1; index < root.outputs.length; ++index) {
+            const output = root.outputs[index]
+            const x = Number(output.x) || 0
+            const y = Number(output.y) || 0
+            minX = Math.min(minX, x)
+            minY = Math.min(minY, y)
+            maxX = Math.max(maxX, x + root.outputWidth(output))
+            maxY = Math.max(maxY, y + root.outputHeight(output))
         }
-        return value
-    }
-
-    function worldHeight() {
-        let value = 1
-        for (let i = 0; i < root.outputs.length; ++i) {
-            const output = root.outputs[i]
-            value = Math.max(value, (Number(output.y) || 0) - root.worldMinY() + root.outputHeight(output))
+        return {
+            minX: minX,
+            minY: minY,
+            width: Math.max(1, maxX - minX),
+            height: Math.max(1, maxY - minY)
         }
-        return value
     }
 
     function reconcileSelection() {
-        for (let i = 0; i < root.outputs.length; ++i) {
-            if (root.outputs[i].id === root.selectedOutputId)
+        for (let index = 0; index < root.outputs.length; ++index) {
+            if (String(root.outputs[index].id) === root.selectedOutputId)
                 return
         }
-        for (let i = 0; i < root.outputs.length; ++i) {
-            if (root.outputs[i].focused) {
-                root.selectedOutputId = String(root.outputs[i].id)
+        for (let index = 0; index < root.outputs.length; ++index) {
+            if (root.outputs[index].focused) {
+                root.selectedOutputId = String(root.outputs[index].id)
                 return
             }
         }
-        root.selectedOutputId = root.outputs.length > 0 ? String(root.outputs[0].id) : ""
+        root.selectedOutputId = root.outputs.length > 0
+            ? String(root.outputs[0].id) : ""
     }
 
-    function formatRate(millihz) {
-        const hz = Number(millihz) / 1000
+    function resolutionKey(group) {
+        return String(group.width) + "x" + String(group.height)
+    }
+
+    function formatResolution(group) {
+        return String(group.width) + " × " + String(group.height)
+    }
+
+    function formatRate(milliHz) {
+        const hz = Number(milliHz) / 1000
         if (!Number.isFinite(hz) || hz <= 0)
-            return "—"
+            return "Unavailable"
         return String(Number(hz.toFixed(3)))
     }
 
     function formatScale(scaleMilli) {
         const percent = Number(scaleMilli) / 10
-        return Number.isInteger(percent) ? String(percent) + "%" : String(Number(percent.toFixed(1))) + "%"
+        if (!Number.isFinite(percent) || percent <= 0)
+            return "Unavailable"
+        return (Number.isInteger(percent)
+            ? String(percent) : String(Number(percent.toFixed(1)))) + "%"
     }
 
-    function orientationText(transform) {
-        switch (String(transform)) {
-        case "normal": return "Landscape"
-        case "90": return "Portrait"
-        case "180": return "Landscape flipped"
-        case "270": return "Portrait flipped"
-        default: return "Unknown orientation (" + String(transform) + ")"
+    function currentMode(output) {
+        if (!output || !Boolean(output.hasCurrentMode) || !output.modes)
+            return null
+        const currentId = String(output.currentModeId)
+        for (let index = 0; index < output.modes.length; ++index) {
+            if (String(output.modes[index].id) === currentId)
+                return output.modes[index]
         }
+        return null
+    }
+
+    function refreshLabel(output) {
+        if (!output || !Boolean(output.hasCurrentMode))
+            return "Unavailable"
+        const rate = root.formatRate(output.currentRefreshMilliHz)
+        if (rate === "Unavailable")
+            return rate
+        const mode = root.currentMode(output)
+        return rate + " Hz" + (mode && mode.interlaced ? " (interlaced)" : "")
+    }
+
+    function modeSummary(output) {
+        if (!output || !Boolean(output.hasCurrentMode))
+            return "No current mode"
+        return String(output.currentWidth) + " × " + String(output.currentHeight)
+            + " • " + root.refreshLabel(output)
     }
 
     function vrrText(state) {
         switch (String(state)) {
+        case "active": return "Active"
         case "available":
         case "configured": return "Supported"
-        case "active": return "Active"
         case "unavailable": return "Not supported"
-        case "degraded": return "Unavailable / degraded"
+        case "degraded": return "Unavailable"
         default: return "Unavailable"
         }
     }
@@ -160,33 +244,90 @@ FocusScope {
     function resolutionGroups(output) {
         if (!output || !output.modes)
             return []
-        const bySize = ({})
-        for (let i = 0; i < output.modes.length; ++i) {
-            const mode = output.modes[i]
-            const key = String(mode.width) + "x" + String(mode.height)
-            if (!bySize[key])
-                bySize[key] = { width: Number(mode.width), height: Number(mode.height), preferred: false,
-                                current: Number(output.currentWidth) === Number(mode.width)
-                                    && Number(output.currentHeight) === Number(mode.height), rates: [] }
-            const group = bySize[key]
-            group.preferred = group.preferred || Boolean(mode.preferred)
-            let found = false
-            for (let rateIndex = 0; rateIndex < group.rates.length; ++rateIndex) {
-                if (group.rates[rateIndex].milliHz === Number(mode.refreshMilliHz)
-                    && group.rates[rateIndex].interlaced === Boolean(mode.interlaced)) {
-                    found = true
-                    break
+
+        const bySize = Object.create(null)
+        for (let index = 0; index < output.modes.length; ++index) {
+            const mode = output.modes[index]
+            const width = Number(mode.width)
+            const height = Number(mode.height)
+            if (width <= 0 || height <= 0)
+                continue
+            const key = String(width) + "x" + String(height)
+            if (!bySize[key]) {
+                bySize[key] = {
+                    width: width,
+                    height: height,
+                    preferred: false,
+                    current: Boolean(output.hasCurrentMode)
+                        && Number(output.currentWidth) === width
+                        && Number(output.currentHeight) === height,
+                    rates: []
                 }
             }
-            if (!found)
-                group.rates.push({ milliHz: Number(mode.refreshMilliHz), interlaced: Boolean(mode.interlaced) })
+            const group = bySize[key]
+            group.preferred = group.preferred || Boolean(mode.preferred)
+            group.rates.push({
+                id: mode.id,
+                refreshMilliHz: Number(mode.refreshMilliHz),
+                interlaced: Boolean(mode.interlaced),
+                preferred: Boolean(mode.preferred)
+            })
         }
+
         const groups = Object.keys(bySize).map(key => bySize[key])
-        groups.sort((left, right) => right.width * right.height - left.width * left.height
-                     || right.width - left.width || right.height - left.height)
-        for (let i = 0; i < groups.length; ++i)
-            groups[i].rates.sort((left, right) => left.milliHz - right.milliHz || Number(left.interlaced) - Number(right.interlaced))
+        if (Boolean(output.hasCurrentMode)) {
+            const currentKey = String(Number(output.currentWidth)) + "x"
+                + String(Number(output.currentHeight))
+            if (!bySize[currentKey] && Number(output.currentWidth) > 0
+                    && Number(output.currentHeight) > 0) {
+                groups.push({
+                    width: Number(output.currentWidth),
+                    height: Number(output.currentHeight),
+                    preferred: false,
+                    current: true,
+                    rates: []
+                })
+            }
+        }
+
+        groups.sort((left, right) =>
+            right.width * right.height - left.width * left.height
+                || right.width - left.width || right.height - left.height)
+        for (let groupIndex = 0; groupIndex < groups.length; ++groupIndex) {
+            groups[groupIndex].rates.sort((left, right) =>
+                left.refreshMilliHz - right.refreshMilliHz
+                    || Number(left.interlaced) - Number(right.interlaced)
+                    || Number(left.id) - Number(right.id))
+        }
         return groups
+    }
+
+    function defaultResolutionSubset(groups) {
+        if (!groups || groups.length <= 5)
+            return groups || []
+
+        const selected = []
+        const add = group => {
+            if (group && selected.length < 5
+                    && !selected.some(item => root.resolutionKey(item)
+                        === root.resolutionKey(group)))
+                selected.push(group)
+        }
+        const current = groups.find(group => group.current)
+        const preferred = groups.find(group => group.preferred)
+        add(current)
+        add(preferred)
+        add(groups[0])
+
+        const commonSizes = ["1600x900", "1366x768", "1280x720", "1024x768"]
+        for (let index = 0; index < commonSizes.length && selected.length < 5; ++index)
+            add(groups.find(group => root.resolutionKey(group) === commonSizes[index]))
+        for (let index = 0; index < groups.length && selected.length < 5; ++index)
+            add(groups[index])
+        selected.sort((left, right) =>
+            right.width * right.height - left.width * left.height
+                || right.width - left.width || right.height - left.height)
+        return selected
     }
 
     Component.onCompleted: {
@@ -200,492 +341,911 @@ FocusScope {
         function onSnapshotChanged() { root.reconcileSelection() }
     }
 
-    Form.ScrollPage {
-        anchors.fill: parent
-        contentMargins: 32
-        maxWidth: 960
+    component DisplayValueControl: Item {
+        id: valueControl
+        property string text: "Unavailable"
+        property var options: []
+        property var selectedModeId: 0
+        property int controlWidth: 130
+        property bool showChevron: true
 
-        Form.SectionHeader {
-            text: "DISPLAY LAYOUT"
-            Layout.bottomMargin: 12
+        enabled: false
+        implicitWidth: controlWidth
+        implicitHeight: 36
+
+        Rectangle {
+            anchors.fill: parent
+            radius: Components.Theme.controlRadius
+            color: Qt.rgba(Components.Theme.cardBg.r,
+                           Components.Theme.cardBg.g,
+                           Components.Theme.cardBg.b, 0.72)
+            border.width: 1
+            border.color: Components.Theme.cardBorder
         }
 
-        Form.FormCard {
-            objectName: "displayLayoutCard"
-            Layout.bottomMargin: 24
-            margins: Components.Theme.spacingLarge
+        Text {
+            anchors.left: parent.left
+            anchors.leftMargin: Components.Theme.spacingMedium
+            anchors.right: valueControl.showChevron ? chevron.left : parent.right
+            anchors.rightMargin: Components.Theme.spacingSmall
+            anchors.verticalCenter: parent.verticalCenter
+            text: valueControl.text
+            textFormat: Text.PlainText
+            color: Components.Theme.textTertiary
+            font.family: Components.Theme.fontFamily
+            font.pixelSize: Components.Theme.fontSizeNormal
+            font.weight: Components.Theme.fontWeightMedium
+            elide: Text.ElideRight
+        }
 
-            ColumnLayout {
-                width: parent.width
-                spacing: Components.Theme.spacingLarge
+        Text {
+            id: chevron
+            visible: valueControl.showChevron
+            anchors.right: parent.right
+            anchors.rightMargin: Components.Theme.spacingMedium
+            anchors.verticalCenter: parent.verticalCenter
+            text: "⌄"
+            textFormat: Text.PlainText
+            color: Components.Theme.textTertiary
+            font.pixelSize: Components.Theme.fontSizeNormal
+        }
+    }
 
-                Item {
-                    id: previewCanvas
-                    objectName: "displayOutputPreview"
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 360
+    component DisplayPreview: Item {
+        id: preview
+        objectName: "displayOutputPreview"
+        implicitHeight: 252
+        height: 252
 
-                    readonly property real canvasPadding: 30
-                    readonly property real scaleFactor: root.outputs.length > 0
-                        ? Math.max(0, Math.min((width - canvasPadding * 2) / root.worldWidth(),
-                                               (height - canvasPadding * 2) / root.worldHeight())) : 0
-                    readonly property real renderedWidth: root.worldWidth() * scaleFactor
-                    readonly property real renderedHeight: root.worldHeight() * scaleFactor
-                    readonly property real offsetX: (width - renderedWidth) / 2
-                    readonly property real offsetY: (height - renderedHeight) / 2
+        readonly property var bounds: root.boundsForOutputs()
+        readonly property real previewScale: Math.min(
+            width / Math.max(1, bounds.width),
+            height / Math.max(1, bounds.height)
+        ) * 0.78
+        property bool previewReady: false
 
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: Components.Theme.controlRadius
-                        color: Components.Theme.cardBg
-                        border.width: 1
-                        border.color: Components.Theme.cardBorder
+        Component.onCompleted: preview.previewReady = true
+
+        Repeater {
+            model: root.outputs
+
+            delegate: Item {
+                id: monitorItem
+                required property int index
+                required property var modelData
+                objectName: "displayPreviewMonitor_" + String(modelData.id)
+
+                readonly property bool active:
+                    String(modelData.id) === root.selectedOutputId
+                readonly property bool laptop: root.isBuiltIn(modelData)
+                readonly property bool hasCurrentMode:
+                    Boolean(modelData.hasCurrentMode)
+                readonly property real screenWidth:
+                    Math.max(56, root.outputWidth(modelData) * preview.previewScale)
+                readonly property real screenHeight:
+                    Math.max(36, root.outputHeight(modelData) * preview.previewScale)
+                readonly property real bezel: laptop ? 12 : 10
+                readonly property real chassisHeight: laptop ? 16 : 38
+
+                width: screenWidth + bezel * 2
+                height: screenHeight + bezel * 2 + chassisHeight
+                x: (preview.width - preview.bounds.width * preview.previewScale) / 2
+                    + ((Number(modelData.x) - preview.bounds.minX)
+                       * preview.previewScale) - bezel
+                y: (preview.height - preview.bounds.height * preview.previewScale) / 2
+                    + ((Number(modelData.y) - preview.bounds.minY)
+                       * preview.previewScale) - bezel
+
+                Behavior on x {
+                    enabled: preview.previewReady
+                    NumberAnimation {
+                        duration: Components.Theme.animationNormal
+                        easing.type: Easing.OutCubic
+                    }
+                }
+                Behavior on y {
+                    enabled: preview.previewReady
+                    NumberAnimation {
+                        duration: Components.Theme.animationNormal
+                        easing.type: Easing.OutCubic
+                    }
+                }
+                Behavior on width {
+                    enabled: preview.previewReady
+                    NumberAnimation {
+                        duration: Components.Theme.animationNormal
+                        easing.type: Easing.OutCubic
+                    }
+                }
+                Behavior on height {
+                    enabled: preview.previewReady
+                    NumberAnimation {
+                        duration: Components.Theme.animationNormal
+                        easing.type: Easing.OutCubic
+                    }
+                }
+
+                Rectangle {
+                    anchors.fill: screenFrame
+                    anchors.margins: -3
+                    radius: screenFrame.radius + 3
+                    color: "transparent"
+                    border.width: monitorItem.active ? 1 : 0
+                    border.color: Qt.rgba(Components.Theme.accent.r,
+                                          Components.Theme.accent.g,
+                                          Components.Theme.accent.b, 0.28)
+                }
+
+                Rectangle {
+                    id: screenFrame
+                    x: monitorItem.bezel
+                    y: monitorItem.bezel
+                    width: monitorItem.screenWidth
+                    height: monitorItem.screenHeight
+                    radius: monitorItem.laptop ? 10 : 9
+                    color: Components.Theme.cardBg
+                    border.width: 1
+                    border.color: monitorItem.active
+                        ? Qt.rgba(Components.Theme.accent.r,
+                                  Components.Theme.accent.g,
+                                  Components.Theme.accent.b, 0.72)
+                        : Components.Theme.cardBorder
+                    clip: true
+
+                    Behavior on width {
+                        enabled: preview.previewReady
+                        NumberAnimation { duration: Components.Theme.animationNormal }
+                    }
+                    Behavior on height {
+                        enabled: preview.previewReady
+                        NumberAnimation { duration: Components.Theme.animationNormal }
+                    }
+                    Behavior on border.color {
+                        ColorAnimation { duration: Components.Theme.animationNormal }
                     }
 
-                    Repeater {
-                        model: root.outputs
+                    Rectangle {
+                        id: screenSurface
+                        anchors.fill: parent
+                        anchors.margins: monitorItem.laptop ? 8 : 7
+                        radius: Math.max(4, screenFrame.radius - 4)
+                        color: Components.Theme.windowBackground
+                        clip: true
 
-                        delegate: Item {
-                            id: monitorItem
-                            required property int index
-                            required property var modelData
-                            readonly property bool internalDisplay: root.kindFor(modelData) === "Built-in display"
-                            readonly property bool hasCurrentMode: Boolean(modelData.hasCurrentMode)
-                            readonly property real surfaceWidth: root.outputWidth(modelData) * previewCanvas.scaleFactor
-                            readonly property real surfaceHeight: root.outputHeight(modelData) * previewCanvas.scaleFactor
-                            x: previewCanvas.offsetX
-                                + ((Number(modelData.x) || 0) - root.worldMinX()) * previewCanvas.scaleFactor
-                            y: previewCanvas.offsetY
-                                + ((Number(modelData.y) || 0) - root.worldMinY()) * previewCanvas.scaleFactor
-                            width: surfaceWidth
-                            height: surfaceHeight + (internalDisplay ? 12 : 10)
-                            Behavior on x {
-                                NumberAnimation { duration: Components.Theme.animationNormal; easing.type: Easing.OutQuart }
-                            }
-                            Behavior on y {
-                                NumberAnimation { duration: Components.Theme.animationNormal; easing.type: Easing.OutQuart }
-                            }
-
-                            Rectangle {
-                                id: monitorFrame
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                anchors.top: parent.top
-                                width: parent.width
-                                height: monitorItem.surfaceHeight
-                                radius: Math.min(Components.Theme.cardRadius, 14)
-                                color: Components.Theme.cardBg
-                                border.width: modelData.id === root.selectedOutputId ? 2 : 1
-                                border.color: modelData.id === root.selectedOutputId
-                                    ? Components.Theme.accent : Components.Theme.cardBorder
-                                clip: true
-                                Behavior on border.color {
-                                    ColorAnimation { duration: Components.Theme.animationNormal; easing.type: Easing.OutQuart }
+                        Rectangle {
+                            anchors.fill: parent
+                            visible: !modelData.enabled || !monitorItem.hasCurrentMode
+                                || !root.wallpaper
+                                || !root.nonEmpty(root.wallpaper.effectivePreviewUrl)
+                                || wallpaperImage.status === Image.Error
+                            radius: screenSurface.radius
+                            gradient: Gradient {
+                                GradientStop {
+                                    position: 0
+                                    color: Components.Theme.cardBg
                                 }
-                                Behavior on border.width {
-                                    NumberAnimation { duration: Components.Theme.animationFast; easing.type: Easing.OutCubic }
-                                }
-
-                                Rectangle {
-                                    anchors.fill: parent
-                                    anchors.margins: 5
-                                    radius: Math.max(2, monitorFrame.radius - 5)
-                                    color: Components.Theme.textPrimary
-
-                                    Rectangle {
-                                        id: wallpaperFallback
-                                        anchors.fill: parent
-                                        visible: !modelData.enabled || !monitorItem.hasCurrentMode
-                                            || !root.wallpaper || !root.wallpaper.effectivePreviewUrl
-                                            || String(root.wallpaper.effectivePreviewUrl) === ""
-                                            || wallpaperImage.status === Image.Error
-                                        radius: parent.radius
-                                        gradient: Gradient {
-                                            GradientStop { position: 0; color: Components.Theme.cardBg }
-                                            GradientStop { position: 1; color: Qt.darker(Components.Theme.accent, 1.25) }
-                                        }
-                                    }
-
-                                    Image {
-                                        id: wallpaperImage
-                                        objectName: "displayWallpaperPreview"
-                                        anchors.fill: parent
-                                        visible: modelData.enabled && monitorItem.hasCurrentMode
-                                            && root.wallpaper && root.wallpaper.effectivePreviewUrl
-                                            && String(root.wallpaper.effectivePreviewUrl) !== ""
-                                        source: visible ? root.wallpaper.effectivePreviewUrl : ""
-                                        fillMode: {
-                                            if (!root.wallpaper || root.wallpaper.effectiveFit === "cover")
-                                                return Image.PreserveAspectCrop
-                                            if (root.wallpaper.effectiveFit === "contain")
-                                                return Image.PreserveAspectFit
-                                            if (root.wallpaper.effectiveFit === "center")
-                                                return Image.Pad
-                                            if (root.wallpaper.effectiveFit === "tile")
-                                                return Image.Tile
-                                            return Image.Stretch
-                                        }
-                                        asynchronous: true
-                                        cache: false
-                                    }
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        visible: !modelData.enabled || !monitorItem.hasCurrentMode
-                                        text: modelData.enabled ? "No active mode" : "Disabled"
-                                        textFormat: Text.PlainText
-                                        color: Components.Theme.textSecondary
-                                        font.family: Components.Theme.fontFamily
-                                        font.pixelSize: Components.Theme.fontSizeSmall
-                                    }
-
-                                    Rectangle {
-                                        anchors.left: parent.left
-                                        anchors.right: parent.right
-                                        anchors.bottom: parent.bottom
-                                        height: 34
-                                        color: Qt.rgba(Components.Theme.cardBg.r,
-                                                       Components.Theme.cardBg.g,
-                                                       Components.Theme.cardBg.b, 0.86)
-                                        Text {
-                                            anchors.left: parent.left
-                                            anchors.right: parent.right
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            anchors.margins: Components.Theme.spacingSmall
-                                            text: (root.nonEmpty(modelData.name) ? String(modelData.name) : "Display")
-                                                + (modelData.enabled && monitorItem.hasCurrentMode
-                                                   ? "" : modelData.enabled ? " · No active mode" : " · Disabled")
-                                            textFormat: Text.PlainText
-                                            color: Components.Theme.textPrimary
-                                            font.family: Components.Theme.fontFamily
-                                            font.pixelSize: Components.Theme.fontSizeSmall
-                                            font.weight: Components.Theme.fontWeightMedium
-                                            elide: Text.ElideRight
-                                        }
-                                    }
-                                }
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: root.selectedOutputId = String(modelData.id)
+                                GradientStop {
+                                    position: 1
+                                    color: Qt.darker(Components.Theme.accent, 1.25)
                                 }
                             }
+                        }
 
-                            Rectangle {
-                                visible: !monitorItem.internalDisplay
-                                width: parent.width * 0.34
-                                height: 6
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                anchors.top: monitorFrame.bottom
-                                radius: 3
-                                color: Components.Theme.cardBorder
+                        Image {
+                            id: wallpaperImage
+                            objectName: "displayWallpaperPreview"
+                            anchors.fill: parent
+                            visible: Boolean(Boolean(modelData.enabled)
+                                && monitorItem.hasCurrentMode
+                                && Boolean(root.wallpaper)
+                                && root.nonEmpty(root.wallpaper.effectivePreviewUrl)
+                                && status !== Image.Error)
+                            source: visible ? root.wallpaper.effectivePreviewUrl : ""
+                            fillMode: {
+                                if (!root.wallpaper
+                                        || root.wallpaper.effectiveFit === "cover")
+                                    return Image.PreserveAspectCrop
+                                if (root.wallpaper.effectiveFit === "contain")
+                                    return Image.PreserveAspectFit
+                                if (root.wallpaper.effectiveFit === "center")
+                                    return Image.Pad
+                                if (root.wallpaper.effectiveFit === "tile")
+                                    return Image.Tile
+                                return Image.Stretch
                             }
-                            Rectangle {
-                                visible: !monitorItem.internalDisplay
-                                width: parent.width * 0.58
-                                height: 4
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                anchors.top: monitorFrame.bottom
-                                anchors.topMargin: 6
-                                radius: 2
-                                color: Components.Theme.cardBorder
-                            }
-                            Rectangle {
-                                visible: monitorItem.internalDisplay
-                                width: parent.width * 0.84
-                                height: 5
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                anchors.top: monitorFrame.bottom
-                                radius: 2
-                                color: Components.Theme.cardBorder
+                            asynchronous: true
+                            cache: false
+                        }
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: screenSurface.radius
+                            color: Qt.rgba(Components.Theme.windowBackground.r,
+                                           Components.Theme.windowBackground.g,
+                                           Components.Theme.windowBackground.b, 0.08)
+                        }
+
+                        Text {
+                            anchors.centerIn: parent
+                            visible: !modelData.enabled || !monitorItem.hasCurrentMode
+                            text: modelData.enabled ? "No current mode" : "Disabled"
+                            textFormat: Text.PlainText
+                            color: Components.Theme.textSecondary
+                            font.family: Components.Theme.fontFamily
+                            font.pixelSize: Components.Theme.fontSizeSmall
+                        }
+
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.bottom: parent.bottom
+                            height: 24
+                            color: Qt.rgba(Components.Theme.windowBackground.r,
+                                           Components.Theme.windowBackground.g,
+                                           Components.Theme.windowBackground.b, 0.62)
+                            Text {
+                                objectName: "displayConnector"
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.leftMargin: Components.Theme.spacingSmall
+                                anchors.rightMargin: Components.Theme.spacingSmall
+                                text: root.nonEmpty(modelData.name)
+                                    ? String(modelData.name) : "Display"
+                                textFormat: Text.PlainText
+                                color: Components.Theme.textPrimary
+                                font.family: Components.Theme.fontFamily
+                                font.pixelSize: Components.Theme.fontSizeTiny
+                                font.weight: Components.Theme.fontWeightMedium
+                                elide: Text.ElideRight
                             }
                         }
                     }
 
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.selectedOutputId = String(modelData.id)
+                    }
+                }
+
+                Rectangle {
+                    objectName: "displayMonitorStand_" + String(modelData.id)
+                    visible: !monitorItem.laptop
+                    anchors.horizontalCenter: screenFrame.horizontalCenter
+                    y: screenFrame.y + screenFrame.height + 1
+                    width: Math.max(13, screenFrame.width * 0.075)
+                    height: 22
+                    radius: 4
+                    gradient: Gradient {
+                        GradientStop {
+                            position: 0
+                            color: Qt.rgba(Components.Theme.textPrimary.r,
+                                           Components.Theme.textPrimary.g,
+                                           Components.Theme.textPrimary.b, 0.22)
+                        }
+                        GradientStop {
+                            position: 1
+                            color: Qt.rgba(Components.Theme.textPrimary.r,
+                                           Components.Theme.textPrimary.g,
+                                           Components.Theme.textPrimary.b, 0.08)
+                        }
+                    }
+                }
+
+                Rectangle {
+                    objectName: "displayMonitorStandBase_" + String(modelData.id)
+                    visible: !monitorItem.laptop
+                    anchors.horizontalCenter: screenFrame.horizontalCenter
+                    y: screenFrame.y + screenFrame.height + 23
+                    width: Math.max(64, screenFrame.width * 0.34)
+                    height: 6
+                    radius: 4
+                    color: Qt.rgba(Components.Theme.textPrimary.r,
+                                   Components.Theme.textPrimary.g,
+                                   Components.Theme.textPrimary.b, 0.16)
+                }
+
+                Rectangle {
+                    objectName: "displayLaptopChassis_" + String(modelData.id)
+                    visible: monitorItem.laptop
+                    anchors.horizontalCenter: screenFrame.horizontalCenter
+                    y: screenFrame.y + screenFrame.height + 3
+                    width: screenFrame.width + 24
+                    height: 10
+                    radius: 5
+                    color: Qt.rgba(Components.Theme.textPrimary.r,
+                                   Components.Theme.textPrimary.g,
+                                   Components.Theme.textPrimary.b, 0.17)
+
+                    Rectangle {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: Math.max(24, parent.width * 0.18)
+                        height: 3
+                        radius: 2
+                        color: Qt.rgba(Components.Theme.windowBackground.r,
+                                       Components.Theme.windowBackground.g,
+                                       Components.Theme.windowBackground.b, 0.24)
+                    }
+                }
+            }
+        }
+    }
+
+    Form.ScrollPage {
+        anchors.fill: parent
+        contentMargins: 28
+        maxWidth: 1000
+
+        ColumnLayout {
+            id: pageContents
+            objectName: "displayPageContent"
+            Layout.fillWidth: true
+            width: parent.width
+            spacing: 0
+
+            Form.FormCard {
+                objectName: "displayStatusCard"
+                visible: root.backendUnavailable || root.refreshFailed
+                    || root.loading || root.noOutputs
+                Layout.bottomMargin: 24
+                radius: 12
+                margins: Components.Theme.spacingLarge
+
+                ColumnLayout {
+                    width: parent.width
+                    spacing: Components.Theme.spacingMedium
+
                     Text {
-                        anchors.centerIn: parent
-                        visible: root.outputs.length === 0
-                        text: root.controller && root.controller.available
-                            ? "No displays are currently available"
-                            : "Display information is unavailable"
+                        objectName: "displayLoading"
+                        visible: root.loading
+                        Layout.fillWidth: true
+                        text: "Loading display information…"
+                        textFormat: Text.PlainText
                         color: Components.Theme.textSecondary
                         font.family: Components.Theme.fontFamily
                         font.pixelSize: Components.Theme.fontSizeNormal
+                    }
+                    Text {
+                        objectName: "displayBackendUnavailable"
+                        visible: root.backendUnavailable
+                        Layout.fillWidth: true
+                        text: "Display service is unavailable."
+                        textFormat: Text.PlainText
+                        color: Components.Theme.warningColor
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeNormal
+                        wrapMode: Text.WordWrap
+                    }
+                    Text {
+                        objectName: "displayRefreshError"
+                        visible: root.refreshFailed
+                        Layout.fillWidth: true
+                        text: root.controller ? String(root.controller.lastError) : ""
+                        textFormat: Text.PlainText
+                        color: Components.Theme.errorColor
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeNormal
+                        wrapMode: Text.WordWrap
+                    }
+                    Text {
+                        objectName: "displayNoOutputs"
+                        visible: root.noOutputs
+                        Layout.fillWidth: true
+                        text: "No displays are connected."
+                        textFormat: Text.PlainText
+                        color: Components.Theme.textSecondary
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeNormal
+                    }
+                    Controls.Button {
+                        objectName: "displayRetryButton"
+                        visible: Boolean(root.controller)
+                            && (root.backendUnavailable || root.refreshFailed
+                                || root.noOutputs)
+                        Layout.alignment: Qt.AlignRight
+                        text: "Retry"
+                        enabled: Boolean(root.controller)
+                        onClicked: {
+                            if (root.controller)
+                                root.controller.refresh()
+                        }
+                    }
+                }
+            }
+
+            ColumnLayout {
+                id: displayContent
+                objectName: "displayContent"
+                visible: root.showDisplayContent
+                Layout.fillWidth: true
+                width: pageContents.width
+                spacing: 0
+
+                ColumnLayout {
+                    id: previewColumn
+                    visible: root.selectedOutput !== null
+                    objectName: "displayPreviewSection"
+                    Layout.fillWidth: true
+                    width: displayContent.width
+                    Layout.bottomMargin: 24
+                    spacing: Components.Theme.spacingLarge
+
+                    Form.SectionHeader {
+                        objectName: "displayPreviewSectionHeader"
+                        Layout.fillWidth: true
+                        text: "DISPLAY PREVIEW"
+                    }
+
+                    Item {
+                        id: previewOpenArea
+                        objectName: "displayPreviewOpenArea"
+                        Layout.fillWidth: true
+                        implicitHeight: previewDevice.implicitHeight + 24
+
+                        Column {
+                            id: previewDevice
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.top: parent.top
+                            width: Math.min(620, previewColumn.width)
+                            spacing: 14
+
+                            DisplayPreview { width: previewDevice.width }
+
+                            Column {
+                                id: previewIdentity
+                                objectName: "displayPreviewIdentity"
+                                width: parent.width
+                                spacing: 5
+
+                                Text {
+                                    objectName: "displayOutputTitle"
+                                    width: parent.width
+                                    horizontalAlignment: Text.AlignHCenter
+                                    text: root.titleFor(root.selectedOutput)
+                                    textFormat: Text.PlainText
+                                    color: Components.Theme.textPrimary
+                                    font.family: Components.Theme.fontFamily
+                                    font.pixelSize: 22
+                                    font.weight: Components.Theme.fontWeightDemiBold
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    objectName: "displayOutputSubtitle"
+                                    width: parent.width
+                                    horizontalAlignment: Text.AlignHCenter
+                                    text: root.subtitleFor(root.selectedOutput)
+                                    textFormat: Text.PlainText
+                                    color: Components.Theme.textSecondary
+                                    font.family: Components.Theme.fontFamily
+                                    font.pixelSize: Components.Theme.fontSizeSmall
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    objectName: "displayModeSummary"
+                                    width: parent.width
+                                    horizontalAlignment: Text.AlignHCenter
+                                    text: root.modeSummary(root.selectedOutput)
+                                    textFormat: Text.PlainText
+                                    color: Components.Theme.textTertiary
+                                    font.family: Components.Theme.fontFamily
+                                    font.pixelSize: Components.Theme.fontSizeSmall
+                                }
+                            }
+                        }
                     }
                 }
 
                 Text {
                     objectName: "displayOutputsTruncated"
+                    visible: Boolean(root.controller && Boolean(root.controller.truncated))
                     Layout.fillWidth: true
-                    Layout.leftMargin: Components.Theme.spacingMedium
-                    Layout.rightMargin: Components.Theme.spacingMedium
-                    visible: root.controller && root.controller.truncated
+                    Layout.bottomMargin: 12
                     text: "Additional displays are not shown."
                     textFormat: Text.PlainText
-                    color: Components.Theme.textSecondary
+                    color: Components.Theme.warningColor
                     font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeTiny
+                    font.pixelSize: Components.Theme.fontSizeSmall
                     wrapMode: Text.WordWrap
                 }
 
                 ColumnLayout {
+                    objectName: "displayMonitorSection"
+                    visible: root.outputs.length > 1
                     Layout.fillWidth: true
-                    spacing: Components.Theme.spacingMicro
-                    visible: root.selectedOutput !== null
+                    Layout.bottomMargin: 24
+                    spacing: Components.Theme.spacingSmall
+
+                    Form.SectionHeader {
+                        objectName: "displayMonitorSectionHeader"
+                        Layout.fillWidth: true
+                        text: "MONITOR"
+                    }
+
+                    ComboBox {
+                        id: monitorSelector
+                        objectName: "displayMonitorSelector"
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 36
+                        model: root.outputs
+                        textRole: "name"
+                        currentIndex: root.selectedIndex
+                        displayText: root.monitorSelectorLabel(root.selectedOutput)
+                        onActivated: index => {
+                            if (index >= 0 && index < root.outputs.length)
+                                root.selectedOutputId = String(root.outputs[index].id)
+                        }
+
+                        background: Rectangle {
+                            radius: Components.Theme.controlRadius
+                            color: Components.Theme.cardBg
+                            border.width: 1
+                            border.color: monitorSelector.popup.visible
+                                ? Components.Theme.accent : Components.Theme.cardBorder
+                        }
+                        contentItem: Text {
+                            leftPadding: Components.Theme.spacingMedium
+                            rightPadding: monitorSelector.indicator.width
+                                + Components.Theme.spacingLarge
+                            text: root.monitorSelectorLabel(root.selectedOutput)
+                            textFormat: Text.PlainText
+                            color: Components.Theme.textPrimary
+                            font.family: Components.Theme.fontFamily
+                            font.pixelSize: Components.Theme.fontSizeNormal
+                            font.weight: Components.Theme.fontWeightMedium
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+                        indicator: Text {
+                            x: monitorSelector.width - width
+                            width: 36
+                            height: monitorSelector.height
+                            text: monitorSelector.popup.visible ? "⌃" : "⌄"
+                            textFormat: Text.PlainText
+                            color: Components.Theme.textSecondary
+                            font.pixelSize: Components.Theme.fontSizeNormal
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        delegate: ItemDelegate {
+                            required property int index
+                            required property var modelData
+                            width: monitorSelector.width
+                            contentItem: Text {
+                                text: root.monitorSelectorLabel(modelData)
+                                textFormat: Text.PlainText
+                                color: index === root.selectedIndex
+                                    ? Components.Theme.accent
+                                    : Components.Theme.textPrimary
+                                font.family: Components.Theme.fontFamily
+                                font.pixelSize: Components.Theme.fontSizeNormal
+                                elide: Text.ElideRight
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                        }
+                    }
+                }
+
+                Form.SectionHeader {
+                    objectName: "displayResolutionSectionHeader"
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: 8
+                    text: "RESOLUTION"
+                }
+
+                ColumnLayout {
+                    objectName: "displayResolutionList"
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: 24
+                    spacing: 2
+
+                    Repeater {
+                        model: root.visibleResolutionGroups
+
+                        delegate: Rectangle {
+                            required property var modelData
+                            readonly property bool selected: Boolean(modelData.current)
+                            readonly property string key: root.resolutionKey(modelData)
+
+                            objectName: "displayResolutionRow_" + key
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 36
+                            implicitHeight: 36
+                            radius: 8
+                            color: selected
+                                ? Qt.rgba(Components.Theme.accent.r,
+                                          Components.Theme.accent.g,
+                                          Components.Theme.accent.b, 0.12)
+                                : "transparent"
+                            border.width: selected ? 1 : 0
+                            border.color: Components.Theme.accent
+
+                            Behavior on color {
+                                ColorAnimation { duration: Components.Theme.animationQuick }
+                            }
+                            Behavior on border.color {
+                                ColorAnimation { duration: Components.Theme.animationQuick }
+                            }
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 12
+                                anchors.rightMargin: 12
+                                spacing: Components.Theme.spacingSmall
+
+                                Text {
+                                    objectName: "displayResolutionLabel_" + key
+                                    text: root.formatResolution(modelData)
+                                    textFormat: Text.PlainText
+                                    color: selected
+                                        ? Components.Theme.accent
+                                        : Components.Theme.textPrimary
+                                    font.family: Components.Theme.fontFamily
+                                    font.pixelSize: Components.Theme.fontSizeNormal
+                                    font.weight: selected
+                                        ? Components.Theme.fontWeightMedium
+                                        : Components.Theme.fontWeightNormal
+                                }
+
+                                Rectangle {
+                                    objectName: "displayPreferredBadge_" + key
+                                    visible: Boolean(modelData.preferred)
+                                    implicitWidth: preferredLabel.implicitWidth + 10
+                                    implicitHeight: 16
+                                    radius: 4
+                                    color: selected
+                                        ? Qt.rgba(Components.Theme.accent.r,
+                                                  Components.Theme.accent.g,
+                                                  Components.Theme.accent.b, 0.22)
+                                        : Qt.rgba(Components.Theme.textSecondary.r,
+                                                  Components.Theme.textSecondary.g,
+                                                  Components.Theme.textSecondary.b, 0.1)
+
+                                    Text {
+                                        id: preferredLabel
+                                        objectName: "displayPreferredLabel_" + key
+                                        anchors.centerIn: parent
+                                        text: "Preferred"
+                                        textFormat: Text.PlainText
+                                        color: selected
+                                            ? Components.Theme.accent
+                                            : Components.Theme.textSecondary
+                                        font.family: Components.Theme.fontFamily
+                                        font.pixelSize: Components.Theme.fontSizeTiny
+                                        font.weight: Components.Theme.fontWeightMedium
+                                    }
+                                }
+
+                                Item { Layout.fillWidth: true }
+
+                                Text {
+                                    objectName: "displayResolutionCheck_" + key
+                                    visible: selected
+                                    text: "✓"
+                                    textFormat: Text.PlainText
+                                    color: Components.Theme.accent
+                                    font.pixelSize: Components.Theme.fontSizeNormal
+                                    font.weight: Components.Theme.fontWeightBold
+                                }
+                            }
+                        }
+                    }
 
                     Text {
-                        objectName: "displayOutputTitle"
-                        Layout.fillWidth: true
-                        text: root.titleFor(root.selectedOutput)
-                        textFormat: Text.PlainText
-                        color: Components.Theme.textPrimary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeHeader
-                        font.weight: Components.Theme.fontWeightDemiBold
-                        elide: Text.ElideRight
-                    }
-                    Text {
-                        Layout.fillWidth: true
-                        text: root.subtitleFor(root.selectedOutput)
+                        objectName: "displayResolutionListToggleLabel"
+                        visible: root.allResolutionGroups.length
+                            > root.defaultResolutionGroups.length
+                        Layout.topMargin: 6
+                        text: root.showAllResolutions
+                            ? "⌃  Show less" : "⌄  Show all resolutions"
                         textFormat: Text.PlainText
                         color: Components.Theme.textSecondary
                         font.family: Components.Theme.fontFamily
                         font.pixelSize: Components.Theme.fontSizeSmall
-                        elide: Text.ElideRight
-                    }
-                }
+                        font.weight: Components.Theme.fontWeightMedium
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    visible: root.controller && !root.controller.available
-                    spacing: Components.Theme.spacingMedium
+                        MouseArea {
+                            objectName: "displayResolutionListToggle"
+                            anchors.fill: parent
+                            anchors.margins: -4
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.showAllResolutions = !root.showAllResolutions
+                        }
+                    }
 
                     Text {
-                        objectName: "displayError"
+                        objectName: "displayModesTruncated"
+                        visible: Boolean(root.selectedOutput
+                            && Boolean(root.selectedOutput.modesTruncated))
                         Layout.fillWidth: true
-                        text: root.controller && root.controller.lastError !== ""
-                            ? root.controller.lastError
-                            : "Connect to Typhon to read display information."
+                        Layout.topMargin: 8
+                        text: "Some available modes are not shown."
                         textFormat: Text.PlainText
-                        color: Components.Theme.textSecondary
+                        color: Components.Theme.warningColor
                         font.family: Components.Theme.fontFamily
                         font.pixelSize: Components.Theme.fontSizeSmall
                         wrapMode: Text.WordWrap
                     }
+                }
+
+                Form.FormCard {
+                    objectName: "displaySettingsCard"
+                    Layout.bottomMargin: 24
+                    radius: 12
+                    margins: 0
+
+                    ColumnLayout {
+                        width: parent.width
+                        spacing: 0
+
+                        Form.SettingRow {
+                            objectName: "displaySettingRefresh"
+                            label: "Refresh rate"
+                            isLast: false
+
+                            DisplayValueControl {
+                                objectName: "displayRefreshControl"
+                                controlWidth: 130
+                                text: root.refreshLabel(root.selectedOutput)
+                                options: root.currentResolutionGroup
+                                    ? root.currentResolutionGroup.rates : []
+                                selectedModeId: root.selectedOutput
+                                    ? root.selectedOutput.currentModeId : 0
+                            }
+                        }
+
+                        Form.SettingRow {
+                            objectName: "displaySettingColorDepth"
+                            label: "Color depth"
+                            isLast: false
+
+                            DisplayValueControl {
+                                objectName: "displayColorDepthControl"
+                                controlWidth: 130
+                                text: "Unavailable"
+                            }
+                        }
+
+                        Form.SettingRow {
+                            objectName: "displaySettingVrr"
+                            label: "Variable Refresh Rate"
+                            sublabel: "VRR / FreeSync / G-Sync mode when supported by the display"
+                            isLast: false
+
+                            DisplayValueControl {
+                                objectName: "displayVrrControl"
+                                controlWidth: 160
+                                text: root.selectedOutput
+                                    ? root.vrrText(root.selectedOutput.vrrState)
+                                    : "Unavailable"
+                                showChevron: false
+                            }
+                        }
+
+                        Form.SettingRow {
+                            objectName: "displaySettingScale"
+                            label: "Display scale"
+                            isLast: true
+
+                            DisplayValueControl {
+                                objectName: "displayScaleControl"
+                                controlWidth: 130
+                                text: root.selectedOutput
+                                    ? root.formatScale(root.selectedOutput.scaleMilli)
+                                    : "Unavailable"
+                            }
+                        }
+                    }
+                }
+
+                Form.SectionHeader {
+                    objectName: "displayColorNightShiftHeader"
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: 12
+                    text: "COLOR & NIGHT SHIFT"
+                }
+
+                Form.FormCard {
+                    objectName: "displayColorNightShiftCard"
+                    Layout.bottomMargin: 24
+                    radius: 12
+                    margins: 0
+
+                    ColumnLayout {
+                        width: parent.width
+                        spacing: 0
+
+                        Form.SettingRow {
+                            label: "Night Shift"
+                            sublabel: "Warm screen colors to reduce blue light at night"
+                            isLast: false
+                            DisplayValueControl {
+                                objectName: "displayNightShiftControl"
+                                controlWidth: 130
+                                text: "Unavailable"
+                            }
+                        }
+                        Form.SettingRow {
+                            label: "Night Shift strength"
+                            sublabel: "Unavailable because the current backend has no color adjustment control"
+                            isLast: false
+                            DisplayValueControl {
+                                objectName: "displayNightShiftStrengthControl"
+                                controlWidth: 130
+                                text: "Unavailable"
+                            }
+                        }
+                        Form.SettingRow {
+                            label: "Schedule"
+                            sublabel: "Turn Night Shift on and off automatically"
+                            isLast: false
+                            DisplayValueControl {
+                                objectName: "displayNightShiftScheduleControl"
+                                controlWidth: 130
+                                text: "Unavailable"
+                            }
+                        }
+                        Form.SettingRow {
+                            label: "Start"
+                            sublabel: "When Night Shift should turn on"
+                            isLast: false
+                            DisplayValueControl {
+                                objectName: "displayNightShiftStartControl"
+                                controlWidth: 130
+                                text: "Unavailable"
+                            }
+                        }
+                        Form.SettingRow {
+                            label: "End"
+                            sublabel: "When Night Shift should turn off"
+                            isLast: false
+                            DisplayValueControl {
+                                objectName: "displayNightShiftEndControl"
+                                controlWidth: 130
+                                text: "Unavailable"
+                            }
+                        }
+                        Form.SettingRow {
+                            label: "Saturation"
+                            sublabel: "Unavailable because saturation adjustment is not supported"
+                            isLast: true
+                            DisplayValueControl {
+                                objectName: "displaySaturationControl"
+                                controlWidth: 130
+                                text: "Unavailable"
+                            }
+                        }
+                    }
+                }
+
+                RowLayout {
+                    objectName: "displayApplyArea"
+                    Layout.fillWidth: true
+                    Layout.topMargin: 8
+                    Layout.bottomMargin: 8
+                    spacing: Components.Theme.spacingMedium
+
+                    Item { Layout.fillWidth: true }
+
+                    Text {
+                        objectName: "displayAppliedFeedback"
+                        visible: false
+                        text: "✓ Applied"
+                        textFormat: Text.PlainText
+                        color: Components.Theme.accent
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeNormal
+                        font.weight: Components.Theme.fontWeightMedium
+                    }
+
                     Controls.Button {
-                        objectName: "displayRetry"
-                        text: "Retry"
-                        flat: true
-                        enabled: root.controller && !root.controller.busy
-                        onClicked: if (root.controller) root.controller.refresh()
+                        objectName: "displayApplyButton"
+                        text: "Apply"
+                        primary: true
+                        enabled: false
                     }
-                }
-            }
-        }
-
-        Form.SectionHeader {
-            text: "RESOLUTION"
-            Layout.bottomMargin: 12
-        }
-
-        Form.FormCard {
-            objectName: "displayResolutionSection"
-            Layout.bottomMargin: 24
-            margins: Components.Theme.spacingTiny
-            visible: root.selectedOutput !== null
-
-            ColumnLayout {
-                width: parent.width
-                spacing: 0
-
-                Repeater {
-                    model: root.resolutionGroups(root.selectedOutput)
-                    delegate: Rectangle {
-                        required property int index
-                        required property var modelData
-                        objectName: "displayResolutionRow_" + modelData.width + "x" + modelData.height
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 64
-                        color: modelData.current
-                            ? Qt.rgba(Components.Theme.accent.r, Components.Theme.accent.g,
-                                      Components.Theme.accent.b, Components.Theme.themeMode === 1 ? 0.07 : 0.11)
-                            : "transparent"
-                        Behavior on color {
-                            ColorAnimation { duration: Components.Theme.animationNormal; easing.type: Easing.OutQuart }
-                        }
-
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: Components.Theme.spacingXLarge
-                            anchors.rightMargin: Components.Theme.spacingXLarge
-                            spacing: Components.Theme.spacingMedium
-
-                            Text {
-                                Layout.preferredWidth: 150
-                                text: modelData.width + " × " + modelData.height
-                                textFormat: Text.PlainText
-                                color: modelData.current ? Components.Theme.accent : Components.Theme.textPrimary
-                                font.family: Components.Theme.fontFamily
-                                font.pixelSize: Components.Theme.fontSizeNormal
-                                font.weight: modelData.current ? Components.Theme.fontWeightDemiBold
-                                                               : Components.Theme.fontWeightMedium
-                            }
-
-                            Rectangle {
-                                visible: modelData.preferred
-                                objectName: "displayPreferredBadge_" + modelData.width + "x" + modelData.height
-                                Layout.preferredWidth: preferredText.implicitWidth + Components.Theme.spacingMedium
-                                Layout.preferredHeight: 24
-                                radius: Components.Theme.controlRadius
-                                color: Qt.rgba(Components.Theme.accent.r, Components.Theme.accent.g,
-                                               Components.Theme.accent.b, Components.Theme.themeMode === 1 ? 0.10 : 0.18)
-                                Text {
-                                    id: preferredText
-                                    objectName: "displayPreferredLabel_" + modelData.width + "x" + modelData.height
-                                    anchors.centerIn: parent
-                                    text: "Preferred"
-                                    color: Components.Theme.accent
-                                    font.family: Components.Theme.fontFamily
-                                    font.pixelSize: Components.Theme.fontSizeTiny
-                                    font.weight: Components.Theme.fontWeightDemiBold
-                                }
-                            }
-
-                            Item { Layout.fillWidth: true }
-
-                            Text {
-                                Layout.maximumWidth: 360
-                                objectName: "displayResolutionRates_" + modelData.width + "x" + modelData.height
-                                text: {
-                                    const values = []
-                                    for (let rateIndex = 0; rateIndex < modelData.rates.length; ++rateIndex) {
-                                        const rate = modelData.rates[rateIndex]
-                                        values.push(root.formatRate(rate.milliHz) + (rate.interlaced ? "i" : "") + " Hz")
-                                    }
-                                    return values.join(" · ")
-                                }
-                                textFormat: Text.PlainText
-                                color: Components.Theme.textSecondary
-                                font.family: Components.Theme.fontFamily
-                                font.pixelSize: Components.Theme.fontSizeSmall
-                                horizontalAlignment: Text.AlignRight
-                                wrapMode: Text.Wrap
-                            }
-                        }
-
-                        Rectangle {
-                            visible: index < root.resolutionGroups(root.selectedOutput).length - 1
-                            anchors.bottom: parent.bottom
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.leftMargin: Components.Theme.spacingXLarge
-                            height: 1
-                            color: Components.Theme.cardBorder
-                        }
-                    }
-                }
-
-                Text {
-                    objectName: "displayNoModes"
-                    Layout.fillWidth: true
-                    Layout.margins: Components.Theme.spacingXLarge
-                    visible: root.selectedOutput && root.resolutionGroups(root.selectedOutput).length === 0
-                    text: root.selectedOutput && root.selectedOutput.hasCurrentMode
-                        ? "No additional mode information is available."
-                        : "No current display mode is active."
-                    color: Components.Theme.textSecondary
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeSmall
-                    textFormat: Text.PlainText
-                }
-                Text {
-                    objectName: "displayModesTruncated"
-                    Layout.fillWidth: true
-                    Layout.leftMargin: Components.Theme.spacingXLarge
-                    Layout.rightMargin: Components.Theme.spacingXLarge
-                    Layout.bottomMargin: Components.Theme.spacingMedium
-                    visible: root.selectedOutput && root.selectedOutput.modesTruncated
-                    text: "Some available modes are not shown."
-                    color: Components.Theme.textSecondary
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeTiny
-                    textFormat: Text.PlainText
-                }
-            }
-        }
-
-        Form.SectionHeader {
-            text: "DISPLAY DETAILS"
-            Layout.bottomMargin: 12
-        }
-
-        Form.FormCard {
-            objectName: "displayDetailsCard"
-            margins: Components.Theme.spacingTiny
-            visible: root.selectedOutput !== null
-
-            Form.SettingRow {
-                label: "Refresh rate"
-                sublabel: "Current mode refresh rate"
-                Text {
-                    objectName: "displayRefreshRate"
-                    text: root.selectedOutput && root.selectedOutput.hasCurrentMode
-                        ? root.formatRate(root.selectedOutput.currentRefreshMilliHz) + " Hz" : "Unavailable"
-                    textFormat: Text.PlainText
-                    color: Components.Theme.textSecondary
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeNormal
-                }
-            }
-            Form.SettingRow {
-                label: "Display scale"
-                sublabel: "Current logical scale"
-                Text {
-                    objectName: "displayScale"
-                    text: root.selectedOutput ? root.formatScale(root.selectedOutput.scaleMilli) : "Unavailable"
-                    textFormat: Text.PlainText
-                    color: Components.Theme.textSecondary
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeNormal
-                }
-            }
-            Form.SettingRow {
-                label: "Orientation"
-                sublabel: "Current display orientation"
-                Text {
-                    objectName: "displayOrientation"
-                    text: root.selectedOutput ? root.orientationText(root.selectedOutput.transform) : "Unavailable"
-                    textFormat: Text.PlainText
-                    color: Components.Theme.textSecondary
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeNormal
-                }
-            }
-            Form.SettingRow {
-                label: "Variable refresh rate"
-                sublabel: "Reported connector capability"
-                Text {
-                    objectName: "displayVrrState"
-                    text: root.selectedOutput ? root.vrrText(root.selectedOutput.vrrState) : "Unavailable"
-                    textFormat: Text.PlainText
-                    color: Components.Theme.textSecondary
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeNormal
-                }
-            }
-            Form.SettingRow {
-                label: "Connector"
-                sublabel: "Physical output connection"
-                isLast: true
-                Text {
-                    objectName: "displayConnector"
-                    text: root.selectedOutput && root.nonEmpty(root.selectedOutput.name)
-                        ? String(root.selectedOutput.name) : "Unavailable"
-                    textFormat: Text.PlainText
-                    color: Components.Theme.textSecondary
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeNormal
                 }
             }
         }

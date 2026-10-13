@@ -44,6 +44,7 @@ struct TyphonScreenCaptureClient::Private {
 #if ASTREA_HAVE_TYPHON_PROTOCOL
     wl_registry *registry = nullptr;
     wl_callback *registrySync = nullptr;
+    bool registryReady = false;
     wl_output *output = nullptr;
     std::uint32_t outputName = 0;
     bool outputNameValid = false;
@@ -54,6 +55,7 @@ struct TyphonScreenCaptureClient::Private {
 
     void destroyObjects(bool sendDestroy);
     void bindGeneration(std::uint64_t nextGeneration);
+    void refreshReadiness();
     void fail(const QString &reason);
     void failRequest(const QString &reason);
     void handleReady(int fd, std::uint32_t width, std::uint32_t height,
@@ -94,6 +96,17 @@ void TyphonScreenCaptureClient::Private::global(void *data, wl_registry *registr
         self->outputName = name;
         self->outputNameValid = self->output != nullptr;
     }
+    self->refreshReadiness();
+}
+
+void TyphonScreenCaptureClient::Private::refreshReadiness()
+{
+    // Globals may arrive after the initial registry sync, or be replaced
+    // without reconnecting the shared Wayland transport.
+    if (!started || !registryReady || !manager || !output || ready)
+        return;
+    ready = true;
+    owner->stateChanged(QStringLiteral("ready"));
 }
 
 void TyphonScreenCaptureClient::Private::globalRemove(void *data, wl_registry *, std::uint32_t name)
@@ -132,13 +145,13 @@ void TyphonScreenCaptureClient::Private::synchronized(void *data, wl_callback *c
         return;
     self->registrySync = nullptr;
     wl_callback_destroy(callback);
+    self->registryReady = true;
     if (!self->started || !self->manager || !self->output) {
         if (self->started)
             self->owner->diagnostic(QStringLiteral("Typhon screen capture output is unavailable"));
         return;
     }
-    self->ready = true;
-    self->owner->stateChanged(QStringLiteral("ready"));
+    self->refreshReadiness();
 }
 
 void TyphonScreenCaptureClient::Private::readyEvent(void *data, astrea_screen_capture_v1 *, int fd,
@@ -238,6 +251,7 @@ void TyphonScreenCaptureClient::Private::destroyObjects(bool sendDestroy)
 {
     const bool transportAlive = sharedConnection && sharedConnection->nativeDisplay();
     ready = false;
+    registryReady = false;
     if (capture) {
         if (sendDestroy)
             astrea_screen_capture_v1_destroy(capture);

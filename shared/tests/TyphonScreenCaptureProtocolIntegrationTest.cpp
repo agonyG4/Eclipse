@@ -1,4 +1,5 @@
 #include <QCoreApplication>
+#include <QDir>
 #include <QFile>
 #include <QImage>
 #include <QSignalSpy>
@@ -48,7 +49,7 @@ public:
         wl_resource *resource = nullptr;
     };
 
-    explicit FakeScreenCaptureCompositor(QObject *parent = nullptr)
+    explicit FakeScreenCaptureCompositor(QObject *parent = nullptr, bool publishOutput = true)
         : QObject(parent)
     {
         QVERIFY(m_runtime.isValid());
@@ -82,8 +83,8 @@ public:
                                            &astrea_screen_capture_manager_v1_interface, 1, this,
                                            &bindCaptureManager);
         QVERIFY(m_captureGlobal);
-        m_outputGlobal = wl_global_create(m_display, &wl_output_interface, 4, this, &bindOutput);
-        QVERIFY(m_outputGlobal);
+        if (publishOutput)
+            addOutput();
     }
 
     ~FakeScreenCaptureCompositor() override
@@ -145,6 +146,22 @@ public:
     }
 
     void clearReadyFile() { m_readyFile.reset(); }
+
+    void addOutput()
+    {
+        QVERIFY(!m_outputGlobal);
+        m_outputGlobal = wl_global_create(m_display, &wl_output_interface, 4, this, &bindOutput);
+        QVERIFY(m_outputGlobal);
+        flushClients();
+    }
+
+    void removeOutput()
+    {
+        QVERIFY(m_outputGlobal);
+        wl_global_destroy(m_outputGlobal);
+        m_outputGlobal = nullptr;
+        flushClients();
+    }
 
 private:
     static void bindAuthManager(wl_client *client, void *data, uint32_t version, uint32_t id)
@@ -305,7 +322,7 @@ private:
     static const struct astrea_screen_capture_v1_interface kCaptureImplementation;
     static const struct wl_output_interface kOutputImplementation;
 
-    QTemporaryDir m_runtime;
+    QTemporaryDir m_runtime{QDir::tempPath() + QStringLiteral("/capture-XXXXXX")};
     QByteArray m_previousRuntime;
     QByteArray m_previousDisplay;
     QByteArray m_previousCapability;
@@ -359,7 +376,61 @@ private slots:
     void malformedReadyPreservesReadinessForNextCapture();
     void disconnectTerminatesOldGenerationAndReconnects();
     void stoppingClientSendsManagerDestroyRequest();
+    void lateOutputMakesCaptureAvailable();
+    void replacementOutputRestoresCaptureWithoutReconnect();
 };
+
+void TyphonScreenCaptureProtocolIntegrationTest::lateOutputMakesCaptureAvailable()
+{
+    FakeScreenCaptureCompositor compositor(nullptr, false);
+    TyphonSharedConnection connection;
+    TyphonScreenCaptureClient client(&connection);
+    QSignalSpy diagnostics(&client, &TyphonScreenCaptureClient::diagnostic);
+
+    connection.start();
+    client.start();
+    QVERIFY(compositor.pumpUntil([&diagnostics] { return !diagnostics.isEmpty(); }));
+    QVERIFY(!client.isReady());
+    const auto generation = client.connectionGeneration();
+
+    compositor.addOutput();
+    QVERIFY(compositor.pumpUntil([&client] { return client.isReady(); }));
+    QCOMPARE(client.connectionGeneration(), generation);
+    QVERIFY(client.requestCapture());
+    QVERIFY(compositor.pumpUntil([&compositor] { return compositor.captureRequestCount() == 1; }));
+    QCOMPARE(compositor.lastOutput(), compositor.outputResource());
+    connection.stop();
+}
+
+void TyphonScreenCaptureProtocolIntegrationTest::replacementOutputRestoresCaptureWithoutReconnect()
+{
+    FakeScreenCaptureCompositor compositor;
+    TyphonSharedConnection connection;
+    TyphonScreenCaptureClient client(&connection);
+    QSignalSpy failures(&client, &TyphonScreenCaptureClient::failed);
+    QSignalSpy ready(&client, &TyphonScreenCaptureClient::ready);
+
+    connection.start();
+    client.start();
+    QVERIFY(compositor.pumpUntil([&client] { return client.isReady(); }));
+    const auto generation = client.connectionGeneration();
+    QVERIFY(client.requestCapture());
+    QVERIFY(compositor.pumpUntil([&compositor] { return compositor.captureRequestCount() == 1; }));
+
+    compositor.removeOutput();
+    QVERIFY(compositor.pumpUntil([&failures] { return failures.count() == 1; }));
+    QCOMPARE(failures.at(0).at(0).toString(), QStringLiteral("output_gone"));
+    QVERIFY(!client.isReady());
+    compositor.addOutput();
+    QVERIFY(compositor.pumpUntil([&client] { return client.isReady(); }));
+    QCOMPARE(client.connectionGeneration(), generation);
+    QVERIFY(client.requestCapture());
+    QVERIFY(compositor.pumpUntil([&compositor] { return compositor.captureRequestCount() == 2; }));
+    QCOMPARE(compositor.lastOutput(), compositor.outputResource());
+    compositor.sendReady(QByteArray(4, '\xff'), 1, 1, 4);
+    QVERIFY(compositor.pumpUntil([&ready] { return ready.count() == 1; }));
+    connection.stop();
+}
 
 void TyphonScreenCaptureProtocolIntegrationTest::captureUsesGeneratedRequestOpcodeAndImportsReadyImage()
 {

@@ -4,6 +4,7 @@
 
 #include <QClipboard>
 #include <QDateTime>
+#include <QDebug>
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
@@ -237,6 +238,7 @@ void ScreenshotController::failOperation(const QString &reason, std::uint64_t to
 {
     if (token != m_operationToken)
         return;
+    qWarning().noquote() << "Astrea screenshot failed:" << reason;
     emit captureFailed(reason);
     returnToIdle();
 }

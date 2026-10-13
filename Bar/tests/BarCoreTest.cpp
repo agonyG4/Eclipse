@@ -6,8 +6,6 @@
 #include "core/WorkspaceModel.hpp"
 #include "apps/DesktopEntryCatalog.hpp"
 #include "launch/ApplicationLauncher.hpp"
-#include "Spotlight/core/SpotlightController.hpp"
-#include "platform/runtime/SpotlightRuntimePaths.hpp"
 #include "platform/wayland/BarSurfaceBundle.hpp"
 #include "platform/wayland/BarSurfaceManager.hpp"
 
@@ -45,8 +43,7 @@ private slots:
     void popupReopenCancelsClosingTransition();
     void popupRejectsUnsupportedKinds();
     void popupSupportsNativeIndicatorKinds();
-    void spotlightComponentEnablementIsAuthoritative();
-    void barSearchCapabilityTracksSpotlightEnablement();
+    void searchCapabilityUsesPublicSignalContract();
     void settingsActionUsesCatalogAndLauncherSeam();
     void surfaceManagerOwnsProductionLifecycleAndEnablement();
     void surfaceRemovalDuringPopupCloseIsImmediate();
@@ -384,53 +381,38 @@ void BarCoreTest::popupSupportsNativeIndicatorKinds()
 
 }
 
-void BarCoreTest::spotlightComponentEnablementIsAuthoritative()
+void BarCoreTest::searchCapabilityUsesPublicSignalContract()
 {
-    const SpotlightRuntimePaths paths = SpotlightRuntimePaths::fromEnvironment();
-    SpotlightController spotlight(paths);
-    spotlight.setWeatherEnabled(false);
-    spotlight.setComponentEnabled(false);
-
-    QVERIFY(!spotlight.componentEnabled());
-    spotlight.show();
-    QVERIFY(!spotlight.isOpen());
-    spotlight.toggle();
-    QVERIFY(!spotlight.isOpen());
-    spotlight.setQuery(QStringLiteral("settings"));
-    QVERIFY(!spotlight.isOpen());
-
-    spotlight.setComponentEnabled(true);
-    QVERIFY(spotlight.componentEnabled());
-    spotlight.show();
-    QVERIFY(spotlight.isOpen());
-}
-
-void BarCoreTest::barSearchCapabilityTracksSpotlightEnablement()
-{
-    const SpotlightRuntimePaths paths = SpotlightRuntimePaths::fromEnvironment();
-    SpotlightController spotlight(paths);
-    spotlight.setWeatherEnabled(false);
-    BarController missing(nullptr, nullptr, nullptr);
-    QVERIFY(!missing.searchAvailable());
-    QVERIFY(!missing.showSearch());
-
-    BarController bar(nullptr, nullptr, &spotlight);
+    BarController bar(nullptr, nullptr);
     QSignalSpy capabilitiesSpy(&bar, &BarController::capabilitiesChanged);
+    QSignalSpy searchSpy(&bar, &BarController::searchRequested);
+    QVERIFY(capabilitiesSpy.isValid());
+    QVERIFY(searchSpy.isValid());
 
-    QVERIFY(bar.searchAvailable());
-    QVERIFY(bar.showSearch());
-    QVERIFY(spotlight.isOpen());
-
-    spotlight.setComponentEnabled(false);
     QVERIFY(!bar.searchAvailable());
-    QVERIFY(capabilitiesSpy.count() >= 1);
     QVERIFY(!bar.showSearch());
-    QVERIFY(!spotlight.isOpen());
+    QCOMPARE(searchSpy.count(), 0);
+    QCOMPARE(capabilitiesSpy.count(), 0);
 
-    spotlight.setComponentEnabled(true);
+    bar.setSearchAvailable(true);
     QVERIFY(bar.searchAvailable());
+    QCOMPARE(capabilitiesSpy.count(), 1);
+    bar.setSearchAvailable(true);
+    QCOMPARE(capabilitiesSpy.count(), 1);
+
     QVERIFY(bar.showSearch());
-    QVERIFY(spotlight.isOpen());
+    QCOMPARE(searchSpy.count(), 1);
+
+    bar.setEnabled(false);
+    QVERIFY(!bar.showSearch());
+    QCOMPARE(searchSpy.count(), 1);
+
+    bar.setEnabled(true);
+    bar.setSearchAvailable(false);
+    QVERIFY(!bar.searchAvailable());
+    QVERIFY(!bar.showSearch());
+    QCOMPARE(searchSpy.count(), 1);
+    QCOMPARE(capabilitiesSpy.count(), 2);
 }
 
 void BarCoreTest::settingsActionUsesCatalogAndLauncherSeam()

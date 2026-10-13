@@ -2,7 +2,6 @@
 
 #include "core/BarController.hpp"
 #include "core/BarPopupController.hpp"
-#include "../../../Shell/core/ContextMenuController.hpp"
 #include "platform/wayland/BarSurfaceBundle.hpp"
 
 #include <QGuiApplication>
@@ -22,7 +21,7 @@ BarSurfaceManager::BarSurfaceManager(QGuiApplication &application, QQmlApplicati
                                      QObject *parent,
                                      BundleFactory bundleFactory,
                                      Astrea::StatusNotifier::StatusNotifierService *statusNotifier,
-                                     Astrea::Shell::ContextMenuController *contextMenuController)
+                                     QObject *contextMenuController)
     : QObject(parent)
     , m_application(application)
     , m_engine(engine)
@@ -41,7 +40,7 @@ BarSurfaceManager::BarSurfaceManager(QGuiApplication &application, QQmlApplicati
             return new BarSurfaceBundle(screen, &m_engine, m_barController, m_clockService,
                                         m_workspaceModel, m_audioService, m_networkService,
                                         m_bluetoothService, parent, m_statusNotifier,
-                                        m_contextMenuController);
+                                        m_contextMenuController.data());
         };
     }
     connect(&m_application, &QGuiApplication::screenAdded,

@@ -7,7 +7,6 @@
 class ApplicationLauncher;
 class BarClockService;
 class DesktopEntryCatalog;
-class SpotlightController;
 class BarController final : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged)
@@ -24,13 +23,13 @@ class BarController final : public QObject {
 
 public:
     BarController(DesktopEntryCatalog *catalog, ApplicationLauncher *launcher,
-                  SpotlightController *spotlight, WorkspaceModel *workspaceModel = nullptr,
-                  QObject *parent = nullptr);
+                  WorkspaceModel *workspaceModel = nullptr, QObject *parent = nullptr);
 
     bool enabled() const { return m_enabled; }
     void setEnabled(bool enabled);
 
-    bool searchAvailable() const;
+    bool searchAvailable() const { return m_searchAvailable; }
+    void setSearchAvailable(bool available);
     bool settingsAvailable() const;
     bool aboutAvailable() const { return false; }
     bool forceQuitAvailable() const { return false; }
@@ -47,6 +46,7 @@ public:
 signals:
     void enabledChanged();
     void capabilitiesChanged();
+    void searchRequested();
     void workspaceControllerChanged();
 
 private:
@@ -54,8 +54,8 @@ private:
 
     DesktopEntryCatalog *m_catalog = nullptr;
     ApplicationLauncher *m_launcher = nullptr;
-    SpotlightController *m_spotlight = nullptr;
     WorkspaceModel *m_workspaceModel = nullptr;
     QObject *m_workspaceController = nullptr;
     bool m_enabled = true;
+    bool m_searchAvailable = false;
 };

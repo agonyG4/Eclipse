@@ -25,18 +25,6 @@ function(shell_enable_sanitizers target)
 endfunction()
 
 add_library(astrea-shell-runtime STATIC
-    ../Bar/core/BarClockService.cpp
-    ../Bar/core/BarClockService.hpp
-    ../Bar/core/BarController.cpp
-    ../Bar/core/BarController.hpp
-    ../Bar/core/BarLayoutMetrics.cpp
-    ../Bar/core/BarLayoutMetrics.hpp
-    ../Bar/core/BarPopupController.cpp
-    ../Bar/core/BarPopupController.hpp
-    ../Bar/core/BarSurfacePolicy.cpp
-    ../Bar/core/BarSurfacePolicy.hpp
-    ../Bar/core/WorkspaceModel.cpp
-    ../Bar/core/WorkspaceModel.hpp
     core/ContextMenuController.cpp
     core/ContextMenuController.hpp
     core/ContextMenuModel.cpp
@@ -83,13 +71,13 @@ add_library(astrea-shell-runtime STATIC
 target_include_directories(astrea-shell-runtime PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/.."
-    "${CMAKE_CURRENT_SOURCE_DIR}/../Bar"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Dock"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Spotlight"
     "${CMAKE_CURRENT_SOURCE_DIR}/../AltTab"
 )
 
 target_link_libraries(astrea-shell-runtime PUBLIC
+    astrea-bar-core
     astrea-alttab-core
     astrea-paper-core
     astrea-shared-core
@@ -112,10 +100,6 @@ qt_add_executable(astrea-shell
     ../Dock/platform/wayland/DockInputRegionBridge.hpp
     ../Dock/platform/wayland/DockInputRegionPolicy.cpp
     ../Dock/platform/wayland/DockInputRegionPolicy.hpp
-    ../Bar/platform/wayland/BarSurfaceBundle.cpp
-    ../Bar/platform/wayland/BarSurfaceBundle.hpp
-    ../Bar/platform/wayland/BarSurfaceManager.cpp
-    ../Bar/platform/wayland/BarSurfaceManager.hpp
     platform/wayland/ContextMenuSurfaceBundle.cpp
     platform/wayland/ContextMenuSurfaceBundle.hpp
     platform/wayland/ContextMenuSurfaceManager.cpp
@@ -128,13 +112,13 @@ qt_add_executable(astrea-shell
 target_include_directories(astrea-shell PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/.."
-    "${CMAKE_CURRENT_SOURCE_DIR}/../Bar"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Dock"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Spotlight"
     "${CMAKE_CURRENT_SOURCE_DIR}/../AltTab"
 )
 target_link_libraries(astrea-shell PRIVATE
     astrea-shell-runtime
+    astrea-bar-wayland
     astrea-shared-coreplugin
     astrea-shared-system-qtplugin
     astrea-shared-wayland-effects
@@ -428,49 +412,6 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     target_link_libraries(dock-surface-geometry-test PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
     shell_enable_sanitizers(dock-surface-geometry-test)
     add_test(NAME dock-surface-geometry-test COMMAND dock-surface-geometry-test)
-
-    add_executable(bar-core-test
-        ../Bar/tests/BarCoreTest.cpp
-        ../Bar/platform/wayland/BarSurfaceBundle.cpp
-        ../Bar/platform/wayland/BarSurfaceBundle.hpp
-        ../Bar/platform/wayland/BarSurfaceManager.cpp
-        ../Bar/platform/wayland/BarSurfaceManager.hpp
-    )
-    target_include_directories(bar-core-test PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}"
-        "${CMAKE_CURRENT_SOURCE_DIR}/.."
-        "${CMAKE_CURRENT_SOURCE_DIR}/../Bar"
-    )
-    target_link_libraries(bar-core-test PRIVATE
-        astrea-shell-runtime
-        Qt6::Qml Qt6::Quick
-        Qt6::Test
-    )
-    shell_enable_sanitizers(bar-core-test)
-    add_test(NAME bar-core-test COMMAND bar-core-test)
-
-    add_executable(bar-qml-smoke-test
-        ../Bar/tests/BarQmlSmokeTest.cpp
-    )
-    astrea_add_bar_qml_resources(bar-qml-smoke-test)
-    target_link_libraries(bar-qml-smoke-test PRIVATE
-        astrea-shell-runtime
-        astrea-shared-coreplugin
-        astrea-shared-system-qtplugin
-        astrea-shared-wayland-effects
-        astrea-shared-wayland-effectsplugin
-        Qt6::Qml Qt6::Quick Qt6::Test
-    )
-    qt_import_qml_plugins(bar-qml-smoke-test)
-    shell_enable_sanitizers(bar-qml-smoke-test)
-    add_test(NAME bar-qml-smoke-test COMMAND bar-qml-smoke-test)
-
-    find_package(Python3 REQUIRED COMPONENTS Interpreter)
-    add_test(NAME bar-qml-legacy-guard
-             COMMAND ${Python3_EXECUTABLE}
-                     "${CMAKE_CURRENT_SOURCE_DIR}/../Bar/tests/check_bar_qml.py"
-                     "${CMAKE_CURRENT_SOURCE_DIR}/../Bar/qml"
-                     "${CMAKE_CURRENT_SOURCE_DIR}/../shared/system")
 
     add_executable(shell-ipc-test
         tests/ShellIpcTest.cpp

@@ -3,30 +3,18 @@
 #include "apps/DesktopEntryCatalog.hpp"
 #include "launch/ApplicationLauncher.hpp"
 #include "core/WorkspaceModel.hpp"
-#include "Spotlight/core/SpotlightController.hpp"
 
 BarController::BarController(DesktopEntryCatalog *catalog, ApplicationLauncher *launcher,
-                             SpotlightController *spotlight, WorkspaceModel *workspaceModel,
-                             QObject *parent)
+                             WorkspaceModel *workspaceModel, QObject *parent)
     : QObject(parent)
     , m_catalog(catalog)
     , m_launcher(launcher)
-    , m_spotlight(spotlight)
     , m_workspaceModel(workspaceModel)
 {
     if (m_catalog) {
         connect(m_catalog, &DesktopEntryCatalog::indexUpdated,
                 this, &BarController::capabilitiesChanged);
     }
-    if (m_spotlight) {
-        connect(m_spotlight, &SpotlightController::componentEnabledChanged,
-                this, &BarController::capabilitiesChanged);
-    }
-}
-
-bool BarController::searchAvailable() const
-{
-    return m_spotlight != nullptr && m_spotlight->componentEnabled();
 }
 
 void BarController::setWorkspaceController(QObject *controller)
@@ -45,6 +33,14 @@ void BarController::setEnabled(bool enabled)
     emit enabledChanged();
 }
 
+void BarController::setSearchAvailable(bool available)
+{
+    if (m_searchAvailable == available)
+        return;
+    m_searchAvailable = available;
+    emit capabilitiesChanged();
+}
+
 bool BarController::findSettingsEntry() const
 {
     if (!m_catalog)
@@ -60,9 +56,9 @@ bool BarController::settingsAvailable() const
 
 bool BarController::showSearch()
 {
-    if (!m_enabled || !m_spotlight || !searchAvailable())
+    if (!m_enabled || !m_searchAvailable)
         return false;
-    m_spotlight->show();
+    emit searchRequested();
     return true;
 }
 

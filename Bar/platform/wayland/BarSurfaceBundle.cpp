@@ -6,7 +6,6 @@
 #include "core/BarPopupController.hpp"
 #include "core/BarSurfacePolicy.hpp"
 #include "core/WorkspaceModel.hpp"
-#include "../../../Shell/core/ContextMenuController.hpp"
 #include "platform/wayland/LayerShellHelper.hpp"
 #include "system/audio/AudioService.hpp"
 #include "system/network/NetworkService.hpp"
@@ -41,7 +40,7 @@ BarSurfaceBundle::BarSurfaceBundle(QScreen *screen, QQmlApplicationEngine *engin
                                    Astrea::System::BluetoothService *bluetoothService,
                                    QObject *parent,
                                    Astrea::StatusNotifier::StatusNotifierService *statusNotifier,
-                                   Astrea::Shell::ContextMenuController *contextMenuController)
+                                   QObject *contextMenuController)
     : QObject(parent)
     , m_screen(screen)
     , m_engine(engine)
@@ -60,17 +59,6 @@ BarSurfaceBundle::BarSurfaceBundle(QScreen *screen, QQmlApplicationEngine *engin
             this, &BarSurfaceBundle::syncPopupMapping);
     connect(m_popupController, &BarPopupController::changed,
             this, &BarSurfaceBundle::popupStateChanged);
-    connect(m_popupController, &BarPopupController::changed, this, [this] {
-        if (!m_popupController || !m_popupController->isOpen()
-            || !m_contextMenuController
-            || !m_contextMenuController->hasActivePresentation())
-            return;
-        // Bar popups and Context Menus are both shell-owned modal surfaces;
-        // complete this coordination close synchronously so two input
-        // shields are never active at once.
-        m_contextMenuController->close();
-        m_contextMenuController->completeClose();
-    });
 }
 
 BarSurfaceBundle::~BarSurfaceBundle()
@@ -265,7 +253,7 @@ QQuickWindow *BarSurfaceBundle::createSurface(const QUrl &sourceUrl, int width, 
         {QStringLiteral("networkService"), objectVariant(m_networkService)},
         {QStringLiteral("bluetoothService"), objectVariant(m_bluetoothService)},
         {QStringLiteral("statusNotifierService"), objectVariant(m_statusNotifier)},
-        {QStringLiteral("contextMenuController"), objectVariant(m_contextMenuController)},
+        {QStringLiteral("contextMenuController"), objectVariant(m_contextMenuController.data())},
         {QStringLiteral("popupController"), objectVariant(m_popupController)},
         {QStringLiteral("barGeometry"), objectVariant(m_layoutMetrics)},
         {QStringLiteral("outputWidth"), width},

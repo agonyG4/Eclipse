@@ -115,8 +115,14 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
     m_barClock = std::make_unique<BarClockService>();
     m_themeController = std::make_unique<ThemeController>();
     m_barController = std::make_unique<BarController>(m_catalog.get(), m_launcher.get(),
-                                                       m_spotlightController.get(),
                                                        m_workspaceModel.get());
+    m_barController->setSearchAvailable(m_spotlightController->componentEnabled());
+    connect(m_spotlightController.get(), &SpotlightController::componentEnabledChanged,
+            m_barController.get(), [this] {
+        m_barController->setSearchAvailable(m_spotlightController->componentEnabled());
+    }, Qt::DirectConnection);
+    connect(m_barController.get(), &BarController::searchRequested,
+            m_spotlightController.get(), &SpotlightController::show, Qt::DirectConnection);
     m_barController->setWorkspaceController(m_workspaceController.get());
     m_shortcutDispatcher = std::make_unique<ShellShortcutDispatcher>(
         m_altTabController.get(), m_spotlightController.get(), m_screenshotController.get());

@@ -68,6 +68,7 @@ private slots:
     void testConfigSync_weatherDisabled();
     void testConfigSync_weatherEnabled();
     void testConfigSync_componentDisabled();
+    void testDisabledComponentRejectsPresentation();
     void testConfigSync_liveUpdate();
     void testConfigSync_atomicReplacement();
     void testResolveIconJson_validJson();
@@ -979,6 +980,26 @@ void TestSpotlightBackend::testConfigSync_componentDisabled() {
 
     // Should remain closed (was never open)
     QVERIFY(!controller.isOpen());
+}
+
+void TestSpotlightBackend::testDisabledComponentRejectsPresentation() {
+    SpotlightRuntimePaths paths = SpotlightRuntimePaths::fromEnvironment();
+    SpotlightController controller(paths);
+    controller.setWeatherEnabled(false);
+    controller.setComponentEnabled(false);
+
+    QVERIFY(!controller.componentEnabled());
+    controller.show();
+    QVERIFY(!controller.isOpen());
+    controller.toggle();
+    QVERIFY(!controller.isOpen());
+    controller.setQuery(QStringLiteral("settings"));
+    QVERIFY(!controller.isOpen());
+
+    controller.setComponentEnabled(true);
+    QVERIFY(controller.componentEnabled());
+    controller.show();
+    QVERIFY(controller.isOpen());
 }
 
 void TestSpotlightBackend::testConfigSync_liveUpdate() {

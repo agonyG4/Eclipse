@@ -79,6 +79,7 @@ class ShellRuntimeTest final : public QObject {
 
 private slots:
     void createsOneSharedOwnershipGraph();
+    void barSearchCapabilityTracksSpotlightComposition();
     void systemServicesRemainRestartableAcrossRuntimeLifecycle();
     void spatialAudioConfigurationDefaultsDisabledAndUsesXdgPath();
     void spatialAudioConfigurationWatcherHandlesAtomicReplacementAndSemanticChanges();
@@ -137,6 +138,37 @@ void ShellRuntimeTest::createsOneSharedOwnershipGraph()
             != static_cast<QObject *>(runtime.bluetoothService()));
     QVERIFY(static_cast<QObject *>(runtime.networkService())
             != static_cast<QObject *>(runtime.bluetoothService()));
+}
+
+void ShellRuntimeTest::barSearchCapabilityTracksSpotlightComposition()
+{
+    EnvironmentGuard environmentGuard({"XDG_CONFIG_HOME"});
+    QTemporaryDir configHome;
+    QVERIFY(configHome.isValid());
+    qputenv("XDG_CONFIG_HOME", configHome.path().toUtf8());
+
+    ShellRuntime runtime;
+    QString error;
+    QVERIFY2(runtime.initialize(QStringLiteral("auto"), &error), qPrintable(error));
+    auto *bar = runtime.barController();
+    auto *spotlight = runtime.spotlightController();
+    QVERIFY(bar);
+    QVERIFY(spotlight);
+
+    spotlight->setWeatherEnabled(false);
+    QCOMPARE(bar->searchAvailable(), spotlight->componentEnabled());
+    QVERIFY(bar->showSearch());
+    QVERIFY(spotlight->isOpen());
+
+    spotlight->setComponentEnabled(false);
+    QVERIFY(!bar->searchAvailable());
+    QVERIFY(!bar->showSearch());
+    QVERIFY(!spotlight->isOpen());
+
+    spotlight->setComponentEnabled(true);
+    QVERIFY(bar->searchAvailable());
+    QVERIFY(bar->showSearch());
+    QVERIFY(spotlight->isOpen());
 }
 
 void ShellRuntimeTest::systemServicesRemainRestartableAcrossRuntimeLifecycle()

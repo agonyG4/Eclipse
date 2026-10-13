@@ -283,6 +283,16 @@ bool AstreaShellApplication::initializeQml()
         m_runtime->workspaceModel(), m_runtime->audioService(), m_runtime->networkService(),
         m_runtime->bluetoothService(), this, BarSurfaceManager::BundleFactory{},
         m_runtime->statusNotifier(), m_runtime->contextMenuController());
+    connect(m_barSurfaceManager.get(), &BarSurfaceManager::popupStateChanged,
+            this, [this] {
+        if (!m_barSurfaceManager || !m_barSurfaceManager->popupOpen() || !m_runtime)
+            return;
+        auto *contextMenu = m_runtime->contextMenuController();
+        if (!contextMenu || !contextMenu->hasActivePresentation())
+            return;
+        contextMenu->close();
+        contextMenu->completeClose();
+    }, Qt::DirectConnection);
     if (!m_barSurfaceManager->initialize(&barError)) {
         qCritical("Astrea shell Bar surface initialization failed: %s", qPrintable(barError));
         return false;

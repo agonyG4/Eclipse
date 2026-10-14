@@ -1,10 +1,10 @@
 #include "platform/wayland/BarSurfaceBundle.hpp"
 
-#include "core/BarClockService.hpp"
+#include "services/BarClockService.hpp"
 #include "core/BarController.hpp"
 #include "core/BarLayoutMetrics.hpp"
 #include "core/BarPopupController.hpp"
-#include "core/BarSurfacePolicy.hpp"
+#include "platform/wayland/BarSurfacePolicy.hpp"
 #include "core/WorkspaceModel.hpp"
 #include "platform/wayland/LayerShellHelper.hpp"
 #include "system/audio/AudioService.hpp"
@@ -81,16 +81,16 @@ bool BarSurfaceBundle::initialize(QString *errorOut)
     const int outputHeight = qMax(1, geometry.height());
     m_reserveWindow = createSurface(
         QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Bar/qml/ReserveSurface.qml")),
-        outputWidth, m_layoutMetrics->barHeight(), errorOut, true);
+        outputWidth, BarSurfacePolicy::surfaceHeight(BarSurfaceKind::Reserve), errorOut, true);
     m_launcherWindow = createSurface(
         QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Bar/qml/LauncherSurface.qml")),
-        outputWidth, m_layoutMetrics->pillHeight(), errorOut, false);
+        outputWidth, BarSurfacePolicy::surfaceHeight(BarSurfaceKind::Launcher), errorOut, false);
     m_statusWindow = createSurface(
         QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Bar/qml/StatusSurface.qml")),
-        outputWidth, m_layoutMetrics->pillHeight(), errorOut, false);
+        outputWidth, BarSurfacePolicy::surfaceHeight(BarSurfaceKind::Status), errorOut, false);
     m_tooltipWindow = createSurface(
         QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Bar/qml/TrayTooltipSurface.qml")),
-        outputWidth, BarSurfacePolicy::kTrayTooltipHeight, errorOut, false);
+        outputWidth, BarSurfacePolicy::surfaceHeight(BarSurfaceKind::TrayTooltip), errorOut, false);
     m_popupWindow = createSurface(
         QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Bar/qml/PopupOverlaySurface.qml")),
         outputWidth, outputHeight, errorOut, true);
@@ -196,11 +196,11 @@ void BarSurfaceBundle::updateForScreen()
     const int width = qMax(1, geometry.width());
     const int height = qMax(1, geometry.height());
     const QList<QPair<QQuickWindow *, QSize>> sizes{
-        {m_reserveWindow, QSize(width, m_layoutMetrics->barHeight())},
-        {m_launcherWindow, QSize(width, m_layoutMetrics->pillHeight())},
-        {m_statusWindow, QSize(width, m_layoutMetrics->pillHeight())},
+        {m_reserveWindow, QSize(width, BarSurfacePolicy::surfaceHeight(BarSurfaceKind::Reserve))},
+        {m_launcherWindow, QSize(width, BarSurfacePolicy::surfaceHeight(BarSurfaceKind::Launcher))},
+        {m_statusWindow, QSize(width, BarSurfacePolicy::surfaceHeight(BarSurfaceKind::Status))},
         {m_popupWindow, QSize(width, height)},
-        {m_tooltipWindow, QSize(width, BarSurfacePolicy::kTrayTooltipHeight)},
+        {m_tooltipWindow, QSize(width, BarSurfacePolicy::surfaceHeight(BarSurfaceKind::TrayTooltip))},
     };
     for (const auto &[window, size] : sizes) {
         if (!window)

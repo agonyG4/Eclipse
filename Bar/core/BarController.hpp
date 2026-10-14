@@ -5,7 +5,6 @@
 #include <QObject>
 
 class ApplicationLauncher;
-class BarClockService;
 class DesktopEntryCatalog;
 class BarController final : public QObject {
     Q_OBJECT

@@ -6,7 +6,7 @@
 #include "AltTab/platform/hyprland/HyprlandWindowSource.hpp"
 #include "AltTab/platform/runtime/AltTabRuntimePaths.hpp"
 #include "AltTab/services/AltTabConfigWatcher.hpp"
-#include "Bar/core/BarClockService.hpp"
+#include "Bar/services/BarClockService.hpp"
 #include "Bar/core/BarController.hpp"
 #include "Bar/core/WorkspaceModel.hpp"
 #include "Dock/core/DockController.hpp"

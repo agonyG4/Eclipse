@@ -1,4 +1,4 @@
-#include "core/BarClockService.hpp"
+#include "services/BarClockService.hpp"
 #include "core/BarLayoutMetrics.hpp"
 #include "core/BarPopupController.hpp"
 #include "core/WorkspaceModel.hpp"

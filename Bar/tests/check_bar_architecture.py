@@ -7,12 +7,18 @@ import sys
 
 
 def target_links(cmake: str, target: str) -> str:
-    match = re.search(
+    matches = re.findall(
         rf"target_link_libraries\s*\(\s*{re.escape(target)}\s+([^)]+)\)",
         cmake,
-        re.DOTALL,
+        re.DOTALL | re.IGNORECASE,
     )
-    return match.group(1) if match else ""
+    return "\n".join(matches)
+
+
+def production_sources(directory: Path) -> list[Path]:
+    if not directory.exists():
+        return []
+    return sorted((*directory.rglob("*.cpp"), *directory.rglob("*.hpp")))
 
 
 def main() -> int:
@@ -25,8 +31,9 @@ def main() -> int:
     shell_cmake_path = source_root / "Shell" / "CMakeLists.txt"
     failures: list[str] = []
 
-    for source_path in sorted((*bar_root.rglob("*.cpp"), *bar_root.rglob("*.hpp"))):
-        if "tests" in source_path.relative_to(bar_root).parts:
+    for source_path in production_sources(bar_root):
+        relative_bar_path = source_path.relative_to(bar_root)
+        if "tests" in relative_bar_path.parts:
             continue
         source = source_path.read_text(encoding="utf-8")
         relative_path = source_path.relative_to(source_root)
@@ -36,13 +43,40 @@ def main() -> int:
             if dependency in source:
                 failures.append(f"{relative_path}: references {dependency}")
 
+        includes = re.findall(r"^\s*#\s*include\s*[<\"]([^>\"]+)", source, re.MULTILINE)
+        if relative_bar_path.parts[0] == "core":
+            if any(re.search(r"(?:^|/)platform/", include.replace("\\", "/"))
+                   for include in includes):
+                failures.append(f"{relative_path}: core includes a platform path")
+        elif relative_bar_path.parts[0] == "services":
+            def includes_bar_platform(include: str) -> bool:
+                normalized = include.replace("\\", "/")
+                return (normalized.startswith(("platform/", "./platform/", "../platform/",
+                                               "Bar/platform/"))
+                        or "/Bar/platform/" in normalized)
+
+            if any(includes_bar_platform(include) for include in includes):
+                failures.append(f"{relative_path}: service includes a Bar platform path")
+
+        if "AstreaLayerShellConfig" in source or "AstreaLayerShellHelper" in source:
+            if relative_bar_path.parts[:2] != ("platform", "wayland"):
+                failures.append(f"{relative_path}: Layer Shell policy must stay in the Wayland layer")
+
     shell_cmake = shell_cmake_path.read_text(encoding="utf-8")
-    if re.search(r"Bar/(?:core|platform/wayland)/[^\s\")]+\.cpp", shell_cmake):
+    if re.search(r"Bar/(?:core|services|platform/wayland)/[^\s\")]+\.cpp", shell_cmake):
         failures.append("Shell/CMakeLists.txt directly compiles a Bar production source")
     if "astrea-bar-core" not in target_links(shell_cmake, "astrea-shell-runtime"):
         failures.append("astrea-shell-runtime does not link astrea-bar-core")
     if "astrea-bar-wayland" not in target_links(shell_cmake, "astrea-shell"):
         failures.append("astrea-shell does not link astrea-bar-wayland")
+
+    bar_cmake = (bar_root / "CMakeLists.txt").read_text(encoding="utf-8")
+    core_links = target_links(bar_cmake, "astrea-bar-core")
+    for dependency in ("astrea-shared-layer-shell", "astrea-bar-wayland"):
+        if re.search(rf"\b{re.escape(dependency)}\b", core_links):
+            failures.append(f"astrea-bar-core must not link {dependency}")
+    if "astrea-bar-core" not in target_links(bar_cmake, "astrea-bar-wayland"):
+        failures.append("astrea-bar-wayland does not link astrea-bar-core")
 
     if failures:
         print("Bar architecture boundary violations:", file=sys.stderr)

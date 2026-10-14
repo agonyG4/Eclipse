@@ -1,16 +1,6 @@
 #pragma once
 
-#include "platform/wayland/LayerShellHelper.hpp"
-
-enum class BarSurfaceKind {
-    Reserve,
-    Launcher,
-    Status,
-    PopupOverlay,
-    TrayTooltip,
-};
-
-class BarSurfacePolicy final {
+class BarLayoutPolicy final {
 public:
     static constexpr int kBarHeight = 45;
     static constexpr int kPillHeight = 36;
@@ -24,13 +14,6 @@ public:
     static constexpr int kTrayTooltipHeight = 28;
     static constexpr int kTrayTooltipTopMargin = 43;
 
-    static AstreaLayerShellConfig reserve();
-    static AstreaLayerShellConfig launcher();
-    static AstreaLayerShellConfig status();
-    static AstreaLayerShellConfig popupOverlay();
-    static AstreaLayerShellConfig trayTooltip();
-
-    static int surfaceHeight(BarSurfaceKind kind);
     static int statusWidth(int outputWidth, int launcherWidth, int pillWidth);
     static int statusLeft(int outputWidth, int statusWidth);
     static int popupX(int outputWidth, int cardWidth, int anchorX,

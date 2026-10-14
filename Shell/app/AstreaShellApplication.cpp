@@ -11,7 +11,7 @@
 #include "Spotlight/services/AstreaI18n.hpp"
 #include "Bar/platform/wayland/BarSurfaceManager.hpp"
 #include "Bar/core/BarController.hpp"
-#include "Bar/core/BarClockService.hpp"
+#include "Bar/services/BarClockService.hpp"
 #include "Bar/core/WorkspaceModel.hpp"
 #include "core/ContextMenuController.hpp"
 #include "platform/wayland/ContextMenuSurfaceManager.hpp"

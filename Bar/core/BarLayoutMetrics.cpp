@@ -1,6 +1,6 @@
 #include "core/BarLayoutMetrics.hpp"
 
-#include "core/BarSurfacePolicy.hpp"
+#include "core/BarLayoutPolicy.hpp"
 
 BarLayoutMetrics::BarLayoutMetrics(QObject *parent)
     : QObject(parent)
@@ -9,57 +9,57 @@ BarLayoutMetrics::BarLayoutMetrics(QObject *parent)
 
 int BarLayoutMetrics::barHeight() const
 {
-    return BarSurfacePolicy::kBarHeight;
+    return BarLayoutPolicy::kBarHeight;
 }
 
 int BarLayoutMetrics::pillHeight() const
 {
-    return BarSurfacePolicy::kPillHeight;
+    return BarLayoutPolicy::kPillHeight;
 }
 
 int BarLayoutMetrics::topMargin() const
 {
-    return BarSurfacePolicy::kPillTopMargin;
+    return BarLayoutPolicy::kPillTopMargin;
 }
 
 int BarLayoutMetrics::launcherLeftMargin() const
 {
-    return BarSurfacePolicy::kLauncherLeftMargin;
+    return BarLayoutPolicy::kLauncherLeftMargin;
 }
 
 int BarLayoutMetrics::statusRightMargin() const
 {
-    return BarSurfacePolicy::kStatusRightMargin;
+    return BarLayoutPolicy::kStatusRightMargin;
 }
 
 int BarLayoutMetrics::sidePadding() const
 {
-    return BarSurfacePolicy::kSidePadding;
+    return BarLayoutPolicy::kSidePadding;
 }
 
 int BarLayoutMetrics::minimumGap() const
 {
-    return BarSurfacePolicy::kMinimumGap;
+    return BarLayoutPolicy::kMinimumGap;
 }
 
 int BarLayoutMetrics::popupSidePadding() const
 {
-    return BarSurfacePolicy::kPopupSidePadding;
+    return BarLayoutPolicy::kPopupSidePadding;
 }
 
 int BarLayoutMetrics::popupTop() const
 {
-    return BarSurfacePolicy::kPopupTopOffset;
+    return BarLayoutPolicy::kPopupTopOffset;
 }
 
 int BarLayoutMetrics::statusWidth(int outputWidth, int launcherWidth, int pillWidth) const
 {
-    return BarSurfacePolicy::statusWidth(outputWidth, launcherWidth, pillWidth);
+    return BarLayoutPolicy::statusWidth(outputWidth, launcherWidth, pillWidth);
 }
 
 int BarLayoutMetrics::statusLeft(int outputWidth, int statusWidth) const
 {
-    return BarSurfacePolicy::statusLeft(outputWidth, statusWidth);
+    return BarLayoutPolicy::statusLeft(outputWidth, statusWidth);
 }
 
 int BarLayoutMetrics::statusAnchorX(int outputWidth, int statusWidth,
@@ -83,8 +83,8 @@ int BarLayoutMetrics::popupWidth(int outputWidth, int cardWidth, int sidePadding
 int BarLayoutMetrics::popupX(int outputWidth, int cardWidth, int anchorX, int sidePadding) const
 {
     const int padding = sidePadding < 0 ? popupSidePadding() : qMax(0, sidePadding);
-    return BarSurfacePolicy::popupX(outputWidth, popupWidth(outputWidth, cardWidth, padding),
-                                    anchorX, padding);
+    return BarLayoutPolicy::popupX(outputWidth, popupWidth(outputWidth, cardWidth, padding),
+                                   anchorX, padding);
 }
 
 QVariantMap BarLayoutMetrics::trayAnchor(int outputOriginX, int outputOriginY,

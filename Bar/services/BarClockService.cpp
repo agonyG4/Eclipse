@@ -1,4 +1,4 @@
-#include "core/BarClockService.hpp"
+#include "services/BarClockService.hpp"
 
 #include <QTime>
 

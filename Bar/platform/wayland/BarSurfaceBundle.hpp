@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/BarSurfacePolicy.hpp"
+#include "platform/wayland/BarSurfacePolicy.hpp"
 
 #include <QObject>
 #include <QPointer>

@@ -256,6 +256,8 @@ void ScreenshotController::returnToIdle()
 
 void ScreenshotController::cancel()
 {
+    if (m_uiBarrier)
+        m_uiBarrier->cancel();
     if (isCaptureWaiting(m_phase) && m_client)
         m_client->cancelCapture();
     ++m_operationToken;

@@ -24,8 +24,25 @@ public:
         completion(success, reason);
     }
 
+    void cancel() override
+    {
+        ++cancelCount;
+        if (pending)
+            cancelled.append(std::move(pending));
+    }
+
+    void completeCancelled(bool success, const QString &reason = {})
+    {
+        QVERIFY(!cancelled.isEmpty());
+        Completion completion = std::move(cancelled.last());
+        cancelled.removeLast();
+        completion(success, reason);
+    }
+
     int requestCount = 0;
+    int cancelCount = 0;
     Completion pending;
+    QList<Completion> cancelled;
 };
 
 class ScreenshotControllerTest final : public QObject {
@@ -39,6 +56,7 @@ private slots:
     void conflictingModeIsRejectedWhileCaptureIsActive();
     void barrierFailureReturnsToIdle();
     void cancelInvalidatesPendingBarrier();
+    void cancelClearsBarrierAndOldCompletionCannotAffectNextCapture();
     void staleCaptureGenerationIsIgnored();
     void newCaptureIsAllowedWhileThumbnailIsVisible();
     void selectionMapsToPixelsAndClamps();
@@ -224,11 +242,41 @@ void ScreenshotControllerTest::cancelInvalidatesPendingBarrier()
     controller.setSelection(QRectF(10, 10, 50, 50));
     QVERIFY(controller.finishSelection());
     controller.cancel();
-    barrier.complete(true);
+    barrier.completeCancelled(true);
 
     QCOMPARE(controller.phase(), ScreenshotPhase::Idle);
     QCOMPARE(requestCount, 0);
     QVERIFY(!controller.isVisible());
+}
+
+void ScreenshotControllerTest::cancelClearsBarrierAndOldCompletionCannotAffectNextCapture()
+{
+    TyphonSharedConnection connection({});
+    TyphonScreenCaptureClient client(&connection);
+    ScreenshotController controller(&client);
+    FakeScreenshotUiBarrier barrier;
+    controller.setUiBarrier(&barrier);
+    int requestCount = 0;
+    configureFakeCapture(controller, requestCount);
+
+    QVERIFY(controller.startLiveRegionCapture());
+    controller.setOverlaySize(200, 100);
+    controller.setSelection(QRectF(10, 10, 50, 50));
+    QVERIFY(controller.finishSelection());
+    QCOMPARE(barrier.requestCount, 1);
+    QCOMPARE(barrier.cancelCount, 0);
+
+    controller.cancel();
+    QCOMPARE(barrier.cancelCount, 1);
+    QVERIFY(!barrier.pending);
+    QCOMPARE(controller.phase(), ScreenshotPhase::Idle);
+
+    QVERIFY(controller.startQuickCapture());
+    QCOMPARE(controller.phase(), ScreenshotPhase::WaitingCapture);
+    QCOMPARE(requestCount, 1);
+    barrier.completeCancelled(true);
+    QCOMPARE(controller.phase(), ScreenshotPhase::WaitingCapture);
+    QCOMPARE(requestCount, 1);
 }
 
 void ScreenshotControllerTest::staleCaptureGenerationIsIgnored()

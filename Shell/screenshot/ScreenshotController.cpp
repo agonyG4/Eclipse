@@ -2,12 +2,14 @@
 
 #include "platform/typhon/TyphonScreenCaptureClient.hpp"
 
+#include <QBuffer>
 #include <QClipboard>
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
+#include <QMimeData>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QUrl>
@@ -53,6 +55,18 @@ QString ScreenshotController::resultUri() const
     if (m_resultPath.isEmpty())
         return {};
     return QUrl::fromLocalFile(m_resultPath).toString(QUrl::FullyEncoded);
+}
+
+QByteArray ScreenshotController::imagePngData() const
+{
+    if (!m_imagePngData.isEmpty() || m_image.isNull())
+        return m_imagePngData;
+
+    QByteArray png;
+    QBuffer buffer(&png);
+    if (buffer.open(QIODevice::WriteOnly) && m_image.save(&buffer, "PNG"))
+        return png;
+    return {};
 }
 
 QString ScreenshotController::phaseName() const
@@ -112,6 +126,11 @@ bool ScreenshotController::capture()
 
 bool ScreenshotController::begin(ScreenshotIntent intent)
 {
+    if (m_thumbnailDragActive) {
+        ++m_rejectedOperationCount;
+        qInfo() << "Screenshot request rejected while thumbnail drag is active";
+        return false;
+    }
     if (m_phase != ScreenshotPhase::Idle) {
         ++m_rejectedOperationCount;
         qInfo().noquote() << "Screenshot request rejected while operation is active; phase="
@@ -501,9 +520,19 @@ bool ScreenshotController::persistResult(const QImage &result, std::uint64_t tok
         return false;
     }
 
+    QByteArray pngData;
+    QBuffer pngBuffer(&pngData);
+    if (!pngBuffer.open(QIODevice::WriteOnly) || !result.save(&pngBuffer, "PNG")
+        || pngData.isEmpty()) {
+        failOperation(QStringLiteral("screenshot PNG encoding failed"), token,
+                      QStringLiteral("persistence"));
+        return false;
+    }
+
     const QString path = nextOutputPath();
     QSaveFile file(path);
-    if (!file.open(QIODevice::WriteOnly) || !result.save(&file, "PNG") || !file.commit()) {
+    if (!file.open(QIODevice::WriteOnly) || file.write(pngData) != pngData.size()
+        || !file.commit()) {
         failOperation(QStringLiteral("screenshot save failed"), token,
                       QStringLiteral("persistence"));
         return false;
@@ -515,6 +544,7 @@ bool ScreenshotController::persistResult(const QImage &result, std::uint64_t tok
     const bool selectionChangedValue = !m_selection.isNull() || !m_pendingSelection.isNull();
     const bool thumbnailChangedValue = !m_thumbnailVisible;
     m_image = result.copy();
+    m_imagePngData = std::move(pngData);
     ++m_imageGeneration;
     m_resultPath = path;
     disarmWatchdog();
@@ -527,8 +557,12 @@ bool ScreenshotController::persistResult(const QImage &result, std::uint64_t tok
     m_pendingSelection = {};
     m_thumbnailVisible = true;
 
-    if (auto *clipboard = QGuiApplication::clipboard())
-        clipboard->setImage(result);
+    if (auto *clipboard = QGuiApplication::clipboard()) {
+        auto *mimeData = new QMimeData;
+        mimeData->setImageData(result);
+        mimeData->setData(QStringLiteral("image/png"), m_imagePngData);
+        clipboard->setMimeData(mimeData, QClipboard::Clipboard);
+    }
 
     emit imageChanged();
     if (resultChangedValue)
@@ -600,7 +634,17 @@ bool ScreenshotController::finishSelection()
 
 void ScreenshotController::dismissThumbnail()
 {
+    if (m_thumbnailDragActive)
+        return;
     setThumbnailVisible(false);
+}
+
+void ScreenshotController::setThumbnailDragActive(bool active)
+{
+    if (m_thumbnailDragActive == active)
+        return;
+    m_thumbnailDragActive = active;
+    emit thumbnailDragActiveChanged();
 }
 
 void ScreenshotController::openPreview()

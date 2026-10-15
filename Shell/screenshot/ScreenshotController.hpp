@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QImage>
+#include <QByteArray>
 #include <QElapsedTimer>
 #include <QObject>
 #include <QRectF>
@@ -29,6 +30,8 @@ class ScreenshotController final : public QObject {
     Q_PROPERTY(int imageHeight READ imageHeight NOTIFY imageChanged)
     Q_PROPERTY(QString resultPath READ resultPath NOTIFY resultChanged)
     Q_PROPERTY(QString resultUri READ resultUri NOTIFY resultChanged)
+    Q_PROPERTY(QByteArray imagePngData READ imagePngData NOTIFY imageChanged)
+    Q_PROPERTY(bool thumbnailDragActive READ thumbnailDragActive NOTIFY thumbnailDragActiveChanged)
 
 public:
     enum class ScreenshotIntent {
@@ -64,6 +67,8 @@ public:
     int imageHeight() const { return m_image.height(); }
     QString resultPath() const { return m_resultPath; }
     QString resultUri() const;
+    QByteArray imagePngData() const;
+    bool thumbnailDragActive() const { return m_thumbnailDragActive; }
     QString phaseName() const;
     QString intentName() const;
     bool hasPendingOperation() const { return m_phase != ScreenshotPhase::Idle; }
@@ -81,6 +86,7 @@ public:
     Q_INVOKABLE bool saveSelection();
     Q_INVOKABLE bool finishSelection();
     Q_INVOKABLE void dismissThumbnail();
+    Q_INVOKABLE void setThumbnailDragActive(bool active);
     Q_INVOKABLE void openPreview();
     Q_INVOKABLE void closePreview();
     Q_INVOKABLE void setOverlaySize(qreal width, qreal height);
@@ -99,6 +105,7 @@ signals:
     void previewVisibleChanged();
     void thumbnailRectChanged();
     void resultChanged();
+    void thumbnailDragActiveChanged();
     void captureFailed(QString reason);
     void saved(QString path);
 
@@ -143,6 +150,7 @@ private:
     qreal m_pendingOverlayHeight = 0.0;
     QRectF m_thumbnailRect;
     QString m_resultPath;
+    QByteArray m_imagePngData;
     ScreenshotIntent m_intent = ScreenshotIntent::QuickFullscreen;
     ScreenshotPhase m_phase = ScreenshotPhase::Idle;
     std::uint64_t m_operationToken = 0;
@@ -165,6 +173,7 @@ private:
     bool m_selectionImageVisible = false;
     bool m_thumbnailVisible = false;
     bool m_previewVisible = false;
+    bool m_thumbnailDragActive = false;
 };
 
 using ScreenshotIntent = ScreenshotController::ScreenshotIntent;

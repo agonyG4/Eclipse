@@ -1,5 +1,8 @@
 #include <QFile>
+#include <QClipboard>
+#include <QGuiApplication>
 #include <QImage>
+#include <QMimeData>
 #include <QUrl>
 #include <QRegularExpression>
 #include <QSignalSpy>
@@ -51,7 +54,10 @@ class ScreenshotControllerTest final : public QObject {
 private slots:
     void overlayStartsHiddenAndAcceptsCompleteImage();
     void quickCapturePersistsResultWithoutShowingSelection();
+    void quickCaptureCopiesPngToClipboard();
     void frozenCaptureSelectsAndCropsCapturedImage();
+    void frozenRegionCaptureCopiesCroppedPngToClipboard();
+    void failedCapturePreservesPreviousClipboardContents();
     void liveCaptureWaitsForUiBarrierBeforeRequestingImage();
     void conflictingModeIsRejectedWhileCaptureIsActive();
     void barrierFailureReturnsToIdle();
@@ -135,6 +141,37 @@ void ScreenshotControllerTest::quickCapturePersistsResultWithoutShowingSelection
     removeSavedFile(savedSpy);
 }
 
+void ScreenshotControllerTest::quickCaptureCopiesPngToClipboard()
+{
+    TyphonSharedConnection connection({});
+    TyphonScreenCaptureClient client(&connection);
+    ScreenshotController controller(&client);
+    int requestCount = 0;
+    configureFakeCapture(controller, requestCount);
+    QSignalSpy savedSpy(&controller, &ScreenshotController::saved);
+    QImage image(17, 9, QImage::Format_RGBA8888);
+    image.fill(QColor(31, 97, 173, 255));
+
+    QVERIFY(controller.startQuickCapture());
+    QCOMPARE(requestCount, 1);
+    controller.handleCaptureReady(image, 1, controller.m_requestOperationToken);
+
+    const QMimeData *mimeData = QGuiApplication::clipboard()->mimeData();
+    QVERIFY(mimeData);
+    QVERIFY(mimeData->hasFormat(QStringLiteral("image/png")));
+    const QByteArray png = mimeData->data(QStringLiteral("image/png"));
+    QVERIFY(png.startsWith(QByteArray::fromHex("89504e470d0a1a0a")));
+    const QImage decoded = QImage::fromData(png, "PNG");
+    QCOMPARE(decoded.size(), image.size());
+    QCOMPARE(decoded.pixelColor(0, 0), image.pixelColor(0, 0));
+    QCOMPARE(QGuiApplication::clipboard()->image().size(), image.size());
+
+    controller.dismissThumbnail();
+    QCOMPARE(QImage::fromData(QGuiApplication::clipboard()->mimeData()->data(
+                                 QStringLiteral("image/png")), "PNG").size(), image.size());
+    removeSavedFile(savedSpy);
+}
+
 void ScreenshotControllerTest::frozenCaptureSelectsAndCropsCapturedImage()
 {
     TyphonSharedConnection connection({});
@@ -160,6 +197,50 @@ void ScreenshotControllerTest::frozenCaptureSelectsAndCropsCapturedImage()
     QVERIFY(controller.thumbnailVisible());
     QCOMPARE(savedSpy.count(), 1);
     removeSavedFile(savedSpy);
+}
+
+void ScreenshotControllerTest::frozenRegionCaptureCopiesCroppedPngToClipboard()
+{
+    TyphonSharedConnection connection({});
+    TyphonScreenCaptureClient client(&connection);
+    ScreenshotController controller(&client);
+    int requestCount = 0;
+    configureFakeCapture(controller, requestCount);
+    QSignalSpy savedSpy(&controller, &ScreenshotController::saved);
+    QImage source(400, 200, QImage::Format_RGBA8888);
+    source.fill(QColor(220, 30, 10, 255));
+    source.setPixelColor(100, 50, QColor(10, 30, 220, 255));
+
+    QVERIFY(controller.startFrozenRegionCapture());
+    controller.handleCaptureReady(source, 1, controller.m_requestOperationToken);
+    controller.setOverlaySize(200, 100);
+    controller.setSelection(QRectF(20, 10, 100, 50));
+    QVERIFY(controller.saveSelection());
+
+    const QByteArray png = QGuiApplication::clipboard()->mimeData()->data(
+        QStringLiteral("image/png"));
+    const QImage decoded = QImage::fromData(png, "PNG");
+    QCOMPARE(decoded.size(), QSize(200, 100));
+    QCOMPARE(decoded.pixelColor(0, 0), QColor(220, 30, 10, 255));
+    QCOMPARE(decoded.pixelColor(60, 30), QColor(10, 30, 220, 255));
+    removeSavedFile(savedSpy);
+}
+
+void ScreenshotControllerTest::failedCapturePreservesPreviousClipboardContents()
+{
+    TyphonSharedConnection connection({});
+    TyphonScreenCaptureClient client(&connection);
+    ScreenshotController controller(&client);
+    int requestCount = 0;
+    configureFakeCapture(controller, requestCount);
+    QGuiApplication::clipboard()->setText(QStringLiteral("keep this clipboard text"));
+
+    QVERIFY(controller.startQuickCapture());
+    controller.handleCaptureFailed(QStringLiteral("capture failed"), 1,
+                                   controller.m_requestOperationToken);
+
+    QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("keep this clipboard text"));
+    QVERIFY(!QGuiApplication::clipboard()->mimeData()->hasFormat(QStringLiteral("image/png")));
 }
 
 void ScreenshotControllerTest::liveCaptureWaitsForUiBarrierBeforeRequestingImage()

@@ -4,6 +4,7 @@
 #include <QQmlContext>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QUrl>
 #include <QtTest/QtTest>
 
 #include <cmath>
@@ -20,9 +21,10 @@ class ScreenshotThumbnailQmlTest final : public QObject {
 private slots:
     void thumbnailStartsHiddenAndTracksInputRegion();
     void thumbnailInteractionTransitions();
-    void gesturePolicyDistinguishesClickReturnAndDismiss();
-    void nativeFileDragArmsSeparatelyAndRestoresOnCancel();
+    void nativeDragThresholdUsesPlatformSetting();
+    void nativeFileDragStartsImmediatelyAndRestoresOnCancel();
     void nativeFileDragExportsCanonicalCopyMetadata();
+    void dismissAffordanceClosesThumbnailWithoutOpeningPreview();
     void previewStartsHiddenOpensExistingResultAndEscapes();
 };
 
@@ -96,7 +98,7 @@ void ScreenshotThumbnailQmlTest::thumbnailStartsHiddenAndTracksInputRegion()
     QVERIFY(!window->mask().contains(QPoint(0, 0)));
 }
 
-void ScreenshotThumbnailQmlTest::gesturePolicyDistinguishesClickReturnAndDismiss()
+void ScreenshotThumbnailQmlTest::nativeDragThresholdUsesPlatformSetting()
 {
     ScreenshotQmlFixture fixture;
     fixture.controller.m_image = QImage(160, 100, QImage::Format_RGBA8888);
@@ -104,26 +106,11 @@ void ScreenshotThumbnailQmlTest::gesturePolicyDistinguishesClickReturnAndDismiss
     fixture.controller.m_resultPath = QStringLiteral("/tmp/astrea-screenshot-test.png");
     std::unique_ptr<QObject> object(load(fixture.engine, QStringLiteral("ScreenshotThumbnail.qml")));
     QCOMPARE(object->property("dragThreshold").toReal(), 8.0);
-    QCOMPARE(object->property("dismissThreshold").toReal(), 96.0);
-    QVariant decision;
-    QVERIFY(QMetaObject::invokeMethod(object.get(), "decideGesture",
-                                      Q_RETURN_ARG(QVariant, decision),
-                                      Q_ARG(QVariant, QVariant(0.0)),
-                                      Q_ARG(QVariant, QVariant(0.0))));
-    QCOMPARE(decision.toString(), QStringLiteral("click"));
-    QVERIFY(QMetaObject::invokeMethod(object.get(), "decideGesture",
-                                      Q_RETURN_ARG(QVariant, decision),
-                                      Q_ARG(QVariant, QVariant(20.0)),
-                                      Q_ARG(QVariant, QVariant(0.0))));
-    QCOMPARE(decision.toString(), QStringLiteral("return"));
-    QVERIFY(QMetaObject::invokeMethod(object.get(), "decideGesture",
-                                      Q_RETURN_ARG(QVariant, decision),
-                                      Q_ARG(QVariant, QVariant(96.0)),
-                                      Q_ARG(QVariant, QVariant(0.0))));
-    QCOMPARE(decision.toString(), QStringLiteral("dismiss"));
+    QVERIFY(object->property("nativeDragDistance").toReal()
+            >= object->property("dragThreshold").toReal());
 }
 
-void ScreenshotThumbnailQmlTest::nativeFileDragArmsSeparatelyAndRestoresOnCancel()
+void ScreenshotThumbnailQmlTest::nativeFileDragStartsImmediatelyAndRestoresOnCancel()
 {
     ScreenshotQmlFixture fixture;
     fixture.controller.m_image = QImage(160, 100, QImage::Format_RGBA8888);
@@ -147,19 +134,22 @@ void ScreenshotThumbnailQmlTest::nativeFileDragArmsSeparatelyAndRestoresOnCancel
     const QPoint center(static_cast<int>(card->x() + card->width() / 2),
                         static_cast<int>(card->y() + card->height() / 2));
 
+    const int movement = static_cast<int>(object->property("nativeDragDistance").toReal()) + 4;
     QTest::mousePress(window, Qt::LeftButton, Qt::NoModifier, center);
-    QTRY_VERIFY_WITH_TIMEOUT(object->property("fileDragArmed").toBool(), 1000);
-    QCOMPARE(object->property("nativeDragStartCount").toInt(), 0);
-    QTRY_VERIFY_WITH_TIMEOUT(card->scale() > 1.04, 1000);
-
-    QTest::mouseMove(window, center + QPoint(20, 0), 0);
+    QTest::mouseMove(window, center + QPoint(movement, 0), 0);
     QTRY_COMPARE(object->property("nativeDragStartCount").toInt(), 1);
     QVERIFY(object->property("nativeFileDragging").toBool());
     QVERIFY(object->property("nativeDragConsumedPress").toBool());
     object->setProperty("hovered", false);
     QVERIFY(!idleTimer->property("running").toBool());
     QVERIFY(window->isVisible());
-    QCOMPARE(fixture.inputRegion.region().boundingRect(), QRect(0, 0, 1, 1));
+    QVERIFY(fixture.inputRegion.region().contains(
+        QPoint(static_cast<int>(card->x() + card->width() / 2),
+               static_cast<int>(card->y() + card->height() / 2))));
+
+    QVERIFY(!fixture.controller.startQuickCapture());
+    QVERIFY(fixture.controller.thumbnailVisible());
+    QCOMPARE(fixture.controller.phase(), ScreenshotController::ScreenshotPhase::Idle);
 
     QVariant action;
     QVERIFY(QMetaObject::invokeMethod(object.get(), "finishNativeFileDrag",
@@ -178,15 +168,13 @@ void ScreenshotThumbnailQmlTest::nativeFileDragArmsSeparatelyAndRestoresOnCancel
     QVERIFY(!object->property("nativeDragConsumedPress").toBool());
 
     QTest::mousePress(window, Qt::LeftButton, Qt::NoModifier, center);
-    QTRY_VERIFY_WITH_TIMEOUT(object->property("fileDragArmed").toBool(), 1000);
     QTest::mouseRelease(window, Qt::LeftButton, Qt::NoModifier, center);
     QTRY_VERIFY_WITH_TIMEOUT(fixture.controller.previewVisible(), 1000);
     fixture.controller.closePreview();
     QTRY_VERIFY_WITH_TIMEOUT(window->isVisible(), 1000);
 
     QTest::mousePress(window, Qt::LeftButton, Qt::NoModifier, center);
-    QTRY_VERIFY_WITH_TIMEOUT(object->property("fileDragArmed").toBool(), 1000);
-    QTest::mouseMove(window, center + QPoint(20, 0), 0);
+    QTest::mouseMove(window, center + QPoint(movement, 0), 0);
     QTRY_COMPARE(object->property("nativeDragStartCount").toInt(), 2);
     object->setProperty("hovered", false);
     QVERIFY(!idleTimer->property("running").toBool());
@@ -212,8 +200,15 @@ void ScreenshotThumbnailQmlTest::nativeFileDragExportsCanonicalCopyMetadata()
     std::unique_ptr<QObject> object(load(fixture.engine, QStringLiteral("ScreenshotThumbnail.qml")));
 
     const QVariantMap mimeData = object->property("nativeDragMimeData").toMap();
-    QCOMPARE(mimeData.value(QStringLiteral("text/uri-list")).toString(),
-             fixture.controller.resultUri());
+    const QByteArray uriList = mimeData.value(QStringLiteral("text/uri-list")).toString().toUtf8();
+    QVERIFY(uriList.endsWith("\r\n"));
+    const QUrl uri = QUrl::fromEncoded(uriList.left(uriList.size() - 2), QUrl::StrictMode);
+    QVERIFY(uri.isLocalFile());
+    QCOMPARE(uri.toLocalFile(), fixture.controller.resultPath());
+    QVERIFY(mimeData.contains(QStringLiteral("image/png")));
+    const QByteArray png = mimeData.value(QStringLiteral("image/png")).toByteArray();
+    QVERIFY(png.startsWith(QByteArray::fromHex("89504e470d0a1a0a")));
+    QCOMPARE(QImage::fromData(png, "PNG").size(), fixture.controller.image().size());
     QCOMPARE(mimeData.value(QStringLiteral("text/plain")).toString(),
              fixture.controller.resultPath());
     QCOMPARE(object->property("nativeDragSupportedActions").toInt(),
@@ -221,6 +216,29 @@ void ScreenshotThumbnailQmlTest::nativeFileDragExportsCanonicalCopyMetadata()
     QCOMPARE(object->property("nativeDragProposedAction").toInt(),
              int(Qt::CopyAction));
     QVERIFY(object->property("nativeDragUsesManualStart").toBool());
+}
+
+void ScreenshotThumbnailQmlTest::dismissAffordanceClosesThumbnailWithoutOpeningPreview()
+{
+    ScreenshotQmlFixture fixture;
+    fixture.controller.m_image = QImage(160, 100, QImage::Format_RGBA8888);
+    fixture.controller.m_imageGeneration = 1;
+    fixture.controller.m_resultPath = QStringLiteral("/tmp/astrea-screenshot-test.png");
+    std::unique_ptr<QObject> object(load(fixture.engine, QStringLiteral("ScreenshotThumbnail.qml")));
+    auto *window = qobject_cast<QQuickWindow *>(object.get());
+    QVERIFY(window);
+    fixture.inputRegion.setWindow(window);
+    fixture.controller.m_thumbnailVisible = true;
+    emit fixture.controller.thumbnailVisibleChanged();
+    QTRY_VERIFY_WITH_TIMEOUT(window->isVisible(), 1000);
+
+    auto *button = window->findChild<QQuickItem *>(QStringLiteral("dismissAffordance"));
+    QVERIFY(button);
+    const QPoint position = button->mapToScene(
+        QPointF(button->width() / 2, button->height() / 2)).toPoint();
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, position);
+    QTRY_VERIFY_WITH_TIMEOUT(!fixture.controller.thumbnailVisible(), 1000);
+    QVERIFY(!fixture.controller.previewVisible());
 }
 
 void ScreenshotThumbnailQmlTest::thumbnailInteractionTransitions()
@@ -258,41 +276,7 @@ void ScreenshotThumbnailQmlTest::thumbnailInteractionTransitions()
     QVERIFY(!fixture.controller.thumbnailVisible());
     fixture.controller.closePreview();
     QTRY_VERIFY_WITH_TIMEOUT(window->isVisible(), 1000);
-
-    const QPoint restored(static_cast<int>(card->x() + card->width() / 2),
-                          static_cast<int>(card->y() + card->height() / 2));
-    const qreal slotX = object->property("slotPosition").toPointF().x();
-    QTest::mousePress(window, Qt::LeftButton, Qt::NoModifier, restored);
-    QTest::mouseMove(window, restored + QPoint(20, 2), 0);
-    QTRY_VERIFY_WITH_TIMEOUT(object->property("dragging").toBool(), 1000);
-    QVERIFY(card->x() > slotX + 10.0);
-    const qreal heldWidth = card->width() * card->scale();
-    const qreal heldHeight = card->height() * card->scale();
-    const QRectF heldVisualRect(card->x() - (heldWidth - card->width()) / 2,
-                                card->y() - (heldHeight - card->height()) / 2,
-                                heldWidth, heldHeight);
-    QVERIFY(std::abs(fixture.controller.thumbnailRect().x() - heldVisualRect.x()) < 1.0);
-    QVERIFY(std::abs(fixture.controller.thumbnailRect().y() - heldVisualRect.y()) < 1.0);
-    QVERIFY(std::abs(fixture.controller.thumbnailRect().width() - heldVisualRect.width()) < 1.0);
-    QVERIFY(std::abs(fixture.controller.thumbnailRect().height() - heldVisualRect.height()) < 1.0);
-    QVERIFY(fixture.inputRegion.region().contains(
-        QPoint(static_cast<int>(card->x() + card->width() / 2),
-               static_cast<int>(card->y() + card->height() / 2))));
-    QTest::mouseRelease(window, Qt::LeftButton, Qt::NoModifier, restored + QPoint(20, 2));
-    QTRY_VERIFY_WITH_TIMEOUT(std::abs(card->x() - object->property("slotPosition").toPointF().x())
-                                 < 1.0,
-                             1000);
     QVERIFY(fixture.controller.thumbnailVisible());
-    QVERIFY(!fixture.controller.previewVisible());
-
-    const QPoint swipeStart(static_cast<int>(card->x() + card->width() / 2),
-                            static_cast<int>(card->y() + card->height() / 2));
-    QTest::mousePress(window, Qt::LeftButton, Qt::NoModifier, swipeStart);
-    QTest::mouseMove(window, swipeStart + QPoint(110, 0), 0);
-    QTRY_VERIFY_WITH_TIMEOUT(object->property("dragging").toBool(), 1000);
-    QVERIFY(card->x() > slotX + 90.0);
-    QTest::mouseRelease(window, Qt::LeftButton, Qt::NoModifier, swipeStart + QPoint(110, 0));
-    QTRY_VERIFY_WITH_TIMEOUT(!window->isVisible(), 1000);
     QVERIFY(!fixture.controller.previewVisible());
 
     for (const QQmlError &warning : qmlWarnings) {
@@ -318,7 +302,7 @@ void ScreenshotThumbnailQmlTest::previewStartsHiddenOpensExistingResultAndEscape
     fixture.controller.m_imageGeneration = 1;
     fixture.controller.m_resultPath = QStringLiteral("/tmp/astrea-screenshot-test.png");
     int captureCount = 0;
-    fixture.controller.m_captureRequest = [&captureCount] {
+    fixture.controller.m_captureRequest = [&captureCount](std::uint64_t) {
         ++captureCount;
         return true;
     };

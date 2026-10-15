@@ -15,13 +15,10 @@ Window {
     y: Screen.virtualY
 
     property real dragThreshold: 8
-    property real dismissThreshold: 96
     property bool held: false
-    property bool dragging: false
     property bool hovered: false
     property bool dismissing: false
     property bool entering: false
-    property bool fileDragArmed: false
     property bool nativeFileDragging: false
     property bool nativeDragConsumedPress: false
     property bool nativeDragTestMode: false
@@ -40,26 +37,16 @@ Window {
     readonly property int nativeDragProposedAction: card.Drag.proposedAction
     readonly property bool nativeDragUsesManualStart: card.Drag.dragType === Drag.None
 
-    function decideGesture(dx, dy) {
-        if (dx >= dismissThreshold)
-            return "dismiss"
-        if (Math.abs(dx) >= dragThreshold || Math.abs(dy) >= dragThreshold)
-            return "return"
-        return "click"
-    }
-
     function updateGeometry() {
+        if (nativeFileDragging)
+            return
         const scaledWidth = card.width * card.scale
         const scaledHeight = card.height * card.scale
         const inputRect = Qt.rect(card.x - (scaledWidth - card.width) / 2,
                                   card.y - (scaledHeight - card.height) / 2,
                                   scaledWidth, scaledHeight)
-        if (ScreenshotInputRegion) {
-            if (nativeFileDragging)
-                ScreenshotInputRegion.suspend()
-            else
-                ScreenshotInputRegion.update(inputRect)
-        }
+        if (ScreenshotInputRegion)
+            ScreenshotInputRegion.update(inputRect)
         ScreenshotController.thumbnailRect = inputRect
     }
 
@@ -73,25 +60,17 @@ Window {
     }
 
     function resetPressState() {
-        fileDragArmTimer.stop()
         held = false
-        dragging = false
-        fileDragArmed = false
     }
 
     function startNativeFileDrag() {
-        if (!held || !fileDragArmed || nativeFileDragging
-                || !ScreenshotController.resultUri)
+        if (!held || nativeFileDragging || !ScreenshotController.resultUri)
             return
 
         nativeFileDragging = true
         nativeDragConsumedPress = true
-        fileDragArmTimer.stop()
         held = false
-        dragging = false
-        fileDragArmed = false
-        if (ScreenshotInputRegion)
-            ScreenshotInputRegion.suspend()
+        ScreenshotController.setThumbnailDragActive(true)
         nativeDragStartCount += 1
         if (nativeDragTestMode)
             return
@@ -102,10 +81,9 @@ Window {
 
     function finishNativeFileDrag(dropAction) {
         nativeFileDragging = false
-        dragging = false
-        fileDragArmed = false
+        ScreenshotController.setThumbnailDragActive(false)
         if (dropAction === Qt.CopyAction) {
-            ScreenshotController.dismissThumbnail()
+            dismiss()
             return true
         }
 
@@ -115,7 +93,7 @@ Window {
     }
 
     function dismiss() {
-        if (dismissing)
+        if (dismissing || nativeFileDragging)
             return
         dismissing = true
         dismissAnimation.restart()
@@ -134,7 +112,7 @@ Window {
                 if (root.visible)
                     root.entering = false
             })
-        } else if (ScreenshotInputRegion) {
+        } else if (!nativeFileDragging && ScreenshotInputRegion) {
             ScreenshotInputRegion.suspend()
         }
     }
@@ -147,23 +125,23 @@ Window {
         x: root.slotPosition.x
         y: root.slotPosition.y
         scale: root.entering ? 0.94
-                             : (root.nativeFileDragging ? 1.0
-                                : (root.fileDragArmed ? 1.05
-                                   : (root.held || root.dragging ? 1.03 : 1.0)))
+                             : (root.nativeFileDragging ? 1.0 : (root.held ? 1.03 : 1.0))
         opacity: root.nativeFileDragging ? 0 : (root.entering ? 0 : 1)
 
         Behavior on x {
-            enabled: !root.dragging && !root.dismissing
+            enabled: !root.dismissing
             NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
         }
         Behavior on y {
-            enabled: !root.dragging && !root.dismissing
+            enabled: !root.dismissing
             NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
         }
         Behavior on scale {
+            enabled: !root.nativeFileDragging
             NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
         }
         Behavior on opacity {
+            enabled: !root.nativeFileDragging
             NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
         }
 
@@ -196,12 +174,40 @@ Window {
             cache: false
         }
 
+        Rectangle {
+            objectName: "dismissAffordance"
+            z: 2
+            width: 28
+            height: 28
+            x: parent.width - width - 8
+            y: 8
+            radius: width / 2
+            color: "#d920242b"
+            border.color: "#80ffffff"
+            border.width: 1
+
+            Text {
+                anchors.centerIn: parent
+                text: "×"
+                color: "white"
+                font.pixelSize: 21
+                font.weight: Font.DemiBold
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.LeftButton
+                onClicked: root.dismiss()
+            }
+        }
+
         Drag.dragType: Drag.None
         Drag.supportedActions: Qt.CopyAction
         Drag.proposedAction: Qt.CopyAction
         Drag.mimeData: ({
-            "text/uri-list": ScreenshotController.resultUri,
-            "text/plain": ScreenshotController.resultPath
+            "text/uri-list": ScreenshotController.resultUri + "\r\n",
+            "text/plain": ScreenshotController.resultPath,
+            "image/png": ScreenshotController.imagePngData
         })
         Drag.imageSource: ScreenshotController.imageSource
         Drag.imageSourceSize: Qt.size(Math.max(1, Math.round(width)),
@@ -223,11 +229,8 @@ Window {
             onPressed: function(mouse) {
                 root.nativeDragConsumedPress = false
                 root.held = true
-                root.dragging = false
-                root.fileDragArmed = false
                 root.dragStart = root.pointerPosition(mouse)
                 root.nativeDragHotSpot = Qt.point(mouse.x, mouse.y)
-                fileDragArmTimer.restart()
             }
             onPositionChanged: function(mouse) {
                 if (!root.held)
@@ -235,17 +238,8 @@ Window {
                 const current = root.pointerPosition(mouse)
                 const dx = current.x - root.dragStart.x
                 const dy = current.y - root.dragStart.y
-                if (root.fileDragArmed
-                        && Math.sqrt(dx * dx + dy * dy) >= root.nativeDragDistance) {
+                if (Math.sqrt(dx * dx + dy * dy) >= root.nativeDragDistance) {
                     root.startNativeFileDrag()
-                    return
-                }
-                if (!root.dragging && Math.sqrt(dx * dx + dy * dy) >= root.dragThreshold)
-                    root.dragging = true
-                if (root.dragging) {
-                    card.x = root.slotPosition.x + dx
-                    card.y = root.slotPosition.y + dy
-                    root.updateGeometry()
                 }
             }
             onReleased: function(mouse) {
@@ -259,16 +253,10 @@ Window {
                 const current = root.pointerPosition(mouse)
                 const dx = current.x - root.dragStart.x
                 const dy = current.y - root.dragStart.y
-                const decision = root.decideGesture(dx, dy)
+                const distance = Math.sqrt(dx * dx + dy * dy)
                 root.resetPressState()
-                if (decision === "click") {
+                if (distance < root.nativeDragDistance) {
                     ScreenshotController.openPreview()
-                } else if (decision === "dismiss") {
-                    root.dismiss()
-                } else {
-                    root.dragging = false
-                    root.restoreSlot()
-                    root.updateGeometry()
                 }
             }
             onCanceled: {
@@ -283,23 +271,11 @@ Window {
     }
 
     Timer {
-        id: fileDragArmTimer
-        objectName: "fileDragArmTimer"
-        interval: 220
-        repeat: false
-        onTriggered: {
-            if (root.held && !root.dragging && !root.nativeFileDragging)
-                root.fileDragArmed = true
-        }
-    }
-
-    Timer {
         id: idleTimer
         objectName: "idleTimer"
         interval: 5000
         repeat: false
-        running: root.visible && !root.hovered && !root.held && !root.dragging
-                 && !root.fileDragArmed && !root.nativeFileDragging
+        running: root.visible && !root.hovered && !root.held && !root.nativeFileDragging
                  && !root.dismissing && !root.entering
         onTriggered: ScreenshotController.dismissThumbnail()
     }
@@ -322,7 +298,6 @@ Window {
         }
         onStopped: {
             root.dismissing = false
-            root.dragging = false
             root.restoreSlot()
             ScreenshotController.dismissThumbnail()
         }

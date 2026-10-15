@@ -4,6 +4,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QJsonObject>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -12,6 +13,7 @@
 #include "Dock/core/DockController.hpp"
 #include "AltTab/core/AltTabController.hpp"
 #include "Spotlight/core/SpotlightController.hpp"
+#include "app/ScreenshotShortcutStatus.hpp"
 #include "runtime/ShellRuntime.hpp"
 
 namespace {
@@ -95,6 +97,22 @@ void ShellUnifiedRuntimeIntegrationTest::unifiedRuntimeLifecycleAndStress()
     QCOMPARE(compositor.authenticationCount(), 1);
     QCOMPARE(compositor.clientCount(), 1);
     QCOMPARE(runtime.shortcutClient()->registeredShortcutCount(), 7);
+    const QJsonObject screenshotStatus = ShellRuntimeStatus::screenshot(
+        *runtime.screenshotController(), *runtime.screenCaptureClient());
+    QCOMPARE(screenshotStatus.value(QStringLiteral("phase")).toString(),
+             QStringLiteral("idle"));
+    QVERIFY(!screenshotStatus.value(QStringLiteral("pending")).toBool());
+    QVERIFY(!screenshotStatus.value(QStringLiteral("captureClientReady")).toBool());
+    const QJsonObject shortcutStatus = ShellRuntimeStatus::shortcuts(*runtime.shortcutClient());
+    QCOMPARE(shortcutStatus.value(QStringLiteral("connectionState")).toString(),
+             QStringLiteral("ready"));
+    QCOMPARE(shortcutStatus.value(QStringLiteral("registeredCount")).toInt(), 7);
+    const QJsonObject shortcutRegistrations =
+        shortcutStatus.value(QStringLiteral("registrations")).toObject();
+    QCOMPARE(shortcutRegistrations.size(), 7);
+    QCOMPARE(shortcutRegistrations.value(QStringLiteral("screenshot_quick")).toObject()
+                 .value(QStringLiteral("state")).toString(),
+             QStringLiteral("registered"));
     const QVariantMap shortcutHealth = runtime.shortcutClient()->registrationHealth();
     QCOMPARE(shortcutHealth.size(), 7);
     for (const QString &name : {QStringLiteral("screenshot_quick"),
@@ -174,6 +192,13 @@ void ShellUnifiedRuntimeIntegrationTest::unifiedRuntimeLifecycleAndStress()
     }, 2000));
     QVERIFY(!runtime.dockController()->runtimeKnown());
     QVERIFY(runtime.shortcutClient()->registeredShortcutCount() == 0);
+    const QJsonObject disconnectedShortcutStatus =
+        ShellRuntimeStatus::shortcuts(*runtime.shortcutClient());
+    QVERIFY(disconnectedShortcutStatus.value(QStringLiteral("connectionState")).toString()
+            == QStringLiteral("disconnected")
+            || disconnectedShortcutStatus.value(QStringLiteral("connectionState")).toString()
+                == QStringLiteral("degraded"));
+    QCOMPARE(disconnectedShortcutStatus.value(QStringLiteral("registeredCount")).toInt(), 0);
 
     runtime.typhonSession()->reconnectNowForTest();
     QVERIFY(compositor.pumpUntil([&runtime] {
@@ -185,6 +210,9 @@ void ShellUnifiedRuntimeIntegrationTest::unifiedRuntimeLifecycleAndStress()
     QCOMPARE(compositor.authenticationCount(), 2);
     QCOMPARE(compositor.clientCount(), 1);
     QCOMPARE(runtime.shortcutClient()->registeredShortcutCount(), 7);
+    QCOMPARE(ShellRuntimeStatus::shortcuts(*runtime.shortcutClient())
+                 .value(QStringLiteral("registeredCount")).toInt(),
+             7);
     publishUnifiedWindow(compositor, QStringLiteral("2"), 2);
     QVERIFY(waitForSnapshot(compositor, runtime));
     QCOMPARE(runtime.typhonToplevelConnection()->snapshot().windows.first().id,

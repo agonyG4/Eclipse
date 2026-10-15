@@ -2,7 +2,7 @@
 #include <QTest>
 
 #include "core/DockAppModel.hpp"
-#include "platform/typhon/DockApplicationStateProjector.hpp"
+#include "core/runtime/DockRuntimeTypes.hpp"
 
 class DockAppModelTest final : public QObject {
     Q_OBJECT
@@ -54,11 +54,11 @@ static std::shared_ptr<DesktopEntrySnapshot> makeSnapshot(const QStringList &nam
     return snapshot;
 }
 
-static Astrea::Typhon::DockApplicationRuntimeState runtimeState(
+static Astrea::Dock::DockApplicationRuntimeState runtimeState(
     const QString &desktopFileName, int windowCount = 1, bool active = false,
     bool running = true)
 {
-    Astrea::Typhon::DockApplicationRuntimeState state;
+    Astrea::Dock::DockApplicationRuntimeState state;
     state.taskKey = QStringLiteral("desktop:") + desktopFileName;
     state.desktopFileName = desktopFileName;
     state.running = running;
@@ -67,11 +67,11 @@ static Astrea::Typhon::DockApplicationRuntimeState runtimeState(
     return state;
 }
 
-static Astrea::Typhon::DockApplicationRuntimeProjection runtimeProjection(
-    std::initializer_list<Astrea::Typhon::DockApplicationRuntimeState> states,
+static Astrea::Dock::DockApplicationRuntimeProjection runtimeProjection(
+    std::initializer_list<Astrea::Dock::DockApplicationRuntimeState> states,
     const QStringList &encounterOrder = {})
 {
-    Astrea::Typhon::DockApplicationRuntimeProjection projection;
+    Astrea::Dock::DockApplicationRuntimeProjection projection;
     for (const auto &state : states) {
         projection.states.insert(state.taskKey, state);
         if (!encounterOrder.contains(state.taskKey))
@@ -347,7 +347,7 @@ void DockAppModelTest::runtimeStatePreservesLaunchState()
     QVERIFY(model.setLaunching(QStringLiteral("one.desktop"), true));
     QVERIFY(model.setLaunchError(QStringLiteral("one.desktop"), QStringLiteral("pending")));
 
-    Astrea::Typhon::DockApplicationRuntimeState state;
+    Astrea::Dock::DockApplicationRuntimeState state;
     state.taskKey = QStringLiteral("desktop:one.desktop");
     state.desktopFileName = QStringLiteral("one.desktop");
     state.running = true;
@@ -370,7 +370,7 @@ void DockAppModelTest::unknownRuntimeStateDoesNotClaimStopped()
     model.setCatalogSnapshot(makeSnapshot({QStringLiteral("one.desktop")}));
     model.setPins({QStringLiteral("one.desktop")});
 
-    Astrea::Typhon::DockApplicationRuntimeState state;
+    Astrea::Dock::DockApplicationRuntimeState state;
     state.taskKey = QStringLiteral("desktop:one.desktop");
     state.desktopFileName = QStringLiteral("one.desktop");
     state.running = true;
@@ -388,7 +388,7 @@ void DockAppModelTest::runtimeStateDisappearsWhenWindowCloses()
 {
     DockAppModel model;
     model.setPins({QStringLiteral("one.desktop"), QStringLiteral("two.desktop")});
-    Astrea::Typhon::DockApplicationRuntimeState state;
+    Astrea::Dock::DockApplicationRuntimeState state;
     state.taskKey = QStringLiteral("desktop:one.desktop");
     state.desktopFileName = QStringLiteral("one.desktop");
     state.running = true;
@@ -408,7 +408,7 @@ void DockAppModelTest::runtimeStateDisappearsWhenWindowCloses()
 void DockAppModelTest::unresolvedRuntimeTaskAppearsWithoutLauncher()
 {
     DockAppModel model;
-    Astrea::Typhon::DockApplicationRuntimeState state;
+    Astrea::Dock::DockApplicationRuntimeState state;
     state.taskKey = QStringLiteral("app:steam_app_1091500");
     state.appId = QStringLiteral("steam_app_1091500");
     state.displayName = QStringLiteral("Cyberpunk 2077");
@@ -433,7 +433,7 @@ void DockAppModelTest::resolvedPinnedRuntimeTaskMergesWithoutDuplication()
     model.setCatalogSnapshot(makeSnapshot({QStringLiteral("steam.desktop")}));
     model.setPins({QStringLiteral("steam.desktop")});
 
-    Astrea::Typhon::DockApplicationRuntimeState state;
+    Astrea::Dock::DockApplicationRuntimeState state;
     state.taskKey = QStringLiteral("desktop:steam.desktop");
     state.desktopFileName = QStringLiteral("steam.desktop");
     state.desktopId = QStringLiteral("steam");
@@ -450,7 +450,7 @@ void DockAppModelTest::resolvedPinnedRuntimeTaskMergesWithoutDuplication()
 void DockAppModelTest::identityEnrichmentKeepsTaskKeyAndRowCount()
 {
     DockAppModel model;
-    Astrea::Typhon::DockApplicationRuntimeState state;
+    Astrea::Dock::DockApplicationRuntimeState state;
     state.taskKey = QStringLiteral("app:steam_app_1091500");
     state.appId = QStringLiteral("steam_app_1091500");
     state.displayName = QStringLiteral("Cyberpunk 2077");
@@ -476,7 +476,7 @@ void DockAppModelTest::configuredPinUsesLiveStableRuntimeKey()
     DockAppModel model;
     model.setPins({QStringLiteral("late.desktop")});
 
-    Astrea::Typhon::DockApplicationRuntimeState state;
+    Astrea::Dock::DockApplicationRuntimeState state;
     state.taskKey = QStringLiteral("app:late-app");
     state.appId = QStringLiteral("late-app");
     state.desktopFileName = QStringLiteral("late.desktop");
@@ -496,7 +496,7 @@ void DockAppModelTest::livePinnedRuntimeFallsBackToDesktopKeyAfterLastWindow()
     DockAppModel model;
     model.setPins({QStringLiteral("late.desktop")});
 
-    Astrea::Typhon::DockApplicationRuntimeState state;
+    Astrea::Dock::DockApplicationRuntimeState state;
     state.taskKey = QStringLiteral("app:late-app");
     state.appId = QStringLiteral("late-app");
     state.desktopFileName = QStringLiteral("late.desktop");
@@ -514,7 +514,7 @@ void DockAppModelTest::livePinnedRuntimeFallsBackToDesktopKeyAfterLastWindow()
 void DockAppModelTest::unpinnedStableRuntimeDisappearsAfterLastWindow()
 {
     DockAppModel model;
-    Astrea::Typhon::DockApplicationRuntimeState state;
+    Astrea::Dock::DockApplicationRuntimeState state;
     state.taskKey = QStringLiteral("app:late-app");
     state.appId = QStringLiteral("late-app");
     state.desktopFileName = QStringLiteral("late.desktop");

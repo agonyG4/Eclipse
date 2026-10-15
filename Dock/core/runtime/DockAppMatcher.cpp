@@ -1,10 +1,10 @@
-#include "platform/typhon/TyphonAppMatcher.hpp"
+#include "core/runtime/DockAppMatcher.hpp"
 
 #include <QFileInfo>
 
 #include <algorithm>
 
-using namespace Astrea::Typhon;
+using namespace Astrea::Dock;
 
 namespace {
 
@@ -41,9 +41,9 @@ std::optional<DesktopEntryRecord> choose(const DesktopEntrySnapshot &snapshot,
     return snapshot.entries.at(indices.first());
 }
 
-TyphonAppMatch makeMatch(const DesktopEntryRecord &entry, MatchConfidence confidence)
+DockAppMatch makeMatch(const DesktopEntryRecord &entry, DockAppMatchConfidence confidence)
 {
-    TyphonAppMatch result;
+    DockAppMatch result;
     result.desktopFileName = entry.desktopFileName;
     result.desktopId = entry.id;
     result.displayName = entry.name;
@@ -68,34 +68,31 @@ QVector<int> matchingEntries(const DesktopEntrySnapshot &snapshot,
 
 } // namespace
 
-TyphonAppMatcher::TyphonAppMatcher(std::shared_ptr<const DesktopEntrySnapshot> snapshot)
+DockAppMatcher::DockAppMatcher(std::shared_ptr<const DesktopEntrySnapshot> snapshot)
     : m_snapshot(std::move(snapshot))
 {
     if (!m_snapshot)
         m_snapshot = std::make_shared<const DesktopEntrySnapshot>();
 }
 
-void TyphonAppMatcher::setSnapshot(std::shared_ptr<const DesktopEntrySnapshot> snapshot)
+void DockAppMatcher::setSnapshot(std::shared_ptr<const DesktopEntrySnapshot> snapshot)
 {
     m_snapshot = std::move(snapshot);
     if (!m_snapshot)
         m_snapshot = std::make_shared<const DesktopEntrySnapshot>();
 }
 
-TyphonAppMatch TyphonAppMatcher::match(const TyphonAppMatchInput &input) const
+DockAppMatch DockAppMatcher::match(const DockRuntimeWindow &window) const
 {
-    Q_UNUSED(input.title);
-    Q_UNUSED(input.pid);
-    Q_UNUSED(input.kind);
-
-    if (!m_snapshot || input.appId.trimmed().isEmpty())
+    if (!m_snapshot || window.appId.trimmed().isEmpty())
         return {};
 
-    const QString appId = input.appId.trimmed();
+    const QString appId = window.appId.trimmed();
     if (appId.endsWith(QStringLiteral(".desktop"), Qt::CaseSensitive)) {
         const auto fileIt = m_snapshot->byDesktopFileName.constFind(appId);
         if (fileIt != m_snapshot->byDesktopFileName.constEnd())
-            return makeMatch(m_snapshot->entries.at(fileIt.value()), MatchConfidence::ExactDesktopFileName);
+            return makeMatch(m_snapshot->entries.at(fileIt.value()),
+                             DockAppMatchConfidence::ExactDesktopFileName);
     }
 
     QString desktopId = appId;
@@ -104,21 +101,22 @@ TyphonAppMatch TyphonAppMatcher::match(const TyphonAppMatchInput &input) const
 
     const auto exactId = m_snapshot->byDesktopId.constFind(desktopId);
     if (exactId != m_snapshot->byDesktopId.constEnd())
-        return makeMatch(m_snapshot->entries.at(exactId.value()), MatchConfidence::ExactDesktopId);
+        return makeMatch(m_snapshot->entries.at(exactId.value()),
+                         DockAppMatchConfidence::ExactDesktopId);
 
     const auto caseInsensitiveId = choose(*m_snapshot, matchingEntries(
         *m_snapshot, [&desktopId](const DesktopEntryRecord &entry) {
             return entry.id.compare(desktopId, Qt::CaseInsensitive) == 0;
         }));
     if (caseInsensitiveId.has_value())
-        return makeMatch(caseInsensitiveId.value(), MatchConfidence::CaseInsensitiveDesktopId);
+        return makeMatch(caseInsensitiveId.value(), DockAppMatchConfidence::CaseInsensitiveDesktopId);
 
     const auto exactWmClass = choose(*m_snapshot, matchingEntries(
         *m_snapshot, [&appId](const DesktopEntryRecord &entry) {
             return !entry.startupWmClass.isEmpty() && entry.startupWmClass == appId;
         }));
     if (exactWmClass.has_value())
-        return makeMatch(exactWmClass.value(), MatchConfidence::ExactStartupWmClass);
+        return makeMatch(exactWmClass.value(), DockAppMatchConfidence::ExactStartupWmClass);
 
     const auto caseInsensitiveWmClass = choose(*m_snapshot, matchingEntries(
         *m_snapshot, [&appId](const DesktopEntryRecord &entry) {
@@ -126,7 +124,8 @@ TyphonAppMatch TyphonAppMatcher::match(const TyphonAppMatchInput &input) const
                 && entry.startupWmClass.compare(appId, Qt::CaseInsensitive) == 0;
         }));
     if (caseInsensitiveWmClass.has_value())
-        return makeMatch(caseInsensitiveWmClass.value(), MatchConfidence::CaseInsensitiveStartupWmClass);
+        return makeMatch(caseInsensitiveWmClass.value(),
+                         DockAppMatchConfidence::CaseInsensitiveStartupWmClass);
 
     const QString normalized = normalizedDesktopId(desktopId);
     const auto normalizedId = choose(*m_snapshot, matchingEntries(
@@ -134,7 +133,8 @@ TyphonAppMatch TyphonAppMatcher::match(const TyphonAppMatchInput &input) const
             return normalizedDesktopId(entry.id) == normalized;
         }));
     if (normalizedId.has_value())
-        return makeMatch(normalizedId.value(), MatchConfidence::NormalizedReverseDnsDesktopId);
+        return makeMatch(normalizedId.value(),
+                         DockAppMatchConfidence::NormalizedReverseDnsDesktopId);
 
     return {};
 }

@@ -3,12 +3,13 @@
 #include "core/DockAppModel.hpp"
 #include "core/DockMetrics.hpp"
 #include "core/DockSurfaceGeometry.hpp"
+#include "core/runtime/DockRuntimeBackend.hpp"
+#include "core/runtime/DockRuntimeTaskIdentityTracker.hpp"
 #include "services/DockConfigWatcher.hpp"
 #include "services/DockConfigPersistence.hpp"
 #include "apps/DesktopEntryCatalog.hpp"
 #include "apps/ApplicationIdentity.hpp"
 #include "launch/ApplicationLauncher.hpp"
-#include "platform/typhon/RuntimeTaskIdentityTracker.hpp"
 
 #include <QHash>
 #include <QElapsedTimer>
@@ -19,7 +20,6 @@
 
 #include <optional>
 
-class TyphonToplevelConnection;
 class AppIdentityResolver;
 
 class DockController final : public QObject {
@@ -118,16 +118,14 @@ public:
     void applyConfig(const DockConfig &config);
     void setComponentEnabled(bool enabled);
     void setCatalogSnapshot(std::shared_ptr<const DesktopEntrySnapshot> snapshot);
-    void attachTyphonConnection(TyphonToplevelConnection *connection);
-    void applyTyphonSnapshot(const Astrea::Typhon::Snapshot &snapshot);
-    void clearTyphonRuntime();
+    void attachRuntimeBackend(Astrea::Dock::DockRuntimeBackend *backend);
     Q_INVOKABLE void setPointerInside(bool inside);
 
     Q_INVOKABLE void launch(int row);
     Q_INVOKABLE void launchByDesktopFileName(const QString &desktopFileName);
     Q_INVOKABLE bool launchNewWindow(const QString &desktopFileName);
-    QVector<Astrea::Typhon::Toplevel> windowsForTaskKey(const QString &taskKey) const;
-    QVector<Astrea::Typhon::Toplevel> windowsForDesktopFileName(
+    QVector<Astrea::Dock::DockRuntimeWindow> windowsForTaskKey(const QString &taskKey) const;
+    QVector<Astrea::Dock::DockRuntimeWindow> windowsForDesktopFileName(
         const QString &desktopFileName) const;
     Q_INVOKABLE bool activateWindow(const QString &taskKey, const QString &windowId);
     Q_INVOKABLE bool closeWindow(const QString &taskKey, const QString &windowId);
@@ -135,7 +133,7 @@ public:
     Q_INVOKABLE bool setPinned(const QString &desktopFileName, bool pinned);
     Q_INVOKABLE bool movePinned(const QString &desktopFileName, int targetPinIndex);
     // True means the valid rectangle was accepted into the local task cache.
-    // It does not mean Typhon queued it or acknowledged it.
+    // It does not mean the runtime transport queued or acknowledged it.
     Q_INVOKABLE bool setMinimizeAnchor(const QString &taskKey, const QRect &rect);
     Q_INVOKABLE void clearMinimizeAnchor(const QString &taskKey);
     Q_INVOKABLE void show();
@@ -155,10 +153,10 @@ private slots:
     void onLaunchSucceeded(const QString &desktopId);
     void onLaunchFailed(const QString &desktopId, const QString &error);
     void onLaunchTimedOut(const QString &desktopId);
-    void onTyphonActionFinished(quint64 token, Astrea::Typhon::ToplevelAction action,
-                                Astrea::Typhon::ToplevelActionResult result);
-    void onTyphonActionFailed(quint64 token, Astrea::Typhon::ToplevelAction action,
-                              Astrea::Typhon::ToplevelActionError error);
+    void onRuntimeActionFinished(quint64 token, Astrea::Dock::DockRuntimeAction action,
+                                 Astrea::Dock::DockRuntimeActionResult result);
+    void onRuntimeActionFailed(quint64 token, Astrea::Dock::DockRuntimeAction action,
+                               Astrea::Dock::DockRuntimeActionError error);
     void onIdentityResolved(const QString &address, const AppIdentity &identity);
 
 private:
@@ -169,11 +167,13 @@ private:
     void updateAutoHidePolicy();
     bool autoHideActive() const;
     void setRevealed(bool revealed);
+    void applyRuntimeSnapshot(const Astrea::Dock::DockRuntimeSnapshot &snapshot);
+    void clearRuntimeState();
     void projectRuntime();
     void publishMinimizeAnchor(const QString &taskKey);
     void publishAllMinimizeAnchors();
     void clearPublishedMinimizeAnchors(const QSet<QString> &liveWindowIds);
-    void replayMinimizeAnchors(TyphonToplevelConnection *connection);
+    void replayMinimizeAnchors(Astrea::Dock::DockRuntimeBackend *backend);
     QSet<QString> liveRuntimeWindowIds() const;
     enum class MinimizeAnchorDiagnosticEvent {
         AnchorCached,
@@ -200,11 +200,11 @@ private:
                                 MinimizeAnchorDiagnosticReason reason,
                                 const QString &taskKey,
                                 const QString &windowId);
-    void reconcileTyphonActionFailure(Astrea::Typhon::ToplevelActionError error);
+    void reconcileRuntimeActionFailure(Astrea::Dock::DockRuntimeActionError error);
     void resolveTaskIdentities();
     void launchItem(const DockAppInfo &item, bool activateRunning = true);
     bool requestExactWindowAction(const QString &taskKey, const QString &windowId,
-                                  Astrea::Typhon::ToplevelAction action);
+                                  Astrea::Dock::DockRuntimeAction action);
 
     DockAppModel m_model;
     DockConfig m_config;
@@ -221,13 +221,13 @@ private:
     bool m_pointerInside = false;
     bool m_obstructed = false;
     bool m_revealed = true;
-    std::optional<Astrea::Typhon::Snapshot> m_runtimeSnapshot;
-    QHash<QString, Astrea::Typhon::DockApplicationRuntimeState> m_runtimeStates;
+    std::optional<Astrea::Dock::DockRuntimeSnapshot> m_runtimeSnapshot;
+    QHash<QString, Astrea::Dock::DockApplicationRuntimeState> m_runtimeStates;
     QHash<QString, QRect> m_minimizeAnchors;
     struct PublishedMinimizeAnchor {
         QString taskKey;
         QRect rect;
-        quint64 connectionGeneration = 0;
+        quint64 generation = 0;
         quint64 handleToken = 0;
         quint64 capabilityEpoch = 0;
     };
@@ -239,14 +239,14 @@ private:
     struct PendingWindowAction {
         QString taskKey;
         QString windowId;
-        Astrea::Typhon::ToplevelAction action = Astrea::Typhon::ToplevelAction::Activate;
+        Astrea::Dock::DockRuntimeAction action = Astrea::Dock::DockRuntimeAction::Activate;
     };
     QHash<quint64, PendingWindowAction> m_pendingWindowActions;
     quint64 m_nextActivationToken = 0;
-    TyphonToplevelConnection *m_typhonConnection = nullptr;
-    QVector<QMetaObject::Connection> m_typhonConnections;
-    Astrea::Typhon::DockApplicationStateProjector m_runtimeProjector;
-    Astrea::Typhon::RuntimeTaskIdentityTracker m_runtimeTaskIdentityTracker;
+    Astrea::Dock::DockRuntimeBackend *m_runtimeBackend = nullptr;
+    QVector<QMetaObject::Connection> m_runtimeConnections;
+    Astrea::Dock::DockApplicationStateProjector m_runtimeProjector;
+    Astrea::Dock::DockRuntimeTaskIdentityTracker m_runtimeTaskIdentityTracker;
     QString m_lastError;
     QTimer m_autoHideTimer;
 };

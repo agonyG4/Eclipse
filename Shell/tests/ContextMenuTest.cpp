@@ -5,6 +5,7 @@
 #include "core/ContextMenuSurfacePolicy.hpp"
 #include "core/ContextMenuSurfaceMapping.hpp"
 #include "Dock/core/DockController.hpp"
+#include "Dock/core/runtime/DockRuntimeBackend.hpp"
 #include "apps/DesktopEntryCatalog.hpp"
 #include "launch/ApplicationLauncher.hpp"
 #include "statusnotifier/DBusMenuModel.hpp"
@@ -19,6 +20,36 @@ using Astrea::Shell::ContextMenuController;
 using Astrea::Shell::ContextMenuModel;
 using Astrea::Shell::ContextMenuPlacement;
 using Astrea::Shell::ContextMenuTarget;
+
+class FakeDockRuntimeBackend final : public Astrea::Dock::DockRuntimeBackend {
+public:
+    using DockRuntimeBackend::DockRuntimeBackend;
+
+    bool runtimeReady() const override { return m_snapshot.authoritative; }
+    bool actionReady() const override { return false; }
+    Astrea::Dock::DockRuntimeSnapshot snapshot() const override { return m_snapshot; }
+    quint64 generation() const override { return m_snapshot.generation; }
+    std::optional<quint64> handleTokenForWindowId(const QString &windowId) const override
+    {
+        for (const auto &window : m_snapshot.windows) {
+            if (window.id == windowId)
+                return static_cast<quint64>(qHash(windowId));
+        }
+        return std::nullopt;
+    }
+    std::optional<Astrea::Dock::DockRuntimeActionError> requestAction(
+        const QString &, Astrea::Dock::DockRuntimeAction, quint64) override
+    { return Astrea::Dock::DockRuntimeActionError::NotActionReady; }
+    std::optional<Astrea::Dock::DockRuntimeActionError> setMinimizeAnchor(
+        const QString &, const QRect &) override
+    { return Astrea::Dock::DockRuntimeActionError::NotActionReady; }
+    std::optional<Astrea::Dock::DockRuntimeActionError> clearMinimizeAnchor(
+        const QString &) override
+    { return Astrea::Dock::DockRuntimeActionError::NotActionReady; }
+    QString diagnosticContext() const override { return QStringLiteral("test-backend"); }
+
+    Astrea::Dock::DockRuntimeSnapshot m_snapshot;
+};
 
 class ContextMenuTest final : public QObject {
     Q_OBJECT
@@ -313,16 +344,21 @@ void ContextMenuTest::controllerShutdownCleansUpActivePresentation()
 
 void ContextMenuTest::dockRuntimeOnlyMenuIsCapabilityBased()
 {
+    FakeDockRuntimeBackend backend;
     DockController dock;
-    Astrea::Typhon::Snapshot snapshot;
-    snapshot.connectionGeneration = 1;
+    Astrea::Dock::DockRuntimeSnapshot snapshot;
+    snapshot.authoritative = true;
+    snapshot.generation = 1;
     snapshot.revision = 1;
-    Astrea::Typhon::Toplevel window;
+    Astrea::Dock::DockRuntimeWindow window;
     window.id = QStringLiteral("9");
     window.appId = QStringLiteral("steam_app_1091500");
     window.title = QStringLiteral("Cyberpunk 2077");
+    window.focusSerial = 1;
     snapshot.windows.append(window);
-    dock.applyTyphonSnapshot(snapshot);
+    snapshot.total = snapshot.windows.size();
+    backend.m_snapshot = snapshot;
+    dock.attachRuntimeBackend(&backend);
 
     DesktopEntryCatalog catalog;
     ApplicationLauncher launcher(QStringLiteral("/nonexistent/astrea-launch"));

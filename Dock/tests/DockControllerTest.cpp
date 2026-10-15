@@ -5,9 +5,129 @@
 #include <QTemporaryDir>
 #include <QPersistentModelIndex>
 
+#include <optional>
+
 #include "core/DockController.hpp"
 #include "apps/appidentity/AppIdentityResolver.hpp"
 #include "services/DockConfigPersistence.hpp"
+
+class FakeDockRuntimeBackend final : public Astrea::Dock::DockRuntimeBackend {
+    Q_OBJECT
+
+public:
+    struct ActionRequest {
+        QString windowId;
+        Astrea::Dock::DockRuntimeAction action = Astrea::Dock::DockRuntimeAction::Activate;
+        quint64 token = 0;
+    };
+
+    explicit FakeDockRuntimeBackend(QObject *parent = nullptr)
+        : DockRuntimeBackend(parent)
+    {
+    }
+
+    bool runtimeReady() const override { return m_runtimeReady; }
+    bool actionReady() const override { return m_actionReady; }
+    Astrea::Dock::DockRuntimeSnapshot snapshot() const override { return m_snapshot; }
+    quint64 generation() const override { return m_snapshot.generation; }
+    std::optional<quint64> handleTokenForWindowId(const QString &windowId) const override
+    {
+        for (const auto &window : m_snapshot.windows) {
+            if (window.id == windowId)
+                return static_cast<quint64>(qHash(windowId));
+        }
+        return std::nullopt;
+    }
+
+    std::optional<Astrea::Dock::DockRuntimeActionError> requestAction(
+        const QString &windowId, Astrea::Dock::DockRuntimeAction action,
+        quint64 consumerToken) override
+    {
+        if (nextActionError) {
+            const auto error = nextActionError;
+            nextActionError.reset();
+            return error;
+        }
+        if (!m_actionReady)
+            return Astrea::Dock::DockRuntimeActionError::NotActionReady;
+        actionRequests.append({windowId, action, consumerToken});
+        return std::nullopt;
+    }
+
+    std::optional<Astrea::Dock::DockRuntimeActionError> setMinimizeAnchor(
+        const QString &windowId, const QRect &rect) override
+    {
+        if (!m_actionReady)
+            return Astrea::Dock::DockRuntimeActionError::NotActionReady;
+        publishedAnchors.insert(windowId, rect);
+        return std::nullopt;
+    }
+
+    std::optional<Astrea::Dock::DockRuntimeActionError> clearMinimizeAnchor(
+        const QString &windowId) override
+    {
+        if (!m_actionReady)
+            return Astrea::Dock::DockRuntimeActionError::NotActionReady;
+        publishedAnchors.remove(windowId);
+        return std::nullopt;
+    }
+
+    QString diagnosticContext() const override
+    {
+        return QStringLiteral("connection_state=ready capability=action_ready_v2 generation=%1")
+            .arg(generation());
+    }
+
+    void publishSnapshot(Astrea::Dock::DockRuntimeSnapshot snapshot)
+    {
+        const bool wasReady = m_runtimeReady;
+        snapshot.authoritative = true;
+        m_snapshot = std::move(snapshot);
+        m_runtimeReady = true;
+        if (!wasReady)
+            emit runtimeReadyChanged(true);
+        emit snapshotChanged(m_snapshot);
+    }
+
+    void clearRuntime()
+    {
+        const bool wasReady = m_runtimeReady;
+        m_runtimeReady = false;
+        m_snapshot = {};
+        if (wasReady)
+            emit runtimeReadyChanged(false);
+        emit snapshotChanged(m_snapshot);
+    }
+
+    void setActionReady(bool ready)
+    {
+        if (m_actionReady == ready)
+            return;
+        m_actionReady = ready;
+        emit actionReadyChanged(ready);
+    }
+
+    void finishAction(quint64 token, Astrea::Dock::DockRuntimeAction action,
+                      Astrea::Dock::DockRuntimeActionResult result)
+    {
+        emit actionFinished(token, action, result);
+    }
+
+    void failAction(quint64 token, Astrea::Dock::DockRuntimeAction action,
+                    Astrea::Dock::DockRuntimeActionError error)
+    {
+        emit actionFailed(token, action, error);
+    }
+
+    std::optional<Astrea::Dock::DockRuntimeActionError> nextActionError;
+    QVector<ActionRequest> actionRequests;
+    QHash<QString, QRect> publishedAnchors;
+
+private:
+    Astrea::Dock::DockRuntimeSnapshot m_snapshot;
+    bool m_runtimeReady = false;
+    bool m_actionReady = false;
+};
 
 class FakeLauncher final : public ApplicationLauncher {
     Q_OBJECT
@@ -44,11 +164,12 @@ private slots:
     void catalogRebuildKeepsModelRowsStable();
     void runningRuntimeSuppressesDuplicateLaunch();
     void runtimeWindowsKeepExactIdentityAndTitles();
+    void runtimeBackendActionsAndReadinessRemainSynchronous();
     void newWindowLaunchBypassesRunningActivation();
     void pinMutationRequiresSuccessfulPersistence();
     void pinCountersExcludeRuntimeOnlyRows();
     void movingFirstPinToEndPersistsAndPreservesState();
-    void movingRuntimePinnedItemsPreservesTyphonState();
+    void movingRuntimePinnedItemsPreservesRuntimeState();
     void movingLastPinToBeginningPersists();
     void movingToSameIndexIsNoOp();
     void invalidOrRuntimeOnlySourceIsRejected();
@@ -131,12 +252,13 @@ static std::shared_ptr<DesktopEntrySnapshot> makeLateCatalog()
     return snapshot;
 }
 
-static Astrea::Typhon::Snapshot runtimeSnapshot(
-    quint64 generation, std::initializer_list<Astrea::Typhon::Toplevel> windows)
+static Astrea::Dock::DockRuntimeSnapshot runtimeSnapshot(
+    quint64 generation, std::initializer_list<Astrea::Dock::DockRuntimeWindow> windows)
 {
-    Astrea::Typhon::Snapshot snapshot;
-    snapshot.connectionGeneration = generation;
-    snapshot.windows = QVector<Astrea::Typhon::Toplevel>(windows);
+    Astrea::Dock::DockRuntimeSnapshot snapshot;
+    snapshot.authoritative = true;
+    snapshot.generation = generation;
+    snapshot.windows = QVector<Astrea::Dock::DockRuntimeWindow>(windows);
     snapshot.total = snapshot.windows.size();
     return snapshot;
 }
@@ -330,20 +452,22 @@ void DockControllerTest::catalogRebuildKeepsModelRowsStable()
 void DockControllerTest::runningRuntimeSuppressesDuplicateLaunch()
 {
     FakeLauncher launcher;
+    FakeDockRuntimeBackend runtimeBackend;
     DockController controller(&launcher);
+    controller.attachRuntimeBackend(&runtimeBackend);
     controller.setCatalogSnapshot(makeCatalog());
     controller.applyConfig(configWithPins({QStringLiteral("one.desktop")}));
 
-    Astrea::Typhon::Snapshot snapshot;
-    snapshot.connectionGeneration = 1;
+    Astrea::Dock::DockRuntimeSnapshot snapshot;
+    snapshot.generation = 1;
     snapshot.revision = 1;
     snapshot.total = 1;
-    Astrea::Typhon::Toplevel window;
+    Astrea::Dock::DockRuntimeWindow window;
     window.id = QStringLiteral("window-1");
     window.appId = QStringLiteral("one");
-    window.states = Astrea::Typhon::ToplevelStates{Astrea::Typhon::ToplevelStateFlag::Active};
+    window.active = true;
     snapshot.windows.append(window);
-    controller.applyTyphonSnapshot(snapshot);
+    runtimeBackend.publishSnapshot(snapshot);
 
     const QModelIndex index = controller.appModel()->index(0, 0);
     QVERIFY(index.data(DockAppModel::RuntimeKnownRole).toBool());
@@ -354,7 +478,7 @@ void DockControllerTest::runningRuntimeSuppressesDuplicateLaunch()
     controller.launch(0);
     QCOMPARE(launcher.requests.size(), 0);
 
-    controller.clearTyphonRuntime();
+    runtimeBackend.clearRuntime();
     QVERIFY(!controller.appModel()->data(index, DockAppModel::RuntimeKnownRole).toBool());
     controller.launch(0);
     QCOMPARE(launcher.requests.size(), 1);
@@ -362,23 +486,25 @@ void DockControllerTest::runningRuntimeSuppressesDuplicateLaunch()
 
 void DockControllerTest::runtimeWindowsKeepExactIdentityAndTitles()
 {
+    FakeDockRuntimeBackend runtimeBackend;
     DockController controller;
+    controller.attachRuntimeBackend(&runtimeBackend);
     controller.setCatalogSnapshot(makeCatalog());
     controller.applyConfig(configWithPins({QStringLiteral("one.desktop")}));
 
-    Astrea::Typhon::Snapshot snapshot;
-    snapshot.connectionGeneration = 2;
+    Astrea::Dock::DockRuntimeSnapshot snapshot;
+    snapshot.generation = 2;
     snapshot.revision = 4;
-    Astrea::Typhon::Toplevel first;
+    Astrea::Dock::DockRuntimeWindow first;
     first.id = QStringLiteral("window-a");
     first.appId = QStringLiteral("one");
     first.title = QStringLiteral("First title");
-    Astrea::Typhon::Toplevel second;
+    Astrea::Dock::DockRuntimeWindow second;
     second.id = QStringLiteral("window-b");
     second.appId = QStringLiteral("one");
     second.title = QStringLiteral("Second title");
     snapshot.windows = {first, second};
-    controller.applyTyphonSnapshot(snapshot);
+    runtimeBackend.publishSnapshot(snapshot);
 
     const auto windows = controller.windowsForDesktopFileName(QStringLiteral("one.desktop"));
     QCOMPARE(windows.size(), 2);
@@ -388,21 +514,70 @@ void DockControllerTest::runtimeWindowsKeepExactIdentityAndTitles()
     QVERIFY(controller.windowsForDesktopFileName(QStringLiteral("two.desktop")).isEmpty());
 }
 
+void DockControllerTest::runtimeBackendActionsAndReadinessRemainSynchronous()
+{
+    FakeDockRuntimeBackend runtimeBackend;
+    Astrea::Dock::DockRuntimeWindow window;
+    window.id = QStringLiteral("exact-window");
+    window.appId = QStringLiteral("one");
+    window.title = QStringLiteral("Exact target");
+    runtimeBackend.publishSnapshot(runtimeSnapshot(8, {window}));
+
+    DockController controller;
+    controller.attachRuntimeBackend(&runtimeBackend);
+    controller.setCatalogSnapshot(makeCatalog());
+    controller.applyConfig(configWithPins({QStringLiteral("one.desktop")}));
+    QVERIFY(controller.runtimeKnown());
+    QCOMPARE(controller.windowsForDesktopFileName(QStringLiteral("one.desktop")).size(), 1);
+
+    const auto runtimeKey = controller.appModel()->runtimeTaskKeyForDesktopFileName(
+        QStringLiteral("one.desktop"));
+    QVERIFY(!runtimeKey.isEmpty());
+    const QRect anchor(10, 20, 30, 40);
+    QVERIFY(controller.setMinimizeAnchor(runtimeKey, anchor));
+    QVERIFY(runtimeBackend.publishedAnchors.isEmpty());
+    runtimeBackend.setActionReady(true);
+    QCOMPARE(runtimeBackend.publishedAnchors.value(QStringLiteral("exact-window")), anchor);
+
+    QVERIFY(controller.activateWindow(runtimeKey, QStringLiteral("exact-window")));
+    QCOMPARE(runtimeBackend.actionRequests.size(), 1);
+    QCOMPARE(runtimeBackend.actionRequests.last().windowId, QStringLiteral("exact-window"));
+    QCOMPARE(runtimeBackend.actionRequests.last().action,
+             Astrea::Dock::DockRuntimeAction::Activate);
+    runtimeBackend.finishAction(runtimeBackend.actionRequests.last().token,
+                                Astrea::Dock::DockRuntimeAction::Activate,
+                                Astrea::Dock::DockRuntimeActionResult::Accepted);
+    QVERIFY(controller.lastError().isEmpty());
+
+    QVERIFY(controller.activateWindow(runtimeKey, QStringLiteral("exact-window")));
+    const quint64 failedToken = runtimeBackend.actionRequests.last().token;
+    runtimeBackend.failAction(failedToken, Astrea::Dock::DockRuntimeAction::Activate,
+                              Astrea::Dock::DockRuntimeActionError::Disconnected);
+    QCOMPARE(controller.lastError(), QStringLiteral("The selected window action failed"));
+
+    runtimeBackend.nextActionError = Astrea::Dock::DockRuntimeActionError::NotActionReady;
+    QVERIFY(!controller.closeWindow(runtimeKey, QStringLiteral("exact-window")));
+    QCOMPARE(runtimeBackend.actionRequests.size(), 2);
+    QVERIFY(!controller.lastError().isEmpty());
+}
+
 void DockControllerTest::newWindowLaunchBypassesRunningActivation()
 {
     FakeLauncher launcher;
+    FakeDockRuntimeBackend runtimeBackend;
     DockController controller(&launcher);
+    controller.attachRuntimeBackend(&runtimeBackend);
     controller.setCatalogSnapshot(makeCatalog());
     controller.applyConfig(configWithPins({QStringLiteral("one.desktop")}));
 
-    Astrea::Typhon::Snapshot snapshot;
-    snapshot.connectionGeneration = 1;
+    Astrea::Dock::DockRuntimeSnapshot snapshot;
+    snapshot.generation = 1;
     snapshot.revision = 1;
-    Astrea::Typhon::Toplevel window;
+    Astrea::Dock::DockRuntimeWindow window;
     window.id = QStringLiteral("window-1");
     window.appId = QStringLiteral("one");
     snapshot.windows.append(window);
-    controller.applyTyphonSnapshot(snapshot);
+    runtimeBackend.publishSnapshot(snapshot);
 
     QVERIFY(controller.launchNewWindow(QStringLiteral("one.desktop")));
     QCOMPARE(launcher.requests.size(), 1);
@@ -430,19 +605,21 @@ void DockControllerTest::pinMutationRequiresSuccessfulPersistence()
 void DockControllerTest::pinCountersExcludeRuntimeOnlyRows()
 {
     FakeLauncher launcher;
+    FakeDockRuntimeBackend runtimeBackend;
     DockController controller(&launcher);
+    controller.attachRuntimeBackend(&runtimeBackend);
     controller.setCatalogSnapshot(makeCatalog());
     controller.applyConfig(configWithPins({QStringLiteral("one.desktop"),
                                            QStringLiteral("missing.desktop")}));
 
-    Astrea::Typhon::Snapshot snapshot;
-    snapshot.connectionGeneration = 1;
+    Astrea::Dock::DockRuntimeSnapshot snapshot;
+    snapshot.generation = 1;
     snapshot.revision = 1;
-    Astrea::Typhon::Toplevel window;
+    Astrea::Dock::DockRuntimeWindow window;
     window.id = QStringLiteral("window-2");
     window.appId = QStringLiteral("two");
     snapshot.windows.append(window);
-    controller.applyTyphonSnapshot(snapshot);
+    runtimeBackend.publishSnapshot(snapshot);
 
     QCOMPARE(controller.pinCount(), 2);
     QCOMPARE(controller.appModel()->rowCount(), 3);
@@ -480,28 +657,29 @@ void DockControllerTest::movingFirstPinToEndPersistsAndPreservesState()
     QCOMPARE(launcher.requests.first().desktopFileName, QStringLiteral("one.desktop"));
 }
 
-void DockControllerTest::movingRuntimePinnedItemsPreservesTyphonState()
+void DockControllerTest::movingRuntimePinnedItemsPreservesRuntimeState()
 {
     CountingPersistence persistence;
+    FakeDockRuntimeBackend runtimeBackend;
     DockController controller(nullptr, nullptr, &persistence);
+    controller.attachRuntimeBackend(&runtimeBackend);
     controller.setCatalogSnapshot(makeCatalog());
     controller.applyConfig(configWithPins({QStringLiteral("one.desktop"),
                                            QStringLiteral("two.desktop")}));
 
-    Astrea::Typhon::Snapshot snapshot;
-    snapshot.connectionGeneration = 3;
+    Astrea::Dock::DockRuntimeSnapshot snapshot;
+    snapshot.generation = 3;
     snapshot.revision = 2;
-    Astrea::Typhon::Toplevel running;
+    Astrea::Dock::DockRuntimeWindow running;
     running.id = QStringLiteral("running-window");
     running.appId = QStringLiteral("one");
-    running.states = Astrea::Typhon::ToplevelStates{Astrea::Typhon::ToplevelStateFlag::Active};
-    Astrea::Typhon::Toplevel minimized;
+    running.active = true;
+    Astrea::Dock::DockRuntimeWindow minimized;
     minimized.id = QStringLiteral("minimized-window");
     minimized.appId = QStringLiteral("two");
-    minimized.states = Astrea::Typhon::ToplevelStates{
-        Astrea::Typhon::ToplevelStateFlag::Minimized};
+    minimized.minimized = true;
     snapshot.windows = {running, minimized};
-    controller.applyTyphonSnapshot(snapshot);
+    runtimeBackend.publishSnapshot(snapshot);
 
     QVERIFY(controller.movePinned(QStringLiteral("one.desktop"), 1));
     QCOMPARE(controller.appModel()->desktopFileNameAt(0), QStringLiteral("two.desktop"));
@@ -548,8 +726,8 @@ void DockControllerTest::invalidOrRuntimeOnlySourceIsRejected()
     CountingPersistence persistence;
     DockController controller(nullptr, nullptr, &persistence);
     controller.applyConfig(configWithPins({QStringLiteral("one.desktop")}));
-    Astrea::Typhon::DockApplicationRuntimeProjection projection;
-    Astrea::Typhon::DockApplicationRuntimeState runtime;
+    Astrea::Dock::DockApplicationRuntimeProjection projection;
+    Astrea::Dock::DockApplicationRuntimeState runtime;
     runtime.desktopFileName = QStringLiteral("two.desktop");
     runtime.running = true;
     runtime.windowCount = 1;
@@ -585,10 +763,10 @@ void DockControllerTest::runtimeOnlyOrderingRemainsUnchangedAfterPinMove()
     DockController controller(nullptr, nullptr, &persistence);
     controller.applyConfig(configWithPins({QStringLiteral("one.desktop"),
                                            QStringLiteral("two.desktop")}));
-    Astrea::Typhon::DockApplicationRuntimeProjection projection;
+    Astrea::Dock::DockApplicationRuntimeProjection projection;
     for (const QString &key : {QStringLiteral("runtime-a.desktop"),
                                QStringLiteral("runtime-b.desktop")}) {
-        Astrea::Typhon::DockApplicationRuntimeState state;
+        Astrea::Dock::DockApplicationRuntimeState state;
         state.desktopFileName = key;
         state.running = true;
         state.windowCount = 1;
@@ -605,19 +783,21 @@ void DockControllerTest::runtimeOnlyOrderingRemainsUnchangedAfterPinMove()
 
 void DockControllerTest::runtimeOnlyTaskUsesTaskKeyAndRejectsLauncherActions()
 {
+    FakeDockRuntimeBackend runtimeBackend;
     DockController controller;
+    controller.attachRuntimeBackend(&runtimeBackend);
     controller.setCatalogSnapshot(makeCatalog());
 
-    Astrea::Typhon::Snapshot snapshot;
-    snapshot.connectionGeneration = 1;
+    Astrea::Dock::DockRuntimeSnapshot snapshot;
+    snapshot.generation = 1;
     snapshot.revision = 1;
-    Astrea::Typhon::Toplevel window;
+    Astrea::Dock::DockRuntimeWindow window;
     window.id = QStringLiteral("runtime-window");
     window.appId = QStringLiteral("steam_app_1091500");
     window.title = QStringLiteral("Cyberpunk 2077");
     window.focusSerial = 9;
     snapshot.windows.append(window);
-    controller.applyTyphonSnapshot(snapshot);
+    runtimeBackend.publishSnapshot(snapshot);
 
     const QString taskKey = QStringLiteral("app:steam_app_1091500");
     QCOMPARE(controller.appModel()->rowForTaskKey(taskKey), 0);
@@ -628,17 +808,19 @@ void DockControllerTest::runtimeOnlyTaskUsesTaskKeyAndRejectsLauncherActions()
 
 void DockControllerTest::runtimeIdentityEnrichmentKeepsTaskKeyStable()
 {
+    FakeDockRuntimeBackend runtimeBackend;
     DockController controller;
-    Astrea::Typhon::Snapshot snapshot;
-    snapshot.connectionGeneration = 4;
+    controller.attachRuntimeBackend(&runtimeBackend);
+    Astrea::Dock::DockRuntimeSnapshot snapshot;
+    snapshot.generation = 4;
     snapshot.revision = 1;
-    Astrea::Typhon::Toplevel window;
+    Astrea::Dock::DockRuntimeWindow window;
     window.id = QStringLiteral("9");
     window.appId = QStringLiteral("steam_app_1091500");
     window.title = QStringLiteral("Cyberpunk 2077");
     snapshot.windows.append(window);
 
-    controller.applyTyphonSnapshot(snapshot);
+    runtimeBackend.publishSnapshot(snapshot);
 
     QCOMPARE(controller.appModel()->rowCount(), 1);
     QCOMPARE(controller.appModel()->taskKeyAt(0),
@@ -650,22 +832,24 @@ void DockControllerTest::runtimeIdentityEnrichmentKeepsTaskKeyStable()
 
 void DockControllerTest::staleIdentityEnrichmentIsRejectedAtControllerBoundary()
 {
+    FakeDockRuntimeBackend runtimeBackend;
     DockController controller;
-    Astrea::Typhon::Snapshot first;
-    first.connectionGeneration = 4;
+    controller.attachRuntimeBackend(&runtimeBackend);
+    Astrea::Dock::DockRuntimeSnapshot first;
+    first.generation = 4;
     first.revision = 1;
-    Astrea::Typhon::Toplevel firstWindow;
+    Astrea::Dock::DockRuntimeWindow firstWindow;
     firstWindow.id = QStringLiteral("9");
     firstWindow.appId = QStringLiteral("example-app");
     firstWindow.title = QStringLiteral("Old title");
     firstWindow.pid = 100;
     first.windows.append(firstWindow);
-    controller.applyTyphonSnapshot(first);
+    runtimeBackend.publishSnapshot(first);
 
-    Astrea::Typhon::Snapshot current = first;
+    Astrea::Dock::DockRuntimeSnapshot current = first;
     current.revision = 2;
     current.windows.first().title = QStringLiteral("New title");
-    controller.applyTyphonSnapshot(current);
+    runtimeBackend.publishSnapshot(current);
 
     AppIdentity stale;
     stale.windowId = QStringLiteral("9");
@@ -684,14 +868,16 @@ void DockControllerTest::staleIdentityEnrichmentIsRejectedAtControllerBoundary()
 
 void DockControllerTest::catalogGainWhileLiveKeepsStableTaskKeyAndAvoidsRowChurn()
 {
+    FakeDockRuntimeBackend runtimeBackend;
     DockController controller;
+    controller.attachRuntimeBackend(&runtimeBackend);
     const auto empty = std::make_shared<DesktopEntrySnapshot>();
     controller.setCatalogSnapshot(empty);
-    Astrea::Typhon::Toplevel window;
+    Astrea::Dock::DockRuntimeWindow window;
     window.id = QStringLiteral("late-window");
     window.appId = QStringLiteral("late-app");
     window.title = QStringLiteral("Late");
-    controller.applyTyphonSnapshot(runtimeSnapshot(1, {window}));
+    runtimeBackend.publishSnapshot(runtimeSnapshot(1, {window}));
 
     QCOMPARE(controller.appModel()->rowCount(), 1);
     QCOMPARE(controller.appModel()->taskKeyAt(0), QStringLiteral("app:late-app"));
@@ -711,12 +897,14 @@ void DockControllerTest::catalogGainWhileLiveKeepsStableTaskKeyAndAvoidsRowChurn
 
 void DockControllerTest::catalogLossWhileLiveKeepsStableTaskKey()
 {
+    FakeDockRuntimeBackend runtimeBackend;
     DockController controller;
+    controller.attachRuntimeBackend(&runtimeBackend);
     controller.setCatalogSnapshot(makeLateCatalog());
-    Astrea::Typhon::Toplevel window;
+    Astrea::Dock::DockRuntimeWindow window;
     window.id = QStringLiteral("late-window");
     window.appId = QStringLiteral("late-app");
-    controller.applyTyphonSnapshot(runtimeSnapshot(1, {window}));
+    runtimeBackend.publishSnapshot(runtimeSnapshot(1, {window}));
     const QString stableKey = controller.appModel()->taskKeyAt(0);
 
     QSignalSpy insertedSpy(controller.appModel(), &QAbstractItemModel::rowsInserted);
@@ -734,12 +922,14 @@ void DockControllerTest::catalogLossWhileLiveKeepsStableTaskKey()
 void DockControllerTest::catalogLossWhilePinnedKeepsOneStableLiveRow()
 {
     CountingPersistence persistence;
+    FakeDockRuntimeBackend runtimeBackend;
     DockController controller(nullptr, nullptr, &persistence);
+    controller.attachRuntimeBackend(&runtimeBackend);
     controller.setCatalogSnapshot(std::make_shared<DesktopEntrySnapshot>());
-    Astrea::Typhon::Toplevel window;
+    Astrea::Dock::DockRuntimeWindow window;
     window.id = QStringLiteral("late-window");
     window.appId = QStringLiteral("late-app");
-    controller.applyTyphonSnapshot(runtimeSnapshot(1, {window}));
+    runtimeBackend.publishSnapshot(runtimeSnapshot(1, {window}));
     controller.setCatalogSnapshot(makeLateCatalog());
     QVERIFY(controller.setPinned(QStringLiteral("late.desktop"), true));
 
@@ -765,25 +955,27 @@ void DockControllerTest::catalogLossWhilePinnedKeepsOneStableLiveRow()
     QCOMPARE(cataloglessWindows.size(), 1);
     QCOMPARE(cataloglessWindows.first().id, QStringLiteral("late-window"));
 
-    controller.applyTyphonSnapshot(runtimeSnapshot(1, {}));
+    runtimeBackend.publishSnapshot(runtimeSnapshot(1, {}));
     QVERIFY(controller.windowsForDesktopFileName(QStringLiteral("late.desktop")).isEmpty());
 }
 
 void DockControllerTest::runtimeMetadataChangeKeepsStableTaskKey()
 {
+    FakeDockRuntimeBackend runtimeBackend;
     DockController controller;
+    controller.attachRuntimeBackend(&runtimeBackend);
     const auto empty = std::make_shared<DesktopEntrySnapshot>();
     controller.setCatalogSnapshot(empty);
-    Astrea::Typhon::Toplevel first;
+    Astrea::Dock::DockRuntimeWindow first;
     first.id = QStringLiteral("stable-window");
     first.appId = QStringLiteral("before-app");
     first.title = QStringLiteral("Before");
-    controller.applyTyphonSnapshot(runtimeSnapshot(1, {first}));
+    runtimeBackend.publishSnapshot(runtimeSnapshot(1, {first}));
 
-    Astrea::Typhon::Toplevel changed = first;
+    Astrea::Dock::DockRuntimeWindow changed = first;
     changed.appId = QStringLiteral("after-app");
     changed.title = QStringLiteral("After");
-    controller.applyTyphonSnapshot(runtimeSnapshot(1, {changed}));
+    runtimeBackend.publishSnapshot(runtimeSnapshot(1, {changed}));
 
     QCOMPARE(controller.appModel()->rowCount(), 1);
     QCOMPARE(controller.appModel()->taskKeyAt(0), QStringLiteral("app:before-app"));
@@ -793,17 +985,19 @@ void DockControllerTest::runtimeMetadataChangeKeepsStableTaskKey()
 
 void DockControllerTest::newSameAppWindowJoinsStableTaskAfterCatalogGain()
 {
+    FakeDockRuntimeBackend runtimeBackend;
     DockController controller;
+    controller.attachRuntimeBackend(&runtimeBackend);
     controller.setCatalogSnapshot(std::make_shared<DesktopEntrySnapshot>());
-    Astrea::Typhon::Toplevel first;
+    Astrea::Dock::DockRuntimeWindow first;
     first.id = QStringLiteral("first");
     first.appId = QStringLiteral("late-app");
-    controller.applyTyphonSnapshot(runtimeSnapshot(1, {first}));
+    runtimeBackend.publishSnapshot(runtimeSnapshot(1, {first}));
     controller.setCatalogSnapshot(makeLateCatalog());
 
-    Astrea::Typhon::Toplevel second = first;
+    Astrea::Dock::DockRuntimeWindow second = first;
     second.id = QStringLiteral("second");
-    controller.applyTyphonSnapshot(runtimeSnapshot(1, {first, second}));
+    runtimeBackend.publishSnapshot(runtimeSnapshot(1, {first, second}));
 
     QCOMPARE(controller.appModel()->rowCount(), 1);
     QCOMPARE(controller.appModel()->taskKeyAt(0), QStringLiteral("app:late-app"));
@@ -814,12 +1008,14 @@ void DockControllerTest::newSameAppWindowJoinsStableTaskAfterCatalogGain()
 void DockControllerTest::lateResolvedRuntimeCanBePinnedWithoutDuplicate()
 {
     CountingPersistence persistence;
+    FakeDockRuntimeBackend runtimeBackend;
     DockController controller(nullptr, nullptr, &persistence);
+    controller.attachRuntimeBackend(&runtimeBackend);
     controller.setCatalogSnapshot(std::make_shared<DesktopEntrySnapshot>());
-    Astrea::Typhon::Toplevel window;
+    Astrea::Dock::DockRuntimeWindow window;
     window.id = QStringLiteral("late-window");
     window.appId = QStringLiteral("late-app");
-    controller.applyTyphonSnapshot(runtimeSnapshot(1, {window}));
+    runtimeBackend.publishSnapshot(runtimeSnapshot(1, {window}));
     controller.setCatalogSnapshot(makeLateCatalog());
 
     QVERIFY(controller.setPinned(QStringLiteral("late.desktop"), true));
@@ -832,16 +1028,18 @@ void DockControllerTest::lateResolvedRuntimeCanBePinnedWithoutDuplicate()
 
 void DockControllerTest::newLifecycleCanUseDesktopKeyAfterOldTaskEnds()
 {
+    FakeDockRuntimeBackend runtimeBackend;
     DockController controller;
+    controller.attachRuntimeBackend(&runtimeBackend);
     controller.setCatalogSnapshot(std::make_shared<DesktopEntrySnapshot>());
-    Astrea::Typhon::Toplevel window;
+    Astrea::Dock::DockRuntimeWindow window;
     window.id = QStringLiteral("late-window");
     window.appId = QStringLiteral("late-app");
-    controller.applyTyphonSnapshot(runtimeSnapshot(1, {window}));
+    runtimeBackend.publishSnapshot(runtimeSnapshot(1, {window}));
     QCOMPARE(controller.appModel()->taskKeyAt(0), QStringLiteral("app:late-app"));
-    controller.applyTyphonSnapshot(runtimeSnapshot(1, {}));
+    runtimeBackend.publishSnapshot(runtimeSnapshot(1, {}));
     controller.setCatalogSnapshot(makeLateCatalog());
-    controller.applyTyphonSnapshot(runtimeSnapshot(1, {window}));
+    runtimeBackend.publishSnapshot(runtimeSnapshot(1, {window}));
 
     QCOMPARE(controller.appModel()->rowCount(), 1);
     QCOMPARE(controller.appModel()->taskKeyAt(0), QStringLiteral("desktop:late.desktop"));
@@ -849,12 +1047,14 @@ void DockControllerTest::newLifecycleCanUseDesktopKeyAfterOldTaskEnds()
 
 void DockControllerTest::desktopFilenameLookupFindsStableRuntimeTask()
 {
+    FakeDockRuntimeBackend runtimeBackend;
     DockController controller;
+    controller.attachRuntimeBackend(&runtimeBackend);
     controller.setCatalogSnapshot(std::make_shared<DesktopEntrySnapshot>());
-    Astrea::Typhon::Toplevel window;
+    Astrea::Dock::DockRuntimeWindow window;
     window.id = QStringLiteral("late-window");
     window.appId = QStringLiteral("late-app");
-    controller.applyTyphonSnapshot(runtimeSnapshot(1, {window}));
+    runtimeBackend.publishSnapshot(runtimeSnapshot(1, {window}));
     controller.setCatalogSnapshot(makeLateCatalog());
 
     const auto windows = controller.windowsForDesktopFileName(QStringLiteral("late.desktop"));
@@ -902,7 +1102,9 @@ void DockControllerTest::personalizationPropertiesPropagateAndUnchangedConfigIsQ
 
 void DockControllerTest::autoHidePolicyKeepsSurfaceMappedAndReservationBounded()
 {
+    FakeDockRuntimeBackend runtimeBackend;
     DockController controller;
+    controller.attachRuntimeBackend(&runtimeBackend);
     controller.applyConfig(configWithPins({QStringLiteral("one.desktop")}));
     const int resting = controller.restingHeight();
 
@@ -929,30 +1131,31 @@ void DockControllerTest::autoHidePolicyKeepsSurfaceMappedAndReservationBounded()
     QCOMPARE(controller.exclusiveZone(), resting);
     QVERIFY(controller.revealed());
 
-    Astrea::Typhon::Snapshot snapshot;
-    snapshot.connectionGeneration = 1;
+    Astrea::Dock::DockRuntimeSnapshot snapshot;
+    snapshot.generation = 1;
     snapshot.revision = 1;
-    Astrea::Typhon::Toplevel active;
+    Astrea::Dock::DockRuntimeWindow active;
     active.id = QStringLiteral("maximized");
-    active.states = Astrea::Typhon::ToplevelStates{
-        Astrea::Typhon::ToplevelStateFlag::Active,
-        Astrea::Typhon::ToplevelStateFlag::Maximized};
+    active.active = true;
+    active.maximized = true;
     snapshot.windows.append(active);
-    controller.applyTyphonSnapshot(snapshot);
+    runtimeBackend.publishSnapshot(snapshot);
     QCOMPARE(controller.exclusiveZone(), 0);
     QVERIFY(!controller.revealed());
 
-    active.states = Astrea::Typhon::ToplevelStates{
-        Astrea::Typhon::ToplevelStateFlag::Active};
+    active.active = true;
+    active.maximized = false;
     snapshot.windows = {active};
-    controller.applyTyphonSnapshot(snapshot);
+    runtimeBackend.publishSnapshot(snapshot);
     QCOMPARE(controller.exclusiveZone(), resting);
     QVERIFY(controller.revealed());
 }
 
 void DockControllerTest::runtimeObstructionUpdatesSurfacePlacement()
 {
+    FakeDockRuntimeBackend runtimeBackend;
     DockController controller;
+    controller.attachRuntimeBackend(&runtimeBackend);
     DockConfig config = configWithPins({QStringLiteral("one.desktop")});
     config.edgeMargin = 12;
     config.autoHide = QStringLiteral("intelligent");
@@ -964,16 +1167,15 @@ void DockControllerTest::runtimeObstructionUpdatesSurfacePlacement()
     QCOMPARE(controller.chromeEdgeInset(), 0);
     QVERIFY(!controller.physicalEdgeReveal());
 
-    Astrea::Typhon::Snapshot snapshot;
-    snapshot.connectionGeneration = 1;
+    Astrea::Dock::DockRuntimeSnapshot snapshot;
+    snapshot.generation = 1;
     snapshot.revision = 1;
-    Astrea::Typhon::Toplevel active;
+    Astrea::Dock::DockRuntimeWindow active;
     active.id = QStringLiteral("maximized");
-    active.states = Astrea::Typhon::ToplevelStates{
-        Astrea::Typhon::ToplevelStateFlag::Active,
-        Astrea::Typhon::ToplevelStateFlag::Maximized};
+    active.active = true;
+    active.maximized = true;
     snapshot.windows.append(active);
-    controller.applyTyphonSnapshot(snapshot);
+    runtimeBackend.publishSnapshot(snapshot);
 
     QCOMPARE(placementSpy.count(), 1);
     QCOMPARE(reservationSpy.count(), 1);
@@ -981,10 +1183,10 @@ void DockControllerTest::runtimeObstructionUpdatesSurfacePlacement()
     QCOMPARE(controller.chromeEdgeInset(), 12);
     QVERIFY(controller.physicalEdgeReveal());
 
-    active.states = Astrea::Typhon::ToplevelStates{
-        Astrea::Typhon::ToplevelStateFlag::Active};
+    active.active = true;
+    active.maximized = false;
     snapshot.windows = {active};
-    controller.applyTyphonSnapshot(snapshot);
+    runtimeBackend.publishSnapshot(snapshot);
 
     QCOMPARE(placementSpy.count(), 2);
     QCOMPARE(reservationSpy.count(), 2);
@@ -995,7 +1197,9 @@ void DockControllerTest::runtimeObstructionUpdatesSurfacePlacement()
 
 void DockControllerTest::surfacePlacementTracksRuntimePositionTransitions()
 {
+    FakeDockRuntimeBackend runtimeBackend;
     DockController controller;
+    controller.attachRuntimeBackend(&runtimeBackend);
     DockConfig config = configWithPins({QStringLiteral("one.desktop")});
     config.edgeMargin = 12;
     config.floating = true;
@@ -1039,16 +1243,15 @@ void DockControllerTest::surfacePlacementTracksRuntimePositionTransitions()
     config.autoHide = QStringLiteral("intelligent");
     controller.applyConfig(config);
 
-    Astrea::Typhon::Snapshot snapshot;
-    snapshot.connectionGeneration = 1;
+    Astrea::Dock::DockRuntimeSnapshot snapshot;
+    snapshot.generation = 1;
     snapshot.revision = 1;
-    Astrea::Typhon::Toplevel active;
+    Astrea::Dock::DockRuntimeWindow active;
     active.id = QStringLiteral("maximized");
-    active.states = Astrea::Typhon::ToplevelStates{
-        Astrea::Typhon::ToplevelStateFlag::Active,
-        Astrea::Typhon::ToplevelStateFlag::Maximized};
+    active.active = true;
+    active.maximized = true;
     snapshot.windows.append(active);
-    controller.applyTyphonSnapshot(snapshot);
+    runtimeBackend.publishSnapshot(snapshot);
     placementSpy.clear();
     QCOMPARE(controller.surfacePlacement().layerShellEdgeMargin, 0);
     QCOMPARE(controller.surfacePlacement().chromeEdgeInset, 12);

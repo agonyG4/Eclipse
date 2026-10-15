@@ -11,6 +11,7 @@
 #include "Bar/core/WorkspaceModel.hpp"
 #include "Dock/core/DockController.hpp"
 #include "Dock/core/DockSurfaceGeometry.hpp"
+#include "Dock/platform/typhon/TyphonDockRuntimeBackend.hpp"
 #include "Dock/platform/runtime/DockRuntimePaths.hpp"
 #include "Dock/services/DockConfigWatcher.hpp"
 #include "Dock/services/DockConfigPersistence.hpp"
@@ -182,9 +183,13 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
     m_spotlightConfig = std::make_unique<SpotlightConfigWatcher>(
         spotlightPaths.configPath(), spotlightPaths.componentsConfigPath());
 
-#if ASTREA_HAVE_TYPHON_PROTOCOL
-    m_dockController->attachTyphonConnection(m_typhonToplevel.get());
-#endif
+    if (m_typhonToplevel) {
+        m_typhonDockBackend = std::make_unique<Astrea::Dock::TyphonDockRuntimeBackend>(
+            m_typhonToplevel.get());
+        m_dockController->attachRuntimeBackend(m_typhonDockBackend.get());
+    } else {
+        m_dockController->attachRuntimeBackend(nullptr);
+    }
 
     m_dockController->applyConfig(m_dockConfig->config());
     m_dockController->setComponentEnabled(m_dockConfig->componentEnabled());

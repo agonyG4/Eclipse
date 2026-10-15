@@ -6,15 +6,17 @@ startup
   -> config
   -> desktop-entry catalog
   -> model (configured pins)
-  -> one Typhon toplevel connection
-  -> authoritative runtime projection (pins + every eligible live task)
+  -> one Shell-owned Typhon toplevel connection
+  -> TyphonDockRuntimeBackend translates into neutral Dock runtime snapshots
+  -> Dock-owned task identity and application projection (pins + live tasks)
   -> shared application-identity enrichment for presentation
   -> QML
   -> QWindow input region (chrome + transformed interaction targets)
   -> position-aware Layer Shell mapping at resting cross-axis reservation
   -> configured none/lift/magnification hover effect or pinned drag preview
   -> click or one identity-based reorder request
-  -> exact Typhon activation or launcher-backed desktop entry
+  -> exact neutral Activate action or launcher-backed desktop entry
+  -> Typhon adapter translates the action to the existing connection
   -> Typhon shell-control launch path
 ```
 
@@ -54,15 +56,16 @@ Configuration and component toggles are debounced and re-applied without
 restarting the process. A Layer
 Shell setup or mapping failure is reported as a shell failure; the Dock is
 never shown as an ordinary Qt window. A click calls
-`DockController::activateOrLaunchTask` with the model task key. If authoritative
-Typhon runtime state identifies a live window, the controller submits one exact
-`activate` action for the most recent focus-serial candidate, including
-minimized windows. The shared Typhon connection owns authentication, pending
-state, completion, and generation cleanup. If no live window is known, the
-existing controller and shared supervised launcher path is used only when the
-row has a real desktop launcher. Runtime-only `app:` and `window:` rows do not
-launch. An unavailable or failed action is reconciled without launching on that
-same click.
+`DockController::activateOrLaunchTask` with the model task key. If the neutral
+authoritative snapshot identifies a live window, the controller submits one
+exact `Activate` request for the most recent focus-serial candidate, including
+minimized windows. The request reports synchronous acceptance or rejection;
+completion remains asynchronous. Shell owns the Typhon connection lifecycle,
+while the adapter translates action readiness, pending results, and runtime
+generation. If no live window is known, the existing shared supervised
+launcher path is used only when the row has a real desktop launcher.
+Runtime-only `app:` and `window:` rows do not launch. An unavailable or failed
+action is reconciled without launching on that same click.
 
 Each QML geometry update also reports the actual mapped `dockChrome` rectangle
 and the exact current transformed interaction-target rectangles to
@@ -92,8 +95,8 @@ When `floating` is false, the selected Layer Shell edge margin is zero while
 the configured `edgeMargin` remains persisted for re-enabling floating. Auto-hide
 never unmaps an enabled Dock with rows: Always retains a bounded edge reveal
 target and zero exclusive zone, while Intelligent enters that behavior only for
-an active maximized or fullscreen Typhon toplevel. The heuristic intentionally
-does not claim overlap detection because v1 Typhon data has no output-local
+an active maximized or fullscreen window. The heuristic intentionally does not
+claim overlap detection because current Typhon runtime data has no output-local
 geometry. Revealing a collapsed Dock does not change its exclusive zone.
 
 A drag handler is enabled only for the configured-pin prefix. Once the system
@@ -120,23 +123,23 @@ delegate identity and magnification arrays remain aligned after a move.
 Runtime-only rows remain after the pin section and retain their deterministic
 first-observed order.
 
-The Dock owns one Typhon toplevel connection. After the initial snapshot
-commits, `RuntimeTaskIdentityTracker` assigns each live `WindowId` a sticky
-task key for that connection generation, and the pure
-`DockApplicationStateProjector` emits every eligible live task with a
-deterministic encounter order and current launcher metadata. Catalog rebuilds
-and mutable window metadata therefore enrich or change fields without re-keying
-a live task; new windows with the same non-empty runtime app ID join its live
-cohort. `DockAppModel` places a live task with a matching launcher filename at
-the configured pin position, avoiding a synthetic duplicate. A missing runtime
-entry ends that live lifetime: a pinned task may return to
+Shell owns the single Typhon toplevel connection and a
+`TyphonDockRuntimeBackend` that borrows it. The adapter exposes neutral runtime
+snapshots and preserves the distinction between data authority and action
+readiness. Dock core owns `DockRuntimeTaskIdentityTracker`, `DockAppMatcher`,
+and `DockApplicationStateProjector`. After an authoritative snapshot arrives,
+the tracker assigns each live window ID a sticky task key for that runtime
+generation; the projector emits deterministic encounter order, current
+launcher metadata, exact window IDs, and focus ordering. Catalog rebuilds and
+mutable metadata enrich or change fields without re-keying a live task. New
+windows with the same non-empty runtime app ID join its live cohort. A missing
+runtime entry ends that lifetime: a pinned task may return to
 `desktop:<desktopFileName>`, while an unpinned runtime-only row disappears.
-The shared resolver enriches the representative, focus-ranked window in place
-and never changes the task key or row count.
+The shared resolver enriches the representative window in place and never
+changes the task key or row count.
 
-If the connection is unavailable, the runtime identity tracker is reset and
-each pinned item exposes
-`runtimeKnown=false` and neutral runtime booleans; runtime-only rows are
-removed. A resolved running item uses exact Typhon activation rather than a
-duplicate launch; stale or unavailable targets reconcile state and never fall
-through to a same-click launch.
+When runtime authority is unavailable, Dock resets its tracker and each pinned
+item exposes `runtimeKnown=false` with unknown runtime state; runtime-only rows
+are removed. A resolved running item uses an exact neutral activation request
+rather than a duplicate launch; stale or unavailable targets reconcile state
+and never fall through to a same-click launch.

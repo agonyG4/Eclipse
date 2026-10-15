@@ -34,6 +34,9 @@ class TyphonShortcutClient;
 class TyphonScreenCaptureClient;
 class TyphonSharedConnection;
 class TyphonToplevelConnection;
+namespace Astrea::Dock {
+class TyphonDockRuntimeBackend;
+}
 class TyphonWorkspaceClient;
 class TyphonWorkspaceController;
 class ThemeController;
@@ -123,8 +126,11 @@ private:
     std::unique_ptr<DesktopEntryCatalog> m_catalog;
     std::unique_ptr<ApplicationLauncher> m_launcher;
     std::unique_ptr<AppIdentityResolver> m_identityResolver;
+    // Borrowed runtime clients and DockController are declared after these
+    // owners so reverse member destruction releases them first.
     std::unique_ptr<TyphonSharedConnection> m_typhonSession;
     std::unique_ptr<TyphonToplevelConnection> m_typhonToplevel;
+    std::unique_ptr<Astrea::Dock::TyphonDockRuntimeBackend> m_typhonDockBackend;
     std::unique_ptr<TyphonShortcutClient> m_shortcutClient;
     std::unique_ptr<TyphonScreenCaptureClient> m_screenCaptureClient;
     std::unique_ptr<TyphonWorkspaceClient> m_workspaceClient;

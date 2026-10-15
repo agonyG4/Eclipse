@@ -3,9 +3,11 @@
 #include <QSignalSpy>
 
 #include "core/DockController.hpp"
+#include "platform/typhon/TyphonDockRuntimeBackend.hpp"
 #include "platform/typhon/TyphonToplevelConnection.hpp"
 
 using namespace Astrea::Typhon;
+using Astrea::Dock::TyphonDockRuntimeBackend;
 
 class FakeLauncher final : public ApplicationLauncher {
     Q_OBJECT
@@ -159,12 +161,13 @@ void DockTyphonRuntimeIntegrationTest::authoritativeSnapshotDrivesDockRuntimeRol
 {
     auto *adapter = new FakeTyphonAdapter;
     TyphonToplevelConnection connection(adapter);
+    TyphonDockRuntimeBackend runtimeBackend(&connection);
     DockController controller;
     controller.setCatalogSnapshot(makeCatalog());
     DockConfig config = DockConfig::defaults();
     config.pins = {QStringLiteral("one.desktop")};
     controller.applyConfig(config);
-    controller.attachTyphonConnection(&connection);
+    controller.attachRuntimeBackend(&runtimeBackend);
 
     connection.start();
     adapter->advertiseManager();
@@ -196,12 +199,13 @@ void DockTyphonRuntimeIntegrationTest::cachedAnchorProjectsToExistingAndNewWindo
 {
     auto *adapter = new FakeTyphonAdapter;
     TyphonToplevelConnection connection(adapter);
+    TyphonDockRuntimeBackend runtimeBackend(&connection);
     DockController controller;
     controller.setCatalogSnapshot(makeCatalog());
     DockConfig config = DockConfig::defaults();
     config.pins = {QStringLiteral("one.desktop")};
     controller.applyConfig(config);
-    controller.attachTyphonConnection(&connection);
+    controller.attachRuntimeBackend(&runtimeBackend);
 
     connection.start();
     adapter->advertiseManager();
@@ -242,13 +246,14 @@ void DockTyphonRuntimeIntegrationTest::runningApplicationActivatesMostRecentExac
 {
     auto *adapter = new FakeTyphonAdapter;
     TyphonToplevelConnection connection(adapter);
+    TyphonDockRuntimeBackend runtimeBackend(&connection);
     FakeLauncher launcher;
     DockController controller(&launcher);
     controller.setCatalogSnapshot(makeCatalog());
     DockConfig config = DockConfig::defaults();
     config.pins = {QStringLiteral("one.desktop")};
     controller.applyConfig(config);
-    controller.attachTyphonConnection(&connection);
+    controller.attachRuntimeBackend(&runtimeBackend);
 
     connection.start();
     adapter->advertiseManager();
@@ -288,13 +293,14 @@ void DockTyphonRuntimeIntegrationTest::unavailableActivationNeverLaunchesSameCli
 {
     auto *adapter = new FakeTyphonAdapter;
     TyphonToplevelConnection connection(adapter);
+    TyphonDockRuntimeBackend runtimeBackend(&connection);
     FakeLauncher launcher;
     DockController controller(&launcher);
     controller.setCatalogSnapshot(makeCatalog());
     DockConfig config = DockConfig::defaults();
     config.pins = {QStringLiteral("one.desktop")};
     controller.applyConfig(config);
-    controller.attachTyphonConnection(&connection);
+    controller.attachRuntimeBackend(&runtimeBackend);
 
     connection.start();
     adapter->advertiseManager();
@@ -319,13 +325,14 @@ void DockTyphonRuntimeIntegrationTest::staleExactTargetNeverRetargetsOrLaunches(
 {
     auto *adapter = new FakeTyphonAdapter;
     TyphonToplevelConnection connection(adapter);
+    TyphonDockRuntimeBackend runtimeBackend(&connection);
     FakeLauncher launcher;
     DockController controller(&launcher);
     controller.setCatalogSnapshot(makeCatalog());
     DockConfig config = DockConfig::defaults();
     config.pins = {QStringLiteral("one.desktop")};
     controller.applyConfig(config);
-    controller.attachTyphonConnection(&connection);
+    controller.attachRuntimeBackend(&runtimeBackend);
 
     connection.start();
     adapter->advertiseManager();
@@ -357,13 +364,14 @@ void DockTyphonRuntimeIntegrationTest::nonPinnedMinimizedApplicationAppearsActiv
 {
     auto *adapter = new FakeTyphonAdapter;
     TyphonToplevelConnection connection(adapter);
+    TyphonDockRuntimeBackend runtimeBackend(&connection);
     FakeLauncher launcher;
     DockController controller(&launcher);
     controller.setCatalogSnapshot(makeCatalog());
     DockConfig config = DockConfig::defaults();
     config.pins = {QStringLiteral("one.desktop")};
     controller.applyConfig(config);
-    controller.attachTyphonConnection(&connection);
+    controller.attachRuntimeBackend(&runtimeBackend);
 
     connection.start();
     adapter->advertiseManager();
@@ -403,9 +411,10 @@ void DockTyphonRuntimeIntegrationTest::runtimeOnlyTaskActivatesAndClosesExactWin
 {
     auto *adapter = new FakeTyphonAdapter;
     TyphonToplevelConnection connection(adapter);
+    TyphonDockRuntimeBackend runtimeBackend(&connection);
     FakeLauncher launcher;
     DockController controller(&launcher);
-    controller.attachTyphonConnection(&connection);
+    controller.attachRuntimeBackend(&runtimeBackend);
 
     connection.start();
     adapter->advertiseManager();
@@ -439,8 +448,9 @@ void DockTyphonRuntimeIntegrationTest::runtimeOnlyTaskAnchorTargetsAllWindows()
 {
     auto *adapter = new FakeTyphonAdapter;
     TyphonToplevelConnection connection(adapter);
+    TyphonDockRuntimeBackend runtimeBackend(&connection);
     DockController controller;
-    controller.attachTyphonConnection(&connection);
+    controller.attachRuntimeBackend(&runtimeBackend);
 
     connection.start();
     adapter->advertiseManager();
@@ -473,8 +483,9 @@ void DockTyphonRuntimeIntegrationTest::actionReadyReplaysCachedAnchorWithoutAnot
     auto *adapter = new FakeTyphonAdapter;
     adapter->capability = TyphonActionCapabilityState::AuthenticatingV2;
     TyphonToplevelConnection connection(adapter);
+    TyphonDockRuntimeBackend runtimeBackend(&connection);
     DockController controller;
-    controller.attachTyphonConnection(&connection);
+    controller.attachRuntimeBackend(&runtimeBackend);
 
     connection.start();
     adapter->advertiseManager();
@@ -507,8 +518,9 @@ void DockTyphonRuntimeIntegrationTest::clearRequestedDuringAuthenticationRetries
 {
     auto *adapter = new FakeTyphonAdapter;
     TyphonToplevelConnection connection(adapter);
+    TyphonDockRuntimeBackend runtimeBackend(&connection);
     DockController controller;
-    controller.attachTyphonConnection(&connection);
+    controller.attachRuntimeBackend(&runtimeBackend);
 
     connection.start();
     adapter->advertiseManager();
@@ -540,8 +552,9 @@ void DockTyphonRuntimeIntegrationTest::anchorFailureRetriesOnNextProjectionWitho
 {
     auto *adapter = new FakeTyphonAdapter;
     TyphonToplevelConnection connection(adapter);
+    TyphonDockRuntimeBackend runtimeBackend(&connection);
     DockController controller;
-    controller.attachTyphonConnection(&connection);
+    controller.attachRuntimeBackend(&runtimeBackend);
 
     connection.start();
     adapter->advertiseManager();
@@ -575,8 +588,9 @@ void DockTyphonRuntimeIntegrationTest::newConnectionGenerationReplaysCachedAncho
 {
     auto *adapter = new FakeTyphonAdapter;
     TyphonToplevelConnection connection(adapter);
+    TyphonDockRuntimeBackend runtimeBackend(&connection);
     DockController controller;
-    controller.attachTyphonConnection(&connection);
+    controller.attachRuntimeBackend(&runtimeBackend);
 
     connection.start();
     adapter->advertiseManager();
@@ -621,8 +635,9 @@ void DockTyphonRuntimeIntegrationTest::removedTaskAnchorDoesNotLeakToAnotherAppl
 {
     auto *adapter = new FakeTyphonAdapter;
     TyphonToplevelConnection connection(adapter);
+    TyphonDockRuntimeBackend runtimeBackend(&connection);
     DockController controller;
-    controller.attachTyphonConnection(&connection);
+    controller.attachRuntimeBackend(&runtimeBackend);
 
     connection.start();
     adapter->advertiseManager();
@@ -663,8 +678,9 @@ void DockTyphonRuntimeIntegrationTest::recreatedHandleReceivesCachedAnchorForExa
 {
     auto *adapter = new FakeTyphonAdapter;
     TyphonToplevelConnection connection(adapter);
+    TyphonDockRuntimeBackend runtimeBackend(&connection);
     DockController controller;
-    controller.attachTyphonConnection(&connection);
+    controller.attachRuntimeBackend(&runtimeBackend);
 
     connection.start();
     adapter->advertiseManager();
@@ -707,8 +723,9 @@ void DockTyphonRuntimeIntegrationTest::sameWindowIdTaskMigrationClearsThePreviou
 {
     auto *adapter = new FakeTyphonAdapter;
     TyphonToplevelConnection connection(adapter);
+    TyphonDockRuntimeBackend runtimeBackend(&connection);
     DockController controller;
-    controller.attachTyphonConnection(&connection);
+    controller.attachRuntimeBackend(&runtimeBackend);
 
     connection.start();
     adapter->advertiseManager();
@@ -751,8 +768,9 @@ void DockTyphonRuntimeIntegrationTest::unsupportedProtocolKeepsAnchorLocalAndDeg
     auto *adapter = new FakeTyphonAdapter;
     adapter->protocolVersion = 2;
     TyphonToplevelConnection connection(adapter);
+    TyphonDockRuntimeBackend runtimeBackend(&connection);
     DockController controller;
-    controller.attachTyphonConnection(&connection);
+    controller.attachRuntimeBackend(&runtimeBackend);
 
     connection.start();
     adapter->advertiseManager();
@@ -777,12 +795,13 @@ void DockTyphonRuntimeIntegrationTest::connectionLossRemovesDynamicRowsButKeepsP
 {
     auto *adapter = new FakeTyphonAdapter;
     TyphonToplevelConnection connection(adapter);
+    TyphonDockRuntimeBackend runtimeBackend(&connection);
     DockController controller;
     controller.setCatalogSnapshot(makeCatalog());
     DockConfig config = DockConfig::defaults();
     config.pins = {QStringLiteral("one.desktop")};
     controller.applyConfig(config);
-    controller.attachTyphonConnection(&connection);
+    controller.attachRuntimeBackend(&runtimeBackend);
 
     connection.start();
     adapter->advertiseManager();
@@ -811,9 +830,10 @@ void DockTyphonRuntimeIntegrationTest::catalogRebuildKeepsExactActionsAndMinimiz
 {
     auto *adapter = new FakeTyphonAdapter;
     TyphonToplevelConnection connection(adapter);
+    TyphonDockRuntimeBackend runtimeBackend(&connection);
     DockController controller;
     controller.setCatalogSnapshot(std::make_shared<DesktopEntrySnapshot>());
-    controller.attachTyphonConnection(&connection);
+    controller.attachRuntimeBackend(&runtimeBackend);
 
     connection.start();
     adapter->advertiseManager();

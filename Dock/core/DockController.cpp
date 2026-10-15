@@ -1,15 +1,13 @@
 #include "core/DockController.hpp"
 
 #include "apps/appidentity/AppIdentityResolver.hpp"
-#include "platform/typhon/TyphonToplevelConnection.hpp"
 #include "services/DockConfigValidation.hpp"
 
 #include <QDebug>
 
 #include <algorithm>
 
-using Astrea::Typhon::ToplevelActionError;
-using Astrea::Typhon::TyphonActionCapabilityState;
+using Astrea::Dock::DockRuntimeActionError;
 
 namespace {
 
@@ -45,7 +43,7 @@ DockConfig normalizedConfig(const DockConfig &config)
     return normalized;
 }
 
-QString identityFingerprint(const Astrea::Typhon::Toplevel &window)
+QString identityFingerprint(const Astrea::Dock::DockRuntimeWindow &window)
 {
     return window.appId + QLatin1Char('|') + window.title;
 }
@@ -142,12 +140,7 @@ void DockController::updateAutoHidePolicy()
     if (m_runtimeSnapshot.has_value()) {
         obstructed = std::any_of(m_runtimeSnapshot->windows.cbegin(),
                                  m_runtimeSnapshot->windows.cend(), [](const auto &window) {
-            return Astrea::Typhon::hasState(window.states,
-                                            Astrea::Typhon::ToplevelStateFlag::Active)
-                && (Astrea::Typhon::hasState(window.states,
-                                              Astrea::Typhon::ToplevelStateFlag::Maximized)
-                    || Astrea::Typhon::hasState(window.states,
-                                                Astrea::Typhon::ToplevelStateFlag::Fullscreen));
+            return window.active && (window.maximized || window.fullscreen);
         });
     }
     m_obstructed = obstructed;
@@ -207,66 +200,85 @@ void DockController::setCatalogSnapshot(std::shared_ptr<const DesktopEntrySnapsh
         emit reservationChanged();
 }
 
-void DockController::attachTyphonConnection(TyphonToplevelConnection *connection)
+void DockController::attachRuntimeBackend(Astrea::Dock::DockRuntimeBackend *backend)
 {
-    TyphonToplevelConnection *previousConnection = m_typhonConnection;
-    if (previousConnection && previousConnection != connection)
+    Astrea::Dock::DockRuntimeBackend *previousBackend = m_runtimeBackend;
+    if (previousBackend && previousBackend != backend)
         clearPublishedMinimizeAnchors({});
-    for (const QMetaObject::Connection &binding : std::as_const(m_typhonConnections))
+    for (const QMetaObject::Connection &binding : std::as_const(m_runtimeConnections))
         disconnect(binding);
-    m_typhonConnections.clear();
+    m_runtimeConnections.clear();
 
-    if (!connection) {
-        m_typhonConnection = nullptr;
+    if (previousBackend != backend) {
+        m_pendingActivations.clear();
+        m_pendingWindowActions.clear();
+    }
+
+    if (!backend) {
+        m_runtimeBackend = nullptr;
         m_publishedMinimizeAnchors.clear();
         m_pendingActivations.clear();
         m_pendingWindowActions.clear();
-        clearTyphonRuntime();
+        clearRuntimeState();
         return;
     }
 
-    m_typhonConnection = connection;
-    if (previousConnection != connection) {
+    m_runtimeBackend = backend;
+    if (previousBackend != backend) {
         m_publishedMinimizeAnchors.clear();
         m_minimizeAnchorCapabilityEpoch = 0;
     }
 
-    m_typhonConnections.append(connect(connection, &TyphonToplevelConnection::snapshotChanged,
-                                      this, [this](const Astrea::Typhon::Snapshot &snapshot) {
-        if (snapshot.connectionGeneration == 0 && snapshot.revision == 0
-            && snapshot.windows.isEmpty()) {
-            clearTyphonRuntime();
-        } else {
-            applyTyphonSnapshot(snapshot);
-        }
-    }));
-    m_typhonConnections.append(connect(connection, &TyphonToplevelConnection::stateChanged,
-                                      this, [this](TyphonConnectionState state) {
-        if (state != TyphonConnectionState::Ready)
-            clearTyphonRuntime();
-    }));
-    m_typhonConnections.append(connect(connection, &TyphonToplevelConnection::actionFinished,
-                                      this, &DockController::onTyphonActionFinished));
-    m_typhonConnections.append(connect(connection, &TyphonToplevelConnection::actionFailed,
-                                      this, &DockController::onTyphonActionFailed));
-    m_typhonConnections.append(connect(
-        connection, &TyphonToplevelConnection::actionCapabilityChanged, this,
-        [this, connection](TyphonActionCapabilityState capability) {
-            if (m_typhonConnection != connection
-                || capability != TyphonActionCapabilityState::ActionReadyV2)
+    m_runtimeConnections.append(connect(
+        backend, &Astrea::Dock::DockRuntimeBackend::snapshotChanged, this,
+        [this, backend](const Astrea::Dock::DockRuntimeSnapshot &snapshot) {
+            if (m_runtimeBackend != backend)
+                return;
+            if (backend->runtimeReady() && snapshot.authoritative)
+                applyRuntimeSnapshot(snapshot);
+            else
+                clearRuntimeState();
+        }));
+    m_runtimeConnections.append(connect(
+        backend, &Astrea::Dock::DockRuntimeBackend::runtimeReadyChanged, this,
+        [this, backend](bool ready) {
+            if (m_runtimeBackend != backend)
+                return;
+            if (!ready) {
+                clearRuntimeState();
+                return;
+            }
+            const Astrea::Dock::DockRuntimeSnapshot snapshot = backend->snapshot();
+            if (snapshot.authoritative)
+                applyRuntimeSnapshot(snapshot);
+        }));
+    m_runtimeConnections.append(connect(
+        backend, &Astrea::Dock::DockRuntimeBackend::actionReadyChanged, this,
+        [this, backend](bool ready) {
+            if (m_runtimeBackend != backend || !ready)
                 return;
             ++m_minimizeAnchorCapabilityEpoch;
-            replayMinimizeAnchors(connection);
+            replayMinimizeAnchors(backend);
         }));
+    m_runtimeConnections.append(connect(
+        backend, &Astrea::Dock::DockRuntimeBackend::actionFinished,
+        this, &DockController::onRuntimeActionFinished));
+    m_runtimeConnections.append(connect(
+        backend, &Astrea::Dock::DockRuntimeBackend::actionFailed,
+        this, &DockController::onRuntimeActionFailed));
 
-    if (connection->state() == TyphonConnectionState::Ready && connection->hasSnapshot())
-        applyTyphonSnapshot(connection->snapshot());
+    if (backend->runtimeReady() && backend->snapshot().authoritative)
+        applyRuntimeSnapshot(backend->snapshot());
     else
-        clearTyphonRuntime();
+        clearRuntimeState();
 }
 
-void DockController::applyTyphonSnapshot(const Astrea::Typhon::Snapshot &snapshot)
+void DockController::applyRuntimeSnapshot(const Astrea::Dock::DockRuntimeSnapshot &snapshot)
 {
+    if (!snapshot.authoritative) {
+        clearRuntimeState();
+        return;
+    }
     const int previousReservation = exclusiveZone();
     const DockSurfacePlacement previousPlacement = surfacePlacement();
     m_runtimeSnapshot = snapshot;
@@ -280,7 +292,7 @@ void DockController::applyTyphonSnapshot(const Astrea::Typhon::Snapshot &snapsho
         emit reservationChanged();
 }
 
-void DockController::clearTyphonRuntime()
+void DockController::clearRuntimeState()
 {
     const bool changed = m_runtimeKnown || m_runtimeSnapshot.has_value() || !m_runtimeStates.isEmpty();
     const int previousReservation = exclusiveZone();
@@ -327,9 +339,9 @@ void DockController::clearMinimizeAnchor(const QString &taskKey)
     const auto state = m_runtimeStates.constFind(taskKey);
     if (state != m_runtimeStates.constEnd()) {
         for (const QString &windowId : state->windowIds) {
-            if (!m_typhonConnection)
+            if (!m_runtimeBackend)
                 continue;
-            const auto error = m_typhonConnection->clearMinimizeAnchor(windowId);
+            const auto error = m_runtimeBackend->clearMinimizeAnchor(windowId);
             if (!error.has_value()) {
                 const auto published = m_publishedMinimizeAnchors.constFind(windowId);
                 if (published != m_publishedMinimizeAnchors.constEnd()
@@ -339,12 +351,12 @@ void DockController::clearMinimizeAnchor(const QString &taskKey)
                     MinimizeAnchorDiagnosticEvent::AnchorRemoved,
                     MinimizeAnchorDiagnosticReason::TransportQueuedNoRemoteAck,
                     taskKey, windowId);
-            } else if (error == ToplevelActionError::NotAuthenticated) {
+            } else if (error == DockRuntimeActionError::NotActionReady) {
                 diagnoseMinimizeAnchor(
                     MinimizeAnchorDiagnosticEvent::DeferredNotAuthenticated,
                     MinimizeAnchorDiagnosticReason::NotAuthenticated,
                     taskKey, windowId);
-            } else if (error == ToplevelActionError::ToplevelNotLive) {
+            } else if (error == DockRuntimeActionError::WindowNotLive) {
                 diagnoseMinimizeAnchor(
                     MinimizeAnchorDiagnosticEvent::MissingHandle,
                     MinimizeAnchorDiagnosticReason::ToplevelNotLive,
@@ -352,11 +364,11 @@ void DockController::clearMinimizeAnchor(const QString &taskKey)
             } else {
                 diagnoseMinimizeAnchor(
                     MinimizeAnchorDiagnosticEvent::SendFailed,
-                    *error == ToplevelActionError::UnsupportedProtocol
+                    *error == DockRuntimeActionError::UnsupportedProtocol
                         ? MinimizeAnchorDiagnosticReason::UnsupportedProtocol
-                        : *error == ToplevelActionError::Disconnected
+                        : *error == DockRuntimeActionError::Disconnected
                             ? MinimizeAnchorDiagnosticReason::Disconnected
-                            : *error == ToplevelActionError::LocalCapacityExceeded
+                            : *error == DockRuntimeActionError::LocalCapacityExceeded
                                 ? MinimizeAnchorDiagnosticReason::LocalCapacityExceeded
                                 : MinimizeAnchorDiagnosticReason::InvalidRequest,
                     taskKey, windowId);
@@ -418,10 +430,10 @@ void DockController::activateOrLaunchTask(const QString &taskKey)
     launchItem(*item);
 }
 
-QVector<Astrea::Typhon::Toplevel> DockController::windowsForTaskKey(
+QVector<Astrea::Dock::DockRuntimeWindow> DockController::windowsForTaskKey(
     const QString &taskKey) const
 {
-    QVector<Astrea::Typhon::Toplevel> result;
+    QVector<Astrea::Dock::DockRuntimeWindow> result;
     const auto state = m_runtimeStates.constFind(taskKey);
     if (state == m_runtimeStates.constEnd() || !m_runtimeSnapshot.has_value())
         return result;
@@ -438,17 +450,17 @@ QVector<Astrea::Typhon::Toplevel> DockController::windowsForTaskKey(
     return result;
 }
 
-QVector<Astrea::Typhon::Toplevel> DockController::windowsForDesktopFileName(
+QVector<Astrea::Dock::DockRuntimeWindow> DockController::windowsForDesktopFileName(
     const QString &desktopFileName) const
 {
     const QString taskKey = m_model.runtimeTaskKeyForDesktopFileName(desktopFileName);
-    return taskKey.isEmpty() ? QVector<Astrea::Typhon::Toplevel>{}
+    return taskKey.isEmpty() ? QVector<Astrea::Dock::DockRuntimeWindow>{}
                              : windowsForTaskKey(taskKey);
 }
 
 bool DockController::requestExactWindowAction(const QString &taskKey,
                                               const QString &windowId,
-                                              Astrea::Typhon::ToplevelAction action)
+                                              Astrea::Dock::DockRuntimeAction action)
 {
     const auto state = m_runtimeStates.constFind(taskKey);
     const auto windows = windowsForTaskKey(taskKey);
@@ -461,14 +473,14 @@ bool DockController::requestExactWindowAction(const QString &taskKey,
         setLastError(QStringLiteral("The selected window is no longer available"));
         return false;
     }
-    if (!m_typhonConnection) {
-        setLastError(QStringLiteral("Typhon window actions are unavailable"));
+    if (!m_runtimeBackend) {
+        setLastError(QStringLiteral("Dock window actions are unavailable"));
         return false;
     }
 
     const quint64 token = ++m_nextActivationToken;
     m_pendingWindowActions.insert(token, PendingWindowAction{taskKey, windowId, action});
-    const auto error = m_typhonConnection->requestAction(windowId, action, token);
+    const auto error = m_runtimeBackend->requestAction(windowId, action, token);
     if (error.has_value()) {
         m_pendingWindowActions.remove(token);
         setLastError(QStringLiteral("The selected window action was rejected"));
@@ -480,13 +492,13 @@ bool DockController::requestExactWindowAction(const QString &taskKey,
 bool DockController::activateWindow(const QString &taskKey, const QString &windowId)
 {
     return requestExactWindowAction(taskKey, windowId,
-                                    Astrea::Typhon::ToplevelAction::Activate);
+                                    Astrea::Dock::DockRuntimeAction::Activate);
 }
 
 bool DockController::closeWindow(const QString &taskKey, const QString &windowId)
 {
     return requestExactWindowAction(taskKey, windowId,
-                                    Astrea::Typhon::ToplevelAction::Close);
+                                    Astrea::Dock::DockRuntimeAction::Close);
 }
 
 bool DockController::setPinned(const QString &desktopFileName, bool pinned)
@@ -573,8 +585,8 @@ void DockController::launchItem(const DockAppInfo &item, bool activateRunning)
                   qPrintable(taskKey));
             return;
         }
-        if (!m_typhonConnection) {
-            qInfo("Dock activation suppressed for running application '%s' without Typhon actions",
+        if (!m_runtimeBackend) {
+            qInfo("Dock activation suppressed for running application '%s' without runtime actions",
                   qPrintable(taskKey));
             return;
         }
@@ -582,13 +594,13 @@ void DockController::launchItem(const DockAppInfo &item, bool activateRunning)
         const quint64 activationToken = ++m_nextActivationToken;
         const QString targetWindowId = state->windowIds.constFirst();
         m_pendingActivations.insert(activationToken, taskKey);
-        const auto error = m_typhonConnection->requestAction(
-            targetWindowId, Astrea::Typhon::ToplevelAction::Activate, activationToken);
+        const auto error = m_runtimeBackend->requestAction(
+            targetWindowId, Astrea::Dock::DockRuntimeAction::Activate, activationToken);
         if (error.has_value()) {
             m_pendingActivations.remove(activationToken);
-            reconcileTyphonActionFailure(error.value());
+            reconcileRuntimeActionFailure(error.value());
         } else {
-            qInfo("Dock activating exact Typhon window '%s' for '%s'",
+            qInfo("Dock activating exact runtime window '%s' for '%s'",
                   qPrintable(targetWindowId), qPrintable(taskKey));
         }
         return;
@@ -671,44 +683,44 @@ void DockController::onLaunchTimedOut(const QString &desktopId)
     finishLaunch(desktopId, false, QStringLiteral("Launch timed out"));
 }
 
-void DockController::onTyphonActionFinished(
-    quint64 token, Astrea::Typhon::ToplevelAction action,
-    Astrea::Typhon::ToplevelActionResult result)
+void DockController::onRuntimeActionFinished(
+    quint64 token, Astrea::Dock::DockRuntimeAction action,
+    Astrea::Dock::DockRuntimeActionResult result)
 {
     const auto pendingWindow = m_pendingWindowActions.find(token);
     if (pendingWindow != m_pendingWindowActions.end()) {
         const PendingWindowAction operation = pendingWindow.value();
         m_pendingWindowActions.erase(pendingWindow);
-        if (result == Astrea::Typhon::ToplevelActionResult::Unavailable)
+        if (result == Astrea::Dock::DockRuntimeActionResult::Unavailable)
             setLastError(QStringLiteral("The selected window is no longer available"));
         Q_UNUSED(operation);
         return;
     }
-    if (action != Astrea::Typhon::ToplevelAction::Activate
+    if (action != Astrea::Dock::DockRuntimeAction::Activate
         || !m_pendingActivations.contains(token))
         return;
     const QString key = m_pendingActivations.take(token);
-    if (result == Astrea::Typhon::ToplevelActionResult::Unavailable) {
+    if (result == Astrea::Dock::DockRuntimeActionResult::Unavailable) {
         qInfo("Dock activation unavailable for '%s'; reconciling without launch",
               qPrintable(key));
-        reconcileTyphonActionFailure(Astrea::Typhon::ToplevelActionError::ToplevelNotLive);
+        reconcileRuntimeActionFailure(Astrea::Dock::DockRuntimeActionError::WindowNotLive);
     }
 }
 
-void DockController::onTyphonActionFailed(
-    quint64 token, Astrea::Typhon::ToplevelAction action,
-    Astrea::Typhon::ToplevelActionError error)
+void DockController::onRuntimeActionFailed(
+    quint64 token, Astrea::Dock::DockRuntimeAction action,
+    Astrea::Dock::DockRuntimeActionError error)
 {
     if (m_pendingWindowActions.contains(token)) {
         m_pendingWindowActions.remove(token);
         setLastError(QStringLiteral("The selected window action failed"));
         return;
     }
-    if (action != Astrea::Typhon::ToplevelAction::Activate
+    if (action != Astrea::Dock::DockRuntimeAction::Activate
         || !m_pendingActivations.contains(token))
         return;
     m_pendingActivations.remove(token);
-    reconcileTyphonActionFailure(error);
+    reconcileRuntimeActionFailure(error);
 }
 
 QString DockController::keyForLaunchId(const QString &desktopId) const
@@ -770,7 +782,7 @@ void DockController::projectRuntime()
 
     const QHash<QString, QString> taskKeysByWindowId =
         m_runtimeTaskIdentityTracker.update(*m_runtimeSnapshot, m_catalogSnapshot);
-    const Astrea::Typhon::DockApplicationRuntimeProjection projection =
+    const Astrea::Dock::DockApplicationRuntimeProjection projection =
         m_runtimeProjector.project(*m_runtimeSnapshot, m_catalogSnapshot, taskKeysByWindowId);
     m_runtimeStates = projection.states;
     m_model.applyRuntimeProjection(projection, true);
@@ -784,9 +796,9 @@ void DockController::resolveTaskIdentities()
     if (!m_identityResolver || !m_runtimeSnapshot.has_value())
         return;
 
-    const Astrea::Typhon::Snapshot &snapshot = m_runtimeSnapshot.value();
+    const Astrea::Dock::DockRuntimeSnapshot &snapshot = m_runtimeSnapshot.value();
     for (auto it = m_runtimeStates.cbegin(); it != m_runtimeStates.cend(); ++it) {
-        const Astrea::Typhon::DockApplicationRuntimeState &state = it.value();
+        const Astrea::Dock::DockApplicationRuntimeState &state = it.value();
         if (state.windowIds.isEmpty())
             continue;
 
@@ -805,7 +817,7 @@ void DockController::resolveTaskIdentities()
         input.initialClass = window->appId;
         input.title = window->title;
         input.initialTitle = window->title;
-        input.openGeneration = snapshot.connectionGeneration;
+        input.openGeneration = snapshot.generation;
         input.metadataFingerprint = identityFingerprint(*window);
         input.themeRevision = m_identityResolver->themeRevision();
         input.desktopIndexRevision = m_identityResolver->desktopIndexRevision();
@@ -814,7 +826,7 @@ void DockController::resolveTaskIdentities()
         const AppIdentity fast = m_identityResolver->resolveSync(input);
         if (fast.iconPending && m_model.applyIdentityEnrichment(state.taskKey, fast))
             emit modelChanged();
-        m_identityResolver->resolveAsync(input, snapshot.connectionGeneration);
+        m_identityResolver->resolveAsync(input, snapshot.generation);
     }
 }
 
@@ -823,7 +835,7 @@ void DockController::onIdentityResolved(const QString &address, const AppIdentit
     if (!m_runtimeSnapshot.has_value() || identity.windowId != address)
         return;
 
-    const Astrea::Typhon::Toplevel *currentWindow = nullptr;
+    const Astrea::Dock::DockRuntimeWindow *currentWindow = nullptr;
     for (const auto &window : m_runtimeSnapshot->windows) {
         if (window.id == address) {
             currentWindow = &window;
@@ -831,7 +843,7 @@ void DockController::onIdentityResolved(const QString &address, const AppIdentit
         }
     }
     if (!currentWindow || identity.pid != currentWindow->pid
-        || identity.openGeneration != m_runtimeSnapshot->connectionGeneration
+        || identity.openGeneration != m_runtimeSnapshot->generation
         || identity.metadataFingerprint != identityFingerprint(*currentWindow))
         return;
 
@@ -846,54 +858,54 @@ void DockController::onIdentityResolved(const QString &address, const AppIdentit
 
 void DockController::publishMinimizeAnchor(const QString &taskKey)
 {
-    if (!m_typhonConnection)
+    if (!m_runtimeBackend)
         return;
     const auto anchor = m_minimizeAnchors.constFind(taskKey);
     const auto state = m_runtimeStates.constFind(taskKey);
     if (anchor == m_minimizeAnchors.constEnd() || state == m_runtimeStates.constEnd())
         return;
     for (const QString &windowId : state->windowIds) {
-        const auto handleToken = m_typhonConnection->handleTokenForWindowId(windowId);
+        const auto handleToken = m_runtimeBackend->handleTokenForWindowId(windowId);
         if (!handleToken.has_value()) {
             diagnoseMinimizeAnchor(MinimizeAnchorDiagnosticEvent::MissingHandle,
                                    MinimizeAnchorDiagnosticReason::ToplevelNotLive,
                                    taskKey, windowId);
             continue;
         }
-        const quint64 connectionGeneration = m_typhonConnection->connectionGeneration();
+        const quint64 generation = m_runtimeBackend->generation();
         const auto published = m_publishedMinimizeAnchors.constFind(windowId);
         if (published != m_publishedMinimizeAnchors.constEnd()
             && published->taskKey == taskKey && published->rect == anchor.value()
-            && published->connectionGeneration == connectionGeneration
+            && published->generation == generation
             && published->handleToken == handleToken.value()
             && published->capabilityEpoch == m_minimizeAnchorCapabilityEpoch)
             continue;
 
         diagnoseMinimizeAnchor(MinimizeAnchorDiagnosticEvent::PublishAttempted,
                                MinimizeAnchorDiagnosticReason::None, taskKey, windowId);
-        const auto error = m_typhonConnection->setMinimizeAnchor(windowId, anchor.value());
+        const auto error = m_runtimeBackend->setMinimizeAnchor(windowId, anchor.value());
         if (!error.has_value()) {
             m_publishedMinimizeAnchors.insert(
                 windowId,
-                PublishedMinimizeAnchor{taskKey, anchor.value(), connectionGeneration,
+                PublishedMinimizeAnchor{taskKey, anchor.value(), generation,
                                         handleToken.value(), m_minimizeAnchorCapabilityEpoch});
             diagnoseMinimizeAnchor(MinimizeAnchorDiagnosticEvent::SendQueued,
                                    MinimizeAnchorDiagnosticReason::TransportQueuedNoRemoteAck,
                                    taskKey, windowId);
-        } else if (*error == ToplevelActionError::NotAuthenticated) {
+        } else if (*error == DockRuntimeActionError::NotActionReady) {
             diagnoseMinimizeAnchor(MinimizeAnchorDiagnosticEvent::DeferredNotAuthenticated,
                                    MinimizeAnchorDiagnosticReason::NotAuthenticated,
                                    taskKey, windowId);
-        } else if (*error == ToplevelActionError::ToplevelNotLive) {
+        } else if (*error == DockRuntimeActionError::WindowNotLive) {
             diagnoseMinimizeAnchor(MinimizeAnchorDiagnosticEvent::MissingHandle,
                                    MinimizeAnchorDiagnosticReason::ToplevelNotLive,
                                    taskKey, windowId);
         } else {
-            const auto reason = *error == ToplevelActionError::UnsupportedProtocol
+            const auto reason = *error == DockRuntimeActionError::UnsupportedProtocol
                 ? MinimizeAnchorDiagnosticReason::UnsupportedProtocol
-                : *error == ToplevelActionError::Disconnected
+                : *error == DockRuntimeActionError::Disconnected
                     ? MinimizeAnchorDiagnosticReason::Disconnected
-                    : *error == ToplevelActionError::LocalCapacityExceeded
+                    : *error == DockRuntimeActionError::LocalCapacityExceeded
                         ? MinimizeAnchorDiagnosticReason::LocalCapacityExceeded
                         : MinimizeAnchorDiagnosticReason::InvalidRequest;
             diagnoseMinimizeAnchor(MinimizeAnchorDiagnosticEvent::SendFailed,
@@ -916,7 +928,7 @@ void DockController::clearPublishedMinimizeAnchors(const QSet<QString> &liveWind
             m_publishedMinimizeAnchors.remove(it.key());
             continue;
         }
-        if (!m_typhonConnection)
+        if (!m_runtimeBackend)
             continue;
 
         QString currentTaskKey;
@@ -927,12 +939,12 @@ void DockController::clearPublishedMinimizeAnchors(const QSet<QString> &liveWind
             }
         }
         const auto currentAnchor = m_minimizeAnchors.constFind(currentTaskKey);
-        const auto currentHandle = m_typhonConnection->handleTokenForWindowId(it.key());
+        const auto currentHandle = m_runtimeBackend->handleTokenForWindowId(it.key());
         const bool isCurrentPublication = !currentTaskKey.isEmpty()
             && currentAnchor != m_minimizeAnchors.constEnd()
             && currentAnchor.value() == it->rect && currentTaskKey == it->taskKey
             && currentHandle.has_value() && currentHandle.value() == it->handleToken
-            && it->connectionGeneration == m_typhonConnection->connectionGeneration()
+            && it->generation == m_runtimeBackend->generation()
             && it->capabilityEpoch == m_minimizeAnchorCapabilityEpoch;
         if (isCurrentPublication)
             continue;
@@ -943,27 +955,27 @@ void DockController::clearPublishedMinimizeAnchors(const QSet<QString> &liveWind
                                    it->taskKey, it.key());
             continue;
         }
-        const auto error = m_typhonConnection->clearMinimizeAnchor(it.key());
+        const auto error = m_runtimeBackend->clearMinimizeAnchor(it.key());
         if (!error.has_value()) {
             m_publishedMinimizeAnchors.remove(it.key());
             diagnoseMinimizeAnchor(MinimizeAnchorDiagnosticEvent::AnchorRemoved,
                                    MinimizeAnchorDiagnosticReason::TransportQueuedNoRemoteAck,
                                    it->taskKey, it.key());
-        } else if (*error == ToplevelActionError::NotAuthenticated) {
+        } else if (*error == DockRuntimeActionError::NotActionReady) {
             diagnoseMinimizeAnchor(MinimizeAnchorDiagnosticEvent::DeferredNotAuthenticated,
                                    MinimizeAnchorDiagnosticReason::NotAuthenticated,
                                    it->taskKey, it.key());
-        } else if (*error == ToplevelActionError::ToplevelNotLive) {
+        } else if (*error == DockRuntimeActionError::WindowNotLive) {
             m_publishedMinimizeAnchors.remove(it.key());
             diagnoseMinimizeAnchor(MinimizeAnchorDiagnosticEvent::MissingHandle,
                                    MinimizeAnchorDiagnosticReason::ToplevelNotLive,
                                    it->taskKey, it.key());
         } else {
-            const auto reason = *error == ToplevelActionError::UnsupportedProtocol
+            const auto reason = *error == DockRuntimeActionError::UnsupportedProtocol
                 ? MinimizeAnchorDiagnosticReason::UnsupportedProtocol
-                : *error == ToplevelActionError::Disconnected
+                : *error == DockRuntimeActionError::Disconnected
                     ? MinimizeAnchorDiagnosticReason::Disconnected
-                    : *error == ToplevelActionError::LocalCapacityExceeded
+                    : *error == DockRuntimeActionError::LocalCapacityExceeded
                         ? MinimizeAnchorDiagnosticReason::LocalCapacityExceeded
                         : MinimizeAnchorDiagnosticReason::InvalidRequest;
             diagnoseMinimizeAnchor(MinimizeAnchorDiagnosticEvent::SendFailed,
@@ -982,12 +994,10 @@ QSet<QString> DockController::liveRuntimeWindowIds() const
     return liveWindowIds;
 }
 
-void DockController::replayMinimizeAnchors(TyphonToplevelConnection *connection)
+void DockController::replayMinimizeAnchors(Astrea::Dock::DockRuntimeBackend *backend)
 {
-    if (m_typhonConnection != connection || !connection
-        || connection->state() != TyphonConnectionState::Ready
-        || !connection->hasSnapshot()
-        || connection->actionCapability() != TyphonActionCapabilityState::ActionReadyV2)
+    if (m_runtimeBackend != backend || !backend || !backend->runtimeReady()
+        || !backend->actionReady() || !backend->snapshot().authoritative)
         return;
     publishAllMinimizeAnchors();
     clearPublishedMinimizeAnchors(liveRuntimeWindowIds());
@@ -1046,38 +1056,6 @@ void DockController::diagnoseMinimizeAnchor(MinimizeAnchorDiagnosticEvent event,
         }
         return QStringLiteral("unknown");
     }();
-    QString connectionState = QStringLiteral("detached");
-    QString capability = QStringLiteral("disconnected");
-    quint64 generation = 0;
-    if (m_typhonConnection) {
-        generation = m_typhonConnection->connectionGeneration();
-        switch (m_typhonConnection->state()) {
-        case TyphonConnectionState::Stopped: connectionState = QStringLiteral("stopped"); break;
-        case TyphonConnectionState::Connecting: connectionState = QStringLiteral("connecting"); break;
-        case TyphonConnectionState::WaitingForRegistry:
-            connectionState = QStringLiteral("waiting_for_registry"); break;
-        case TyphonConnectionState::WaitingForInitialSnapshot:
-            connectionState = QStringLiteral("waiting_for_initial_snapshot"); break;
-        case TyphonConnectionState::Ready: connectionState = QStringLiteral("ready"); break;
-        case TyphonConnectionState::Degraded: connectionState = QStringLiteral("degraded"); break;
-        case TyphonConnectionState::Disconnected: connectionState = QStringLiteral("disconnected"); break;
-        case TyphonConnectionState::Unsupported: connectionState = QStringLiteral("unsupported"); break;
-        }
-        switch (m_typhonConnection->actionCapability()) {
-        case TyphonActionCapabilityState::Disconnected:
-            capability = QStringLiteral("disconnected"); break;
-        case TyphonActionCapabilityState::ReadOnlyV1:
-            capability = QStringLiteral("read_only_v1"); break;
-        case TyphonActionCapabilityState::ReadOnlyV2:
-            capability = QStringLiteral("read_only_v2"); break;
-        case TyphonActionCapabilityState::AuthenticatingV2:
-            capability = QStringLiteral("authenticating_v2"); break;
-        case TyphonActionCapabilityState::ActionReadyV2:
-            capability = QStringLiteral("action_ready_v2"); break;
-        case TyphonActionCapabilityState::Degraded:
-            capability = QStringLiteral("degraded"); break;
-        }
-    }
     const auto safeToken = [](QString value) {
         value.truncate(96);
         for (qsizetype index = 0; index < value.size(); ++index) {
@@ -1092,20 +1070,25 @@ void DockController::diagnoseMinimizeAnchor(MinimizeAnchorDiagnosticEvent event,
     };
     const QString safeTaskKey = safeToken(taskKey);
     const QString safeWindowId = safeToken(windowId);
+    const QString diagnosticContext = m_runtimeBackend
+        ? m_runtimeBackend->diagnosticContext()
+        : QStringLiteral("connection_state=detached capability=disconnected generation=0");
     qInfo().noquote()
-        << QStringLiteral("typhon_minimize_anchor event=%1 task_key=%2 window_id=%3 reason=%4 "
-                          "connection_state=%5 capability=%6 generation=%7")
-               .arg(eventName, safeTaskKey, safeWindowId, reasonName, connectionState, capability)
-               .arg(generation);
+        << QStringLiteral("typhon_minimize_anchor event=%1 task_key=%2 window_id=%3 reason=%4 %5")
+               .arg(eventName, safeTaskKey, safeWindowId, reasonName, diagnosticContext);
 }
 
-void DockController::reconcileTyphonActionFailure(Astrea::Typhon::ToplevelActionError error)
+void DockController::reconcileRuntimeActionFailure(Astrea::Dock::DockRuntimeActionError error)
 {
     Q_UNUSED(error);
-    if (m_typhonConnection && m_typhonConnection->state() == TyphonConnectionState::Ready
-        && m_typhonConnection->hasSnapshot()) {
-        applyTyphonSnapshot(m_typhonConnection->snapshot());
+    if (m_runtimeBackend && m_runtimeBackend->runtimeReady()) {
+        const Astrea::Dock::DockRuntimeSnapshot snapshot = m_runtimeBackend->snapshot();
+        if (snapshot.authoritative) {
+            applyRuntimeSnapshot(snapshot);
+            return;
+        }
+        clearRuntimeState();
     } else {
-        clearTyphonRuntime();
+        clearRuntimeState();
     }
 }

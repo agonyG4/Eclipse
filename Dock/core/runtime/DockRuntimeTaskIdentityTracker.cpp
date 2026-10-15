@@ -1,19 +1,19 @@
-#include "platform/typhon/RuntimeTaskIdentityTracker.hpp"
+#include "core/runtime/DockRuntimeTaskIdentityTracker.hpp"
 
-#include "platform/typhon/TyphonAppMatcher.hpp"
+#include "core/runtime/DockAppMatcher.hpp"
 
 #include <QSet>
 
-using namespace Astrea::Typhon;
+using namespace Astrea::Dock;
 
 namespace {
 
-QString normalizedAppId(const Toplevel &window)
+QString normalizedAppId(const DockRuntimeWindow &window)
 {
     return window.appId.trimmed().toCaseFolded();
 }
 
-QString initialTaskKeyFor(const Toplevel &window, const TyphonAppMatch &match)
+QString initialTaskKeyFor(const DockRuntimeWindow &window, const DockAppMatch &match)
 {
     if (!match.desktopFileName.isEmpty())
         return QStringLiteral("desktop:") + match.desktopFileName;
@@ -27,17 +27,17 @@ QString initialTaskKeyFor(const Toplevel &window, const TyphonAppMatch &match)
 
 } // namespace
 
-QHash<QString, QString> RuntimeTaskIdentityTracker::update(
-    const Snapshot &snapshot,
+QHash<QString, QString> DockRuntimeTaskIdentityTracker::update(
+    const DockRuntimeSnapshot &snapshot,
     const std::shared_ptr<const DesktopEntrySnapshot> &desktopEntries)
 {
-    if (!m_generation.has_value() || m_generation.value() != snapshot.connectionGeneration) {
+    if (!m_generation.has_value() || m_generation.value() != snapshot.generation) {
         reset();
-        m_generation = snapshot.connectionGeneration;
+        m_generation = snapshot.generation;
     }
 
     QSet<QString> liveWindowIds;
-    for (const Toplevel &window : snapshot.windows)
+    for (const DockRuntimeWindow &window : snapshot.windows)
         liveWindowIds.insert(window.id);
 
     for (auto it = m_windowTaskKeys.begin(); it != m_windowTaskKeys.end();) {
@@ -57,7 +57,7 @@ QHash<QString, QString> RuntimeTaskIdentityTracker::update(
             ++it;
     }
 
-    TyphonAppMatcher matcher(desktopEntries);
+    DockAppMatcher matcher(desktopEntries);
     QHash<QString, QString> assignments;
 
     // Preserve every existing window before allowing a new window to claim an
@@ -65,7 +65,7 @@ QHash<QString, QString> RuntimeTaskIdentityTracker::update(
     // once, the smallest sticky task key owns it so focus order cannot choose
     // the owner. An established alias always wins over these candidates.
     QHash<QString, QString> unclaimedAliasOwners;
-    for (const Toplevel &window : snapshot.windows) {
+    for (const DockRuntimeWindow &window : snapshot.windows) {
         const auto existing = m_windowTaskKeys.constFind(window.id);
         if (existing == m_windowTaskKeys.constEnd())
             continue;
@@ -84,15 +84,14 @@ QHash<QString, QString> RuntimeTaskIdentityTracker::update(
     for (auto it = unclaimedAliasOwners.cbegin(); it != unclaimedAliasOwners.cend(); ++it)
         m_appTaskKeys.insert(it.key(), it.value());
 
-    for (const Toplevel &window : snapshot.windows) {
+    for (const DockRuntimeWindow &window : snapshot.windows) {
         if (m_windowTaskKeys.contains(window.id))
             continue;
 
         const QString appId = normalizedAppId(window);
         QString taskKey = appId.isEmpty() ? QString() : m_appTaskKeys.value(appId);
         if (taskKey.isEmpty()) {
-            const TyphonAppMatch match = matcher.match(
-                {window.appId, window.title, window.pid, window.kind});
+            const DockAppMatch match = matcher.match(window);
             taskKey = initialTaskKeyFor(window, match);
             if (!appId.isEmpty())
                 m_appTaskKeys.insert(appId, taskKey);
@@ -103,7 +102,7 @@ QHash<QString, QString> RuntimeTaskIdentityTracker::update(
     return assignments;
 }
 
-void RuntimeTaskIdentityTracker::reset()
+void DockRuntimeTaskIdentityTracker::reset()
 {
     m_generation.reset();
     m_windowTaskKeys.clear();

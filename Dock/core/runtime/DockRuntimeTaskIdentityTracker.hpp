@@ -1,19 +1,19 @@
 #pragma once
 
 #include "apps/DesktopEntryCatalog.hpp"
-#include "platform/typhon/TyphonProtocolTypes.hpp"
+#include "core/runtime/DockRuntimeTypes.hpp"
 
 #include <QHash>
 
 #include <memory>
 #include <optional>
 
-namespace Astrea::Typhon {
+namespace Astrea::Dock {
 
-class RuntimeTaskIdentityTracker final {
+class DockRuntimeTaskIdentityTracker final {
 public:
     QHash<QString, QString> update(
-        const Snapshot &snapshot,
+        const DockRuntimeSnapshot &snapshot,
         const std::shared_ptr<const DesktopEntrySnapshot> &desktopEntries);
     void reset();
 
@@ -23,4 +23,4 @@ private:
     QHash<QString, QString> m_appTaskKeys;
 };
 
-} // namespace Astrea::Typhon
+} // namespace Astrea::Dock

@@ -1,10 +1,10 @@
 #include <QTest>
 
 #include "apps/DesktopEntryCatalog.hpp"
-#include "platform/typhon/DockApplicationStateProjector.hpp"
-#include "platform/typhon/RuntimeTaskIdentityTracker.hpp"
+#include "core/runtime/DockApplicationStateProjector.hpp"
+#include "core/runtime/DockRuntimeTaskIdentityTracker.hpp"
 
-using namespace Astrea::Typhon;
+using namespace Astrea::Dock;
 
 namespace {
 
@@ -24,33 +24,33 @@ std::shared_ptr<DesktopEntrySnapshot> catalog()
     return result;
 }
 
-Toplevel window(const QString &id, const QString &appId, bool active = false,
-                bool minimized = false, quint32 pid = 1, FocusSerial focusSerial = 0)
+DockRuntimeWindow window(const QString &id, const QString &appId, bool active = false,
+                         bool minimized = false, quint32 pid = 1, quint64 focusSerial = 0)
 {
-    Toplevel result;
+    DockRuntimeWindow result;
     result.id = id;
     result.appId = appId;
     result.title = id;
     result.pid = pid;
     result.focusSerial = focusSerial;
-    result.states = minimized ? ToplevelStates(ToplevelStateFlag::Minimized) : ToplevelStates{};
-    if (active)
-        result.states |= ToplevelStateFlag::Active;
+    result.active = active;
+    result.minimized = minimized;
     return result;
 }
 
-Snapshot snapshot(std::initializer_list<Toplevel> windows)
+DockRuntimeSnapshot snapshot(std::initializer_list<DockRuntimeWindow> windows)
 {
-    Snapshot result;
-    result.windows = QVector<Toplevel>(windows);
+    DockRuntimeSnapshot result;
+    result.authoritative = true;
+    result.windows = QVector<DockRuntimeWindow>(windows);
     result.total = static_cast<quint32>(result.windows.size());
     return result;
 }
 
-Snapshot snapshot(quint64 generation, std::initializer_list<Toplevel> windows)
+DockRuntimeSnapshot snapshot(quint64 generation, std::initializer_list<DockRuntimeWindow> windows)
 {
-    Snapshot result = snapshot(windows);
-    result.connectionGeneration = generation;
+    DockRuntimeSnapshot result = snapshot(windows);
+    result.generation = generation;
     return result;
 }
 
@@ -281,7 +281,7 @@ void DockApplicationStateProjectorTest::focusSerialOrdersExactActivationTargets(
 
 void DockApplicationStateProjectorTest::countsAreClampedToInt()
 {
-    Snapshot input;
+    DockRuntimeSnapshot input;
     input.total = std::numeric_limits<quint32>::max();
     DockApplicationStateProjector projector;
     const auto projection = projector.project(input, catalog());
@@ -306,7 +306,7 @@ void DockApplicationStateProjectorTest::stress100ProjectionCycles()
 void DockApplicationStateProjectorTest::catalogGainKeepsLiveTaskKey()
 {
     DockApplicationStateProjector projector;
-    RuntimeTaskIdentityTracker tracker;
+    DockRuntimeTaskIdentityTracker tracker;
     const auto empty = std::make_shared<DesktopEntrySnapshot>();
     const auto firstSnapshot = snapshot(
         1, {window(QStringLiteral("late-window"), QStringLiteral("late-app"))});
@@ -326,7 +326,7 @@ void DockApplicationStateProjectorTest::catalogGainKeepsLiveTaskKey()
 void DockApplicationStateProjectorTest::catalogLossKeepsLiveTaskKey()
 {
     DockApplicationStateProjector projector;
-    RuntimeTaskIdentityTracker tracker;
+    DockRuntimeTaskIdentityTracker tracker;
     const auto matched = lateCatalog();
     const auto firstSnapshot = snapshot(
         1, {window(QStringLiteral("late-window"), QStringLiteral("late-app"))});
@@ -346,7 +346,7 @@ void DockApplicationStateProjectorTest::catalogLossKeepsLiveTaskKey()
 void DockApplicationStateProjectorTest::metadataChangeKeepsLiveTaskKey()
 {
     DockApplicationStateProjector projector;
-    RuntimeTaskIdentityTracker tracker;
+    DockRuntimeTaskIdentityTracker tracker;
     const auto empty = std::make_shared<DesktopEntrySnapshot>();
     const auto firstSnapshot = snapshot(
         1, {window(QStringLiteral("stable-window"), QStringLiteral("before-app"))});
@@ -363,7 +363,7 @@ void DockApplicationStateProjectorTest::metadataChangeKeepsLiveTaskKey()
 void DockApplicationStateProjectorTest::metadataChangeAliasesNewWindowIntoExistingTask()
 {
     DockApplicationStateProjector projector;
-    RuntimeTaskIdentityTracker tracker;
+    DockRuntimeTaskIdentityTracker tracker;
     const auto empty = std::make_shared<DesktopEntrySnapshot>();
     const auto firstSnapshot = snapshot(
         1, {window(QStringLiteral("first"), QStringLiteral("before-app"))});
@@ -404,7 +404,7 @@ void DockApplicationStateProjectorTest::metadataChangeAliasIsIndependentOfWindow
     const auto initialSnapshot = snapshot(
         1, {window(QStringLiteral("first"), QStringLiteral("before-app"))});
 
-    RuntimeTaskIdentityTracker existingFirstTracker;
+    DockRuntimeTaskIdentityTracker existingFirstTracker;
     existingFirstTracker.update(initialSnapshot, empty);
     const auto existingFirstSnapshot = snapshot(
         1,
@@ -422,7 +422,7 @@ void DockApplicationStateProjectorTest::metadataChangeAliasIsIndependentOfWindow
     QVERIFY(existingFirstProjection.states.value(taskKey).windowIds.contains(QStringLiteral("first")));
     QVERIFY(existingFirstProjection.states.value(taskKey).windowIds.contains(QStringLiteral("second")));
 
-    RuntimeTaskIdentityTracker newFirstTracker;
+    DockRuntimeTaskIdentityTracker newFirstTracker;
     newFirstTracker.update(initialSnapshot, empty);
     const auto newFirstSnapshot = snapshot(
         1,
@@ -442,7 +442,7 @@ void DockApplicationStateProjectorTest::metadataChangeAliasIsIndependentOfWindow
 void DockApplicationStateProjectorTest::newWindowJoinsExistingAppCohort()
 {
     DockApplicationStateProjector projector;
-    RuntimeTaskIdentityTracker tracker;
+    DockRuntimeTaskIdentityTracker tracker;
     const auto empty = std::make_shared<DesktopEntrySnapshot>();
     const auto firstSnapshot = snapshot(
         1, {window(QStringLiteral("first"), QStringLiteral("late-app"))});
@@ -464,7 +464,7 @@ void DockApplicationStateProjectorTest::newWindowJoinsExistingAppCohort()
 void DockApplicationStateProjectorTest::generationChangeStartsFreshTaskLifetime()
 {
     DockApplicationStateProjector projector;
-    RuntimeTaskIdentityTracker tracker;
+    DockRuntimeTaskIdentityTracker tracker;
     const auto matched = lateCatalog();
     const auto firstSnapshot = snapshot(
         1, {window(QStringLiteral("reused"), QStringLiteral("late-app"))});
@@ -484,7 +484,7 @@ void DockApplicationStateProjectorTest::generationChangeStartsFreshTaskLifetime(
 void DockApplicationStateProjectorTest::authorityResetStartsFreshTaskLifetime()
 {
     DockApplicationStateProjector projector;
-    RuntimeTaskIdentityTracker tracker;
+    DockRuntimeTaskIdentityTracker tracker;
     const auto matched = lateCatalog();
     const auto firstSnapshot = snapshot(
         1, {window(QStringLiteral("reused"), QStringLiteral("late-app"))});
@@ -505,7 +505,7 @@ void DockApplicationStateProjectorTest::authorityResetStartsFreshTaskLifetime()
 void DockApplicationStateProjectorTest::emptyAppIdWindowsRemainSeparate()
 {
     DockApplicationStateProjector projector;
-    RuntimeTaskIdentityTracker tracker;
+    DockRuntimeTaskIdentityTracker tracker;
     const auto empty = std::make_shared<DesktopEntrySnapshot>();
     const auto input = snapshot(
         1, {window(QStringLiteral("one"), QString()), window(QStringLiteral("two"), QString())});

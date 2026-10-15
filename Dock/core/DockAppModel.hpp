@@ -3,7 +3,7 @@
 #include "core/DockAppInfo.hpp"
 #include "apps/ApplicationIdentity.hpp"
 #include "apps/DesktopEntryCatalog.hpp"
-#include "platform/typhon/DockApplicationStateProjector.hpp"
+#include "core/runtime/DockApplicationStateProjector.hpp"
 
 #include <QAbstractListModel>
 #include <QVector>
@@ -53,7 +53,7 @@ public:
     bool setLaunching(const QString &desktopFileName, bool launching);
     bool setLaunchError(const QString &desktopFileName, const QString &error);
     void applyRuntimeProjection(
-        const Astrea::Typhon::DockApplicationRuntimeProjection &projection,
+        const Astrea::Dock::DockApplicationRuntimeProjection &projection,
         bool authoritative = true);
     void clearRuntimeProjection();
     bool applyIdentityEnrichment(const QString &taskKey, const AppIdentity &identity);
@@ -69,7 +69,7 @@ private:
 
     QVector<DockAppInfo> m_items;
     QStringList m_pins;
-    QHash<QString, Astrea::Typhon::DockApplicationRuntimeState> m_runtimeStates;
+    QHash<QString, Astrea::Dock::DockApplicationRuntimeState> m_runtimeStates;
     QHash<QString, QString> m_runtimeDesktopFileNames;
     QHash<QString, AppIdentity> m_identityEnrichments;
     QStringList m_dynamicOrder;

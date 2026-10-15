@@ -1,9 +1,9 @@
 #include <QTest>
 
 #include "apps/DesktopEntryCatalog.hpp"
-#include "platform/typhon/TyphonAppMatcher.hpp"
+#include "core/runtime/DockAppMatcher.hpp"
 
-using namespace Astrea::Typhon;
+using namespace Astrea::Dock;
 
 namespace {
 
@@ -36,16 +36,20 @@ std::shared_ptr<DesktopEntrySnapshot> makeCatalog()
     return snapshot;
 }
 
-TyphonAppMatch match(const std::shared_ptr<const DesktopEntrySnapshot> &catalog,
-                     const QString &appId, const QString &title = {})
+DockAppMatch match(const std::shared_ptr<const DesktopEntrySnapshot> &catalog,
+                   const QString &appId, const QString &title = {})
 {
-    TyphonAppMatcher matcher(catalog);
-    return matcher.match({appId, title, 1234, ToplevelKind::XdgToplevel});
+    DockAppMatcher matcher(catalog);
+    DockRuntimeWindow window;
+    window.appId = appId;
+    window.title = title;
+    window.pid = 1234;
+    return matcher.match(window);
 }
 
 } // namespace
 
-class TyphonAppMatcherTest final : public QObject {
+class DockAppMatcherTest final : public QObject {
     Q_OBJECT
 
 private slots:
@@ -60,35 +64,35 @@ private slots:
     void stress100CatalogRevisionRematchCycles();
 };
 
-void TyphonAppMatcherTest::exactDesktopFileName()
+void DockAppMatcherTest::exactDesktopFileName()
 {
     const auto result = match(makeCatalog(), QStringLiteral("org.example.App.desktop"));
     QCOMPARE(result.desktopFileName, QStringLiteral("org.example.App.desktop"));
-    QCOMPARE(result.confidence, MatchConfidence::ExactDesktopFileName);
+    QCOMPARE(result.confidence, DockAppMatchConfidence::ExactDesktopFileName);
 }
 
-void TyphonAppMatcherTest::exactDesktopId()
+void DockAppMatcherTest::exactDesktopId()
 {
     const auto result = match(makeCatalog(), QStringLiteral("org.example.App"));
     QCOMPARE(result.desktopFileName, QStringLiteral("org.example.App.desktop"));
-    QCOMPARE(result.confidence, MatchConfidence::ExactDesktopId);
+    QCOMPARE(result.confidence, DockAppMatchConfidence::ExactDesktopId);
 }
 
-void TyphonAppMatcherTest::caseInsensitiveDesktopId()
+void DockAppMatcherTest::caseInsensitiveDesktopId()
 {
     const auto result = match(makeCatalog(), QStringLiteral("ORG.EXAMPLE.APP"));
     QCOMPARE(result.desktopFileName, QStringLiteral("org.example.App.desktop"));
-    QCOMPARE(result.confidence, MatchConfidence::CaseInsensitiveDesktopId);
+    QCOMPARE(result.confidence, DockAppMatchConfidence::CaseInsensitiveDesktopId);
 }
 
-void TyphonAppMatcherTest::startupWmClassMatchesCaseInsensitively()
+void DockAppMatcherTest::startupWmClassMatchesCaseInsensitively()
 {
     const auto result = match(makeCatalog(), QStringLiteral("exampleclass"));
     QCOMPARE(result.desktopFileName, QStringLiteral("visible.desktop"));
-    QCOMPARE(result.confidence, MatchConfidence::CaseInsensitiveStartupWmClass);
+    QCOMPARE(result.confidence, DockAppMatchConfidence::CaseInsensitiveStartupWmClass);
 }
 
-void TyphonAppMatcherTest::normalizedReverseDnsIdMatches()
+void DockAppMatcherTest::normalizedReverseDnsIdMatches()
 {
     auto catalog = makeCatalog();
     DesktopEntryRecord entry;
@@ -101,10 +105,10 @@ void TyphonAppMatcherTest::normalizedReverseDnsIdMatches()
 
     const auto result = match(catalog, QStringLiteral("org.example_normalized"));
     QCOMPARE(result.desktopFileName, QStringLiteral("org.example_normalized.desktop"));
-    QCOMPARE(result.confidence, MatchConfidence::NormalizedReverseDnsDesktopId);
+    QCOMPARE(result.confidence, DockAppMatchConfidence::NormalizedReverseDnsDesktopId);
 }
 
-void TyphonAppMatcherTest::visibleCandidateWinsAndTiesUseFileName()
+void DockAppMatcherTest::visibleCandidateWinsAndTiesUseFileName()
 {
     auto result = match(makeCatalog(), QStringLiteral("ExampleClass"));
     QCOMPARE(result.desktopFileName, QStringLiteral("visible.desktop"));
@@ -126,36 +130,36 @@ void TyphonAppMatcherTest::visibleCandidateWinsAndTiesUseFileName()
     QCOMPARE(result.desktopFileName, QStringLiteral("a.desktop"));
 }
 
-void TyphonAppMatcherTest::titleIsNeverUsed()
+void DockAppMatcherTest::titleIsNeverUsed()
 {
     const auto result = match(makeCatalog(), QStringLiteral("unknown"), QStringLiteral("Visible"));
     QVERIFY(result.desktopFileName.isEmpty());
-    QCOMPARE(result.confidence, MatchConfidence::Unresolved);
+    QCOMPARE(result.confidence, DockAppMatchConfidence::Unresolved);
 }
 
-void TyphonAppMatcherTest::unresolvedResultIsExplicit()
+void DockAppMatcherTest::unresolvedResultIsExplicit()
 {
     const auto result = match(makeCatalog(), QStringLiteral("not-installed"));
     QVERIFY(result.desktopFileName.isEmpty());
     QVERIFY(result.displayName.isEmpty());
-    QCOMPARE(result.confidence, MatchConfidence::Unresolved);
+    QCOMPARE(result.confidence, DockAppMatchConfidence::Unresolved);
 }
 
-void TyphonAppMatcherTest::stress100CatalogRevisionRematchCycles()
+void DockAppMatcherTest::stress100CatalogRevisionRematchCycles()
 {
-    TyphonAppMatcher matcher;
+    DockAppMatcher matcher;
     for (quint64 revision = 1; revision <= 100; ++revision) {
         auto snapshot = makeCatalog();
         snapshot->revision = revision;
         matcher.setSnapshot(snapshot);
-        const TyphonAppMatch result = matcher.match({QStringLiteral("org.example.App"), {}, 1,
-                                                       ToplevelKind::XdgToplevel});
+        DockRuntimeWindow window;
+        window.appId = QStringLiteral("org.example.App");
+        const DockAppMatch result = matcher.match(window);
         QCOMPARE(result.desktopFileName, QStringLiteral("org.example.App.desktop"));
-        QCOMPARE(matcher.match({QStringLiteral("unknown"), {}, 1,
-                                ToplevelKind::XdgToplevel}).confidence,
-                 MatchConfidence::Unresolved);
+        window.appId = QStringLiteral("unknown");
+        QCOMPARE(matcher.match(window).confidence, DockAppMatchConfidence::Unresolved);
     }
 }
 
-QTEST_MAIN(TyphonAppMatcherTest)
-#include "TyphonAppMatcherTest.moc"
+QTEST_MAIN(DockAppMatcherTest)
+#include "DockAppMatcherTest.moc"

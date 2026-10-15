@@ -1,13 +1,15 @@
 # Typhon Dock Runtime State
 
-The Dock consumes one authoritative Typhon toplevel connection. A committed
-snapshot is the only source of `running`, `active`, and `windowCount` state.
-Launch-helper success is separate `launching` state and never implies that a
-window exists.
+Shell owns one Typhon toplevel connection. `TyphonDockRuntimeBackend` adapts
+its committed snapshots into neutral Dock runtime records; those snapshots are
+the only source of `running`, `active`, and `windowCount` state. Runtime
+authority is distinct from action readiness. Launch-helper success is separate
+`launching` state and never implies that a window exists.
 
 ## Matching and grouping
 
-`TyphonAppMatcher` resolves a published client app ID in this order:
+Dock-owned `DockAppMatcher` resolves a neutral runtime window's app ID in this
+order:
 
 1. Exact desktop filename when the app ID ends in `.desktop`.
 2. Exact desktop ID.
@@ -22,8 +24,8 @@ their canonical desktop ID, for example Explorer publishes `astrea-explorer`
 for `astrea-explorer.desktop`, but launcher resolution is enrichment rather than
 task admission. Every eligible Typhon toplevel enters the projection.
 
-The runtime identity tracker assigns one sticky runtime task key per live
-`WindowId` and Typhon connection generation. Its initial candidate is:
+`DockRuntimeTaskIdentityTracker` assigns one sticky runtime task key per live
+window ID and runtime generation. Its initial candidate is:
 
 ```text
 desktop:<desktopFileName>       deterministic desktop match
@@ -43,10 +45,11 @@ task key. A task uses title, app ID, then `Application` for fallback
 presentation until the shared application-identity resolver supplies richer
 display or icon metadata.
 
-Windows are grouped into one state per task key. Minimized windows remain
-running, active is true when any grouped window is active, and duplicate PIDs
-remain separate windows. `windowIds` are ordered by descending Typhon focus
-serial, so the first ID is the exact activation candidate. `desktopFileName` and
+Windows are grouped into one state per task key by the Dock-owned
+`DockApplicationStateProjector`. Minimized windows remain running, active is
+true when any grouped window is active, and duplicate PIDs remain separate
+windows. `windowIds` are ordered by descending focus serial, so the first ID is
+the exact activation candidate. `desktopFileName` and
 `desktopId` are optional launcher metadata, not runtime identity.
 
 ## Model membership and ordering
@@ -74,9 +77,10 @@ projection is known stopped. On disconnect, degradation, unsupported protocol,
 or another authority loss, pins remain visible with neutral unknown values and
 runtime-only rows are removed. Stale runtime-only order is never retained.
 
-When `runtimeKnown && running` is true, a click uses the retained exact
-`WindowId` and sends Typhon `Activate`, including for minimized and multi-window
-applications. Otherwise a real desktop launcher is required to launch; a
+When `runtimeKnown && running` is true, a click uses the retained exact window
+ID and sends a neutral `Activate` request through `DockRuntimeBackend`, including
+for minimized and multi-window applications. `TyphonDockRuntimeBackend`
+translates it to the Typhon connection. Otherwise a real desktop launcher is required to launch; a
 runtime-only task has no launch fallback. Exact activate/close operations first
 validate that the requested `WindowId` still belongs to the task key.
 Accepted and no-change results do not launch. Unavailable or failed actions
@@ -87,13 +91,13 @@ WindowId in the group.
 ## Minimize anchor publication
 
 The QML dock reports the resting icon rectangle in global compositor coordinates.
-The controller accepts a valid rectangle into its task-key cache even while Typhon
-action authentication is pending. The `setMinimizeAnchor()` boolean reports this
+The controller accepts a valid rectangle into its task-key cache even while
+runtime action readiness is pending. The `setMinimizeAnchor()` boolean reports this
 local acceptance only; it does not report transport delivery or compositor
 acknowledgment.
 
-When Typhon becomes `ActionReadyV2`, the controller replays cached rectangles to
-the current exact `WindowId` handles without waiting for another snapshot. A
+When the adapter reports action readiness, the controller replays cached
+rectangles to the current exact window handles without waiting for another snapshot. A
 successful client send is remembered for idempotence; transport errors remain
 eligible for a later runtime projection or capability-ready replay. Reconnects,
 handle changes, task migration, and rectangle changes are keyed against the live

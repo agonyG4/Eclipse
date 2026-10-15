@@ -1801,16 +1801,19 @@ void DockHoverQmlTest::magnifiedInteractionRegionsResolveByVisualStacking()
 void DockHoverQmlTest::runtimeOnlyQmlUsesTaskKeyForIdentityAndContextTarget()
 {
     DockController controller;
-    Astrea::Typhon::Snapshot snapshot;
-    snapshot.connectionGeneration = 1;
-    snapshot.revision = 1;
-    Astrea::Typhon::Toplevel window;
-    window.id = QStringLiteral("9");
-    window.appId = QStringLiteral("Steam_App_1091500");
-    window.title = QStringLiteral("Cyberpunk 2077");
-    window.focusSerial = 1;
-    snapshot.windows.append(window);
-    controller.applyTyphonSnapshot(snapshot);
+    Astrea::Dock::DockApplicationRuntimeProjection projection;
+    Astrea::Dock::DockApplicationRuntimeState runtimeState;
+    runtimeState.taskKey = QStringLiteral("app:steam_app_1091500");
+    runtimeState.appId = QStringLiteral("Steam_App_1091500");
+    runtimeState.displayName = QStringLiteral("Cyberpunk 2077");
+    runtimeState.running = true;
+    runtimeState.active = true;
+    runtimeState.windowCount = 1;
+    runtimeState.windowIds.append(QStringLiteral("9"));
+    runtimeState.focusSerials.append(1);
+    projection.states.insert(runtimeState.taskKey, runtimeState);
+    projection.encounterOrder.append(runtimeState.taskKey);
+    controller.appModel()->applyRuntimeProjection(projection);
 
     const QString taskKey = QStringLiteral("app:steam_app_1091500");
     QCOMPARE(controller.appModel()->rowForTaskKey(taskKey), 0);
@@ -2753,13 +2756,13 @@ void DockHoverQmlTest::runningTooltipUsesOnlyTheApplicationDisplayName()
     dockController.applyConfig(configFor(QStringLiteral("none"), {
         QStringLiteral("zen-browser.desktop")
     }));
-    Astrea::Typhon::DockApplicationRuntimeState runtimeState;
+    Astrea::Dock::DockApplicationRuntimeState runtimeState;
     runtimeState.taskKey = QStringLiteral("desktop:zen-browser.desktop");
     runtimeState.desktopFileName = QStringLiteral("zen-browser.desktop");
     runtimeState.displayName = QStringLiteral("Zen Browser");
     runtimeState.running = true;
     runtimeState.windowCount = 4;
-    Astrea::Typhon::DockApplicationRuntimeProjection projection;
+    Astrea::Dock::DockApplicationRuntimeProjection projection;
     projection.states.insert(runtimeState.taskKey, runtimeState);
     projection.encounterOrder.append(runtimeState.taskKey);
     dockController.appModel()->applyRuntimeProjection(projection);

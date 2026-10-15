@@ -1,14 +1,14 @@
-#include "platform/typhon/DockApplicationStateProjector.hpp"
+#include "core/runtime/DockApplicationStateProjector.hpp"
 
-#include "platform/typhon/TyphonAppMatcher.hpp"
+#include "core/runtime/DockAppMatcher.hpp"
 
 #include <limits>
 
-using namespace Astrea::Typhon;
+using namespace Astrea::Dock;
 
 namespace {
 
-QString taskKeyFor(const Toplevel &window, const TyphonAppMatch &match)
+QString taskKeyFor(const DockRuntimeWindow &window, const DockAppMatch &match)
 {
     if (!match.desktopFileName.isEmpty())
         return QStringLiteral("desktop:") + match.desktopFileName;
@@ -20,7 +20,7 @@ QString taskKeyFor(const Toplevel &window, const TyphonAppMatch &match)
     return QStringLiteral("window:") + window.id;
 }
 
-QString fallbackDisplayName(const Toplevel &window)
+QString fallbackDisplayName(const DockRuntimeWindow &window)
 {
     const QString title = window.title.trimmed();
     if (!title.isEmpty())
@@ -34,14 +34,14 @@ QString fallbackDisplayName(const Toplevel &window)
 } // namespace
 
 DockApplicationRuntimeProjection DockApplicationStateProjector::project(
-    const Snapshot &snapshot,
+    const DockRuntimeSnapshot &snapshot,
     const std::shared_ptr<const DesktopEntrySnapshot> &desktopEntries,
     const QHash<QString, QString> &taskKeysByWindowId) const
 {
     DockApplicationRuntimeProjection result;
-    TyphonAppMatcher matcher(desktopEntries);
-    for (const Toplevel &window : snapshot.windows) {
-        const TyphonAppMatch app = matcher.match({window.appId, window.title, window.pid, window.kind});
+    DockAppMatcher matcher(desktopEntries);
+    for (const DockRuntimeWindow &window : snapshot.windows) {
+        const DockAppMatch app = matcher.match(window);
         const QString assignedTaskKey = taskKeysByWindowId.value(window.id);
         const QString taskKey = assignedTaskKey.isEmpty() ? taskKeyFor(window, app) : assignedTaskKey;
 
@@ -63,7 +63,7 @@ DockApplicationRuntimeProjection DockApplicationStateProjector::project(
         if (state.iconPath.isEmpty())
             state.iconPath = app.iconPath;
         state.running = true;
-        state.active = state.active || hasState(window.states, ToplevelStateFlag::Active);
+        state.active = state.active || window.active;
         if (state.windowCount < std::numeric_limits<int>::max())
             ++state.windowCount;
         int insertAt = 0;

@@ -502,12 +502,6 @@ add_library(astrea-shared-typhon STATIC
     platform/typhon/TyphonToplevelConnection.hpp
     platform/typhon/TyphonToplevelModel.cpp
     platform/typhon/TyphonToplevelModel.hpp
-    platform/typhon/TyphonAppMatcher.cpp
-    platform/typhon/TyphonAppMatcher.hpp
-    platform/typhon/RuntimeTaskIdentityTracker.cpp
-    platform/typhon/RuntimeTaskIdentityTracker.hpp
-    platform/typhon/DockApplicationStateProjector.cpp
-    platform/typhon/DockApplicationStateProjector.hpp
 )
 
 target_include_directories(astrea-shared-typhon PUBLIC
@@ -963,8 +957,6 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     endfunction()
 
     add_typhon_shared_test(typhon-toplevel-model-test tests/TyphonToplevelModelTest.cpp)
-    add_typhon_shared_test(typhon-app-matcher-test tests/TyphonAppMatcherTest.cpp)
-    add_typhon_shared_test(dock-application-state-projector-test tests/DockApplicationStateProjectorTest.cpp)
     add_typhon_shared_test(typhon-protocol-client-test tests/TyphonProtocolClientTest.cpp)
     add_typhon_shared_test(typhon-action-state-test tests/TyphonActionStateTest.cpp)
     add_typhon_shared_test(typhon-shared-connection-test tests/TyphonSharedConnectionTest.cpp)
@@ -1045,8 +1037,6 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
             desktop-entry-catalog-test
             typhon-toplevel-protocol-contract-test
             typhon-toplevel-model-test
-            typhon-app-matcher-test
-            dock-application-state-projector-test
             typhon-protocol-client-test
             typhon-action-state-test
             typhon-protocol-integration-test

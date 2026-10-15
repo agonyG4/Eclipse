@@ -81,6 +81,7 @@ target_link_libraries(astrea-shell-runtime PUBLIC
     astrea-shared-wayland-effects
     astrea_spotlight_backend
 )
+target_link_libraries(astrea-shell-runtime PRIVATE astrea-dock-typhon)
 shell_enable_sanitizers(astrea-shell-runtime)
 
 qt_add_executable(astrea-shell

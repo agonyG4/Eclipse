@@ -103,7 +103,7 @@ bool DockContextMenuProvider::present(ContextMenuController *controller,
         });
     }
 
-    const QVector<Astrea::Typhon::Toplevel> windows =
+    const QVector<Astrea::Dock::DockRuntimeWindow> windows =
         m_dock->windowsForTaskKey(taskKey);
     QHash<QString, QString> windowActions;
     if (!windows.isEmpty()) {

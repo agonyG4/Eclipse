@@ -1,26 +1,29 @@
 # Astrea Dock Architecture
 
 The resident Dock is hosted by the unified `astrea-shell` Qt 6 process.
-`astrea-dock-runtime` owns the resident non-Wayland Dock implementation and is
-consumed by `astrea-shell-runtime`. `astrea-dock-wayland` owns the Layer Shell
-surface and input-region integration and depends on `astrea-dock-runtime`.
-Shell remains the process and composition owner: `ShellRuntime` creates the
-Dock objects and `AstreaShellApplication` wires their Wayland surfaces and QML
-context. `astrea-dock` remains a lightweight compatibility IPC client, not a
-second resident Dock. `app/` performs compatibility-client bootstrap; `core/`
-owns the stable Dock model and launch/reorder policy; `services/` owns the
-watcher and the narrow pins persistence boundary; `platform/` owns runtime
-paths, IPC, and Layer Shell; `qml/` presents state and emits interaction
-requests. The compositor-independent schema, parser, validator, and atomic
-known-field writer live in `shared/dock/` and are consumed by both Dock and
-Settings.
+`astrea-dock-runtime` owns the resident non-Wayland Dock implementation and
+the neutral runtime contract. `astrea-dock-typhon` adapts shared Typhon
+transport and protocol types to that contract. `astrea-dock-wayland` owns the
+Layer Shell surface and input-region integration and depends only on
+`astrea-dock-runtime`. Shell runtime consumes the neutral contract and the
+Typhon adapter; `ShellRuntime` owns the underlying connection and adapter and
+`AstreaShellApplication` wires the Wayland surfaces and QML context.
+`astrea-dock` remains a lightweight compatibility IPC client, not a second
+resident Dock. The compositor-independent schema, parser, validator, and
+atomic known-field writer live in `shared/dock/` and are consumed by both Dock
+and Settings.
 
-The Dock runtime still directly depends on shared Typhon runtime types and
-services, including `DockApplicationStateProjector`,
-`RuntimeTaskIdentityTracker`, and `TyphonToplevelConnection`. Phase 1 makes
-production build ownership truthful while preserving this coupling and all
-runtime behavior. Separating the core/runtime platform boundary is future
-structural work; Dock `core/` is not yet platform-independent.
+Dock core owns matching, task identity, and application-state projection. It
+consumes `DockRuntimeSnapshot`, `DockRuntimeWindow`, neutral Activate/Close
+actions, and neutral action results/errors through `DockRuntimeBackend`.
+`TyphonDockRuntimeBackend` translates the shared Typhon connection's snapshots,
+readiness, exact window handles, actions, anchors, and completions. Runtime
+authority and action readiness remain separate. Shared Typhon owns transport
+and protocol infrastructure, not Dock task policy.
+
+Some internal component debt remains. In particular, `DockController` still
+uses Dock persistence services directly; this Phase 2 boundary does not claim
+that every `docs/COMPONENT_STRUCTURE.md` dependency rule is satisfied.
 
 `DockAppModel` uses an explicit runtime `taskKey` as its stable row key. The
 projected visible rows are configured desktop-file pins plus running runtime
@@ -126,20 +129,15 @@ underlying application surface only when the compositor's input routing also
 places it there; an ignored Dock activation alone is not proof that the
 application received the click.
 
-Typhon is the authoritative source for task-relevant toplevels. A
-`RuntimeTaskIdentityTracker` owned by `DockController` assigns each live
-`WindowId` a key for the current connection generation. That assignment remains
-stable through catalog rebuilds, launcher appearance/disappearance, and mutable
-window metadata changes. Newly observed windows join an existing live
-non-empty-app-ID cohort; empty-app-ID windows remain separate. The pure
-projector matches the current catalog for launcher metadata while using those
-assignments for grouping. It groups multiple windows into one task state and
-retains exact stable WindowIds ordered by focus serial. Titles, PIDs, process
-state, and launch success are never task identity or proof that a window exists.
-The shared `astrea-shared-appidentity` target supplies the existing AltTab
-resolver to Dock for representative-window presentation enrichment; its
-asynchronous results are generation- and fingerprint-validated and cannot
-re-key a task.
+The runtime backend supplies authoritative task-relevant windows. Dock-owned
+`DockRuntimeTaskIdentityTracker` assigns each live window ID a key for the
+current runtime generation. `DockAppMatcher` resolves only app ID and desktop
+catalog metadata, and `DockApplicationStateProjector` groups windows while
+retaining exact window IDs ordered by focus serial. Titles and PIDs remain
+presentation and identity-enrichment inputs, not launcher matching or task
+identity. The public runtime model exposes `AppIdentity`, so
+`astrea-shared-appidentity` is an explicit public dependency. Its asynchronous
+results are generation- and fingerprint-validated and cannot re-key a task.
 
 When Typhon is authoritative, pinned rows missing from the projection are
 known stopped (`runtimeKnown=true`, `running=false`); a live pinned task returns
@@ -159,9 +157,9 @@ or tiled windows therefore do not move.
 
 Auto-hide never fully unmaps an enabled Dock with rows. Always collapses its
 chrome while retaining a bounded edge reveal target and zero exclusive zone.
-Intelligent uses the currently published Typhon state as a conservative v1
-heuristic: an active maximized or fullscreen toplevel counts as obstructing and
+Intelligent uses the authoritative neutral runtime snapshot as a conservative
+heuristic: an active maximized or fullscreen window counts as obstructing and
 switches to Always behavior; otherwise it behaves as Never. This is not overlap
-geometry and must be replaced when Typhon publishes output-local geometry.
+geometry. The current Typhon runtime data has no output-local geometry.
 Manual `dock show`/`dock hide` remains the higher-level mapping override.
 An empty or disabled Dock is unmapped and reserves no positive zone.

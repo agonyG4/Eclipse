@@ -15,6 +15,15 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/DockWarnings.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/DockSanitizers.cmake)
 
 add_library(astrea-dock-runtime STATIC
+    core/runtime/DockRuntimeBackend.cpp
+    core/runtime/DockRuntimeBackend.hpp
+    core/runtime/DockRuntimeTypes.hpp
+    core/runtime/DockAppMatcher.cpp
+    core/runtime/DockAppMatcher.hpp
+    core/runtime/DockRuntimeTaskIdentityTracker.cpp
+    core/runtime/DockRuntimeTaskIdentityTracker.hpp
+    core/runtime/DockApplicationStateProjector.cpp
+    core/runtime/DockApplicationStateProjector.hpp
     core/DockAppInfo.cpp
     core/DockAppInfo.hpp
     core/DockAppModel.cpp
@@ -41,12 +50,24 @@ target_link_libraries(astrea-dock-runtime
         Qt6::Core
         astrea-shared-core
         astrea-shared-dock
-        astrea-shared-typhon
-    PRIVATE
         astrea-shared-appidentity
 )
 dock_enable_warnings(astrea-dock-runtime)
 dock_enable_sanitizers(astrea-dock-runtime)
+
+add_library(astrea-dock-typhon STATIC
+    platform/typhon/TyphonDockRuntimeBackend.cpp
+    platform/typhon/TyphonDockRuntimeBackend.hpp
+)
+target_include_directories(astrea-dock-typhon PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+target_link_libraries(astrea-dock-typhon
+    PUBLIC astrea-dock-runtime
+    PRIVATE astrea-shared-typhon
+)
+dock_enable_warnings(astrea-dock-typhon)
+dock_enable_sanitizers(astrea-dock-typhon)
 
 add_library(astrea-dock-wayland STATIC
     platform/wayland/DockLayerShellSurface.cpp
@@ -99,6 +120,22 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     dock_enable_sanitizers(dock-app-model-test)
     add_test(NAME dock-app-model-test COMMAND dock-app-model-test)
 
+    add_executable(dock-app-matcher-test
+        tests/DockAppMatcherTest.cpp
+    )
+    target_link_libraries(dock-app-matcher-test PRIVATE astrea-dock-runtime Qt6::Test)
+    dock_enable_sanitizers(dock-app-matcher-test)
+    add_test(NAME dock-app-matcher-test COMMAND dock-app-matcher-test)
+
+    add_executable(dock-application-state-projector-test
+        tests/DockApplicationStateProjectorTest.cpp
+    )
+    target_link_libraries(dock-application-state-projector-test PRIVATE
+        astrea-dock-runtime Qt6::Test)
+    dock_enable_sanitizers(dock-application-state-projector-test)
+    add_test(NAME dock-application-state-projector-test
+             COMMAND dock-application-state-projector-test)
+
     add_executable(dock-config-watcher-test
         tests/DockConfigWatcherTest.cpp
     )
@@ -133,7 +170,7 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
         tests/DockTyphonRuntimeIntegrationTest.cpp
     )
     target_link_libraries(dock-typhon-runtime-integration-test PRIVATE
-        astrea-dock-runtime Qt6::Test)
+        astrea-dock-typhon astrea-shared-typhon Qt6::Test)
     dock_enable_sanitizers(dock-typhon-runtime-integration-test)
     add_test(NAME dock-typhon-runtime-integration-test
              COMMAND dock-typhon-runtime-integration-test)
@@ -200,7 +237,8 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
 
     if(ASTREA_ENABLE_ASAN)
         set_tests_properties(
-            dock-app-model-test dock-config-watcher-test dock-runtime-paths-test
+            dock-app-model-test dock-app-matcher-test dock-application-state-projector-test
+            dock-config-watcher-test dock-runtime-paths-test
             dock-config-persistence-test dock-controller-test dock-typhon-runtime-integration-test
             dock-layer-shell-surface-test dock-input-region-test dock-hover-qml-test
             dock-surface-geometry-test

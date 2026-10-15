@@ -1,11 +1,13 @@
 # Dock Testing
 
-Configure, build, and run all deterministic tests from the repository root:
+Configure, build, and run the deterministic tests in the stable external Debug
+tree (build output must stay outside the source checkout):
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build -j"$(nproc)"
-ctest --test-dir build --output-on-failure
+cmake -S . -B /mnt/Aether/Desktop/GitHub/Eclipse-build \
+  -DCMAKE_BUILD_TYPE=Debug -DASTREA_ENABLE_LAYER_SHELL=ON
+cmake --build /mnt/Aether/Desktop/GitHub/Eclipse-build -j"$(nproc)"
+ctest --test-dir /mnt/Aether/Desktop/GitHub/Eclipse-build --output-on-failure
 ```
 
 The resident Dock is hosted by `astrea-shell`; `astrea-dock` is retained only
@@ -13,38 +15,62 @@ as a compatibility IPC client target. Dock-specific targets can be built and
 run independently:
 
 ```bash
-cmake --build build --target astrea-dock dock-app-model-test dock-controller-test \
-  dock-config-watcher-test dock-config-persistence-test dock-layer-shell-surface-test \
-  dock-input-region-test dock-hover-qml-test dock-ipc-test dock-runtime-paths-test \
-  dock-command-line-test
-cmake --build build --target astrea-dock dock-app-model-test dock-controller-test \
-  dock-typhon-runtime-integration-test dock-application-state-projector-test \
-  dock-hover-qml-test typhon-app-matcher-test
-ctest --test-dir build -R 'dock-|desktop-entry-catalog-test|typhon-app-matcher-test' \
+cmake --build /mnt/Aether/Desktop/GitHub/Eclipse-build --target \
+  astrea-dock-runtime astrea-dock-typhon astrea-dock-wayland astrea-shared-typhon \
+  astrea-shell dock-app-matcher-test dock-application-state-projector-test \
+  dock-app-model-test dock-controller-test dock-typhon-runtime-integration-test \
+  dock-hover-qml-test dock-layer-shell-surface-test dock-input-region-test \
+  dock-surface-geometry-test
+python3 Dock/tests/check_dock_architecture.py
+ctest --test-dir /mnt/Aether/Desktop/GitHub/Eclipse-build \
+  -R '(^dock-|legacy-dock)' \
   --output-on-failure
 
-qmllint Dock/qml/Main.qml Dock/qml/components/DockPanel.qml \
-  Dock/qml/components/DockAppDelegate.qml
+ASTREA_CMAKE_BUILD_DIR=/mnt/Aether/Desktop/GitHub/Eclipse-build \
+  tools/ci/run-qml-gate.sh
+ctest --test-dir /mnt/Aether/Desktop/GitHub/Eclipse-build --output-on-failure
+```
+
+The focused `dock-app-matcher-test` and
+`dock-application-state-projector-test` are Dock-owned tests. The core
+controller test uses a fake `DockRuntimeBackend`; the real boundary test keeps
+the `FakeTyphonProtocolAdapter -> TyphonToplevelConnection ->
+TyphonDockRuntimeBackend -> DockController` path.
+
+Repeat the configuration and relevant Dock/Shell builds in a separate
+no-Layer-Shell tree because its CMake options are incompatible with the
+production Debug tree:
+
+```bash
+cmake -S . -B /mnt/Aether/Desktop/GitHub/Eclipse-no-layer-shell-build \
+  -DCMAKE_BUILD_TYPE=Debug -DASTREA_ENABLE_LAYER_SHELL=OFF
+cmake --build /mnt/Aether/Desktop/GitHub/Eclipse-no-layer-shell-build --target \
+  astrea-dock-runtime astrea-dock-typhon astrea-dock-wayland astrea-shell \
+  dock-app-matcher-test dock-application-state-projector-test dock-app-model-test \
+  dock-controller-test dock-typhon-runtime-integration-test dock-hover-qml-test
+ctest --test-dir /mnt/Aether/Desktop/GitHub/Eclipse-no-layer-shell-build \
+  -R '(^dock-|legacy-dock)' --output-on-failure
 ```
 
 Sanitizer validation uses the project option:
 
 ```bash
-cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug \
+cmake -S . -B /mnt/Aether/Desktop/GitHub/Eclipse-asan-build -DCMAKE_BUILD_TYPE=Debug \
   -DASTREA_ENABLE_ASAN=ON
-cmake --build build-asan -j"$(nproc)"
-ctest --test-dir build-asan --output-on-failure
+cmake --build /mnt/Aether/Desktop/GitHub/Eclipse-asan-build -j"$(nproc)"
+ctest --test-dir /mnt/Aether/Desktop/GitHub/Eclipse-asan-build --output-on-failure
 
-cmake -S . -B build-ubsan -DCMAKE_BUILD_TYPE=Debug \
+cmake -S . -B /mnt/Aether/Desktop/GitHub/Eclipse-ubsan-build -DCMAKE_BUILD_TYPE=Debug \
   -DASTREA_ENABLE_UBSAN=ON
-cmake --build build-ubsan -j"$(nproc)"
-ctest --test-dir build-ubsan --output-on-failure
+cmake --build /mnt/Aether/Desktop/GitHub/Eclipse-ubsan-build -j"$(nproc)"
+ctest --test-dir /mnt/Aether/Desktop/GitHub/Eclipse-ubsan-build --output-on-failure
 ```
 
 Tests are deterministic and do not launch real applications in controller
-tests. The IPC tests use local temporary socket names. The runtime integration
-test drives a fake Typhon protocol adapter and proves dynamic rows, exact
-activation, close removal, and authority loss. Explorer's source contract is
+tests. The IPC tests use local temporary socket names. The controller test
+uses a fake neutral runtime backend. The runtime integration test drives a fake
+Typhon protocol adapter through the real Typhon connection and Dock adapter,
+covering dynamic rows, exact activation/close, and authority loss. Explorer's source contract is
 covered by `python3 -m unittest src/System/tests/test_bin_launchers.py` in the
 current AstreaOS source tree.
 
@@ -139,9 +165,8 @@ constitute live Wayland/Typhon visual validation. Live validation must additiona
 that the requested Layer Shell surface dimensions stay constant while the
 chrome width and icon transforms change independently.
 
-Run the same focused and complete CTest commands in both `build/debug` and
-`build/release`. Normal shell validation must use the LayerShellQt-enabled
-configuration; a no-LayerShell build is not production validation. QML lint,
-`git diff --check`, and a live Typhon qualification are separate gates. Live
-results must be reported per case and must not be inferred from deterministic
-tests.
+The production Debug configuration uses LayerShellQt. The separate
+no-Layer-Shell configuration checks that the Dock and Shell targets still
+build without that optional backend. QML lint, `git diff --check`, and live
+Wayland/Typhon qualification are separate gates. Live results must be reported
+per case and must not be inferred from deterministic tests.

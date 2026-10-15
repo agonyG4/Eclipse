@@ -155,7 +155,7 @@ bool DockAppModel::setLaunchError(const QString &desktopFileName, const QString 
 }
 
 void DockAppModel::applyRuntimeProjection(
-    const Astrea::Typhon::DockApplicationRuntimeProjection &projection,
+    const Astrea::Dock::DockApplicationRuntimeProjection &projection,
     bool authoritative)
 {
     if (!authoritative) {

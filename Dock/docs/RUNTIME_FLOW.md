@@ -127,9 +127,12 @@ Shell owns the single Typhon toplevel connection and a
 `TyphonDockRuntimeBackend` that borrows it. The adapter exposes neutral runtime
 snapshots and preserves the distinction between data authority and action
 readiness. Dock core owns `DockRuntimeTaskIdentityTracker`, `DockAppMatcher`,
-and `DockApplicationStateProjector`. After an authoritative snapshot arrives,
-the tracker assigns each live window ID a sticky task key for that runtime
-generation; the projector emits deterministic encounter order, current
+and `DockApplicationStateProjector`. The committed snapshot event delivers
+runtime content; state changes report readiness, and a transition to Ready does
+not replay the cached snapshot. A controller attached after readiness hydrates
+once from that cached snapshot. After each authoritative snapshot, the tracker
+assigns each live window ID a sticky task key for that runtime generation; the
+projector emits deterministic encounter order, current
 launcher metadata, exact window IDs, and focus ordering. Catalog rebuilds and
 mutable metadata enrich or change fields without re-keying a live task. New
 windows with the same non-empty runtime app ID join its live cohort. A missing

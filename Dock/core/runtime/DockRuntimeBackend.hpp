@@ -34,7 +34,9 @@ public:
     virtual QString diagnosticContext() const = 0;
 
 signals:
+    // Delivers runtime content changes, including authority loss via a non-authoritative snapshot.
     void snapshotChanged(Astrea::Dock::DockRuntimeSnapshot snapshot);
+    // Reports readiness transitions only; becoming ready does not replay snapshot().
     void runtimeReadyChanged(bool ready);
     void actionReadyChanged(bool ready);
     void actionFinished(quint64 consumerToken, Astrea::Dock::DockRuntimeAction action,

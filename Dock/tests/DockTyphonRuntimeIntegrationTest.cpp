@@ -138,6 +138,7 @@ class DockTyphonRuntimeIntegrationTest final : public QObject {
 
 private slots:
     void authoritativeSnapshotDrivesDockRuntimeRoles();
+    void initialReadyTransitionPublishesOneNeutralSnapshot();
     void runningApplicationActivatesMostRecentExactWindow();
     void unavailableActivationNeverLaunchesSameClick();
     void staleExactTargetNeverRetargetsOrLaunches();
@@ -193,6 +194,60 @@ void DockTyphonRuntimeIntegrationTest::authoritativeSnapshotDrivesDockRuntimeRol
     QVERIFY(!controller.runtimeKnown());
     QVERIFY(!item.data(DockAppModel::RuntimeKnownRole).toBool());
     QVERIFY(!item.data(DockAppModel::RunningRole).toBool());
+}
+
+void DockTyphonRuntimeIntegrationTest::initialReadyTransitionPublishesOneNeutralSnapshot()
+{
+    auto *adapter = new FakeTyphonAdapter;
+    TyphonToplevelConnection connection(adapter);
+    TyphonDockRuntimeBackend runtimeBackend(&connection);
+    QSignalSpy readySpy(&runtimeBackend,
+                        &Astrea::Dock::DockRuntimeBackend::runtimeReadyChanged);
+    QSignalSpy snapshotSpy(&runtimeBackend,
+                           &Astrea::Dock::DockRuntimeBackend::snapshotChanged);
+
+    Astrea::Dock::DockRuntimeSnapshot cachedAtReady;
+    bool readySnapshotWasCoherent = false;
+    connect(&runtimeBackend, &Astrea::Dock::DockRuntimeBackend::runtimeReadyChanged,
+            &runtimeBackend, [&runtimeBackend, &cachedAtReady, &readySnapshotWasCoherent](bool ready) {
+        if (!ready)
+            return;
+        cachedAtReady = runtimeBackend.snapshot();
+        readySnapshotWasCoherent = runtimeBackend.runtimeReady()
+            && cachedAtReady.authoritative && cachedAtReady.windows.size() == 1
+            && cachedAtReady.windows.first().id == QStringLiteral("1");
+    });
+
+    connection.start();
+    adapter->advertiseManager();
+    adapter->create(1);
+    adapter->id(1, QStringLiteral("1"));
+    adapter->app(1, QStringLiteral("one"));
+    adapter->title(1, QStringLiteral("First window"));
+    adapter->pid(1, 100);
+    adapter->kind(1, ToplevelKind::XdgToplevel);
+    adapter->state(1, ToplevelStates{ToplevelStateFlag::Active});
+    adapter->focus(1, 1);
+    adapter->handleDone(1, 1);
+    adapter->managerDone(1, 1);
+
+    QVERIFY(connection.hasSnapshot());
+    QCOMPARE(connection.state(), TyphonConnectionState::Ready);
+    QCOMPARE(readySpy.count(), 1);
+    QVERIFY(readySnapshotWasCoherent);
+    QCOMPARE(cachedAtReady.windows.first().appId, QStringLiteral("one"));
+    QCOMPARE(cachedAtReady.windows.first().title, QStringLiteral("First window"));
+    QCOMPARE(cachedAtReady.windows.first().pid, quint32(100));
+
+    QCOMPARE(snapshotSpy.count(), 1);
+    const auto publishedSnapshot = snapshotSpy.takeFirst().at(0)
+                                       .value<Astrea::Dock::DockRuntimeSnapshot>();
+    QVERIFY(publishedSnapshot.authoritative);
+    QCOMPARE(publishedSnapshot.windows.size(), 1);
+    QCOMPARE(publishedSnapshot.windows.first().id, QStringLiteral("1"));
+    QCOMPARE(publishedSnapshot.windows.first().appId, QStringLiteral("one"));
+    QCOMPARE(publishedSnapshot.windows.first().title, QStringLiteral("First window"));
+    QCOMPARE(publishedSnapshot.windows.first().pid, quint32(100));
 }
 
 void DockTyphonRuntimeIntegrationTest::cachedAnchorProjectsToExistingAndNewWindows()

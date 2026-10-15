@@ -234,7 +234,7 @@ void DockController::attachRuntimeBackend(Astrea::Dock::DockRuntimeBackend *back
         [this, backend](const Astrea::Dock::DockRuntimeSnapshot &snapshot) {
             if (m_runtimeBackend != backend)
                 return;
-            if (backend->runtimeReady() && snapshot.authoritative)
+            if (snapshot.authoritative)
                 applyRuntimeSnapshot(snapshot);
             else
                 clearRuntimeState();
@@ -246,11 +246,7 @@ void DockController::attachRuntimeBackend(Astrea::Dock::DockRuntimeBackend *back
                 return;
             if (!ready) {
                 clearRuntimeState();
-                return;
             }
-            const Astrea::Dock::DockRuntimeSnapshot snapshot = backend->snapshot();
-            if (snapshot.authoritative)
-                applyRuntimeSnapshot(snapshot);
         }));
     m_runtimeConnections.append(connect(
         backend, &Astrea::Dock::DockRuntimeBackend::actionReadyChanged, this,

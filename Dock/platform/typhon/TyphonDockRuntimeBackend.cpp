@@ -145,7 +145,7 @@ TyphonDockRuntimeBackend::TyphonDockRuntimeBackend(TyphonToplevelConnection *con
     connect(m_connection, &TyphonToplevelConnection::snapshotChanged, this,
             [this](const Astrea::Typhon::Snapshot &) { refreshRuntimeState(true); });
     connect(m_connection, &TyphonToplevelConnection::stateChanged, this,
-            [this](TyphonConnectionState) { refreshRuntimeState(true); });
+            [this](TyphonConnectionState) { refreshRuntimeState(false); });
     connect(m_connection, &TyphonToplevelConnection::actionCapabilityChanged, this,
             [this](Astrea::Typhon::TyphonActionCapabilityState) { refreshActionReadiness(); });
     connect(m_connection, &TyphonToplevelConnection::actionFinished, this,

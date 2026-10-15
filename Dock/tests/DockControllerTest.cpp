@@ -165,6 +165,7 @@ private slots:
     void runningRuntimeSuppressesDuplicateLaunch();
     void runtimeWindowsKeepExactIdentityAndTitles();
     void runtimeBackendActionsAndReadinessRemainSynchronous();
+    void firstRuntimeReadySnapshotIsAppliedOnce();
     void newWindowLaunchBypassesRunningActivation();
     void pinMutationRequiresSuccessfulPersistence();
     void pinCountersExcludeRuntimeOnlyRows();
@@ -559,6 +560,27 @@ void DockControllerTest::runtimeBackendActionsAndReadinessRemainSynchronous()
     QVERIFY(!controller.closeWindow(runtimeKey, QStringLiteral("exact-window")));
     QCOMPARE(runtimeBackend.actionRequests.size(), 2);
     QVERIFY(!controller.lastError().isEmpty());
+}
+
+void DockControllerTest::firstRuntimeReadySnapshotIsAppliedOnce()
+{
+    FakeDockRuntimeBackend runtimeBackend;
+    QVERIFY(!runtimeBackend.runtimeReady());
+
+    DockController controller;
+    controller.setCatalogSnapshot(makeCatalog());
+    controller.applyConfig(configWithPins({QStringLiteral("one.desktop")}));
+    controller.attachRuntimeBackend(&runtimeBackend);
+
+    QSignalSpy modelChangedSpy(&controller, &DockController::modelChanged);
+    runtimeBackend.publishSnapshot(runtimeSnapshot(1, {}));
+
+    QCOMPARE(modelChangedSpy.count(), 1);
+    QVERIFY(controller.runtimeKnown());
+    const QModelIndex item = controller.appModel()->index(0, 0);
+    QVERIFY(item.data(DockAppModel::RuntimeKnownRole).toBool());
+    QVERIFY(!item.data(DockAppModel::RunningRole).toBool());
+    QCOMPARE(item.data(DockAppModel::WindowCountRole).toInt(), 0);
 }
 
 void DockControllerTest::newWindowLaunchBypassesRunningActivation()

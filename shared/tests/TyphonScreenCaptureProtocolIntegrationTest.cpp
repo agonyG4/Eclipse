@@ -120,6 +120,7 @@ public:
     }
 
     int captureRequestCount() const { return m_captureRequestCount; }
+    bool capturePending() const { return m_lastCapture != nullptr; }
     bool managerDestroyed() const { return m_managerDestroyed; }
     wl_resource *lastOutput() const { return m_lastOutput; }
     wl_resource *outputResource() const { return m_output ? m_output->resource : nullptr; }
@@ -378,6 +379,7 @@ private slots:
     void stoppingClientSendsManagerDestroyRequest();
     void lateOutputMakesCaptureAvailable();
     void replacementOutputRestoresCaptureWithoutReconnect();
+    void cancelDestroysPendingRequestAndAllowsNextCapture();
 };
 
 void TyphonScreenCaptureProtocolIntegrationTest::lateOutputMakesCaptureAvailable()
@@ -545,6 +547,34 @@ void TyphonScreenCaptureProtocolIntegrationTest::stoppingClientSendsManagerDestr
     client.stop();
     QVERIFY(connection.flush());
     QVERIFY(compositor.pumpUntil([&compositor] { return compositor.managerDestroyed(); }));
+    connection.stop();
+}
+
+void TyphonScreenCaptureProtocolIntegrationTest::cancelDestroysPendingRequestAndAllowsNextCapture()
+{
+    FakeScreenCaptureCompositor compositor;
+    TyphonSharedConnection connection;
+    TyphonScreenCaptureClient client(&connection);
+    QSignalSpy ready(&client, &TyphonScreenCaptureClient::ready);
+
+    connection.start();
+    client.start();
+    QVERIFY(compositor.pumpUntil([&client] { return client.isReady(); }));
+    QVERIFY(client.requestCapture(101));
+    QVERIFY(compositor.pumpUntil([&compositor] {
+        return compositor.captureRequestCount() == 1 && compositor.capturePending();
+    }));
+
+    client.cancelCapture();
+    QVERIFY(compositor.pumpUntil([&compositor] { return !compositor.capturePending(); }));
+    QVERIFY(client.isReady());
+    QVERIFY(client.requestCapture(102));
+    QVERIFY(compositor.pumpUntil([&compositor] {
+        return compositor.captureRequestCount() == 2 && compositor.capturePending();
+    }));
+    compositor.sendReady(QByteArray(4, '\xff'), 1, 1, 4);
+    QVERIFY(compositor.pumpUntil([&ready] { return ready.count() == 1; }));
+    QCOMPARE(ready.at(0).at(2).toULongLong(), 102ULL);
     connection.stop();
 }
 

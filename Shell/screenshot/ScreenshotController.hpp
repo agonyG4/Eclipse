@@ -1,9 +1,11 @@
 #pragma once
 
 #include <QImage>
+#include <QElapsedTimer>
 #include <QObject>
 #include <QRectF>
 #include <QString>
+#include <QTimer>
 
 #include <cstdint>
 #include <functional>
@@ -62,6 +64,14 @@ public:
     int imageHeight() const { return m_image.height(); }
     QString resultPath() const { return m_resultPath; }
     QString resultUri() const;
+    QString phaseName() const;
+    QString intentName() const;
+    bool hasPendingOperation() const { return m_phase != ScreenshotPhase::Idle; }
+    int operationDeadlineRemainingMs() const;
+    QString lastFailureReason() const { return m_lastFailureReason; }
+    QString lastFailureStage() const { return m_lastFailureStage; }
+    std::uint64_t rejectedOperationCount() const { return m_rejectedOperationCount; }
+    bool captureClientReady() const;
 
     Q_INVOKABLE bool startQuickCapture();
     Q_INVOKABLE bool startFrozenRegionCapture();
@@ -93,8 +103,10 @@ signals:
     void saved(QString path);
 
 private slots:
-    void handleCaptureReady(QImage image, std::uint64_t generation);
-    void handleCaptureFailed(QString reason, std::uint64_t generation);
+    void handleCaptureReady(QImage image, std::uint64_t generation,
+                            std::uint64_t operationToken);
+    void handleCaptureFailed(QString reason, std::uint64_t generation,
+                             std::uint64_t operationToken);
 
 private:
     friend class ScreenshotControllerTest;
@@ -108,8 +120,12 @@ private:
     void setSelectionImageVisible(bool visible);
     void setThumbnailVisible(bool visible);
     void setPreviewVisible(bool visible);
-    void failOperation(const QString &reason, std::uint64_t token);
+    void failOperation(const QString &reason, std::uint64_t token,
+                       const QString &stage = QStringLiteral("capture"));
     void returnToIdle();
+    void armWatchdog(int timeoutMs);
+    void disarmWatchdog();
+    void handleWatchdogExpired(std::uint64_t operationToken, std::uint64_t watchdogGeneration);
     QRect mappedSelection() const;
     QRect mappedSelection(const QImage &image, const QRectF &selection, qreal width,
                           qreal height) const;
@@ -131,9 +147,20 @@ private:
     ScreenshotPhase m_phase = ScreenshotPhase::Idle;
     std::uint64_t m_operationToken = 0;
     std::uint64_t m_requestGeneration = 0;
+    std::uint64_t m_requestOperationToken = 0;
     std::uint64_t m_imageGeneration = 0;
-    std::function<bool()> m_captureRequest;
+    std::function<bool(std::uint64_t)> m_captureRequest;
     std::uint64_t m_captureGeneration = 0;
+    QTimer m_watchdog;
+    QMetaObject::Connection m_watchdogConnection;
+    QElapsedTimer m_watchdogClock;
+    int m_deadlineMs = 0;
+    std::uint64_t m_watchdogGeneration = 0;
+    int m_uiTimeoutMs = 5000;
+    int m_captureTimeoutMs = 15000;
+    QString m_lastFailureReason;
+    QString m_lastFailureStage;
+    std::uint64_t m_rejectedOperationCount = 0;
     bool m_visible = false;
     bool m_selectionImageVisible = false;
     bool m_thumbnailVisible = false;

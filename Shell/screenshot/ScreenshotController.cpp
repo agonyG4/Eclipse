@@ -33,6 +33,7 @@ bool isCaptureWaiting(ScreenshotController::ScreenshotPhase phase)
 ScreenshotController::ScreenshotController(TyphonScreenCaptureClient *client, QObject *parent)
     : QObject(parent), m_client(client)
 {
+    m_watchdog.setSingleShot(true);
     if (!m_client)
         return;
     connect(m_client, &TyphonScreenCaptureClient::ready, this,
@@ -52,6 +53,41 @@ QString ScreenshotController::resultUri() const
     if (m_resultPath.isEmpty())
         return {};
     return QUrl::fromLocalFile(m_resultPath).toString(QUrl::FullyEncoded);
+}
+
+QString ScreenshotController::phaseName() const
+{
+    switch (m_phase) {
+    case ScreenshotPhase::Idle: return QStringLiteral("idle");
+    case ScreenshotPhase::PreparingCapture: return QStringLiteral("preparing_capture");
+    case ScreenshotPhase::WaitingCapture: return QStringLiteral("waiting_capture");
+    case ScreenshotPhase::FrozenSelecting: return QStringLiteral("frozen_selecting");
+    case ScreenshotPhase::LiveSelecting: return QStringLiteral("live_selecting");
+    case ScreenshotPhase::WaitingLiveCapture: return QStringLiteral("waiting_live_capture");
+    }
+    return QStringLiteral("unknown");
+}
+
+QString ScreenshotController::intentName() const
+{
+    switch (m_intent) {
+    case ScreenshotIntent::QuickFullscreen: return QStringLiteral("quick_fullscreen");
+    case ScreenshotIntent::FrozenRegion: return QStringLiteral("frozen_region");
+    case ScreenshotIntent::LiveRegion: return QStringLiteral("live_region");
+    }
+    return QStringLiteral("unknown");
+}
+
+bool ScreenshotController::captureClientReady() const
+{
+    return m_client && m_client->isReady();
+}
+
+int ScreenshotController::operationDeadlineRemainingMs() const
+{
+    if (!m_watchdog.isActive() || !m_watchdogClock.isValid())
+        return 0;
+    return qMax(0, m_deadlineMs - static_cast<int>(m_watchdogClock.elapsed()));
 }
 
 bool ScreenshotController::startQuickCapture()
@@ -76,24 +112,52 @@ bool ScreenshotController::capture()
 
 bool ScreenshotController::begin(ScreenshotIntent intent)
 {
-    if (m_phase != ScreenshotPhase::Idle || (!m_client && !m_captureRequest))
+    if (m_phase != ScreenshotPhase::Idle) {
+        ++m_rejectedOperationCount;
+        qInfo().noquote() << "Screenshot request rejected while operation is active; phase="
+                          << phaseName();
         return false;
+    }
+    if (!m_client && !m_captureRequest) {
+        qWarning() << "Screenshot request rejected: capture client unavailable";
+        return false;
+    }
 
     const bool oldUiVisible = m_thumbnailVisible || m_previewVisible || m_visible;
+    disarmWatchdog();
     ++m_operationToken;
     const std::uint64_t token = m_operationToken;
+    qInfo().noquote() << "Screenshot operation accepted; intent="
+                      << (intent == ScreenshotIntent::QuickFullscreen ? "quick_fullscreen"
+                          : intent == ScreenshotIntent::FrozenRegion ? "frozen_region"
+                                                                     : "live_region");
     if (m_intent != intent) {
         m_intent = intent;
         emit intentChanged();
+        if (token != m_operationToken)
+            return true;
     }
     m_selection = {};
     m_pendingSelection = {};
     emit selectionChanged();
+    if (token != m_operationToken)
+        return true;
     setVisible(false);
+    if (token != m_operationToken)
+        return true;
     setSelectionImageVisible(false);
+    if (token != m_operationToken)
+        return true;
     setThumbnailVisible(false);
+    if (token != m_operationToken)
+        return true;
     setPreviewVisible(false);
+    if (token != m_operationToken)
+        return true;
     setPhase(ScreenshotPhase::PreparingCapture);
+    if (token != m_operationToken || m_phase != ScreenshotPhase::PreparingCapture)
+        return true;
+    armWatchdog(m_uiTimeoutMs);
 
     if (oldUiVisible && m_uiBarrier) {
         m_uiBarrier->synchronize(
@@ -113,15 +177,20 @@ void ScreenshotController::handleUiBarrierFinished(std::uint64_t token, bool suc
         return;
 
     if (m_phase == ScreenshotPhase::PreparingCapture) {
+        disarmWatchdog();
         if (!success) {
             failOperation(reason.isEmpty() ? QStringLiteral("screenshot UI synchronization failed")
                                            : reason,
-                          token);
+                          token, QStringLiteral("ui_synchronization"));
             return;
         }
         if (m_intent == ScreenshotIntent::LiveRegion) {
             setPhase(ScreenshotPhase::LiveSelecting);
+            if (token != m_operationToken || m_phase != ScreenshotPhase::LiveSelecting)
+                return;
             setSelectionImageVisible(false);
+            if (token != m_operationToken || m_phase != ScreenshotPhase::LiveSelecting)
+                return;
             setVisible(true);
             return;
         }
@@ -131,10 +200,11 @@ void ScreenshotController::handleUiBarrierFinished(std::uint64_t token, bool suc
 
     if (m_phase != ScreenshotPhase::WaitingLiveCapture)
         return;
+    disarmWatchdog();
     if (!success) {
         failOperation(reason.isEmpty() ? QStringLiteral("screenshot UI synchronization failed")
                                        : reason,
-                      token);
+                      token, QStringLiteral("ui_synchronization"));
         return;
     }
     requestCapture(token);
@@ -146,21 +216,32 @@ void ScreenshotController::requestCapture(std::uint64_t token)
                                       && m_phase != ScreenshotPhase::WaitingLiveCapture))
         return;
 
+    disarmWatchdog();
     setPhase(ScreenshotPhase::WaitingCapture);
+    if (token != m_operationToken || m_phase != ScreenshotPhase::WaitingCapture)
+        return;
     m_requestGeneration = m_captureRequest ? m_captureGeneration
                                            : m_client->connectionGeneration();
-    const bool accepted = m_captureRequest ? m_captureRequest() : m_client->requestCapture();
+    m_requestOperationToken = token;
+    armWatchdog(m_captureTimeoutMs);
+    const bool accepted = m_captureRequest ? m_captureRequest(token)
+                                           : m_client->requestCapture(token);
     if (!accepted && token == m_operationToken && isCaptureWaiting(m_phase))
-        failOperation(QStringLiteral("capture unavailable"), token);
+        failOperation(QStringLiteral("capture unavailable"), token,
+                      QStringLiteral("capture_request"));
 }
 
-void ScreenshotController::handleCaptureReady(QImage image, std::uint64_t generation)
+void ScreenshotController::handleCaptureReady(QImage image, std::uint64_t generation,
+                                               std::uint64_t operationToken)
 {
-    if (m_phase != ScreenshotPhase::WaitingCapture || generation != m_requestGeneration)
+    if (m_phase != ScreenshotPhase::WaitingCapture || generation != m_requestGeneration
+        || operationToken != m_requestOperationToken || operationToken != m_operationToken)
         return;
-    const std::uint64_t token = m_operationToken;
+    const std::uint64_t token = operationToken;
+    disarmWatchdog();
     if (image.isNull()) {
-        failOperation(QStringLiteral("empty screenshot"), token);
+        failOperation(QStringLiteral("empty screenshot"), token,
+                      QStringLiteral("capture_response"));
         return;
     }
 
@@ -172,10 +253,16 @@ void ScreenshotController::handleCaptureReady(QImage image, std::uint64_t genera
     m_image = image.copy();
     ++m_imageGeneration;
     emit imageChanged();
+    if (token != m_operationToken || m_phase != ScreenshotPhase::WaitingCapture)
+        return;
 
     if (m_intent == ScreenshotIntent::FrozenRegion) {
         setPhase(ScreenshotPhase::FrozenSelecting);
+        if (token != m_operationToken || m_phase != ScreenshotPhase::FrozenSelecting)
+            return;
         setSelectionImageVisible(true);
+        if (token != m_operationToken || m_phase != ScreenshotPhase::FrozenSelecting)
+            return;
         setVisible(true);
         return;
     }
@@ -187,11 +274,13 @@ void ScreenshotController::handleCaptureReady(QImage image, std::uint64_t genera
     persistResult(result, token);
 }
 
-void ScreenshotController::handleCaptureFailed(QString reason, std::uint64_t generation)
+void ScreenshotController::handleCaptureFailed(QString reason, std::uint64_t generation,
+                                                std::uint64_t operationToken)
 {
-    if (!isCaptureWaiting(m_phase) || generation != m_requestGeneration)
+    if (!isCaptureWaiting(m_phase) || generation != m_requestGeneration
+        || operationToken != m_requestOperationToken || operationToken != m_operationToken)
         return;
-    failOperation(reason, m_operationToken);
+    failOperation(reason, operationToken, QStringLiteral("capture_response"));
 }
 
 void ScreenshotController::setPhase(ScreenshotPhase phase)
@@ -234,39 +323,113 @@ void ScreenshotController::setPreviewVisible(bool visible)
     emit previewVisibleChanged();
 }
 
-void ScreenshotController::failOperation(const QString &reason, std::uint64_t token)
+void ScreenshotController::failOperation(const QString &reason, std::uint64_t token,
+                                         const QString &stage)
 {
     if (token != m_operationToken)
         return;
-    qWarning().noquote() << "Astrea screenshot failed:" << reason;
-    emit captureFailed(reason);
+    const ScreenshotPhase failedPhase = m_phase;
+    disarmWatchdog();
+    if ((failedPhase == ScreenshotPhase::PreparingCapture
+         || failedPhase == ScreenshotPhase::WaitingLiveCapture) && m_uiBarrier) {
+        m_uiBarrier->cancel();
+    }
+    if (isCaptureWaiting(failedPhase) && m_client)
+        m_client->cancelCapture();
+    m_lastFailureReason = reason;
+    m_lastFailureStage = stage;
+    qWarning().noquote() << "Astrea screenshot failed at" << stage << ":" << reason;
     returnToIdle();
+    emit captureFailed(reason);
 }
 
 void ScreenshotController::returnToIdle()
 {
+    disarmWatchdog();
+    const bool phaseChangedValue = m_phase != ScreenshotPhase::Idle;
+    const bool visibleChangedValue = m_visible;
+    const bool selectionImageChangedValue = m_selectionImageVisible;
+    const bool selectionChangedValue = !m_selection.isNull() || !m_pendingSelection.isNull();
     ++m_operationToken;
-    setPhase(ScreenshotPhase::Idle);
-    setVisible(false);
-    setSelectionImageVisible(false);
+    const std::uint64_t idleToken = m_operationToken;
+    m_phase = ScreenshotPhase::Idle;
+    m_visible = false;
+    m_selectionImageVisible = false;
     m_selection = {};
     m_pendingSelection = {};
-    emit selectionChanged();
+    if (phaseChangedValue)
+        emit phaseChanged();
+    if (idleToken != m_operationToken)
+        return;
+    if (visibleChangedValue)
+        emit visibleChanged();
+    if (idleToken != m_operationToken)
+        return;
+    if (selectionImageChangedValue)
+        emit selectionImageVisibleChanged();
+    if (idleToken != m_operationToken)
+        return;
+    if (selectionChangedValue)
+        emit selectionChanged();
 }
 
 void ScreenshotController::cancel()
 {
+    disarmWatchdog();
     if (m_uiBarrier)
         m_uiBarrier->cancel();
     if (isCaptureWaiting(m_phase) && m_client)
         m_client->cancelCapture();
-    ++m_operationToken;
-    setPhase(ScreenshotPhase::Idle);
-    setVisible(false);
-    setSelectionImageVisible(false);
-    m_selection = {};
-    m_pendingSelection = {};
-    emit selectionChanged();
+    returnToIdle();
+}
+
+void ScreenshotController::armWatchdog(int timeoutMs)
+{
+    m_deadlineMs = qMax(1, timeoutMs);
+    m_watchdogClock.restart();
+    QObject::disconnect(m_watchdogConnection);
+    const std::uint64_t token = m_operationToken;
+    const std::uint64_t generation = ++m_watchdogGeneration;
+    m_watchdogConnection = connect(&m_watchdog, &QTimer::timeout, this,
+                                   [this, token, generation] {
+                                       handleWatchdogExpired(token, generation);
+                                   });
+    m_watchdog.start(m_deadlineMs);
+}
+
+void ScreenshotController::disarmWatchdog()
+{
+    m_watchdog.stop();
+    ++m_watchdogGeneration;
+    QObject::disconnect(m_watchdogConnection);
+    m_watchdogConnection = {};
+    m_watchdogClock.invalidate();
+    m_deadlineMs = 0;
+}
+
+void ScreenshotController::handleWatchdogExpired(std::uint64_t operationToken,
+                                                  std::uint64_t watchdogGeneration)
+{
+    if (operationToken != m_operationToken || watchdogGeneration != m_watchdogGeneration)
+        return;
+    const ScreenshotPhase expiredPhase = m_phase;
+    const int timeoutMs = m_deadlineMs;
+    QString stage;
+    QString label;
+    if (expiredPhase == ScreenshotPhase::PreparingCapture
+        || expiredPhase == ScreenshotPhase::WaitingLiveCapture) {
+        stage = QStringLiteral("ui_synchronization_timeout");
+        label = QStringLiteral("screenshot UI synchronization");
+    } else if (expiredPhase == ScreenshotPhase::WaitingCapture) {
+        stage = QStringLiteral("compositor_capture_timeout");
+        label = QStringLiteral("compositor capture");
+    } else {
+        disarmWatchdog();
+        return;
+    }
+    const QString reason = QStringLiteral("%1 timed out after %2 ms").arg(label).arg(timeoutMs);
+    qWarning().noquote() << "Astrea screenshot watchdog expired at" << stage << ":" << reason;
+    failOperation(reason, operationToken, stage);
 }
 
 void ScreenshotController::setOverlaySize(qreal width, qreal height)
@@ -333,29 +496,64 @@ bool ScreenshotController::persistResult(const QImage &result, std::uint64_t tok
 {
     if (token != m_operationToken || result.isNull()) {
         if (token == m_operationToken)
-            failOperation(QStringLiteral("invalid screenshot image"), token);
+            failOperation(QStringLiteral("invalid screenshot image"), token,
+                          QStringLiteral("persistence"));
         return false;
     }
 
     const QString path = nextOutputPath();
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly) || !result.save(&file, "PNG") || !file.commit()) {
-        failOperation(QStringLiteral("screenshot save failed"), token);
+        failOperation(QStringLiteral("screenshot save failed"), token,
+                      QStringLiteral("persistence"));
         return false;
     }
+    const bool resultChangedValue = m_resultPath != path;
+    const bool phaseChangedValue = m_phase != ScreenshotPhase::Idle;
+    const bool visibleChangedValue = m_visible;
+    const bool selectionImageChangedValue = m_selectionImageVisible;
+    const bool selectionChangedValue = !m_selection.isNull() || !m_pendingSelection.isNull();
+    const bool thumbnailChangedValue = !m_thumbnailVisible;
+    m_image = result.copy();
+    ++m_imageGeneration;
+    m_resultPath = path;
+    disarmWatchdog();
+    ++m_operationToken;
+    const std::uint64_t completedOperationToken = m_operationToken;
+    m_phase = ScreenshotPhase::Idle;
+    m_visible = false;
+    m_selectionImageVisible = false;
+    m_selection = {};
+    m_pendingSelection = {};
+    m_thumbnailVisible = true;
+
     if (auto *clipboard = QGuiApplication::clipboard())
         clipboard->setImage(result);
 
-    m_image = result.copy();
-    ++m_imageGeneration;
     emit imageChanged();
-    if (m_resultPath != path) {
-        m_resultPath = path;
+    if (resultChangedValue)
         emit resultChanged();
-    }
     emit saved(path);
-    returnToIdle();
-    setThumbnailVisible(true);
+    if (completedOperationToken != m_operationToken)
+        return true;
+    if (phaseChangedValue)
+        emit phaseChanged();
+    if (completedOperationToken != m_operationToken)
+        return true;
+    if (visibleChangedValue)
+        emit visibleChanged();
+    if (completedOperationToken != m_operationToken)
+        return true;
+    if (selectionImageChangedValue)
+        emit selectionImageVisibleChanged();
+    if (completedOperationToken != m_operationToken)
+        return true;
+    if (selectionChangedValue)
+        emit selectionChanged();
+    if (completedOperationToken != m_operationToken)
+        return true;
+    if (thumbnailChangedValue)
+        emit thumbnailVisibleChanged();
     return true;
 }
 
@@ -380,8 +578,15 @@ bool ScreenshotController::finishSelection()
     m_pendingOverlayHeight = m_overlayHeight;
     const std::uint64_t token = m_operationToken;
     setVisible(false);
+    if (token != m_operationToken || m_phase != ScreenshotPhase::LiveSelecting)
+        return false;
     setSelectionImageVisible(false);
+    if (token != m_operationToken || m_phase != ScreenshotPhase::LiveSelecting)
+        return false;
     setPhase(ScreenshotPhase::WaitingLiveCapture);
+    if (token != m_operationToken || m_phase != ScreenshotPhase::WaitingLiveCapture)
+        return false;
+    armWatchdog(m_uiTimeoutMs);
     if (m_uiBarrier) {
         m_uiBarrier->synchronize(
             [this, token](bool success, QString reason) {

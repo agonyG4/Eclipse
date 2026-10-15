@@ -19,13 +19,14 @@ public:
     void start();
     void stop();
     bool requestCapture();
+    bool requestCapture(std::uint64_t operationToken);
     void cancelCapture();
     bool isReady() const;
     std::uint64_t connectionGeneration() const;
 
 signals:
-    void ready(QImage image, std::uint64_t generation);
-    void failed(QString reason, std::uint64_t generation);
+    void ready(QImage image, std::uint64_t generation, std::uint64_t operationToken);
+    void failed(QString reason, std::uint64_t generation, std::uint64_t operationToken);
     void stateChanged(QString state);
     void diagnostic(QString message);
 

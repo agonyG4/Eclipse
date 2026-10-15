@@ -58,6 +58,11 @@ private slots:
     void cancelInvalidatesPendingBarrier();
     void cancelClearsBarrierAndOldCompletionCannotAffectNextCapture();
     void staleCaptureGenerationIsIgnored();
+    void captureWatchdogTimesOutAllowsRetryAndIgnoresLateResponse();
+    void uiSynchronizationWatchdogCoversPreparingAndLiveCapture();
+    void staleUiWatchdogCannotExpireCaptureDeadline();
+    void synchronousCaptureFailureDisarmsWatchdog();
+    void interactiveRegionSelectionHasNoCaptureDeadline();
     void newCaptureIsAllowedWhileThumbnailIsVisible();
     void selectionMapsToPixelsAndClamps();
     void tinySelectionFallsBackToFullImage();
@@ -85,7 +90,7 @@ void ScreenshotControllerTest::configureFakeCapture(ScreenshotController &contro
                                                      std::uint64_t generation)
 {
     controller.m_captureGeneration = generation;
-    controller.m_captureRequest = [&requestCount] {
+    controller.m_captureRequest = [&requestCount](std::uint64_t) {
         ++requestCount;
         return true;
     };
@@ -101,7 +106,7 @@ void ScreenshotControllerTest::overlayStartsHiddenAndAcceptsCompleteImage()
     controller.m_phase = ScreenshotPhase::WaitingCapture;
     controller.m_requestGeneration = client.connectionGeneration();
     controller.handleCaptureReady(QImage(12, 8, QImage::Format_RGBA8888),
-                                  client.connectionGeneration());
+                                  client.connectionGeneration(), controller.m_operationToken);
     QVERIFY(controller.isVisible());
     QCOMPARE(controller.image().size(), QSize(12, 8));
     QVERIFY(controller.imageSource().contains(QStringLiteral("generation=1")));
@@ -120,7 +125,8 @@ void ScreenshotControllerTest::quickCapturePersistsResultWithoutShowingSelection
     QCOMPARE(requestCount, 1);
     QCOMPARE(controller.phase(), ScreenshotPhase::WaitingCapture);
 
-    controller.handleCaptureReady(QImage(12, 8, QImage::Format_RGBA8888), 1);
+    controller.handleCaptureReady(QImage(12, 8, QImage::Format_RGBA8888), 1,
+                                  controller.m_requestOperationToken);
     QCOMPARE(controller.phase(), ScreenshotPhase::Idle);
     QVERIFY(!controller.isVisible());
     QVERIFY(controller.thumbnailVisible());
@@ -140,7 +146,8 @@ void ScreenshotControllerTest::frozenCaptureSelectsAndCropsCapturedImage()
 
     QVERIFY(controller.startFrozenRegionCapture());
     QCOMPARE(requestCount, 1);
-    controller.handleCaptureReady(QImage(400, 200, QImage::Format_RGBA8888), 1);
+    controller.handleCaptureReady(QImage(400, 200, QImage::Format_RGBA8888), 1,
+                                  controller.m_requestOperationToken);
     QCOMPARE(controller.phase(), ScreenshotPhase::FrozenSelecting);
     QVERIFY(controller.isVisible());
 
@@ -183,7 +190,8 @@ void ScreenshotControllerTest::liveCaptureWaitsForUiBarrierBeforeRequestingImage
     barrier.complete(true);
     QCOMPARE(requestCount, 1);
     QCOMPARE(controller.phase(), ScreenshotPhase::WaitingCapture);
-    controller.handleCaptureReady(QImage(400, 200, QImage::Format_RGBA8888), 1);
+    controller.handleCaptureReady(QImage(400, 200, QImage::Format_RGBA8888), 1,
+                                  controller.m_requestOperationToken);
     QCOMPARE(controller.phase(), ScreenshotPhase::Idle);
     QCOMPARE(controller.image().size(), QSize(200, 100));
     QVERIFY(controller.thumbnailVisible());
@@ -288,9 +296,168 @@ void ScreenshotControllerTest::staleCaptureGenerationIsIgnored()
     configureFakeCapture(controller, requestCount, 9);
 
     QVERIFY(controller.startQuickCapture());
-    controller.handleCaptureReady(QImage(4, 4, QImage::Format_RGBA8888), 8);
+    controller.handleCaptureReady(QImage(4, 4, QImage::Format_RGBA8888), 8,
+                                  controller.m_operationToken);
     QCOMPARE(controller.phase(), ScreenshotPhase::WaitingCapture);
     QVERIFY(controller.image().isNull());
+}
+
+void ScreenshotControllerTest::captureWatchdogTimesOutAllowsRetryAndIgnoresLateResponse()
+{
+    TyphonSharedConnection connection({});
+    TyphonScreenCaptureClient client(&connection);
+    ScreenshotController controller(&client);
+    controller.m_captureTimeoutMs = 25;
+    int requestCount = 0;
+    configureFakeCapture(controller, requestCount);
+    QSignalSpy failureSpy(&controller, &ScreenshotController::captureFailed);
+    QSignalSpy savedSpy(&controller, &ScreenshotController::saved);
+
+    QVERIFY(controller.startQuickCapture());
+    QCOMPARE(controller.phase(), ScreenshotPhase::WaitingCapture);
+    const std::uint64_t timedOutOperation = controller.m_requestOperationToken;
+    QTRY_VERIFY_WITH_TIMEOUT(failureSpy.count() == 1, 1000);
+    QCOMPARE(controller.phase(), ScreenshotPhase::Idle);
+    QCOMPARE(controller.lastFailureStage(), QStringLiteral("compositor_capture_timeout"));
+    QVERIFY(controller.lastFailureReason().contains(QStringLiteral("25")));
+    QCOMPARE(controller.operationDeadlineRemainingMs(), 0);
+    QCOMPARE(controller.m_watchdog.isActive(), false);
+
+    QVERIFY(controller.startQuickCapture());
+    QCOMPARE(requestCount, 2);
+    QCOMPARE(controller.phase(), ScreenshotPhase::WaitingCapture);
+    const std::uint64_t currentOperation = controller.m_requestOperationToken;
+    QVERIFY(currentOperation != timedOutOperation);
+    controller.handleCaptureReady(QImage(3, 2, QImage::Format_RGBA8888), 1,
+                                  timedOutOperation);
+    QCOMPARE(controller.phase(), ScreenshotPhase::WaitingCapture);
+    QVERIFY(controller.image().isNull());
+
+    controller.handleCaptureReady(QImage(3, 2, QImage::Format_RGBA8888), 1,
+                                  currentOperation);
+    QCOMPARE(controller.phase(), ScreenshotPhase::Idle);
+    QCOMPARE(savedSpy.count(), 1);
+    removeSavedFile(savedSpy);
+}
+
+void ScreenshotControllerTest::synchronousCaptureFailureDisarmsWatchdog()
+{
+    TyphonSharedConnection connection({});
+    TyphonScreenCaptureClient client(&connection);
+    ScreenshotController controller(&client);
+    controller.m_captureGeneration = 3;
+    QSignalSpy failureSpy(&controller, &ScreenshotController::captureFailed);
+    controller.m_captureRequest = [&controller](std::uint64_t token) {
+        controller.handleCaptureFailed(QStringLiteral("synchronous failure"), 3, token);
+        return false;
+    };
+
+    QVERIFY(controller.startQuickCapture());
+    QCOMPARE(controller.phase(), ScreenshotPhase::Idle);
+    QCOMPARE(failureSpy.count(), 1);
+    QVERIFY(!controller.m_watchdog.isActive());
+    QCOMPARE(controller.operationDeadlineRemainingMs(), 0);
+
+    controller.m_captureRequest = [](std::uint64_t) { return true; };
+    QVERIFY(controller.startQuickCapture());
+    QCOMPARE(controller.phase(), ScreenshotPhase::WaitingCapture);
+    QVERIFY(controller.m_watchdog.isActive());
+    controller.cancel();
+    QVERIFY(!controller.m_watchdog.isActive());
+}
+
+void ScreenshotControllerTest::uiSynchronizationWatchdogCoversPreparingAndLiveCapture()
+{
+    TyphonSharedConnection connection({});
+    TyphonScreenCaptureClient client(&connection);
+    ScreenshotController controller(&client);
+    controller.m_uiTimeoutMs = 20;
+    FakeScreenshotUiBarrier barrier;
+    controller.setUiBarrier(&barrier);
+    int requestCount = 0;
+    configureFakeCapture(controller, requestCount);
+    QSignalSpy failureSpy(&controller, &ScreenshotController::captureFailed);
+    QSignalSpy savedSpy(&controller, &ScreenshotController::saved);
+
+    QVERIFY(controller.startQuickCapture());
+    controller.handleCaptureReady(QImage(4, 4, QImage::Format_RGBA8888), 1,
+                                  controller.m_requestOperationToken);
+    QCOMPARE(savedSpy.count(), 1);
+
+    QVERIFY(controller.startQuickCapture());
+    QCOMPARE(controller.phase(), ScreenshotPhase::PreparingCapture);
+    QTRY_VERIFY_WITH_TIMEOUT(failureSpy.count() == 1, 1000);
+    QCOMPARE(controller.lastFailureStage(), QStringLiteral("ui_synchronization_timeout"));
+    QCOMPARE(barrier.cancelCount, 1);
+    QCOMPARE(requestCount, 1);
+    QCOMPARE(controller.phase(), ScreenshotPhase::Idle);
+
+    QVERIFY(controller.startLiveRegionCapture());
+    QCOMPARE(controller.phase(), ScreenshotPhase::LiveSelecting);
+    controller.setOverlaySize(100, 100);
+    controller.setSelection(QRectF(10, 10, 50, 50));
+    QVERIFY(controller.finishSelection());
+    QCOMPARE(controller.phase(), ScreenshotPhase::WaitingLiveCapture);
+    QTRY_VERIFY_WITH_TIMEOUT(failureSpy.count() == 2, 1000);
+    QCOMPARE(controller.lastFailureStage(), QStringLiteral("ui_synchronization_timeout"));
+    QCOMPARE(barrier.cancelCount, 2);
+    QCOMPARE(requestCount, 1);
+    QCOMPARE(controller.phase(), ScreenshotPhase::Idle);
+    removeSavedFile(savedSpy);
+}
+
+void ScreenshotControllerTest::staleUiWatchdogCannotExpireCaptureDeadline()
+{
+    TyphonSharedConnection connection({});
+    TyphonScreenCaptureClient client(&connection);
+    ScreenshotController controller(&client);
+    FakeScreenshotUiBarrier barrier;
+    controller.setUiBarrier(&barrier);
+    int requestCount = 0;
+    configureFakeCapture(controller, requestCount);
+    QSignalSpy savedSpy(&controller, &ScreenshotController::saved);
+
+    QVERIFY(controller.startQuickCapture());
+    controller.handleCaptureReady(QImage(4, 4, QImage::Format_RGBA8888), 1,
+                                  controller.m_requestOperationToken);
+    QVERIFY(controller.startQuickCapture());
+    const std::uint64_t operationToken = controller.m_operationToken;
+    const std::uint64_t uiWatchdogGeneration = controller.m_watchdogGeneration;
+    barrier.complete(true);
+    QCOMPARE(controller.phase(), ScreenshotPhase::WaitingCapture);
+    QVERIFY(controller.m_watchdogGeneration != uiWatchdogGeneration);
+
+    controller.handleWatchdogExpired(operationToken, uiWatchdogGeneration);
+    QCOMPARE(controller.phase(), ScreenshotPhase::WaitingCapture);
+    QVERIFY(controller.m_watchdog.isActive());
+    controller.cancel();
+    removeSavedFile(savedSpy);
+}
+
+void ScreenshotControllerTest::interactiveRegionSelectionHasNoCaptureDeadline()
+{
+    TyphonSharedConnection connection({});
+    TyphonScreenCaptureClient client(&connection);
+    ScreenshotController controller(&client);
+    controller.m_captureTimeoutMs = 20;
+    int requestCount = 0;
+    configureFakeCapture(controller, requestCount);
+
+    QVERIFY(controller.startFrozenRegionCapture());
+    controller.handleCaptureReady(QImage(8, 8, QImage::Format_RGBA8888), 1,
+                                  controller.m_requestOperationToken);
+    QCOMPARE(controller.phase(), ScreenshotPhase::FrozenSelecting);
+    QVERIFY(!controller.m_watchdog.isActive());
+    QTest::qWait(40);
+    QCOMPARE(controller.phase(), ScreenshotPhase::FrozenSelecting);
+
+    controller.cancel();
+    QVERIFY(controller.startLiveRegionCapture());
+    QCOMPARE(controller.phase(), ScreenshotPhase::LiveSelecting);
+    QVERIFY(!controller.m_watchdog.isActive());
+    QTest::qWait(40);
+    QCOMPARE(controller.phase(), ScreenshotPhase::LiveSelecting);
+    controller.cancel();
 }
 
 void ScreenshotControllerTest::newCaptureIsAllowedWhileThumbnailIsVisible()
@@ -305,7 +472,8 @@ void ScreenshotControllerTest::newCaptureIsAllowedWhileThumbnailIsVisible()
     QSignalSpy savedSpy(&controller, &ScreenshotController::saved);
 
     QVERIFY(controller.startQuickCapture());
-    controller.handleCaptureReady(QImage(4, 4, QImage::Format_RGBA8888), 1);
+    controller.handleCaptureReady(QImage(4, 4, QImage::Format_RGBA8888), 1,
+                                  controller.m_requestOperationToken);
     QCOMPARE(controller.phase(), ScreenshotPhase::Idle);
     QVERIFY(controller.thumbnailVisible());
     QVERIFY(controller.startQuickCapture());
@@ -315,7 +483,8 @@ void ScreenshotControllerTest::newCaptureIsAllowedWhileThumbnailIsVisible()
     QCOMPARE(requestCount, 1);
     barrier.complete(true);
     QCOMPARE(requestCount, 2);
-    controller.handleCaptureReady(QImage(5, 5, QImage::Format_RGBA8888), 1);
+    controller.handleCaptureReady(QImage(5, 5, QImage::Format_RGBA8888), 1,
+                                  controller.m_requestOperationToken);
     removeSavedFile(savedSpy);
     removeSavedFile(savedSpy);
 }
@@ -372,20 +541,20 @@ void ScreenshotControllerTest::staleOrInactiveFailureDoesNotCancelScreenshotRequ
 
     controller.m_phase = ScreenshotPhase::WaitingCapture;
     controller.m_requestGeneration = 7;
-    controller.handleCaptureFailed(QStringLiteral("stale"), 6);
+    controller.handleCaptureFailed(QStringLiteral("stale"), 6, 0);
     QVERIFY(controller.m_phase == ScreenshotPhase::WaitingCapture);
     QCOMPARE(failureSpy.count(), 0);
 
-    controller.handleCaptureFailed(QStringLiteral("disconnected"), 7);
+    controller.handleCaptureFailed(QStringLiteral("disconnected"), 7, 0);
     QVERIFY(controller.m_phase == ScreenshotPhase::Idle);
     QCOMPARE(failureSpy.count(), 1);
 
-    controller.handleCaptureFailed(QStringLiteral("late"), 7);
+    controller.handleCaptureFailed(QStringLiteral("late"), 7, 0);
     QCOMPARE(failureSpy.count(), 1);
 
     controller.m_phase = ScreenshotPhase::WaitingCapture;
     controller.m_requestGeneration = 8;
-    controller.handleCaptureFailed(QStringLiteral("old generation"), 7);
+    controller.handleCaptureFailed(QStringLiteral("old generation"), 7, 0);
     QVERIFY(controller.m_phase == ScreenshotPhase::WaitingCapture);
     QCOMPARE(failureSpy.count(), 1);
 }

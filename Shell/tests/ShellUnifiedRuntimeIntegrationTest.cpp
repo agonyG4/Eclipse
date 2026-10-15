@@ -7,6 +7,7 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QVariantMap>
 
 #include "Dock/core/DockController.hpp"
 #include "AltTab/core/AltTabController.hpp"
@@ -94,6 +95,16 @@ void ShellUnifiedRuntimeIntegrationTest::unifiedRuntimeLifecycleAndStress()
     QCOMPARE(compositor.authenticationCount(), 1);
     QCOMPARE(compositor.clientCount(), 1);
     QCOMPARE(runtime.shortcutClient()->registeredShortcutCount(), 7);
+    const QVariantMap shortcutHealth = runtime.shortcutClient()->registrationHealth();
+    QCOMPARE(shortcutHealth.size(), 7);
+    for (const QString &name : {QStringLiteral("screenshot_quick"),
+                                QStringLiteral("screenshot_region_frozen"),
+                                QStringLiteral("screenshot_region_live"),
+                                QStringLiteral("alt_tab_next"),
+                                QStringLiteral("spotlight_toggle")}) {
+        QCOMPARE(shortcutHealth.value(name).toMap().value(QStringLiteral("state")).toString(),
+                 QStringLiteral("registered"));
+    }
     publishUnifiedWindow(compositor, QStringLiteral("1"), 1);
     QVERIFY(waitForSnapshot(compositor, runtime));
     QCOMPARE(runtime.typhonToplevelConnection()->snapshot().windows.size(), 1);
@@ -149,6 +160,11 @@ void ShellUnifiedRuntimeIntegrationTest::unifiedRuntimeLifecycleAndStress()
         QVERIFY(!runtime.spotlightController()->isOpen());
     }
     QCOMPARE(runtime.shortcutClient()->registeredShortcutCount(), 7);
+    QCOMPARE(runtime.shortcutClient()->registrationHealth().size(), 7);
+    QCOMPARE(runtime.shortcutClient()->registrationHealth()
+                 .value(QStringLiteral("screenshot_quick")).toMap()
+                 .value(QStringLiteral("state")).toString(),
+             QStringLiteral("registered"));
     QCOMPARE(runtime.typhonSession()->connectionGeneration(), quint64(1));
 
     compositor.disconnectClients();

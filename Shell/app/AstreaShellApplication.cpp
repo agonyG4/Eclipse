@@ -17,6 +17,8 @@
 #include "platform/wayland/ContextMenuSurfaceManager.hpp"
 #include "Paper/platform/wayland/WallpaperSurfaceManager.hpp"
 #include "platform/ipc/ShellIpcServer.hpp"
+#include "platform/typhon/TyphonScreenCaptureClient.hpp"
+#include "platform/typhon/TyphonShortcutClient.hpp"
 #include "runtime/ShellRuntime.hpp"
 #include "platform/wayland/LayerShellHelper.hpp"
 #include "icons/AstreaIconProvider.hpp"
@@ -44,6 +46,7 @@
 #include <QQuickWindow>
 #include <QScreen>
 #include <QUrl>
+#include <QVariantMap>
 
 namespace {
 
@@ -52,6 +55,29 @@ constexpr QLatin1StringView kIpcName("astrea-shell-v1");
 bool isWaylandPlatform(const QGuiApplication &application)
 {
     return application.platformName().startsWith(QStringLiteral("wayland"), Qt::CaseInsensitive);
+}
+
+QString shortcutConnectionStateName(TyphonShortcutConnectionState state)
+{
+    switch (state) {
+    case TyphonShortcutConnectionState::Stopped:
+        return QStringLiteral("stopped");
+    case TyphonShortcutConnectionState::Connecting:
+        return QStringLiteral("connecting");
+    case TyphonShortcutConnectionState::WaitingForManager:
+        return QStringLiteral("waiting-for-manager");
+    case TyphonShortcutConnectionState::Registering:
+        return QStringLiteral("registering");
+    case TyphonShortcutConnectionState::Ready:
+        return QStringLiteral("ready");
+    case TyphonShortcutConnectionState::Degraded:
+        return QStringLiteral("degraded");
+    case TyphonShortcutConnectionState::Disconnected:
+        return QStringLiteral("disconnected");
+    case TyphonShortcutConnectionState::Unsupported:
+        return QStringLiteral("unsupported");
+    }
+    return QStringLiteral("unknown");
 }
 
 } // namespace
@@ -574,6 +600,13 @@ QString AstreaShellApplication::statusJson() const
     const auto *altTab = runtime->altTabController();
     const auto *spotlight = runtime->spotlightController();
     const auto *bar = runtime->barController();
+    const auto *screenshot = runtime->screenshotController();
+    const auto *captureClient = runtime->screenCaptureClient();
+    const auto *shortcutClient = runtime->shortcutClient();
+    QJsonObject registrationHealth;
+    const QVariantMap registrations = shortcutClient->registrationHealth();
+    for (auto it = registrations.cbegin(); it != registrations.cend(); ++it)
+        registrationHealth.insert(it.key(), QJsonObject::fromVariantMap(it.value().toMap()));
     const QJsonObject object{
         {QStringLiteral("schemaVersion"), 1},
         {QStringLiteral("running"), true},
@@ -599,6 +632,25 @@ QString AstreaShellApplication::statusJson() const
         {QStringLiteral("spotlight"), QJsonObject{
             {QStringLiteral("open"), spotlight->isOpen()},
             {QStringLiteral("results"), spotlight->resultCount()}}},
+        {QStringLiteral("screenshot"), QJsonObject{
+            {QStringLiteral("phase"), screenshot->phaseName()},
+            {QStringLiteral("intent"), screenshot->intentName()},
+            {QStringLiteral("pending"), screenshot->hasPendingOperation()},
+            {QStringLiteral("deadlineRemainingMs"),
+             screenshot->operationDeadlineRemainingMs()},
+            {QStringLiteral("captureClientReady"), captureClient->isReady()},
+            {QStringLiteral("lastFailureStage"), screenshot->lastFailureStage()},
+            {QStringLiteral("lastFailureReason"), screenshot->lastFailureReason()},
+            {QStringLiteral("rejectedRequests"),
+             static_cast<qint64>(screenshot->rejectedOperationCount())}}},
+        {QStringLiteral("shortcuts"), QJsonObject{
+            {QStringLiteral("connectionState"),
+             shortcutConnectionStateName(shortcutClient->state())},
+            {QStringLiteral("ready"), shortcutClient->isReady()},
+            {QStringLiteral("registeredCount"), shortcutClient->registeredShortcutCount()},
+            {QStringLiteral("connectionGeneration"),
+             static_cast<double>(shortcutClient->connectionGeneration())},
+            {QStringLiteral("registrations"), registrationHealth}}},
         {QStringLiteral("bar"), QJsonObject{
             {QStringLiteral("enabled"), bar && bar->enabled()},
             {QStringLiteral("outputBundles"),

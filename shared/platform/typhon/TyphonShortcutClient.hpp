@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QVariantMap>
 
 #include <cstdint>
 #include <memory>
@@ -45,12 +46,14 @@ public:
     bool isReady() const;
     int registeredShortcutCount() const;
     std::uint64_t connectionGeneration() const;
+    QVariantMap registrationHealth() const;
 
 signals:
     void stateChanged(TyphonShortcutConnectionState state);
     void shortcutEvent(QString namespaceName, QString name, TyphonShortcutPhase phase,
                        std::uint32_t serial, std::uint32_t timestamp);
     void diagnostic(QString message);
+    void registrationHealthChanged();
 
 private:
     friend struct TyphonShortcutClientPrivate;

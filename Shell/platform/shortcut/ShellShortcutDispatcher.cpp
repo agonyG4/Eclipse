@@ -4,6 +4,8 @@
 #include "screenshot/ScreenshotController.hpp"
 #include "Spotlight/core/SpotlightController.hpp"
 
+#include <QDebug>
+
 ShellShortcutDispatcher::ShellShortcutDispatcher(AltTabController *altTabController,
                                                  SpotlightController *spotlightController,
                                                  ScreenshotController *screenshotController)
@@ -42,7 +44,8 @@ ShellShortcutAction mapTyphonShellShortcut(const QString &namespaceName, const Q
 void ShellShortcutDispatcher::dispatch(const QString &namespaceName, const QString &name,
                                        TyphonShortcutPhase phase)
 {
-    switch (mapTyphonShellShortcut(namespaceName, name, phase)) {
+    const ShellShortcutAction action = mapTyphonShellShortcut(namespaceName, name, phase);
+    switch (action) {
     case ShellShortcutAction::AltTabNext:
         if (m_altTabEnabled && m_altTabController)
             m_altTabController->step(1);
@@ -60,17 +63,30 @@ void ShellShortcutDispatcher::dispatch(const QString &namespaceName, const QStri
             m_spotlightController->toggle();
         break;
     case ShellShortcutAction::ScreenshotQuick:
-        if (m_screenshotController)
-            m_screenshotController->startQuickCapture();
-        break;
     case ShellShortcutAction::ScreenshotRegionFrozen:
-        if (m_screenshotController)
-            m_screenshotController->startFrozenRegionCapture();
+    case ShellShortcutAction::ScreenshotRegionLive: {
+        QString shortcutName;
+        bool accepted = false;
+        if (action == ShellShortcutAction::ScreenshotQuick) {
+            shortcutName = QStringLiteral("screenshot_quick");
+            if (m_screenshotController)
+                accepted = m_screenshotController->startQuickCapture();
+        } else if (action == ShellShortcutAction::ScreenshotRegionFrozen) {
+            shortcutName = QStringLiteral("screenshot_region_frozen");
+            if (m_screenshotController)
+                accepted = m_screenshotController->startFrozenRegionCapture();
+        } else {
+            shortcutName = QStringLiteral("screenshot_region_live");
+            if (m_screenshotController)
+                accepted = m_screenshotController->startLiveRegionCapture();
+        }
+        qInfo().noquote() << "Screenshot shortcut received:" << shortcutName;
+        if (accepted)
+            qInfo().noquote() << "Screenshot shortcut accepted:" << shortcutName;
+        else
+            qWarning().noquote() << "Screenshot shortcut rejected:" << shortcutName;
         break;
-    case ShellShortcutAction::ScreenshotRegionLive:
-        if (m_screenshotController)
-            m_screenshotController->startLiveRegionCapture();
-        break;
+    }
     case ShellShortcutAction::Ignore:
         break;
     }

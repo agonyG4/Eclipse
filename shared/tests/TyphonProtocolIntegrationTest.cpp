@@ -559,6 +559,7 @@ const struct astrea_shortcuts_manager_v1_interface
     FakeTyphonCompositor::kShortcutManagerImplementation = {
         &FakeTyphonCompositor::destroyShortcutManagerRequest,
         &FakeTyphonCompositor::registerShortcutRequest,
+        nullptr,
     };
 
 const struct astrea_shortcut_v1_interface FakeTyphonCompositor::kShortcutImplementation = {

@@ -23,7 +23,7 @@ These facts identify independent liveness gaps. They do not prove which gap caus
 4. A failed or canceled operation invalidates its token, cancels any barrier and active capture resource, and returns the controller to `Idle` exactly once.
 5. UI screenshot surfaces remain hidden and Wayland-synchronized before a desktop capture is requested.
 6. Older timer, barrier, capture, or shortcut events cannot mutate a newer operation or connection generation.
-7. Retry ownership loss at most once per shortcut per shared connection generation. Never retry an authorization rejection. Reconnect restores the complete seven-entry set once.
+7. After each ownership-loss episode, make at most three delayed conditional claims per shortcut. A claim succeeds only if the slot is vacant and never displaces its current owner. Never retry authorization rejection; an occupied-slot rejection may use the remaining attempts in that episode. A successful registration resets the per-episode budget. All timers are bound to the shared connection generation and stop on reconnect or teardown. Reconnect restores the complete seven-entry set once using the existing initial-registration policy.
 8. Existing status JSON fields remain intact; new health data is additive.
 
 ## Architecture
@@ -32,7 +32,7 @@ The screenshot controller uses one single-shot `QTimer`, operation-token validat
 
 `ScreenshotUiBarrier` gains an idempotent `cancel()` method. The Wayland implementation advances a generation on cancel, invalidates queued synchronization closures, destroys an outstanding callback while the display proxy is valid, and drops the pending completion. Callback identity and generation must both match before completion.
 
-The shortcut protocol advances to version 2 and adds `rejected(serial)` for authorization failures. Version 1 behavior remains supported; because its cancellation event is ambiguous, a version 1 client reports cancellation but does not retry. A version 2 client marks rejected entries as non-recoverable and uses a single delayed, generation-bound recovery attempt only after ownership loss. Exhausted or canceled entries remain visible in health status. Transport reconnection discards old objects and registers all seven entries once.
+The shortcut protocol advances to version 2 with registration acknowledgements, reasoned rejection events, and a `register_shortcut_if_available` request. Version 1 behavior remains supported; because its cancellation event is ambiguous, a version 1 client reports cancellation but does not retry. A version 2 client makes at most three delayed conditional claims per ownership-loss episode, with every timer bound to its connection generation. A successful registration resets the episode budget for any later ownership loss. The compositor checks authorization and the existing exclusive-owner registry before accepting each claim; an occupied slot is reported without evicting its owner. Authorization rejection ends recovery; occupied-slot rejection may use the remaining bounded attempts. Per-entry health stays visible while unaffected shortcuts continue routing. Transport reconnection discards old objects and submits all seven initial registrations once.
 
 The shell status endpoint adds screenshot phase, intent, pending state, timeout remaining, client readiness, last failure stage/reason, rejected request count, shortcut connection state/count, and per-shortcut health. Dispatcher logging records screenshot shortcut acceptance or active-operation rejection without changing Alt+Tab or Spotlight routing.
 

@@ -1,5 +1,7 @@
 #include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QFile>
+#include <QHash>
 #include <QSignalSpy>
 #include <QSocketNotifier>
 #include <QTemporaryDir>
@@ -21,10 +23,15 @@ public:
         wl_resource *resource = nullptr;
         QString namespaceName;
         QString name;
+        bool active = false;
     };
 
-    explicit FakeShortcutCompositor(QObject *parent = nullptr)
-        : QObject(parent), m_runtime(QStringLiteral("/tmp/typhon-shortcuts-XXXXXX"))
+    explicit FakeShortcutCompositor(std::uint32_t protocolVersion = 2,
+                                    bool rejectShellAuthorization = false,
+                                    QObject *parent = nullptr)
+        : QObject(parent), m_runtime(QStringLiteral("/tmp/typhon-shortcuts-XXXXXX")),
+          m_protocolVersion(std::min(protocolVersion, 2u)),
+          m_rejectShellAuthorization(rejectShellAuthorization)
     {
         QVERIFY(m_runtime.isValid());
         m_previousRuntime = qgetenv("XDG_RUNTIME_DIR");
@@ -52,8 +59,8 @@ public:
         m_authGlobal = wl_global_create(m_display, &astrea_shell_auth_manager_v1_interface, 1,
                                         this, &bindAuthManager);
         QVERIFY(m_authGlobal);
-        m_global = wl_global_create(m_display, &astrea_shortcuts_manager_v1_interface, 1, this,
-                                     &bindManager);
+        m_global = wl_global_create(m_display, &astrea_shortcuts_manager_v1_interface,
+                                     m_protocolVersion, this, &bindManager);
         QVERIFY(m_global);
     }
 
@@ -85,23 +92,27 @@ public:
         return condition();
     }
 
+    bool waitUntil(const std::function<bool()> &condition, int timeoutMs)
+    {
+        QElapsedTimer timer;
+        timer.start();
+        while (!condition() && timer.elapsed() < timeoutMs)
+            QTest::qWait(10);
+        return condition();
+    }
+
     QStringList registrationNames() const
     {
         QStringList names;
-        for (const Registration *registration : m_registrations)
-            if (registration->resource)
-                names.append(registration->name);
+        for (const Registration *registration : m_owners)
+            names.append(registration->name);
         std::sort(names.begin(), names.end());
         return names;
     }
 
     Registration *registration(const QString &name) const
     {
-        const auto it = std::find_if(m_registrations.cbegin(), m_registrations.cend(),
-                                     [&name](const Registration *registration) {
-                                         return registration->resource && registration->name == name;
-                                     });
-        return it == m_registrations.cend() ? nullptr : *it;
+        return m_owners.value(ownerKey(QStringLiteral("astrea-shell"), name), nullptr);
     }
 
     int authenticationCount() const
@@ -148,12 +159,21 @@ public:
         }
     }
 
-    void sendCancelled(const QString &name, quint32 serial)
+    void sendCancelled(const QString &name, quint32 serial, bool releaseOwner = false)
     {
         if (Registration *item = registration(name)) {
+            if (releaseOwner) {
+                m_owners.remove(ownerKey(item->namespaceName, item->name));
+                item->active = false;
+            }
             astrea_shortcut_v1_send_cancelled(item->resource, serial);
             flushClients();
         }
+    }
+
+    int conditionalRequestCount(const QString &name) const
+    {
+        return m_conditionalRequestCounts.value(name);
     }
 
 private:
@@ -212,7 +232,7 @@ private:
         auto *manager = new Registration;
         manager->owner = self;
         manager->resource = wl_resource_create(client, &astrea_shortcuts_manager_v1_interface,
-                                               std::min(version, 1u), id);
+                                               std::min(version, self->m_protocolVersion), id);
         if (!manager->resource) {
             delete manager;
             return;
@@ -231,6 +251,12 @@ private:
         auto *registration = static_cast<Registration *>(wl_resource_get_user_data(resource));
         if (!registration)
             return;
+        if (registration->active && registration->owner) {
+            const QString key = ownerKey(registration->namespaceName, registration->name);
+            if (registration->owner->m_owners.value(key) == registration)
+                registration->owner->m_owners.remove(key);
+        }
+        registration->active = false;
         registration->resource = nullptr;
     }
 
@@ -246,7 +272,21 @@ private:
 
     static void registerShortcutRequest(wl_client *client, wl_resource *managerResource, uint32_t id,
                                         const char *namespaceName, const char *name,
-                                        const char *)
+                                        const char *description)
+    {
+        registerRequest(client, managerResource, id, namespaceName, name, description, false);
+    }
+
+    static void registerShortcutIfAvailableRequest(wl_client *client, wl_resource *managerResource,
+                                                    uint32_t id, const char *namespaceName,
+                                                    const char *name, const char *description)
+    {
+        registerRequest(client, managerResource, id, namespaceName, name, description, true);
+    }
+
+    static void registerRequest(wl_client *client, wl_resource *managerResource, uint32_t id,
+                                const char *namespaceName, const char *name, const char *,
+                                bool ifAvailable)
     {
         auto *manager = static_cast<Registration *>(wl_resource_get_user_data(managerResource));
         auto *self = manager ? manager->owner : nullptr;
@@ -256,7 +296,10 @@ private:
         registration->owner = self;
         registration->namespaceName = QString::fromUtf8(namespaceName ? namespaceName : "");
         registration->name = QString::fromUtf8(name ? name : "");
-        registration->resource = wl_resource_create(client, &astrea_shortcut_v1_interface, 1, id);
+        const std::uint32_t version = static_cast<std::uint32_t>(
+            std::min(wl_resource_get_version(managerResource), 2));
+        registration->resource = wl_resource_create(client, &astrea_shortcut_v1_interface,
+                                                     version, id);
         if (!registration->resource) {
             delete registration;
             return;
@@ -264,6 +307,45 @@ private:
         wl_resource_set_implementation(registration->resource, &kShortcutImplementation,
                                        registration, &destroyShortcut);
         self->m_registrations.append(registration);
+
+        if (ifAvailable)
+            self->m_conditionalRequestCounts[registration->name] += 1;
+        if (registration->namespaceName == QStringLiteral("astrea-shell")
+            && self->m_rejectShellAuthorization) {
+            if (version >= 2)
+                astrea_shortcut_v1_send_rejected(registration->resource, 1, 1);
+            else
+                astrea_shortcut_v1_send_cancelled(registration->resource, 1);
+            self->flushClients();
+            return;
+        }
+
+        const QString key = ownerKey(registration->namespaceName, registration->name);
+        Registration *currentOwner = self->m_owners.value(key, nullptr);
+        if (ifAvailable && currentOwner) {
+            if (version >= 2)
+                astrea_shortcut_v1_send_rejected(registration->resource, 2, 2);
+            else
+                astrea_shortcut_v1_send_cancelled(registration->resource, 2);
+            self->flushClients();
+            return;
+        }
+        if (!ifAvailable && currentOwner) {
+            self->m_owners.remove(key);
+            currentOwner->active = false;
+            if (currentOwner->resource)
+                astrea_shortcut_v1_send_cancelled(currentOwner->resource, 3);
+        }
+        registration->active = true;
+        self->m_owners.insert(key, registration);
+        if (version >= 2)
+            astrea_shortcut_v1_send_registered(registration->resource, 4);
+        self->flushClients();
+    }
+
+    static QString ownerKey(const QString &namespaceName, const QString &name)
+    {
+        return namespaceName + QLatin1Char('\n') + name;
     }
 
     void dispatchServerEvents()
@@ -303,13 +385,18 @@ private:
     wl_global *m_authGlobal = nullptr;
     QSocketNotifier *m_serverNotifier = nullptr;
     QVector<Registration *> m_registrations;
+    QHash<QString, Registration *> m_owners;
+    QHash<QString, int> m_conditionalRequestCounts;
     QVector<wl_client *> m_authenticatedClients;
     Registration *m_authManager = nullptr;
+    std::uint32_t m_protocolVersion = 2;
+    bool m_rejectShellAuthorization = false;
 };
 
 const struct astrea_shortcuts_manager_v1_interface FakeShortcutCompositor::kManagerImplementation = {
     &FakeShortcutCompositor::destroyManagerRequest,
     &FakeShortcutCompositor::registerShortcutRequest,
+    &FakeShortcutCompositor::registerShortcutIfAvailableRequest,
 };
 
 const struct astrea_shortcut_v1_interface FakeShortcutCompositor::kShortcutImplementation = {
@@ -327,7 +414,10 @@ class TyphonShortcutProtocolIntegrationTest final : public QObject {
 
 private slots:
     void registersReservedShortcutsAndDeliversLifecycle();
-    void cancellationDoesNotReregister();
+    void legacyCancellationIsObservableWithoutRetry();
+    void v2CancellationRecoversOnlyIntoVacantOwnerSlot();
+    void v2RecoveryCannotTakeOverOrPingPongWithAnotherOwner();
+    void v2AuthorizationRejectionIsTerminal();
     void sharedSessionOwnsShortcutTransport();
     void sharedSessionRestoresShortcutOwnershipAcrossGenerations();
 };
@@ -365,7 +455,30 @@ void TyphonShortcutProtocolIntegrationTest::registersReservedShortcutsAndDeliver
              TyphonShortcutPhase::Pressed);
 }
 
-void TyphonShortcutProtocolIntegrationTest::cancellationDoesNotReregister()
+void TyphonShortcutProtocolIntegrationTest::legacyCancellationIsObservableWithoutRetry()
+{
+    FakeShortcutCompositor compositor(1);
+    TyphonShortcutClient client;
+    QSignalSpy eventSpy(&client, &TyphonShortcutClient::shortcutEvent);
+
+    client.start();
+    QVERIFY(compositor.pumpUntil([&client] { return client.isReady(); }));
+    compositor.sendCancelled(QStringLiteral("alt_tab_next"), 99, true);
+    QVERIFY(compositor.pumpUntil([&eventSpy] { return eventSpy.count() == 1; }));
+    QCOMPARE(qvariant_cast<TyphonShortcutPhase>(eventSpy.at(0).at(2)),
+             TyphonShortcutPhase::Cancelled);
+    QCOMPARE(client.registeredShortcutCount(), 6);
+    QCOMPARE(compositor.registrationNames().size(), 6);
+    const QVariantMap health = client.registrationHealth()
+                                   .value(QStringLiteral("alt_tab_next")).toMap();
+    QCOMPARE(health.value(QStringLiteral("state")).toString(), QStringLiteral("cancelled"));
+    QCOMPARE(health.value(QStringLiteral("recovery_pending")).toBool(), false);
+    QCOMPARE(health.value(QStringLiteral("recovery_attempts")).toInt(), 0);
+    QTest::qWait(600);
+    QCOMPARE(compositor.conditionalRequestCount(QStringLiteral("alt_tab_next")), 0);
+}
+
+void TyphonShortcutProtocolIntegrationTest::v2CancellationRecoversOnlyIntoVacantOwnerSlot()
 {
     FakeShortcutCompositor compositor;
     TyphonShortcutClient client;
@@ -373,12 +486,109 @@ void TyphonShortcutProtocolIntegrationTest::cancellationDoesNotReregister()
 
     client.start();
     QVERIFY(compositor.pumpUntil([&client] { return client.isReady(); }));
-    compositor.sendCancelled(QStringLiteral("alt_tab_next"), 99);
+    compositor.sendCancelled(QStringLiteral("screenshot_quick"), 99, true);
     QVERIFY(compositor.pumpUntil([&eventSpy] { return eventSpy.count() == 1; }));
-    QCOMPARE(qvariant_cast<TyphonShortcutPhase>(eventSpy.at(0).at(2)),
-             TyphonShortcutPhase::Cancelled);
     QCOMPARE(client.registeredShortcutCount(), 6);
     QCOMPARE(compositor.registrationNames().size(), 6);
+    QCOMPARE(client.state(), TyphonShortcutConnectionState::Degraded);
+    const QVariantMap pendingHealth = client.registrationHealth()
+                                          .value(QStringLiteral("screenshot_quick")).toMap();
+    QCOMPARE(pendingHealth.value(QStringLiteral("state")).toString(),
+             QStringLiteral("recovery-pending"));
+    QVERIFY(pendingHealth.value(QStringLiteral("recovery_pending")).toBool());
+
+    eventSpy.clear();
+    compositor.sendPressed(QStringLiteral("alt_tab_next"), 100, 200);
+    compositor.sendPressed(QStringLiteral("spotlight_toggle"), 101, 201);
+    QVERIFY(compositor.pumpUntil([&eventSpy] { return eventSpy.count() == 2; }));
+    QCOMPARE(eventSpy.at(0).at(1).toString(), QStringLiteral("alt_tab_next"));
+    QCOMPARE(eventSpy.at(1).at(1).toString(), QStringLiteral("spotlight_toggle"));
+
+    QVERIFY(compositor.waitUntil([&client, &compositor] {
+        const QVariantMap entry = client.registrationHealth()
+                                      .value(QStringLiteral("screenshot_quick")).toMap();
+        return client.isReady() && client.registeredShortcutCount() == 7
+            && compositor.registrationNames().size() == 7
+            && entry.value(QStringLiteral("state")).toString() == QStringLiteral("registered");
+    }, 2000));
+
+    const QVariantMap health = client.registrationHealth()
+                                  .value(QStringLiteral("screenshot_quick")).toMap();
+    QCOMPARE(health.value(QStringLiteral("recovery_attempts")).toInt(), 0);
+    QCOMPARE(compositor.conditionalRequestCount(QStringLiteral("screenshot_quick")), 1);
+
+    eventSpy.clear();
+    compositor.sendPressed(QStringLiteral("alt_tab_next"), 101, 201);
+    compositor.sendPressed(QStringLiteral("spotlight_toggle"), 102, 202);
+    compositor.sendPressed(QStringLiteral("screenshot_quick"), 103, 203);
+    QVERIFY(compositor.pumpUntil([&eventSpy] { return eventSpy.count() == 3; }));
+    QCOMPARE(eventSpy.at(0).at(1).toString(), QStringLiteral("alt_tab_next"));
+    QCOMPARE(eventSpy.at(1).at(1).toString(), QStringLiteral("spotlight_toggle"));
+    QCOMPARE(eventSpy.at(2).at(1).toString(), QStringLiteral("screenshot_quick"));
+
+    compositor.sendCancelled(QStringLiteral("screenshot_quick"), 104, true);
+    QVERIFY(compositor.waitUntil([&client, &compositor] {
+        return client.registeredShortcutCount() == 7
+            && compositor.registrationNames().size() == 7
+            && compositor.conditionalRequestCount(QStringLiteral("screenshot_quick")) == 2;
+    }, 2000));
+}
+
+void TyphonShortcutProtocolIntegrationTest::v2RecoveryCannotTakeOverOrPingPongWithAnotherOwner()
+{
+    FakeShortcutCompositor compositor;
+    TyphonShortcutClient firstClient;
+    TyphonShortcutClient secondClient;
+    QSignalSpy secondEventSpy(&secondClient, &TyphonShortcutClient::shortcutEvent);
+
+    firstClient.start();
+    QVERIFY(compositor.pumpUntil([&firstClient] { return firstClient.isReady(); }));
+    secondClient.start();
+    QVERIFY(compositor.pumpUntil([&secondClient] { return secondClient.isReady(); }));
+    QVERIFY(compositor.waitUntil([&firstClient, &compositor] {
+        const QVariantMap entry = firstClient.registrationHealth()
+                                      .value(QStringLiteral("screenshot_quick")).toMap();
+        return entry.value(QStringLiteral("state")).toString() == QStringLiteral("occupied")
+            && entry.value(QStringLiteral("recovery_attempts")).toInt() == 3
+            && compositor.conditionalRequestCount(QStringLiteral("screenshot_quick")) == 3;
+    }, 7000));
+
+    QVERIFY(!firstClient.isReady());
+    QCOMPARE(firstClient.registeredShortcutCount(), 0);
+    QCOMPARE(secondClient.registeredShortcutCount(), 7);
+    QCOMPARE(compositor.registrationNames().size(), 7);
+    for (const QString &name : {QStringLiteral("alt_tab_next"),
+                                QStringLiteral("spotlight_toggle"),
+                                QStringLiteral("screenshot_quick")}) {
+        compositor.sendPressed(name, 301, 401);
+    }
+    QVERIFY(compositor.pumpUntil([&secondEventSpy] { return secondEventSpy.count() == 3; }));
+    QCOMPARE(secondEventSpy.at(0).at(1).toString(), QStringLiteral("alt_tab_next"));
+    QCOMPARE(secondEventSpy.at(1).at(1).toString(), QStringLiteral("spotlight_toggle"));
+    QCOMPARE(secondEventSpy.at(2).at(1).toString(), QStringLiteral("screenshot_quick"));
+    QCOMPARE(compositor.conditionalRequestCount(QStringLiteral("screenshot_quick")), 3);
+}
+
+void TyphonShortcutProtocolIntegrationTest::v2AuthorizationRejectionIsTerminal()
+{
+    FakeShortcutCompositor compositor(2, true);
+    TyphonShortcutClient client;
+
+    client.start();
+    QVERIFY(compositor.pumpUntil([&client] {
+        const QVariantMap entries = client.registrationHealth();
+        return client.state() == TyphonShortcutConnectionState::Degraded && entries.size() == 7
+            && entries.value(QStringLiteral("screenshot_quick")).toMap()
+                   .value(QStringLiteral("state")).toString()
+                == QStringLiteral("rejected-authorization");
+    }));
+    QCOMPARE(client.registeredShortcutCount(), 0);
+    QCOMPARE(client.registrationHealth()
+                 .value(QStringLiteral("screenshot_quick")).toMap()
+                 .value(QStringLiteral("recovery_attempts")).toInt(),
+             0);
+    QTest::qWait(600);
+    QCOMPARE(compositor.conditionalRequestCount(QStringLiteral("screenshot_quick")), 0);
 }
 
 void TyphonShortcutProtocolIntegrationTest::sharedSessionOwnsShortcutTransport()

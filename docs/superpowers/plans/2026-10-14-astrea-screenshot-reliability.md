@@ -4,7 +4,7 @@
 
 **Goal:** Keep screenshot shortcuts usable after asynchronous failures and report shortcut/capture health accurately.
 
-**Architecture:** Add bounded, token-validated screenshot deadlines and a cancellable Wayland UI barrier. Version the shortcut outcome protocol so authorization rejection is distinct from ownership loss, then recover each displaced registration at most once per connection generation. Extend the existing shell status JSON additively.
+**Architecture:** Add bounded, token-validated screenshot deadlines and a cancellable Wayland UI barrier. Version the shortcut outcome protocol so authorization rejection is distinct from ownership loss, then allow up to three delayed, vacant-only claims per ownership-loss episode. Extend the existing shell status JSON additively.
 
 **Tech Stack:** Rust, Qt 6/C++, QML, Wayland protocol XML, Qt Test, Cargo tests.
 
@@ -15,7 +15,7 @@
 - Preserve physical screenshot shortcut mappings and user-visible capture behavior.
 - Keep one owner per `astrea-shell` shortcut name and preserve existing shell authorization.
 - Use a 5-second UI synchronization deadline and a 15-second compositor capture deadline; do not time out interactive selection.
-- Retry ownership loss at most once per registration per connection generation; never retry authorization rejection.
+- After each ownership-loss episode, make at most three delayed conditional claims per registration; successful registration resets the episode budget. Bind timers to the connection generation, and never displace an occupied owner or retry an authorization rejection.
 - Use the existing Aether build directories; never place build output in a checkout or system SSD.
 - Preserve all pre-existing working-tree edits and do not restart the running compositor or shell.
 
@@ -24,8 +24,8 @@
 - Inline completion from `requestCapture()` must not rearm a timer or overwrite success/failure; cover synchronous ready and failure.
 - A same-connection late result must not complete a newer screenshot; assert operation-token mismatch is ignored.
 - A queued barrier task after cancel must not start synchronization for a newer operation; test cancellation followed by a new synchronize call.
-- Authorization rejection must not trigger a takeover retry; test v2 `rejected` and v1 ambiguous cancellation behavior.
-- Repeated owner replacement must not create unbounded takeover; exercise real fake-server exclusive ownership and verify the per-generation retry cap.
+- Authorization rejection must not trigger recovery; test v2 reasoned `rejected` and v1 ambiguous cancellation behavior.
+- Repeated owner replacement must not create takeover ping-pong; exercise conditional claims against a real fake-server exclusive owner and verify the per-episode retry cap.
 - Reconnection must restore all seven registrations exactly once while unrelated Alt+Tab and Spotlight events remain routable.
 
 ---
@@ -75,15 +75,15 @@
 - Modify `shared/tests/TyphonShortcutProtocolServerCompat.hpp` as needed for the v2 event
 
 **Interfaces:**
-- Shortcut manager/resource protocol version becomes 2; v2 adds `rejected(serial)` while preserving v1 events.
-- Typhon sends v2 `rejected` for authorization failure and `cancelled` for replacement. Version 1 retains compatible legacy signaling.
+- Shortcut manager/resource protocol version becomes 2; v2 adds `registered(serial)`, reasoned `rejected(serial, reason)`, and `register_shortcut_if_available` while preserving v1 events.
+- Typhon sends v2 rejection reasons for authorization failure and an occupied conditional claim. Replacement continues to send `cancelled`; version 1 retains compatible legacy signaling.
 - `TyphonShortcutClient::registrationHealth()` exposes per-entry registered, recovery-pending, canceled, or rejected state.
 
 - [ ] Extend the fake Wayland compositor to model one exclusive live owner per namespace/name; add authorization rejection and replacement tests.
-- [ ] Assert v1 cancellation is reported as ambiguous with no retry; assert v2 rejection is not retried.
-- [ ] Assert a v2 displaced entry is retried once after delay, repeated cancellation exhausts its budget, and other entries remain routable.
+- [ ] Assert v1 cancellation is reported as ambiguous with no retry; assert v2 authorization rejection is terminal.
+- [ ] Assert a v2 displaced entry makes at most three delayed conditional claims per ownership-loss episode, does not take over an occupied slot, can recover after a later distinct cancellation, and leaves other entries routable.
 - [ ] Run `typhon-shortcut-protocol-integration-test` and Typhon shortcut protocol tests to observe expected failures.
-- [ ] Implement protocol v2 rejection, per-entry health, one delayed retry per generation, generation-safe teardown, and full-set registration on transport reconnect.
+- [ ] Implement protocol v2 rejection, per-entry health, bounded per-episode recovery, generation-safe teardown, and full-set registration on transport reconnect.
 - [ ] Re-run protocol tests; verify reconnect restores seven entries once and Alt+Tab/Spotlight still dispatch.
 
 ### Task 4: Runtime diagnostics and status introspection

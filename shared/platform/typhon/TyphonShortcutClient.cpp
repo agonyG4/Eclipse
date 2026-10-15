@@ -9,6 +9,8 @@
 #include <QVector>
 
 #include <algorithm>
+#include <iterator>
+#include <vector>
 
 #if ASTREA_HAVE_TYPHON_PROTOCOL
 #include <wayland-client.h>
@@ -25,6 +27,8 @@ struct astrea_shortcut_v1_listener {
     void (*repeated)(void *, struct astrea_shortcut_v1 *, std::uint32_t, std::uint32_t);
     void (*released)(void *, struct astrea_shortcut_v1 *, std::uint32_t, std::uint32_t);
     void (*cancelled)(void *, struct astrea_shortcut_v1 *, std::uint32_t);
+    void (*registered)(void *, struct astrea_shortcut_v1 *, std::uint32_t);
+    void (*rejected)(void *, struct astrea_shortcut_v1 *, std::uint32_t, std::uint32_t);
 };
 }
 
@@ -32,6 +36,7 @@ namespace {
 
 constexpr std::uint32_t kManagerDestroyOpcode = 0;
 constexpr std::uint32_t kManagerRegisterShortcutOpcode = 1;
+constexpr std::uint32_t kManagerRegisterShortcutIfAvailableOpcode = 2;
 constexpr std::uint32_t kShortcutDestroyOpcode = 0;
 
 int shortcutAddListener(astrea_shortcut_v1 *shortcut,
@@ -52,10 +57,12 @@ void shortcutDestroy(astrea_shortcut_v1 *shortcut)
 
 astrea_shortcut_v1 *registerShortcut(astrea_shortcuts_manager_v1 *manager,
                                      const char *namespaceName, const char *name,
-                                     const char *description)
+                                     const char *description, bool ifAvailable)
 {
+    const std::uint32_t opcode = ifAvailable ? kManagerRegisterShortcutIfAvailableOpcode
+                                             : kManagerRegisterShortcutOpcode;
     return reinterpret_cast<astrea_shortcut_v1 *>(wl_proxy_marshal_flags(
-        reinterpret_cast<wl_proxy *>(manager), kManagerRegisterShortcutOpcode,
+        reinterpret_cast<wl_proxy *>(manager), opcode,
         &astrea_shortcut_v1_interface,
         wl_proxy_get_version(reinterpret_cast<wl_proxy *>(manager)), 0, nullptr, namespaceName,
         name, description));
@@ -73,6 +80,16 @@ void managerDestroy(astrea_shortcuts_manager_v1 *manager)
 
 #if ASTREA_HAVE_TYPHON_PROTOCOL
 struct TyphonShortcutRegistration;
+struct TyphonShortcutListenerContext;
+
+enum class ShortcutRegistrationHealth {
+    Pending,
+    Registered,
+    RecoveryPending,
+    Cancelled,
+    RejectedAuthorization,
+    Occupied,
+};
 #endif
 
 struct TyphonShortcutClientPrivate {
@@ -104,12 +121,29 @@ struct TyphonShortcutClientPrivate {
     wl_callback *registrySync = nullptr;
     astrea_shortcuts_manager_v1 *manager = nullptr;
     bool registryReady = false;
+    std::uint32_t managerVersion = 1;
     QVector<TyphonShortcutRegistration *> registrations;
+    std::vector<std::unique_ptr<TyphonShortcutListenerContext>> listenerContexts;
 
     void destroyProtocolObjects(bool sendDestroyRequests = true);
     void registerShortcuts();
-    void handleEvent(TyphonShortcutRegistration *registration, TyphonShortcutPhase phase,
-                     std::uint32_t serial, std::uint32_t timestamp);
+    bool createRegistration(TyphonShortcutRegistration *registration, bool ifAvailable);
+    TyphonShortcutRegistration *validatedRegistration(TyphonShortcutListenerContext *context,
+                                                       astrea_shortcut_v1 *source) const;
+    void handleInputEvent(TyphonShortcutListenerContext *context, astrea_shortcut_v1 *source,
+                          TyphonShortcutPhase phase, std::uint32_t serial,
+                          std::uint32_t timestamp);
+    void handleCancelled(TyphonShortcutListenerContext *context, astrea_shortcut_v1 *source,
+                         std::uint32_t serial);
+    void handleRegistered(TyphonShortcutListenerContext *context, astrea_shortcut_v1 *source,
+                          std::uint32_t serial);
+    void handleRejected(TyphonShortcutListenerContext *context, astrea_shortcut_v1 *source,
+                        std::uint32_t serial, std::uint32_t reason);
+    void scheduleRecovery(TyphonShortcutRegistration *registration);
+    void retryRecovery(TyphonShortcutRegistration *registration,
+                       std::uint64_t expectedGeneration);
+    void updateRegistrationState();
+    QVariantMap registrationHealth() const;
 
     static void registryGlobal(void *data, wl_registry *registry, std::uint32_t name,
                                const char *interfaceName, std::uint32_t version);
@@ -122,6 +156,9 @@ struct TyphonShortcutClientPrivate {
     static void shortcutReleased(void *data, astrea_shortcut_v1 *, std::uint32_t serial,
                                  std::uint32_t timestamp);
     static void shortcutCancelled(void *data, astrea_shortcut_v1 *, std::uint32_t serial);
+    static void shortcutRegistered(void *data, astrea_shortcut_v1 *, std::uint32_t serial);
+    static void shortcutRejected(void *data, astrea_shortcut_v1 *, std::uint32_t serial,
+                                std::uint32_t reason);
 
     static const wl_registry_listener registryListener;
     static const wl_callback_listener registrySyncListener;
@@ -136,7 +173,22 @@ struct TyphonShortcutRegistration {
     astrea_shortcut_v1 *proxy = nullptr;
     QString namespaceName;
     QString name;
+    QString description;
     bool live = false;
+    bool recoveryRequest = false;
+    int recoveryAttempts = 0;
+    std::uint64_t requestGeneration = 0;
+    ShortcutRegistrationHealth health = ShortcutRegistrationHealth::Pending;
+    QString lastOutcome = QStringLiteral("pending");
+    QTimer recoveryTimer;
+};
+
+struct TyphonShortcutListenerContext {
+    TyphonShortcutClientPrivate *privateState = nullptr;
+    TyphonShortcutRegistration *registration = nullptr;
+    std::uint64_t generation = 0;
+    std::uint64_t requestGeneration = 0;
+    astrea_shortcut_v1 *proxy = nullptr;
 };
 
 namespace {
@@ -158,6 +210,78 @@ constexpr ShortcutSpec kShortcutSpecs[] = {
 
 } // namespace
 
+namespace {
+
+constexpr int kShortcutRecoveryAttempts = 3;
+constexpr int kShortcutRecoveryDelaysMs[] = {500, 1500, 3500};
+
+QString registrationHealthName(ShortcutRegistrationHealth health)
+{
+    switch (health) {
+    case ShortcutRegistrationHealth::Pending:
+        return QStringLiteral("pending");
+    case ShortcutRegistrationHealth::Registered:
+        return QStringLiteral("registered");
+    case ShortcutRegistrationHealth::RecoveryPending:
+        return QStringLiteral("recovery-pending");
+    case ShortcutRegistrationHealth::Cancelled:
+        return QStringLiteral("cancelled");
+    case ShortcutRegistrationHealth::RejectedAuthorization:
+        return QStringLiteral("rejected-authorization");
+    case ShortcutRegistrationHealth::Occupied:
+        return QStringLiteral("occupied");
+    }
+    return QStringLiteral("unknown");
+}
+
+} // namespace
+
+bool TyphonShortcutClientPrivate::createRegistration(TyphonShortcutRegistration *registration,
+                                                      bool ifAvailable)
+{
+    if (!registration || !manager || !display)
+        return false;
+    const QByteArray namespaceName = registration->namespaceName.toUtf8();
+    const QByteArray name = registration->name.toUtf8();
+    const QByteArray description = registration->description.toUtf8();
+    auto context = std::make_unique<TyphonShortcutListenerContext>();
+    context->privateState = this;
+    context->registration = registration;
+    context->generation = generation;
+    context->requestGeneration = ++registration->requestGeneration;
+    context->proxy = registerShortcut(manager, namespaceName.constData(), name.constData(),
+                                      description.constData(), ifAvailable);
+    if (!context->proxy)
+        return false;
+    if (shortcutAddListener(context->proxy, &shortcutListener, context.get()) != 0) {
+        shortcutDestroy(context->proxy);
+        context->proxy = nullptr;
+        return false;
+    }
+
+    registration->proxy = context->proxy;
+    registration->live = true;
+    registration->recoveryRequest = ifAvailable;
+    registration->health = managerVersion >= 2 ? ShortcutRegistrationHealth::Pending
+                                                : ShortcutRegistrationHealth::Registered;
+    listenerContexts.push_back(std::move(context));
+    return true;
+}
+
+TyphonShortcutRegistration *TyphonShortcutClientPrivate::validatedRegistration(
+    TyphonShortcutListenerContext *context, astrea_shortcut_v1 *source) const
+{
+    if (!started || !context || context->privateState != this || !context->registration
+        || context->generation != generation || context->proxy != source)
+        return nullptr;
+    TyphonShortcutRegistration *registration = context->registration;
+    if (registration->generation != generation
+        || registration->requestGeneration != context->requestGeneration
+        || registration->proxy != source)
+        return nullptr;
+    return registration;
+}
+
 void TyphonShortcutClientPrivate::registerShortcuts()
 {
     if (!started || !registryReady || !manager)
@@ -170,52 +294,230 @@ void TyphonShortcutClientPrivate::registerShortcuts()
         registration->generation = generation;
         registration->namespaceName = QStringLiteral("astrea-shell");
         registration->name = QString::fromLatin1(spec.name);
-        const QByteArray namespaceName = registration->namespaceName.toUtf8();
-        registration->proxy = registerShortcut(manager, namespaceName.constData(), spec.name,
-                                               spec.description);
-        if (!registration->proxy
-            || shortcutAddListener(registration->proxy, &shortcutListener, registration) != 0) {
-            if (registration->proxy)
-                shortcutDestroy(registration->proxy);
+        registration->description = QString::fromLatin1(spec.description);
+        registration->recoveryTimer.setSingleShot(true);
+        QObject::connect(&registration->recoveryTimer, &QTimer::timeout, owner,
+                         [this, registration, expectedGeneration = generation] {
+                             retryRecovery(registration, expectedGeneration);
+                         });
+        if (!createRegistration(registration, false)) {
             delete registration;
-            owner->enterFailure(QStringLiteral("Typhon shortcut registration failed"), true);
+            owner->enterFailure(QStringLiteral("Typhon shortcut registration failed"),
+                                !sharedConnection);
             return;
         }
-        registration->live = true;
         registrations.append(registration);
     }
-    if (!owner->m_private->display->flush())
-        owner->enterFailure(QStringLiteral("Typhon shortcut registration flush failed"), true);
-    else
-        owner->setState(TyphonShortcutConnectionState::Ready);
-}
-
-void TyphonShortcutClientPrivate::handleEvent(TyphonShortcutRegistration *registration,
-                                              TyphonShortcutPhase phase,
-                                              std::uint32_t serial,
-                                              std::uint32_t timestamp)
-{
-    if (!registration || registration->privateState != this || !registration->live
-        || registration->generation != generation || !started)
-        return;
-
-    if (phase == TyphonShortcutPhase::Cancelled) {
-        registration->live = false;
-        if (registration->proxy) {
-            shortcutDestroy(registration->proxy);
-            registration->proxy = nullptr;
-        }
-        owner->diagnostic(QStringLiteral("Typhon shortcut registration cancelled: %1")
-                              .arg(registration->name));
-        owner->shortcutEvent(registration->namespaceName, registration->name, phase, serial,
-                             timestamp);
-        if (owner->registeredShortcutCount() == 0)
-            owner->setState(TyphonShortcutConnectionState::Degraded);
+    if (!display->flush()) {
+        owner->enterFailure(QStringLiteral("Typhon shortcut registration flush failed"),
+                            !sharedConnection);
         return;
     }
+    if (managerVersion < 2) {
+        for (TyphonShortcutRegistration *registration : std::as_const(registrations)) {
+            registration->health = ShortcutRegistrationHealth::Registered;
+            registration->lastOutcome = QStringLiteral("legacy-registration-requested");
+        }
+    }
+    updateRegistrationState();
+    emit owner->registrationHealthChanged();
+}
 
+void TyphonShortcutClientPrivate::handleInputEvent(TyphonShortcutListenerContext *context,
+                                                    astrea_shortcut_v1 *source,
+                                                    TyphonShortcutPhase phase,
+                                                    std::uint32_t serial,
+                                                    std::uint32_t timestamp)
+{
+    TyphonShortcutRegistration *registration = validatedRegistration(context, source);
+    if (!registration || !registration->live)
+        return;
     owner->shortcutEvent(registration->namespaceName, registration->name, phase, serial,
                          timestamp);
+}
+
+void TyphonShortcutClientPrivate::handleCancelled(TyphonShortcutListenerContext *context,
+                                                   astrea_shortcut_v1 *source,
+                                                   std::uint32_t serial)
+{
+    TyphonShortcutRegistration *registration = validatedRegistration(context, source);
+    if (!registration || !registration->live)
+        return;
+
+    const QString shortcutName = registration->name;
+    const QString namespaceName = registration->namespaceName;
+    registration->live = false;
+    registration->lastOutcome = QStringLiteral("cancelled");
+    registration->health = managerVersion >= 2
+            && registration->recoveryAttempts < kShortcutRecoveryAttempts
+        ? ShortcutRegistrationHealth::RecoveryPending
+        : ShortcutRegistrationHealth::Cancelled;
+    if (registration->proxy) {
+        shortcutDestroy(registration->proxy);
+        registration->proxy = nullptr;
+    }
+    if (registration->health == ShortcutRegistrationHealth::RecoveryPending)
+        scheduleRecovery(registration);
+    if (!display || !display->flush()) {
+        owner->enterFailure(QStringLiteral("Cancelled Typhon shortcut release could not be flushed"),
+                            !sharedConnection);
+        return;
+    }
+    updateRegistrationState();
+    owner->registrationHealthChanged();
+    owner->diagnostic(QStringLiteral("Typhon shortcut registration cancelled: %1")
+                          .arg(shortcutName));
+    owner->shortcutEvent(namespaceName, shortcutName, TyphonShortcutPhase::Cancelled, serial, 0);
+}
+
+void TyphonShortcutClientPrivate::handleRegistered(TyphonShortcutListenerContext *context,
+                                                    astrea_shortcut_v1 *source,
+                                                    std::uint32_t serial)
+{
+    TyphonShortcutRegistration *registration = validatedRegistration(context, source);
+    if (!registration || !registration->live)
+        return;
+    const QString shortcutName = registration->name;
+    registration->health = ShortcutRegistrationHealth::Registered;
+    registration->recoveryRequest = false;
+    registration->recoveryAttempts = 0;
+    registration->lastOutcome = QStringLiteral("registered");
+    registration->recoveryTimer.stop();
+    updateRegistrationState();
+    owner->registrationHealthChanged();
+    owner->diagnostic(QStringLiteral("Typhon shortcut registration accepted: %1 (%2)")
+                          .arg(shortcutName)
+                          .arg(serial));
+}
+
+void TyphonShortcutClientPrivate::handleRejected(TyphonShortcutListenerContext *context,
+                                                  astrea_shortcut_v1 *source,
+                                                  std::uint32_t serial,
+                                                  std::uint32_t reason)
+{
+    TyphonShortcutRegistration *registration = validatedRegistration(context, source);
+    if (!registration || !registration->live)
+        return;
+
+    const QString shortcutName = registration->name;
+    registration->live = false;
+    registration->lastOutcome = reason == 1 ? QStringLiteral("authorization-rejected")
+                                             : QStringLiteral("registration-rejected");
+    if (registration->proxy) {
+        shortcutDestroy(registration->proxy);
+        registration->proxy = nullptr;
+    }
+    const bool occupiedRecovery = reason == 2 && registration->recoveryRequest;
+    if (reason == 1) {
+        registration->health = ShortcutRegistrationHealth::RejectedAuthorization;
+    } else if (occupiedRecovery
+               && registration->recoveryAttempts < kShortcutRecoveryAttempts) {
+        registration->health = ShortcutRegistrationHealth::RecoveryPending;
+        scheduleRecovery(registration);
+    } else {
+        registration->health = ShortcutRegistrationHealth::Occupied;
+    }
+    if (!display || !display->flush()) {
+        owner->enterFailure(QStringLiteral("Rejected Typhon shortcut release could not be flushed"),
+                            !sharedConnection);
+        return;
+    }
+    updateRegistrationState();
+    owner->registrationHealthChanged();
+    owner->diagnostic(QStringLiteral("Typhon shortcut registration rejected: %1, reason %2, serial %3")
+                          .arg(shortcutName)
+                          .arg(reason)
+                          .arg(serial));
+}
+
+void TyphonShortcutClientPrivate::scheduleRecovery(TyphonShortcutRegistration *registration)
+{
+    if (!started || !registration || registration->generation != generation
+        || managerVersion < 2 || registration->recoveryAttempts >= kShortcutRecoveryAttempts)
+        return;
+    const int delayIndex = std::min(registration->recoveryAttempts,
+                                    kShortcutRecoveryAttempts - 1);
+    registration->recoveryTimer.start(kShortcutRecoveryDelaysMs[delayIndex]);
+}
+
+void TyphonShortcutClientPrivate::retryRecovery(TyphonShortcutRegistration *registration,
+                                                 std::uint64_t expectedGeneration)
+{
+    if (!started || expectedGeneration != generation || !registration
+        || registration->generation != generation || managerVersion < 2 || !manager
+        || registration->health != ShortcutRegistrationHealth::RecoveryPending
+        || registration->recoveryAttempts >= kShortcutRecoveryAttempts
+        || !registrations.contains(registration))
+        return;
+
+    ++registration->recoveryAttempts;
+    const QString shortcutName = registration->name;
+    const int attempt = registration->recoveryAttempts;
+    registration->health = ShortcutRegistrationHealth::Pending;
+    registration->lastOutcome = QStringLiteral("conditional-claim-%1")
+                                    .arg(registration->recoveryAttempts);
+    if (!createRegistration(registration, true)) {
+        owner->enterFailure(QStringLiteral("Conditional Typhon shortcut recovery failed"),
+                            !sharedConnection);
+        return;
+    }
+    if (!display || !display->flush()) {
+        owner->enterFailure(QStringLiteral("Conditional Typhon shortcut recovery flush failed"),
+                            !sharedConnection);
+        return;
+    }
+    updateRegistrationState();
+    owner->registrationHealthChanged();
+    owner->diagnostic(QStringLiteral("Typhon shortcut conditional recovery requested: %1, attempt %2")
+                          .arg(shortcutName)
+                          .arg(attempt));
+}
+
+void TyphonShortcutClientPrivate::updateRegistrationState()
+{
+    if (!started || !registryReady)
+        return;
+    bool allRegistered = registrations.size() == static_cast<qsizetype>(std::size(kShortcutSpecs));
+    bool recoveryOrTerminal = false;
+    for (const TyphonShortcutRegistration *registration : std::as_const(registrations)) {
+        if (!registration || registration->health != ShortcutRegistrationHealth::Registered)
+            allRegistered = false;
+        if (registration
+            && (registration->health == ShortcutRegistrationHealth::RecoveryPending
+                || registration->health == ShortcutRegistrationHealth::Cancelled
+                || registration->health == ShortcutRegistrationHealth::RejectedAuthorization
+                || registration->health == ShortcutRegistrationHealth::Occupied
+                || (registration->health == ShortcutRegistrationHealth::Pending
+                    && registration->recoveryRequest)))
+            recoveryOrTerminal = true;
+    }
+    if (allRegistered)
+        owner->setState(TyphonShortcutConnectionState::Ready);
+    else if (recoveryOrTerminal)
+        owner->setState(TyphonShortcutConnectionState::Degraded);
+    else
+        owner->setState(TyphonShortcutConnectionState::Registering);
+}
+
+QVariantMap TyphonShortcutClientPrivate::registrationHealth() const
+{
+    QVariantMap result;
+    for (const TyphonShortcutRegistration *registration : std::as_const(registrations)) {
+        if (!registration)
+            continue;
+        QVariantMap entry;
+        entry.insert(QStringLiteral("state"), registrationHealthName(registration->health));
+        entry.insert(QStringLiteral("last_outcome"), registration->lastOutcome);
+        entry.insert(QStringLiteral("recovery_pending"),
+                     registration->recoveryTimer.isActive()
+                         || registration->health == ShortcutRegistrationHealth::RecoveryPending
+                         || (registration->recoveryRequest && registration->live));
+        entry.insert(QStringLiteral("recovery_attempts"), registration->recoveryAttempts);
+        entry.insert(QStringLiteral("recovery_attempt_limit"), kShortcutRecoveryAttempts);
+        entry.insert(QStringLiteral("protocol_version"), managerVersion);
+        result.insert(registration->name, entry);
+    }
+    return result;
 }
 
 void TyphonShortcutClientPrivate::registryGlobal(void *data, wl_registry *registry,
@@ -227,8 +529,10 @@ void TyphonShortcutClientPrivate::registryGlobal(void *data, wl_registry *regist
         || qstrcmp(interfaceName, "astrea_shortcuts_manager_v1") != 0 || version < 1)
         return;
 
+    self->managerVersion = std::min(version, 2u);
     self->manager = static_cast<astrea_shortcuts_manager_v1 *>(
-        wl_registry_bind(registry, name, &astrea_shortcuts_manager_v1_interface, 1));
+        wl_registry_bind(registry, name, &astrea_shortcuts_manager_v1_interface,
+                         self->managerVersion));
     if (!self->manager)
         self->owner->enterFailure(QStringLiteral("Typhon shortcuts manager binding failed"),
                                   true);
@@ -257,48 +561,69 @@ void TyphonShortcutClientPrivate::registrySynchronized(void *data, wl_callback *
     self->registerShortcuts();
 }
 
-void TyphonShortcutClientPrivate::shortcutPressed(void *data, astrea_shortcut_v1 *,
+void TyphonShortcutClientPrivate::shortcutPressed(void *data, astrea_shortcut_v1 *source,
                                                   std::uint32_t serial,
                                                   std::uint32_t timestamp)
 {
-    auto *registration = static_cast<TyphonShortcutRegistration *>(data);
-    if (registration && registration->privateState)
-        registration->privateState->handleEvent(registration, TyphonShortcutPhase::Pressed,
+    auto *context = static_cast<TyphonShortcutListenerContext *>(data);
+    if (context && context->privateState)
+        context->privateState->handleInputEvent(context, source, TyphonShortcutPhase::Pressed,
                                                 serial, timestamp);
 }
 
-void TyphonShortcutClientPrivate::shortcutRepeated(void *data, astrea_shortcut_v1 *,
+void TyphonShortcutClientPrivate::shortcutRepeated(void *data, astrea_shortcut_v1 *source,
                                                    std::uint32_t serial,
                                                    std::uint32_t timestamp)
 {
-    auto *registration = static_cast<TyphonShortcutRegistration *>(data);
-    if (registration && registration->privateState)
-        registration->privateState->handleEvent(registration, TyphonShortcutPhase::Repeated,
+    auto *context = static_cast<TyphonShortcutListenerContext *>(data);
+    if (context && context->privateState)
+        context->privateState->handleInputEvent(context, source, TyphonShortcutPhase::Repeated,
                                                 serial, timestamp);
 }
 
-void TyphonShortcutClientPrivate::shortcutReleased(void *data, astrea_shortcut_v1 *,
+void TyphonShortcutClientPrivate::shortcutReleased(void *data, astrea_shortcut_v1 *source,
                                                    std::uint32_t serial,
                                                    std::uint32_t timestamp)
 {
-    auto *registration = static_cast<TyphonShortcutRegistration *>(data);
-    if (registration && registration->privateState)
-        registration->privateState->handleEvent(registration, TyphonShortcutPhase::Released,
+    auto *context = static_cast<TyphonShortcutListenerContext *>(data);
+    if (context && context->privateState)
+        context->privateState->handleInputEvent(context, source, TyphonShortcutPhase::Released,
                                                 serial, timestamp);
 }
 
-void TyphonShortcutClientPrivate::shortcutCancelled(void *data, astrea_shortcut_v1 *,
+void TyphonShortcutClientPrivate::shortcutCancelled(void *data, astrea_shortcut_v1 *source,
                                                     std::uint32_t serial)
 {
-    auto *registration = static_cast<TyphonShortcutRegistration *>(data);
-    if (registration && registration->privateState)
-        registration->privateState->handleEvent(registration, TyphonShortcutPhase::Cancelled,
-                                                serial, 0);
+    auto *context = static_cast<TyphonShortcutListenerContext *>(data);
+    if (context && context->privateState)
+        context->privateState->handleCancelled(context, source, serial);
+}
+
+void TyphonShortcutClientPrivate::shortcutRegistered(void *data, astrea_shortcut_v1 *source,
+                                                     std::uint32_t serial)
+{
+    auto *context = static_cast<TyphonShortcutListenerContext *>(data);
+    if (context && context->privateState)
+        context->privateState->handleRegistered(context, source, serial);
+}
+
+void TyphonShortcutClientPrivate::shortcutRejected(void *data, astrea_shortcut_v1 *source,
+                                                    std::uint32_t serial,
+                                                    std::uint32_t reason)
+{
+    auto *context = static_cast<TyphonShortcutListenerContext *>(data);
+    if (context && context->privateState)
+        context->privateState->handleRejected(context, source, serial, reason);
 }
 
 void TyphonShortcutClientPrivate::destroyProtocolObjects(bool sendDestroyRequests)
 {
+    for (const auto &context : listenerContexts) {
+        context->registration = nullptr;
+        context->proxy = nullptr;
+    }
     for (TyphonShortcutRegistration *registration : std::as_const(registrations)) {
+        registration->recoveryTimer.stop();
         if (registration->proxy) {
             if (sendDestroyRequests)
                 shortcutDestroy(registration->proxy);
@@ -310,6 +635,7 @@ void TyphonShortcutClientPrivate::destroyProtocolObjects(bool sendDestroyRequest
         delete registration;
     }
     registrations.clear();
+    listenerContexts.clear();
     if (registrySync) {
         if (sendDestroyRequests)
             wl_callback_destroy(registrySync);
@@ -332,6 +658,7 @@ void TyphonShortcutClientPrivate::destroyProtocolObjects(bool sendDestroyRequest
     }
     registry = nullptr;
     registryReady = false;
+    managerVersion = 1;
 }
 
 const wl_registry_listener TyphonShortcutClientPrivate::registryListener = {
@@ -348,6 +675,8 @@ const astrea_shortcut_v1_listener TyphonShortcutClientPrivate::shortcutListener 
     &TyphonShortcutClientPrivate::shortcutRepeated,
     &TyphonShortcutClientPrivate::shortcutReleased,
     &TyphonShortcutClientPrivate::shortcutCancelled,
+    &TyphonShortcutClientPrivate::shortcutRegistered,
+    &TyphonShortcutClientPrivate::shortcutRejected,
 };
 #endif
 
@@ -411,6 +740,9 @@ void TyphonShortcutClient::stop()
     m_private->reconnectTimer.stop();
 #if ASTREA_HAVE_TYPHON_PROTOCOL
     m_private->destroyProtocolObjects();
+    if (m_private->display && m_private->display->isConnected()
+        && !m_private->display->flush())
+        qWarning("Typhon shortcut teardown requests could not be flushed");
 #endif
     if (!m_private->sharedConnection && m_private->display->isConnected())
         m_private->display->disconnectFromDisplay();
@@ -434,10 +766,20 @@ int TyphonShortcutClient::registeredShortcutCount() const
     return static_cast<int>(std::count_if(
         m_private->registrations.cbegin(), m_private->registrations.cend(),
         [](const TyphonShortcutRegistration *registration) {
-            return registration && registration->live && registration->proxy;
+            return registration && registration->live && registration->proxy
+                && registration->health == ShortcutRegistrationHealth::Registered;
         }));
 #else
     return 0;
+#endif
+}
+
+QVariantMap TyphonShortcutClient::registrationHealth() const
+{
+#if ASTREA_HAVE_TYPHON_PROTOCOL
+    return m_private->registrationHealth();
+#else
+    return {};
 #endif
 }
 
@@ -594,12 +936,7 @@ void TyphonShortcutClient::handleDisplayDisconnected()
     if (!m_private->started || m_private->failureInProgress)
         return;
 #if ASTREA_HAVE_TYPHON_PROTOCOL
-    m_private->registry = nullptr;
-    m_private->registrySync = nullptr;
-    m_private->manager = nullptr;
-    qDeleteAll(m_private->registrations);
-    m_private->registrations.clear();
-    m_private->registryReady = false;
+    m_private->destroyProtocolObjects(false);
 #endif
     setState(TyphonShortcutConnectionState::Disconnected);
     scheduleReconnect();

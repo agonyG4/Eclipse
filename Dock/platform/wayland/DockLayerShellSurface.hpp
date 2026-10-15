@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/DockSurfaceGeometry.hpp"
-#include "services/DockConfigWatcher.hpp"
+#include "dock/DockConfig.hpp"
 #include "platform/wayland/LayerShellHelper.hpp"
 
 #include <QString>

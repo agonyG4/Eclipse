@@ -172,6 +172,7 @@ bool DockLayerShellSurface::setMapped(QQuickWindow *window, bool mapped, int exc
     window->setVisible(mapped);
     return true;
 #else
+    Q_UNUSED(mapped);
     Q_UNUSED(exclusiveZoneHeight);
     if (errorOut)
         *errorOut = QStringLiteral(

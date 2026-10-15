@@ -1,13 +1,26 @@
 # Astrea Dock Architecture
 
 The resident Dock is hosted by the unified `astrea-shell` Qt 6 process.
-`astrea-dock` is a compatibility IPC client and is not a second resident Dock.
-`app/` performs compatibility-client bootstrap; `core/` owns the stable Dock
-model and launch/reorder policy; `services/` owns the watcher and the narrow
-pins persistence boundary; `platform/` owns runtime paths, IPC, and Layer
-Shell; `qml/` presents state and emits interaction requests. The
-compositor-independent schema, parser, validator, and atomic known-field
-writer live in `shared/dock/` and are consumed by both Dock and Settings.
+`astrea-dock-runtime` owns the resident non-Wayland Dock implementation and is
+consumed by `astrea-shell-runtime`. `astrea-dock-wayland` owns the Layer Shell
+surface and input-region integration and depends on `astrea-dock-runtime`.
+Shell remains the process and composition owner: `ShellRuntime` creates the
+Dock objects and `AstreaShellApplication` wires their Wayland surfaces and QML
+context. `astrea-dock` remains a lightweight compatibility IPC client, not a
+second resident Dock. `app/` performs compatibility-client bootstrap; `core/`
+owns the stable Dock model and launch/reorder policy; `services/` owns the
+watcher and the narrow pins persistence boundary; `platform/` owns runtime
+paths, IPC, and Layer Shell; `qml/` presents state and emits interaction
+requests. The compositor-independent schema, parser, validator, and atomic
+known-field writer live in `shared/dock/` and are consumed by both Dock and
+Settings.
+
+The Dock runtime still directly depends on shared Typhon runtime types and
+services, including `DockApplicationStateProjector`,
+`RuntimeTaskIdentityTracker`, and `TyphonToplevelConnection`. Phase 1 makes
+production build ownership truthful while preserving this coupling and all
+runtime behavior. Separating the core/runtime platform boundary is future
+structural work; Dock `core/` is not yet platform-independent.
 
 `DockAppModel` uses an explicit runtime `taskKey` as its stable row key. The
 projected visible rows are configured desktop-file pins plus running runtime

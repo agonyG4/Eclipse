@@ -14,6 +14,64 @@ find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Qml Quick Network Core5Compat)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/DockWarnings.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/DockSanitizers.cmake)
 
+add_library(astrea-dock-runtime STATIC
+    core/DockAppInfo.cpp
+    core/DockAppInfo.hpp
+    core/DockAppModel.cpp
+    core/DockAppModel.hpp
+    core/DockController.cpp
+    core/DockController.hpp
+    core/DockMetrics.hpp
+    core/DockSurfaceGeometry.cpp
+    core/DockSurfaceGeometry.hpp
+    services/DockConfigPersistence.cpp
+    services/DockConfigPersistence.hpp
+    services/DockConfigValidation.cpp
+    services/DockConfigValidation.hpp
+    services/DockConfigWatcher.cpp
+    services/DockConfigWatcher.hpp
+    platform/runtime/DockRuntimePaths.cpp
+    platform/runtime/DockRuntimePaths.hpp
+)
+target_include_directories(astrea-dock-runtime PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+target_link_libraries(astrea-dock-runtime
+    PUBLIC
+        Qt6::Core
+        astrea-shared-core
+        astrea-shared-dock
+        astrea-shared-typhon
+    PRIVATE
+        astrea-shared-appidentity
+)
+dock_enable_warnings(astrea-dock-runtime)
+dock_enable_sanitizers(astrea-dock-runtime)
+
+add_library(astrea-dock-wayland STATIC
+    platform/wayland/DockLayerShellSurface.cpp
+    platform/wayland/DockLayerShellSurface.hpp
+    platform/wayland/DockInputRegionBridge.cpp
+    platform/wayland/DockInputRegionBridge.hpp
+    platform/wayland/DockInputRegionPolicy.cpp
+    platform/wayland/DockInputRegionPolicy.hpp
+)
+target_include_directories(astrea-dock-wayland PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+target_link_libraries(astrea-dock-wayland
+    PUBLIC
+        astrea-dock-runtime
+        astrea-shared-dock
+        astrea-shared-layer-shell
+        Qt6::Core
+        Qt6::Gui
+    PRIVATE
+        Qt6::Quick
+)
+dock_enable_warnings(astrea-dock-wayland)
+dock_enable_sanitizers(astrea-dock-wayland)
+
 qt_add_executable(astrea-dock
     app/main.cpp
     app/CommandLine.cpp
@@ -36,75 +94,46 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     find_package(Qt6 6.6 REQUIRED COMPONENTS Test)
     add_executable(dock-app-model-test
         tests/DockAppModelTest.cpp
-        core/DockAppModel.cpp
     )
-    target_include_directories(dock-app-model-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
-    target_link_libraries(dock-app-model-test PRIVATE astrea-shared-core Qt6::Core Qt6::Gui Qt6::Test)
+    target_link_libraries(dock-app-model-test PRIVATE astrea-dock-runtime Qt6::Test)
     dock_enable_sanitizers(dock-app-model-test)
     add_test(NAME dock-app-model-test COMMAND dock-app-model-test)
 
     add_executable(dock-config-watcher-test
         tests/DockConfigWatcherTest.cpp
-        services/DockConfigWatcher.cpp
-        services/DockConfigValidation.cpp
     )
-    target_include_directories(dock-config-watcher-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
-    target_link_libraries(dock-config-watcher-test PRIVATE astrea-shared-core astrea-shared-dock Qt6::Core Qt6::Gui Qt6::Test)
+    target_link_libraries(dock-config-watcher-test PRIVATE astrea-dock-runtime Qt6::Test)
     dock_enable_sanitizers(dock-config-watcher-test)
     add_test(NAME dock-config-watcher-test COMMAND dock-config-watcher-test)
 
     add_executable(dock-config-persistence-test
         tests/DockConfigPersistenceTest.cpp
-        services/DockConfigPersistence.cpp
-        services/DockConfigValidation.cpp
-        services/DockConfigWatcher.cpp
     )
-    target_include_directories(dock-config-persistence-test PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
     target_link_libraries(dock-config-persistence-test PRIVATE
-        astrea-shared-core astrea-shared-dock Qt6::Core Qt6::Gui Qt6::Test)
+        astrea-dock-runtime Qt6::Test)
     dock_enable_sanitizers(dock-config-persistence-test)
     add_test(NAME dock-config-persistence-test COMMAND dock-config-persistence-test)
 
     add_executable(dock-runtime-paths-test
         tests/DockRuntimePathsTest.cpp
-        platform/runtime/DockRuntimePaths.cpp
     )
-    target_include_directories(dock-runtime-paths-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
-    target_link_libraries(dock-runtime-paths-test PRIVATE Qt6::Core Qt6::Test)
+    target_link_libraries(dock-runtime-paths-test PRIVATE astrea-dock-runtime Qt6::Test)
     dock_enable_sanitizers(dock-runtime-paths-test)
     add_test(NAME dock-runtime-paths-test COMMAND dock-runtime-paths-test)
 
     add_executable(dock-controller-test
         tests/DockControllerTest.cpp
-        core/DockController.cpp
-        core/DockAppModel.cpp
-        core/DockSurfaceGeometry.cpp
-        services/DockConfigPersistence.cpp
-        services/DockConfigValidation.cpp
-        services/DockConfigWatcher.cpp
     )
-    target_include_directories(dock-controller-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
     target_link_libraries(dock-controller-test PRIVATE
-        astrea-shared-core astrea-shared-appidentity astrea-shared-dock astrea-shared-typhon
-        Qt6::Core Qt6::Gui Qt6::Test)
+        astrea-dock-runtime Qt6::Test)
     dock_enable_sanitizers(dock-controller-test)
     add_test(NAME dock-controller-test COMMAND dock-controller-test)
 
     add_executable(dock-typhon-runtime-integration-test
         tests/DockTyphonRuntimeIntegrationTest.cpp
-        core/DockController.cpp
-        core/DockAppModel.cpp
-        core/DockSurfaceGeometry.cpp
-        services/DockConfigPersistence.cpp
-        services/DockConfigValidation.cpp
-        services/DockConfigWatcher.cpp
     )
-    target_include_directories(dock-typhon-runtime-integration-test PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
     target_link_libraries(dock-typhon-runtime-integration-test PRIVATE
-        astrea-shared-core astrea-shared-appidentity astrea-shared-dock astrea-shared-typhon
-        Qt6::Core Qt6::Gui Qt6::Test)
+        astrea-dock-runtime Qt6::Test)
     dock_enable_sanitizers(dock-typhon-runtime-integration-test)
     add_test(NAME dock-typhon-runtime-integration-test
              COMMAND dock-typhon-runtime-integration-test)
@@ -129,57 +158,52 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
 
     add_executable(dock-layer-shell-surface-test
         tests/DockLayerShellSurfaceTest.cpp
-        core/DockSurfaceGeometry.cpp
-        platform/wayland/DockLayerShellSurface.cpp
     )
-    target_include_directories(dock-layer-shell-surface-test PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
     target_link_libraries(dock-layer-shell-surface-test PRIVATE
-        astrea-shared-layer-shell astrea-shared-dock Qt6::Core Qt6::Gui Qt6::Quick Qt6::Test)
+        astrea-dock-wayland Qt6::Test)
     dock_enable_sanitizers(dock-layer-shell-surface-test)
     add_test(NAME dock-layer-shell-surface-test COMMAND dock-layer-shell-surface-test)
 
     add_executable(dock-input-region-test
         tests/DockInputRegionTest.cpp
-        platform/wayland/DockInputRegionBridge.cpp
-        platform/wayland/DockInputRegionPolicy.cpp
     )
-    target_include_directories(dock-input-region-test PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
     target_link_libraries(dock-input-region-test PRIVATE
-        Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
+        astrea-dock-wayland Qt6::Test)
     dock_enable_sanitizers(dock-input-region-test)
     add_test(NAME dock-input-region-test COMMAND dock-input-region-test)
 
     add_executable(dock-hover-qml-test
         tests/DockHoverQmlTest.cpp
-        core/DockController.cpp
-        core/DockAppModel.cpp
-        core/DockSurfaceGeometry.cpp
-        platform/wayland/DockInputRegionBridge.cpp
-        platform/wayland/DockInputRegionPolicy.cpp
-        services/DockConfigPersistence.cpp
-        services/DockConfigValidation.cpp
-        services/DockConfigWatcher.cpp
     )
     target_compile_definitions(dock-hover-qml-test PRIVATE
         DOCK_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
         DOCK_BUILD_DIR="${CMAKE_BINARY_DIR}")
-    target_include_directories(dock-hover-qml-test PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
     target_link_libraries(dock-hover-qml-test PRIVATE
-        astrea-shared-core astrea-shared-coreplugin astrea-shared-appidentity astrea-shared-dock
-        astrea-shared-typhon
+        astrea-dock-wayland
+        astrea-shared-coreplugin
         astrea-shared-wayland-effects astrea-shared-wayland-effectsplugin
         Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
     dock_enable_sanitizers(dock-hover-qml-test)
     add_test(NAME dock-hover-qml-test COMMAND dock-hover-qml-test)
 
+    add_executable(dock-surface-geometry-test
+        tests/DockSurfaceGeometryTest.cpp
+    )
+    target_link_libraries(dock-surface-geometry-test PRIVATE
+        astrea-dock-runtime Qt6::Test)
+    dock_enable_sanitizers(dock-surface-geometry-test)
+    add_test(NAME dock-surface-geometry-test COMMAND dock-surface-geometry-test)
+
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME dock-architecture-guard
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_dock_architecture.py")
+
     if(ASTREA_ENABLE_ASAN)
         set_tests_properties(
             dock-app-model-test dock-config-watcher-test dock-runtime-paths-test
             dock-config-persistence-test dock-controller-test dock-typhon-runtime-integration-test
-            dock-layer-shell-surface-test dock-hover-qml-test
+            dock-layer-shell-surface-test dock-input-region-test dock-hover-qml-test
+            dock-surface-geometry-test
             dock-ipc-test dock-command-line-test
             PROPERTIES ENVIRONMENT
                 "LSAN_OPTIONS=suppressions=${CMAKE_SOURCE_DIR}/AltTab/lsan.supp:print_suppressions=0;ASAN_OPTIONS=detect_leaks=1:halt_on_error=1;UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1"

@@ -47,15 +47,6 @@ add_library(astrea-shell-runtime STATIC
     screenshot/ScreenshotUiBarrier.hpp
     platform/ipc/ShellIpcServer.cpp
     platform/ipc/ShellIpcServer.hpp
-    ../Dock/core/DockAppInfo.cpp
-    ../Dock/core/DockAppModel.cpp
-    ../Dock/core/DockController.cpp
-    ../Dock/core/DockSurfaceGeometry.cpp
-    ../Dock/platform/runtime/DockRuntimePaths.cpp
-    ../Dock/platform/wayland/DockLayerShellSurface.cpp
-    ../Dock/services/DockConfigPersistence.cpp
-    ../Dock/services/DockConfigValidation.cpp
-    ../Dock/services/DockConfigWatcher.cpp
     ../Spotlight/core/SpotlightController.cpp
     ../Spotlight/core/SpotlightResultsModel.cpp
     ../Spotlight/platform/runtime/SpotlightRuntimePaths.cpp
@@ -77,12 +68,12 @@ target_include_directories(astrea-shell-runtime PUBLIC
 )
 
 target_link_libraries(astrea-shell-runtime PUBLIC
+    astrea-dock-runtime
     astrea-bar-core
     astrea-alttab-core
     astrea-paper-core
     astrea-shared-core
     astrea-shared-appidentity
-    astrea-shared-dock
     astrea-shared-statusnotifier
     astrea-shared-system
     astrea-shared-typhon
@@ -96,10 +87,6 @@ qt_add_executable(astrea-shell
     app/main.cpp
     app/AstreaShellApplication.cpp
     app/AstreaShellApplication.hpp
-    ../Dock/platform/wayland/DockInputRegionBridge.cpp
-    ../Dock/platform/wayland/DockInputRegionBridge.hpp
-    ../Dock/platform/wayland/DockInputRegionPolicy.cpp
-    ../Dock/platform/wayland/DockInputRegionPolicy.hpp
     platform/wayland/ContextMenuSurfaceBundle.cpp
     platform/wayland/ContextMenuSurfaceBundle.hpp
     platform/wayland/ContextMenuSurfaceManager.cpp
@@ -118,6 +105,7 @@ target_include_directories(astrea-shell PRIVATE
 )
 target_link_libraries(astrea-shell PRIVATE
     astrea-shell-runtime
+    astrea-dock-wayland
     astrea-bar-wayland
     astrea-shared-coreplugin
     astrea-shared-system-qtplugin
@@ -401,17 +389,6 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     )
     shell_enable_sanitizers(context-menu-surface-manager-test)
     add_test(NAME context-menu-surface-manager-test COMMAND context-menu-surface-manager-test)
-
-    add_executable(dock-surface-geometry-test
-        ../Dock/tests/DockSurfaceGeometryTest.cpp
-        ../Dock/core/DockSurfaceGeometry.cpp
-    )
-    target_include_directories(dock-surface-geometry-test PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/../Dock"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
-    target_link_libraries(dock-surface-geometry-test PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
-    shell_enable_sanitizers(dock-surface-geometry-test)
-    add_test(NAME dock-surface-geometry-test COMMAND dock-surface-geometry-test)
 
     add_executable(shell-ipc-test
         tests/ShellIpcTest.cpp

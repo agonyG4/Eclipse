@@ -116,7 +116,7 @@ void ScreenshotThumbnailQmlTest::nativeFileDragStartsImmediatelyAndRestoresOnCan
     fixture.controller.m_image = QImage(160, 100, QImage::Format_RGBA8888);
     fixture.controller.m_imageGeneration = 1;
     fixture.controller.m_resultPath =
-        QString::fromUtf8("/tmp/Captura de tela/截图 final.png");
+        QString::fromUtf8("/tmp/Captura + #/截图 final.png");
     std::unique_ptr<QObject> object(load(fixture.engine, QStringLiteral("ScreenshotThumbnail.qml")));
     auto *window = qobject_cast<QQuickWindow *>(object.get());
     QVERIFY(window);
@@ -196,7 +196,7 @@ void ScreenshotThumbnailQmlTest::nativeFileDragExportsCanonicalCopyMetadata()
     fixture.controller.m_image = QImage(160, 100, QImage::Format_RGBA8888);
     fixture.controller.m_imageGeneration = 1;
     fixture.controller.m_resultPath =
-        QString::fromUtf8("/tmp/Captura de tela/截图 final.png");
+        QString::fromUtf8("/tmp/Captura + #/截图 final.png");
     std::unique_ptr<QObject> object(load(fixture.engine, QStringLiteral("ScreenshotThumbnail.qml")));
 
     const QVariantMap mimeData = object->property("nativeDragMimeData").toMap();

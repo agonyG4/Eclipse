@@ -1,9 +1,9 @@
 #include "core/DockController.hpp"
+#include "core/DockPinStore.hpp"
 #include "core/DockSurfaceGeometry.hpp"
 #include "platform/wayland/DockInputRegionBridge.hpp"
 #include "platform/wayland/effects/AstreaBackdropEffectRegions.hpp"
 #include "platform/wayland/effects/AstreaBackdropAnalyticCoverage.hpp"
-#include "services/DockConfigPersistence.hpp"
 #include "icons/AstreaIconProvider.hpp"
 #include "theme/ThemeController.hpp"
 
@@ -138,10 +138,8 @@ private:
     bool m_tooltipVisible = false;
 };
 
-class QmlCountingPersistence final : public DockConfigPersistence {
+class QmlCountingPinStore final : public DockPinStore {
 public:
-    QmlCountingPersistence() : DockConfigPersistence(QStringLiteral("/unused/dock.json")) {}
-
     bool writePins(const QStringList &pins, QString *errorOut = nullptr) override
     {
         ++calls;
@@ -1392,7 +1390,7 @@ void DockHoverQmlTest::modelMoveRefreshesHoverGeometryAndIdentity()
     const QStringList pins{
         QStringLiteral("one.desktop"), QStringLiteral("two.desktop"),
         QStringLiteral("three.desktop")};
-    QmlCountingPersistence persistence;
+    QmlCountingPinStore persistence;
     DockController controller(nullptr, nullptr, &persistence);
     controller.applyConfig(configFor(QStringLiteral("magnification"), pins));
 
@@ -1459,7 +1457,7 @@ void DockHoverQmlTest::releasePointerRestoresMagnificationTarget()
     const QStringList pins{
         QStringLiteral("one.desktop"), QStringLiteral("two.desktop"),
         QStringLiteral("three.desktop")};
-    QmlCountingPersistence persistence;
+    QmlCountingPinStore persistence;
     DockController controller(nullptr, nullptr, &persistence);
     controller.applyConfig(configFor(QStringLiteral("magnification"), pins));
 

@@ -8,8 +8,8 @@
 #include <optional>
 
 #include "core/DockController.hpp"
+#include "core/DockPinStore.hpp"
 #include "apps/appidentity/AppIdentityResolver.hpp"
-#include "services/DockConfigPersistence.hpp"
 
 class FakeDockRuntimeBackend final : public Astrea::Dock::DockRuntimeBackend {
     Q_OBJECT
@@ -193,10 +193,8 @@ private slots:
     void surfacePlacementTracksRuntimePositionTransitions();
 };
 
-class CountingPersistence final : public DockConfigPersistence {
+class CountingPinStore final : public DockPinStore {
 public:
-    CountingPersistence() : DockConfigPersistence(QStringLiteral("/unused/dock.json")) {}
-
     bool writePins(const QStringList &pins, QString *errorOut = nullptr) override
     {
         ++calls;
@@ -608,7 +606,7 @@ void DockControllerTest::newWindowLaunchBypassesRunningActivation()
 
 void DockControllerTest::pinMutationRequiresSuccessfulPersistence()
 {
-    CountingPersistence persistence;
+    CountingPinStore persistence;
     DockController controller(nullptr, nullptr, &persistence);
     controller.applyConfig(configWithPins({QStringLiteral("one.desktop")}));
 
@@ -652,7 +650,7 @@ void DockControllerTest::pinCountersExcludeRuntimeOnlyRows()
 void DockControllerTest::movingFirstPinToEndPersistsAndPreservesState()
 {
     FakeLauncher launcher;
-    CountingPersistence persistence;
+    CountingPinStore persistence;
     DockController controller(&launcher, nullptr, &persistence);
     controller.applyConfig(configWithPins({QStringLiteral("one.desktop"),
                                            QStringLiteral("two.desktop"),
@@ -681,7 +679,7 @@ void DockControllerTest::movingFirstPinToEndPersistsAndPreservesState()
 
 void DockControllerTest::movingRuntimePinnedItemsPreservesRuntimeState()
 {
-    CountingPersistence persistence;
+    CountingPinStore persistence;
     FakeDockRuntimeBackend runtimeBackend;
     DockController controller(nullptr, nullptr, &persistence);
     controller.attachRuntimeBackend(&runtimeBackend);
@@ -718,7 +716,7 @@ void DockControllerTest::movingRuntimePinnedItemsPreservesRuntimeState()
 
 void DockControllerTest::movingLastPinToBeginningPersists()
 {
-    CountingPersistence persistence;
+    CountingPinStore persistence;
     DockController controller(nullptr, nullptr, &persistence);
     controller.applyConfig(configWithPins({QStringLiteral("one.desktop"),
                                            QStringLiteral("two.desktop"),
@@ -733,7 +731,7 @@ void DockControllerTest::movingLastPinToBeginningPersists()
 
 void DockControllerTest::movingToSameIndexIsNoOp()
 {
-    CountingPersistence persistence;
+    CountingPinStore persistence;
     DockController controller(nullptr, nullptr, &persistence);
     controller.applyConfig(configWithPins({QStringLiteral("one.desktop"),
                                            QStringLiteral("two.desktop")}));
@@ -745,7 +743,7 @@ void DockControllerTest::movingToSameIndexIsNoOp()
 
 void DockControllerTest::invalidOrRuntimeOnlySourceIsRejected()
 {
-    CountingPersistence persistence;
+    CountingPinStore persistence;
     DockController controller(nullptr, nullptr, &persistence);
     controller.applyConfig(configWithPins({QStringLiteral("one.desktop")}));
     Astrea::Dock::DockApplicationRuntimeProjection projection;
@@ -764,7 +762,7 @@ void DockControllerTest::invalidOrRuntimeOnlySourceIsRejected()
 
 void DockControllerTest::persistenceFailureLeavesOrderUnchanged()
 {
-    CountingPersistence persistence;
+    CountingPinStore persistence;
     persistence.succeed = false;
     DockController controller(nullptr, nullptr, &persistence);
     controller.applyConfig(configWithPins({QStringLiteral("one.desktop"),
@@ -781,7 +779,7 @@ void DockControllerTest::persistenceFailureLeavesOrderUnchanged()
 
 void DockControllerTest::runtimeOnlyOrderingRemainsUnchangedAfterPinMove()
 {
-    CountingPersistence persistence;
+    CountingPinStore persistence;
     DockController controller(nullptr, nullptr, &persistence);
     controller.applyConfig(configWithPins({QStringLiteral("one.desktop"),
                                            QStringLiteral("two.desktop")}));
@@ -943,7 +941,7 @@ void DockControllerTest::catalogLossWhileLiveKeepsStableTaskKey()
 
 void DockControllerTest::catalogLossWhilePinnedKeepsOneStableLiveRow()
 {
-    CountingPersistence persistence;
+    CountingPinStore persistence;
     FakeDockRuntimeBackend runtimeBackend;
     DockController controller(nullptr, nullptr, &persistence);
     controller.attachRuntimeBackend(&runtimeBackend);
@@ -1029,7 +1027,7 @@ void DockControllerTest::newSameAppWindowJoinsStableTaskAfterCatalogGain()
 
 void DockControllerTest::lateResolvedRuntimeCanBePinnedWithoutDuplicate()
 {
-    CountingPersistence persistence;
+    CountingPinStore persistence;
     FakeDockRuntimeBackend runtimeBackend;
     DockController controller(nullptr, nullptr, &persistence);
     controller.attachRuntimeBackend(&runtimeBackend);

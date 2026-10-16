@@ -107,9 +107,10 @@ personalization snapshot; neither operation writes pins or unknown keys.
 
 Dock presentation QML never writes `dock.json`. A successful configured-pin
 reorder, or an explicit Dock pin/unpin action, is committed by `DockController`
-through `DockConfigPersistence`, which reads the latest object, changes only
-`pins`, preserves known and unknown keys, validates the complete new list, and
-atomically replaces the file with `QSaveFile`. A malformed existing file is
+through the injected `DockPinStore`, implemented by `DockConfigPersistence`.
+The service reads the latest object, changes only `pins`, preserves known and
+unknown keys, validates the complete new list, and atomically replaces the file
+with `QSaveFile`. A malformed existing file is
 left untouched; a missing file is created as the minimal valid object
 containing `pins`. Runtime-only application order remains in-memory and is
 never persisted. Reordering is pinned-only, uses `desktopFileName` identity,

@@ -1,7 +1,7 @@
 #include "core/DockController.hpp"
 
 #include "apps/appidentity/AppIdentityResolver.hpp"
-#include "services/DockConfigValidation.hpp"
+#include "dock/DockConfig.hpp"
 
 #include <QDebug>
 
@@ -51,9 +51,9 @@ QString identityFingerprint(const Astrea::Dock::DockRuntimeWindow &window)
 } // namespace
 
 DockController::DockController(ApplicationLauncher *launcher, DesktopEntryCatalog *catalog,
-                               DockConfigPersistence *persistence,
+                               DockPinStore *pinStore,
                                QObject *parent)
-    : QObject(parent), m_launcher(launcher), m_persistence(persistence), m_catalog(catalog),
+    : QObject(parent), m_launcher(launcher), m_pinStore(pinStore), m_catalog(catalog),
       m_catalogSnapshot(std::make_shared<const DesktopEntrySnapshot>())
 {
     m_identityResolver = new AppIdentityResolver(this);
@@ -499,11 +499,11 @@ bool DockController::closeWindow(const QString &taskKey, const QString &windowId
 
 bool DockController::setPinned(const QString &desktopFileName, bool pinned)
 {
-    if (!DockConfigValidation::validDesktopFileName(desktopFileName)) {
+    if (!DockConfigCodec::validDesktopFileName(desktopFileName)) {
         setLastError(QStringLiteral("Invalid Dock desktop filename"));
         return false;
     }
-    if (!m_persistence) {
+    if (!m_pinStore) {
         setLastError(QStringLiteral("Dock pin persistence is unavailable"));
         return false;
     }
@@ -519,7 +519,7 @@ bool DockController::setPinned(const QString &desktopFileName, bool pinned)
         return true;
 
     QString error;
-    if (!m_persistence->writePins(pins, &error)) {
+    if (!m_pinStore->writePins(pins, &error)) {
         setLastError(error.left(512).isEmpty()
                          ? QStringLiteral("Could not persist Dock pins") : error.left(512));
         return false;
@@ -545,7 +545,7 @@ bool DockController::movePinned(const QString &desktopFileName, int targetPinInd
     const int boundedTarget = qBound(0, targetPinIndex, m_config.pins.size() - 1);
     if (sourcePinIndex == boundedTarget)
         return false;
-    if (!m_persistence) {
+    if (!m_pinStore) {
         setLastError(QStringLiteral("Dock pin persistence is unavailable"));
         return false;
     }
@@ -554,7 +554,7 @@ bool DockController::movePinned(const QString &desktopFileName, int targetPinInd
     const QString moved = reordered.takeAt(sourcePinIndex);
     reordered.insert(boundedTarget, moved);
     QString error;
-    if (!m_persistence->writePins(reordered, &error)) {
+    if (!m_pinStore->writePins(reordered, &error)) {
         setLastError(error.left(512).isEmpty()
                          ? QStringLiteral("Could not persist Dock pin order") : error.left(512));
         return false;

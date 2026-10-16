@@ -1,6 +1,6 @@
 #include "services/DockConfigWatcher.hpp"
 
-#include "services/DockConfigValidation.hpp"
+#include "dock/DockConfig.hpp"
 
 #include <QDir>
 #include <QFileInfo>
@@ -61,7 +61,7 @@ void DockConfigWatcher::refresh()
 
 DockConfigWatcher::JsonResult DockConfigWatcher::loadJsonFile(const QString &path) const
 {
-    const DockConfigValidation::JsonResult result = DockConfigValidation::readJsonObject(path);
+    const DockConfigCodec::JsonResult result = DockConfigCodec::readJsonObject(path);
     return {result.object, result.error};
 }
 

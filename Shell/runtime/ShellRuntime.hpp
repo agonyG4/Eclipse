@@ -136,6 +136,7 @@ private:
     std::unique_ptr<TyphonWorkspaceClient> m_workspaceClient;
     std::unique_ptr<TyphonWorkspaceController> m_workspaceController;
     std::unique_ptr<CompositorBackend> m_windowBackend;
+    std::unique_ptr<DockConfigPersistence> m_dockPersistence;
     std::unique_ptr<DockController> m_dockController;
     std::unique_ptr<DockSurfaceGeometry> m_dockSurfaceGeometry;
     std::unique_ptr<AltTabController> m_altTabController;
@@ -150,7 +151,6 @@ private:
     std::unique_ptr<Paper::WallpaperService> m_wallpaperService;
     std::unique_ptr<Paper::WallpaperControlServer> m_wallpaperControlServer;
     std::unique_ptr<DockConfigWatcher> m_dockConfig;
-    std::unique_ptr<DockConfigPersistence> m_dockPersistence;
     std::unique_ptr<AltTabConfigWatcher> m_altTabConfig;
     std::unique_ptr<SpotlightConfigWatcher> m_spotlightConfig;
     std::unique_ptr<SpatialAudioConfigWatcher> m_spatialAudioConfig;

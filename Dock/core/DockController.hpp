@@ -2,11 +2,10 @@
 
 #include "core/DockAppModel.hpp"
 #include "core/DockMetrics.hpp"
+#include "core/DockPinStore.hpp"
 #include "core/DockSurfaceGeometry.hpp"
 #include "core/runtime/DockRuntimeBackend.hpp"
 #include "core/runtime/DockRuntimeTaskIdentityTracker.hpp"
-#include "services/DockConfigWatcher.hpp"
-#include "services/DockConfigPersistence.hpp"
 #include "apps/DesktopEntryCatalog.hpp"
 #include "apps/ApplicationIdentity.hpp"
 #include "launch/ApplicationLauncher.hpp"
@@ -67,7 +66,7 @@ class DockController final : public QObject {
 public:
     explicit DockController(ApplicationLauncher *launcher = nullptr,
                             DesktopEntryCatalog *catalog = nullptr,
-                            DockConfigPersistence *persistence = nullptr,
+                            DockPinStore *pinStore = nullptr,
                             QObject *parent = nullptr);
 
     DockAppModel *appModel() { return &m_model; }
@@ -209,7 +208,7 @@ private:
     DockAppModel m_model;
     DockConfig m_config;
     ApplicationLauncher *m_launcher = nullptr;
-    DockConfigPersistence *m_persistence = nullptr;
+    DockPinStore *m_pinStore = nullptr;
     DesktopEntryCatalog *m_catalog = nullptr;
     AppIdentityResolver *m_identityResolver = nullptr;
     std::shared_ptr<const DesktopEntrySnapshot> m_catalogSnapshot;

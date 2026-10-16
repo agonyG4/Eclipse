@@ -21,7 +21,6 @@ RUNTIME_SOURCES = (
     "core/DockController.cpp",
     "core/DockSurfaceGeometry.cpp",
     "services/DockConfigPersistence.cpp",
-    "services/DockConfigValidation.cpp",
     "services/DockConfigWatcher.cpp",
     "platform/runtime/DockRuntimePaths.cpp",
 )
@@ -76,8 +75,88 @@ def has_scoped_dependency(blocks: list[str], scope: str, dependency: str) -> boo
     return False
 
 
+def without_cpp_comments(text: str) -> str:
+    return re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.DOTALL)
+
+
 def main() -> int:
     errors: list[str] = []
+
+    runtime_blocks = target_blocks(DOCK_CMAKE, "add_library", "astrea-dock-runtime")
+    if runtime_blocks and "core/DockPinStore.hpp" not in "\n".join(runtime_blocks):
+        errors.append("astrea-dock-runtime must list core/DockPinStore.hpp")
+    if "DockConfigValidation" in DOCK_CMAKE:
+        errors.append("Dock/CMakeLists.txt must not reference DockConfigValidation")
+
+    pin_store = ROOT / "Dock/core/DockPinStore.hpp"
+    controller_header = ROOT / "Dock/core/DockController.hpp"
+    if not pin_store.is_file():
+        errors.append("Dock core must define Dock/core/DockPinStore.hpp")
+    else:
+        port = without_cpp_comments(pin_store.read_text(encoding="utf-8"))
+        port_class = re.search(r"\bclass\s+DockPinStore\s*\{(?P<body>.*?)\};", port, re.DOTALL)
+        if not port_class:
+            errors.append("DockPinStore.hpp must define DockPinStore")
+        else:
+            body = re.sub(r"\s+", " ", port_class.group("body")).strip()
+            expected_body = (
+                "public: virtual ~DockPinStore() = default; "
+                "virtual bool writePins(const QStringList &pins, QString *errorOut = nullptr) = 0;"
+            )
+            if body != expected_body:
+                errors.append("DockPinStore must contain only its virtual destructor and writePins")
+        port_includes = re.findall(r"(?m)^\s*#\s*include\s*[<\"]([^>\"]+)[>\"]", port)
+        if port_includes != ["QString", "QStringList"]:
+            errors.append("DockPinStore may include only the Qt QString value types it needs")
+
+    controller = without_cpp_comments(controller_header.read_text(encoding="utf-8"))
+    if '#include "core/DockPinStore.hpp"' not in controller:
+        errors.append("DockController.hpp must include the core DockPinStore contract")
+    if not re.search(r"DockController\s*\([^;]*DockPinStore\s*\*", controller, re.DOTALL):
+        errors.append("DockController must consume DockPinStore")
+    if not re.search(r"DockPinStore\s*\*\s*m_pinStore\b", controller):
+        errors.append("DockController must store its pin persistence dependency as m_pinStore")
+    controller_source = without_cpp_comments(
+        (ROOT / "Dock/core/DockController.cpp").read_text(encoding="utf-8")
+    )
+    if not re.search(r"DockConfigCodec::validDesktopFileName\s*\(", controller_source):
+        errors.append("DockController must validate desktop filenames with DockConfigCodec")
+
+    for path in sorted((ROOT / "Dock/core").rglob("*")):
+        if path.suffix not in {".cpp", ".hpp"}:
+            continue
+        source = without_cpp_comments(path.read_text(encoding="utf-8"))
+        if re.search(
+            r"Dock/services/|\bservices/|\bDockConfigPersistence\b|"
+            r"\bDockConfigWatcher\b|\bDockConfigValidation\b",
+            source,
+        ):
+            errors.append(f"Dock core must not depend on Dock services: {path.relative_to(ROOT)}")
+
+    persistence_header = ROOT / "Dock/services/DockConfigPersistence.hpp"
+    persistence = without_cpp_comments(persistence_header.read_text(encoding="utf-8"))
+    if not re.search(r"class\s+DockConfigPersistence\s+final\s*:\s*public\s+DockPinStore", persistence):
+        errors.append("DockConfigPersistence must implement DockPinStore as a final service")
+
+    for path in sorted((ROOT / "Dock").rglob("*")):
+        if path.suffix not in {".cpp", ".hpp"} or "tests/" in path.relative_to(ROOT / "Dock").as_posix():
+            continue
+        if re.search(r"\bDockConfigValidation\b", without_cpp_comments(path.read_text(encoding="utf-8"))):
+            errors.append(f"production source must not reference DockConfigValidation: {path.relative_to(ROOT)}")
+
+    shell_runtime_header = without_cpp_comments(
+        (ROOT / "Shell/runtime/ShellRuntime.hpp").read_text(encoding="utf-8")
+    )
+    persistence_member = re.search(
+        r"std::unique_ptr\s*<\s*DockConfigPersistence\s*>\s+m_dockPersistence\s*;",
+        shell_runtime_header,
+    )
+    controller_member = re.search(
+        r"std::unique_ptr\s*<\s*DockController\s*>\s+m_dockController\s*;",
+        shell_runtime_header,
+    )
+    if not persistence_member or not controller_member or persistence_member.start() > controller_member.start():
+        errors.append("ShellRuntime must declare DockConfigPersistence before its borrowing DockController")
 
     for target, expected_sources in (
         ("astrea-dock-runtime", RUNTIME_SOURCES),

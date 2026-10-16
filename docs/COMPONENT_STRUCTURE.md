@@ -55,6 +55,28 @@ Bar/
 
 `astrea-bar-core` owns Bar core and service sources. `astrea-bar-wayland` owns the Wayland adapter and depends on `astrea-bar-core`. This is an example of the intended dependency direction, not a claim that other Eclipse components already follow the same structure.
 
+## Dock: second cleaned-up example
+
+Dock now follows the same internal dependency direction:
+
+```text
+Dock/
+├── core/                 # models, controller, runtime contract and pin-store port
+├── services/             # config watcher and file-backed pin persistence
+├── platform/runtime/     # environment and runtime path resolution
+├── platform/typhon/      # compositor adapter
+├── platform/wayland/     # surface and input integration
+├── qml/
+└── tests/
+```
+
+`DockController` depends on the core-owned `DockPinStore` capability.
+`DockConfigPersistence` implements it, while Shell owns and injects the
+file-backed service. `astrea-dock-runtime` intentionally aggregates Dock core,
+services and platform/runtime sources; internal source layers do not require
+one CMake target per directory. The Typhon and Wayland adapters remain in
+their existing resident targets.
+
 ## Scope
 
 Use the structure to make existing ownership and dependency direction visible. It does not require splitting large files, creating a library for every directory, or adding abstractions without a real boundary to protect.

@@ -28,6 +28,7 @@ add_library(astrea-dock-runtime STATIC
     core/DockAppInfo.hpp
     core/DockAppModel.cpp
     core/DockAppModel.hpp
+    core/DockPinStore.hpp
     core/DockController.cpp
     core/DockController.hpp
     core/DockMetrics.hpp
@@ -35,8 +36,6 @@ add_library(astrea-dock-runtime STATIC
     core/DockSurfaceGeometry.hpp
     services/DockConfigPersistence.cpp
     services/DockConfigPersistence.hpp
-    services/DockConfigValidation.cpp
-    services/DockConfigValidation.hpp
     services/DockConfigWatcher.cpp
     services/DockConfigWatcher.hpp
     platform/runtime/DockRuntimePaths.cpp

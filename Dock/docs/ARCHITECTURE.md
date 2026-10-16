@@ -21,9 +21,14 @@ readiness, exact window handles, actions, anchors, and completions. Runtime
 authority and action readiness remain separate. Shared Typhon owns transport
 and protocol infrastructure, not Dock task policy.
 
-Some internal component debt remains. In particular, `DockController` still
-uses Dock persistence services directly; this Phase 2 boundary does not claim
-that every `docs/COMPONENT_STRUCTURE.md` dependency rule is satisfied.
+Dock core owns the narrow `DockPinStore` capability used by pin mutations.
+`DockConfigPersistence` implements that port in `services/` using
+`DockConfigStore`; the Shell composition root owns the concrete service and
+injects it into `DockController`. The controller persists the desired pin list
+before committing config or model state, so failed writes leave local state
+unchanged. Pure config parsing and validation use the shared
+`shared/dock/DockConfigCodec` contract directly; Dock has no local forwarding
+validation wrapper.
 
 `DockAppModel` uses an explicit runtime `taskKey` as its stable row key. The
 projected visible rows are configured desktop-file pins plus running runtime
@@ -41,8 +46,8 @@ determine whether a task is admitted.
 by launcher identity, and retains the runtime state needed for exact-window
 activation. Generic runtime operations use `taskKey`; exact compositor actions
 also validate the selected `WindowId`. It is also the only owner of a completed pinned reorder:
-it validates the stable `desktopFileName`, asks `DockConfigPersistence` to write
-the new pins, and updates the model only after that write succeeds. `pinCount`
+it validates the stable `desktopFileName`, asks its `DockPinStore` to write the
+new pins, and updates the model only after that write succeeds. `pinCount`
 describes configured pins, not the total visible row count; `resolvedPinCount`
 counts only configured pins that resolve in the desktop catalog.
 `ApplicationLauncher` is shared with Spotlight and invokes `astrea-launch`

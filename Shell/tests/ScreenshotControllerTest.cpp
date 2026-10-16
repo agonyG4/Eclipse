@@ -1,12 +1,23 @@
 #include <QFile>
 #include <QClipboard>
+#include <QEventLoop>
 #include <QGuiApplication>
 #include <QImage>
 #include <QMimeData>
 #include <QUrl>
 #include <QRegularExpression>
+#include <QSocketNotifier>
 #include <QSignalSpy>
 #include <QTest>
+#include <QTimer>
+
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+
+#include <cerrno>
+#include <cstdint>
+#include <cstring>
 
 #include "platform/typhon/TyphonScreenCaptureClient.hpp"
 #include "platform/typhon/TyphonSharedConnection.hpp"
@@ -55,6 +66,7 @@ private slots:
     void overlayStartsHiddenAndAcceptsCompleteImage();
     void quickCapturePersistsResultWithoutShowingSelection();
     void quickCaptureCopiesPngToClipboard();
+    void nativeWaylandClipboardPublisherForTyphonIntegration();
     void frozenCaptureSelectsAndCropsCapturedImage();
     void frozenRegionCaptureCopiesCroppedPngToClipboard();
     void failedCapturePreservesPreviousClipboardContents();
@@ -172,6 +184,135 @@ void ScreenshotControllerTest::quickCaptureCopiesPngToClipboard()
     removeSavedFile(savedSpy);
 }
 
+void ScreenshotControllerTest::nativeWaylandClipboardPublisherForTyphonIntegration()
+{
+    const QByteArray controlPath = qEnvironmentVariable("ASTREA_TEST_CLIPBOARD_CONTROL_SOCKET").toUtf8();
+    if (controlPath.isEmpty())
+        QSKIP("requires the Typhon Wayland clipboard integration harness");
+    QVERIFY(controlPath.size() < static_cast<qsizetype>(sizeof(sockaddr_un::sun_path)));
+
+    const int controlFd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    QVERIFY(controlFd >= 0);
+    sockaddr_un address{};
+    address.sun_family = AF_UNIX;
+    std::memcpy(address.sun_path, controlPath.constData(), static_cast<std::size_t>(controlPath.size()));
+    QVERIFY(::connect(controlFd, reinterpret_cast<const sockaddr *>(&address), sizeof(address)) == 0);
+
+    const auto writeExact = [controlFd](const char *data, std::size_t size) {
+        std::size_t written = 0;
+        while (written < size) {
+            const ssize_t result = ::send(controlFd, data + written, size - written, MSG_NOSIGNAL);
+            if (result < 0 && errno == EINTR)
+                continue;
+            if (result <= 0)
+                return false;
+            written += static_cast<std::size_t>(result);
+        }
+        return true;
+    };
+    const auto readExact = [controlFd](char *data, std::size_t size) {
+        std::size_t received = 0;
+        while (received < size) {
+            const ssize_t result = ::recv(controlFd, data + received, size - received, 0);
+            if (result < 0 && errno == EINTR)
+                continue;
+            if (result <= 0)
+                return false;
+            received += static_cast<std::size_t>(result);
+        }
+        return true;
+    };
+
+    QVERIFY(writeExact("R", 1));
+    char command = 0;
+    QVERIFY(readExact(&command, 1));
+    QCOMPARE(command, 'P');
+
+    ScreenshotController controller(nullptr);
+    int requestCount = 0;
+    configureFakeCapture(controller, requestCount);
+    QSignalSpy savedSpy(&controller, &ScreenshotController::saved);
+    QImage image(3, 2, QImage::Format_RGBA8888);
+    image.fill(QColor(20, 80, 140, 255));
+    image.setPixelColor(2, 1, QColor(230, 40, 10, 255));
+
+    QVERIFY(controller.startQuickCapture());
+    QCOMPARE(requestCount, 1);
+    controller.handleCaptureReady(image, 1, controller.m_requestOperationToken);
+    const QString expectedPicturesDirectory = qEnvironmentVariable("ASTREA_TEST_PICTURES_DIR");
+    QVERIFY(!expectedPicturesDirectory.isEmpty());
+    QVERIFY(controller.resultPath().startsWith(expectedPicturesDirectory));
+    const QMimeData *mimeData = QGuiApplication::clipboard()->mimeData();
+    QVERIFY(mimeData->hasFormat(QStringLiteral("image/png")));
+    const QByteArray png = mimeData->data(QStringLiteral("image/png"));
+    const QImage decoded = QImage::fromData(png, "PNG");
+    QCOMPARE(decoded.size(), image.size());
+    QCOMPARE(decoded.pixelColor(0, 0), QColor(20, 80, 140, 255));
+    QCOMPARE(decoded.pixelColor(2, 1), QColor(230, 40, 10, 255));
+
+    QImage replacement(4, 3, QImage::Format_RGBA8888);
+    replacement.fill(QColor(60, 150, 35, 255));
+    replacement.setPixelColor(3, 2, QColor(240, 25, 90, 255));
+    QVERIFY(controller.startQuickCapture());
+    QCOMPARE(requestCount, 2);
+    controller.handleCaptureReady(replacement, 1, controller.m_requestOperationToken);
+    QCOMPARE(savedSpy.count(), 2);
+    QVERIFY(controller.resultPath().startsWith(expectedPicturesDirectory));
+    const QImage replacementClipboard = QImage::fromData(
+        QGuiApplication::clipboard()->mimeData()->data(QStringLiteral("image/png")), "PNG");
+    QCOMPARE(replacementClipboard.size(), replacement.size());
+    QCOMPARE(replacementClipboard.pixelColor(0, 0), QColor(60, 150, 35, 255));
+    QCOMPARE(replacementClipboard.pixelColor(3, 2), QColor(240, 25, 90, 255));
+    controller.dismissThumbnail();
+    QVERIFY(!controller.thumbnailVisible());
+    QVERIFY(controller.startQuickCapture());
+    QCOMPARE(requestCount, 3);
+    controller.handleCaptureFailed(QStringLiteral("integration failure"), 1,
+                                   controller.m_requestOperationToken);
+    const QImage preservedClipboard = QImage::fromData(
+        QGuiApplication::clipboard()->mimeData()->data(QStringLiteral("image/png")), "PNG");
+    QCOMPARE(preservedClipboard.size(), replacement.size());
+    QCOMPARE(preservedClipboard.pixelColor(3, 2), QColor(240, 25, 90, 255));
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+    QVERIFY(writeExact("D", 1));
+
+    bool destinationDecodedTransferredPng = false;
+    QEventLoop transferLoop;
+    QSocketNotifier notifier(controlFd, QSocketNotifier::Read);
+    connect(&notifier, &QSocketNotifier::activated, &transferLoop,
+            [&](QSocketDescriptor, QSocketNotifier::Type) {
+                char response = 0;
+                if (!readExact(&response, 1) || response != 'V') {
+                    transferLoop.quit();
+                    return;
+                }
+                std::uint32_t length = 0;
+                if (!readExact(reinterpret_cast<char *>(&length), sizeof(length))
+                    || length == 0 || length > 1024 * 1024) {
+                    transferLoop.quit();
+                    return;
+                }
+                QByteArray transferred(static_cast<qsizetype>(length), Qt::Uninitialized);
+                if (!readExact(transferred.data(), length)) {
+                    transferLoop.quit();
+                    return;
+                }
+                const QImage receivedImage = QImage::fromData(transferred, "PNG");
+                destinationDecodedTransferredPng = receivedImage.size() == replacement.size()
+                    && receivedImage.pixelColor(0, 0) == QColor(60, 150, 35, 255)
+                    && receivedImage.pixelColor(3, 2) == QColor(240, 25, 90, 255);
+                if (destinationDecodedTransferredPng)
+                    writeExact("K", 1);
+                transferLoop.quit();
+            });
+    QTimer::singleShot(10000, &transferLoop, &QEventLoop::quit);
+    transferLoop.exec();
+    QVERIFY(destinationDecodedTransferredPng);
+    for (const auto &entry : savedSpy)
+        QFile::remove(entry.at(0).toString());
+    ::close(controlFd);
+}
+
 void ScreenshotControllerTest::frozenCaptureSelectsAndCropsCapturedImage()
 {
     TyphonSharedConnection connection({});
@@ -271,10 +412,20 @@ void ScreenshotControllerTest::liveCaptureWaitsForUiBarrierBeforeRequestingImage
     barrier.complete(true);
     QCOMPARE(requestCount, 1);
     QCOMPARE(controller.phase(), ScreenshotPhase::WaitingCapture);
-    controller.handleCaptureReady(QImage(400, 200, QImage::Format_RGBA8888), 1,
-                                  controller.m_requestOperationToken);
+    QImage capturedImage(400, 200, QImage::Format_RGBA8888);
+    capturedImage.fill(QColor(8, 32, 64, 255));
+    capturedImage.setPixelColor(120, 70, QColor(220, 40, 10, 255));
+    controller.handleCaptureReady(capturedImage, 1, controller.m_requestOperationToken);
     QCOMPARE(controller.phase(), ScreenshotPhase::Idle);
     QCOMPARE(controller.image().size(), QSize(200, 100));
+    const QMimeData *mimeData = QGuiApplication::clipboard()->mimeData();
+    QVERIFY(mimeData->hasFormat(QStringLiteral("image/png")));
+    const QByteArray png = mimeData->data(QStringLiteral("image/png"));
+    QVERIFY(png.startsWith(QByteArray::fromHex("89504e470d0a1a0a")));
+    const QImage decoded = QImage::fromData(png, "PNG");
+    QCOMPARE(decoded.size(), QSize(200, 100));
+    QCOMPARE(decoded.pixelColor(0, 0), QColor(8, 32, 64, 255));
+    QCOMPARE(decoded.pixelColor(80, 50), QColor(220, 40, 10, 255));
     QVERIFY(controller.thumbnailVisible());
     QCOMPARE(savedSpy.count(), 1);
     removeSavedFile(savedSpy);
@@ -552,11 +703,16 @@ void ScreenshotControllerTest::newCaptureIsAllowedWhileThumbnailIsVisible()
     configureFakeCapture(controller, requestCount);
     QSignalSpy savedSpy(&controller, &ScreenshotController::saved);
 
+    QImage firstImage(4, 4, QImage::Format_RGBA8888);
+    firstImage.fill(QColor(180, 20, 30, 255));
     QVERIFY(controller.startQuickCapture());
-    controller.handleCaptureReady(QImage(4, 4, QImage::Format_RGBA8888), 1,
-                                  controller.m_requestOperationToken);
+    controller.handleCaptureReady(firstImage, 1, controller.m_requestOperationToken);
     QCOMPARE(controller.phase(), ScreenshotPhase::Idle);
     QVERIFY(controller.thumbnailVisible());
+    const QImage firstClipboard = QImage::fromData(
+        QGuiApplication::clipboard()->mimeData()->data(QStringLiteral("image/png")), "PNG");
+    QCOMPARE(firstClipboard.pixelColor(0, 0), QColor(180, 20, 30, 255));
+
     QVERIFY(controller.startQuickCapture());
     QVERIFY(!controller.thumbnailVisible());
     QCOMPARE(controller.phase(), ScreenshotPhase::PreparingCapture);
@@ -564,8 +720,13 @@ void ScreenshotControllerTest::newCaptureIsAllowedWhileThumbnailIsVisible()
     QCOMPARE(requestCount, 1);
     barrier.complete(true);
     QCOMPARE(requestCount, 2);
-    controller.handleCaptureReady(QImage(5, 5, QImage::Format_RGBA8888), 1,
-                                  controller.m_requestOperationToken);
+    QImage secondImage(5, 5, QImage::Format_RGBA8888);
+    secondImage.fill(QColor(15, 170, 60, 255));
+    controller.handleCaptureReady(secondImage, 1, controller.m_requestOperationToken);
+    const QImage secondClipboard = QImage::fromData(
+        QGuiApplication::clipboard()->mimeData()->data(QStringLiteral("image/png")), "PNG");
+    QCOMPARE(secondClipboard.size(), QSize(5, 5));
+    QCOMPARE(secondClipboard.pixelColor(0, 0), QColor(15, 170, 60, 255));
     removeSavedFile(savedSpy);
     removeSavedFile(savedSpy);
 }

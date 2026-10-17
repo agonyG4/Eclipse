@@ -1,6 +1,15 @@
 # IPC
 
+## Resident process and server
+
+`astrea-shell` is the resident process and hosts `ShellIpcServer`. The
+`astrea-spotlight` compatibility executable uses `ShellIpcClient` to send
+resident commands through the Shell IPC protocol. `SpotlightIpcServer` is a
+legacy/test-only implementation; it is not the current resident server.
+
 ## Commands
+
+The compatibility CLI forwards these resident commands to Shell:
 
 - `show`
 - `hide`
@@ -10,30 +19,20 @@
 - `reload-index`
 - `status`
 
+The command-line forms are `--show`, `--hide`, `--toggle`, `--query <text>`,
+`--activate`, `--reload-index`, and `--status`.
+
 ## Responses
 
-### Status JSON
+`--status` prints the status JSON returned by the resident Shell. If Shell is
+not running or does not reply, the compatibility client reports that state.
 
-```json
-{
-  "running": true,
-  "visible": true,
-  "open": true,
-  "results": 3,
-  "componentEnabled": true,
-  "gameMode": false,
-  "layerShell": true,
-  "layerShellCompiled": true,
-  "layerShellConfigured": true,
-  "layerShellError": "",
-  "iconTheme": "WhiteSur-dark",
-  "iconFallbackTheme": "hicolor"
-}
-```
+## CLI behavior
 
-## CLI Mapping
+- `--daemon` does not start resident mode. It is intentionally rejected with
+  an error directing users to `astrea-shell`.
+- Resident commands are delivered with `ShellIpcClient` to `ShellIpcServer`.
+- `--resolve-icon` and `--icon-theme` continue to run local icon diagnostics.
 
-- `--daemon` starts resident mode.
-- `--show`, `--hide`, `--toggle`, `--query`, `--activate`, `--reload-index`, `--status` are forwarded as IPC commands.
-- `--resolve-icon` prints icon diagnostics.
-- `--icon-theme` prints theme diagnostics.
+The compatibility executable remains independent of
+`astrea-spotlight-runtime` and `astrea-spotlight-wayland`.

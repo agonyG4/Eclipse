@@ -26,6 +26,51 @@ astrea_add_rust_backend(astrea_spotlight_rust_backend
     HEADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/backend/include"
 )
 
+add_library(astrea-spotlight-runtime STATIC
+    core/SpotlightController.cpp
+    core/SpotlightController.hpp
+    core/SpotlightResultsModel.cpp
+    core/SpotlightResultsModel.hpp
+    services/AstreaI18n.cpp
+    services/AstreaI18n.hpp
+    services/GameModeMonitor.cpp
+    services/GameModeMonitor.hpp
+    services/SpotlightConfigWatcher.cpp
+    services/SpotlightConfigWatcher.hpp
+    platform/runtime/SpotlightRuntimePaths.cpp
+    platform/runtime/SpotlightRuntimePaths.hpp
+    platform/rust/RustSpotlightBackend.cpp
+    platform/rust/RustSpotlightBackend.hpp
+)
+target_include_directories(astrea-spotlight-runtime PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+target_link_libraries(astrea-spotlight-runtime
+    PUBLIC
+        Qt6::Core
+        astrea-shared-core
+    PRIVATE
+        astrea_spotlight_backend
+        dl
+        pthread
+)
+astrea_enable_warnings(astrea-spotlight-runtime)
+astrea_enable_sanitizers(astrea-spotlight-runtime)
+
+add_library(astrea-spotlight-wayland STATIC
+    platform/wayland/LayerShellSurface.cpp
+    platform/wayland/LayerShellSurface.hpp
+)
+target_include_directories(astrea-spotlight-wayland PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+target_link_libraries(astrea-spotlight-wayland
+    PUBLIC Qt6::Core
+    PRIVATE Qt6::Gui Qt6::Quick astrea-shared-layer-shell
+)
+astrea_enable_warnings(astrea-spotlight-wayland)
+astrea_enable_sanitizers(astrea-spotlight-wayland)
+
 qt_add_executable(astrea-spotlight
     app/main.cpp
     app/CommandLine.cpp
@@ -54,29 +99,24 @@ if(BUILD_TESTING AND ASTREA_SPOTLIGHT_BUILD_TESTS)
 
     add_executable(spotlight-tests
         tests/SpotlightBackendTest.cpp
-        core/SpotlightController.cpp
-        core/SpotlightResultsModel.cpp
-        services/GameModeMonitor.cpp
-        services/SpotlightConfigWatcher.cpp
-        services/AstreaI18n.cpp
         platform/ipc/SpotlightIpcServer.cpp
-        platform/wayland/LayerShellSurface.cpp
-        platform/runtime/SpotlightRuntimePaths.cpp
-        platform/rust/RustSpotlightBackend.cpp
     )
     target_include_directories(spotlight-tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}"
-        "${CMAKE_CURRENT_SOURCE_DIR}/backend/include"
     )
     target_link_libraries(spotlight-tests PRIVATE
         Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Network Qt6::Test
-        astrea_spotlight_backend
+        astrea-spotlight-runtime
         astrea-shared-core
-        astrea-shared-layer-shell
-        dl pthread
     )
     astrea_enable_sanitizers(spotlight-tests)
     add_test(NAME spotlight-tests COMMAND spotlight-tests)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(
+        NAME spotlight-architecture-guard
+        COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_spotlight_architecture.py"
+    )
     add_test(
         NAME layer-shell-activation-structure
         COMMAND ${CMAKE_COMMAND}

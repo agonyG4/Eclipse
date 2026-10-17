@@ -47,14 +47,6 @@ add_library(astrea-shell-runtime STATIC
     screenshot/ScreenshotUiBarrier.hpp
     platform/ipc/ShellIpcServer.cpp
     platform/ipc/ShellIpcServer.hpp
-    ../Spotlight/core/SpotlightController.cpp
-    ../Spotlight/core/SpotlightResultsModel.cpp
-    ../Spotlight/platform/runtime/SpotlightRuntimePaths.cpp
-    ../Spotlight/platform/wayland/LayerShellSurface.cpp
-    ../Spotlight/platform/rust/RustSpotlightBackend.cpp
-    ../Spotlight/services/AstreaI18n.cpp
-    ../Spotlight/services/GameModeMonitor.cpp
-    ../Spotlight/services/SpotlightConfigWatcher.cpp
     services/SpatialAudioConfigWatcher.cpp
     services/SpatialAudioConfigWatcher.hpp
 )
@@ -79,7 +71,7 @@ target_link_libraries(astrea-shell-runtime PUBLIC
     astrea-shared-typhon
     astrea-shared-layer-shell
     astrea-shared-wayland-effects
-    astrea_spotlight_backend
+    astrea-spotlight-runtime
 )
 target_link_libraries(astrea-shell-runtime PRIVATE astrea-dock-typhon)
 shell_enable_sanitizers(astrea-shell-runtime)
@@ -108,12 +100,12 @@ target_link_libraries(astrea-shell PRIVATE
     astrea-shell-runtime
     astrea-dock-wayland
     astrea-bar-wayland
+    astrea-spotlight-wayland
     astrea-shared-coreplugin
     astrea-shared-system-qtplugin
     astrea-shared-wayland-effects
     astrea-shared-wayland-effectsplugin
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Network Qt6::Core5Compat
-    dl pthread
 )
 shell_enable_sanitizers(astrea-shell)
 

@@ -1,44 +1,59 @@
 # Architecture
 
-```text
-Rust backend
-    ↓ C ABI
-platform/rust
-    ↓ QObject / QAbstractListModel
-core
-    ↓ services / platform
-app
-    ↓ Qt Quick/QML
-qml
-```
+## Process and CMake ownership
 
-## Top-Level Responsibilities
+`astrea-shell` is the resident process. Shell composes the Spotlight controller,
+configuration watcher, game-mode monitor, locale service, application catalog,
+and launcher with the other resident components.
 
-- `app/`: process bootstrap and composition.
-- `core/`: Spotlight state, orchestration, and the results model.
-- `services/`: reusable process/watchers/monitoring helpers.
-- `platform/`: IPC, icon resolution, Wayland, runtime paths, Rust bridge.
-- `backend/`: Rust search, ranking, persistence, and FFI.
-- `qml/`: presentation-only UI.
-- `tests/`: native validation.
-- `packaging/`: systemd and other install-time assets.
-- `cmake/`: build helpers.
+`astrea-spotlight` is a lightweight compatibility IPC client. Its resident
+commands go through `ShellIpcClient` to the `ShellIpcServer` hosted by
+`astrea-shell`. `--daemon` is intentionally rejected with directions to use
+`astrea-shell`; it does not start a Spotlight process. The old
+`SpotlightIpcServer` is retained only for existing tests and is not the
+resident IPC server.
 
-## Ownership
+The production CMake ownership is:
 
-- `SpotlightApplication` owns the app lifecycle and wires dependencies.
-- `SpotlightController` owns open state, query, selection, weather, game mode, and launch coordination.
-- `SpotlightResultsModel` owns the QAbstractListModel boundary to QML.
-- `RustSpotlightBackend` owns the C ABI handle and JSON conversion.
-- QML reads only QObject/model APIs.
+- `astrea-spotlight-runtime` owns `SpotlightController`,
+  `SpotlightResultsModel`, `AstreaI18n`, `GameModeMonitor`,
+  `SpotlightConfigWatcher`, `SpotlightRuntimePaths`, and
+  `RustSpotlightBackend`. It links the shared core and Qt Core publicly, while
+  keeping the native Rust backend and its system link requirements private.
+- `astrea-spotlight-wayland` owns `LayerShellSurface` and its Qt and shared
+  Layer Shell dependencies. It does not depend on the Spotlight runtime.
+- `astrea-shell-runtime` consumes `astrea-spotlight-runtime`, and the final
+  `astrea-shell` executable consumes `astrea-spotlight-wayland`.
 
-## Boundary Rules
+Spotlight QML remains embedded in the unified `Astrea.Shell` QML module. Its
+existing resource aliases, URLs, `SpotlightController` context property, and
+`AstreaI18n` context property remain owned by Shell.
 
-- Backend has no Qt dependency.
-- QML does not access filesystem, process, XDG, or backend logic directly.
-- Core does not touch Wayland or sockets directly.
+## Current internal structure
 
-## Rust/C++ Boundary
+The `runtime` target is an ownership boundary, not a claim that Spotlight core
+is platform-independent. `SpotlightController` still directly owns or uses
+`RustSpotlightBackend`, `SpotlightRuntimePaths`, `ApplicationLauncher`, and
+`DesktopEntryCatalog`; it also runs weather processes through `QProcess`.
+Phase 1 makes source ownership and production linkage truthful while preserving
+these known internal dependencies for later cleanup.
 
-- The only contract is `backend/include/astrea_spotlight_backend.h`.
-- C++ converts Qt types to/from UTF-8/JSON and forwards calls across the ABI.
+## Responsibilities
+
+- `app/`: the non-resident compatibility CLI and command-line parsing.
+- `core/`: the current controller and results model. The controller remains
+  an orchestration-heavy resident object in this phase.
+- `services/`: locale, configuration watching, and GameMode monitoring used by
+  the resident Shell composition.
+- `platform/runtime/`: Spotlight runtime path resolution.
+- `platform/rust/`: the C++ wrapper around the Rust backend ABI.
+- `platform/wayland/`: Spotlight surface configuration through shared Layer
+  Shell infrastructure.
+- `backend/`: Rust search, ranking, persistence, and native ABI implementation.
+- `qml/`: the existing Spotlight presentation, embedded by Shell.
+- `tests/`: runtime-linked Spotlight tests and static architecture checks.
+- `cmake/`: Rust build, warning, and sanitizer helpers.
+
+The Shell composition remains responsible for object construction and wiring,
+including Bar search requests, shortcut toggles, configuration reloads, and
+GameMode weather suppression.

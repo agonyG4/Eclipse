@@ -1,40 +1,83 @@
 # Testing
 
-## Local Checks
+## Build and CTest
+
+Run these commands from the `Spotlight` directory. Build output stays in the
+repository-supported Eclipse Debug tree on Aether:
 
 ```bash
-cargo fmt --check --manifest-path backend/Cargo.toml
-cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
-cargo test --manifest-path backend/Cargo.toml
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-ctest --test-dir build --output-on-failure
+cmake -S .. -B /mnt/Aether/Desktop/GitHub/Eclipse-build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build /mnt/Aether/Desktop/GitHub/Eclipse-build --target \
+  astrea-spotlight-runtime astrea-spotlight-wayland astrea-spotlight \
+  astrea-shell-runtime astrea-shell spotlight-tests
+ctest --test-dir /mnt/Aether/Desktop/GitHub/Eclipse-build \
+  -R '(spotlight|layer-shell-activation)' --output-on-failure
+ctest --test-dir /mnt/Aether/Desktop/GitHub/Eclipse-build \
+  -R 'legacy-spotlight-daemon-guard' --output-on-failure
+```
+
+`spotlight-tests` links the production `astrea-spotlight-runtime`. Its existing
+tests still compile the legacy `SpotlightIpcServer.cpp` directly; that server
+is not a resident production target. The `spotlight-architecture-guard` test
+checks CMake ownership, required target consumption, the compatibility-client
+boundary, and the explicitly deferred internal layering.
+
+The `layer-shell-activation-structure` test protects the existing activation
+structure. Build `astrea-spotlight-wayland` explicitly even when only running
+the Spotlight test executable; the Spotlight backend tests do not link or
+exercise that adapter.
+
+## No-Layer-Shell build
+
+For non-production or test builds that disable Layer Shell, reuse the
+repository's separate Aether build tree:
+
+```bash
+cmake -S .. -B /mnt/Aether/Desktop/GitHub/Eclipse-no-layer-shell-build \
+  -G Ninja -DCMAKE_BUILD_TYPE=Debug -DASTREA_ENABLE_LAYER_SHELL=OFF
+cmake --build /mnt/Aether/Desktop/GitHub/Eclipse-no-layer-shell-build --target \
+  astrea-spotlight-runtime astrea-spotlight-wayland astrea-spotlight \
+  astrea-shell-runtime astrea-shell spotlight-tests
+ctest --test-dir /mnt/Aether/Desktop/GitHub/Eclipse-no-layer-shell-build \
+  -R '(spotlight|layer-shell-activation)' --output-on-failure
+```
+
+Build the relevant executables before running CTest so a missing executable is
+not confused with a test failure.
+
+## Rust and QML checks
+
+Direct Cargo checks share the Debug build's Aether target directory:
+
+```bash
+CARGO_TARGET_DIR=/mnt/Aether/Desktop/GitHub/Eclipse-build/cargo-target \
+  cargo fmt --check --manifest-path backend/Cargo.toml
+CARGO_TARGET_DIR=/mnt/Aether/Desktop/GitHub/Eclipse-build/cargo-target \
+  cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
+CARGO_TARGET_DIR=/mnt/Aether/Desktop/GitHub/Eclipse-build/cargo-target \
+  cargo test --manifest-path backend/Cargo.toml
 qmllint qml/Main.qml qml/components/*.qml
 ```
 
-## Clean Build
+The repository QML gate validates the generated Shell and Settings modules and
+their registered QML sources. Run it from the Eclipse repository root:
 
-Delete `build/` and rebuild from scratch.
+```bash
+ASTREA_CMAKE_BUILD_DIR=/mnt/Aether/Desktop/GitHub/Eclipse-build \
+  tools/ci/run-qml-gate.sh
+```
 
-## Runtime Validation
+## Runtime invariants
 
-- daemon starts hidden
-- toggle works
-- query works
-- status works
-- icons use active theme
-- keyboard focus works
-- outside click closes
-- Escape closes
-- selection wraps
-- Enter launches
-- weather works
-- game mode policy remains unchanged
-- config reload works
-- index reload works
-- systemd service starts
+- `astrea-shell` remains the resident process; `astrea-spotlight` remains a
+  compatibility IPC client and rejects `--daemon`.
+- Show, hide, toggle, query, selection, launch, and usage recording behavior
+  remain unchanged.
+- Catalog updates, weather, GameMode suppression, configuration reload, and
+  locale behavior remain unchanged.
+- Layer Shell configuration, Bar search integration, shortcut integration,
+  and QML resource/context-property APIs remain unchanged.
+- Icon diagnostics remain available from `astrea-spotlight`.
 
-## Notes
-
-- Use temporary XDG config/data/state directories in tests.
-- Do not use the real home directory.
+Use temporary XDG config, data, and state directories for runtime checks; do
+not use the real home directory.

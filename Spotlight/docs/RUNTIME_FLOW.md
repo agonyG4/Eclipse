@@ -1,58 +1,63 @@
 # Runtime Flow
 
-## Daemon Startup
+## Resident Shell startup
 
-`astrea-spotlight --daemon` starts the QGuiApplication, applies the icon theme, creates the backend, config watcher, game mode monitor, IPC server, and QML engine, then stays resident.
+`astrea-shell` is the resident process. `AstreaShellApplication` creates the
+unified UI and `ShellRuntime` composes the catalog, launcher,
+`SpotlightController`, `SpotlightConfigWatcher`, `GameModeMonitor`, and other
+resident services. Shell creates the Spotlight objects as before and exposes
+`SpotlightController` and `AstreaI18n` to the existing `Astrea.Shell` QML
+module.
 
-## Toggle/Show
+## Compatibility CLI and IPC
 
-IPC commands request `show`, `hide`, or `toggle`. The controller opens or closes the surface and updates `surfaceVisible` and `open`.
+`astrea-spotlight` remains a non-resident compatibility client. `ShellIpcClient`
+sends resident commands to the `ShellIpcServer` in `astrea-shell` using the
+Shell IPC protocol. If Shell is not running, a command cannot be delivered.
+`--daemon` is intentionally rejected and directs users to `astrea-shell`.
+`SpotlightIpcServer` is legacy/test-only and is not part of this runtime path.
+Icon resolution and icon-theme diagnostics continue to run locally in the CLI.
 
-## Search
+## Show, hide, and toggle
 
-QML text input updates `SpotlightController::query`, which schedules search, calls the Rust backend, and refreshes the results model.
+Shell IPC commands reach the existing resident controller. The controller
+updates open and surface visibility state, preserving the current QML focus
+and close-animation flow. `ShellShortcutDispatcher` continues to route the
+`spotlight_toggle` shortcut to `SpotlightController::toggle`.
 
-## Application Launch
+## Search and selection
 
-Selecting a result records usage through the Rust backend and launches via `astrea-launch`.
+QML text input updates `SpotlightController::query`. The controller schedules
+search through the existing Rust backend wrapper and updates
+`SpotlightResultsModel`. Result selection and activation continue through the
+same controller methods.
 
-## Usage Ranking
+## Application launch and usage
 
-The Rust backend loads usage counts and applies them as a tie-break in search ordering.
+Selecting a result records usage through the Rust backend and launches it via
+`ApplicationLauncher` and `astrea-launch`. The catalog and launch wiring remain
+owned by Shell composition. The Rust backend loads usage counts and applies
+them as a tie-break in search ordering.
 
-## Weather Refresh
+## Weather, configuration, and GameMode
 
-The controller starts weather refreshes when visible and weather is enabled, and stops them on close or game mode.
+The controller starts weather refreshes when visible and weather is enabled,
+and stops them on close or while GameMode is active. Weather process execution
+remains in `SpotlightController`. `SpotlightConfigWatcher` continues to watch
+the Spotlight and component configuration files and apply updates. The
+`GameModeMonitor` continues polling `gamemoded -s` and suppressing weather
+refresh while active.
 
-## Config Reload
+## Icons, locale, and catalog updates
 
-`SpotlightConfigWatcher` watches JSON config files and applies component/weather enablement updates.
-
-## Game Mode
-
-`GameModeMonitor` polls `gamemoded -s` and suppresses weather refresh while active.
-
-## Icon Resolution
-
-`AstreaIconTheme` configures the active Qt theme and merged XDG/Flatpak search
-paths. `AstreaIconProvider` resolves individual icons through `QIcon`, keeps
-bounded positive and negative caches, and includes logical extent, effective
-DPR, physical source extent, and theme revision in its request/cache contract.
-Spotlight requests a 40 logical-pixel maximum and lets the shared QML policy
-convert it to physical pixels for the current display.
-Named theme representations are selected only by `QIcon::pixmap()`; the
-provider does not use `availableSizes()` to recreate theme metadata or
-manually choose a neighboring raster. Theme lookup/update synchronization is
-shared with the other Astrea consumers.
-
-## Theme Change
-
-Theme updates clear the icon provider cache and bump the revision so QML image URLs change.
-
-## Index Reload
-
-Directory changes debounce into a backend reload and result reset.
+`AstreaIconTheme` and `AstreaIconProvider` continue to configure and resolve
+icons through shared icon infrastructure. Theme changes clear the provider
+cache and bump its revision so QML image URLs change. `AstreaI18n` continues to
+load locale catalogs and watch for changes. Directory changes continue to
+debounce into a backend catalog reload and result reset.
 
 ## Shutdown
 
-Closing the window or daemon exit tears down watchers, processes, and the IPC server through QObject ownership.
+Closing or stopping `astrea-shell` tears down the Shell-owned Spotlight
+controller and services through the existing QObject and `ShellRuntime`
+ownership. No standalone Spotlight resident process is started.

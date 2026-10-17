@@ -61,7 +61,8 @@ void SettingsNavigationModelTest::exposesCanonicalKindsAndVisibility()
              QStringLiteral("settings.nav.customization.subtitle"));
 
     for (const QString &id : {QStringLiteral("visual-effects"), QStringLiteral("icons"),
-                              QStringLiteral("wallpaper"), QStringLiteral("dock")}) {
+                              QStringLiteral("wallpaper"), QStringLiteral("dock"),
+                              QStringLiteral("animations"), QStringLiteral("screenshots")}) {
         const QVariantMap entry = model.descriptorForId(id);
         QCOMPARE(entry.value(QStringLiteral("kind")).toString(), QStringLiteral("page"));
         QVERIFY(!entry.value(QStringLiteral("sidebarVisible")).toBool());
@@ -115,6 +116,8 @@ void SettingsNavigationModelTest::exposesNativePageRoutes()
         QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/VisualEffects.qml"));
     const QUrl iconsRoute(
         QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Icons.qml"));
+    const QUrl screenshotsRoute(
+        QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Screenshots.qml"));
 
     QCOMPARE(model.pageSourceForId(QStringLiteral("compositor")), compositorRoute);
     QCOMPARE(model.pageSourceForId(QStringLiteral("internet")),
@@ -135,6 +138,7 @@ void SettingsNavigationModelTest::exposesNativePageRoutes()
     QCOMPARE(model.pageSourceForId(QStringLiteral("animations")), animationsRoute);
     QCOMPARE(model.pageSourceForId(QStringLiteral("visual-effects")), visualEffectsRoute);
     QCOMPARE(model.pageSourceForId(QStringLiteral("icons")), iconsRoute);
+    QCOMPARE(model.pageSourceForId(QStringLiteral("screenshots")), screenshotsRoute);
     QCOMPARE(model.pageSourceForId(QStringLiteral("system")), QUrl());
     QCOMPARE(model.pageSourceForId(QStringLiteral("missing")), QUrl());
 }
@@ -148,16 +152,17 @@ void SettingsNavigationModelTest::exposesHubChildrenAndAncestorLookups()
     QCOMPARE(customization->kind, SettingsNavigationEntry::Kind::Hub);
 
     const QVector<SettingsNavigationEntry> children = model.childrenForId(QStringLiteral("customization"));
-    QCOMPARE(children.size(), 6);
+    QCOMPARE(children.size(), 7);
     QCOMPARE(children.at(0).id, QStringLiteral("appearance"));
     QCOMPARE(children.at(1).id, QStringLiteral("visual-effects"));
     QCOMPARE(children.at(2).id, QStringLiteral("icons"));
     QCOMPARE(children.at(3).id, QStringLiteral("wallpaper"));
     QCOMPARE(children.at(4).id, QStringLiteral("dock"));
     QCOMPARE(children.at(5).id, QStringLiteral("animations"));
+    QCOMPARE(children.at(6).id, QStringLiteral("screenshots"));
 
     const QVariantList childDescriptors = model.childDescriptorsForId(QStringLiteral("customization"));
-    QCOMPARE(childDescriptors.size(), 6);
+    QCOMPARE(childDescriptors.size(), 7);
     QCOMPARE(childDescriptors.at(0).toMap().value(QStringLiteral("entryId")).toString(),
              QStringLiteral("appearance"));
     QCOMPARE(childDescriptors.at(1).toMap().value(QStringLiteral("entryId")).toString(),
@@ -170,6 +175,8 @@ void SettingsNavigationModelTest::exposesHubChildrenAndAncestorLookups()
              QStringLiteral("dock"));
     QCOMPARE(childDescriptors.at(5).toMap().value(QStringLiteral("entryId")).toString(),
              QStringLiteral("animations"));
+    QCOMPARE(childDescriptors.at(6).toMap().value(QStringLiteral("entryId")).toString(),
+             QStringLiteral("screenshots"));
 
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("customization")), QStringLiteral("customization"));
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("wallpaper")), QStringLiteral("customization"));
@@ -178,6 +185,7 @@ void SettingsNavigationModelTest::exposesHubChildrenAndAncestorLookups()
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("visual-effects")), QStringLiteral("customization"));
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("icons")), QStringLiteral("customization"));
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("animations")), QStringLiteral("customization"));
+    QCOMPARE(model.sidebarAncestorForId(QStringLiteral("screenshots")), QStringLiteral("customization"));
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("compositor")), QStringLiteral("compositor"));
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("missing")), QString());
 }
@@ -204,6 +212,7 @@ void SettingsNavigationModelTest::appliesPageAndHubNavigabilityRules()
     QVERIFY(model.containsNavigableId(QStringLiteral("animations")));
     QVERIFY(model.containsNavigableId(QStringLiteral("visual-effects")));
     QVERIFY(model.containsNavigableId(QStringLiteral("icons")));
+    QVERIFY(model.containsNavigableId(QStringLiteral("screenshots")));
     QVERIFY(!model.containsNavigableId(QStringLiteral("themes")));
     QVERIFY(!model.containsNavigableId(QStringLiteral("system")));
     QVERIFY(!model.containsNavigableId(QStringLiteral("performance")));

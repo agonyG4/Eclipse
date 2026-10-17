@@ -79,6 +79,7 @@ private slots:
     void navigatesToDisplayPage();
     void navigatesToInternetPage();
     void navigatesToCustomizationHub();
+    void navigatesToScreenshotSettings();
     void nestedDestinationsKeepSidebarAncestorSelected();
     void directNestedNavigationDerivesSidebarAncestor();
     void backAndForwardTraverseSessionHistory();
@@ -163,13 +164,23 @@ void SettingsControllerTest::navigatesToCustomizationHub()
     QCOMPARE(controller.selectedPageSource(),
              QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/navigation/Hub.qml")));
     QCOMPARE(controller.currentDestination().value(QStringLiteral("kind")).toString(), QStringLiteral("hub"));
-    QCOMPARE(controller.currentDestinationChildren().size(), 6);
+    QCOMPARE(controller.currentDestinationChildren().size(), 7);
     QVERIFY(controller.navigateTo(QStringLiteral("animations")));
     QCOMPARE(controller.currentDestinationId(), QStringLiteral("animations"));
     QCOMPARE(controller.selectedSidebarId(), QStringLiteral("customization"));
     QCOMPARE(navigationSpy.count(), 2);
     QVERIFY(controller.canGoBack());
     QVERIFY(!controller.canGoForward());
+}
+
+void SettingsControllerTest::navigatesToScreenshotSettings()
+{
+    SettingsController controller;
+    QVERIFY(controller.navigateTo(QStringLiteral("screenshots")));
+    QCOMPARE(controller.currentDestinationId(), QStringLiteral("screenshots"));
+    QCOMPARE(controller.selectedSidebarId(), QStringLiteral("customization"));
+    QCOMPARE(controller.selectedPageSource(),
+             QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Screenshots.qml")));
 }
 
 void SettingsControllerTest::nestedDestinationsKeepSidebarAncestorSelected()

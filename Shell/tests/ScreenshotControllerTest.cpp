@@ -9,6 +9,7 @@
 #include <QSocketNotifier>
 #include <QSignalSpy>
 #include <QTest>
+#include <QTemporaryDir>
 #include <QTimer>
 
 #include <sys/socket.h>
@@ -21,6 +22,7 @@
 
 #include "platform/typhon/TyphonScreenCaptureClient.hpp"
 #include "platform/typhon/TyphonSharedConnection.hpp"
+#include "screenshot/ScreenshotConfiguration.hpp"
 #include "screenshot/ScreenshotController.hpp"
 
 class FakeScreenshotUiBarrier final : public ScreenshotUiBarrier {
@@ -63,9 +65,12 @@ class ScreenshotControllerTest final : public QObject {
     Q_OBJECT
 
 private slots:
+    void initTestCase();
+    void cleanupTestCase();
     void overlayStartsHiddenAndAcceptsCompleteImage();
     void quickCapturePersistsResultWithoutShowingSelection();
     void quickCaptureCopiesPngToClipboard();
+    void quickCaptureHonorsAutoCopyAndThumbnailVisibilitySettings();
     void nativeWaylandClipboardPublisherForTyphonIntegration();
     void frozenCaptureSelectsAndCropsCapturedImage();
     void frozenRegionCaptureCopiesCroppedPngToClipboard();
@@ -91,6 +96,8 @@ private slots:
 private:
     void configureFakeCapture(ScreenshotController &controller, int &requestCount,
                               std::uint64_t generation = 1);
+    QTemporaryDir m_configHome;
+    QByteArray m_previousConfigHome;
 };
 
 namespace {
@@ -102,6 +109,21 @@ void removeSavedFile(const QSignalSpy &savedSpy)
 }
 
 } // namespace
+
+void ScreenshotControllerTest::initTestCase()
+{
+    QVERIFY(m_configHome.isValid());
+    m_previousConfigHome = qgetenv("XDG_CONFIG_HOME");
+    qputenv("XDG_CONFIG_HOME", m_configHome.path().toUtf8());
+}
+
+void ScreenshotControllerTest::cleanupTestCase()
+{
+    if (m_previousConfigHome.isNull())
+        qunsetenv("XDG_CONFIG_HOME");
+    else
+        qputenv("XDG_CONFIG_HOME", m_previousConfigHome);
+}
 
 void ScreenshotControllerTest::configureFakeCapture(ScreenshotController &controller,
                                                      int &requestCount,
@@ -181,6 +203,35 @@ void ScreenshotControllerTest::quickCaptureCopiesPngToClipboard()
     controller.dismissThumbnail();
     QCOMPARE(QImage::fromData(QGuiApplication::clipboard()->mimeData()->data(
                                  QStringLiteral("image/png")), "PNG").size(), image.size());
+    removeSavedFile(savedSpy);
+}
+
+void ScreenshotControllerTest::quickCaptureHonorsAutoCopyAndThumbnailVisibilitySettings()
+{
+    TyphonSharedConnection connection({});
+    TyphonScreenCaptureClient client(&connection);
+    const QString configPath = m_configHome.filePath(QStringLiteral("no-auto-copy.json"));
+    ScreenshotController controller(&client, nullptr, configPath);
+    controller.configuration()->setAutoCopy(false);
+    controller.configuration()->setShowThumbnail(false);
+
+    QGuiApplication::clipboard()->setText(QStringLiteral("leave clipboard alone"));
+    int requestCount = 0;
+    configureFakeCapture(controller, requestCount);
+    QSignalSpy savedSpy(&controller, &ScreenshotController::saved);
+    QVERIFY(controller.startQuickCapture());
+    QCOMPARE(requestCount, 1);
+    const QImage capture(14, 9, QImage::Format_RGBA8888);
+    controller.handleCaptureReady(capture, controller.m_requestGeneration,
+                                  controller.m_requestOperationToken);
+
+    QCOMPARE(savedSpy.count(), 1);
+    QVERIFY(!controller.thumbnailVisible());
+    QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("leave clipboard alone"));
+    QVERIFY(controller.copyScreenshot());
+    QVERIFY(QGuiApplication::clipboard()->mimeData()->hasImage());
+    const QByteArray png = QGuiApplication::clipboard()->mimeData()->data(QStringLiteral("image/png"));
+    QVERIFY(png.startsWith(QByteArray::fromHex("89504e470d0a1a0a")));
     removeSavedFile(savedSpy);
 }
 

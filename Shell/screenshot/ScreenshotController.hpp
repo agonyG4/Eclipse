@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <functional>
 
+#include "screenshot/ScreenshotConfiguration.hpp"
 #include "screenshot/ScreenshotUiBarrier.hpp"
 
 class TyphonScreenCaptureClient;
@@ -32,6 +33,7 @@ class ScreenshotController final : public QObject {
     Q_PROPERTY(QString resultUri READ resultUri NOTIFY resultChanged)
     Q_PROPERTY(QByteArray imagePngData READ imagePngData NOTIFY imageChanged)
     Q_PROPERTY(bool thumbnailDragActive READ thumbnailDragActive NOTIFY thumbnailDragActiveChanged)
+    Q_PROPERTY(ScreenshotConfiguration *configuration READ configuration CONSTANT)
 
 public:
     enum class ScreenshotIntent {
@@ -51,7 +53,8 @@ public:
     };
     Q_ENUM(ScreenshotPhase)
 
-    explicit ScreenshotController(TyphonScreenCaptureClient *client, QObject *parent = nullptr);
+    explicit ScreenshotController(TyphonScreenCaptureClient *client, QObject *parent = nullptr,
+                                  QString configurationPath = {});
 
     bool isVisible() const { return m_visible; }
     QString imageSource() const;
@@ -69,6 +72,7 @@ public:
     QString resultUri() const;
     QByteArray imagePngData() const;
     bool thumbnailDragActive() const { return m_thumbnailDragActive; }
+    ScreenshotConfiguration *configuration() const { return m_configuration; }
     QString phaseName() const;
     QString intentName() const;
     bool hasPendingOperation() const { return m_phase != ScreenshotPhase::Idle; }
@@ -86,6 +90,7 @@ public:
     Q_INVOKABLE bool saveSelection();
     Q_INVOKABLE bool finishSelection();
     Q_INVOKABLE void dismissThumbnail();
+    Q_INVOKABLE bool copyScreenshot();
     Q_INVOKABLE void setThumbnailDragActive(bool active);
     Q_INVOKABLE void openPreview();
     Q_INVOKABLE void closePreview();
@@ -140,6 +145,7 @@ private:
     bool persistResult(const QImage &result, std::uint64_t token);
 
     TyphonScreenCaptureClient *m_client = nullptr;
+    ScreenshotConfiguration *m_configuration = nullptr;
     ScreenshotUiBarrier *m_uiBarrier = nullptr;
     QImage m_image;
     QRectF m_selection;

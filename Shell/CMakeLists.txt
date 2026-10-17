@@ -129,6 +129,7 @@ set(_shell_qml_files
     "${CMAKE_CURRENT_SOURCE_DIR}/screenshot/ScreenshotOverlay.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/screenshot/ScreenshotThumbnail.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/screenshot/ScreenshotPreview.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../shared/qml/ScreenshotVisual.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuCard.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuItem.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuSeparator.qml"
@@ -172,6 +173,8 @@ set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/screenshot/ScreenshotTh
     PROPERTIES QT_RESOURCE_ALIAS "Screenshot/ScreenshotThumbnail.qml")
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/screenshot/ScreenshotPreview.qml"
     PROPERTIES QT_RESOURCE_ALIAS "Screenshot/ScreenshotPreview.qml")
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../shared/qml/ScreenshotVisual.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Screenshot/ScreenshotVisual.qml")
 set_source_files_properties(
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuCard.qml"
     PROPERTIES QT_RESOURCE_ALIAS "ContextMenu/qml/ContextMenuCard.qml")
@@ -280,6 +283,7 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
         FILES
             ${CMAKE_CURRENT_SOURCE_DIR}/screenshot/ScreenshotThumbnail.qml
             ${CMAKE_CURRENT_SOURCE_DIR}/screenshot/ScreenshotPreview.qml
+            ${CMAKE_CURRENT_SOURCE_DIR}/../shared/qml/ScreenshotVisual.qml
     )
     target_include_directories(screenshot-thumbnail-qml-test PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}"

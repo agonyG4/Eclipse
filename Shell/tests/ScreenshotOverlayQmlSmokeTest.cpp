@@ -88,7 +88,7 @@ void ScreenshotOverlayQmlSmokeTest::selectionDragStaysLocalUntilNormalizedReleas
     controller.m_image = QImage(4, 4, QImage::Format_RGBA8888);
     controller.m_imageGeneration = 1;
     int captureCount = 0;
-    controller.m_captureRequest = [&captureCount] {
+    controller.m_captureRequest = [&captureCount](std::uint64_t /*token*/) {
         ++captureCount;
         return true;
     };

@@ -39,13 +39,12 @@ add_dependencies(astrea-settings-core astrea_settings_backend_cxxqt_headers)
 
 target_include_directories(astrea-settings-core PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/.."
-)
-target_include_directories(astrea-settings-core PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/../../shared"
 )
 
 target_link_libraries(astrea-settings-core PUBLIC
     Qt6::Core
+    astrea-shared-core
     astrea-shared-dock
     astrea-shared-system-qt
     astrea_settings_backend

@@ -12,7 +12,6 @@ Rectangle {
     property bool primary: false
     property bool danger: false
     property bool flat: false
-    property bool enabled: true
     property int fontPixelSize: Components.Theme.fontSizeNormal
     property int iconSize: Math.round(fontPixelSize + 4)
     property int controlWidth: 0

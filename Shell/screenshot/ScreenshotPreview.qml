@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Window
+import "./" as ScreenshotComponents
 
 Window {
     id: root
@@ -18,11 +19,12 @@ Window {
     property rect transitionSourceRect: Qt.rect(0, 0, 0, 0)
     property real backdropOpacity: 0.34
     property bool closing: false
+    property var configuration: ScreenshotController.configuration
     property rect targetRect: {
         const imageWidth = ScreenshotController.imageWidth
         const imageHeight = ScreenshotController.imageHeight
-        const maxWidth = width * 0.78
-        const maxHeight = height * 0.78
+        const maxWidth = width * configuration.previewMaximumScale
+        const maxHeight = height * configuration.previewMaximumScale
         if (imageWidth <= 0 || imageHeight <= 0)
             return Qt.rect((width - maxWidth) / 2, (height - maxHeight) / 2,
                            maxWidth, maxHeight)
@@ -101,41 +103,31 @@ Window {
         }
     }
 
-    Rectangle {
-        id: previewShadow
-        objectName: "previewShadow"
-        x: root.cardRect.x
-        y: root.cardRect.y + 8
-        width: root.cardRect.width
-        height: root.cardRect.height
-        radius: 10 + root.transitionProgress * 3
-        color: "#55000000"
-        opacity: 0.55 + root.transitionProgress * 0.2
-        z: 1
-    }
-
-    Rectangle {
+    Item {
         id: previewCard
         objectName: "previewCard"
         x: root.cardRect.x
         y: root.cardRect.y
         width: root.cardRect.width
         height: root.cardRect.height
-        radius: 10 + root.transitionProgress * 3
-        color: "transparent"
-        border.color: "#b3ffffff"
-        border.width: 1
-        clip: true
+        clip: false
         z: 2
 
-        Image {
-            id: previewImage
-            objectName: "previewImage"
-            anchors.fill: parent
+        ScreenshotComponents.ScreenshotVisual {
+            id: previewVisual
+            objectName: "previewVisual"
+            x: -shadowPadding
+            y: -shadowPadding
+            imageWidth: previewCard.width
+            imageHeight: previewCard.height
             source: ScreenshotController.imageSource
-            fillMode: Image.Stretch
-            asynchronous: false
-            cache: false
+            imageObjectName: "previewImage"
+            cornerRadius: root.configuration.cornerRadius
+            borderEnabled: root.configuration.borderEnabled
+            borderWidth: root.configuration.borderWidth
+            borderColor: root.configuration.borderColor
+            shadowEnabled: root.configuration.shadowEnabled
+            shadowStrength: root.configuration.shadowStrength
         }
 
         MouseArea {

@@ -1,6 +1,7 @@
 #include "screenshot/ScreenshotController.hpp"
 
 #include "platform/typhon/TyphonScreenCaptureClient.hpp"
+#include "screenshot/ScreenshotConfiguration.hpp"
 
 #include <QBuffer>
 #include <QClipboard>
@@ -32,10 +33,16 @@ bool isCaptureWaiting(ScreenshotController::ScreenshotPhase phase)
 
 } // namespace
 
-ScreenshotController::ScreenshotController(TyphonScreenCaptureClient *client, QObject *parent)
+ScreenshotController::ScreenshotController(TyphonScreenCaptureClient *client, QObject *parent,
+                                           QString configurationPath)
     : QObject(parent), m_client(client)
+    , m_configuration(new ScreenshotConfiguration(std::move(configurationPath), this))
 {
     m_watchdog.setSingleShot(true);
+    connect(m_configuration, &ScreenshotConfiguration::configurationChanged, this, [this] {
+        if (!m_configuration->showThumbnail() && !m_thumbnailDragActive)
+            setThumbnailVisible(false);
+    });
     if (!m_client)
         return;
     connect(m_client, &TyphonScreenCaptureClient::ready, this,
@@ -542,7 +549,10 @@ bool ScreenshotController::persistResult(const QImage &result, std::uint64_t tok
     const bool visibleChangedValue = m_visible;
     const bool selectionImageChangedValue = m_selectionImageVisible;
     const bool selectionChangedValue = !m_selection.isNull() || !m_pendingSelection.isNull();
-    const bool thumbnailChangedValue = !m_thumbnailVisible;
+    const bool shouldShowThumbnail = !m_configuration || m_configuration->showThumbnail();
+    const bool nextThumbnailVisible = m_thumbnailDragActive
+        ? m_thumbnailVisible : shouldShowThumbnail;
+    const bool thumbnailChangedValue = m_thumbnailVisible != nextThumbnailVisible;
     m_image = result.copy();
     m_imagePngData = std::move(pngData);
     ++m_imageGeneration;
@@ -555,14 +565,10 @@ bool ScreenshotController::persistResult(const QImage &result, std::uint64_t tok
     m_selectionImageVisible = false;
     m_selection = {};
     m_pendingSelection = {};
-    m_thumbnailVisible = true;
+    m_thumbnailVisible = nextThumbnailVisible;
 
-    if (auto *clipboard = QGuiApplication::clipboard()) {
-        auto *mimeData = new QMimeData;
-        mimeData->setImageData(result);
-        mimeData->setData(QStringLiteral("image/png"), m_imagePngData);
-        clipboard->setMimeData(mimeData, QClipboard::Clipboard);
-    }
+    if (!m_configuration || m_configuration->autoCopy())
+        copyScreenshot();
 
     emit imageChanged();
     if (resultChangedValue)
@@ -639,6 +645,22 @@ void ScreenshotController::dismissThumbnail()
     setThumbnailVisible(false);
 }
 
+bool ScreenshotController::copyScreenshot()
+{
+    if (m_image.isNull())
+        return false;
+    auto *clipboard = QGuiApplication::clipboard();
+    if (!clipboard)
+        return false;
+    auto *mimeData = new QMimeData;
+    mimeData->setImageData(m_image);
+    const QByteArray pngData = imagePngData();
+    if (!pngData.isEmpty())
+        mimeData->setData(QStringLiteral("image/png"), pngData);
+    clipboard->setMimeData(mimeData, QClipboard::Clipboard);
+    return true;
+}
+
 void ScreenshotController::setThumbnailDragActive(bool active)
 {
     if (m_thumbnailDragActive == active)
@@ -660,6 +682,6 @@ void ScreenshotController::closePreview()
     if (!m_previewVisible)
         return;
     setPreviewVisible(false);
-    if (!m_resultPath.isEmpty())
+    if (!m_resultPath.isEmpty() && (!m_configuration || m_configuration->showThumbnail()))
         setThumbnailVisible(true);
 }

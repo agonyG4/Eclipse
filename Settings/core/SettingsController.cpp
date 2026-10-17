@@ -56,6 +56,7 @@ SettingsController::SettingsController(std::unique_ptr<SettingsNavigationModel> 
     m_iconsController = std::make_unique<SettingsIconsController>();
     m_visualEffectsController = std::make_unique<SettingsVisualEffectsController>();
     m_displayController = std::make_unique<SettingsDisplayController>();
+    m_screenshotConfiguration = std::make_unique<ScreenshotConfiguration>(QString(), this);
 }
 
 SettingsNavigationModel *SettingsController::navigationModel()

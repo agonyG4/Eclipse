@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Window
+import "./" as ScreenshotComponents
 
 Window {
     id: root
@@ -14,45 +15,111 @@ Window {
     x: Screen.virtualX
     y: Screen.virtualY
 
-    property real dragThreshold: 8
+    property var configuration: ScreenshotController.configuration
+    property string lifecycleState: "hidden"
+    property real lifecycleProgress: 1.0
+    property int animationToken: 0
+    property int activeAnimationToken: 0
+    property string activeImageSource: ""
+    property string activeAnimationStyle: "scale-fade"
+    property string activeAnimationEasing: "out-cubic"
+    property int activeAnimationDurationMs: 0
+    property real idleRemainingMs: configuration.displayDurationMs
+    property int appliedDisplayDurationMs: configuration.displayDurationMs
+    property double idleDeadlineMs: 0
     property bool held: false
     property bool hovered: false
-    property bool dismissing: false
-    property bool entering: false
     property bool nativeFileDragging: false
+    property bool pendingCaptureRefresh: false
     property bool nativeDragConsumedPress: false
     property bool nativeDragTestMode: false
     property int nativeDragStartCount: 0
     property point dragStart: Qt.point(0, 0)
     property point nativeDragHotSpot: Qt.point(0, 0)
-    property point slotPosition: Qt.point(width - card.width - 20,
-                                          height - card.height - 20)
-    property real aspectRatio: ScreenshotController.imageHeight > 0
-                                ? ScreenshotController.imageWidth / ScreenshotController.imageHeight
-                                : 1.5
+    property var nativeDragSnapshot: null
+    property var nativeDragPayload: ({})
+
+    readonly property bool entering: lifecycleState === "entering"
+    readonly property bool dismissing: lifecycleState === "dismissing"
+    readonly property real aspectRatio: ScreenshotController.imageHeight > 0
+        ? ScreenshotController.imageWidth / ScreenshotController.imageHeight : 1.5
+    readonly property real dragThreshold: 8
     readonly property real nativeDragDistance: Math.max(
         dragThreshold, Qt.styleHints.startDragDistance || dragThreshold)
-    readonly property var nativeDragMimeData: card.Drag.mimeData
+    readonly property var nativeDragMimeData: nativeFileDragging
+        ? nativeDragPayload : ({
+            "text/uri-list": ScreenshotController.resultUri + "\r\n",
+            "text/plain": ScreenshotController.resultPath,
+            "image/png": ScreenshotController.imagePngData
+        })
     readonly property int nativeDragSupportedActions: card.Drag.supportedActions
     readonly property int nativeDragProposedAction: card.Drag.proposedAction
     readonly property bool nativeDragUsesManualStart: card.Drag.dragType === Drag.None
+    readonly property real frameWidth: {
+        if (nativeDragSnapshot)
+            return nativeDragSnapshot.frameWidth
+        const boxWidth = effectiveSetting("thumbnailWidth")
+        const boxHeight = effectiveSetting("thumbnailHeight")
+        if (ScreenshotController.imageWidth <= 0 || ScreenshotController.imageHeight <= 0)
+            return boxWidth
+        return Math.max(1, Math.min(boxWidth,
+            boxHeight * ScreenshotController.imageWidth / ScreenshotController.imageHeight))
+    }
+    readonly property real frameHeight: {
+        if (nativeDragSnapshot)
+            return nativeDragSnapshot.frameHeight
+        const boxWidth = effectiveSetting("thumbnailWidth")
+        const boxHeight = effectiveSetting("thumbnailHeight")
+        if (ScreenshotController.imageWidth <= 0 || ScreenshotController.imageHeight <= 0)
+            return boxHeight
+        return Math.max(1, Math.min(boxHeight,
+            boxWidth * ScreenshotController.imageHeight / ScreenshotController.imageWidth))
+    }
+    readonly property point slotPosition: {
+        const margin = effectiveSetting("edgeMargin")
+        const pad = screenshotVisual.shadowPadding
+        const position = effectiveSetting("position")
+        const left = position === "bottom-left" || position === "top-left"
+        const top = position === "top-left" || position === "top-right"
+        return Qt.point(left ? margin + pad : width - margin - pad - card.width,
+                        top ? margin + pad : height - margin - pad - card.height)
+    }
+    readonly property real entryOffsetX: activeAnimationStyle === "slide-fade"
+        ? ((effectiveSetting("position").endsWith("right") ? 1 : -1)
+           * (card.width + effectiveSetting("edgeMargin"))) : 0
+    readonly property real entryOffsetY: activeAnimationStyle === "slide-fade"
+        ? ((effectiveSetting("position").startsWith("top") ? -1 : 1)
+           * (card.height + effectiveSetting("edgeMargin"))) : 0
+    readonly property real transitionOffsetProgress: entering
+        ? 1 - lifecycleProgress : (dismissing ? lifecycleProgress : 0)
+    readonly property real presentationOpacity: entering ? lifecycleProgress
+        : (dismissing ? 1 - lifecycleProgress : (lifecycleState === "visible" ? 1 : 0))
+    readonly property real presentationScale: activeAnimationStyle === "scale-fade"
+        ? (entering ? 0.92 + 0.08 * lifecycleProgress
+                    : (dismissing ? 1.0 - 0.04 * lifecycleProgress : 1.0))
+        : 1.0
+
+    function effectiveSetting(name) {
+        return nativeDragSnapshot ? nativeDragSnapshot[name] : configuration[name]
+    }
+
+    function easingValue(name) {
+        if (name === "linear") return Easing.Linear
+        if (name === "in-quad") return Easing.InQuad
+        if (name === "in-out-cubic") return Easing.InOutCubic
+        return Easing.OutCubic
+    }
 
     function updateGeometry() {
-        if (nativeFileDragging)
+        if (!visible || nativeFileDragging)
             return
-        const scaledWidth = card.width * card.scale
-        const scaledHeight = card.height * card.scale
-        const inputRect = Qt.rect(card.x - (scaledWidth - card.width) / 2,
-                                  card.y - (scaledHeight - card.height) / 2,
-                                  scaledWidth, scaledHeight)
+        const scale = card.scale
+        const x = card.x + (card.width * (1 - scale) / 2)
+        const y = card.y + (card.height * (1 - scale) / 2)
+        const inputRect = Qt.rect(x, y, card.width * scale, card.height * scale)
         if (ScreenshotInputRegion)
             ScreenshotInputRegion.update(inputRect)
         ScreenshotController.thumbnailRect = inputRect
-    }
-
-    function restoreSlot() {
-        card.x = slotPosition.x
-        card.y = slotPosition.y
     }
 
     function pointerPosition(mouse) {
@@ -61,15 +128,161 @@ Window {
 
     function resetPressState() {
         held = false
+        resumeIdleCountdown()
+    }
+
+    function idleIsSuspended() {
+        return hovered || held || nativeFileDragging || !visible
+            || lifecycleState !== "visible" || ScreenshotController.previewVisible
+    }
+
+    function pauseIdleCountdown() {
+        if (idleTimer.running) {
+            idleRemainingMs = Math.max(0, idleDeadlineMs - Date.now())
+            idleTimer.stop()
+        }
+        if (dismissing)
+            cancelDismissalForInteraction()
+    }
+
+    function resumeIdleCountdown() {
+        if (idleIsSuspended()) {
+            idleTimer.stop()
+            return
+        }
+        if (idleTimer.running)
+            return
+        if (idleRemainingMs <= 0)
+            idleRemainingMs = configuration.displayDurationMs
+        idleDeadlineMs = Date.now() + idleRemainingMs
+        idleTimer.interval = Math.max(1, Math.ceil(idleRemainingMs))
+        idleTimer.start()
+    }
+
+    function startIdleCountdown() {
+        idleRemainingMs = configuration.displayDurationMs
+        appliedDisplayDurationMs = configuration.displayDurationMs
+        idleTimer.stop()
+        resumeIdleCountdown()
+    }
+
+    function startEntry() {
+        ++animationToken
+        activeAnimationToken = animationToken
+        activeImageSource = ScreenshotController.imageSource
+        activeAnimationStyle = configuration.entryAnimation
+        activeAnimationEasing = configuration.entryEasing
+        activeAnimationDurationMs = configuration.entryDurationMs
+        lifecycleState = "entering"
+        lifecycleProgress = 0
+        idleTimer.stop()
+        idleRemainingMs = configuration.displayDurationMs
+        updateGeometry()
+
+        if (!configuration.animationsEnabled || activeAnimationDurationMs <= 0) {
+            lifecycleProgress = 1
+            lifecycleState = "visible"
+            updateGeometry()
+            resumeIdleCountdown()
+            return
+        }
+        lifecycleAnimation.duration = activeAnimationDurationMs
+        lifecycleAnimation.easing.type = easingValue(activeAnimationEasing)
+        lifecycleAnimation.restart()
+    }
+
+    function beginDismissal(force) {
+        if (!visible || dismissing || nativeFileDragging || lifecycleState === "hidden")
+            return
+        if (!force && (held || hovered)) {
+            idleRemainingMs = configuration.displayDurationMs
+            return
+        }
+
+        idleTimer.stop()
+        ++animationToken
+        activeAnimationToken = animationToken
+        activeImageSource = ScreenshotController.imageSource
+        activeAnimationStyle = configuration.exitAnimation
+        activeAnimationEasing = configuration.exitEasing
+        activeAnimationDurationMs = configuration.exitDurationMs
+        lifecycleState = "dismissing"
+        lifecycleProgress = 0
+
+        if (!configuration.animationsEnabled || activeAnimationDurationMs <= 0) {
+            completeDismissal(animationToken, activeImageSource)
+            return
+        }
+        lifecycleAnimation.duration = activeAnimationDurationMs
+        lifecycleAnimation.easing.type = easingValue(activeAnimationEasing)
+        lifecycleAnimation.restart()
+    }
+
+    function completeDismissal(token, imageSource) {
+        if (token !== animationToken || token !== activeAnimationToken
+                || lifecycleState !== "dismissing" || imageSource !== ScreenshotController.imageSource
+                || !visible || nativeFileDragging)
+            return
+        lifecycleState = "hidden"
+        lifecycleProgress = 1
+        ScreenshotController.dismissThumbnail()
+    }
+
+    function finishLifecycleAnimation() {
+        const token = activeAnimationToken
+        const imageSource = activeImageSource
+        if (token !== animationToken || imageSource !== ScreenshotController.imageSource)
+            return
+        if (lifecycleState === "entering") {
+            lifecycleProgress = 1
+            lifecycleState = "visible"
+            updateGeometry()
+            startIdleCountdown()
+        } else if (lifecycleState === "dismissing") {
+            completeDismissal(token, imageSource)
+        }
+    }
+
+    function cancelDismissalForInteraction() {
+        if (!dismissing)
+            return
+        ++animationToken
+        lifecycleAnimation.stop()
+        lifecycleState = "visible"
+        lifecycleProgress = 1
+        idleRemainingMs = configuration.displayDurationMs
+        updateGeometry()
     }
 
     function startNativeFileDrag() {
-        if (!held || nativeFileDragging || !ScreenshotController.resultUri)
+        if (!configuration.dragEnabled || !held || nativeFileDragging
+                || !ScreenshotController.resultUri || lifecycleState !== "visible")
             return
 
+        nativeDragSnapshot = ({
+            cornerRadius: configuration.cornerRadius,
+            borderEnabled: configuration.borderEnabled,
+            borderWidth: configuration.borderWidth,
+            borderColor: configuration.borderColor,
+            shadowEnabled: configuration.shadowEnabled,
+            shadowStrength: configuration.shadowStrength,
+            thumbnailWidth: configuration.thumbnailWidth,
+            thumbnailHeight: configuration.thumbnailHeight,
+            position: configuration.position,
+            edgeMargin: configuration.edgeMargin,
+            frameWidth: card.width,
+            frameHeight: card.height
+        })
+        nativeDragPayload = ({
+            "text/uri-list": ScreenshotController.resultUri + "\r\n",
+            "text/plain": ScreenshotController.resultPath,
+            "image/png": ScreenshotController.imagePngData
+        })
+        nativeDragSource = ScreenshotController.imageSource
         nativeFileDragging = true
         nativeDragConsumedPress = true
         held = false
+        idleTimer.stop()
         ScreenshotController.setThumbnailDragActive(true)
         nativeDragStartCount += 1
         if (nativeDragTestMode)
@@ -79,137 +292,119 @@ Window {
         card.Drag.startDrag(Qt.CopyAction)
     }
 
+    property url nativeDragSource: ""
+
     function finishNativeFileDrag(dropAction) {
+        if (!nativeFileDragging)
+            return true
+        const refreshForNewCapture = pendingCaptureRefresh
         nativeFileDragging = false
         ScreenshotController.setThumbnailDragActive(false)
-        if (dropAction === Qt.CopyAction) {
-            dismiss()
+        nativeDragSnapshot = null
+        nativeDragPayload = ({})
+        nativeDragSource = ""
+        pendingCaptureRefresh = false
+        updateGeometry()
+        if (refreshForNewCapture && ScreenshotController.thumbnailVisible
+                && configuration.showThumbnail) {
+            startEntry()
             return true
         }
-
-        restoreSlot()
-        updateGeometry()
+        if (dropAction === Qt.CopyAction) {
+            beginDismissal(true)
+            return true
+        }
+        if (!configuration.showThumbnail) {
+            beginDismissal(true)
+            return true
+        }
+        resumeIdleCountdown()
         return true
     }
 
-    function dismiss() {
-        if (dismissing || nativeFileDragging)
-            return
-        dismissing = true
-        dismissAnimation.restart()
+    function activateClickAction() {
+        if (configuration.clickAction === "copy") {
+            ScreenshotController.copyScreenshot()
+            beginDismissal(true)
+        } else if (configuration.clickAction === "dismiss") {
+            beginDismissal(true)
+        } else {
+            ScreenshotController.openPreview()
+        }
     }
 
     onVisibleChanged: {
         if (visible) {
-            entering = true
-            dismissing = false
             nativeFileDragging = false
             nativeDragConsumedPress = false
-            resetPressState()
-            restoreSlot()
+            held = false
+            hovered = false
+            startEntry()
             updateGeometry()
-            Qt.callLater(function() {
-                if (root.visible)
-                    root.entering = false
-            })
-        } else if (!nativeFileDragging && ScreenshotInputRegion) {
-            ScreenshotInputRegion.suspend()
+        } else {
+            ++animationToken
+            lifecycleAnimation.stop()
+            idleTimer.stop()
+            lifecycleProgress = 1
+            lifecycleState = "hidden"
+            if (!nativeFileDragging && ScreenshotInputRegion)
+                ScreenshotInputRegion.suspend()
         }
     }
 
+    onHoveredChanged: {
+        if (hovered)
+            pauseIdleCountdown()
+        else
+            resumeIdleCountdown()
+    }
+    onHeldChanged: {
+        if (held)
+            pauseIdleCountdown()
+        else
+            resumeIdleCountdown()
+    }
+
+    onWidthChanged: updateGeometry()
+    onHeightChanged: updateGeometry()
     Item {
         id: card
         objectName: "thumbnailCard"
-        width: Math.min(240, Math.max(1, 160 * root.aspectRatio))
-        height: Math.min(160, Math.max(1, 240 / root.aspectRatio))
-        x: root.slotPosition.x
-        y: root.slotPosition.y
-        scale: root.entering ? 0.94
-                             : (root.nativeFileDragging ? 1.0 : (root.held ? 1.03 : 1.0))
-        opacity: root.nativeFileDragging ? 0 : (root.entering ? 0 : 1)
-
-        Behavior on x {
-            enabled: !root.dismissing
-            NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
-        }
-        Behavior on y {
-            enabled: !root.dismissing
-            NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
-        }
-        Behavior on scale {
-            enabled: !root.nativeFileDragging
-            NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
-        }
-        Behavior on opacity {
-            enabled: !root.nativeFileDragging
-            NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
-        }
+        width: root.frameWidth
+        height: root.frameHeight
+        x: root.slotPosition.x + root.entryOffsetX * root.transitionOffsetProgress
+        y: root.slotPosition.y + root.entryOffsetY * root.transitionOffsetProgress
+        scale: root.presentationScale
+        opacity: root.nativeFileDragging ? 0 : root.presentationOpacity
 
         onXChanged: root.updateGeometry()
         onYChanged: root.updateGeometry()
         onScaleChanged: root.updateGeometry()
+        onWidthChanged: root.updateGeometry()
+        onHeightChanged: root.updateGeometry()
 
-        Rectangle {
-            x: 2
-            y: 4
-            width: parent.width
-            height: parent.height
-            radius: 11
-            color: "#40000000"
-            z: -1
-        }
-        Rectangle {
-            anchors.fill: parent
-            radius: 10
-            color: "#b315171c"
-            border.color: "#b3ffffff"
-            border.width: 1
-        }
-        Image {
-            anchors.fill: parent
-            anchors.margins: 3
-            source: ScreenshotController.imageSource
-            fillMode: Image.PreserveAspectFit
-            asynchronous: false
-            cache: false
-        }
-
-        Rectangle {
-            objectName: "dismissAffordance"
-            z: 2
-            width: 28
-            height: 28
-            x: parent.width - width - 8
-            y: 8
-            radius: width / 2
-            color: "#d920242b"
-            border.color: "#80ffffff"
-            border.width: 1
-
-            Text {
-                anchors.centerIn: parent
-                text: "×"
-                color: "white"
-                font.pixelSize: 21
-                font.weight: Font.DemiBold
-            }
-
-            MouseArea {
-                anchors.fill: parent
-                acceptedButtons: Qt.LeftButton
-                onClicked: root.dismiss()
-            }
+        ScreenshotComponents.ScreenshotVisual {
+            id: screenshotVisual
+            objectName: "thumbnailVisual"
+            x: -shadowPadding
+            y: -shadowPadding
+            imageWidth: card.width
+            imageHeight: card.height
+            source: root.nativeDragSnapshot ? root.nativeDragSource
+                                           : ScreenshotController.imageSource
+            cornerRadius: root.effectiveSetting("cornerRadius")
+            borderEnabled: root.effectiveSetting("borderEnabled")
+            borderWidth: root.effectiveSetting("borderWidth")
+            borderColor: root.effectiveSetting("borderColor")
+            shadowEnabled: root.effectiveSetting("shadowEnabled")
+            shadowStrength: root.effectiveSetting("shadowStrength")
         }
 
         Drag.dragType: Drag.None
         Drag.supportedActions: Qt.CopyAction
         Drag.proposedAction: Qt.CopyAction
-        Drag.mimeData: ({
-            "text/uri-list": ScreenshotController.resultUri + "\r\n",
-            "text/plain": ScreenshotController.resultPath,
-            "image/png": ScreenshotController.imagePngData
-        })
-        Drag.imageSource: ScreenshotController.imageSource
+        Drag.mimeData: root.nativeDragPayload
+        Drag.imageSource: root.nativeDragSource || ScreenshotController.imageSource
         Drag.imageSourceSize: Qt.size(Math.max(1, Math.round(width)),
                                       Math.max(1, Math.round(height)))
         Drag.hotSpot: root.nativeDragHotSpot
@@ -224,23 +419,29 @@ Window {
             anchors.fill: parent
             hoverEnabled: true
             acceptedButtons: Qt.LeftButton
-            onEntered: root.hovered = true
-            onExited: root.hovered = false
+            onEntered: {
+                root.hovered = true
+                root.pauseIdleCountdown()
+            }
+            onExited: {
+                root.hovered = false
+                root.resumeIdleCountdown()
+            }
             onPressed: function(mouse) {
                 root.nativeDragConsumedPress = false
                 root.held = true
+                root.pauseIdleCountdown()
                 root.dragStart = root.pointerPosition(mouse)
                 root.nativeDragHotSpot = Qt.point(mouse.x, mouse.y)
             }
             onPositionChanged: function(mouse) {
-                if (!root.held)
+                if (!root.held || !root.configuration.dragEnabled)
                     return
                 const current = root.pointerPosition(mouse)
                 const dx = current.x - root.dragStart.x
                 const dy = current.y - root.dragStart.y
-                if (Math.sqrt(dx * dx + dy * dy) >= root.nativeDragDistance) {
+                if (Math.sqrt(dx * dx + dy * dy) >= root.nativeDragDistance)
                     root.startNativeFileDrag()
-                }
             }
             onReleased: function(mouse) {
                 if (root.nativeDragConsumedPress) {
@@ -255,9 +456,8 @@ Window {
                 const dy = current.y - root.dragStart.y
                 const distance = Math.sqrt(dx * dx + dy * dy)
                 root.resetPressState()
-                if (distance < root.nativeDragDistance) {
-                    ScreenshotController.openPreview()
-                }
+                if (distance < root.nativeDragDistance)
+                    root.activateClickAction()
             }
             onCanceled: {
                 if (root.nativeDragConsumedPress) {
@@ -273,36 +473,47 @@ Window {
     Timer {
         id: idleTimer
         objectName: "idleTimer"
-        interval: 5000
+        interval: Math.max(1, Math.ceil(root.idleRemainingMs))
         repeat: false
-        running: root.visible && !root.hovered && !root.held && !root.nativeFileDragging
-                 && !root.dismissing && !root.entering
-        onTriggered: ScreenshotController.dismissThumbnail()
+        onTriggered: root.beginDismissal()
     }
 
-    ParallelAnimation {
-        id: dismissAnimation
-        NumberAnimation {
-            target: card
-            property: "x"
-            to: root.width + 120
-            duration: 220
-            easing.type: Easing.OutCubic
-        }
-        NumberAnimation {
-            target: card
-            property: "opacity"
-            to: 0
-            duration: 220
-            easing.type: Easing.OutCubic
-        }
-        onStopped: {
-            root.dismissing = false
-            root.restoreSlot()
-            ScreenshotController.dismissThumbnail()
+    Connections {
+        target: ScreenshotController
+        function onImageChanged() {
+            if (!root.visible)
+                return
+            if (root.nativeFileDragging) {
+                root.pendingCaptureRefresh = true
+                return
+            }
+            root.pendingCaptureRefresh = false
+            root.startEntry()
         }
     }
 
-    onWidthChanged: root.updateGeometry()
-    onHeightChanged: root.updateGeometry()
+    Connections {
+        target: root.configuration
+        function onConfigurationChanged() {
+            if (!root.nativeFileDragging && !root.held && !root.hovered)
+                root.updateGeometry()
+            if (root.appliedDisplayDurationMs !== root.configuration.displayDurationMs) {
+                root.appliedDisplayDurationMs = root.configuration.displayDurationMs
+                root.idleRemainingMs = root.configuration.displayDurationMs
+                if (root.lifecycleState === "visible" && !root.idleIsSuspended())
+                    root.startIdleCountdown()
+            }
+        }
+    }
+
+    NumberAnimation {
+        id: lifecycleAnimation
+        target: root
+        property: "lifecycleProgress"
+        from: 0
+        to: 1
+        duration: 220
+        easing.type: Easing.OutCubic
+        onFinished: root.finishLifecycleAnimation()
+    }
 }

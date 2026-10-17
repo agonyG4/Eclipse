@@ -6,6 +6,7 @@
 #include "services/dock/SettingsDockController.hpp"
 #include "services/profile/SettingsUserProfile.hpp"
 #include "services/wallpaper/SettingsWallpaperController.hpp"
+#include "screenshot/ScreenshotConfiguration.hpp"
 #include "system/audio/AudioService.hpp"
 #include "system/bluetooth/BluetoothService.hpp"
 #include "system/network/NetworkService.hpp"
@@ -45,6 +46,7 @@ class SettingsController final : public QObject {
     Q_PROPERTY(SettingsIconsController *icons READ icons CONSTANT)
     Q_PROPERTY(SettingsVisualEffectsController *visualEffects READ visualEffects CONSTANT)
     Q_PROPERTY(SettingsDisplayController *display READ display CONSTANT)
+    Q_PROPERTY(ScreenshotConfiguration *screenshots READ screenshots CONSTANT)
     Q_PROPERTY(Astrea::System::BluetoothService *bluetooth READ bluetooth CONSTANT)
     Q_PROPERTY(Astrea::System::AudioService *audio READ audio CONSTANT)
     Q_PROPERTY(Astrea::System::NetworkService *network READ network CONSTANT)
@@ -79,6 +81,7 @@ public:
     SettingsIconsController *icons() const { return m_iconsController.get(); }
     SettingsVisualEffectsController *visualEffects() const { return m_visualEffectsController.get(); }
     SettingsDisplayController *display() const { return m_displayController.get(); }
+    ScreenshotConfiguration *screenshots() const { return m_screenshotConfiguration.get(); }
     Astrea::System::BluetoothService *bluetooth() const { return m_bluetoothService.get(); }
     Astrea::System::AudioService *audio() const { return m_audioService.get(); }
     Astrea::System::NetworkService *network() const { return m_networkService.get(); }
@@ -113,6 +116,7 @@ private:
     std::unique_ptr<SettingsIconsController> m_iconsController;
     std::unique_ptr<SettingsVisualEffectsController> m_visualEffectsController;
     std::unique_ptr<SettingsDisplayController> m_displayController;
+    std::unique_ptr<ScreenshotConfiguration> m_screenshotConfiguration;
     QString m_currentDestinationId;
     QString m_selectedSidebarId;
     QVector<QString> m_history;

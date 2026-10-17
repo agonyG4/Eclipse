@@ -48,6 +48,7 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     pages/appearance/MaterialShowcase.qml
     pages/appearance/Dock.qml
     pages/appearance/Animations.qml
+    pages/appearance/Screenshots.qml
     pages/appearance/Wallpaper.qml
     theme/Apps.qml
     theme/Shell.qml
@@ -78,6 +79,7 @@ set(ASTREA_SETTINGS_ASSET_RELATIVE_FILES
     icons/settings/themes/dark/software-center.svg
     icons/settings/themes/dark/theme.svg
     icons/settings/themes/dark/wallpaper.svg
+    previews/screenshot-preview.svg
 )
 
 set(ASTREA_SETTINGS_QML_FILES)
@@ -87,6 +89,12 @@ foreach(qml_file IN LISTS ASTREA_SETTINGS_QML_RELATIVE_FILES)
     set_source_files_properties(${qml_source} PROPERTIES QT_RESOURCE_ALIAS "qml/${qml_file}")
     list(APPEND ASTREA_SETTINGS_QML_FILES "${qml_source}")
 endforeach()
+
+get_filename_component(ASTREA_SETTINGS_SCREENSHOT_VISUAL_QML
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../shared/qml/ScreenshotVisual.qml" ABSOLUTE)
+set_source_files_properties(${ASTREA_SETTINGS_SCREENSHOT_VISUAL_QML}
+    PROPERTIES QT_RESOURCE_ALIAS "qml/components/ScreenshotVisual.qml")
+list(APPEND ASTREA_SETTINGS_QML_FILES ${ASTREA_SETTINGS_SCREENSHOT_VISUAL_QML})
 
 set(ASTREA_SETTINGS_ASSET_FILES)
 foreach(asset_file IN LISTS ASTREA_SETTINGS_ASSET_RELATIVE_FILES)

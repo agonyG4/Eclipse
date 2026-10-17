@@ -83,6 +83,8 @@ add_settings_qml_integration_test(settings-bluetooth-qml-test integration/Settin
 add_settings_qml_integration_test(settings-audio-qml-test integration/SettingsAudioQmlTest.cpp)
 add_settings_qml_integration_test(settings-internet-qml-test integration/SettingsInternetQmlTest.cpp)
 add_settings_qml_integration_test(settings-display-qml-test integration/SettingsDisplayQmlTest.cpp)
+add_settings_qml_integration_test(screenshot-visual-qml-test integration/ScreenshotVisualQmlTest.cpp)
+add_settings_qml_integration_test(screenshot-settings-qml-test integration/ScreenshotSettingsQmlTest.cpp)
 
 add_test(NAME compositor-page-source-test
     COMMAND ${CMAKE_COMMAND}

@@ -183,6 +183,35 @@ QJsonObject encodedValues(const ScreenshotConfiguration::Values &values)
     return object;
 }
 
+bool sameValues(const ScreenshotConfiguration::Values &left,
+                const ScreenshotConfiguration::Values &right)
+{
+    return left.cornerRadius == right.cornerRadius
+        && left.borderEnabled == right.borderEnabled
+        && left.borderWidth == right.borderWidth
+        && left.borderColor == right.borderColor
+        && left.shadowEnabled == right.shadowEnabled
+        && qFuzzyCompare(left.shadowStrength + 1.0, right.shadowStrength + 1.0)
+        && left.thumbnailWidth == right.thumbnailWidth
+        && left.thumbnailHeight == right.thumbnailHeight
+        && qFuzzyCompare(left.previewMaximumScale + 1.0,
+                         right.previewMaximumScale + 1.0)
+        && left.position == right.position
+        && left.edgeMargin == right.edgeMargin
+        && left.animationsEnabled == right.animationsEnabled
+        && left.entryAnimation == right.entryAnimation
+        && left.exitAnimation == right.exitAnimation
+        && left.entryDurationMs == right.entryDurationMs
+        && left.exitDurationMs == right.exitDurationMs
+        && left.entryEasing == right.entryEasing
+        && left.exitEasing == right.exitEasing
+        && left.showThumbnail == right.showThumbnail
+        && left.autoCopy == right.autoCopy
+        && left.dragEnabled == right.dragEnabled
+        && left.displayDurationMs == right.displayDurationMs
+        && left.clickAction == right.clickAction;
+}
+
 ScreenshotConfiguration::Values parsedValues(const QJsonObject &object,
                                               const ScreenshotConfiguration::Values &defaults,
                                               bool *hadInvalidValue)
@@ -365,32 +394,8 @@ QString ScreenshotConfiguration::clickAction() const
 
 void ScreenshotConfiguration::update(const QString &changedField, const Values &candidate)
 {
-    if (candidate.cornerRadius == m_values.cornerRadius
-        && candidate.borderEnabled == m_values.borderEnabled
-        && candidate.borderWidth == m_values.borderWidth
-        && candidate.borderColor == m_values.borderColor
-        && candidate.shadowEnabled == m_values.shadowEnabled
-        && qFuzzyCompare(candidate.shadowStrength + 1.0, m_values.shadowStrength + 1.0)
-        && candidate.thumbnailWidth == m_values.thumbnailWidth
-        && candidate.thumbnailHeight == m_values.thumbnailHeight
-        && qFuzzyCompare(candidate.previewMaximumScale + 1.0,
-                         m_values.previewMaximumScale + 1.0)
-        && candidate.position == m_values.position
-        && candidate.edgeMargin == m_values.edgeMargin
-        && candidate.animationsEnabled == m_values.animationsEnabled
-        && candidate.entryAnimation == m_values.entryAnimation
-        && candidate.exitAnimation == m_values.exitAnimation
-        && candidate.entryDurationMs == m_values.entryDurationMs
-        && candidate.exitDurationMs == m_values.exitDurationMs
-        && candidate.entryEasing == m_values.entryEasing
-        && candidate.exitEasing == m_values.exitEasing
-        && candidate.showThumbnail == m_values.showThumbnail
-        && candidate.autoCopy == m_values.autoCopy
-        && candidate.dragEnabled == m_values.dragEnabled
-        && candidate.displayDurationMs == m_values.displayDurationMs
-        && candidate.clickAction == m_values.clickAction) {
+    if (sameValues(candidate, m_values))
         return;
-    }
     if (!writeCandidate(candidate, changedField))
         return;
     m_values = candidate;
@@ -585,14 +590,7 @@ bool ScreenshotConfiguration::loadFile(bool initialLoad)
     Values fallback = defaults();
     QFile file(m_filePath);
     if (!file.exists()) {
-        const bool changed = !(m_values.cornerRadius == fallback.cornerRadius
-            && m_values.borderEnabled == fallback.borderEnabled
-            && m_values.borderWidth == fallback.borderWidth
-            && m_values.borderColor == fallback.borderColor
-            && m_values.shadowEnabled == fallback.shadowEnabled
-            && m_values.thumbnailWidth == fallback.thumbnailWidth
-            && m_values.thumbnailHeight == fallback.thumbnailHeight
-            && m_values.position == fallback.position);
+        const bool changed = !sameValues(m_values, fallback);
         m_values = fallback;
         m_rootObject = {};
         m_lastBytes.clear();
@@ -653,31 +651,8 @@ bool ScreenshotConfiguration::loadFile(bool initialLoad)
     m_hasInvalidFields = invalidValue;
     setStatus(invalidValue ? QStringLiteral("error") : QStringLiteral("ready"),
               invalidValue ? QStringLiteral("One or more screenshot settings are invalid") : QString());
-    if (!initialLoad && (m_values.cornerRadius != previous.cornerRadius
-        || m_values.borderEnabled != previous.borderEnabled
-        || m_values.borderWidth != previous.borderWidth
-        || m_values.borderColor != previous.borderColor
-        || m_values.shadowEnabled != previous.shadowEnabled
-        || !qFuzzyCompare(m_values.shadowStrength + 1.0, previous.shadowStrength + 1.0)
-        || m_values.thumbnailWidth != previous.thumbnailWidth
-        || m_values.thumbnailHeight != previous.thumbnailHeight
-        || !qFuzzyCompare(m_values.previewMaximumScale + 1.0, previous.previewMaximumScale + 1.0)
-        || m_values.position != previous.position
-        || m_values.edgeMargin != previous.edgeMargin
-        || m_values.animationsEnabled != previous.animationsEnabled
-        || m_values.entryAnimation != previous.entryAnimation
-        || m_values.exitAnimation != previous.exitAnimation
-        || m_values.entryDurationMs != previous.entryDurationMs
-        || m_values.exitDurationMs != previous.exitDurationMs
-        || m_values.entryEasing != previous.entryEasing
-        || m_values.exitEasing != previous.exitEasing
-        || m_values.showThumbnail != previous.showThumbnail
-        || m_values.autoCopy != previous.autoCopy
-        || m_values.dragEnabled != previous.dragEnabled
-        || m_values.displayDurationMs != previous.displayDurationMs
-        || m_values.clickAction != previous.clickAction)) {
+    if (!initialLoad && !sameValues(m_values, previous))
         emit configurationChanged();
-    }
     return true;
 }
 

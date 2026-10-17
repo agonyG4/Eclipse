@@ -209,6 +209,7 @@ private slots:
     void displaySidebarClickLoadsSelectedPageWithoutTyphon();
     void loadsCustomizationHubOffscreen();
     void loadsAnimationsRouteOffscreen();
+    void loadsScreenshotsRouteOffscreen();
     void plannedEffectTextUsesRequestedEffect();
     void unavailableEffectTextUsesRequestedEffect();
     void loadsAppearanceRouteFromHubOffscreen();
@@ -579,10 +580,15 @@ void SettingsQmlSmokeTest::displaySidebarClickLoadsSelectedPageWithoutTyphon()
     QVERIFY(displayRow->property("selected").toBool());
     QCOMPARE(qvariant_cast<QUrl>(loader->property("source")), displaySource);
 
-    QObject *displayError = window->findChild<QObject *>(QStringLiteral("displayError"));
-    QObject *displayRetry = window->findChild<QObject *>(QStringLiteral("displayRetry"));
-    QVERIFY(displayError != nullptr);
-    QVERIFY(displayError->property("visible").toBool());
+    QObject *displayUnavailable = window->findChild<QObject *>(
+        QStringLiteral("displayBackendUnavailable"));
+    QObject *displayRefreshError = window->findChild<QObject *>(
+        QStringLiteral("displayRefreshError"));
+    QObject *displayRetry = window->findChild<QObject *>(QStringLiteral("displayRetryButton"));
+    QVERIFY(displayUnavailable != nullptr);
+    QVERIFY(displayRefreshError != nullptr);
+    QVERIFY(displayUnavailable->property("visible").toBool()
+            || displayRefreshError->property("visible").toBool());
     QVERIFY(displayRetry != nullptr);
     QVERIFY(displayRetry->property("visible").toBool());
     QVERIFY(displayRetry->property("enabled").toBool());
@@ -625,15 +631,17 @@ void SettingsQmlSmokeTest::loadsCustomizationHubOffscreen()
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-wallpaper")) != nullptr);
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-dock")) != nullptr);
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-animations")) != nullptr);
-    QCOMPARE(countVisualItems(hubItem, QRegularExpression(QStringLiteral("^hubNavigationRow-"))), 6);
+    QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-screenshots")) != nullptr);
+    QCOMPARE(countVisualItems(hubItem, QRegularExpression(QStringLiteral("^hubNavigationRow-"))), 7);
     const QVariantList children = settingsController.currentDestinationChildren();
-    QCOMPARE(children.size(), 6);
+    QCOMPARE(children.size(), 7);
     const QStringList expectedChildren {QStringLiteral("appearance"),
                                         QStringLiteral("visual-effects"),
                                         QStringLiteral("icons"),
                                         QStringLiteral("wallpaper"),
                                         QStringLiteral("dock"),
-                                        QStringLiteral("animations")};
+                                        QStringLiteral("animations"),
+                                        QStringLiteral("screenshots")};
     for (qsizetype index = 0; index < expectedChildren.size(); ++index) {
         QCOMPARE(children.at(index).toMap().value(QStringLiteral("entryId")).toString(),
                  expectedChildren.at(index));
@@ -664,6 +672,42 @@ void SettingsQmlSmokeTest::loadsAnimationsRouteOffscreen()
     QCOMPARE(page->objectName(), QStringLiteral("animationsPage"));
     QVERIFY(page->property("controller").isValid());
     QVERIFY(!page->property("controller").value<QObject *>()->property("available").toBool());
+}
+
+void SettingsQmlSmokeTest::loadsScreenshotsRouteOffscreen()
+{
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController;
+    QQmlApplicationEngine engine;
+    QList<QQmlError> qmlWarnings;
+
+    connect(&engine, &QQmlApplicationEngine::warnings, this,
+            [&qmlWarnings](const QList<QQmlError> &warnings) {
+                qmlWarnings.append(warnings);
+            });
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"),
+                                             &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("screenshots")));
+    QObject *root = engine.rootObjects().constFirst();
+    QObject *loader = root->findChild<QObject *>(QStringLiteral("settingsPageLoader"));
+    QVERIFY(loader != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(loader->property("item").isValid(), 1000);
+    QObject *page = qvariant_cast<QObject *>(loader->property("item"));
+    QVERIFY(page != nullptr);
+    QCOMPARE(page->objectName(), QStringLiteral("screenshotsPage"));
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("screenshotMockVisual")) != nullptr);
+    for (const QQmlError &warning : qmlWarnings) {
+        const QString source = warning.url().toString();
+        QVERIFY2(!source.contains(QStringLiteral("Screenshots.qml"))
+                     && !source.contains(QStringLiteral("ScreenshotVisual.qml")),
+                 qPrintable(warning.toString()));
+    }
 }
 
 void SettingsQmlSmokeTest::plannedEffectTextUsesRequestedEffect()
@@ -1904,6 +1948,9 @@ void SettingsQmlSmokeTest::loadsWallpaperRouteFromHubOffscreen()
     QObject *confirm = page->findChild<QObject *>(QStringLiteral("wallpaperNameConfirmButton"));
     QVERIFY(confirm != nullptr);
     QCOMPARE(confirm->property("text").toString(), QStringLiteral("Confirm"));
+    QObject *wallpaperController = page->property("controller").value<QObject *>();
+    QVERIFY(wallpaperController != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(!wallpaperController->property("busy").toBool(), 3000);
     QVERIFY(confirm->property("enabled").toBool());
 
     QObject *allWorkspaces = page->findChild<QObject *>(QStringLiteral("allWorkspacesToggle"));

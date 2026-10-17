@@ -46,6 +46,8 @@ add_library(astrea-shared-core STATIC
     launch/ApplicationLauncher.hpp
     theme/ThemeController.cpp
     theme/ThemeController.hpp
+    screenshot/ScreenshotConfiguration.cpp
+    screenshot/ScreenshotConfiguration.hpp
     icons/AstreaIconTheme.cpp
     icons/AstreaIconTheme.hpp
     icons/IconRenderRequest.hpp

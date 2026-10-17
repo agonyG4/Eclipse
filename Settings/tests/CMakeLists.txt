@@ -25,6 +25,8 @@ add_settings_unit_test(settings-dock-controller-test unit/SettingsDockController
 add_settings_unit_test(settings-wallpaper-controller-test unit/SettingsWallpaperControllerTest.cpp)
 add_settings_unit_test(settings-navigation-model-test unit/SettingsNavigationModelTest.cpp)
 add_settings_unit_test(settings-user-profile-provider-test unit/SettingsUserProfileProviderTest.cpp)
+add_settings_unit_test(screenshot-configuration-test unit/ScreenshotConfigurationTest.cpp)
+target_link_libraries(screenshot-configuration-test PRIVATE astrea-shared-core)
 add_settings_unit_test(admin-group-detector-test unit/AdminGroupDetectorTest.cpp)
 add_settings_unit_test(administrative-group-policy-test unit/AdministrativeGroupPolicyTest.cpp)
 add_settings_unit_test(theme-controller-test unit/ThemeControllerTest.cpp)

@@ -5,9 +5,23 @@
 #include "AltTab/core/WindowInfo.hpp"
 #include "AltTab/platform/compositor/FakeBackend.hpp"
 #include "apps/appidentity/AppIdentityResolver.hpp"
+#include "Spotlight/core/SpotlightBackend.hpp"
 #include "Spotlight/core/SpotlightController.hpp"
-#include "Spotlight/platform/runtime/SpotlightRuntimePaths.hpp"
+#include "Spotlight/core/SpotlightControllerPaths.hpp"
 #include "platform/shortcut/ShellShortcutDispatcher.hpp"
+
+class FakeSpotlightBackend final : public SpotlightBackend {
+public:
+    bool create(const QString &, const QString &, QString * = nullptr) override { return true; }
+    bool createWithCatalog(const QString &, const QString &, const QJsonArray &,
+                           QString * = nullptr) override { return true; }
+    bool reload(QString * = nullptr) override { return true; }
+    bool setCatalog(const QJsonArray &, QString * = nullptr) override { return true; }
+    QJsonArray search(const QString &, int, QString * = nullptr) override { return {}; }
+    bool recordLaunch(const QString &, QString * = nullptr) override { return true; }
+    bool ensureConfig(QString * = nullptr) override { return true; }
+    QJsonArray watchedDirectories() override { return {}; }
+};
 
 class ShellShortcutDispatcherTest final : public QObject {
     Q_OBJECT
@@ -20,7 +34,9 @@ private slots:
 
 void ShellShortcutDispatcherTest::spotlightToggleIsIndependentFromAltTabGate()
 {
-    SpotlightController spotlight(SpotlightRuntimePaths::fromEnvironment());
+    FakeSpotlightBackend backend;
+    SpotlightControllerPaths paths;
+    SpotlightController spotlight(paths, &backend);
     spotlight.setWeatherEnabled(false);
     ShellShortcutDispatcher dispatcher(nullptr, &spotlight);
     dispatcher.setAltTabEnabled(false);
@@ -51,7 +67,9 @@ void ShellShortcutDispatcherTest::altTabToggleIsIndependentFromSpotlightGate()
     FakeWindowSource backend({window});
     AppIdentityResolver identity;
     AltTabController altTab(&backend, &identity);
-    SpotlightController spotlight(SpotlightRuntimePaths::fromEnvironment());
+    FakeSpotlightBackend spotlightBackend;
+    SpotlightControllerPaths paths;
+    SpotlightController spotlight(paths, &spotlightBackend);
     spotlight.setWeatherEnabled(false);
     ShellShortcutDispatcher dispatcher(&altTab, &spotlight);
     dispatcher.setAltTabEnabled(true);

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/SpotlightControllerPaths.hpp"
+
 #include <QString>
 #include <QDir>
 
@@ -14,6 +16,7 @@ public:
     QString componentsConfigPath() const;
     QString i18nDir() const;
     QString weatherAssetDir() const;
+    SpotlightControllerPaths controllerPaths() const;
 
 private:
     explicit SpotlightRuntimePaths(const QString &root) : m_astreaRoot(root) {}

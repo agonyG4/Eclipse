@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/SpotlightBackend.hpp"
+
 #include <QString>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -7,21 +9,26 @@
 
 struct AstreaSpotlightBackend;
 
-class RustSpotlightBackend {
+class RustSpotlightBackend : public SpotlightBackend {
 public:
     RustSpotlightBackend();
-    ~RustSpotlightBackend();
+    ~RustSpotlightBackend() override;
 
-    bool create(const QString &astreaRoot, const QString &locale, QString *errorOut = nullptr);
+    bool create(const QString &astreaRoot, const QString &locale,
+                QString *errorOut = nullptr) override;
     bool createWithCatalog(const QString &astreaRoot, const QString &locale,
-                           const QJsonArray &catalog, QString *errorOut = nullptr);
+                           const QJsonArray &catalog,
+                           QString *errorOut = nullptr) override;
     void destroy();
-    bool reload(QString *errorOut = nullptr);
-    bool setCatalog(const QJsonArray &catalog, QString *errorOut = nullptr);
-    QJsonArray search(const QString &query, int limit, QString *errorOut = nullptr);
-    bool recordLaunch(const QString &desktopId, QString *errorOut = nullptr);
-    bool ensureConfig(QString *errorOut = nullptr);
-    QJsonArray watchedDirectories();
+    bool reload(QString *errorOut = nullptr) override;
+    bool setCatalog(const QJsonArray &catalog,
+                    QString *errorOut = nullptr) override;
+    QJsonArray search(const QString &query, int limit,
+                      QString *errorOut = nullptr) override;
+    bool recordLaunch(const QString &desktopId,
+                      QString *errorOut = nullptr) override;
+    bool ensureConfig(QString *errorOut = nullptr) override;
+    QJsonArray watchedDirectories() override;
     bool isValid() const { return m_backend != nullptr; }
 
 private:

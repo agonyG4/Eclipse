@@ -9,18 +9,20 @@ repository-supported Eclipse Debug tree on Aether:
 cmake -S .. -B /mnt/Aether/Desktop/GitHub/Eclipse-build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build /mnt/Aether/Desktop/GitHub/Eclipse-build --target \
   astrea-spotlight-runtime astrea-spotlight-wayland astrea-spotlight \
-  astrea-shell-runtime astrea-shell spotlight-tests
+  astrea-shell-runtime astrea-shell spotlight-tests \
+  shell-shortcut-dispatcher-test shell-runtime-test
 ctest --test-dir /mnt/Aether/Desktop/GitHub/Eclipse-build \
-  -R '(spotlight|layer-shell-activation)' --output-on-failure
-ctest --test-dir /mnt/Aether/Desktop/GitHub/Eclipse-build \
-  -R 'legacy-spotlight-daemon-guard' --output-on-failure
+  -R '(spotlight|layer-shell-activation|shell-shortcut-dispatcher-test|shell-runtime-test)' \
+  --output-on-failure
 ```
 
 `spotlight-tests` links the production `astrea-spotlight-runtime`. Its existing
 tests still compile the legacy `SpotlightIpcServer.cpp` directly; that server
 is not a resident production target. The `spotlight-architecture-guard` test
-checks CMake ownership, required target consumption, the compatibility-client
-boundary, and the explicitly deferred internal layering.
+checks Phase 1 CMake ownership and Phase 2 backend/path source boundaries. The
+runtime remains one aggregate target; core and platform source layers do not
+need separate CMake targets. Controller tests use a fake backend, while direct
+adapter tests continue to exercise the Rust ABI.
 
 The `layer-shell-activation-structure` test protects the existing activation
 structure. Build `astrea-spotlight-wayland` explicitly even when only running
@@ -74,7 +76,8 @@ ASTREA_CMAKE_BUILD_DIR=/mnt/Aether/Desktop/GitHub/Eclipse-build \
 - Show, hide, toggle, query, selection, launch, and usage recording behavior
   remain unchanged.
 - Catalog updates, weather, GameMode suppression, configuration reload, and
-  locale behavior remain unchanged.
+  locale behavior remain unchanged. Phase 3 cleanup of launcher ownership,
+  catalog coupling, and weather/`QProcess` orchestration remains deferred.
 - Layer Shell configuration, Bar search integration, shortcut integration,
   and QML resource/context-property APIs remain unchanged.
 - Icon diagnostics remain available from `astrea-spotlight`.

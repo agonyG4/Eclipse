@@ -5,9 +5,11 @@
 `astrea-shell` is the resident process. `AstreaShellApplication` creates the
 unified UI and `ShellRuntime` composes the catalog, launcher,
 `SpotlightController`, `SpotlightConfigWatcher`, `GameModeMonitor`, and other
-resident services. Shell creates the Spotlight objects as before and exposes
-`SpotlightController` and `AstreaI18n` to the existing `Astrea.Shell` QML
-module.
+resident services. Shell resolves `SpotlightRuntimePaths`, converts the paths
+needed by the controller to `SpotlightControllerPaths`, owns one
+`RustSpotlightBackend`, and injects it into `SpotlightController`. The backend
+owner outlives the controller. Shell exposes `SpotlightController` and
+`AstreaI18n` to the existing `Astrea.Shell` QML module.
 
 ## Compatibility CLI and IPC
 
@@ -28,9 +30,9 @@ and close-animation flow. `ShellShortcutDispatcher` continues to route the
 ## Search and selection
 
 QML text input updates `SpotlightController::query`. The controller schedules
-search through the existing Rust backend wrapper and updates
-`SpotlightResultsModel`. Result selection and activation continue through the
-same controller methods.
+search through the core `SpotlightBackend` port, implemented in production by
+`RustSpotlightBackend`, and updates `SpotlightResultsModel`. Result selection
+and activation continue through the same controller methods.
 
 ## Application launch and usage
 
@@ -59,5 +61,11 @@ debounce into a backend catalog reload and result reset.
 ## Shutdown
 
 Closing or stopping `astrea-shell` tears down the Shell-owned Spotlight
-controller and services through the existing QObject and `ShellRuntime`
-ownership. No standalone Spotlight resident process is started.
+controller before its borrowed Rust backend, following `ShellRuntime` member
+declaration order. No standalone Spotlight resident process is started.
+
+## Remaining Phase 3 work
+
+This boundary change does not complete the internal cleanup. `ApplicationLauncher`
+ownership, `DesktopEntryCatalog` coupling, and weather/`QProcess` orchestration
+remain in the controller for a later phase.

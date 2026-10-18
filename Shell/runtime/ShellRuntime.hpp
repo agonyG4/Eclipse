@@ -25,6 +25,7 @@ class DockController;
 class DockSurfaceGeometry;
 class GameModeMonitor;
 class SpotlightConfigWatcher;
+class RustSpotlightBackend;
 class SpatialAudioConfigWatcher;
 class SpotlightController;
 class ShellIpcServer;
@@ -140,6 +141,7 @@ private:
     std::unique_ptr<DockController> m_dockController;
     std::unique_ptr<DockSurfaceGeometry> m_dockSurfaceGeometry;
     std::unique_ptr<AltTabController> m_altTabController;
+    std::unique_ptr<RustSpotlightBackend> m_spotlightBackend;
     std::unique_ptr<SpotlightController> m_spotlightController;
     std::unique_ptr<BarController> m_barController;
     std::unique_ptr<BarClockService> m_barClock;

@@ -25,3 +25,12 @@ QString SpotlightRuntimePaths::i18nDir() const {
 QString SpotlightRuntimePaths::weatherAssetDir() const {
     return m_astreaRoot + QStringLiteral("/Apps/Weather/assets/icons/weather");
 }
+
+SpotlightControllerPaths SpotlightRuntimePaths::controllerPaths() const {
+    return {
+        astreaRoot(),
+        astreaLaunch(),
+        weatherCli(),
+        weatherAssetDir(),
+    };
+}

@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-"""Repository-specific guard for Spotlight Phase 1 CMake ownership.
+"""Repository-specific guard for Spotlight Phase 1 and Phase 2 boundaries.
 
 This checks only the small set of add_library/qt_add_executable and
 target_link_libraries declarations used by Spotlight and Shell. It is not a
 general CMake parser.
 
-Phase 1 protects production source ownership and consumer links. It
-intentionally does not enforce internal layering: SpotlightController still
-depends on platform/rust, platform/runtime, services, ApplicationLauncher,
-DesktopEntryCatalog, and QProcess weather orchestration. Those are deferred to
-later phases and are not evidence that astrea-spotlight-runtime is a portable
-core.
+Phase 1 protects production source ownership and consumer links. Phase 2
+protects the backend and resolved-path dependency directions. Spotlight core
+still depends on ApplicationLauncher and DesktopEntryCatalog and orchestrates
+weather with QProcess; those are explicit Phase 3 debt, so this guard does not
+claim that Spotlight is fully internally cleaned up.
 
 SpotlightIpcServer is an intentional legacy/test-only exception. The
 compatibility executable uses ShellIpcClient and the resident ShellIpcServer;
@@ -39,6 +38,8 @@ RUNTIME_CPP = {
     "platform/rust/RustSpotlightBackend.cpp",
 }
 RUNTIME_HEADERS = {
+    "core/SpotlightBackend.hpp",
+    "core/SpotlightControllerPaths.hpp",
     "core/SpotlightController.hpp",
     "core/SpotlightResultsModel.hpp",
     "services/AstreaI18n.hpp",
@@ -49,6 +50,7 @@ RUNTIME_HEADERS = {
 }
 WAYLAND_CPP = {"platform/wayland/LayerShellSurface.cpp"}
 WAYLAND_HEADERS = {"platform/wayland/LayerShellSurface.hpp"}
+PHASE_3_DEBT = ("ApplicationLauncher", "DesktopEntryCatalog", "QProcess")
 
 
 def without_comments(source: str) -> str:
@@ -191,6 +193,111 @@ def main() -> int:
         and "struct AstreaSpotlightBackend;" in rust_wrapper_header,
         "RustSpotlightBackend.hpp must keep the native C ABI header out of the public API",
     )
+
+    spotlight_root = ROOT / "Spotlight"
+    core_dir = spotlight_root / "core"
+    core_sources = sorted((*core_dir.rglob("*.hpp"), *core_dir.rglob("*.cpp")))
+    forbidden_core_dependencies = re.compile(
+        r"platform/(?:rust|runtime)/|RustSpotlightBackend|SpotlightRuntimePaths"
+    )
+    for path in core_sources:
+        source = path.read_text(encoding="utf-8")
+        require(
+            forbidden_core_dependencies.search(source) is None,
+            f"Spotlight core must not depend on platform Spotlight code: {path.relative_to(ROOT)}",
+        )
+
+    backend_port_path = core_dir / "SpotlightBackend.hpp"
+    controller_paths_path = core_dir / "SpotlightControllerPaths.hpp"
+    controller_header = (core_dir / "SpotlightController.hpp").read_text(encoding="utf-8")
+    controller_cpp = (core_dir / "SpotlightController.cpp").read_text(encoding="utf-8")
+    backend_port = (
+        backend_port_path.read_text(encoding="utf-8") if backend_port_path.is_file() else ""
+    )
+    controller_paths = (
+        controller_paths_path.read_text(encoding="utf-8")
+        if controller_paths_path.is_file()
+        else ""
+    )
+    require(backend_port_path.is_file(), "Spotlight core must own SpotlightBackend.hpp")
+    require(
+        "SpotlightBackend" in controller_header
+        and "SpotlightBackend *m_backend" in controller_header
+        and "RustSpotlightBackend" not in controller_header + controller_cpp,
+        "SpotlightController must borrow the core SpotlightBackend port",
+    )
+    require(
+        all(method in backend_port for method in (
+            "create(", "createWithCatalog(", "reload(", "setCatalog(", "search(",
+            "recordLaunch(", "ensureConfig(", "watchedDirectories()",
+        ))
+        and "destroy(" not in backend_port
+        and "isValid(" not in backend_port,
+        "SpotlightBackend must expose only the controller-required operations",
+    )
+    require(
+        "class RustSpotlightBackend : public SpotlightBackend" in rust_wrapper_header,
+        "RustSpotlightBackend must implement the core SpotlightBackend port",
+    )
+    require(
+        controller_paths_path.is_file()
+        and all(field in controller_paths for field in (
+            "astreaRoot", "launcherExecutable", "weatherExecutable", "weatherAssetDirectory",
+        ))
+        and "SpotlightControllerPaths m_paths" in controller_header,
+        "SpotlightController must consume the neutral core controller path values",
+    )
+    runtime_paths_header = (
+        spotlight_root / "platform/runtime/SpotlightRuntimePaths.hpp"
+    ).read_text(encoding="utf-8")
+    runtime_paths_cpp = (
+        spotlight_root / "platform/runtime/SpotlightRuntimePaths.cpp"
+    ).read_text(encoding="utf-8")
+    require(
+        "SpotlightControllerPaths controllerPaths() const" in runtime_paths_header
+        and "SpotlightControllerPaths SpotlightRuntimePaths::controllerPaths() const" in runtime_paths_cpp
+        and all(path_method in runtime_paths_cpp for path_method in (
+            "astreaRoot()", "astreaLaunch()", "weatherCli()", "weatherAssetDir()",
+        )),
+        "SpotlightRuntimePaths must convert resolved platform paths into controller values",
+    )
+
+    shell_runtime_header = (ROOT / "Shell/runtime/ShellRuntime.hpp").read_text(encoding="utf-8")
+    shell_runtime_cpp = (ROOT / "Shell/runtime/ShellRuntime.cpp").read_text(encoding="utf-8")
+    backend_owner = "std::unique_ptr<RustSpotlightBackend> m_spotlightBackend"
+    controller_owner = "std::unique_ptr<SpotlightController> m_spotlightController"
+    require(
+        backend_owner in shell_runtime_header
+        and controller_owner in shell_runtime_header
+        and shell_runtime_header.index(backend_owner) < shell_runtime_header.index(controller_owner),
+        "ShellRuntime must declare the Rust backend owner before its borrowing controller",
+    )
+    require(
+        shell_runtime_cpp.count("make_unique<RustSpotlightBackend>") == 1
+        and "spotlightPaths.controllerPaths()" in shell_runtime_cpp
+        and re.search(
+            r"make_unique<SpotlightController>\s*\(\s*spotlightPaths\.controllerPaths\(\)\s*,\s*"
+            r"m_spotlightBackend\.get\(\)",
+            shell_runtime_cpp,
+        ) is not None,
+        "ShellRuntime must create one Rust adapter and inject it with neutral paths",
+    )
+
+    shortcut_test = (
+        ROOT / "Shell/tests/ShellShortcutDispatcherTest.cpp"
+    ).read_text(encoding="utf-8")
+    require(
+        "Spotlight/platform/runtime/SpotlightRuntimePaths.hpp" not in shortcut_test
+        and "Spotlight/platform/rust/RustSpotlightBackend.hpp" not in shortcut_test
+        and "SpotlightControllerPaths" in shortcut_test
+        and "FakeSpotlightBackend" in shortcut_test,
+        "ShellShortcutDispatcherTest must toggle Spotlight through core-facing test types",
+    )
+    controller_sources = controller_header + controller_cpp
+    require(
+        all(debt in controller_sources for debt in PHASE_3_DEBT),
+        "Phase 3 debt remains explicit: launcher, catalog, and QProcess weather orchestration",
+    )
     require(
         has_link(spotlight, "astrea-spotlight-runtime", "Qt6::Core", "PUBLIC"),
         "astrea-spotlight-runtime must publish its Qt Core requirement",
@@ -310,7 +417,7 @@ def main() -> int:
             print(f"- {error}", file=sys.stderr)
         return 1
 
-    print("Spotlight Phase 1 architecture invariants passed")
+    print("Spotlight Phase 1 and Phase 2 architecture invariants passed")
     return 0
 
 

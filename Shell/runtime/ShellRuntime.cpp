@@ -19,6 +19,7 @@
 #include "core/ContextMenuProviders.hpp"
 #include "Spotlight/core/SpotlightController.hpp"
 #include "Spotlight/platform/runtime/SpotlightRuntimePaths.hpp"
+#include "Spotlight/platform/rust/RustSpotlightBackend.hpp"
 #include "Spotlight/services/GameModeMonitor.hpp"
 #include "Spotlight/services/SpotlightConfigWatcher.hpp"
 #include "services/SpatialAudioConfigWatcher.hpp"
@@ -98,8 +99,10 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
     m_dockSurfaceGeometry = std::make_unique<DockSurfaceGeometry>();
     m_altTabController = std::make_unique<AltTabController>(m_windowBackend.get(),
                                                               m_identityResolver.get());
+    m_spotlightBackend = std::make_unique<RustSpotlightBackend>();
     m_spotlightController = std::make_unique<SpotlightController>(
-        spotlightPaths, m_catalog.get(), m_launcher.get());
+        spotlightPaths.controllerPaths(), m_spotlightBackend.get(),
+        m_catalog.get(), m_launcher.get());
     m_screenshotController = std::make_unique<ScreenshotController>(
         m_screenCaptureClient.get());
     m_workspaceModel = std::make_unique<WorkspaceModel>();

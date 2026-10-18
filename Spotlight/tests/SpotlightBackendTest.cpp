@@ -9,6 +9,8 @@
 #include <QLocalSocket>
 
 #include "../core/SpotlightResultsModel.hpp"
+#include "../core/SpotlightBackend.hpp"
+#include "../core/SpotlightControllerPaths.hpp"
 #include "../platform/runtime/SpotlightRuntimePaths.hpp"
 #include "../platform/rust/RustSpotlightBackend.hpp"
 #include "../services/AstreaI18n.hpp"
@@ -43,6 +45,112 @@ private:
     QByteArray m_previous;
 };
 
+class FakeSpotlightBackend final : public SpotlightBackend {
+public:
+    bool create(const QString &astreaRoot, const QString &locale,
+                QString *errorOut = nullptr) override
+    {
+        Q_UNUSED(errorOut);
+        ++createCalls;
+        lastAstreaRoot = astreaRoot;
+        lastLocale = locale;
+        return true;
+    }
+
+    bool createWithCatalog(const QString &astreaRoot, const QString &locale,
+                           const QJsonArray &catalog, QString *errorOut = nullptr) override
+    {
+        Q_UNUSED(errorOut);
+        ++createWithCatalogCalls;
+        lastAstreaRoot = astreaRoot;
+        lastLocale = locale;
+        lastCatalog = catalog;
+        return true;
+    }
+
+    bool reload(QString *errorOut = nullptr) override
+    {
+        Q_UNUSED(errorOut);
+        ++reloadCalls;
+        return true;
+    }
+
+    bool setCatalog(const QJsonArray &catalog, QString *errorOut = nullptr) override
+    {
+        Q_UNUSED(errorOut);
+        ++setCatalogCalls;
+        lastCatalog = catalog;
+        return true;
+    }
+
+    QJsonArray search(const QString &query, int limit,
+                      QString *errorOut = nullptr) override
+    {
+        Q_UNUSED(errorOut);
+        ++searchCalls;
+        lastQuery = query;
+        lastLimit = limit;
+        return searchResults;
+    }
+
+    bool recordLaunch(const QString &desktopId, QString *errorOut = nullptr) override
+    {
+        Q_UNUSED(errorOut);
+        if (launchCalled)
+            recordLaunchBeforeLaunch = !*launchCalled;
+        recordedLaunches.append(desktopId);
+        return true;
+    }
+
+    bool ensureConfig(QString *errorOut = nullptr) override
+    {
+        Q_UNUSED(errorOut);
+        ++ensureConfigCalls;
+        return true;
+    }
+
+    QJsonArray watchedDirectories() override { return watchedDirs; }
+
+    int createCalls = 0;
+    int createWithCatalogCalls = 0;
+    int reloadCalls = 0;
+    int setCatalogCalls = 0;
+    int searchCalls = 0;
+    int ensureConfigCalls = 0;
+    QString lastAstreaRoot;
+    QString lastLocale;
+    QString lastQuery;
+    int lastLimit = 0;
+    QJsonArray lastCatalog;
+    QJsonArray searchResults;
+    QJsonArray watchedDirs;
+    QStringList recordedLaunches;
+    bool *launchCalled = nullptr;
+    bool recordLaunchBeforeLaunch = false;
+};
+
+class RecordingApplicationLauncher final : public ApplicationLauncher {
+public:
+    RecordingApplicationLauncher() : ApplicationLauncher(QString()) {}
+
+    void launchDesktop(const ApplicationLaunchRequest &) override
+    {
+        launchCalled = true;
+    }
+
+    bool launchCalled = false;
+};
+
+static SpotlightControllerPaths testControllerPaths()
+{
+    return {
+        QStringLiteral("/test/astrea"),
+        QStringLiteral("/test/astrea/bin/astrea-launch"),
+        QStringLiteral("/test/astrea/bin/weather-cli"),
+        QStringLiteral("/test/astrea/Apps/Weather/assets/icons/weather"),
+    };
+}
+
 class TestSpotlightBackend : public QObject {
     Q_OBJECT
 
@@ -65,6 +173,10 @@ private slots:
     void testConfigWatcherDefaults();
     void testConfigWatcherWeatherFlag();
     void testSelectionWrapping();
+    void testControllerBackendInitialization();
+    void testControllerSearchUsesInjectedBackend();
+    void testControllerActivationRecordsUsage();
+    void testRuntimePathsConvertToControllerPaths();
     void testConfigSync_weatherDisabled();
     void testConfigSync_weatherEnabled();
     void testConfigSync_componentDisabled();
@@ -546,8 +658,9 @@ void TestSpotlightBackend::testConfigWatcherWeatherFlag() {
 }
 
 void TestSpotlightBackend::testSelectionWrapping() {
-    SpotlightRuntimePaths paths = SpotlightRuntimePaths::fromEnvironment();
-    SpotlightController controller(paths);
+    FakeSpotlightBackend backend;
+    SpotlightController controller(testControllerPaths(), &backend);
+    controller.setWeatherEnabled(false);
     SpotlightResultsModel *model = controller.resultsModel();
 
     QJsonArray arr;
@@ -578,6 +691,87 @@ void TestSpotlightBackend::testSelectionWrapping() {
     QCOMPARE(controller.selectedIndex(), 0);
     controller.moveSelection(-1);
     QCOMPARE(controller.selectedIndex(), 2);
+}
+
+void TestSpotlightBackend::testControllerBackendInitialization()
+{
+    const SpotlightControllerPaths paths = testControllerPaths();
+    QString error;
+
+    FakeSpotlightBackend nativeBackend;
+    SpotlightController nativeController(paths, &nativeBackend);
+    QVERIFY2(nativeController.init(QStringLiteral("pt_BR"), &error), qPrintable(error));
+    QCOMPARE(nativeBackend.createCalls, 1);
+    QCOMPARE(nativeBackend.createWithCatalogCalls, 0);
+    QCOMPARE(nativeBackend.lastAstreaRoot, paths.astreaRoot);
+    QCOMPARE(nativeBackend.lastLocale, QStringLiteral("pt_BR"));
+
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+    DesktopEntryCatalog catalog;
+    catalog.initialize(home.path());
+
+    FakeSpotlightBackend catalogBackend;
+    SpotlightController catalogController(paths, &catalogBackend, &catalog);
+    QVERIFY2(catalogController.init(QStringLiteral("fr_FR"), &error), qPrintable(error));
+    QCOMPARE(catalogBackend.createCalls, 0);
+    QCOMPARE(catalogBackend.createWithCatalogCalls, 1);
+    QCOMPARE(catalogBackend.lastAstreaRoot, paths.astreaRoot);
+    QCOMPARE(catalogBackend.lastLocale, QStringLiteral("fr_FR"));
+    QCOMPARE(catalogBackend.lastCatalog, catalog.snapshotJson());
+}
+
+void TestSpotlightBackend::testControllerSearchUsesInjectedBackend()
+{
+    FakeSpotlightBackend backend;
+    backend.searchResults = QJsonArray{QJsonObject{
+        {QStringLiteral("id"), QStringLiteral("fake-app")},
+        {QStringLiteral("name"), QStringLiteral("Fake Application")},
+    }};
+    SpotlightController controller(testControllerPaths(), &backend);
+    controller.setWeatherEnabled(false);
+    controller.setQuery(QStringLiteral("  test query  "));
+
+    QCOMPARE(backend.searchCalls, 1);
+    QCOMPARE(backend.lastQuery, QStringLiteral("test query"));
+    QCOMPARE(backend.lastLimit, 6);
+    QCOMPARE(controller.resultsModel()->resultCount(), 1);
+    QCOMPARE(controller.resultsModel()->resultAt(0).id, QStringLiteral("fake-app"));
+}
+
+void TestSpotlightBackend::testControllerActivationRecordsUsage()
+{
+    FakeSpotlightBackend backend;
+    backend.searchResults = QJsonArray{QJsonObject{
+        {QStringLiteral("id"), QStringLiteral("fake-app.desktop")},
+        {QStringLiteral("name"), QStringLiteral("Fake Application")},
+    }};
+    const SpotlightControllerPaths paths = testControllerPaths();
+    RecordingApplicationLauncher launcher;
+    backend.launchCalled = &launcher.launchCalled;
+    SpotlightController controller(paths, &backend, nullptr, &launcher);
+    controller.setWeatherEnabled(false);
+    controller.setQuery(QStringLiteral("fake"));
+    controller.launch(0);
+
+    QCOMPARE(backend.recordedLaunches, QStringList{QStringLiteral("fake-app.desktop")});
+    QVERIFY(backend.recordLaunchBeforeLaunch);
+    QVERIFY(launcher.launchCalled);
+}
+
+void TestSpotlightBackend::testRuntimePathsConvertToControllerPaths()
+{
+    ScopedEnvironment root("ASTREA_ROOT", "/test/resolved-root");
+    const SpotlightControllerPaths paths =
+        SpotlightRuntimePaths::fromEnvironment().controllerPaths();
+
+    QCOMPARE(paths.astreaRoot, QStringLiteral("/test/resolved-root"));
+    QCOMPARE(paths.launcherExecutable,
+             QStringLiteral("/test/resolved-root/bin/astrea-launch"));
+    QCOMPARE(paths.weatherExecutable,
+             QStringLiteral("/test/resolved-root/bin/weather-cli"));
+    QCOMPARE(paths.weatherAssetDirectory,
+             QStringLiteral("/test/resolved-root/Apps/Weather/assets/icons/weather"));
 }
 
 void TestSpotlightBackend::testApplicationLauncher() {
@@ -907,8 +1101,8 @@ void TestSpotlightBackend::testConfigSync_weatherDisabled() {
     SpotlightConfigWatcher watcher(configPath, componentsPath);
     QVERIFY(!watcher.weatherEnabled());
 
-    SpotlightRuntimePaths paths = SpotlightRuntimePaths::fromEnvironment();
-    SpotlightController controller(paths);
+    FakeSpotlightBackend backend;
+    SpotlightController controller(testControllerPaths(), &backend);
     QVERIFY(controller.weatherEnabled()); // default is true
 
     // Simulate the fix: apply initial watcher state after signal wiring
@@ -940,8 +1134,8 @@ void TestSpotlightBackend::testConfigSync_weatherEnabled() {
     SpotlightConfigWatcher watcher(configPath, componentsPath);
     QVERIFY(watcher.weatherEnabled());
 
-    SpotlightRuntimePaths paths = SpotlightRuntimePaths::fromEnvironment();
-    SpotlightController controller(paths);
+    FakeSpotlightBackend backend;
+    SpotlightController controller(testControllerPaths(), &backend);
     QVERIFY(controller.weatherEnabled());
 
     controller.applyConfig(watcher.spotlightConfig());
@@ -972,8 +1166,8 @@ void TestSpotlightBackend::testConfigSync_componentDisabled() {
     SpotlightConfigWatcher watcher(configPath, componentsPath);
     QVERIFY(!watcher.componentEnabled());
 
-    SpotlightRuntimePaths paths = SpotlightRuntimePaths::fromEnvironment();
-    SpotlightController controller(paths);
+    FakeSpotlightBackend backend;
+    SpotlightController controller(testControllerPaths(), &backend);
 
     // The fix: sync component enabled state
     controller.setComponentEnabled(watcher.componentEnabled());
@@ -983,8 +1177,8 @@ void TestSpotlightBackend::testConfigSync_componentDisabled() {
 }
 
 void TestSpotlightBackend::testDisabledComponentRejectsPresentation() {
-    SpotlightRuntimePaths paths = SpotlightRuntimePaths::fromEnvironment();
-    SpotlightController controller(paths);
+    FakeSpotlightBackend backend;
+    SpotlightController controller(testControllerPaths(), &backend);
     controller.setWeatherEnabled(false);
     controller.setComponentEnabled(false);
 
@@ -1025,8 +1219,8 @@ void TestSpotlightBackend::testConfigSync_liveUpdate() {
     SpotlightConfigWatcher watcher(configPath, componentsPath);
     QVERIFY(watcher.weatherEnabled());
 
-    SpotlightRuntimePaths paths = SpotlightRuntimePaths::fromEnvironment();
-    SpotlightController controller(paths);
+    FakeSpotlightBackend backend;
+    SpotlightController controller(testControllerPaths(), &backend);
 
     controller.applyConfig(watcher.spotlightConfig());
     QVERIFY(controller.weatherEnabled());

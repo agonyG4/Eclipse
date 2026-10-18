@@ -16,7 +16,8 @@ resident IPC server.
 The production CMake ownership is:
 
 - `astrea-spotlight-runtime` owns `SpotlightController`,
-  `SpotlightResultsModel`, `AstreaI18n`, `GameModeMonitor`,
+  `SpotlightResultsModel`, the core `SpotlightBackend` and
+  `SpotlightControllerPaths` contracts, `AstreaI18n`, `GameModeMonitor`,
   `SpotlightConfigWatcher`, `SpotlightRuntimePaths`, and
   `RustSpotlightBackend`. It links the shared core and Qt Core publicly, while
   keeping the native Rust backend and its system link requirements private.
@@ -29,24 +30,49 @@ Spotlight QML remains embedded in the unified `Astrea.Shell` QML module. Its
 existing resource aliases, URLs, `SpotlightController` context property, and
 `AstreaI18n` context property remain owned by Shell.
 
-## Current internal structure
+## Internal dependency direction
 
-The `runtime` target is an ownership boundary, not a claim that Spotlight core
-is platform-independent. `SpotlightController` still directly owns or uses
-`RustSpotlightBackend`, `SpotlightRuntimePaths`, `ApplicationLauncher`, and
-`DesktopEntryCatalog`; it also runs weather processes through `QProcess`.
-Phase 1 makes source ownership and production linkage truthful while preserving
-these known internal dependencies for later cleanup.
+The `runtime` target remains an aggregate CMake target for core, services,
+runtime-path resolution, and the Rust adapter. The source layers inside it now
+follow these dependency directions:
+
+```text
+RustSpotlightBackend
+        │ implements
+        ▼
+SpotlightBackend
+        ▲ borrowed by
+SpotlightController
+
+SpotlightRuntimePaths
+        │ resolves to
+        ▼
+SpotlightControllerPaths
+        ▲ stored by
+SpotlightController
+```
+
+`SpotlightController` borrows the core-owned backend contract and stores
+neutral resolved path values. `SpotlightRuntimePaths` still resolves platform
+environment and config/i18n paths, and Shell converts it to the controller
+values when composing the runtime. Shell owns the single concrete
+`RustSpotlightBackend` instance, which outlives the controller that borrows it.
+
+Spotlight is not fully internally cleaned up yet. Phase 3 debt remains in
+`ApplicationLauncher` ownership, `DesktopEntryCatalog` coupling, and weather
+orchestration through `QProcess`.
 
 ## Responsibilities
 
 - `app/`: the non-resident compatibility CLI and command-line parsing.
-- `core/`: the current controller and results model. The controller remains
-  an orchestration-heavy resident object in this phase.
+- `core/`: the controller, results model, backend port, and neutral controller
+  path values. The controller remains an orchestration-heavy resident object.
 - `services/`: locale, configuration watching, and GameMode monitoring used by
   the resident Shell composition.
-- `platform/runtime/`: Spotlight runtime path resolution.
-- `platform/rust/`: the C++ wrapper around the Rust backend ABI.
+- `platform/runtime/`: Spotlight environment and runtime path resolution, with
+  conversion to `SpotlightControllerPaths`.
+- `platform/rust/`: the C++ `SpotlightBackend` implementation around the Rust
+  backend ABI.
 - `platform/wayland/`: Spotlight surface configuration through shared Layer
   Shell infrastructure.
 - `backend/`: Rust search, ranking, persistence, and native ABI implementation.

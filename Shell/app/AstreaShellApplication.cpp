@@ -8,6 +8,7 @@
 #include "Dock/platform/wayland/DockInputRegionBridge.hpp"
 #include "Dock/platform/wayland/DockLayerShellSurface.hpp"
 #include "Spotlight/core/SpotlightController.hpp"
+#include "Spotlight/platform/runtime/SpotlightRuntimePaths.hpp"
 #include "Spotlight/platform/wayland/LayerShellSurface.hpp"
 #include "Spotlight/services/AstreaI18n.hpp"
 #include "Bar/platform/wayland/BarSurfaceManager.hpp"

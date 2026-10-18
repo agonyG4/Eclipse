@@ -1,8 +1,8 @@
 #pragma once
 
+#include "core/SpotlightBackend.hpp"
+#include "core/SpotlightControllerPaths.hpp"
 #include "core/SpotlightResultsModel.hpp"
-#include "platform/rust/RustSpotlightBackend.hpp"
-#include "platform/runtime/SpotlightRuntimePaths.hpp"
 #include "services/ApplicationLauncher.hpp"
 #include "apps/DesktopEntryCatalog.hpp"
 
@@ -35,9 +35,11 @@ class SpotlightController : public QObject {
     Q_PROPERTY(QUrl weatherIconSource READ weatherIconSource NOTIFY weatherChanged)
 
 public:
-    explicit SpotlightController(const SpotlightRuntimePaths &paths, QObject *parent = nullptr);
-    SpotlightController(const SpotlightRuntimePaths &paths, DesktopEntryCatalog *catalog,
-                        ApplicationLauncher *launcher, QObject *parent = nullptr);
+    explicit SpotlightController(const SpotlightControllerPaths &paths,
+                                 SpotlightBackend *backend,
+                                 DesktopEntryCatalog *catalog = nullptr,
+                                 ApplicationLauncher *launcher = nullptr,
+                                 QObject *parent = nullptr);
 
     bool init(const QString &locale = QStringLiteral("en_US"), QString *errorOut = nullptr);
     bool setLocale(const QString &locale, QString *errorOut = nullptr);
@@ -102,11 +104,11 @@ private:
     void applyWeatherError(const QString &error);
     void clearSearchState();
 
-    SpotlightRuntimePaths m_paths;
+    SpotlightControllerPaths m_paths;
+    SpotlightBackend *m_backend = nullptr;
     DesktopEntryCatalog *m_catalog = nullptr;
     std::unique_ptr<ApplicationLauncher> m_ownedLauncher;
     ApplicationLauncher *m_launcher = nullptr;
-    RustSpotlightBackend m_backend;
     SpotlightResultsModel m_results;
 
     QTimer m_searchDebounce;

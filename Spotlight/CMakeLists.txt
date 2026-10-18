@@ -27,6 +27,8 @@ astrea_add_rust_backend(astrea_spotlight_rust_backend
 )
 
 add_library(astrea-spotlight-runtime STATIC
+    core/SpotlightBackend.hpp
+    core/SpotlightControllerPaths.hpp
     core/SpotlightController.cpp
     core/SpotlightController.hpp
     core/SpotlightResultsModel.cpp

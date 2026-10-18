@@ -29,7 +29,6 @@ QString SpotlightRuntimePaths::weatherAssetDir() const {
 SpotlightControllerPaths SpotlightRuntimePaths::controllerPaths() const {
     return {
         astreaRoot(),
-        astreaLaunch(),
         weatherCli(),
         weatherAssetDir(),
     };

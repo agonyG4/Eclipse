@@ -85,7 +85,6 @@ void ShellUnifiedRuntimeIntegrationTest::unifiedRuntimeLifecycleAndStress()
     QVERIFY2(runtime.initialize(QStringLiteral("auto"), &error), qPrintable(error));
     QCOMPARE(runtime.dockController()->catalog(), runtime.catalog());
     QCOMPARE(runtime.altTabController()->identityResolver(), runtime.identityResolver());
-    QCOMPARE(runtime.spotlightController()->catalog(), runtime.catalog());
     QCOMPARE(runtime.shortcutClient()->registeredShortcutCount(), 0);
     runtime.start();
 

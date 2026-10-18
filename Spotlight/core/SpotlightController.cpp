@@ -9,16 +9,15 @@
 
 SpotlightController::SpotlightController(const SpotlightControllerPaths &paths,
                                          SpotlightBackend &backend,
-                                         DesktopEntryCatalog *catalog,
-                                         ApplicationLauncher *launcher,
+                                         SpotlightLauncher &launcher,
+                                         SpotlightCatalogSource *catalog,
                                          QObject *parent)
     : QObject(parent)
     , m_paths(paths)
     , m_backend(backend)
+    , m_launcher(launcher)
     , m_catalog(catalog)
-    , m_ownedLauncher(launcher ? nullptr
-                               : std::make_unique<ApplicationLauncher>(paths.launcherExecutable))
-    , m_launcher(launcher ? launcher : m_ownedLauncher.get()) {
+{
     m_searchDebounce.setSingleShot(true);
     m_searchDebounce.setInterval(kSearchDebounceMs);
     connect(&m_searchDebounce, &QTimer::timeout, this, &SpotlightController::runSearch);
@@ -43,12 +42,9 @@ SpotlightController::SpotlightController(const SpotlightControllerPaths &paths,
         emit resultCountChanged();
     });
 
-    // Connect launcher signals
-    connect(m_launcher, &ApplicationLauncher::launchSucceeded,
-            this, &SpotlightController::onLaunchSucceeded);
-    connect(m_launcher, &ApplicationLauncher::launchFailed,
+    connect(&m_launcher, &SpotlightLauncher::launchFailed,
             this, &SpotlightController::onLaunchFailed);
-    connect(m_launcher, &ApplicationLauncher::launchTimedOut,
+    connect(&m_launcher, &SpotlightLauncher::launchTimedOut,
             this, [this](const QString &id) {
         emit launchFailed(QStringLiteral("Launch timed out: ") + id);
         show();
@@ -57,7 +53,7 @@ SpotlightController::SpotlightController(const SpotlightControllerPaths &paths,
     setWeatherEnabled(true);
 
     if (m_catalog) {
-        connect(m_catalog, &DesktopEntryCatalog::indexUpdated, this, [this] {
+        connect(m_catalog, &SpotlightCatalogSource::updated, this, [this] {
             QString error;
             if (!m_backend.setCatalog(m_catalog->snapshotJson(), &error)) {
                 qWarning("Shared catalog update failed: %s", qPrintable(error));
@@ -231,8 +227,8 @@ void SpotlightController::launch(int row) {
         qWarning("Failed to record launch: %s", qPrintable(err));
 
     close();
-    m_launcher->launchDesktop(item.id, item.desktopFileName, item.exec, item.name,
-                              item.icon, item.desktopFilePath);
+    m_launcher.launch({item.id, item.desktopFileName, item.exec, item.name,
+                       item.icon, item.desktopFilePath});
 }
 
 void SpotlightController::reloadIndex() {
@@ -254,11 +250,6 @@ QJsonArray SpotlightController::watchedDirectories() {
         return result;
     }
     return m_backend.watchedDirectories();
-}
-
-void SpotlightController::onLaunchSucceeded(const QString &desktopId) {
-    Q_UNUSED(desktopId);
-    // Usage already recorded on activation
 }
 
 void SpotlightController::onLaunchFailed(const QString &desktopId, const QString &error) {

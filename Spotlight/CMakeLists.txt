@@ -28,6 +28,8 @@ astrea_add_rust_backend(astrea_spotlight_rust_backend
 
 add_library(astrea-spotlight-runtime STATIC
     core/SpotlightBackend.hpp
+    core/SpotlightLauncher.hpp
+    core/SpotlightCatalogSource.hpp
     core/SpotlightControllerPaths.hpp
     core/SpotlightController.cpp
     core/SpotlightController.hpp
@@ -39,6 +41,10 @@ add_library(astrea-spotlight-runtime STATIC
     services/GameModeMonitor.hpp
     services/SpotlightConfigWatcher.cpp
     services/SpotlightConfigWatcher.hpp
+    services/SpotlightApplicationLauncherAdapter.cpp
+    services/SpotlightApplicationLauncherAdapter.hpp
+    services/SpotlightDesktopCatalogAdapter.cpp
+    services/SpotlightDesktopCatalogAdapter.hpp
     platform/runtime/SpotlightRuntimePaths.cpp
     platform/runtime/SpotlightRuntimePaths.hpp
     platform/rust/RustSpotlightBackend.cpp

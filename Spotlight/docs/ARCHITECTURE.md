@@ -16,11 +16,13 @@ resident IPC server.
 The production CMake ownership is:
 
 - `astrea-spotlight-runtime` owns `SpotlightController`,
-  `SpotlightResultsModel`, the core `SpotlightBackend` and
-  `SpotlightControllerPaths` contracts, `AstreaI18n`, `GameModeMonitor`,
-  `SpotlightConfigWatcher`, `SpotlightRuntimePaths`, and
-  `RustSpotlightBackend`. It links the shared core and Qt Core publicly, while
-  keeping the native Rust backend and its system link requirements private.
+  `SpotlightResultsModel`, the core `SpotlightBackend`, `SpotlightLauncher`,
+  `SpotlightCatalogSource`, and `SpotlightControllerPaths` contracts,
+  `AstreaI18n`, `GameModeMonitor`, `SpotlightConfigWatcher`,
+  `SpotlightApplicationLauncherAdapter`, `SpotlightDesktopCatalogAdapter`,
+  `SpotlightRuntimePaths`, and `RustSpotlightBackend`. It links the shared core
+  and Qt Core publicly, while keeping the native Rust backend and its system
+  link requirements private.
 - `astrea-spotlight-wayland` owns `LayerShellSurface` and its Qt and shared
   Layer Shell dependencies. It does not depend on the Spotlight runtime.
 - `astrea-shell-runtime` consumes `astrea-spotlight-runtime`, and the final
@@ -50,25 +52,49 @@ SpotlightRuntimePaths
 SpotlightControllerPaths
         ▲ stored by
 SpotlightController
+
+SpotlightLauncher
+        ▲ implemented by
+SpotlightApplicationLauncherAdapter
+        │ borrows
+        ▼
+ApplicationLauncher
+
+SpotlightCatalogSource
+        ▲ implemented by
+SpotlightDesktopCatalogAdapter
+        │ borrows
+        ▼
+DesktopEntryCatalog
 ```
 
-`SpotlightController` borrows the core-owned backend contract and stores
-neutral resolved path values. `SpotlightRuntimePaths` still resolves platform
-environment and config/i18n paths, and Shell converts it to the controller
-values when composing the runtime. Shell owns the single concrete
-`RustSpotlightBackend` instance, which outlives the controller that borrows it.
+`SpotlightController` borrows the core-owned backend and launcher contracts,
+optionally borrows a catalog source, and stores only controller-consumed path
+values. A null catalog source selects the Rust backend's native desktop-entry
+index mode; a non-null source selects the shared external-catalog mode.
+`SpotlightRuntimePaths` still resolves platform paths, including
+`astreaLaunch()` for Shell's shared launcher, while controller paths contain
+only the Astrea root and weather values.
 
-Spotlight is not fully internally cleaned up yet. Phase 3 debt remains in
-`ApplicationLauncher` ownership, `DesktopEntryCatalog` coupling, and weather
-orchestration through `QProcess`.
+Shell owns one shared `ApplicationLauncher` and one shared
+`DesktopEntryCatalog`. It also owns one adapter for each service. The
+`SpotlightApplicationLauncherAdapter` borrows the shared launcher, and the
+`SpotlightDesktopCatalogAdapter` borrows the shared catalog. Both adapters and
+the Rust backend outlive the controller that borrows them. Controller core no
+longer owns or knows the application-launcher or desktop-catalog
+implementations.
+
+Phase 3B structural debt remains only in weather orchestration through
+`QProcess`. Spotlight is not yet declared fully cleaned up or canonical.
 
 ## Responsibilities
 
 - `app/`: the non-resident compatibility CLI and command-line parsing.
-- `core/`: the controller, results model, backend port, and neutral controller
-  path values. The controller remains an orchestration-heavy resident object.
-- `services/`: locale, configuration watching, and GameMode monitoring used by
-  the resident Shell composition.
+- `core/`: the controller, results model, backend/launcher/catalog ports, and
+  neutral controller path values. The controller remains an
+  orchestration-heavy resident object.
+- `services/`: the borrowed shared-service adapters, locale, configuration
+  watching, and GameMode monitoring used by the resident Shell composition.
 - `platform/runtime/`: Spotlight environment and runtime path resolution, with
   conversion to `SpotlightControllerPaths`.
 - `platform/rust/`: the C++ `SpotlightBackend` implementation around the Rust

@@ -121,8 +121,6 @@ void ShellRuntimeTest::createsOneSharedOwnershipGraph()
     QVERIFY(runtime.themeController());
     QVERIFY(runtime.workspaceModel());
     QCOMPARE(runtime.dockController()->catalog(), runtime.catalog());
-    QCOMPARE(runtime.spotlightController()->catalog(), runtime.catalog());
-    QCOMPARE(runtime.spotlightController()->launcher(), runtime.launcher());
     QCOMPARE(runtime.altTabController()->identityResolver(), runtime.identityResolver());
     QCOMPARE(runtime.barController()->workspaceModel(), runtime.workspaceModel());
     QVERIFY(runtime.audioService());

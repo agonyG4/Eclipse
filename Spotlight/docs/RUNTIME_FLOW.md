@@ -8,8 +8,11 @@ unified UI and `ShellRuntime` composes the catalog, launcher,
 resident services. Shell resolves `SpotlightRuntimePaths`, converts the paths
 needed by the controller to `SpotlightControllerPaths`, owns one
 `RustSpotlightBackend`, and injects it into `SpotlightController`. The backend
-owner outlives the controller. Shell exposes `SpotlightController` and
-`AstreaI18n` to the existing `Astrea.Shell` QML module.
+owner outlives the controller. Shell owns one shared `ApplicationLauncher` and
+one shared `DesktopEntryCatalog`, plus a borrowed-service Spotlight adapter
+for each. The adapters and backend outlive the controller. Shell exposes
+`SpotlightController` and `AstreaI18n` to the existing `Astrea.Shell` QML
+module.
 
 ## Compatibility CLI and IPC
 
@@ -36,10 +39,39 @@ and activation continue through the same controller methods.
 
 ## Application launch and usage
 
-Selecting a result records usage through the Rust backend and launches it via
-`ApplicationLauncher` and `astrea-launch`. The catalog and launch wiring remain
-owned by Shell composition. The Rust backend loads usage counts and applies
-them as a tie-break in search ordering.
+Selecting a result records usage through the Rust backend, closes Spotlight,
+then submits the six-field launch request through this path:
+
+```text
+SpotlightController
+    -> SpotlightLauncher
+    -> SpotlightApplicationLauncherAdapter
+    -> ApplicationLauncher
+    -> astrea-launch
+```
+
+Ordinary launch failures are reported while Spotlight remains closed. A launch
+timeout reports the existing timeout message and reopens Spotlight. The Rust
+backend loads usage counts and applies them as a tie-break in search ordering.
+
+## Catalog updates and reloads
+
+Shell's one shared catalog feeds both other Shell consumers and Spotlight:
+
+```text
+DesktopEntryCatalog::indexUpdated
+    -> SpotlightDesktopCatalogAdapter
+    -> SpotlightCatalogSource::updated
+    -> SpotlightController
+    -> SpotlightBackend::setCatalog
+```
+
+After a successful update, an active non-empty query runs again with the same
+search limit. If setting the catalog fails, the controller logs the error and
+does not rerun the search. Catalog mode uses the adapter snapshot for startup,
+locale recreation, reload, and watched directories. With no catalog source,
+the controller preserves native Rust index creation, reload, and watched
+directory behavior.
 
 ## Weather, configuration, and GameMode
 
@@ -66,6 +98,7 @@ declaration order. No standalone Spotlight resident process is started.
 
 ## Remaining Phase 3 work
 
-This boundary change does not complete the internal cleanup. `ApplicationLauncher`
-ownership, `DesktopEntryCatalog` coupling, and weather/`QProcess` orchestration
-remain in the controller for a later phase.
+Phase 3B remains for weather orchestration through `QProcess`. The controller
+core no longer owns or depends on the shared application-launcher or
+desktop-catalog implementations. Spotlight is not yet declared fully cleaned
+up or canonical pending Phase 3B and final review.

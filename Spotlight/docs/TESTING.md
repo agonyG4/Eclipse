@@ -8,21 +8,24 @@ repository-supported Eclipse Debug tree on Aether:
 ```bash
 cmake -S .. -B /mnt/Aether/Desktop/GitHub/Eclipse-build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build /mnt/Aether/Desktop/GitHub/Eclipse-build --target \
-  astrea-spotlight-runtime astrea-spotlight-wayland astrea-spotlight \
+  astrea-spotlight-runtime astrea-spotlight-wayland \
   astrea-shell-runtime astrea-shell spotlight-tests \
-  shell-shortcut-dispatcher-test shell-runtime-test
+  shell-shortcut-dispatcher-test shell-runtime-test \
+  shell-unified-runtime-integration-test
 ctest --test-dir /mnt/Aether/Desktop/GitHub/Eclipse-build \
-  -R '(spotlight|layer-shell-activation|shell-shortcut-dispatcher-test|shell-runtime-test)' \
+  -R '^(spotlight-tests|spotlight-architecture-guard|layer-shell-activation-structure|shell-shortcut-dispatcher-test|shell-runtime-test|shell-unified-runtime-integration-test|legacy-spotlight-daemon-guard)$' \
   --output-on-failure
 ```
 
 `spotlight-tests` links the production `astrea-spotlight-runtime`. Its existing
 tests still compile the legacy `SpotlightIpcServer.cpp` directly; that server
 is not a resident production target. The `spotlight-architecture-guard` test
-checks Phase 1 CMake ownership and Phase 2 backend/path source boundaries. The
-runtime remains one aggregate target; core and platform source layers do not
-need separate CMake targets. Controller tests use a fake backend, while direct
-adapter tests continue to exercise the Rust ABI.
+checks Phase 1 CMake ownership and the Phase 2 and Phase 3A source boundaries.
+The runtime remains one aggregate target; core and service source layers do
+not need separate CMake targets. Controller tests use fake backend, launcher,
+and catalog ports. Separate adapter tests cover request conversion, event
+forwarding, catalog snapshots, watched directories, and update forwarding.
+Existing direct Rust backend tests remain in the Spotlight suite.
 
 The `layer-shell-activation-structure` test protects the existing activation
 structure. Build `astrea-spotlight-wayland` explicitly even when only running
@@ -38,36 +41,32 @@ repository's separate Aether build tree:
 cmake -S .. -B /mnt/Aether/Desktop/GitHub/Eclipse-no-layer-shell-build \
   -G Ninja -DCMAKE_BUILD_TYPE=Debug -DASTREA_ENABLE_LAYER_SHELL=OFF
 cmake --build /mnt/Aether/Desktop/GitHub/Eclipse-no-layer-shell-build --target \
-  astrea-spotlight-runtime astrea-spotlight-wayland astrea-spotlight \
-  astrea-shell-runtime astrea-shell spotlight-tests
+  astrea-spotlight-runtime astrea-spotlight-wayland \
+  astrea-shell-runtime astrea-shell spotlight-tests \
+  shell-shortcut-dispatcher-test shell-runtime-test \
+  shell-unified-runtime-integration-test
 ctest --test-dir /mnt/Aether/Desktop/GitHub/Eclipse-no-layer-shell-build \
-  -R '(spotlight|layer-shell-activation)' --output-on-failure
+  -R '^(spotlight-tests|spotlight-architecture-guard|layer-shell-activation-structure|shell-shortcut-dispatcher-test|shell-runtime-test|shell-unified-runtime-integration-test|legacy-spotlight-daemon-guard)$' \
+  --output-on-failure
 ```
 
 Build the relevant executables before running CTest so a missing executable is
 not confused with a test failure.
 
-## Rust and QML checks
+## QML and Rust checks
 
-Direct Cargo checks share the Debug build's Aether target directory:
-
-```bash
-CARGO_TARGET_DIR=/mnt/Aether/Desktop/GitHub/Eclipse-build/cargo-target \
-  cargo fmt --check --manifest-path backend/Cargo.toml
-CARGO_TARGET_DIR=/mnt/Aether/Desktop/GitHub/Eclipse-build/cargo-target \
-  cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
-CARGO_TARGET_DIR=/mnt/Aether/Desktop/GitHub/Eclipse-build/cargo-target \
-  cargo test --manifest-path backend/Cargo.toml
-qmllint qml/Main.qml qml/components/*.qml
-```
-
-The repository QML gate validates the generated Shell and Settings modules and
-their registered QML sources. Run it from the Eclipse repository root:
+Run the repository QML gate from the Eclipse repository root:
 
 ```bash
 ASTREA_CMAKE_BUILD_DIR=/mnt/Aether/Desktop/GitHub/Eclipse-build \
   tools/ci/run-qml-gate.sh
 ```
+
+Phase 3A changes no Rust source, ABI, or Rust build configuration. Run Rust
+Cargo checks only if a Rust change becomes necessary.
+
+The repository QML gate validates the generated Shell and Settings modules and
+their registered QML sources.
 
 ## Runtime invariants
 
@@ -75,9 +74,10 @@ ASTREA_CMAKE_BUILD_DIR=/mnt/Aether/Desktop/GitHub/Eclipse-build \
   compatibility IPC client and rejects `--daemon`.
 - Show, hide, toggle, query, selection, launch, and usage recording behavior
   remain unchanged.
-- Catalog updates, weather, GameMode suppression, configuration reload, and
-  locale behavior remain unchanged. Phase 3 cleanup of launcher ownership,
-  catalog coupling, and weather/`QProcess` orchestration remains deferred.
+- Catalog/native-index creation, locale recreation, reload, watched-directory,
+  update, and search behavior remain unchanged. Controller tests use core fakes;
+  production adapters borrow Shell's shared launcher and catalog.
+- Weather/`QProcess` orchestration remains the Phase 3B structural debt.
 - Layer Shell configuration, Bar search integration, shortcut integration,
   and QML resource/context-property APIs remain unchanged.
 - Icon diagnostics remain available from `astrea-spotlight`.

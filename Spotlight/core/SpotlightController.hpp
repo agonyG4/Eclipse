@@ -1,10 +1,10 @@
 #pragma once
 
 #include "core/SpotlightBackend.hpp"
+#include "core/SpotlightCatalogSource.hpp"
 #include "core/SpotlightControllerPaths.hpp"
+#include "core/SpotlightLauncher.hpp"
 #include "core/SpotlightResultsModel.hpp"
-#include "services/ApplicationLauncher.hpp"
-#include "apps/DesktopEntryCatalog.hpp"
 
 #include <QObject>
 #include <QTimer>
@@ -13,7 +13,6 @@
 #include <QDateTime>
 #include <QUrl>
 #include <QJsonObject>
-#include <memory>
 
 class SpotlightController : public QObject {
     Q_OBJECT
@@ -37,8 +36,8 @@ class SpotlightController : public QObject {
 public:
     explicit SpotlightController(const SpotlightControllerPaths &paths,
                                  SpotlightBackend &backend,
-                                 DesktopEntryCatalog *catalog = nullptr,
-                                 ApplicationLauncher *launcher = nullptr,
+                                 SpotlightLauncher &launcher,
+                                 SpotlightCatalogSource *catalog = nullptr,
                                  QObject *parent = nullptr);
 
     bool init(const QString &locale = QStringLiteral("en_US"), QString *errorOut = nullptr);
@@ -55,8 +54,6 @@ public:
     bool weatherEnabled() const { return m_weatherEnabled; }
     bool weatherReady() const { return m_weatherReady; }
     bool weatherLoading() const { return m_weatherLoading; }
-    DesktopEntryCatalog *catalog() const { return m_catalog; }
-    ApplicationLauncher *launcher() const { return m_launcher; }
     int weatherTemp() const { return m_weatherTemp; }
     QString weatherCity() const { return m_weatherCity; }
     QString weatherCondition() const { return m_weatherCondition; }
@@ -96,7 +93,6 @@ signals:
 
 private slots:
     void runSearch();
-    void onLaunchSucceeded(const QString &desktopId);
     void onLaunchFailed(const QString &desktopId, const QString &error);
 
 private:
@@ -106,9 +102,8 @@ private:
 
     SpotlightControllerPaths m_paths;
     SpotlightBackend &m_backend;
-    DesktopEntryCatalog *m_catalog = nullptr;
-    std::unique_ptr<ApplicationLauncher> m_ownedLauncher;
-    ApplicationLauncher *m_launcher = nullptr;
+    SpotlightLauncher &m_launcher;
+    SpotlightCatalogSource *m_catalog = nullptr;
     SpotlightResultsModel m_results;
 
     QTimer m_searchDebounce;

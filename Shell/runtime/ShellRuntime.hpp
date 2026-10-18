@@ -25,6 +25,8 @@ class DockController;
 class DockSurfaceGeometry;
 class GameModeMonitor;
 class SpotlightConfigWatcher;
+class SpotlightApplicationLauncherAdapter;
+class SpotlightDesktopCatalogAdapter;
 class RustSpotlightBackend;
 class SpatialAudioConfigWatcher;
 class SpotlightController;
@@ -142,6 +144,8 @@ private:
     std::unique_ptr<DockSurfaceGeometry> m_dockSurfaceGeometry;
     std::unique_ptr<AltTabController> m_altTabController;
     std::unique_ptr<RustSpotlightBackend> m_spotlightBackend;
+    std::unique_ptr<SpotlightDesktopCatalogAdapter> m_spotlightCatalogAdapter;
+    std::unique_ptr<SpotlightApplicationLauncherAdapter> m_spotlightLauncherAdapter;
     std::unique_ptr<SpotlightController> m_spotlightController;
     std::unique_ptr<BarController> m_barController;
     std::unique_ptr<BarClockService> m_barClock;

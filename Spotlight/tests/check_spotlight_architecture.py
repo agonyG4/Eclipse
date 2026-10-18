@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Repository-specific guard for Spotlight Phase 1 and Phase 2 boundaries.
+"""Repository-specific guard for Spotlight Phase 1, Phase 2, and Phase 3A boundaries.
 
 This checks only the small set of add_library/qt_add_executable and
 target_link_libraries declarations used by Spotlight and Shell. It is not a
 general CMake parser.
 
 Phase 1 protects production source ownership and consumer links. Phase 2
-protects the backend and resolved-path dependency directions. Spotlight core
-still depends on ApplicationLauncher and DesktopEntryCatalog and orchestrates
-weather with QProcess; those are explicit Phase 3 debt, so this guard does not
-claim that Spotlight is fully internally cleaned up.
+protects the backend and resolved-path dependency directions. Phase 3A protects
+the Spotlight-local launcher/catalog ports and Shell-owned adapters. Weather
+orchestration through QProcess remains explicit Phase 3B debt, so this guard
+does not claim that Spotlight is fully internally cleaned up.
 
 SpotlightIpcServer is an intentional legacy/test-only exception. The
 compatibility executable uses ShellIpcClient and the resident ShellIpcServer;
@@ -34,23 +34,29 @@ RUNTIME_CPP = {
     "services/AstreaI18n.cpp",
     "services/GameModeMonitor.cpp",
     "services/SpotlightConfigWatcher.cpp",
+    "services/SpotlightApplicationLauncherAdapter.cpp",
+    "services/SpotlightDesktopCatalogAdapter.cpp",
     "platform/runtime/SpotlightRuntimePaths.cpp",
     "platform/rust/RustSpotlightBackend.cpp",
 }
 RUNTIME_HEADERS = {
     "core/SpotlightBackend.hpp",
+    "core/SpotlightLauncher.hpp",
+    "core/SpotlightCatalogSource.hpp",
     "core/SpotlightControllerPaths.hpp",
     "core/SpotlightController.hpp",
     "core/SpotlightResultsModel.hpp",
     "services/AstreaI18n.hpp",
     "services/GameModeMonitor.hpp",
     "services/SpotlightConfigWatcher.hpp",
+    "services/SpotlightApplicationLauncherAdapter.hpp",
+    "services/SpotlightDesktopCatalogAdapter.hpp",
     "platform/runtime/SpotlightRuntimePaths.hpp",
     "platform/rust/RustSpotlightBackend.hpp",
 }
 WAYLAND_CPP = {"platform/wayland/LayerShellSurface.cpp"}
 WAYLAND_HEADERS = {"platform/wayland/LayerShellSurface.hpp"}
-PHASE_3_DEBT = ("ApplicationLauncher", "DesktopEntryCatalog", "QProcess")
+PHASE_3_DEBT = ("QProcess",)
 
 
 def without_comments(source: str) -> str:
@@ -130,6 +136,13 @@ def main() -> int:
         "astrea-spotlight-runtime must list its QObject/public headers for AUTOMOC; "
         f"missing={sorted(RUNTIME_HEADERS - runtime_headers)}",
     )
+    require(
+        re.search(
+            r"(?is)add_library\s*\(\s*astrea-spotlight-(?:core|services|launcher|catalog)\b",
+            spotlight,
+        ) is None,
+        "Phase 3A must keep core and service code in astrea-spotlight-runtime",
+    )
 
     wayland_cpp = source_paths(spotlight, "add_library", "astrea-spotlight-wayland", ".cpp")
     require(
@@ -206,8 +219,18 @@ def main() -> int:
             forbidden_core_dependencies.search(source) is None,
             f"Spotlight core must not depend on platform Spotlight code: {path.relative_to(ROOT)}",
         )
+        require(
+            not re.search(
+                r"ApplicationLauncher|ApplicationLaunchRequest|launch/ApplicationLauncher\.hpp|"
+                r"services/ApplicationLauncher\.hpp|DesktopEntryCatalog|apps/DesktopEntryCatalog\.hpp",
+                source,
+            ),
+            f"Spotlight core must depend only on core launcher/catalog ports: {path.relative_to(ROOT)}",
+        )
 
     backend_port_path = core_dir / "SpotlightBackend.hpp"
+    launcher_port_path = core_dir / "SpotlightLauncher.hpp"
+    catalog_port_path = core_dir / "SpotlightCatalogSource.hpp"
     controller_paths_path = core_dir / "SpotlightControllerPaths.hpp"
     controller_header = (core_dir / "SpotlightController.hpp").read_text(encoding="utf-8")
     controller_cpp = (core_dir / "SpotlightController.cpp").read_text(encoding="utf-8")
@@ -219,7 +242,11 @@ def main() -> int:
         if controller_paths_path.is_file()
         else ""
     )
+    launcher_port = launcher_port_path.read_text(encoding="utf-8") if launcher_port_path.is_file() else ""
+    catalog_port = catalog_port_path.read_text(encoding="utf-8") if catalog_port_path.is_file() else ""
     require(backend_port_path.is_file(), "Spotlight core must own SpotlightBackend.hpp")
+    require(launcher_port_path.is_file(), "Spotlight core must own SpotlightLauncher.hpp")
+    require(catalog_port_path.is_file(), "Spotlight core must own SpotlightCatalogSource.hpp")
     require(
         "SpotlightBackend &backend" in controller_header
         and "SpotlightBackend &m_backend" in controller_header
@@ -243,10 +270,107 @@ def main() -> int:
     require(
         controller_paths_path.is_file()
         and all(field in controller_paths for field in (
-            "astreaRoot", "launcherExecutable", "weatherExecutable", "weatherAssetDirectory",
+            "astreaRoot", "weatherExecutable", "weatherAssetDirectory",
         ))
+        and "launcherExecutable" not in controller_paths
+        and "launcherExecutable" not in controller_header + controller_cpp
         and "SpotlightControllerPaths m_paths" in controller_header,
         "SpotlightController must consume the neutral core controller path values",
+    )
+    require(
+        all(field in launcher_port for field in (
+            "desktopId", "desktopFileName", "exec", "appName", "iconName", "desktopFilePath",
+        ))
+        and "virtual void launch(const SpotlightLaunchRequest &request) = 0" in launcher_port
+        and "launchFailed" in launcher_port
+        and "launchTimedOut" in launcher_port
+        and "launchSucceeded" not in launcher_port
+        and "ApplicationLauncher" not in launcher_port
+        and "ApplicationLaunchRequest" not in launcher_port,
+        "SpotlightLauncher must expose only the six-field request and required failure/timeout events",
+    )
+    require(
+        "virtual QJsonArray snapshotJson() const = 0" in catalog_port
+        and "virtual QStringList watchedDirectories() const = 0" in catalog_port
+        and "void updated()" in catalog_port
+        and "DesktopEntryCatalog" not in catalog_port
+        and not re.search(
+            r"DesktopEntrySnapshot|DesktopEntryRecord|findByDesktop|revision\(|initialize\(|"
+            r"QFileSystemWatcher|QTimer",
+            catalog_port,
+        ),
+        "SpotlightCatalogSource must expose only its snapshot, watched paths, and update event",
+    )
+    require(
+        "SpotlightLauncher &launcher" in controller_header
+        and "SpotlightLauncher &m_launcher" in controller_header
+        and "SpotlightLauncher *" not in controller_header
+        and "SpotlightCatalogSource *catalog = nullptr" in controller_header
+        and "SpotlightCatalogSource *m_catalog = nullptr" in controller_header
+        and "ApplicationLauncher" not in controller_header + controller_cpp
+        and "ApplicationLaunchRequest" not in controller_header + controller_cpp
+        and "DesktopEntryCatalog" not in controller_header + controller_cpp
+        and "m_ownedLauncher" not in controller_header + controller_cpp
+        and "onLaunchSucceeded" not in controller_header + controller_cpp
+        and "launchSucceeded" not in controller_header + controller_cpp
+        and "catalog() const" not in controller_header
+        and "launcher() const" not in controller_header,
+        "SpotlightController must require the core launcher port, keep the catalog optional, and avoid concrete getters",
+    )
+
+    application_adapter_header = (
+        spotlight_root / "services/SpotlightApplicationLauncherAdapter.hpp"
+    ).read_text(encoding="utf-8")
+    application_adapter_cpp = (
+        spotlight_root / "services/SpotlightApplicationLauncherAdapter.cpp"
+    ).read_text(encoding="utf-8")
+    catalog_adapter_header = (
+        spotlight_root / "services/SpotlightDesktopCatalogAdapter.hpp"
+    ).read_text(encoding="utf-8")
+    catalog_adapter_cpp = (
+        spotlight_root / "services/SpotlightDesktopCatalogAdapter.cpp"
+    ).read_text(encoding="utf-8")
+    require(
+        "class SpotlightApplicationLauncherAdapter final : public SpotlightLauncher" in application_adapter_header
+        and "ApplicationLauncher &launcher" in application_adapter_header
+        and "ApplicationLauncher &m_launcher" in application_adapter_header
+        and "launch/ApplicationLauncher.hpp" in application_adapter_cpp
+        and "launchDesktop(ApplicationLaunchRequest{" in application_adapter_cpp
+        and all(field in application_adapter_cpp for field in (
+            "request.desktopId", "request.desktopFileName", "request.exec",
+            "request.appName", "request.iconName", "request.desktopFilePath",
+        ))
+        and "ApplicationLauncher::launchFailed" in application_adapter_cpp
+        and "ApplicationLauncher::launchTimedOut" in application_adapter_cpp
+        and "ApplicationLauncher::launchSucceeded" not in application_adapter_cpp
+        and "std::unique_ptr<ApplicationLauncher>" not in application_adapter_header
+        and "make_unique<ApplicationLauncher>" not in application_adapter_cpp
+        and not re.search(
+            r"class SpotlightApplicationLauncherAdapter\s*:\s*public SpotlightLauncher\s*,",
+            application_adapter_header,
+        ),
+        "SpotlightApplicationLauncherAdapter must borrow and map the shared launcher request/events",
+    )
+    require(
+        "class SpotlightDesktopCatalogAdapter final : public SpotlightCatalogSource" in catalog_adapter_header
+        and "DesktopEntryCatalog &catalog" in catalog_adapter_header
+        and "DesktopEntryCatalog &m_catalog" in catalog_adapter_header
+        and "apps/DesktopEntryCatalog.hpp" in catalog_adapter_cpp
+        and "m_catalog.snapshotJson()" in catalog_adapter_cpp
+        and "m_catalog.watchedDirectories()" in catalog_adapter_cpp
+        and "DesktopEntryCatalog::indexUpdated" in catalog_adapter_cpp
+        and "DesktopEntryCatalog::initialize" not in catalog_adapter_cpp
+        and "std::unique_ptr<DesktopEntryCatalog>" not in catalog_adapter_header
+        and "make_unique<DesktopEntryCatalog>" not in catalog_adapter_cpp
+        and not re.search(
+            r"class SpotlightDesktopCatalogAdapter\s*:\s*public SpotlightCatalogSource\s*,",
+            catalog_adapter_header,
+        ),
+        "SpotlightDesktopCatalogAdapter must borrow the one shared catalog and forward its narrow API",
+    )
+    require(
+        not (spotlight_root / "services/ApplicationLauncher.hpp").exists(),
+        "the obsolete Spotlight forwarding launcher header must be removed",
     )
     runtime_paths_header = (
         spotlight_root / "platform/runtime/SpotlightRuntimePaths.hpp"
@@ -258,30 +382,62 @@ def main() -> int:
         "SpotlightControllerPaths controllerPaths() const" in runtime_paths_header
         and "SpotlightControllerPaths SpotlightRuntimePaths::controllerPaths() const" in runtime_paths_cpp
         and all(path_method in runtime_paths_cpp for path_method in (
-            "astreaRoot()", "astreaLaunch()", "weatherCli()", "weatherAssetDir()",
+            "astreaRoot()", "weatherCli()", "weatherAssetDir()",
         )),
-        "SpotlightRuntimePaths must convert resolved platform paths into controller values",
+        "SpotlightRuntimePaths must convert only controller-consumed values into controller paths",
     )
 
     shell_runtime_header = (ROOT / "Shell/runtime/ShellRuntime.hpp").read_text(encoding="utf-8")
     shell_runtime_cpp = (ROOT / "Shell/runtime/ShellRuntime.cpp").read_text(encoding="utf-8")
+    require(
+        "QString astreaLaunch() const" in runtime_paths_header
+        and "astreaLaunch()" in shell_runtime_cpp,
+        "SpotlightRuntimePaths must retain astreaLaunch for Shell's shared launcher composition",
+    )
     backend_owner = "std::unique_ptr<RustSpotlightBackend> m_spotlightBackend"
+    catalog_adapter_owner = (
+        "std::unique_ptr<SpotlightDesktopCatalogAdapter> m_spotlightCatalogAdapter"
+    )
+    launcher_adapter_owner = (
+        "std::unique_ptr<SpotlightApplicationLauncherAdapter> m_spotlightLauncherAdapter"
+    )
     controller_owner = "std::unique_ptr<SpotlightController> m_spotlightController"
     require(
         backend_owner in shell_runtime_header
+        and "std::unique_ptr<DesktopEntryCatalog> m_catalog" in shell_runtime_header
+        and "std::unique_ptr<ApplicationLauncher> m_launcher" in shell_runtime_header
+        and catalog_adapter_owner in shell_runtime_header
+        and launcher_adapter_owner in shell_runtime_header
         and controller_owner in shell_runtime_header
-        and shell_runtime_header.index(backend_owner) < shell_runtime_header.index(controller_owner),
-        "ShellRuntime must declare the Rust backend owner before its borrowing controller",
+        and shell_runtime_header.index("std::unique_ptr<DesktopEntryCatalog> m_catalog")
+            < shell_runtime_header.index(catalog_adapter_owner)
+        and shell_runtime_header.index("std::unique_ptr<ApplicationLauncher> m_launcher")
+            < shell_runtime_header.index(launcher_adapter_owner)
+        and shell_runtime_header.index(backend_owner) < shell_runtime_header.index(catalog_adapter_owner)
+        and shell_runtime_header.index(backend_owner) < shell_runtime_header.index(launcher_adapter_owner)
+        and shell_runtime_header.index(catalog_adapter_owner) < shell_runtime_header.index(controller_owner)
+        and shell_runtime_header.index(launcher_adapter_owner) < shell_runtime_header.index(controller_owner),
+        "ShellRuntime must declare shared owners and adapter/backend owners before the borrowing controller",
     )
     require(
         shell_runtime_cpp.count("make_unique<RustSpotlightBackend>") == 1
+        and shell_runtime_cpp.count("make_unique<SpotlightDesktopCatalogAdapter>") == 1
+        and shell_runtime_cpp.count("make_unique<SpotlightApplicationLauncherAdapter>") == 1
+        and shell_runtime_cpp.count("make_unique<DesktopEntryCatalog>") == 1
+        and shell_runtime_cpp.count("make_unique<ApplicationLauncher>") == 1
         and "spotlightPaths.controllerPaths()" in shell_runtime_cpp
         and re.search(
             r"make_unique<SpotlightController>\s*\(\s*spotlightPaths\.controllerPaths\(\)\s*,\s*"
-            r"\*m_spotlightBackend",
+            r"\*m_spotlightBackend\s*,\s*\*m_spotlightLauncherAdapter\s*,\s*"
+            r"m_spotlightCatalogAdapter\.get\(\)",
             shell_runtime_cpp,
         ) is not None,
-        "ShellRuntime must create one Rust adapter and inject it with neutral paths",
+        "ShellRuntime must create one shared service of each kind, one adapter each, and inject them",
+    )
+    require(
+        "SpotlightApplicationLauncherAdapter *" not in shell_runtime_header
+        and "SpotlightDesktopCatalogAdapter *" not in shell_runtime_header,
+        "ShellRuntime must not expose test-only public adapter getters",
     )
 
     shortcut_test = (
@@ -294,10 +450,52 @@ def main() -> int:
         and "FakeSpotlightBackend" in shortcut_test,
         "ShellShortcutDispatcherTest must toggle Spotlight through core-facing test types",
     )
+    require(
+        "ApplicationLauncher" not in shortcut_test
+        and "DesktopEntryCatalog" not in shortcut_test
+        and "SpotlightApplicationLauncherAdapter" not in shortcut_test
+        and "SpotlightDesktopCatalogAdapter" not in shortcut_test
+        and "FakeSpotlightLauncher" in shortcut_test,
+        "ShellShortcutDispatcherTest must use only the narrow core launcher/catalog boundary",
+    )
+    spotlight_test = (spotlight_root / "tests/SpotlightBackendTest.cpp").read_text(encoding="utf-8")
+    controller_test_start = spotlight_test.find(
+        "void TestSpotlightBackend::testControllerBackendInitialization()"
+    )
+    controller_test_end = spotlight_test.find(
+        "void TestSpotlightBackend::testApplicationLauncher()", controller_test_start
+    )
+    controller_test_source = (
+        spotlight_test[controller_test_start:controller_test_end]
+        if controller_test_start >= 0 and controller_test_end > controller_test_start
+        else ""
+    )
+    require(
+        bool(controller_test_source)
+        and "FakeSpotlightBackend" in spotlight_test
+        and "FakeSpotlightLauncher" in spotlight_test
+        and "FakeSpotlightCatalog" in spotlight_test
+        and not re.search(
+            r"ApplicationLauncher|ApplicationLaunchRequest|DesktopEntryCatalog",
+            controller_test_source,
+        ),
+        "Spotlight controller behavior tests must use only the core fakes",
+    )
+    shell_runtime_tests = (
+        (ROOT / "Shell/tests/ShellRuntimeTest.cpp").read_text(encoding="utf-8")
+        + (ROOT / "Shell/tests/ShellUnifiedRuntimeIntegrationTest.cpp").read_text(encoding="utf-8")
+    )
+    require(
+        "spotlightController()->catalog()" not in shell_runtime_tests
+        and "spotlightController()->launcher()" not in shell_runtime_tests,
+        "Shell composition tests must not depend on concrete Spotlight controller getters",
+    )
     controller_sources = controller_header + controller_cpp
     require(
-        all(debt in controller_sources for debt in PHASE_3_DEBT),
-        "Phase 3 debt remains explicit: launcher, catalog, and QProcess weather orchestration",
+        all(debt in controller_sources for debt in PHASE_3_DEBT)
+        and "ApplicationLauncher" not in controller_sources
+        and "DesktopEntryCatalog" not in controller_sources,
+        "Phase 3B debt is limited to weather/QProcess orchestration",
     )
     require(
         has_link(spotlight, "astrea-spotlight-runtime", "Qt6::Core", "PUBLIC"),
@@ -418,7 +616,7 @@ def main() -> int:
             print(f"- {error}", file=sys.stderr)
         return 1
 
-    print("Spotlight Phase 1 and Phase 2 architecture invariants passed")
+    print("Spotlight Phase 1, Phase 2, and Phase 3A architecture invariants passed")
     return 0
 
 

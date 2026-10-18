@@ -125,6 +125,7 @@ signals:
 private:
     bool createBackend(const QString &backendName, QString *errorOut);
     void connectServices();
+    void resetInitializationState();
 
     std::unique_ptr<DesktopEntryCatalog> m_catalog;
     std::unique_ptr<ApplicationLauncher> m_launcher;

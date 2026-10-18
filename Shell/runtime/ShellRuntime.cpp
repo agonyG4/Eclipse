@@ -53,6 +53,8 @@
 #endif
 
 #include <QDebug>
+#include <QScopeGuard>
+
 ShellRuntime::ShellRuntime(QObject *parent)
     : QObject(parent)
 {
@@ -63,10 +65,75 @@ ShellRuntime::~ShellRuntime()
     stop();
 }
 
+void ShellRuntime::resetInitializationState()
+{
+    Q_ASSERT(!m_started);
+
+    // Tear down borrowers before the services they reference. This also makes
+    // initialize() retry-safe after any partial construction failure.
+    m_contextMenuController.reset();
+    m_trayContextMenuAdapter.reset();
+    m_dockContextMenuProvider.reset();
+    m_desktopContextMenuProvider.reset();
+
+    m_spotlightConfig.reset();
+    m_altTabConfig.reset();
+    m_dockConfig.reset();
+    m_spatialAudioConfig.reset();
+    m_gameMode.reset();
+
+    m_shortcutDispatcher.reset();
+    m_barController.reset();
+    m_screenshotController.reset();
+    m_spotlightController.reset();
+    m_altTabController.reset();
+    m_dockController.reset();
+
+    m_spotlightLauncherAdapter.reset();
+    m_spotlightCatalogAdapter.reset();
+    m_spotlightBackend.reset();
+    m_typhonDockBackend.reset();
+    m_dockSurfaceGeometry.reset();
+    m_dockPersistence.reset();
+
+    m_wallpaperControlServer.reset();
+    m_wallpaperService.reset();
+    m_ipcServer.reset();
+
+    m_statusNotifier.reset();
+    m_bluetoothService.reset();
+    m_networkService.reset();
+    m_spatialAudioEngine.reset();
+    m_audioService.reset();
+
+    m_barClock.reset();
+    m_themeController.reset();
+
+    m_workspaceController.reset();
+    m_workspaceClient.reset();
+    m_workspaceModel.reset();
+    m_screenCaptureClient.reset();
+    m_shortcutClient.reset();
+
+    m_windowBackend.reset();
+    m_typhonToplevel.reset();
+    m_typhonSession.reset();
+
+    m_identityResolver.reset();
+    m_launcher.reset();
+    m_catalog.reset();
+
+    m_initialized = false;
+    m_started = false;
+}
+
 bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
 {
     if (m_initialized)
         return true;
+
+    resetInitializationState();
+    auto rollback = qScopeGuard([this] { resetInitializationState(); });
 
     m_catalog = std::make_unique<DesktopEntryCatalog>();
     m_catalog->initialize();
@@ -82,17 +149,8 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
     m_workspaceClient = std::make_unique<TyphonWorkspaceClient>(m_typhonSession.get());
     m_workspaceController = std::make_unique<TyphonWorkspaceController>(m_workspaceClient.get());
 
-    if (!createBackend(backendName, errorOut)) {
-        m_shortcutClient.reset();
-        m_screenCaptureClient.reset();
-        m_workspaceController.reset();
-        m_workspaceClient.reset();
-        m_typhonSession.reset();
-        m_identityResolver.reset();
-        m_launcher.reset();
-        m_catalog.reset();
+    if (!createBackend(backendName, errorOut))
         return false;
-    }
 
     const DockRuntimePaths dockPaths = DockRuntimePaths::fromEnvironment();
     m_dockPersistence = std::make_unique<DockConfigPersistence>(dockPaths.dockConfigPath());
@@ -217,6 +275,7 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
 
     connectServices();
     m_initialized = true;
+    rollback.dismiss();
     return true;
 }
 

@@ -2,6 +2,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QLocalServer>
 #include <QProcessEnvironment>
 #include <QSaveFile>
 #include <QSignalSpy>
@@ -12,6 +13,7 @@
 #include "Bar/core/BarController.hpp"
 #include "Dock/core/DockController.hpp"
 #include "Spotlight/core/SpotlightController.hpp"
+#include "Paper/platform/ipc/WallpaperControlServer.hpp"
 #include "launch/ApplicationLauncher.hpp"
 #include "runtime/ShellRuntime.hpp"
 #include "services/SpatialAudioConfigWatcher.hpp"
@@ -81,6 +83,7 @@ private slots:
     void createsOneSharedOwnershipGraph();
     void barSearchCapabilityTracksSpotlightComposition();
     void systemServicesRemainRestartableAcrossRuntimeLifecycle();
+    void failedInitializationRollsBackAndCanRetry();
     void spatialAudioConfigurationDefaultsDisabledAndUsesXdgPath();
     void spatialAudioConfigurationWatcherHandlesAtomicReplacementAndSemanticChanges();
     void malformedSpatialAudioConfigurationFailsSafelyDisabled();
@@ -191,6 +194,65 @@ void ShellRuntimeTest::systemServicesRemainRestartableAcrossRuntimeLifecycle()
     QCOMPARE(runtime.networkService(), network);
     QCOMPARE(runtime.bluetoothService(), bluetooth);
     runtime.stop();
+}
+
+void ShellRuntimeTest::failedInitializationRollsBackAndCanRetry()
+{
+    EnvironmentGuard environmentGuard({"XDG_CONFIG_HOME", "XDG_RUNTIME_DIR"});
+    QTemporaryDir configHome;
+    QTemporaryDir runtimeHome;
+    QVERIFY(configHome.isValid());
+    QVERIFY(runtimeHome.isValid());
+    qputenv("XDG_CONFIG_HOME", configHome.path().toUtf8());
+    qputenv("XDG_RUNTIME_DIR", runtimeHome.path().toUtf8());
+
+    const QString endpoint = Paper::WallpaperControlServer::defaultEndpoint();
+    QVERIFY(!endpoint.isEmpty());
+    QVERIFY(QDir().mkpath(QFileInfo(endpoint).absolutePath()));
+    QLocalServer::removeServer(endpoint);
+
+    QLocalServer blocker;
+    QVERIFY2(blocker.listen(endpoint), qPrintable(blocker.errorString()));
+
+    ShellRuntime runtime;
+    QString error;
+    QVERIFY(!runtime.initialize(QStringLiteral("hyprland"), &error));
+    QCOMPARE(error, QStringLiteral("Paper control endpoint is already in use"));
+    QVERIFY(!runtime.isInitialized());
+
+    // A failed initialize must not leave the partially composed ownership graph alive.
+    QVERIFY(!runtime.catalog());
+    QVERIFY(!runtime.launcher());
+    QVERIFY(!runtime.identityResolver());
+    QVERIFY(!runtime.typhonSession());
+    QVERIFY(!runtime.shortcutClient());
+    QVERIFY(!runtime.screenCaptureClient());
+    QVERIFY(!runtime.workspaceClient());
+    QVERIFY(!runtime.workspaceController());
+    QVERIFY(!runtime.windowBackend());
+    QVERIFY(!runtime.dockController());
+    QVERIFY(!runtime.dockSurfaceGeometry());
+    QVERIFY(!runtime.altTabController());
+    QVERIFY(!runtime.spotlightController());
+    QVERIFY(!runtime.screenshotController());
+    QVERIFY(!runtime.barController());
+    QVERIFY(!runtime.barClock());
+    QVERIFY(!runtime.themeController());
+    QVERIFY(!runtime.workspaceModel());
+    QVERIFY(!runtime.shortcutDispatcher());
+    QVERIFY(!runtime.ipcServer());
+    QVERIFY(!runtime.wallpaperService());
+    QVERIFY(!runtime.wallpaperControlServer());
+
+    blocker.close();
+    QLocalServer::removeServer(endpoint);
+
+    error.clear();
+    QVERIFY2(runtime.initialize(QStringLiteral("hyprland"), &error), qPrintable(error));
+    QVERIFY(runtime.isInitialized());
+    QVERIFY(runtime.spotlightController());
+    QVERIFY(runtime.launcher());
+    QVERIFY(runtime.catalog());
 }
 
 void ShellRuntimeTest::spatialAudioConfigurationDefaultsDisabledAndUsesXdgPath()

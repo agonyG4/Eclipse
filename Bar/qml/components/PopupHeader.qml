@@ -10,7 +10,8 @@ Item {
     property color iconColor: theme.shellTextDim
     property int iconSize: theme.fontSizeIcon
     property int trailingGap: theme.spacingLarge - theme.spacingMicro
-    property int trailingWidth: iconText.visible ? iconText.implicitWidth : 0
+    property int trailingWidth: iconText.visible ? iconText.implicitWidth
+        : appleIcon.hasIcon ? control.iconSize : 0
     property int trailingHeight: 24
     property alias titleItem: titleLabel
 
@@ -46,10 +47,19 @@ Item {
         Text {
             id: iconText
             anchors.verticalCenter: parent.verticalCenter
-            visible: control.icon !== ""
+            visible: control.icon !== "" && !appleIcon.hasIcon
             text: control.icon
             color: control.iconColor
             font { family: theme.iconFontFamily; pixelSize: control.iconSize }
+        }
+
+        AppleIcon {
+            id: appleIcon
+            anchors.verticalCenter: parent.verticalCenter
+            iconKey: theme.iconKeyForGlyph(control.icon)
+            width: control.iconSize
+            height: control.iconSize
+            foreground: theme.isLight ? control.iconColor : "#ffffff"
         }
 
         Item {

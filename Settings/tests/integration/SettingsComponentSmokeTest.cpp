@@ -411,12 +411,14 @@ void SettingsComponentSmokeTest::sliderControlledBindingSurvivesDetent()
 
     QTest::mousePress(&fixture.window, Qt::LeftButton, Qt::NoModifier,
                       fixture.renderedHandleCenter());
+    QVERIFY(fixture.slider->property("tooltipVisible").toBool());
     QTest::mouseMove(&fixture.window, fixture.pointForVisualPosition(0.475));
     QCOMPARE(fixture.fixtureRoot->property("backendValue").toReal(), 5.0);
     QCOMPARE(fixture.slider->property("displayedValue").toReal(), 5.0);
     QVERIFY(fixture.slider->property("detentLatched").toBool());
     QTest::mouseRelease(&fixture.window, Qt::LeftButton, Qt::NoModifier,
                         fixture.pointForVisualPosition(0.475));
+    QVERIFY(!fixture.slider->property("tooltipVisible").toBool());
     QVERIFY(!fixture.slider->property("detentLatched").toBool());
     QTRY_VERIFY_WITH_TIMEOUT(qAbs(fixture.slider->property("value").toReal() - 5.0) < 0.001,
                              100);

@@ -1,4 +1,6 @@
 #include "theme/ThemeController.hpp"
+#include "theme/ThemePackCatalog.hpp"
+#include "theme/IconOverrides.hpp"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -8,6 +10,9 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSaveFile>
+#include <QRegularExpression>
+#include <QResource>
+#include <QStandardPaths>
 
 #include <cerrno>
 #include <fcntl.h>
@@ -215,6 +220,7 @@ void ThemeController::reload()
         if (error.error == QJsonParseError::NoError && document.isObject())
             applyConfig(document.object().toVariantMap());
     }
+    reloadNavigationIcons();
     updateWatchPaths();
     m_reloading = false;
 }
@@ -333,6 +339,100 @@ void ThemeController::scheduleReload()
     m_reloadTimer.start();
 }
 
+QUrl ThemeController::themedNavigationIcon(const QString &key) const
+{
+    static const QRegularExpression valid(QStringLiteral("^[a-z0-9-]+$"));
+    if (!valid.match(key).hasMatch())
+        return {};
+    const auto selected = Astrea::IconOverrides::resolve(
+        m_navigationIconOverrides, QStringLiteral("shell"), key,
+        m_navigationIconTheme, m_navigationIconWeight);
+    if (selected.file.isValid())
+        return selected.file;
+    if (selected.theme != QStringLiteral("apple")
+        && selected.theme != QStringLiteral("lucide"))
+        return {};
+    if (selected.theme == QStringLiteral("apple")) {
+        const QString local = QStandardPaths::writableLocation(
+            QStandardPaths::GenericDataLocation)
+            + QStringLiteral("/AstreaOS/Themes/AppleOS/bar-")
+            + selected.icon + QStringLiteral(".svg");
+        const QFileInfo file(local);
+        if (file.isFile())
+            return QUrl::fromLocalFile(file.absoluteFilePath());
+    }
+    // Lucide is always available as the default and as Apple's local fallback.
+    const QString prefix = QStringLiteral(":/qt/qml/Astrea/Shell/Bar/icons/lucide/");
+    const QString weighted = prefix + QStringLiteral("weights/")
+        + selected.weight + QLatin1Char('/') + selected.icon + QStringLiteral(".svg");
+    if (QResource(weighted).isValid())
+        return QUrl(QStringLiteral("qrc") + weighted);
+    const QString master = prefix + selected.icon + QStringLiteral(".svg");
+    return QResource(master).isValid()
+        ? QUrl(QStringLiteral("qrc") + master) : QUrl{};
+
+}
+
+void ThemeController::reloadNavigationIcons()
+{
+    const QString path = QFileInfo(m_configPath).absoluteDir()
+        .filePath(QStringLiteral("navigation-icons.json"));
+    QFile config(path);
+    QString next = QStringLiteral("lucide");
+    if (config.open(QIODevice::ReadOnly)) {
+        const QString requested = QJsonDocument::fromJson(config.readAll())
+                                      .object().value(QStringLiteral("theme")).toString();
+        if (requested == QStringLiteral("apple"))
+            next = requested;
+    }
+    if (next != m_navigationIconTheme) {
+        m_navigationIconTheme = next;
+        emit navigationIconThemeChanged();
+    }
+    QFile weightConfig(path);
+    QString nextWeight = QStringLiteral("regular");
+    if (weightConfig.open(QIODevice::ReadOnly)) {
+        const QString stored = QJsonDocument::fromJson(weightConfig.readAll())
+            .object().value(QStringLiteral("weight")).toString();
+        static const QStringList validWeights{
+            QStringLiteral("ultralight"), QStringLiteral("thin"),
+            QStringLiteral("light"), QStringLiteral("regular"),
+            QStringLiteral("medium"), QStringLiteral("semibold"),
+            QStringLiteral("bold"), QStringLiteral("heavy"), QStringLiteral("black")
+        };
+        if (validWeights.contains(stored))
+            nextWeight = stored;
+    }
+    if (nextWeight != m_navigationIconWeight) {
+        m_navigationIconWeight = nextWeight;
+        emit navigationIconWeightChanged();
+    }
+    QFile overridesConfig(path);
+    QJsonObject nextOverrides;
+    if (overridesConfig.open(QIODevice::ReadOnly))
+        nextOverrides = QJsonDocument::fromJson(overridesConfig.readAll())
+            .object().value(QStringLiteral("overrides")).toObject();
+    if (nextOverrides != m_navigationIconOverrides) {
+        m_navigationIconOverrides = nextOverrides;
+        ++m_navigationIconOverridesRevision;
+        emit navigationIconOverridesChanged();
+    }
+    QFile visualConfig(path);
+    QString nextVisualTheme = QStringLiteral("astrea");
+    if (visualConfig.open(QIODevice::ReadOnly)) {
+        const QString requested = QJsonDocument::fromJson(visualConfig.readAll())
+            .object().value(QStringLiteral("visual_theme")).toString();
+        if (Astrea::ThemePacks::find(requested).has_value())
+            nextVisualTheme = requested;
+    }
+    const QVariantMap nextTokens = Astrea::ThemePacks::styleTokens(nextVisualTheme);
+    if (nextVisualTheme != m_visualTheme || nextTokens != m_styleTokens) {
+        m_visualTheme = nextVisualTheme;
+        m_styleTokens = nextTokens;
+        emit visualThemeChanged();
+    }
+}
+
 void ThemeController::updateWatchPaths()
 {
     for (const QString &path : m_watcher.files())
@@ -343,6 +443,10 @@ void ThemeController::updateWatchPaths()
     const QFileInfo fileInfo(m_configPath);
     if (fileInfo.exists() && fileInfo.isFile())
         m_watcher.addPath(fileInfo.absoluteFilePath());
+    const QString iconsPath = fileInfo.absoluteDir()
+        .filePath(QStringLiteral("navigation-icons.json"));
+    if (QFileInfo::exists(iconsPath))
+        m_watcher.addPath(iconsPath);
 
     QDir directory = fileInfo.absoluteDir();
     while (!directory.exists() && directory.cdUp()) {

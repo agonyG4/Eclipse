@@ -13,6 +13,10 @@
 #include <QAbstractListModel>
 #include <QGuiApplication>
 #include <QCoreApplication>
+#include <QFile>
+#include <QFileInfo>
+#include <QDir>
+#include <QScopeGuard>
 #include <QColor>
 #include <QFont>
 #include <QQmlComponent>
@@ -306,6 +310,7 @@ private slots:
     void popupKindSwitchCancelsPreviousExit();
     void clockUsesReferenceHorizontalStructure();
     void barPaletteFollowsSharedThemeState();
+    void appleIconsFollowThemeSelection();
     void launcherAndStatusUsePerIndicatorHitTargets();
     void indicatorGlyphsMatchReferenceStates();
     void bluetoothIndicatorCentersGlyphInVisualContainer();
@@ -445,6 +450,226 @@ void BarQmlSmokeTest::barPaletteMatchesBorealisForAllSixCombinations()
         QCOMPARE(theme->property("shellSeparator").value<QColor>(), values.separator);
     }
     delete theme;
+}
+
+void BarQmlSmokeTest::appleIconsFollowThemeSelection()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QByteArray oldData = qgetenv("XDG_DATA_HOME");
+    qputenv("XDG_DATA_HOME", directory.filePath(QStringLiteral("data")).toUtf8());
+    const auto restoreData = qScopeGuard([oldData] {
+        if (oldData.isNull()) qunsetenv("XDG_DATA_HOME");
+        else qputenv("XDG_DATA_HOME", oldData);
+    });
+
+    const QString appleRoot = directory.filePath(
+        QStringLiteral("data/AstreaOS/Themes/AppleOS"));
+    QVERIFY(QDir().mkpath(appleRoot));
+    const QString svgPath = appleRoot + QStringLiteral("/bar-wifi-off.svg");
+    QFile appleSvg(svgPath);
+    QVERIFY(appleSvg.open(QIODevice::WriteOnly));
+    QVERIFY(appleSvg.write("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M3 3L21 21'/></svg>") > 0);
+    appleSvg.close();
+
+    const QString iconsPath = directory.filePath(QStringLiteral("navigation-icons.json"));
+    QFile file(iconsPath);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    QVERIFY(file.write(R"({"theme":"apple","weight":"regular"})") > 0);
+    file.close();
+    ThemeController controller(directory.filePath(QStringLiteral("theme.json")));
+    QCOMPARE(controller.navigationIconTheme(), QStringLiteral("apple"));
+
+    QQmlEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &controller);
+    QQmlComponent component(&engine, QUrl(QStringLiteral(
+        "qrc:/qt/qml/Astrea/Shell/Bar/qml/components/NetworkIndicator.qml")));
+    QVERIFY2(component.status() == QQmlComponent::Ready,
+             qPrintable(component.errorString()));
+    std::unique_ptr<QObject> indicator(component.create());
+    QVERIFY2(indicator != nullptr, qPrintable(component.errorString()));
+    auto *apple = indicator->findChild<QObject *>(QStringLiteral("networkAppleIcon"));
+    auto *legacy = indicator->findChild<QObject *>(QStringLiteral("networkIcon"));
+    QVERIFY(apple != nullptr);
+    QVERIFY(legacy != nullptr);
+    QVERIFY(apple->property("hasIcon").toBool());
+    QCOMPARE(apple->property("resolvedUrl").toUrl(), QUrl::fromLocalFile(svgPath));
+    QVERIFY(!legacy->property("visible").toBool());
+    // White itself must activate colorization: AppleOS path fills may be black.
+    auto *artwork = apple->findChild<QObject *>(QStringLiteral("barThemedIconArtwork"));
+    QVERIFY(artwork != nullptr);
+    QVERIFY(QQmlProperty(artwork, QStringLiteral("layer.enabled")).read().toBool());
+    // Force a white foreground as in connected indicators in dark mode:
+    // the effect must still be enabled instead of passing black pixels through.
+    QVERIFY(apple->setProperty("foreground", QColor(Qt::white)));
+    QCOMPARE(artwork->property("resolvedTint").value<QColor>(), QColor(Qt::white));
+    QVERIFY(QQmlProperty(artwork, QStringLiteral("layer.enabled")).read().toBool());
+    QFile iconQml(QStringLiteral(
+        ":/qt/qml/Astrea/Shell/Bar/qml/components/AppleIcon.qml"));
+    QVERIFY(iconQml.open(QIODevice::ReadOnly));
+    const QByteArray content = iconQml.readAll();
+    QVERIFY(content.contains("layer.effect: Legacy.ColorOverlay"));
+    QVERIFY(!content.contains("colorizationColor: artwork.resolvedTint"));
+
+    // Instantiate the real animated AppleOS volume component with local SVGs.
+    // Verify it does not disappear when selecting muted/low/mid/high.
+    for (const QString &name : {
+             QStringLiteral("bar-volume-muted"),
+             QStringLiteral("bar-volume-speaker"),
+             QStringLiteral("bar-volume-wave-near"),
+             QStringLiteral("bar-volume-wave-middle"),
+             QStringLiteral("bar-volume-wave-far")}) {
+        QFile svg(appleRoot + QLatin1Char('/') + name + QStringLiteral(".svg"));
+        QVERIFY(svg.open(QIODevice::WriteOnly));
+        QVERIFY(svg.write(
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 27 22'>"
+            "<path fill='black' d='M3 3h12v14H3z'/></svg>") > 0);
+    }
+    QQmlComponent volumeComponent(&engine, QUrl(QStringLiteral(
+        "qrc:/qt/qml/Astrea/Shell/Bar/qml/components/VolumeStateIcon.qml")));
+    QVERIFY2(volumeComponent.status() == QQmlComponent::Ready,
+             qPrintable(volumeComponent.errorString()));
+    std::unique_ptr<QObject> volumeIcon(volumeComponent.create());
+    QVERIFY2(volumeIcon != nullptr, qPrintable(volumeComponent.errorString()));
+    QCOMPARE(volumeIcon->property("width").toDouble(), 16.0);
+    QCOMPARE(volumeIcon->property("height").toDouble(), 16.0);
+    auto *voicedGroup = volumeIcon->findChild<QQuickItem *>(
+        QStringLiteral("volumeVoicedGroup"));
+    auto *muteSlash = volumeIcon->findChild<QQuickItem *>(
+        QStringLiteral("volumeMuteSlash"));
+    QVERIFY(voicedGroup != nullptr);
+    QVERIFY(muteSlash != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(volumeIcon->property("hasIcon").toBool(), 1500);
+    QCOMPARE(volumeIcon->property("mutedOpticalOffsetX").toDouble(), 1.735);
+    QCOMPARE(muteSlash->x(), 1.735);
+
+    // All volumes within one icon band share the same settled geometry.
+    // Only a change of band triggers the unified animation.
+    auto *nearWave = volumeIcon->findChild<QQuickItem *>(
+        QStringLiteral("volumeNearWave"));
+    auto *middleWave = volumeIcon->findChild<QQuickItem *>(
+        QStringLiteral("volumeMiddleWave"));
+    auto *farWave = volumeIcon->findChild<QQuickItem *>(
+        QStringLiteral("volumeFarWave"));
+    QVERIFY(nearWave != nullptr);
+    QVERIFY(middleWave != nullptr);
+    QVERIFY(farWave != nullptr);
+
+    const auto closeTo = [](double actual, double expected) {
+        return qAbs(actual - expected) < 0.035;
+    };
+    for (const auto [level, expectedWaves, expectedProgress] : {
+             std::tuple{0, 0, 0.0}, {1, 1, 1.0},
+             {17, 1, 1.0}, {33, 1, 1.0}, {34, 2, 2.0},
+             {50, 2, 2.0}, {66, 2, 2.0}, {67, 3, 3.0},
+             {83, 3, 3.0}, {100, 3, 3.0}, {150, 3, 3.0}}) {
+        QVERIFY(volumeIcon->setProperty("volume", level));
+        QCOMPARE(volumeIcon->property("waveCount").toInt(), expectedWaves);
+        QVERIFY(closeTo(volumeIcon->property("targetWaveProgress").toDouble(),
+                        expectedProgress));
+        QTRY_VERIFY_WITH_TIMEOUT(
+            closeTo(volumeIcon->property("animatedWaveProgress").toDouble(),
+                    expectedProgress), 1000);
+        // Derive optical geometry from the actual animated frame rather
+        // than prematurely comparing a mid-transition frame to its target.
+        const double frameProgress =
+            volumeIcon->property("animatedWaveProgress").toDouble();
+        const double near = qBound(0., frameProgress, 1.);
+        const double middle = qBound(0., frameProgress - 1., 1.);
+        const double far = qBound(0., frameProgress - 2., 1.);
+        const double opticalScale = 1. + 0.04 * middle + 0.04 * far;
+        const double centroidCorrection = 0.27 + 0.14 * near - 0.46 * middle
+                                          - 0.05 * far - 0.65 * far * far * far;
+        const double centerOffset = (3.5 - near - middle - 1.5 * far)
+                                    * opticalScale + centroidCorrection;
+        QVERIFY(closeTo(volumeIcon->property("nearProgress").toDouble(), near));
+        QVERIFY(closeTo(volumeIcon->property("middleProgress").toDouble(), middle));
+        QVERIFY(closeTo(volumeIcon->property("farProgress").toDouble(), far));
+        QVERIFY(closeTo(volumeIcon->property("voicedOpticalScale").toDouble(),
+                        opticalScale));
+        QVERIFY(closeTo(volumeIcon->property("voicedOpticalOffsetX").toDouble(),
+                        centerOffset));
+        QVERIFY(closeTo(voicedGroup->x(), centerOffset));
+        QVERIFY(closeTo(nearWave->opacity(), near));
+        QVERIFY(closeTo(middleWave->opacity(), middle));
+        QVERIFY(closeTo(farWave->opacity(), far));
+        QVERIFY(volumeIcon->property("hasIcon").toBool());
+        QCOMPARE(volumeIcon->property("width").toDouble(), 16.0);
+    }
+
+    // Within each band the icon must remain stationary, even after a timer
+    // has advanced. Volume changes without an icon change are not animated.
+    for (const auto [startVolume, nextVolume, expectedState] : {
+             std::tuple{5, 30, 1.0}, {40, 65, 2.0},
+             {70, 99, 3.0}}) {
+        QVERIFY(volumeIcon->setProperty("volume", startVolume));
+        QTRY_VERIFY_WITH_TIMEOUT(
+            closeTo(volumeIcon->property("animatedWaveProgress").toDouble(),
+                    expectedState), 1000);
+        const double initialX =
+            volumeIcon->property("voicedOpticalOffsetX").toDouble();
+        QVERIFY(volumeIcon->setProperty("volume", nextVolume));
+        QCOMPARE(volumeIcon->property("targetWaveProgress").toDouble(),
+                 expectedState);
+        QTest::qWait(80);
+        QVERIFY(closeTo(volumeIcon->property("animatedWaveProgress").toDouble(),
+                        expectedState));
+        QVERIFY(closeTo(volumeIcon->property("voicedOpticalOffsetX").toDouble(),
+                        initialX));
+    }
+
+    // Retarget an active transition. Qt's Behavior must start from its current
+    // frame rather than abruptly snapping to an endpoint when volume reverses.
+    QVERIFY(volumeIcon->setProperty("volume", 100));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        closeTo(volumeIcon->property("animatedWaveProgress").toDouble(), 3.), 1000);
+    QVERIFY(volumeIcon->setProperty("volume", 1));
+    QTest::qWait(45);
+    const double interrupted = volumeIcon->property("animatedWaveProgress").toDouble();
+    QVERIFY2(interrupted > 0.28 && interrupted < 3.0,
+             qPrintable(QString::number(interrupted)));
+    QVERIFY(volumeIcon->setProperty("volume", 100));
+    const double afterRetarget = volumeIcon->property("animatedWaveProgress").toDouble();
+    QVERIFY(qAbs(afterRetarget - interrupted) < 0.25);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        closeTo(volumeIcon->property("animatedWaveProgress").toDouble(), 3.), 1000);
+    QVERIFY(volumeIcon->setProperty("muted", true));
+    QCOMPARE(volumeIcon->property("waveCount").toInt(), 0);
+    QCOMPARE(volumeIcon->property("targetWaveProgress").toDouble(), 0.0);
+    QVERIFY(volumeIcon->property("hasIcon").toBool());
+    QVERIFY(volumeIcon->setProperty("muted", false));
+    QCOMPARE(volumeIcon->property("targetWaveProgress").toDouble(), 3.0);
+    QVERIFY(volumeIcon->property("hasIcon").toBool());
+
+    // Local AppleOS SVGs use their native geometry for every weight.
+    QFile changeWeight(iconsPath);
+    QVERIFY(changeWeight.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QVERIFY(changeWeight.write(R"({"theme":"apple","weight":"bold"})") > 0);
+    changeWeight.close();
+    QTRY_COMPARE_WITH_TIMEOUT(controller.navigationIconWeight(), QStringLiteral("bold"), 2000);
+    QCOMPARE(controller.themedNavigationIcon(QStringLiteral("wifi-off")),
+             QUrl::fromLocalFile(svgPath));
+    // Missing AppleOS SVGs use the bundled Lucide geometry.
+    QVERIFY(controller.themedNavigationIcon(QStringLiteral("power")).toString()
+            .contains(QStringLiteral("/lucide/weights/bold/power.svg")));
+
+    QFile restoreLucide(iconsPath);
+    QVERIFY(restoreLucide.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QVERIFY(restoreLucide.write(R"({"theme":"lucide","weight":"thin"})") > 0);
+    restoreLucide.close();
+    QTRY_COMPARE_WITH_TIMEOUT(controller.navigationIconTheme(), QStringLiteral("lucide"), 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(apple->property("resolvedUrl").toUrl().toString()
+                                 .contains(QStringLiteral("/lucide/weights/thin/wifi-off.svg")),
+                             2000);
+    QVERIFY(apple->property("hasIcon").toBool());
+    QVERIFY(!legacy->property("visible").toBool());
+
+    // Removed icon-pack IDs are not revived by an old config file.
+    QFile legacyConfig(iconsPath);
+    QVERIFY(legacyConfig.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QVERIFY(legacyConfig.write(R"({"theme":"astrea"})") > 0);
+    legacyConfig.close();
+    QTRY_COMPARE_WITH_TIMEOUT(controller.navigationIconTheme(), QStringLiteral("lucide"), 2000);
 }
 
 void BarQmlSmokeTest::barSegmentExposesAuthoritativeSurfaceRadius()
@@ -1216,7 +1441,40 @@ void BarQmlSmokeTest::indicatorGlyphsMatchReferenceStates()
     });
     QVERIFY(volumeIndicator != nullptr);
     QObject *volumeIcon = volumeIndicator->findChild<QObject *>(QStringLiteral("volumeIcon"));
+    QObject *appleVolume = volumeIndicator->findChild<QObject *>(QStringLiteral("volumeAppleIcon"));
     QVERIFY(volumeIcon != nullptr);
+    QVERIFY(appleVolume != nullptr);
+    QCOMPARE(appleVolume->property("width").toDouble(), 16.0);
+    QCOMPARE(appleVolume->property("height").toDouble(), 16.0);
+    for (const QString &name : {QStringLiteral("volumeSpeakerBase"),
+                                QStringLiteral("volumeNearWave"),
+                                QStringLiteral("volumeMiddleWave"),
+                                QStringLiteral("volumeFarWave"),
+                                QStringLiteral("volumeMuteSlash")}) {
+        auto *layer = appleVolume->findChild<QObject *>(name);
+        QVERIFY2(layer != nullptr, qPrintable(name));
+        QCOMPARE(layer->property("width").toDouble(), 16.0);
+        QCOMPARE(layer->property("height").toDouble(), 16.0);
+    }
+
+    // The speaker silhouette remains stationary; independent rings animate
+    // at 1-33%, 34-66%, and 67%+. Muting crossfades to sfSpeakerSlash.
+    const auto expectAppleVolumeIcon = [&audio, appleVolume](int percent,
+                                       const QString &expectedKey, int expectedWaves) {
+        audio.setVolumeForTest(percent);
+        QCoreApplication::processEvents();
+        QCOMPARE(appleVolume->property("iconKey").toString(), expectedKey);
+        QCOMPARE(appleVolume->property("waveCount").toInt(), expectedWaves);
+        QCOMPARE(appleVolume->property("width").toDouble(), 16.0);
+    };
+    expectAppleVolumeIcon(0, QStringLiteral("volume-muted"), 0);
+    expectAppleVolumeIcon(1, QStringLiteral("volume-low"), 1);
+    expectAppleVolumeIcon(33, QStringLiteral("volume-low"), 1);
+    expectAppleVolumeIcon(34, QStringLiteral("volume-high"), 2);
+    expectAppleVolumeIcon(66, QStringLiteral("volume-high"), 2);
+    expectAppleVolumeIcon(67, QStringLiteral("volume-high"), 3);
+    expectAppleVolumeIcon(100, QStringLiteral("volume-high"), 3);
+    expectAppleVolumeIcon(150, QStringLiteral("volume-high"), 3);
     audio.setVolumeForTest(0);
     QCoreApplication::processEvents();
     QCOMPARE(volumeIcon->property("text").toString(), QStringLiteral("󰝟"));
@@ -1229,6 +1487,11 @@ void BarQmlSmokeTest::indicatorGlyphsMatchReferenceStates()
     audio.setMuted(true);
     QCoreApplication::processEvents();
     QCOMPARE(volumeIcon->property("text").toString(), QStringLiteral("󰝟"));
+    QCOMPARE(appleVolume->property("iconKey").toString(), QStringLiteral("volume-muted"));
+    QCOMPARE(appleVolume->property("waveCount").toInt(), 0);
+    audio.setMuted(false);
+    QCoreApplication::processEvents();
+    QCOMPARE(appleVolume->property("waveCount").toInt(), 3);
 
     delete volumeIndicator;
     delete bluetoothIndicator;

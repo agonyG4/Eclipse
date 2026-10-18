@@ -1,4 +1,5 @@
 import QtQuick
+import Qt5Compat.GraphicalEffects as Legacy
 import QtQuick.Layouts
 import ".." as Components
 
@@ -11,6 +12,8 @@ Item {
     property string sublabel: ""
     property string iconSource: ""
     property string sym: ""
+    FontLoader { id: tablerIcons; source: "qrc:/Astrea/Settings/assets/fonts/tabler-icons-300.ttf" }
+
     readonly property string chevronGlyph: "\uf054"
     property bool isLast: false
     signal clicked()
@@ -50,15 +53,20 @@ Item {
                 : Qt.rgba(1, 1, 1, 0.055)
 
             Image {
-                anchors.fill: parent
-                anchors.margins: 6
+                anchors.centerIn: parent
+                width: 20
+                height: 20
                 source: root.iconSource
-                sourceSize: Qt.size(40, 40)
+                sourceSize: Qt.size(width, height)
                 fillMode: Image.PreserveAspectFit
                 smooth: true
-                mipmap: true
+                mipmap: false
                 visible: root.iconSource !== ""
                 opacity: root.enabled ? 1 : Components.Theme.opacityMuted
+                layer.enabled: visible
+                layer.effect: Legacy.ColorOverlay {
+                    color: Components.Theme.textPrimary
+                }
             }
 
             Text {
@@ -66,8 +74,8 @@ Item {
                 text: root.sym
                 visible: root.iconSource === "" && root.sym !== ""
                 color: Components.Theme.textSecondary
-                font.family: Components.Theme.monoFontFamily
-                font.pixelSize: Components.Theme.fontSizeNormal
+                font.family: tablerIcons.name
+                font.pixelSize: 20
                 opacity: root.enabled ? 1 : Components.Theme.opacityMuted
             }
         }
@@ -102,7 +110,7 @@ Item {
         Text {
             text: root.chevronGlyph
             color: Components.Theme.textSecondary
-            font.family: Components.Theme.monoFontFamily
+            font.family: tablerIcons.name
             font.pixelSize: Components.Theme.fontSizeNormal
             opacity: root.enabled ? 0.72 : Components.Theme.opacityDisabled
         }

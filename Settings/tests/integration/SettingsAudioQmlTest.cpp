@@ -17,6 +17,7 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSaveFile>
+#include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QtQml>
 #include <QtTest>
@@ -113,6 +114,19 @@ public:
         return actionResult;
     }
 
+    bool setDefaultInput(quint32 id) override { inputDefaultRequests.append(id); return actionResult; }
+    bool setInputVolume(quint32 id, double gain) override { inputGainNode = id; inputGain = gain; return actionResult; }
+    bool setInputMute(quint32 id, bool muted) override { inputMuteNode = id; inputMute = muted; return actionResult; }
+
+    void publishInputs(const QVector<Astrea::System::AudioOutput> &inputs, quint32 defaultId)
+    {
+        if (m_callbacks.inputsChanged) m_callbacks.inputsChanged(inputs, defaultId);
+    }
+    void publishInputLevel(double linear, bool muted)
+    {
+        if (m_callbacks.inputVolumeChanged) m_callbacks.inputVolumeChanged(linear, muted);
+    }
+
     void publishOutputs(const QVector<Astrea::System::AudioOutput> &outputs,
                         quint32 defaultNodeId)
     {
@@ -142,6 +156,11 @@ public:
     int setVolumeCount = 0;
     int setMuteCount = 0;
     QList<quint32> defaultOutputRequests;
+    QList<quint32> inputDefaultRequests;
+    quint32 inputGainNode = 0;
+    double inputGain = 0;
+    quint32 inputMuteNode = 0;
+    bool inputMute = false;
     quint32 volumeNodeId = 0;
     double volumeLinear = 0.0;
     quint32 muteNodeId = 0;
@@ -212,6 +231,16 @@ public:
         QCoreApplication::processEvents();
     }
 
+    void publishInputs(const QVector<Astrea::System::AudioOutput> &inputs, quint32 defaultId)
+    {
+        m_backend->publishInputs(inputs, defaultId);
+        QCoreApplication::processEvents();
+    }
+    void publishInputLevel(double linear, bool muted)
+    {
+        m_backend->publishInputLevel(linear, muted);
+        QCoreApplication::processEvents();
+    }
     void publishVolume(double linear, bool muted)
     {
         m_backend->publishVolume(linear, muted);
@@ -277,8 +306,11 @@ class SettingsAudioQmlTest final : public QObject {
 
 private slots:
     void pageLoadsFromAudioRouteAndShowsHumanOutputNames();
+    void inputDevicesAndControlsFollowBackend();
+    void headsetOutputUsesCenteredHeadsetIcon();
     void defaultOutputSelectionWaitsForAuthoritativeModelState();
     void volumeAndMuteUseSharedAudioServiceState();
+    void appleVolumeEndpointsUseLocalSfSymbols();
     void incompleteDefaultStateKeepsOutputsVisibleAndControlsUnavailable();
     void emptyOutputStateAndServiceHealthRemainUsable();
     void virtualOutputRemainsVisibleAndSelectable();
@@ -296,18 +328,66 @@ void SettingsAudioQmlTest::pageLoadsFromAudioRouteAndShowsHumanOutputNames()
     QQuickItem *page = fixture.createPage();
     QVERIFY2(page != nullptr, qPrintable(fixture.componentErrors()));
     QCOMPARE(page->objectName(), QStringLiteral("audioPage"));
+    QCOMPARE(fixture.findObject(QStringLiteral("audioPageTitle"))->property("text").toString(),
+             QStringLiteral("Audio"));
 
     fixture.publishOutputs({
         output(31, QStringLiteral("alsa_output.pci-0000_01_00.1.hdmi-stereo"),
                QStringLiteral("LG TV"), QStringLiteral("HDMI")),
     }, 31);
-    QVERIFY2(fixture.findObject(QStringLiteral("audioOutputRow_31")) != nullptr,
-             qPrintable(fixture.componentErrors()));
+    QObject *outputRow = fixture.findObject(QStringLiteral("audioOutputRow_31"));
+    QVERIFY2(outputRow != nullptr, qPrintable(fixture.componentErrors()));
+    QCOMPARE(outputRow->property("implicitHeight").toInt(), 56);
+    QCOMPARE(outputRow->property("deviceGlyph").toString(), QStringLiteral("\uf108"));
+    QVERIFY(!fixture.findObject(QStringLiteral("audioNoOutputs"))->property("visible").toBool());
     QCOMPARE(fixture.findObject(QStringLiteral("audioOutputName_31"))->property("text").toString(),
              QStringLiteral("LG TV"));
     QCOMPARE(fixture.findObject(QStringLiteral("audioOutputDefault_31"))->property("visible").toBool(),
              true);
     QVERIFY(!fixture.findObject(QStringLiteral("audioVolumeSlider"))->property("enabled").toBool());
+}
+
+void SettingsAudioQmlTest::inputDevicesAndControlsFollowBackend()
+{
+    AudioPageFixture fixture;
+    QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.componentErrors()));
+    auto microphone = output(91, QStringLiteral("alsa_input.usb-microphone"),
+                             QStringLiteral("USB Microphone"), QStringLiteral("Mic"));
+    microphone.mediaClass = QStringLiteral("Audio/Source");
+    fixture.publishInputs({microphone}, 91);
+    QObject *row = fixture.findObject(QStringLiteral("audioInputRow_91"));
+    QVERIFY(row != nullptr);
+    QCOMPARE(row->property("deviceGlyph").toString(), QStringLiteral("\uf130"));
+    QVERIFY(!fixture.findObject(QStringLiteral("audioNoInputs"))->property("visible").toBool());
+    fixture.publishInputLevel(Astrea::System::AudioService::uiPercentToLinear(55), false);
+    QCOMPARE(fixture.findObject(QStringLiteral("audioInputVolumePercent"))->property("text").toString(), QStringLiteral("55%"));
+    QObject *slider = fixture.findObject(QStringLiteral("audioInputVolumeSlider"));
+    QVERIFY(slider->property("enabled").toBool());
+    QVERIFY(QMetaObject::invokeMethod(slider, "valueEdited", Q_ARG(qreal, 65.0)));
+    QCOMPARE(fixture.backend()->inputGainNode, quint32(91));
+    QCOMPARE(fixture.backend()->inputGain, Astrea::System::AudioService::uiPercentToLinear(65));
+    QObject *toggle = fixture.findObject(QStringLiteral("audioInputMuteToggle"));
+    QVERIFY(QMetaObject::invokeMethod(toggle, "toggled", Q_ARG(bool, true)));
+    QCOMPARE(fixture.backend()->inputMuteNode, quint32(91));
+    QVERIFY(fixture.backend()->inputMute);
+}
+
+void SettingsAudioQmlTest::headsetOutputUsesCenteredHeadsetIcon()
+{
+    AudioPageFixture fixture;
+    QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.componentErrors()));
+    fixture.publishOutputs({
+        output(83, QStringLiteral("alsa_output.usb-Corsair_HS60_PRO.analog-stereo"),
+               QStringLiteral("Corsair HS60 PRO Surround USB Sound Adapter"),
+               QStringLiteral("Corsair HS60 PRO")),
+    }, 83);
+    QObject *row = fixture.findObject(QStringLiteral("audioOutputRow_83"));
+    QObject *selector = fixture.findObject(QStringLiteral("audioOutputSelector_83"));
+    QVERIFY(row != nullptr);
+    QVERIFY(selector != nullptr);
+    QCOMPARE(row->property("deviceGlyph").toString(), QStringLiteral("\uee59"));
+    QCOMPARE(selector->property("padding").toInt(), 0);
+    QVERIFY(!selector->property("enabled").toBool()); // Already the default output
 }
 
 void SettingsAudioQmlTest::defaultOutputSelectionWaitsForAuthoritativeModelState()
@@ -326,8 +406,16 @@ void SettingsAudioQmlTest::defaultOutputSelectionWaitsForAuthoritativeModelState
              true);
     QVERIFY(!fixture.findObject(QStringLiteral("audioOutputDefault_42"))->property("visible").toBool());
     QQuickItem *displayRowItem = qobject_cast<QQuickItem *>(displayRow);
+    QQuickItem *displaySelector = qobject_cast<QQuickItem *>(
+        fixture.findObject(QStringLiteral("audioOutputSelector_42")));
     QVERIFY(displayRowItem != nullptr);
-    displayRowItem->forceActiveFocus();
+    QVERIFY(displaySelector != nullptr);
+    // Clicking the label/row must not switch outputs; only the circular button does.
+    const QPoint labelPosition = displayRowItem->mapToScene(
+        QPointF(displayRowItem->width() / 2, displayRowItem->height() / 2)).toPoint();
+    QTest::mouseClick(fixture.window(), Qt::LeftButton, Qt::NoModifier, labelPosition);
+    QVERIFY(fixture.backend()->defaultOutputRequests.isEmpty());
+    displaySelector->forceActiveFocus();
     fixture.backend()->actionResult = false;
     QTest::keyClick(fixture.window(), Qt::Key_Space);
     QCoreApplication::processEvents();
@@ -338,13 +426,18 @@ void SettingsAudioQmlTest::defaultOutputSelectionWaitsForAuthoritativeModelState
     QVERIFY(!fixture.findObject(QStringLiteral("audioOutputDefault_42"))->property("visible").toBool());
 
     fixture.backend()->actionResult = true;
-    QVERIFY(QMetaObject::invokeMethod(displayRow, "clicked"));
+    const QPoint selectorPosition = displaySelector->mapToScene(
+        QPointF(displaySelector->width() / 2, displaySelector->height() / 2)).toPoint();
+    QTest::mouseClick(fixture.window(), Qt::LeftButton, Qt::NoModifier, selectorPosition);
     const QList<quint32> expectedRequests{42, 42};
     QCOMPARE(fixture.backend()->defaultOutputRequests, expectedRequests);
     QVERIFY(fixture.findObject(QStringLiteral("audioOutputDefault_41"))->property("visible").toBool());
     QVERIFY(!fixture.findObject(QStringLiteral("audioOutputDefault_42"))->property("visible").toBool());
 
     fixture.publishOutputs({speaker, display}, 42);
+    QObject *newDefaultSelector = fixture.findObject(QStringLiteral("audioOutputSelector_42"));
+    QVERIFY(newDefaultSelector != nullptr);
+    QVERIFY(!newDefaultSelector->property("enabled").toBool());
     QVERIFY(fixture.findObject(QStringLiteral("audioOutputDefault_42"))->property("visible").toBool());
     QVERIFY(!fixture.findObject(QStringLiteral("audioOutputDefault_41"))->property("visible").toBool());
 }
@@ -360,6 +453,16 @@ void SettingsAudioQmlTest::volumeAndMuteUseSharedAudioServiceState()
     QObject *slider = fixture.findObject(QStringLiteral("audioVolumeSlider"));
     QVERIFY(slider != nullptr);
     QCOMPARE(slider->property("value").toDouble(), 50.0);
+    QVERIFY(!slider->property("showEndpointGlyphs").toBool());
+    QVERIFY(!slider->property("showValueTooltip").toBool());
+    QVERIFY(!slider->property("tooltipVisible").toBool());
+    QCOMPARE(fixture.findObject(QStringLiteral("audioVolumeLowIcon"))->property("text").toString(),
+             QStringLiteral("\uf027"));
+    QCOMPARE(fixture.findObject(QStringLiteral("audioVolumeHighIcon"))->property("text").toString(),
+             QStringLiteral("\uf028"));
+    QCOMPARE(fixture.findObject(QStringLiteral("audioVolumePercent"))->property("text").toString(),
+             QStringLiteral("50%"));
+    QVERIFY(!fixture.findObject(QStringLiteral("audioServiceStatus"))->property("visible").toBool());
     QVERIFY(slider->property("enabled").toBool());
     QVERIFY(QMetaObject::invokeMethod(slider, "valueEdited", Q_ARG(qreal, 75.0)));
     QCOMPARE(fixture.backend()->setVolumeCount, 1);
@@ -381,6 +484,60 @@ void SettingsAudioQmlTest::volumeAndMuteUseSharedAudioServiceState()
     QVERIFY(fixture.backend()->muteValue);
     QVERIFY(fixture.controller()->audio()->muted());
     QVERIFY(mute->property("checked").toBool());
+}
+
+void SettingsAudioQmlTest::appleVolumeEndpointsUseLocalSfSymbols()
+{
+    QTemporaryDir dataHome;
+    QVERIFY(dataHome.isValid());
+    const QByteArray oldData = qgetenv("XDG_DATA_HOME");
+    qputenv("XDG_DATA_HOME", dataHome.path().toUtf8());
+    const auto restoreData = qScopeGuard([oldData] {
+        if (oldData.isNull()) qunsetenv("XDG_DATA_HOME");
+        else qputenv("XDG_DATA_HOME", oldData);
+    });
+
+    const QString directory = dataHome.path() + QStringLiteral("/AstreaOS/Themes/AppleOS");
+    QVERIFY(QDir().mkpath(directory));
+    const QByteArray svg = "<svg xmlns='http://www.w3.org/2000/svg' "
+                           "viewBox='0 0 24 24'><path fill='black' "
+                           "d='M2 2h20v20H2z'/></svg>";
+    for (const QString &name : {QStringLiteral("volume-min"),
+                                QStringLiteral("volume-max")}) {
+        QFile file(directory + QLatin1Char('/') + name + QStringLiteral(".svg"));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        QCOMPARE(file.write(svg), svg.size());
+    }
+
+    AudioPageFixture fixture;
+    QVERIFY(fixture.controller()->setNavigationIconTheme(QStringLiteral("apple")));
+    QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.componentErrors()));
+    fixture.publishOutputs({output(52, QStringLiteral("alsa_output.test"),
+                                  QStringLiteral("Test speaker"), QStringLiteral("Test"))}, 52);
+    fixture.publishVolume(Astrea::System::AudioService::uiPercentToLinear(45.0), false);
+
+    auto *min = fixture.findObject(QStringLiteral("audioVolumeMinAppleIcon"));
+    auto *max = fixture.findObject(QStringLiteral("audioVolumeMaxAppleIcon"));
+    QVERIFY(min != nullptr);
+    QVERIFY(max != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(min->property("visible").toBool(), 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(max->property("visible").toBool(), 2000);
+    QCOMPARE(min->property("source").toUrl(),
+             QUrl::fromLocalFile(directory + QStringLiteral("/volume-min.svg")));
+    QCOMPARE(max->property("source").toUrl(),
+             QUrl::fromLocalFile(directory + QStringLiteral("/volume-max.svg")));
+    QVERIFY(!fixture.findObject(QStringLiteral("audioVolumeLowIcon"))
+                ->property("visible").toBool());
+    QVERIFY(!fixture.findObject(QStringLiteral("audioVolumeHighIcon"))
+                ->property("visible").toBool());
+
+    QVERIFY(fixture.controller()->setNavigationIconTheme(QStringLiteral("lucide")));
+    QTRY_VERIFY_WITH_TIMEOUT(!min->property("visible").toBool(), 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(!max->property("visible").toBool(), 1000);
+    QVERIFY(fixture.findObject(QStringLiteral("audioVolumeLowIcon"))
+                ->property("visible").toBool());
+    QVERIFY(fixture.findObject(QStringLiteral("audioVolumeHighIcon"))
+                ->property("visible").toBool());
 }
 
 void SettingsAudioQmlTest::incompleteDefaultStateKeepsOutputsVisibleAndControlsUnavailable()
@@ -445,13 +602,13 @@ void SettingsAudioQmlTest::virtualOutputRemainsVisibleAndSelectable()
     fixture.publishOutputs({output(71, QStringLiteral("astrea_spatial_output"),
                                   QStringLiteral("Astrea Spatial Audio"), QString(), true)}, 0);
 
-    QObject *row = fixture.findObject(QStringLiteral("audioOutputRow_71"));
-    QVERIFY(row != nullptr);
+    QObject *selector = fixture.findObject(QStringLiteral("audioOutputSelector_71"));
+    QVERIFY(selector != nullptr);
     QCOMPARE(fixture.findObject(QStringLiteral("audioOutputName_71"))->property("text").toString(),
              QStringLiteral("Astrea Spatial Audio"));
     QCOMPARE(fixture.findObject(QStringLiteral("audioOutputDetail_71"))->property("text").toString(),
              QStringLiteral("Virtual audio output"));
-    QVERIFY(QMetaObject::invokeMethod(row, "clicked"));
+    QVERIFY(QMetaObject::invokeMethod(selector, "clicked"));
     QCOMPARE(fixture.backend()->defaultOutputRequests, QList<quint32>{71});
 }
 

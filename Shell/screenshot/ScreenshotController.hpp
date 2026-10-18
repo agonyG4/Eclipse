@@ -25,6 +25,8 @@ class ScreenshotController final : public QObject {
     Q_PROPERTY(bool selectionImageVisible READ selectionImageVisible NOTIFY selectionImageVisibleChanged)
     Q_PROPERTY(ScreenshotPhase phase READ phase NOTIFY phaseChanged)
     Q_PROPERTY(bool thumbnailVisible READ thumbnailVisible NOTIFY thumbnailVisibleChanged)
+    Q_PROPERTY(bool demonstrationActive READ demonstrationActive NOTIFY demonstrationChanged)
+    Q_PROPERTY(bool demonstrationStopping READ demonstrationStopping NOTIFY demonstrationStoppingChanged)
     Q_PROPERTY(bool previewVisible READ previewVisible NOTIFY previewVisibleChanged)
     Q_PROPERTY(QRectF thumbnailRect READ thumbnailRect WRITE setThumbnailRect NOTIFY thumbnailRectChanged)
     Q_PROPERTY(int imageWidth READ imageWidth NOTIFY imageChanged)
@@ -64,6 +66,8 @@ public:
     bool selectionImageVisible() const { return m_selectionImageVisible; }
     ScreenshotPhase phase() const { return m_phase; }
     bool thumbnailVisible() const { return m_thumbnailVisible; }
+    bool demonstrationActive() const { return m_demoActive; }
+    bool demonstrationStopping() const { return m_demoStopping; }
     bool previewVisible() const { return m_previewVisible; }
     QRectF thumbnailRect() const { return m_thumbnailRect; }
     int imageWidth() const { return m_image.width(); }
@@ -90,6 +94,12 @@ public:
     Q_INVOKABLE bool saveSelection();
     Q_INVOKABLE bool finishSelection();
     Q_INVOKABLE void dismissThumbnail();
+    bool startDemonstration();
+    void stopDemonstration();
+    void requestDemonstrationStop();
+    Q_INVOKABLE void finishDemonstrationStop();
+    void replayDemonstration();
+    void renewDemonstration();
     Q_INVOKABLE bool copyScreenshot();
     Q_INVOKABLE void setThumbnailDragActive(bool active);
     Q_INVOKABLE void openPreview();
@@ -107,6 +117,8 @@ signals:
     void selectionImageVisibleChanged();
     void phaseChanged();
     void thumbnailVisibleChanged();
+    void demonstrationChanged();
+    void demonstrationStoppingChanged();
     void previewVisibleChanged();
     void thumbnailRectChanged();
     void resultChanged();
@@ -145,6 +157,14 @@ private:
     bool persistResult(const QImage &result, std::uint64_t token);
 
     TyphonScreenCaptureClient *m_client = nullptr;
+    QTimer m_demoLease;
+    bool m_demoActive = false;
+    bool m_demoStopping = false;
+    bool m_demoPending = false;
+    std::uint64_t m_demoToken = 0;
+    QImage m_demoPreviousImage;
+    QByteArray m_demoPreviousPng;
+    QString m_demoPreviousPath;
     ScreenshotConfiguration *m_configuration = nullptr;
     ScreenshotUiBarrier *m_uiBarrier = nullptr;
     QImage m_image;

@@ -42,6 +42,7 @@ public:
     ~SettingsDockController() override;
 
     QString configPath() const { return m_configPath; }
+    QByteArray livePreviewPayload() const;
     int iconSize() const { return m_config.iconSize; }
     int panelPadding() const { return m_config.panelPadding; }
     int itemSpacing() const { return m_config.itemSpacing; }

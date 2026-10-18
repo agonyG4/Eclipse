@@ -18,6 +18,8 @@
 #include <astrea_settings_backend/src/visual_effects/qobject.cxxqt.h>
 
 #include <QObject>
+#include <QJsonObject>
+#include <QTimer>
 #include <QString>
 #include <QUrl>
 #include <QVariantList>
@@ -31,6 +33,9 @@ class SettingsController final : public QObject {
     Q_PROPERTY(SettingsNavigationModel *navigationModel READ navigationModel CONSTANT)
     Q_PROPERTY(QString currentDestinationId READ currentDestinationId NOTIFY navigationChanged)
     Q_PROPERTY(QString selectedSidebarId READ selectedSidebarId NOTIFY navigationChanged)
+    Q_PROPERTY(QString navigationIconTheme READ navigationIconTheme NOTIFY navigationIconThemeChanged)
+    Q_PROPERTY(QString navigationIconWeight READ navigationIconWeight NOTIFY navigationIconWeightChanged)
+    Q_PROPERTY(QString visualTheme READ visualTheme NOTIFY visualThemeChanged)
     Q_PROPERTY(QVariantMap currentDestination READ currentDestination NOTIFY navigationChanged)
     Q_PROPERTY(QVariantList currentDestinationChildren READ currentDestinationChildren NOTIFY navigationChanged)
     Q_PROPERTY(QUrl selectedPageSource READ selectedPageSource NOTIFY navigationChanged)
@@ -54,6 +59,7 @@ class SettingsController final : public QObject {
 
 public:
     explicit SettingsController(QObject *parent = nullptr);
+    ~SettingsController() override;
     explicit SettingsController(SettingsUserProfile userProfile, QObject *parent = nullptr);
     SettingsController(std::unique_ptr<SettingsNavigationModel> navigationModel,
                        SettingsUserProfile userProfile,
@@ -66,6 +72,11 @@ public:
     SettingsNavigationModel *navigationModel();
     QString currentDestinationId() const;
     QString selectedSidebarId() const;
+    QString navigationIconTheme() const { return m_navigationIconTheme; }
+    QString navigationIconWeight() const { return m_navigationIconWeight; }
+    QString visualTheme() const { return m_visualTheme; }
+    Q_INVOKABLE QVariantList availableVisualThemes() const;
+    Q_INVOKABLE QVariantList availableNavigationIconPacks() const;
     QVariantMap currentDestination() const;
     QVariantList currentDestinationChildren() const;
     QUrl selectedPageSource() const;
@@ -90,21 +101,37 @@ public:
     Q_INVOKABLE bool navigateTo(const QString &id);
     Q_INVOKABLE void goBack();
     Q_INVOKABLE void goForward();
+    Q_INVOKABLE bool screenshotDemoCommand(const QString &action);
     Q_INVOKABLE QUrl iconUrl(const QString &iconKey, const QString &iconTheme) const;
+    Q_INVOKABLE bool setNavigationIconTheme(const QString &theme);
+    Q_INVOKABLE bool setNavigationIconWeight(const QString &weight);
+    Q_INVOKABLE bool setVisualTheme(const QString &id);
+    Q_INVOKABLE QUrl iconUrlForWeight(const QString &iconKey, const QString &iconTheme,
+                                     const QString &weight) const;
 
 signals:
     void navigationChanged();
     void historyChanged();
+    void navigationIconThemeChanged();
+    void navigationIconWeightChanged();
+    void visualThemeChanged();
 
 private:
     static constexpr int kMaximumHistoryEntries = 64;
 
     bool setCurrentDestination(const QString &id);
     void appendHistory(const QString &id);
+    void publishScreenshotPreviewState();
+    void publishDockPreviewState();
+    void syncDockOnExit();
 
     std::unique_ptr<SettingsNavigationModel> m_navigationModel;
     const SettingsUserProfile m_userProfile;
     const SettingsIconResolver m_iconResolver;
+    QString m_navigationIconTheme = QStringLiteral("lucide");
+    QString m_navigationIconWeight = QStringLiteral("regular");
+    QJsonObject m_navigationIconOverrides;
+    QString m_visualTheme = QStringLiteral("astrea");
     std::unique_ptr<Astrea::System::BluetoothService> m_bluetoothService;
     std::unique_ptr<Astrea::System::AudioService> m_audioService;
     std::unique_ptr<Astrea::System::NetworkService> m_networkService;
@@ -117,6 +144,9 @@ private:
     std::unique_ptr<SettingsVisualEffectsController> m_visualEffectsController;
     std::unique_ptr<SettingsDisplayController> m_displayController;
     std::unique_ptr<ScreenshotConfiguration> m_screenshotConfiguration;
+    QTimer m_screenshotPreviewUpdate;
+    QTimer m_dockPreviewUpdate;
+    bool m_screenshotDemoActive = false;
     QString m_currentDestinationId;
     QString m_selectedSidebarId;
     QVector<QString> m_history;

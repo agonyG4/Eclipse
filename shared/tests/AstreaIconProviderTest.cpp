@@ -221,6 +221,7 @@ private slots:
     void environmentThemesOverridePersistedTheme();
     void invalidPersistedThemeFallsThrough();
     void providerInvalidatesAfterPersistedConfigChange();
+    void unrelatedScreenshotConfigDoesNotInvalidateIcons();
     void applyPreservesSplitThemeMetadataPriority();
     void applyPreservesDuplicateContentRootPriority();
     void applyMergesExistingQtSearchPaths();
@@ -802,6 +803,32 @@ void AstreaIconProviderTest::invalidPersistedThemeFallsThrough()
     const auto result = AstreaIconTheme::resolveWithSource();
     QCOMPARE(result.theme, QStringLiteral("platform-theme"));
     QCOMPARE(result.source, QStringLiteral("platform"));
+}
+
+void AstreaIconProviderTest::unrelatedScreenshotConfigDoesNotInvalidateIcons()
+{
+    ScopedIconState state;
+    ScopedEnvironment environment;
+    QTemporaryDir fakeHome;
+    QTemporaryDir configHome;
+    QVERIFY(fakeHome.isValid());
+    QVERIFY(configHome.isValid());
+    environment.set("HOME", fakeHome.path().toUtf8());
+    environment.set("XDG_CONFIG_HOME", configHome.path().toUtf8());
+    environment.set("ASTREA_ICON_THEME", QByteArray());
+    environment.set("QS_ICON_THEME", QByteArray());
+    AstreaIconProvider provider;
+    const int revision = provider.themeRevision();
+    const QString unrelated = fakeHome.path() + QStringLiteral("/.config/AstreaOS/screenshot.json");
+    QVERIFY(QDir().mkpath(QFileInfo(unrelated).absolutePath()));
+    for (int i = 0; i < 3; ++i) {
+        QFile file(unrelated);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        QVERIFY(file.write(QByteArray::number(i)) > 0);
+        file.close();
+        QTest::qWait(120);
+    }
+    QCOMPARE(provider.themeRevision(), revision);
 }
 
 void AstreaIconProviderTest::providerInvalidatesAfterPersistedConfigChange()

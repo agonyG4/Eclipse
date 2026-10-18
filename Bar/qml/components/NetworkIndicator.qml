@@ -20,10 +20,22 @@ TopbarIndicator {
     Text {
         id: icon
         objectName: "networkIcon"
+        visible: !appleIcon.hasIcon
         text: !root.netConnected ? "󰖪"
             : root.netType === 1 ? "󰖩" : "󰈀"
         color: !root.netConnected ? theme.shellIconWarning : theme.shellIconMain
         font { family: theme.iconFontFamily; pixelSize: theme.fontSizeIcon }
         Behavior on color { ColorAnimation { duration: theme.animationFast } }
+    }
+
+    AppleIcon {
+        id: appleIcon
+        objectName: "networkAppleIcon"
+        width: 16
+        height: 16
+        iconKey: !root.netConnected ? "wifi-off"
+            : root.netType === 1 ? "wifi" : "wired"
+        foreground: !root.netConnected ? theme.shellIconWarning
+            : theme.isLight ? theme.shellTextActive : "#ffffff"
     }
 }

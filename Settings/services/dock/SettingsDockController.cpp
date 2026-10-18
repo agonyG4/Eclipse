@@ -4,6 +4,7 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QJsonDocument>
 
 #include <QtMath>
 
@@ -51,6 +52,13 @@ SettingsDockController::SettingsDockController(const QString &configPath, QObjec
 
     addPathWithParents(m_configPath);
     refresh();
+}
+
+QByteArray SettingsDockController::livePreviewPayload() const
+{
+    return QJsonDocument(
+        DockConfigCodec::patchKnownFields({}, m_config, false))
+        .toJson(QJsonDocument::Compact);
 }
 
 SettingsDockController::~SettingsDockController()

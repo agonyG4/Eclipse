@@ -17,6 +17,7 @@ AudioService::AudioService(std::unique_ptr<AudioBackend> backend, QObject *paren
     , m_backend(backend ? std::move(backend)
                         : std::make_unique<PipeWireAudioBackend>())
     , m_outputsModel(new AudioOutputModel(this))
+    , m_inputsModel(new AudioOutputModel(this))
 {
     m_reconnectTimer.setSingleShot(true);
     connect(&m_reconnectTimer, &QTimer::timeout, this, [this] {
@@ -61,6 +62,28 @@ AudioBackend::Callbacks AudioService::callbacksForGeneration(quint64 generation,
                 && self->m_attemptGeneration == attemptGeneration
                 && self->m_state != SystemServiceState::Stopped)
                 self->applyOutputs(std::move(outputs), defaultNodeId);
+        }, Qt::QueuedConnection);
+    };
+    callbacks.inputsChanged = [self, generation, attemptGeneration](QVector<AudioOutput> inputs, quint32 defaultId) {
+        if (!self) return;
+        QMetaObject::invokeMethod(self, [self, generation, attemptGeneration, inputs = std::move(inputs), defaultId]() mutable {
+            if (!self || self->m_generation != generation || self->m_attemptGeneration != attemptGeneration || self->m_state == SystemServiceState::Stopped) return;
+            if (self->m_defaultInputId != defaultId) {
+                self->m_defaultInputId = defaultId;
+                self->m_inputStateAvailable = false;
+                emit self->inputStateAvailableChanged();
+            }
+            self->m_inputsModel->replace(std::move(inputs), defaultId);
+        }, Qt::QueuedConnection);
+    };
+    callbacks.inputVolumeChanged = [self, generation, attemptGeneration](double linear, bool muted) {
+        if (!self) return;
+        QMetaObject::invokeMethod(self, [self, generation, attemptGeneration, linear, muted] {
+            if (!self || self->m_generation != generation || self->m_attemptGeneration != attemptGeneration || self->m_state == SystemServiceState::Stopped) return;
+            const double next = AudioService::linearToUiPercent(linear);
+            if (!qFuzzyCompare(self->m_inputVolume, next)) { self->m_inputVolume = next; emit self->inputVolumeChanged(); }
+            if (self->m_inputMuted != muted) { self->m_inputMuted = muted; emit self->inputMutedChanged(); }
+            if (!self->m_inputStateAvailable) { self->m_inputStateAvailable = true; emit self->inputStateAvailableChanged(); }
         }, Qt::QueuedConnection);
     };
     callbacks.defaultStateChanged = [self, generation, attemptGeneration](bool available, bool ready,
@@ -160,6 +183,9 @@ void AudioService::stop()
     m_reconnectAttempt = 0;
     m_backend->stop();
     m_outputsModel->replace({}, 0);
+    m_inputsModel->replace({}, 0);
+    m_defaultInputId = 0;
+    if (m_inputStateAvailable) { m_inputStateAvailable = false; emit inputStateAvailableChanged(); }
     m_defaultNodeId = 0;
     if (m_defaultStateAvailable) {
         m_defaultStateAvailable = false;
@@ -184,6 +210,30 @@ bool AudioService::setVolume(double percent)
     m_volume = next;
     emit volumeChanged();
     return true;
+}
+
+bool AudioService::setDefaultInput(quint32 nodeId)
+{
+    return m_available && m_backend->setDefaultInput(nodeId);
+}
+
+bool AudioService::setInputVolume(double percent)
+{
+    if (!m_available || !m_defaultInputId || !m_inputStateAvailable || !std::isfinite(percent)) return false;
+    const double next = std::clamp(percent, 0.0, 150.0);
+    if (qFuzzyCompare(next, m_inputVolume)) return true;
+    if (!m_backend->setInputVolume(m_defaultInputId, uiPercentToLinear(next))) return false;
+    m_inputVolume = next;
+    emit inputVolumeChanged();
+    return true;
+}
+
+void AudioService::setInputMuted(bool muted)
+{
+    if (!m_available || !m_defaultInputId || !m_inputStateAvailable || m_inputMuted == muted) return;
+    if (!m_backend->setInputMute(m_defaultInputId, muted)) return;
+    m_inputMuted = muted;
+    emit inputMutedChanged();
 }
 
 void AudioService::adjustVolume(double deltaPercent)

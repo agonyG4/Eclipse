@@ -947,7 +947,7 @@ foreach(hub_required_token IN ITEMS
     "SettingsController.navigateTo(descriptor.entryId)"
     "Layout.bottomMargin: Components.Theme.spacingLarge"
     "function iconSourceFor"
-    "SettingsController.iconUrl(iconKey, Theme.iconTheme)"
+    "SettingsController.iconUrl(iconKey, SettingsController.navigationIconTheme)"
     "iconSource"
 )
     string(FIND "${hub_source}" "${hub_required_token}" hub_required_position)

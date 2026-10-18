@@ -44,7 +44,8 @@ Item {
         Borealis.State.save()
     }
 
-    readonly property string fontFamily: Borealis.Tokens.fontFamily
+    readonly property var packStyle: Borealis.State.styleTokens
+    readonly property string fontFamily: packStyle.fontFamily || Borealis.Tokens.fontFamily
     readonly property string monoFontFamily: Borealis.Tokens.monoFontFamily
 
     readonly property int fontSizeHero: Borealis.Tokens.fontSizeHero
@@ -87,7 +88,8 @@ Item {
 
     readonly property int animationMicro: Borealis.Tokens.animationMicro
     readonly property int animationQuick: Borealis.Tokens.animationQuick
-    readonly property int animationFast: Borealis.Tokens.animationFast
+    readonly property int animationFast: packStyle.animationFast !== undefined
+        ? packStyle.animationFast : Borealis.Tokens.animationFast
     readonly property int animationNormal: Borealis.Tokens.animationNormal
     readonly property int animationSlow: Borealis.Tokens.animationSlow
     readonly property int animationPopover: Borealis.Tokens.animationPopover
@@ -96,15 +98,15 @@ Item {
     readonly property real opacitySecondary: Borealis.Tokens.opacitySecondary
     readonly property real opacityMuted: Borealis.Tokens.opacityMuted
 
-    readonly property color accent: Borealis.Apps.accent
+    readonly property color accent: packStyle.accent || Borealis.Apps.accent
     readonly property color accentForeground: Borealis.Apps.accentForeground
-    readonly property color textPrimary: Borealis.Apps.textPrimary
-    readonly property color textSecondary: Borealis.Apps.textSecondary
+    readonly property color textPrimary: packStyle.textPrimary || Borealis.Apps.textPrimary
+    readonly property color textSecondary: packStyle.textSecondary || Borealis.Apps.textSecondary
     readonly property color textTertiary: Borealis.Apps.textTertiary
-    readonly property color cardBg: Borealis.Apps.cardBg
-    readonly property color cardBorder: Borealis.Apps.cardBorder
-    readonly property color popupBg: Borealis.Apps.popupBg
-    readonly property color windowBackground: Borealis.Apps.windowBackground
+    readonly property color cardBg: packStyle.cardBg || Borealis.Apps.cardBg
+    readonly property color cardBorder: packStyle.cardBorder || Borealis.Apps.cardBorder
+    readonly property color popupBg: packStyle.popupBg || Borealis.Apps.popupBg
+    readonly property color windowBackground: packStyle.windowBackground || Borealis.Apps.windowBackground
     readonly property color windowBorder: Borealis.Apps.windowBorder
     readonly property color windowWash: Borealis.Apps.windowWash
     readonly property color errorColor: Borealis.Apps.errorColor

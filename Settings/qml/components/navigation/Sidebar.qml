@@ -15,6 +15,7 @@ Item {
     property string avatarPath: ""
     property bool isSudo: false
     property string iconTheme: ""
+    property string iconWeight: "thin"
     property var iconUrlResolver: null
 
     function translatedLabel(item) {
@@ -141,9 +142,11 @@ Item {
                     visible: navDelegate.itemKind !== "spacer"
                     label: root.translatedLabel(model)
                     sym: model.sym !== undefined ? model.sym : ""
-                    iconSource: model.iconKey !== undefined && root.iconUrlResolver
-                        ? root.iconUrlResolver(model.iconKey, root.iconTheme)
-                        : (model.iconSource !== undefined ? model.iconSource : "")
+                    iconSource: {
+                        const themed = model.iconKey !== undefined && root.iconUrlResolver
+                            ? root.iconUrlResolver(model.iconKey, root.iconTheme, root.iconWeight) : ""
+                        return themed || (model.iconSource !== undefined ? model.iconSource : "")
+                    }
                     iconKey: ""
                     enabled: model.entryEnabled === true
                     selected: navDelegate.selected

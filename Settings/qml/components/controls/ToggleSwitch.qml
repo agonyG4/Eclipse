@@ -46,20 +46,6 @@ Item {
     }
 
     Rectangle {
-        id: knobShadow
-        width: knob.width
-        height: knob.height
-        radius: height / 2
-        color: Qt.rgba(0, 0, 0, 0.22)
-        anchors.verticalCenter: track.verticalCenter
-        anchors.verticalCenterOffset: 1
-        x: knob.x
-        opacity: toggle.enabled ? 1.0 : 0.0
-        Behavior on x { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
-        Behavior on opacity { NumberAnimation { duration: Components.Theme.animationMicro } }
-    }
-
-    Rectangle {
         id: knob
         width: 14
         height: 14

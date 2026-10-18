@@ -50,12 +50,20 @@ Rectangle {
 
             Text {
                 anchors.centerIn: parent
-                visible: !root.iconIsImage
+                visible: !root.iconIsImage && !appleIcon.hasIcon
                 text: root.icon
                 color: mouse.containsMouse && root.enabled
                     ? theme.shellIconActive : theme.shellIconMain
                 font { family: theme.iconFontFamily; pixelSize: theme.fontSizeIcon }
                 Behavior on color { ColorAnimation { duration: theme.animationFast } }
+            }
+
+            AppleIcon {
+                id: appleIcon
+                anchors.centerIn: parent
+                iconKey: root.iconIsImage ? "" : theme.iconKeyForGlyph(root.icon)
+                foreground: mouse.containsMouse && root.enabled
+                    ? theme.shellIconActive : theme.isLight ? theme.shellIconMain : "#ffffff"
             }
         }
 

@@ -3,11 +3,13 @@ import QtQuick.Layouts
 import Astrea.Shared as Shared
 import "../../components" as Components
 import "../../components/form" as Form
+import "../../components/controls" as Controls
 
 Item {
     id: root
     objectName: "appearancePage"
     readonly property var wallpaperController: SettingsController.wallpaper
+    readonly property var visualThemeChoices: SettingsController.availableVisualThemes()
 
     Component.onCompleted: {
         if (root.wallpaperController
@@ -330,6 +332,39 @@ Item {
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
             Layout.bottomMargin: 10
+        }
+
+        Form.SectionHeader {
+            text: I18n.tr("settings.appearance.theme_package", "VISUAL THEME PACKAGE")
+            Layout.bottomMargin: 12
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.bottomMargin: Components.Theme.spacingXLarge
+            spacing: Components.Theme.spacingMedium
+
+            Controls.SelectButton {
+                id: visualThemePicker
+                objectName: "visualThemePicker"
+                Layout.preferredWidth: 236
+                options: root.visualThemeChoices.map(theme => theme.name)
+                selectedIndex: Math.max(0, root.visualThemeChoices.findIndex(
+                    theme => theme.id === SettingsController.visualTheme))
+                label: options[selectedIndex] || "Astrea Default"
+                onSelected: index => SettingsController.setVisualTheme(
+                    root.visualThemeChoices[index].id)
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: I18n.tr("settings.appearance.theme_package_help",
+                    "Custom themes can override colors, typography and icons. Icon packs remain independently selectable.")
+                color: Components.Theme.textSecondary
+                font.family: Components.Theme.fontFamily
+                font.pixelSize: Components.Theme.fontSizeSmall
+                wrapMode: Text.WordWrap
+            }
         }
 
         Form.SectionHeader {

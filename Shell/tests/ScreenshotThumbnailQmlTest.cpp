@@ -21,6 +21,9 @@ class ScreenshotThumbnailQmlTest final : public QObject {
 
 private slots:
     void thumbnailStartsHiddenAndTracksInputRegion();
+    void demonstrationOpensPreviewAndAnimatesOut();
+    void shadowSettingsDoNotMoveTheThumbnail();
+    void slideFadeExitFollowsHorizontalEdge();
     void thumbnailInteractionTransitions();
     void nativeDragThresholdUsesPlatformSetting();
     void nativeFileDragStartsImmediatelyAndRestoresOnCancel();
@@ -90,11 +93,10 @@ void ScreenshotThumbnailQmlTest::thumbnailStartsHiddenAndTracksInputRegion()
     QVERIFY(card);
     QObject *visual = window->findChild<QObject *>(QStringLiteral("thumbnailVisual"));
     QVERIFY(visual);
-    const qreal shadowPadding = visual->property("shadowPadding").toReal();
     QTRY_VERIFY_WITH_TIMEOUT(!window->mask().isEmpty(), 1000);
     const QPointF slot = object->property("slotPosition").toPointF();
-    QVERIFY(std::abs(slot.x() + card->width() + shadowPadding + 20.0 - window->width()) < 1.0);
-    QVERIFY(std::abs(slot.y() + card->height() + shadowPadding + 20.0 - window->height()) < 1.0);
+    QVERIFY(std::abs(slot.x() + card->width() + 20.0 - window->width()) < 1.0);
+    QVERIFY(std::abs(slot.y() + card->height() + 20.0 - window->height()) < 1.0);
     const qreal scaledWidth = card->width() * card->scale();
     const qreal scaledHeight = card->height() * card->scale();
     const QRectF visualRect(card->x() - (scaledWidth - card->width()) / 2,
@@ -107,6 +109,87 @@ void ScreenshotThumbnailQmlTest::thumbnailStartsHiddenAndTracksInputRegion()
     QVERIFY(window->mask().contains(QPoint(static_cast<int>(card->x() + 1),
                                            static_cast<int>(card->y() + 1))));
     QVERIFY(!window->mask().contains(QPoint(0, 0)));
+}
+
+void ScreenshotThumbnailQmlTest::demonstrationOpensPreviewAndAnimatesOut()
+{
+    ScreenshotQmlFixture fixture;
+    fixture.controller.m_image = QImage(160, 100, QImage::Format_RGBA8888);
+    fixture.controller.m_imageGeneration = 1;
+    fixture.controller.m_demoActive = true;
+    fixture.controller.m_demoPreviousImage = {};
+    std::unique_ptr<QObject> object(load(fixture.engine, QStringLiteral("ScreenshotThumbnail.qml")));
+    auto *window = qobject_cast<QQuickWindow *>(object.get());
+    QVERIFY(window);
+    fixture.inputRegion.setWindow(window);
+    fixture.controller.m_thumbnailVisible = true;
+    emit fixture.controller.demonstrationChanged();
+    emit fixture.controller.thumbnailVisibleChanged();
+    QTRY_VERIFY_WITH_TIMEOUT(window->isVisible(), 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(object->property("lifecycleState").toString(),
+                              QStringLiteral("visible"), 1000);
+    QVERIFY(QMetaObject::invokeMethod(object.get(), "activateClickAction"));
+    QVERIFY(fixture.controller.previewVisible());
+    fixture.controller.closePreview();
+    QTRY_VERIFY_WITH_TIMEOUT(window->isVisible(), 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(object->property("lifecycleState").toString(),
+                              QStringLiteral("visible"), 1000);
+    fixture.controller.requestDemonstrationStop();
+    QCOMPARE(object->property("lifecycleState").toString(), QStringLiteral("dismissing"));
+    QVERIFY(fixture.controller.thumbnailVisible());
+    QTRY_VERIFY_WITH_TIMEOUT(!fixture.controller.demonstrationActive(), 1000);
+    QVERIFY(!fixture.controller.thumbnailVisible());
+}
+
+void ScreenshotThumbnailQmlTest::shadowSettingsDoNotMoveTheThumbnail()
+{
+    ScreenshotQmlFixture fixture;
+    fixture.controller.m_image = QImage(160, 100, QImage::Format_RGBA8888);
+    fixture.controller.m_imageGeneration = 1;
+    std::unique_ptr<QObject> object(load(fixture.engine, QStringLiteral("ScreenshotThumbnail.qml")));
+    auto *window = qobject_cast<QQuickWindow *>(object.get());
+    QVERIFY(window);
+    fixture.inputRegion.setWindow(window);
+    fixture.controller.m_thumbnailVisible = true;
+    emit fixture.controller.thumbnailVisibleChanged();
+    QTRY_COMPARE_WITH_TIMEOUT(object->property("lifecycleState").toString(),
+                              QStringLiteral("visible"), 1000);
+    auto *card = window->findChild<QQuickItem *>(QStringLiteral("thumbnailCard"));
+    QVERIFY(card);
+    const QPointF original(card->x(), card->y());
+    fixture.controller.configuration()->setShadowStrength(1.0);
+    QCOMPARE(QPointF(card->x(), card->y()), original);
+    fixture.controller.configuration()->setShadowEnabled(false);
+    QCOMPARE(QPointF(card->x(), card->y()), original);
+}
+
+void ScreenshotThumbnailQmlTest::slideFadeExitFollowsHorizontalEdge()
+{
+    for (const QString &position : {QStringLiteral("bottom-left"),
+                                    QStringLiteral("top-right")}) {
+        ScreenshotQmlFixture fixture;
+        fixture.controller.m_image = QImage(160, 100, QImage::Format_RGBA8888);
+        fixture.controller.m_imageGeneration = 1;
+        fixture.controller.m_resultPath = QStringLiteral("/tmp/test-screenshot.png");
+        fixture.controller.configuration()->setPosition(position);
+        std::unique_ptr<QObject> object(load(fixture.engine, QStringLiteral("ScreenshotThumbnail.qml")));
+        auto *window = qobject_cast<QQuickWindow *>(object.get());
+        QVERIFY(window);
+        fixture.inputRegion.setWindow(window);
+        fixture.controller.m_thumbnailVisible = true;
+        emit fixture.controller.thumbnailVisibleChanged();
+        QTRY_COMPARE_WITH_TIMEOUT(object->property("lifecycleState").toString(),
+                                  QStringLiteral("visible"), 1000);
+        QVERIFY(QMetaObject::invokeMethod(object.get(), "beginDismissal",
+                                          Q_ARG(QVariant, QVariant(true))));
+        QCOMPARE(object->property("lifecycleState").toString(),
+                 QStringLiteral("dismissing"));
+        QCOMPARE(object->property("transitionOffsetY").toReal(), 0.0);
+        const qreal displacement = object->property("exitOffsetX").toReal();
+        QVERIFY(position.endsWith(QStringLiteral("left")) ? displacement < 0
+                                                           : displacement > 0);
+        QTRY_VERIFY_WITH_TIMEOUT(!fixture.controller.thumbnailVisible(), 1000);
+    }
 }
 
 void ScreenshotThumbnailQmlTest::nativeDragThresholdUsesPlatformSetting()
@@ -198,16 +281,17 @@ void ScreenshotThumbnailQmlTest::nativeFileDragStartsImmediatelyAndRestoresOnCan
     QVERIFY(QMetaObject::invokeMethod(object.get(), "finishNativeFileDrag",
                                       Q_RETURN_ARG(QVariant, copyAction),
                                       Q_ARG(QVariant, QVariant::fromValue(int(Qt::CopyAction)))));
-    QCOMPARE(object->property("lifecycleState").toString(), QStringLiteral("dismissing"));
-    QVERIFY(window->isVisible());
-    QVERIFY(fixture.controller.thumbnailVisible());
-    QTest::qWait(50);
-    QVERIFY(window->isVisible());
-    QTRY_VERIFY_WITH_TIMEOUT(!window->isVisible(), 1000);
+    // The target accepted the copy. Dismiss synchronously with no exit
+    // animation, but preserve the cancellation behavior checked above.
+    QCOMPARE(object->property("lifecycleState").toString(), QStringLiteral("hidden"));
+    QVERIFY(!window->isVisible());
     QVERIFY(!fixture.controller.thumbnailVisible());
     QVERIFY(!fixture.controller.previewVisible());
+    QVERIFY(!object->property("nativeFileDragging").toBool());
     QVERIFY(!idleTimer->property("running").toBool());
     QCOMPARE(fixture.inputRegion.region().boundingRect(), QRect(0, 0, 1, 1));
+    QTest::qWait(50);
+    QVERIFY(!window->isVisible());
 }
 
 void ScreenshotThumbnailQmlTest::nativeFileDragExportsCanonicalCopyMetadata()

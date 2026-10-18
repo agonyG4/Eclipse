@@ -1,10 +1,12 @@
 #pragma once
 
 #include <QFileSystemWatcher>
+#include <QJsonObject>
 #include <QObject>
 #include <QStyleHints>
 #include <QTimer>
 #include <QString>
+#include <QUrl>
 #include <QVariantMap>
 
 #include <functional>
@@ -16,6 +18,11 @@ class ThemeController final : public QObject {
     Q_PROPERTY(int shellStyle READ shellStyle WRITE setShellStyle NOTIFY shellStyleChanged)
     Q_PROPERTY(int iconStyle READ iconStyle WRITE setIconStyle NOTIFY iconStyleChanged)
     Q_PROPERTY(QString iconTheme READ iconTheme WRITE setIconTheme NOTIFY iconThemeChanged)
+    Q_PROPERTY(QString navigationIconTheme READ navigationIconTheme NOTIFY navigationIconThemeChanged)
+    Q_PROPERTY(QString navigationIconWeight READ navigationIconWeight NOTIFY navigationIconWeightChanged)
+    Q_PROPERTY(int navigationIconOverridesRevision READ navigationIconOverridesRevision NOTIFY navigationIconOverridesChanged)
+    Q_PROPERTY(QString visualTheme READ visualTheme NOTIFY visualThemeChanged)
+    Q_PROPERTY(QVariantMap styleTokens READ styleTokens NOTIFY visualThemeChanged)
     Q_PROPERTY(QString iconAppearance READ iconAppearance NOTIFY iconAppearanceChanged)
     Q_PROPERTY(QString accentHex READ accentHex NOTIFY accentHexChanged)
     Q_PROPERTY(int audioOsdStyle READ audioOsdStyle WRITE setAudioOsdStyle NOTIFY audioOsdStyleChanged)
@@ -37,6 +44,12 @@ public:
     int iconStyle() const;
     void setIconStyle(int value);
     QString iconTheme() const;
+    QString navigationIconTheme() const { return m_navigationIconTheme; }
+    QString navigationIconWeight() const { return m_navigationIconWeight; }
+    int navigationIconOverridesRevision() const { return m_navigationIconOverridesRevision; }
+    QString visualTheme() const { return m_visualTheme; }
+    QVariantMap styleTokens() const { return m_styleTokens; }
+    Q_INVOKABLE QUrl themedNavigationIcon(const QString &key) const;
     void setIconTheme(const QString &value);
     QString iconAppearance() const;
     void setIconAppearance(const QString &value);
@@ -57,6 +70,10 @@ signals:
     void shellStyleChanged();
     void iconStyleChanged();
     void iconThemeChanged();
+    void navigationIconThemeChanged();
+    void navigationIconWeightChanged();
+    void navigationIconOverridesChanged();
+    void visualThemeChanged();
     void iconAppearanceChanged();
     void accentHexChanged();
     void audioOsdStyleChanged();
@@ -74,6 +91,7 @@ private:
     Qt::ColorScheme platformColorScheme() const;
     void scheduleReload();
     void updateWatchPaths();
+    void reloadNavigationIcons();
 
     QString m_configPath;
     ColorSchemeProvider m_colorSchemeProvider;
@@ -84,6 +102,12 @@ private:
     int m_shellStyle = 1;
     int m_iconStyle = 0;
     QString m_iconTheme = QStringLiteral("dark");
+    QString m_navigationIconTheme = QStringLiteral("lucide");
+    QString m_navigationIconWeight = QStringLiteral("regular");
+    QJsonObject m_navigationIconOverrides;
+    int m_navigationIconOverridesRevision = 0;
+    QString m_visualTheme = QStringLiteral("astrea");
+    QVariantMap m_styleTokens;
     QString m_iconAppearance = QStringLiteral("default");
     QString m_accentHex = QStringLiteral("#0a84ff");
     int m_audioOsdStyle = 0;

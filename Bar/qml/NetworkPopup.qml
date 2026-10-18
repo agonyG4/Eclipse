@@ -61,8 +61,15 @@ PopupCard {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "󰇚"
+                visible: !appleDownload.hasIcon
                 color: Qt.rgba(1, 1, 1, 0.40)
                 font { family: theme.iconFontFamily; pixelSize: theme.fontSizeIconLarge }
+            }
+            AppleIcon {
+                id: appleDownload
+                anchors.verticalCenter: parent.verticalCenter
+                iconKey: "download"
+                foreground: theme.isLight ? theme.shellTextSecondary : "#ffffff"
             }
             Column {
                 Text {
@@ -85,8 +92,15 @@ PopupCard {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "󰕒"
+                visible: !appleUpload.hasIcon
                 color: Qt.rgba(1, 1, 1, 0.40)
                 font { family: theme.iconFontFamily; pixelSize: theme.fontSizeIconLarge }
+            }
+            AppleIcon {
+                id: appleUpload
+                anchors.verticalCenter: parent.verticalCenter
+                iconKey: "upload"
+                foreground: theme.isLight ? theme.shellTextSecondary : "#ffffff"
             }
             Column {
                 Text {

@@ -1,4 +1,5 @@
 import QtQuick
+import Qt5Compat.GraphicalEffects as Legacy
 import QtQuick.Layouts
 import QtQuick.Effects
 import ".." as Components
@@ -16,6 +17,8 @@ Item {
     property string iconKey: ""
     required property bool   selected
     signal clicked()
+
+    FontLoader { id: tablerIcons; source: "qrc:/Astrea/Settings/assets/fonts/tabler-icons-300.ttf" }
 
     readonly property color accent: Components.Theme.accent
     readonly property bool isLight: Components.Theme.themeMode === 1
@@ -74,8 +77,8 @@ Item {
                 anchors.centerIn: parent
                 text:           root.sym
                 color:          root.selected ? root.accentForeground : (hma.containsMouse ? root.activeForeground : root.idleForeground)
-                font.pixelSize: Components.Theme.fontSizeNormal
-                font.family:    "JetBrainsMono Nerd Font"
+                font.pixelSize: 18
+                font.family: tablerIcons.name
                 visible:        root.iconSource === ""
                 Behavior on color { ColorAnimation { duration: 150 } }
 
@@ -92,29 +95,31 @@ Item {
 
             Image {
                 id: navIcon
-                anchors.fill: parent
+                objectName: "navigationThemedIcon"
+                anchors.centerIn: parent
+                width: 18
+                height: 18
 
                 readonly property string resolvedSource: root.iconSource
+                readonly property color resolvedTint: root.selected
+                    ? root.accentForeground : root.activeForeground
 
                 source: resolvedSource
                 visible: resolvedSource !== ""
 
-                sourceSize: Qt.size(parent.width * 2, parent.height * 2)
-                fillMode: Image.Stretch
-                mipmap: true
+                // Render the SVG at its displayed size. Downsampling a 2x image
+                // with mipmaps and another offscreen effect softened fine outlines.
+                sourceSize: Qt.size(width, height)
+                fillMode: Image.PreserveAspectFit
+                mipmap: false
                 smooth: true
 
-                // dark mode (1): show native SVG colors, no colorization
-                // clear mode (0) / light mode (2): apply color tint
-                layer.enabled: visible && Components.Theme.iconStyle !== 1
-                layer.effect: MultiEffect {
-                    colorizationColor: root.selected ? root.accentForeground : (hma.containsMouse ? root.activeForeground : root.idleForeground)
-                    colorization: 1.0
-                    shadowEnabled: root.selected
-                    shadowColor: root.accent
-                    shadowBlur: 0.8
-                    shadowHorizontalOffset: 0
-                    shadowVerticalOffset: 0
+                // SVG icons may be black or white depending on their source.
+                // Always tint the silhouette to the semantic foreground,
+                // including dark mode and selected navigation rows.
+                layer.enabled: visible
+                layer.effect: Legacy.ColorOverlay {
+                    color: navIcon.resolvedTint
                 }
             }
         }

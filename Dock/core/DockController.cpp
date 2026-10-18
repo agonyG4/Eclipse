@@ -161,14 +161,18 @@ void DockController::applyConfig(const DockConfig &config)
     if (!changed)
         return;
 
+    const bool pinsChanged = m_config.pins != next.pins;
     m_config = next;
-    m_model.setPins(m_config.pins);
-    projectRuntime();
+    if (pinsChanged) {
+        m_model.setPins(m_config.pins);
+        projectRuntime();
+    }
     updateAutoHidePolicy();
     emit configChanged();
     if (previousPlacement != surfacePlacement())
         emit surfacePlacementChanged();
-    emit modelChanged();
+    if (pinsChanged)
+        emit modelChanged();
     updateVisibility();
     if (previousReservation != exclusiveZone())
         emit reservationChanged();

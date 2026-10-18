@@ -6,6 +6,7 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     components/AppIcon.qml
     components/AvatarImage.qml
     components/Theme.qml
+    components/audio/DeviceRow.qml
     components/controls/Button.qml
     components/controls/ButtonCapsule.qml
     components/controls/DualButton.qml
@@ -58,6 +59,29 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
 
 set(ASTREA_SETTINGS_ASSET_RELATIVE_FILES
     i18n/en_US.json
+    fonts/tabler-icons-300.ttf
+    icons/navigation/lucide/system.svg
+    icons/navigation/lucide/software-update.svg
+    icons/navigation/lucide/internet.svg
+    icons/navigation/lucide/bluetooth.svg
+    icons/navigation/lucide/audio.svg
+    icons/navigation/lucide/display.svg
+    icons/navigation/lucide/components.svg
+    icons/navigation/lucide/services.svg
+    icons/navigation/lucide/compositor.svg
+    icons/navigation/lucide/performance.svg
+    icons/navigation/lucide/customization.svg
+    icons/navigation/lucide/appearance.svg
+    icons/navigation/lucide/visual-effects.svg
+    icons/navigation/lucide/icons.svg
+    icons/navigation/lucide/wallpaper.svg
+    icons/navigation/lucide/dock.svg
+    icons/navigation/lucide/animations.svg
+    icons/navigation/lucide/screenshots.svg
+    icons/navigation/lucide/more-settings.svg
+    icons/navigation/lucide/microphone.svg
+    icons/navigation/lucide/headphones.svg
+    icons/navigation/lucide/virtual-device.svg
     icons/settings/audio.svg
     icons/settings/apps.svg
     icons/settings/bluetooth.svg
@@ -82,6 +106,15 @@ set(ASTREA_SETTINGS_ASSET_RELATIVE_FILES
     previews/screenshot-preview.svg
 )
 
+# Generated bundled Lucide SVG weight resources.
+set(ASTREA_LUCIDE_WEIGHT_NAMES ultralight thin light regular medium semibold bold heavy black)
+set(ASTREA_LUCIDE_NAV_ICON_KEYS system software-update internet bluetooth audio display components services compositor performance customization appearance visual-effects icons wallpaper dock animations screenshots more-settings microphone headphones virtual-device)
+foreach(weight IN LISTS ASTREA_LUCIDE_WEIGHT_NAMES)
+    foreach(icon IN LISTS ASTREA_LUCIDE_NAV_ICON_KEYS)
+        list(APPEND ASTREA_SETTINGS_ASSET_RELATIVE_FILES "icons/navigation/lucide/weights/${weight}/${icon}.svg")
+    endforeach()
+endforeach()
+
 set(ASTREA_SETTINGS_QML_FILES)
 foreach(qml_file IN LISTS ASTREA_SETTINGS_QML_RELATIVE_FILES)
     get_filename_component(qml_source
@@ -96,7 +129,8 @@ set_source_files_properties(${ASTREA_SETTINGS_SCREENSHOT_VISUAL_QML}
     PROPERTIES QT_RESOURCE_ALIAS "qml/components/ScreenshotVisual.qml")
 list(APPEND ASTREA_SETTINGS_QML_FILES ${ASTREA_SETTINGS_SCREENSHOT_VISUAL_QML})
 
-set(ASTREA_SETTINGS_ASSET_FILES)
+unset(ASTREA_SETTINGS_ASSET_FILES CACHE)
+set(ASTREA_SETTINGS_ASSET_FILES "")
 foreach(asset_file IN LISTS ASTREA_SETTINGS_ASSET_RELATIVE_FILES)
     get_filename_component(asset_source
         "${CMAKE_CURRENT_SOURCE_DIR}/../assets/${asset_file}" ABSOLUTE)

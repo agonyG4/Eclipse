@@ -349,6 +349,9 @@ ScreenshotConfiguration::ScreenshotConfiguration(QString filePath, QObject *pare
     m_filePath = QFileInfo(filePath).absoluteFilePath();
     QDir().mkpath(QFileInfo(m_filePath).absolutePath());
 
+    m_persistDebounce.setSingleShot(true);
+    m_persistDebounce.setInterval(220);
+    connect(&m_persistDebounce, &QTimer::timeout, this, [this] { flush(); });
     m_reloadDebounce.setSingleShot(true);
     m_reloadDebounce.setInterval(120);
     connect(&m_reloadDebounce, &QTimer::timeout, this,
@@ -360,6 +363,53 @@ ScreenshotConfiguration::ScreenshotConfiguration(QString filePath, QObject *pare
 
     loadFile(true);
     refreshWatchPaths();
+}
+
+ScreenshotConfiguration::~ScreenshotConfiguration()
+{
+    flush();
+}
+
+QByteArray ScreenshotConfiguration::previewPayload() const
+{
+    return QJsonDocument(encodedValues(m_values)).toJson(QJsonDocument::Compact);
+}
+
+bool ScreenshotConfiguration::applyTransientPayload(const QByteArray &payload)
+{
+    if (payload.size() > 8192)
+        return false;
+    QJsonParseError error;
+    const QJsonDocument document = QJsonDocument::fromJson(payload, &error);
+    if (error.error != QJsonParseError::NoError || !document.isObject())
+        return false;
+    bool invalid = false;
+    const Values next = parsedValues(document.object(), defaults(), &invalid);
+    if (invalid)
+        return false;
+    if (!sameValues(next, m_values)) {
+        m_values = next;
+        emit configurationChanged();
+    }
+    return true;
+}
+
+void ScreenshotConfiguration::discardTransientChanges()
+{
+    m_persistDebounce.stop();
+    m_lastBytes.clear(); // Force a real reload, including updates saved by another process.
+    reloadFromDisk();
+}
+
+bool ScreenshotConfiguration::flush()
+{
+    m_persistDebounce.stop();
+    if (!m_savePending)
+        return true;
+    if (!writeCandidate(m_values, {}, true))
+        return false;
+    m_savePending = false;
+    return true;
 }
 
 QString ScreenshotConfiguration::position() const
@@ -396,9 +446,15 @@ void ScreenshotConfiguration::update(const QString &changedField, const Values &
 {
     if (sameValues(candidate, m_values))
         return;
-    if (!writeCandidate(candidate, changedField))
+    if (!m_writable) {
+        setStatus(QStringLiteral("error"),
+                  QStringLiteral("Reset screenshot settings to replace the unreadable configuration"));
         return;
+    }
     m_values = candidate;
+    m_savePending = true;
+    m_persistDebounce.start();
+    setStatus(QStringLiteral("editing"));
     emit configurationChanged();
 }
 
@@ -578,6 +634,8 @@ void ScreenshotConfiguration::setClickAction(const QString &value)
 void ScreenshotConfiguration::resetToDefaults()
 {
     Values next = defaults();
+    m_persistDebounce.stop();
+    m_savePending = false;
     const bool writeAllFields = true;
     if (writeCandidate(next, {}, writeAllFields)) {
         m_values = next;
@@ -668,8 +726,16 @@ bool ScreenshotConfiguration::writeCandidate(const Values &candidate,
     QJsonObject next = m_rootObject;
     const QJsonObject encoded = encodedValues(candidate);
     if (writeEveryField) {
-        for (auto it = encoded.cbegin(); it != encoded.cend(); ++it)
-            next.insert(it.key(), it.value());
+        for (auto it = encoded.cbegin(); it != encoded.cend(); ++it) {
+            if (it.key() == QStringLiteral("thumbnailSize")) {
+                QJsonObject size = next.value(QStringLiteral("thumbnailSize")).toObject();
+                size.insert(QStringLiteral("width"), candidate.thumbnailWidth);
+                size.insert(QStringLiteral("height"), candidate.thumbnailHeight);
+                next.insert(it.key(), size);
+            } else {
+                next.insert(it.key(), it.value());
+            }
+        }
     } else if (changedField == QStringLiteral("thumbnailWidth")
                || changedField == QStringLiteral("thumbnailHeight")) {
         QJsonObject size = next.value(QStringLiteral("thumbnailSize")).toObject();
@@ -731,6 +797,8 @@ void ScreenshotConfiguration::refreshWatchPaths()
 
 void ScreenshotConfiguration::reloadFromDisk()
 {
+    if (m_savePending)
+        return;
     loadFile(false);
     refreshWatchPaths();
 }

@@ -19,9 +19,9 @@ class ScreenshotSettingsQmlTest final : public QObject {
     Q_OBJECT
 
 private slots:
-    void routeLoadsSharedPreviewAndReportsPersistenceStatus();
-    void controlsPersistAndUpdateThePreview();
-    void replayRunsConfiguredEntryAndExitStyles();
+    void routeLoadsDesktopPreviewControlsAndReportsPersistenceStatus();
+    void controlsPersistWithoutEmbeddedPreview();
+    void replayControlsAreDelegatedToShell();
 };
 
 namespace {
@@ -86,7 +86,7 @@ struct ScreenshotSettingsPage {
 
 } // namespace
 
-void ScreenshotSettingsQmlTest::routeLoadsSharedPreviewAndReportsPersistenceStatus()
+void ScreenshotSettingsQmlTest::routeLoadsDesktopPreviewControlsAndReportsPersistenceStatus()
 {
     QTemporaryDir configHome;
     QVERIFY(configHome.isValid());
@@ -98,22 +98,24 @@ void ScreenshotSettingsQmlTest::routeLoadsSharedPreviewAndReportsPersistenceStat
     QVERIFY(fixture.settings.navigateTo(QStringLiteral("screenshots")));
     QCOMPARE(fixture.settings.selectedSidebarId(), QStringLiteral("customization"));
     QCOMPARE(fixture.page->objectName(), QStringLiteral("screenshotsPage"));
-    QVERIFY(fixture.object(QStringLiteral("screenshotMockVisual")));
+    QVERIFY(!fixture.object(QStringLiteral("screenshotMockVisual")));
+    auto *cornerSlider = fixture.object(QStringLiteral("screenshotCornerRadiusSlider"));
+    QVERIFY(cornerSlider);
+    QVERIFY(cornerSlider->property("detentEnabled").toBool());
+    QCOMPARE(cornerSlider->property("detentValue").toInt(), 10);
+    QVERIFY(!fixture.object(QStringLiteral("screenshotDesktopPreview")));
     QVERIFY(fixture.object(QStringLiteral("screenshotAnimationReplay")));
     QCOMPARE(fixture.settings.screenshots()->status(), QStringLiteral("ready"));
     QVERIFY(fixture.settings.screenshots()->filePath().startsWith(configHome.path()));
 }
 
-void ScreenshotSettingsQmlTest::controlsPersistAndUpdateThePreview()
+void ScreenshotSettingsQmlTest::controlsPersistWithoutEmbeddedPreview()
 {
     QTemporaryDir configHome;
     QVERIFY(configHome.isValid());
     ConfigHomeScope configScope(configHome.path());
     ScreenshotSettingsPage fixture;
-    auto *visual = fixture.object(QStringLiteral("screenshotMockVisual"));
-    QVERIFY(visual);
-
-    QCOMPARE(visual->property("cornerRadius").toInt(), 10);
+    QVERIFY(!fixture.object(QStringLiteral("screenshotMockVisual")));
     QCOMPARE(fixture.settings.screenshots()->cornerRadius(), 10);
     fixture.settings.screenshots()->setCornerRadius(24);
     fixture.settings.screenshots()->setBorderEnabled(false);
@@ -126,15 +128,7 @@ void ScreenshotSettingsQmlTest::controlsPersistAndUpdateThePreview()
     fixture.settings.screenshots()->setExitAnimation(QStringLiteral("fade"));
     fixture.settings.screenshots()->setExitDurationMs(300);
 
-    QTRY_COMPARE_WITH_TIMEOUT(visual->property("cornerRadius").toInt(), 24, 1000);
-    QTRY_VERIFY_WITH_TIMEOUT(!visual->property("borderEnabled").toBool(), 1000);
-    QTRY_COMPARE_WITH_TIMEOUT(visual->property("borderWidth").toInt(), 3, 1000);
-    QTRY_VERIFY_WITH_TIMEOUT(!visual->property("shadowEnabled").toBool(), 1000);
-    auto *thumbnail = qobject_cast<QQuickItem *>(fixture.object(
-        QStringLiteral("screenshotMockThumbnail")));
-    QVERIFY(thumbnail);
-    QTRY_VERIFY_WITH_TIMEOUT(thumbnail->width() > 240, 1000);
-
+    QVERIFY(fixture.settings.screenshots()->flush());
     QFile configurationFile(fixture.settings.screenshots()->filePath());
     QVERIFY(configurationFile.open(QIODevice::ReadOnly));
     const QJsonDocument document = QJsonDocument::fromJson(configurationFile.readAll());
@@ -147,7 +141,7 @@ void ScreenshotSettingsQmlTest::controlsPersistAndUpdateThePreview()
              QStringLiteral("fade"));
 }
 
-void ScreenshotSettingsQmlTest::replayRunsConfiguredEntryAndExitStyles()
+void ScreenshotSettingsQmlTest::replayControlsAreDelegatedToShell()
 {
     QTemporaryDir configHome;
     QVERIFY(configHome.isValid());
@@ -158,15 +152,9 @@ void ScreenshotSettingsQmlTest::replayRunsConfiguredEntryAndExitStyles()
     fixture.settings.screenshots()->setEntryDurationMs(120);
     fixture.settings.screenshots()->setExitDurationMs(120);
 
-    auto *thumbnail = fixture.object(QStringLiteral("screenshotMockThumbnail"));
-    QVERIFY(thumbnail);
-    QVERIFY(QMetaObject::invokeMethod(fixture.page.get(), "replayPreview"));
-    QTRY_COMPARE_WITH_TIMEOUT(thumbnail->property("replayPhase").toString(),
-                              QStringLiteral("entering"), 500);
-    QTRY_COMPARE_WITH_TIMEOUT(thumbnail->property("replayPhase").toString(),
-                              QStringLiteral("exiting"), 1000);
-    QTRY_COMPARE_WITH_TIMEOUT(thumbnail->property("replayPhase").toString(),
-                              QStringLiteral("resting"), 1000);
+    QVERIFY(fixture.object(QStringLiteral("screenshotAnimationReplay")));
+    QVERIFY(!fixture.object(QStringLiteral("screenshotMockThumbnail")));
+    QVERIFY(!fixture.settings.screenshotDemoCommand(QStringLiteral("invalid")));
     QCOMPARE(fixture.settings.screenshots()->entryAnimation(), QStringLiteral("scale-fade"));
     QCOMPARE(fixture.settings.screenshots()->exitAnimation(), QStringLiteral("slide-fade"));
 }

@@ -17,6 +17,8 @@ Window {
     y: Screen.virtualY
 
     property var configuration: ScreenshotController.configuration
+    readonly property bool demo: ScreenshotController.demonstrationActive
+    readonly property bool demoStopping: ScreenshotController.demonstrationStopping
     property string lifecycleState: "hidden"
     property real lifecycleProgress: 1.0
     property int animationToken: 0
@@ -78,12 +80,11 @@ Window {
     }
     readonly property point slotPosition: {
         const margin = effectiveSetting("edgeMargin")
-        const pad = screenshotVisual.shadowPadding
         const position = effectiveSetting("position")
         const left = position === "bottom-left" || position === "top-left"
         const top = position === "top-left" || position === "top-right"
-        return Qt.point(left ? margin + pad : width - margin - pad - card.width,
-                        top ? margin + pad : height - margin - pad - card.height)
+        return Qt.point(left ? margin : width - margin - card.width,
+                        top ? margin : height - margin - card.height)
     }
     readonly property real entryOffsetX: activeAnimationStyle === "slide-fade"
         ? ((effectiveSetting("position").endsWith("right") ? 1 : -1)
@@ -91,8 +92,16 @@ Window {
     readonly property real entryOffsetY: activeAnimationStyle === "slide-fade"
         ? ((effectiveSetting("position").startsWith("top") ? -1 : 1)
            * (card.height + effectiveSetting("edgeMargin"))) : 0
-    readonly property real transitionOffsetProgress: entering
-        ? 1 - lifecycleProgress : (dismissing ? lifecycleProgress : 0)
+    // Exits travel horizontally toward the configured screen edge; the
+    // entry direction can retain its existing diagonal placement.
+    readonly property real exitOffsetX: activeAnimationStyle === "slide-fade"
+        ? ((effectiveSetting("position").endsWith("right") ? 1 : -1)
+           * (card.width + effectiveSetting("edgeMargin"))) : 0
+    readonly property real transitionOffsetX: entering
+        ? entryOffsetX * (1 - lifecycleProgress)
+        : (dismissing ? exitOffsetX * lifecycleProgress : 0)
+    readonly property real transitionOffsetY: entering
+        ? entryOffsetY * (1 - lifecycleProgress) : 0
     readonly property real presentationOpacity: entering ? lifecycleProgress
         : (dismissing ? 1 - lifecycleProgress : (lifecycleState === "visible" ? 1 : 0))
     readonly property real presentationScale: activeAnimationStyle === "scale-fade"
@@ -133,7 +142,7 @@ Window {
     }
 
     function idleIsSuspended() {
-        return hovered || held || nativeFileDragging || !visible
+        return demo || hovered || held || nativeFileDragging || !visible
             || lifecycleState !== "visible" || ScreenshotController.previewVisible
     }
 
@@ -193,7 +202,7 @@ Window {
     }
 
     function beginDismissal(force) {
-        if (!visible || dismissing || nativeFileDragging || lifecycleState === "hidden")
+        if (!visible || (demo && !demoStopping) || dismissing || nativeFileDragging || lifecycleState === "hidden")
             return
         if (!force && (held || hovered)) {
             idleRemainingMs = configuration.displayDurationMs
@@ -226,7 +235,8 @@ Window {
             return
         lifecycleState = "hidden"
         lifecycleProgress = 1
-        ScreenshotController.dismissThumbnail()
+        if (demoStopping) ScreenshotController.finishDemonstrationStop()
+        else ScreenshotController.dismissThumbnail()
     }
 
     function finishLifecycleAnimation() {
@@ -256,7 +266,7 @@ Window {
     }
 
     function startNativeFileDrag() {
-        if (!configuration.dragEnabled || !held || nativeFileDragging
+        if (demo || !configuration.dragEnabled || !held || nativeFileDragging
                 || !ScreenshotController.resultUri || lifecycleState !== "visible")
             return
 
@@ -312,7 +322,14 @@ Window {
             return true
         }
         if (dropAction === Qt.CopyAction) {
-            beginDismissal(true)
+            // An accepted native drop hands the screenshot to the target app.
+            // The dragged image must not fly away a second time afterward.
+            idleTimer.stop()
+            ++animationToken
+            lifecycleAnimation.stop()
+            lifecycleState = "hidden"
+            lifecycleProgress = 1
+            ScreenshotController.dismissThumbnail()
             return true
         }
         if (!configuration.showThumbnail) {
@@ -324,6 +341,10 @@ Window {
     }
 
     function activateClickAction() {
+        if (demo) {
+            ScreenshotController.openPreview()
+            return
+        }
         if (configuration.clickAction === "copy") {
             ScreenshotController.copyScreenshot()
             beginDismissal(true)
@@ -373,8 +394,8 @@ Window {
         objectName: "thumbnailCard"
         width: root.frameWidth
         height: root.frameHeight
-        x: root.slotPosition.x + root.entryOffsetX * root.transitionOffsetProgress
-        y: root.slotPosition.y + root.entryOffsetY * root.transitionOffsetProgress
+        x: root.slotPosition.x + root.transitionOffsetX
+        y: root.slotPosition.y + root.transitionOffsetY
         scale: root.presentationScale
         opacity: root.nativeFileDragging ? 0 : root.presentationOpacity
 
@@ -436,7 +457,7 @@ Window {
                 root.nativeDragHotSpot = Qt.point(mouse.x, mouse.y)
             }
             onPositionChanged: function(mouse) {
-                if (!root.held || !root.configuration.dragEnabled)
+                if (root.demo || !root.held || !root.configuration.dragEnabled)
                     return
                 const current = root.pointerPosition(mouse)
                 const dx = current.x - root.dragStart.x
@@ -477,6 +498,13 @@ Window {
         interval: Math.max(1, Math.ceil(root.idleRemainingMs))
         repeat: false
         onTriggered: root.beginDismissal()
+    }
+
+    Connections {
+        target: ScreenshotController
+        function onDemonstrationStoppingChanged() {
+            if (root.demoStopping) root.beginDismissal(true)
+        }
     }
 
     Connections {

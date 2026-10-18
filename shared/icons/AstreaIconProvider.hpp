@@ -27,6 +27,8 @@ private:
     QPixmap resolveIcon(const QString &iconName, const IconRenderRequest &request);
     QStringList themeSearchDirs() const;
     void refreshThemeState();
+    void handleWatchedPathChanged(const QString &path);
+    QHash<QString, QByteArray> currentConfigFingerprints() const;
     QStringList watchedConfigFiles() const;
     QStringList watchedConfigDirectories() const;
 
@@ -37,6 +39,7 @@ private:
     std::atomic<int> m_themeRevision{0};
     int m_nextNegSeq = 0;
     QFileSystemWatcher m_themeWatcher;
+    QHash<QString, QByteArray> m_configFingerprints;
 
     static constexpr int kCacheMaxCost = 8 * 1024 * 1024;   // 8 MB
     static constexpr int kMaxNegativeEntries = 1024;

@@ -1,4 +1,5 @@
 import QtQuick
+import Qt5Compat.GraphicalEffects as Legacy
 import QtQuick.Layouts
 import "../../components" as Components
 import "../../components/form" as Form
@@ -7,6 +8,8 @@ import "../../components/navigation" as Navigation
 Item {
     id: root
     objectName: "settingsHubPage"
+
+    FontLoader { id: tablerIcons; source: "qrc:/Astrea/Settings/assets/fonts/tabler-icons-300.ttf" }
 
     readonly property var destination: SettingsController.currentDestination
     readonly property var destinations: SettingsController.currentDestinationChildren
@@ -27,8 +30,13 @@ Item {
 
     function iconSourceFor(item) {
         const iconKey = item && item.iconKey !== undefined ? item.iconKey : ""
-        if (iconKey !== "")
-            return SettingsController.iconUrl(iconKey, Theme.iconTheme).toString()
+        if (iconKey !== "") {
+            const themed = SettingsController.iconUrlForWeight(
+                iconKey, SettingsController.navigationIconTheme,
+                SettingsController.navigationIconWeight).toString()
+            if (themed !== "")
+                return themed
+        }
 
         const iconSource = item && item.iconSource !== undefined ? item.iconSource : ""
         if (iconSource !== "")
@@ -71,11 +79,15 @@ Item {
                             anchors.fill: parent
                             anchors.margins: 16
                             source: root.heroIconSource
-                            sourceSize: Qt.size(96, 96)
+                            sourceSize: Qt.size(width, height)
                             fillMode: Image.PreserveAspectFit
                             smooth: true
-                            mipmap: true
+                            mipmap: false
                             visible: source !== ""
+                            layer.enabled: visible
+                            layer.effect: Legacy.ColorOverlay {
+                                color: Components.Theme.textPrimary
+                            }
                         }
 
                         Text {
@@ -83,8 +95,8 @@ Item {
                             text: root.destination && root.destination.sym ? root.destination.sym : ""
                             visible: root.heroIconSource === ""
                             color: Components.Theme.accent
-                            font.family: Components.Theme.monoFontFamily
-                            font.pixelSize: Components.Theme.fontSizeIconLarge
+                            font.family: tablerIcons.name
+                            font.pixelSize: 43
                         }
                     }
 
@@ -128,7 +140,9 @@ Item {
                     label: root.translatedLabel(descriptor)
                     sublabel: root.translatedSubtitle(descriptor)
                     iconSource: descriptor.iconKey
-                        ? SettingsController.iconUrl(descriptor.iconKey, Theme.iconTheme)
+                        ? SettingsController.iconUrlForWeight(descriptor.iconKey,
+                            SettingsController.navigationIconTheme,
+                            SettingsController.navigationIconWeight)
                         : descriptor.iconSource || ""
                     sym: descriptor.sym || ""
                     enabled: descriptor.entryEnabled === true

@@ -128,6 +128,7 @@ void SettingsNavigationModelTest::exposesNativePageRoutes()
     QCOMPARE(model.pageSourceForId(QStringLiteral("display")),
              QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Display.qml")));
     const QVariantMap display = model.descriptorForId(QStringLiteral("display"));
+    QCOMPARE(display.value(QStringLiteral("sym")).toString(), QString(QChar(0xea89)));
     QCOMPARE(display.value(QStringLiteral("iconKey")).toString(), QStringLiteral("display"));
     QCOMPARE(display.value(QStringLiteral("subtitleKey")).toString(),
              QStringLiteral("settings.nav.display.subtitle"));

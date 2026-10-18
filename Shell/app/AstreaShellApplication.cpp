@@ -4,6 +4,7 @@
 #include "AltTab/core/AltTabController.hpp"
 #include "AltTab/platform/wayland/LayerShellSurface.hpp"
 #include "Dock/core/DockController.hpp"
+#include "dock/DockConfig.hpp"
 #include "Dock/core/DockSurfaceGeometry.hpp"
 #include "Dock/platform/wayland/DockInputRegionBridge.hpp"
 #include "Dock/platform/wayland/DockLayerShellSurface.hpp"
@@ -775,7 +776,25 @@ void AstreaShellApplication::handleCommand(const ShellIpcServer::Command &comman
     }
 
     if (command.feature == QStringLiteral("dock")) {
-        if (command.action == QStringLiteral("reload")) {
+        if (command.action == QStringLiteral("live")) {
+            if (command.argument.size() > 3000)
+                return;
+            const QByteArray json = QByteArray::fromBase64(command.argument.toLatin1());
+            if (json.size() > 2048)
+                return;
+            const QJsonDocument document = QJsonDocument::fromJson(json);
+            if (!document.isObject())
+                return;
+            QStringList warnings;
+            DockConfig next = DockConfigCodec::parse(document.object(), &warnings);
+            if (!warnings.isEmpty()
+                || DockConfigCodec::patchKnownFields({}, next, false) != document.object())
+                return;
+            next.pins = m_runtime->dockController()->configSnapshot().pins;
+            m_runtime->dockController()->applyConfig(next);
+        } else if (command.action == QStringLiteral("sync")) {
+            m_runtime->reloadDockConfig();
+        } else if (command.action == QStringLiteral("reload")) {
             m_runtime->reloadDockConfig();
             m_runtime->reloadCatalog();
         } else if (command.action == QStringLiteral("show")) {
@@ -802,6 +821,29 @@ void AstreaShellApplication::handleCommand(const ShellIpcServer::Command &comman
             m_runtime->altTabController()->show();
         else if (command.action == QStringLiteral("reload"))
             m_runtime->reloadAltTabConfig();
+        return;
+    }
+
+    if (command.feature == QStringLiteral("screenshot-config")
+        && command.action == QStringLiteral("live")) {
+        auto *screenshot = m_runtime->screenshotController();
+        if (screenshot->demonstrationActive()) {
+            const QByteArray payload = QByteArray::fromBase64(command.argument.toLatin1());
+            screenshot->configuration()->applyTransientPayload(payload);
+        }
+        return;
+    }
+
+    if (command.feature == QStringLiteral("screenshot-demo")) {
+        auto *screenshot = m_runtime->screenshotController();
+        if (command.action == QStringLiteral("start"))
+            screenshot->startDemonstration();
+        else if (command.action == QStringLiteral("stop"))
+            screenshot->requestDemonstrationStop();
+        else if (command.action == QStringLiteral("replay"))
+            screenshot->replayDemonstration();
+        else if (command.action == QStringLiteral("renew"))
+            screenshot->renewDemonstration();
         return;
     }
 

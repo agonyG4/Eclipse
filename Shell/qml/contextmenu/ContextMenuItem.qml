@@ -1,4 +1,5 @@
 import QtQuick
+import Qt5Compat.GraphicalEffects as Legacy
 
 Rectangle {
     id: root
@@ -8,6 +9,10 @@ Rectangle {
     property string token: ""
     property string label: ""
     property string icon: ""
+    readonly property string appleActionKey: icon === "preferences-system" ? "settings"
+        : icon === "window-close" ? "force-quit"
+        : icon === "list-add" ? "check"
+        : icon === "list-remove" ? "force-quit" : ""
     property string shortcut: ""
     property bool nodeEnabled: true
     property bool selected: false
@@ -41,6 +46,7 @@ Rectangle {
             height: parent.height
 
             Image {
+                id: nativeIcon
                 anchors.centerIn: parent
                 width: 18
                 height: 18
@@ -53,9 +59,35 @@ Rectangle {
                 fillMode: Image.PreserveAspectFit
             }
 
+            Image {
+                id: appleActionIcon
+                anchors.centerIn: parent
+                width: 18
+                height: 18
+                sourceSize: Qt.size(18, 18)
+                fillMode: Image.PreserveAspectFit
+                mipmap: false
+                readonly property bool selectedApple: typeof ThemeController !== "undefined"
+                    && ThemeController
+                source: {
+                    if (!selectedApple || root.appleActionKey === "")
+                        return ""
+                    const revision = ThemeController.navigationIconOverridesRevision
+                    const theme = ThemeController.navigationIconTheme
+                    return theme.length > 0 && ThemeController.navigationIconWeight.length > 0
+                        && ThemeController.themedNavigationIcon
+                        ? ThemeController.themedNavigationIcon(root.appleActionKey) : ""
+                }
+                visible: source.toString() !== ""
+                layer.enabled: visible
+                layer.effect: Legacy.ColorOverlay {
+                    color: root.destructive ? theme.shellIconWarning : theme.shellIconMain
+                }
+            }
+
             Text {
                 anchors.centerIn: parent
-                visible: root.icon !== "" && !parent.children[0].visible
+                visible: root.icon !== "" && !nativeIcon.visible && !appleActionIcon.visible
                 text: root.icon
                 color: root.destructive ? theme.shellIconWarning : theme.shellIconMain
                 font { family: theme.iconFontFamily; pixelSize: theme.fontSizeIcon }

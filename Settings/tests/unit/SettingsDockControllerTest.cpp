@@ -19,6 +19,7 @@ private slots:
     void defaultPropertiesMatchSharedConfig();
     void isDefaultTracksPersonalizationOnly();
     void typedSettersPersistCanonicalConfig();
+    void livePreviewPayloadTracksDraftWithoutPinsOrDiskWrites();
     void invalidValuesAreClampedOrRejected();
     void unchangedValueDoesNotEmitPropertyChange();
     void externalReplacementUpdatesProperties();
@@ -173,6 +174,26 @@ void SettingsDockControllerTest::typedSettersPersistCanonicalConfig()
     QCOMPARE(object.value(QStringLiteral("edgeMargin")).toInt(), 12);
     QVERIFY(!object.contains(QStringLiteral("bottomMargin")));
     QCOMPARE(object.value(QStringLiteral("animationSpeed")).toDouble(), 2.5);
+}
+
+void SettingsDockControllerTest::livePreviewPayloadTracksDraftWithoutPinsOrDiskWrites()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = configPath(directory);
+    writeObject(path, QJsonObject{
+        {QStringLiteral("pins"), QJsonArray{QStringLiteral("one.desktop")}},
+        {QStringLiteral("iconSize"), 48}
+    });
+    SettingsDockController controller(path);
+    controller.setIconSize(57);
+    controller.setMagnificationScale(1.85);
+    const QJsonDocument payload = QJsonDocument::fromJson(controller.livePreviewPayload());
+    QVERIFY(payload.isObject());
+    QCOMPARE(payload.object().value(QStringLiteral("iconSize")).toInt(), 57);
+    QCOMPARE(payload.object().value(QStringLiteral("magnificationScale")).toDouble(), 1.85);
+    QVERIFY(!payload.object().contains(QStringLiteral("pins")));
+    QCOMPARE(readObject(path).value(QStringLiteral("iconSize")).toInt(), 48);
 }
 
 void SettingsDockControllerTest::invalidValuesAreClampedOrRejected()

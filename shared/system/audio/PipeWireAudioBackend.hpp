@@ -16,6 +16,9 @@ public:
     bool setDefaultOutput(quint32 nodeId) override;
     bool setVolume(quint32 nodeId, double linear) override;
     bool setMute(quint32 nodeId, bool muted) override;
+    bool setDefaultInput(quint32 nodeId) override;
+    bool setInputVolume(quint32 nodeId, double linear) override;
+    bool setInputMute(quint32 nodeId, bool muted) override;
 
 private:
     struct Impl;

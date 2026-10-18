@@ -17,6 +17,7 @@
 #include <QLocalSocket>
 #include <QQuickItem>
 #include <QQuickImageProvider>
+#include <QScopeGuard>
 #include <QQuickWindow>
 #include <QRegularExpression>
 #include <QSignalSpy>
@@ -27,6 +28,7 @@
 #include <QQmlContext>
 #include <QQmlError>
 #include <QQmlExpression>
+#include <QQmlProperty>
 #include <QTemporaryDir>
 #include <QVariantMap>
 #include <QtTest>
@@ -237,6 +239,8 @@ private slots:
     void navigatesBackAndForwardFromHub();
     void sidebarHidesNestedDestinations();
     void resolvesHubHeroIconsByMetadataPrecedence();
+    void navigationIconThemesPersistAndResolve();
+    void iconOverridesResolvePerIconAndArea();
     void wallpaperTranslationKeysExist();
     void wallpaperPreviewAndRemovalUseRealPointerEvents();
 };
@@ -852,10 +856,47 @@ void SettingsQmlSmokeTest::loadsIconsRouteOffscreen()
     QCOMPARE(engine.rootObjects().size(), 1);
     QVERIFY(settingsController.navigateTo(QStringLiteral("icons")));
     auto *root = engine.rootObjects().constFirst();
+    // The site's AppleOS SVGs contain black paths. The active foreground
+    // color must tint their silhouette in both appearance modes.
+    themeController.setThemeMode(0);
+    QCOMPARE(themeController.themeMode(), 0);
+    const QString localAppleDirectory = QDir(xdgData).filePath(
+        QStringLiteral("AstreaOS/Themes/AppleOS"));
+    QVERIFY(QDir().mkpath(localAppleDirectory));
+    const QString blackSvgPath = QDir(localAppleDirectory).filePath(
+        QStringLiteral("system.svg"));
+    QFile blackSvg(blackSvgPath);
+    QVERIFY(blackSvg.open(QIODevice::WriteOnly));
+    QVERIFY(blackSvg.write("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M2 2h20v20H2z'/></svg>") > 0);
+    blackSvg.close();
+    QVERIFY(settingsController.setNavigationIconTheme(QStringLiteral("apple")));
+    auto *renderWindow = qobject_cast<QQuickWindow *>(root);
+    QVERIFY(renderWindow != nullptr);
+    QQuickItem *artwork = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT(
+        (artwork = findVisualItem(renderWindow->contentItem(),
+                                  QStringLiteral("navigationThemedIcon"))) != nullptr, 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(QQmlProperty(artwork,
+                              QStringLiteral("layer.enabled")).read().toBool(), 1000);
+    const QColor darkForeground = artwork->property("resolvedTint").value<QColor>();
+    QVERIFY2(darkForeground.red() >= 180 && darkForeground.green() >= 180
+             && darkForeground.blue() >= 180, qPrintable(darkForeground.name()));
+    themeController.setThemeMode(1);
+    QCOMPARE(themeController.themeMode(), 1);
+    QCoreApplication::processEvents();
+    QVERIFY(QQmlProperty(artwork, QStringLiteral("layer.enabled")).read().toBool());
+    const QColor lightForeground = artwork->property("resolvedTint").value<QColor>();
+    QVERIFY2(lightForeground.red() < 180 && lightForeground.green() < 180
+             && lightForeground.blue() < 180, qPrintable(lightForeground.name()));
     QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("iconsPage")) != nullptr,
                              1000);
     auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(QStringLiteral("iconsPage")));
     QVERIFY(page != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(findVisualItem(page, QStringLiteral("navigationIconTheme-lucide")) != nullptr, 2000);
+    QVERIFY(findVisualItem(page, QStringLiteral("navigationIconTheme-eclipse")) == nullptr);
+    QVERIFY(findVisualItem(page, QStringLiteral("navigationIconTheme-astrea")) == nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(findVisualItem(page, QStringLiteral("navigationIconTheme-apple"))
+                                 != nullptr, 1000);
 
     QTRY_VERIFY_WITH_TIMEOUT(findVisualItem(page, QStringLiteral("iconThemeCard-system-default"))
                                  != nullptr,
@@ -887,6 +928,15 @@ void SettingsQmlSmokeTest::loadsIconsRouteOffscreen()
     QVERIFY(!source.contains(QStringLiteral("visible: root.controller.busy")));
     QVERIFY(source.contains(QStringLiteral("controller.lastError")));
     QVERIFY(source.contains(QStringLiteral("No installed themes match your search.")));
+    // MultiEffect's colorization leaves black SF Symbol pixels black on the
+    // actual GPU. Theme glyphs must use alpha-based ColorOverlay instead.
+    QFile navQml(QStringLiteral(ASTREA_ECLIPSE_SOURCE_DIR
+                                "/Settings/qml/components/navigation/NavItem.qml"));
+    QVERIFY(navQml.open(QIODevice::ReadOnly));
+    const QByteArray navigationSource = navQml.readAll();
+    QVERIFY(navigationSource.contains("layer.effect: Legacy.ColorOverlay"));
+    QVERIFY(!navigationSource.contains("colorizationColor: navIcon.resolvedTint"));
+    QVERIFY(source.contains(QStringLiteral("layer.effect: Legacy.ColorOverlay")));
     QVERIFY2(qmlWarnings.isEmpty(),
              qPrintable(qmlWarnings.isEmpty() ? QString() : qmlWarnings.constFirst().toString()));
 }
@@ -2064,6 +2114,161 @@ void SettingsQmlSmokeTest::navigatesBackAndForwardFromHub()
     QVERIFY(!settingsController.canGoForward());
 }
 
+void SettingsQmlSmokeTest::navigationIconThemesPersistAndResolve()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QByteArray oldConfig = qgetenv("XDG_CONFIG_HOME");
+    const QByteArray oldData = qgetenv("XDG_DATA_HOME");
+    qputenv("XDG_CONFIG_HOME", temp.path().toUtf8());
+    qputenv("XDG_DATA_HOME", (temp.path() + QStringLiteral("/data")).toUtf8());
+    const auto restoreEnvironment = qScopeGuard([oldConfig, oldData] {
+        if (oldConfig.isNull()) qunsetenv("XDG_CONFIG_HOME");
+        else qputenv("XDG_CONFIG_HOME", oldConfig);
+        if (oldData.isNull()) qunsetenv("XDG_DATA_HOME");
+        else qputenv("XDG_DATA_HOME", oldData);
+    });
+
+    // Installed icon packs no longer add choices; visual themes remain independent.
+    const QString visualPath = temp.path() + QStringLiteral("/data/AstreaOS/themes/minimal");
+    QVERIFY(QDir().mkpath(visualPath));
+    QFile visualManifest(visualPath + QStringLiteral("/theme.json"));
+    QVERIFY(visualManifest.open(QIODevice::WriteOnly));
+    QVERIFY(visualManifest.write(R"({"schema":1,"id":"minimal","name":"Minimal","style":{"colors":{"accent":"#c38fff"}}})") > 0);
+    visualManifest.close();
+
+    const QString appleRoot = temp.path() + QStringLiteral("/data/AstreaOS/Themes/AppleOS");
+    QVERIFY(QDir().mkpath(appleRoot));
+    const QString displaySvg = appleRoot + QStringLiteral("/display.svg");
+    QFile displayFile(displaySvg);
+    QVERIFY(displayFile.open(QIODevice::WriteOnly));
+    QVERIFY(displayFile.write("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M2 2h20v20H2z'/></svg>") > 0);
+    displayFile.close();
+
+    SettingsController first;
+    const QVariantList themes = first.availableNavigationIconPacks();
+    QCOMPARE(themes.size(), 2);
+    QCOMPARE(themes.at(0).toMap().value(QStringLiteral("id")).toString(), QStringLiteral("lucide"));
+    QCOMPARE(themes.at(1).toMap().value(QStringLiteral("id")).toString(), QStringLiteral("apple"));
+    QCOMPARE(first.navigationIconTheme(), QStringLiteral("lucide"));
+    QCOMPARE(first.navigationIconWeight(), QStringLiteral("regular"));
+    QCOMPARE(first.iconUrlForWeight(QStringLiteral("audio"), QStringLiteral("lucide"),
+                                     QStringLiteral("regular")).scheme(), QStringLiteral("qrc"));
+    QVERIFY(first.iconUrlForWeight(QStringLiteral("audio"), QStringLiteral("lucide"),
+                                   QStringLiteral("bold")).toString().contains(
+                                       QStringLiteral("/lucide/weights/bold/audio.svg")));
+    const QUrl source = first.iconUrlForWeight(QStringLiteral("display"),
+                                                QStringLiteral("apple"), QStringLiteral("bold"));
+    QCOMPARE(source, QUrl::fromLocalFile(displaySvg));
+    QCOMPARE(first.iconUrlForWeight(QStringLiteral("display"), QStringLiteral("apple"),
+                                    QStringLiteral("thin")), source);
+    QVERIFY(first.iconUrlForWeight(QStringLiteral("audio"), QStringLiteral("apple"),
+                                   QStringLiteral("regular")).toString().contains(
+                                       QStringLiteral("/lucide/weights/regular/audio.svg")));
+    QVERIFY(first.iconUrlForWeight(QStringLiteral("../audio"), QStringLiteral("lucide"),
+                                   QStringLiteral("regular")).isEmpty());
+    QVERIFY(first.iconUrl(QStringLiteral("display"), QStringLiteral("eclipse")).isEmpty());
+    QVERIFY(first.iconUrl(QStringLiteral("display"), QStringLiteral("astrea")).isEmpty());
+    QVERIFY(!first.setNavigationIconTheme(QStringLiteral("minimal")));
+    QVERIFY(!first.setNavigationIconTheme(QStringLiteral("astrea")));
+    QVERIFY(!first.setNavigationIconTheme(QStringLiteral("eclipse")));
+
+    QSignalSpy changed(&first, &SettingsController::navigationIconThemeChanged);
+    QVERIFY(first.setNavigationIconTheme(QStringLiteral("apple")));
+    QCOMPARE(changed.size(), 1);
+    QVERIFY(first.setNavigationIconWeight(QStringLiteral("bold")));
+    QCOMPARE(first.iconUrl(QStringLiteral("display"), QStringLiteral("apple")), source);
+
+    QFile saved(temp.path() + QStringLiteral("/AstreaOS/ui/navigation-icons.json"));
+    QVERIFY(saved.open(QIODevice::ReadOnly));
+    const QJsonObject json = QJsonDocument::fromJson(saved.readAll()).object();
+    QCOMPARE(json.value(QStringLiteral("theme")).toString(), QStringLiteral("apple"));
+    QCOMPARE(json.value(QStringLiteral("weight")).toString(), QStringLiteral("bold"));
+
+    SettingsController restored;
+    QCOMPARE(restored.navigationIconTheme(), QStringLiteral("apple"));
+    QCOMPARE(restored.navigationIconWeight(), QStringLiteral("bold"));
+    QVERIFY(restored.setNavigationIconTheme(QStringLiteral("lucide")));
+    QCOMPARE(restored.navigationIconTheme(), QStringLiteral("lucide"));
+    QCOMPARE(restored.iconUrlForWeight(QStringLiteral("audio"), QStringLiteral("lucide"),
+                                       QStringLiteral("thin")).scheme(), QStringLiteral("qrc"));
+    QVERIFY(restored.availableVisualThemes().size() >= 2);
+    QVERIFY(restored.setVisualTheme(QStringLiteral("minimal")));
+    QCOMPARE(restored.visualTheme(), QStringLiteral("minimal"));
+    QVERIFY(restored.setVisualTheme(QStringLiteral("astrea")));
+    QCOMPARE(restored.visualTheme(), QStringLiteral("astrea"));
+}
+
+void SettingsQmlSmokeTest::iconOverridesResolvePerIconAndArea()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QByteArray previousConfig = qgetenv("XDG_CONFIG_HOME");
+    const QByteArray previousData = qgetenv("XDG_DATA_HOME");
+    qputenv("XDG_CONFIG_HOME", temp.path().toUtf8());
+    qputenv("XDG_DATA_HOME", (temp.path() + QStringLiteral("/data")).toUtf8());
+    const auto restore = qScopeGuard([previousConfig, previousData] {
+        if (previousConfig.isNull()) qunsetenv("XDG_CONFIG_HOME");
+        else qputenv("XDG_CONFIG_HOME", previousConfig);
+        if (previousData.isNull()) qunsetenv("XDG_DATA_HOME");
+        else qputenv("XDG_DATA_HOME", previousData);
+    });
+    const QString iconRoot = temp.path()
+        + QStringLiteral("/data/AstreaOS/icon-overrides/settings");
+    QVERIFY(QDir().mkpath(iconRoot));
+    const QString customSvg = iconRoot + QStringLiteral("/my-display.svg");
+    QFile custom(customSvg);
+    QVERIFY(custom.open(QIODevice::WriteOnly));
+    QVERIFY(custom.write("<svg xmlns='http://www.w3.org/2000/svg'/>") > 0);
+    custom.close();
+    const QString configPath = temp.path()
+        + QStringLiteral("/AstreaOS/ui/navigation-icons.json");
+    QVERIFY(QDir().mkpath(QFileInfo(configPath).absolutePath()));
+    QFile config(configPath);
+    QVERIFY(config.open(QIODevice::WriteOnly));
+    QVERIFY(config.write(R"JSON({
+        "theme": "apple",
+        "weight": "bold",
+        "overrides": {
+            "audio": "thin",
+            "settings": {
+                "audio": {"weight": "light", "icon": "headphones"},
+                "display": {"file": "my-display.svg"},
+                "bluetooth": {"theme": "lucide"},
+                "system": {"file": "../my-display.svg", "weight": "medium"},
+                "software-update": {"weight": "invalid"}
+            },
+            "shell": {"wifi": "thin", "ethernet": "regular"}
+        }
+    })JSON") > 0);
+    config.close();
+
+    SettingsController settings;
+    QCOMPARE(settings.navigationIconTheme(), QStringLiteral("apple"));
+    QCOMPARE(settings.navigationIconWeight(), QStringLiteral("bold"));
+    const QUrl audio = settings.iconUrl(QStringLiteral("audio"), QStringLiteral("apple"));
+    QVERIFY(audio.toString().contains(QStringLiteral("/lucide/weights/light/headphones.svg")));
+    QCOMPARE(settings.iconUrl(QStringLiteral("display"), QStringLiteral("apple")),
+             QUrl::fromLocalFile(customSvg));
+    QVERIFY(settings.iconUrl(QStringLiteral("bluetooth"), QStringLiteral("apple")).toString()
+            .contains(QStringLiteral("/lucide/weights/bold/bluetooth.svg")));
+    QVERIFY(settings.iconUrl(QStringLiteral("system"), QStringLiteral("apple")).toString()
+            .contains(QStringLiteral("/lucide/weights/medium/system.svg")));
+    QVERIFY(settings.iconUrl(QStringLiteral("software-update"), QStringLiteral("apple")).toString()
+            .contains(QStringLiteral("/lucide/weights/bold/software-update.svg")));
+    QVERIFY(settings.iconUrl(QStringLiteral("performance"), QStringLiteral("apple")).toString()
+            .contains(QStringLiteral("/lucide/weights/bold/performance.svg")));
+    QVERIFY(settings.setNavigationIconWeight(QStringLiteral("regular")));
+    QFile persisted(configPath);
+    QVERIFY(persisted.open(QIODevice::ReadOnly));
+    const QJsonObject saved = QJsonDocument::fromJson(persisted.readAll()).object();
+    QVERIFY(saved.value(QStringLiteral("overrides")).toObject()
+            .value(QStringLiteral("settings")).toObject()
+            .contains(QStringLiteral("audio")));
+    QCOMPARE(saved.value(QStringLiteral("weight")).toString(), QStringLiteral("regular"));
+
+}
+
 void SettingsQmlSmokeTest::resolvesHubHeroIconsByMetadataPrecedence()
 {
     SettingsController settingsController;
@@ -2091,8 +2296,12 @@ void SettingsQmlSmokeTest::resolvesHubHeroIconsByMetadataPrecedence()
     QVariant resolved;
     QVERIFY(QMetaObject::invokeMethod(hub, "iconSourceFor", Q_RETURN_ARG(QVariant, resolved),
                                       Q_ARG(QVariant, QVariant::fromValue(keyedDescriptor))));
-    QVERIFY(resolved.toString().endsWith(QStringLiteral("/theme.svg")));
-    QVERIFY(resolved.toString() != providedSource);
+    QCOMPARE(resolved.toString(), providedSource);
+    const QUrl appleIcon = settingsController.iconUrl(QStringLiteral("customization"),
+                                                       QStringLiteral("apple"));
+    QVERIFY(appleIcon.toString().endsWith(QStringLiteral("/customization.svg")));
+    QVERIFY(settingsController.iconUrl(QStringLiteral("customization"),
+                                       QStringLiteral("lucide")).scheme() == QStringLiteral("qrc"));
 
     const QVariantMap sourceDescriptor{{QStringLiteral("iconSource"), providedSource}};
     resolved.clear();

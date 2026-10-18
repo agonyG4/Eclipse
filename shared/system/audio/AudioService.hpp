@@ -23,6 +23,10 @@ class AudioService final : public QObject {
     Q_PROPERTY(bool muted READ muted NOTIFY mutedChanged)
     Q_PROPERTY(bool defaultStateAvailable READ defaultStateAvailable NOTIFY defaultStateAvailableChanged)
     Q_PROPERTY(AudioOutputModel *outputsModel READ outputsModel CONSTANT)
+    Q_PROPERTY(AudioOutputModel *inputsModel READ inputsModel CONSTANT)
+    Q_PROPERTY(double inputVolume READ inputVolume NOTIFY inputVolumeChanged)
+    Q_PROPERTY(bool inputMuted READ inputMuted NOTIFY inputMutedChanged)
+    Q_PROPERTY(bool inputStateAvailable READ inputStateAvailable NOTIFY inputStateAvailableChanged)
 
 public:
     explicit AudioService(std::unique_ptr<AudioBackend> backend = {}, QObject *parent = nullptr);
@@ -36,6 +40,10 @@ public:
     bool muted() const { return m_muted; }
     bool defaultStateAvailable() const { return m_defaultStateAvailable; }
     AudioOutputModel *outputsModel() const { return m_outputsModel; }
+    AudioOutputModel *inputsModel() const { return m_inputsModel; }
+    double inputVolume() const { return m_inputVolume; }
+    bool inputMuted() const { return m_inputMuted; }
+    bool inputStateAvailable() const { return m_inputStateAvailable; }
 
     bool start();
     void stop();
@@ -43,6 +51,9 @@ public:
     Q_INVOKABLE void adjustVolume(double deltaPercent);
     Q_INVOKABLE void setMuted(bool muted);
     Q_INVOKABLE bool setDefaultOutput(quint32 nodeId);
+    Q_INVOKABLE bool setDefaultInput(quint32 nodeId);
+    Q_INVOKABLE bool setInputVolume(double percent);
+    Q_INVOKABLE void setInputMuted(bool muted);
     QJsonObject healthJson() const;
 
     static double uiPercentToLinear(double percent);
@@ -55,6 +66,9 @@ signals:
     void volumeChanged();
     void mutedChanged();
     void defaultStateAvailableChanged();
+    void inputVolumeChanged();
+    void inputMutedChanged();
+    void inputStateAvailableChanged();
 
 private:
     void setState(SystemServiceState state);
@@ -67,6 +81,11 @@ private:
 
     std::unique_ptr<AudioBackend> m_backend;
     AudioOutputModel *m_outputsModel = nullptr;
+    AudioOutputModel *m_inputsModel = nullptr;
+    double m_inputVolume = 100.0;
+    bool m_inputMuted = false;
+    bool m_inputStateAvailable = false;
+    quint32 m_defaultInputId = 0;
     SystemServiceState m_state = SystemServiceState::Stopped;
     bool m_available = false;
     bool m_ready = false;

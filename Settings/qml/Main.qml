@@ -89,8 +89,10 @@ ApplicationWindow {
                 userName: SettingsController.userName
                 avatarPath: SettingsController.avatarUrl
                 isSudo: SettingsController.isSudo
-                iconTheme: Theme.iconTheme
-                iconUrlResolver: (iconKey, iconTheme) => SettingsController.iconUrl(iconKey, iconTheme)
+                iconTheme: SettingsController.navigationIconTheme
+                iconWeight: SettingsController.navigationIconWeight
+                iconUrlResolver: (iconKey, iconTheme, iconWeight) =>
+                    SettingsController.iconUrlForWeight(iconKey, iconTheme, iconWeight)
                 onSelectId: id => SettingsController.navigateTo(id)
             }
 

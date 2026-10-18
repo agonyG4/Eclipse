@@ -38,6 +38,8 @@ ScreenshotController::ScreenshotController(TyphonScreenCaptureClient *client, QO
     : QObject(parent), m_client(client)
     , m_configuration(new ScreenshotConfiguration(std::move(configurationPath), this))
 {
+    m_demoLease.setSingleShot(true);
+    connect(&m_demoLease, &QTimer::timeout, this, &ScreenshotController::stopDemonstration);
     m_watchdog.setSingleShot(true);
     connect(m_configuration, &ScreenshotConfiguration::configurationChanged, this, [this] {
         if (!m_configuration->showThumbnail() && !m_thumbnailDragActive)
@@ -49,6 +51,87 @@ ScreenshotController::ScreenshotController(TyphonScreenCaptureClient *client, QO
             &ScreenshotController::handleCaptureReady);
     connect(m_client, &TyphonScreenCaptureClient::failed, this,
             &ScreenshotController::handleCaptureFailed);
+}
+
+bool ScreenshotController::startDemonstration()
+{
+    if (m_phase != ScreenshotPhase::Idle || m_thumbnailDragActive || m_previewVisible
+        || m_visible || !captureClientReady())
+        return false;
+    if (m_demoActive)
+        stopDemonstration();
+    m_demoPreviousImage = m_image;
+    m_demoPreviousPng = m_imagePngData;
+    m_demoPreviousPath = m_resultPath;
+    m_demoActive = true;
+    m_demoStopping = false;
+    m_demoLease.start(15000);
+    m_demoPending = true;
+    ++m_demoToken;
+    emit demonstrationChanged();
+    setThumbnailVisible(false);
+    if (!m_client->requestCapture(m_demoToken)) {
+        stopDemonstration();
+        return false;
+    }
+    return true;
+}
+
+void ScreenshotController::stopDemonstration()
+{
+    if (!m_demoActive)
+        return;
+    const bool wasPending = m_demoPending;
+    m_demoPending = false;
+    if (wasPending && m_client)
+        m_client->cancelCapture();
+    m_demoLease.stop();
+    const bool wasStopping = m_demoStopping;
+    m_demoStopping = false;
+    m_demoActive = false;
+    setPreviewVisible(false);
+    setThumbnailVisible(false);
+    if (wasStopping)
+        emit demonstrationStoppingChanged();
+    m_configuration->discardTransientChanges();
+    m_image = std::move(m_demoPreviousImage);
+    m_imagePngData = std::move(m_demoPreviousPng);
+    m_resultPath = std::move(m_demoPreviousPath);
+    ++m_imageGeneration;
+    emit imageChanged();
+    emit demonstrationChanged();
+}
+
+void ScreenshotController::requestDemonstrationStop()
+{
+    if (!m_demoActive || m_demoStopping)
+        return;
+    if (m_demoPending || !m_thumbnailVisible || m_previewVisible) {
+        stopDemonstration();
+        return;
+    }
+    m_demoStopping = true;
+    emit demonstrationStoppingChanged();
+}
+
+void ScreenshotController::finishDemonstrationStop()
+{
+    if (m_demoActive && m_demoStopping)
+        stopDemonstration();
+}
+
+void ScreenshotController::renewDemonstration()
+{
+    if (m_demoActive)
+        m_demoLease.start(15000);
+}
+
+void ScreenshotController::replayDemonstration()
+{
+    if (!m_demoActive || m_demoPending)
+        return;
+    setThumbnailVisible(false);
+    setThumbnailVisible(true);
 }
 
 QString ScreenshotController::imageSource() const
@@ -133,6 +216,8 @@ bool ScreenshotController::capture()
 
 bool ScreenshotController::begin(ScreenshotIntent intent)
 {
+    if (m_demoActive)
+        stopDemonstration();
     if (m_thumbnailDragActive) {
         ++m_rejectedOperationCount;
         qInfo() << "Screenshot request rejected while thumbnail drag is active";
@@ -260,6 +345,21 @@ void ScreenshotController::requestCapture(std::uint64_t token)
 void ScreenshotController::handleCaptureReady(QImage image, std::uint64_t generation,
                                                std::uint64_t operationToken)
 {
+    if (m_demoActive && m_demoPending && operationToken == m_demoToken) {
+        m_demoPending = false;
+        if (image.isNull()) {
+            stopDemonstration();
+            return;
+        }
+        m_image = std::move(image);
+        m_imagePngData.clear();
+        m_resultPath.clear();
+        ++m_imageGeneration;
+        emit imageChanged();
+        setThumbnailVisible(true);
+        return;
+    }
+
     if (m_phase != ScreenshotPhase::WaitingCapture || generation != m_requestGeneration
         || operationToken != m_requestOperationToken || operationToken != m_operationToken)
         return;
@@ -303,6 +403,12 @@ void ScreenshotController::handleCaptureReady(QImage image, std::uint64_t genera
 void ScreenshotController::handleCaptureFailed(QString reason, std::uint64_t generation,
                                                 std::uint64_t operationToken)
 {
+    if (m_demoActive && m_demoPending && operationToken == m_demoToken) {
+        qWarning() << "Screenshot demonstration capture failed:" << reason;
+        stopDemonstration();
+        return;
+    }
+
     if (!isCaptureWaiting(m_phase) || generation != m_requestGeneration
         || operationToken != m_requestOperationToken || operationToken != m_operationToken)
         return;
@@ -671,7 +777,8 @@ void ScreenshotController::setThumbnailDragActive(bool active)
 
 void ScreenshotController::openPreview()
 {
-    if (m_phase != ScreenshotPhase::Idle || m_image.isNull() || m_resultPath.isEmpty())
+    if (m_phase != ScreenshotPhase::Idle || m_image.isNull()
+        || (m_resultPath.isEmpty() && !m_demoActive))
         return;
     setThumbnailVisible(false);
     setPreviewVisible(true);
@@ -682,6 +789,6 @@ void ScreenshotController::closePreview()
     if (!m_previewVisible)
         return;
     setPreviewVisible(false);
-    if (!m_resultPath.isEmpty() && (!m_configuration || m_configuration->showThumbnail()))
+    if (m_demoActive || (!m_resultPath.isEmpty() && (!m_configuration || m_configuration->showThumbnail())))
         setThumbnailVisible(true);
 }

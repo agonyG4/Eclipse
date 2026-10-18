@@ -11,6 +11,8 @@ QtObject {
     property string iconTheme: ThemeController.iconTheme
     readonly property string iconAppearance: ThemeController.iconAppearance
     readonly property string accentHex: ThemeController.accentHex
+    readonly property string visualTheme: ThemeController.visualTheme
+    readonly property var styleTokens: ThemeController.styleTokens
     property int audioOsdStyle: ThemeController.audioOsdStyle
     property int persistedShellStyle: ThemeController.shellStyle
 

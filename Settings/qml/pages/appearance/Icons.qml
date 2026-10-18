@@ -1,4 +1,5 @@
 import QtQuick
+import Qt5Compat.GraphicalEffects as Legacy
 import QtQuick.Layouts
 import QtQuick.Controls
 import "../../components" as Components
@@ -10,6 +11,17 @@ Item {
     objectName: "iconsPage"
 
     readonly property var controller: SettingsController.icons
+    readonly property var appleIconWeights: [
+        { id: "ultralight", name: "Ultralight" },
+        { id: "thin", name: "Thin" },
+        { id: "light", name: "Light" },
+        { id: "regular", name: "Regular" },
+        { id: "medium", name: "Medium" },
+        { id: "semibold", name: "Semibold" },
+        { id: "bold", name: "Bold" },
+        { id: "heavy", name: "Heavy" },
+        { id: "black", name: "Black" }
+    ]
     readonly property bool catalogLoading: root.controller.busy && root.controller.refreshing
     readonly property int iconThemeRevision: {
         if (typeof AstreaIconProvider !== "undefined" && AstreaIconProvider)
@@ -201,6 +213,168 @@ Item {
             font.weight: Components.Theme.fontWeightDemiBold
             Layout.fillWidth: true
             Layout.bottomMargin: 18
+        }
+
+        Form.SectionHeader {
+            text: I18n.tr("settings.icons.interface_theme", "SETTINGS ICONS")
+            Layout.bottomMargin: 12
+        }
+
+        Text {
+            Layout.fillWidth: true
+            Layout.bottomMargin: 12
+            text: I18n.tr("settings.icons.interface_theme_help",
+                          "Choose the icons used in Settings navigation. This does not change application icons.")
+            wrapMode: Text.WordWrap
+            color: Components.Theme.textSecondary
+            font.family: Components.Theme.fontFamily
+            font.pixelSize: Components.Theme.fontSizeSmall
+        }
+
+        GridLayout {
+            Layout.fillWidth: true
+            Layout.bottomMargin: Components.Theme.spacingXLarge
+            columns: width >= 540 ? 2 : 1
+            columnSpacing: 12
+            rowSpacing: 12
+
+            Repeater {
+                model: SettingsController.availableNavigationIconPacks().map(pack => ({
+                    id: pack.id, title: pack.name, detail: pack.description
+                }))
+                delegate: FocusScope {
+                    id: navigationThemeOption
+                    required property var modelData
+                    objectName: "navigationIconTheme-" + modelData.id
+                    readonly property bool active:
+                        SettingsController.navigationIconTheme === modelData.id
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 96
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.Button
+                    Accessible.name: modelData.title
+                    Keys.onReturnPressed: SettingsController.setNavigationIconTheme(modelData.id)
+                    Keys.onSpacePressed: SettingsController.setNavigationIconTheme(modelData.id)
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Components.Theme.cardRadius
+                        color: Components.Theme.cardBg
+                        border.width: navigationThemeOption.active || navigationThemeOption.activeFocus ? 2 : 1
+                        border.color: navigationThemeOption.active || navigationThemeOption.activeFocus
+                            ? Components.Theme.accent : Components.Theme.cardBorder
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 14
+                        spacing: 14
+
+                        Item {
+                            Layout.preferredWidth: 42
+                            Layout.preferredHeight: 42
+
+                            Image {
+                                anchors.centerIn: parent
+                                width: 34
+                                height: 34
+                                visible: true
+                                source: SettingsController.iconUrlForWeight("system",
+                                    navigationThemeOption.modelData.id,
+                                    SettingsController.navigationIconWeight)
+                                sourceSize: Qt.size(width, height)
+                                fillMode: Image.PreserveAspectFit
+                                layer.enabled: visible
+                                layer.effect: Legacy.ColorOverlay {
+                                    color: Components.Theme.textPrimary
+                                }
+                            }
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+
+                            Text {
+                                text: navigationThemeOption.modelData.title
+                                font.family: Components.Theme.fontFamily
+                                font.pixelSize: Components.Theme.fontSizeNormal
+                                font.weight: Components.Theme.fontWeightMedium
+                                color: Components.Theme.textPrimary
+                            }
+
+                            Text {
+                                text: navigationThemeOption.modelData.detail
+                                font.family: Components.Theme.fontFamily
+                                font.pixelSize: Components.Theme.fontSizeSmall
+                                color: Components.Theme.textSecondary
+                            }
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: SettingsController.setNavigationIconTheme(
+                                       navigationThemeOption.modelData.id)
+                    }
+                }
+            }
+        }
+
+        Form.SectionHeader {
+            visible: SettingsController.navigationIconTheme === "lucide"
+            text: I18n.tr("settings.icons.stroke_weight", "LUCIDE STROKE WEIGHT")
+            Layout.bottomMargin: 12
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.bottomMargin: Components.Theme.spacingXLarge
+            spacing: Components.Theme.spacingMedium
+
+            visible: SettingsController.navigationIconTheme === "lucide"
+
+            Image {
+                id: appleWeightPreview
+                objectName: "appleIconWeightPreview"
+                Layout.preferredWidth: 32
+                Layout.preferredHeight: 32
+                source: SettingsController.iconUrlForWeight("appearance",
+                    SettingsController.navigationIconTheme,
+                    SettingsController.navigationIconWeight)
+                sourceSize: Qt.size(32, 32)
+                fillMode: Image.PreserveAspectFit
+                mipmap: false
+                layer.enabled: visible
+                layer.effect: Legacy.ColorOverlay {
+                    color: Components.Theme.textPrimary
+                }
+            }
+
+            Controls.SelectButton {
+                id: appleWeightSelector
+                objectName: "appleIconWeightSelector"
+                Layout.fillWidth: true
+                Layout.maximumWidth: 220
+                enabled: SettingsController.navigationIconTheme === "lucide"
+                options: root.appleIconWeights.map(weight => weight.name)
+                selectedIndex: Math.max(0, root.appleIconWeights.findIndex(
+                    weight => weight.id === SettingsController.navigationIconWeight))
+                label: options[selectedIndex]
+                onSelected: index => SettingsController.setNavigationIconWeight(
+                    root.appleIconWeights[index].id)
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: I18n.tr("settings.icons.weight_help",
+                    "Adjusts the stroke weight of the default Lucide icons. AppleOS uses its original SVG geometry.")
+                wrapMode: Text.WordWrap
+                font.family: Components.Theme.fontFamily
+                font.pixelSize: Components.Theme.fontSizeSmall
+                color: Components.Theme.textSecondary
+            }
         }
 
         Form.SectionHeader {

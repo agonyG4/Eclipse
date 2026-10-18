@@ -60,6 +60,7 @@ TopbarIndicator {
             id: icon
             objectName: "bluetoothIcon"
             anchors.centerIn: parent
+            visible: !appleIcon.hasIcon
             text: root.btOn ? "󰂯" : "󰂲"
             color: !root.btAvailable || !root.btOn
             ? theme.shellIconMuted
@@ -67,6 +68,17 @@ TopbarIndicator {
                 ? theme.shellIconAccent : theme.shellIconMain
             font { family: theme.iconFontFamily; pixelSize: theme.fontSizeIcon }
             Behavior on color { ColorAnimation { duration: theme.animationFast } }
+        }
+
+        AppleIcon {
+            id: appleIcon
+            objectName: "bluetoothAppleIcon"
+            anchors.centerIn: parent
+            iconKey: root.btOn ? "bluetooth" : "bluetooth-off"
+            foreground: !root.btAvailable || !root.btOn
+                ? theme.shellIconMuted
+                : root.connectedCount > 0 ? theme.shellIconAccent
+                : theme.isLight ? theme.shellTextActive : "#ffffff"
         }
     }
 }

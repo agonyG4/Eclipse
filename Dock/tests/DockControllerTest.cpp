@@ -1113,11 +1113,11 @@ void DockControllerTest::personalizationPropertiesPropagateAndUnchangedConfigIsQ
     QVERIFY(!controller.animationsEnabled());
     QCOMPARE(controller.animationSpeed(), 2.5);
     QCOMPARE(configSpy.count(), 1);
-    QCOMPARE(modelSpy.count(), 1);
+    QCOMPARE(modelSpy.count(), 0);
 
     controller.applyConfig(config);
     QCOMPARE(configSpy.count(), 1);
-    QCOMPARE(modelSpy.count(), 1);
+    QCOMPARE(modelSpy.count(), 0);
 }
 
 void DockControllerTest::autoHidePolicyKeepsSurfaceMappedAndReservationBounded()

@@ -79,6 +79,7 @@ public:
     DesktopEntryCatalog *catalog() const { return m_catalog; }
     ApplicationLauncher *launcher() const { return m_launcher; }
     AppIdentityResolver *identityResolver() const { return m_identityResolver; }
+    DockConfig configSnapshot() const { return m_config; }
     int iconSize() const { return m_config.iconSize; }
     int edgeMargin() const { return m_config.edgeMargin; }
     int effectiveEdgeMargin() const { return m_config.effectiveEdgeMargin(); }

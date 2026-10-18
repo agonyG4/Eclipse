@@ -17,6 +17,7 @@ QQC2.Slider {
     property real detentSnapDistancePx: 8
     property real detentReleaseDistancePx: 14
     property string valueText: ""
+    property bool showValueTooltip: true
     property bool modelValueEnabled: false
     property real modelValue: value
 
@@ -120,10 +121,9 @@ QQC2.Slider {
     onPressedChanged: {
         if (pressed) {
             hoverTooltipTimer.stop()
-            tooltipVisible = valueText !== ""
-        } else if (hovered) {
-            hoverTooltipTimer.restart()
+            tooltipVisible = showValueTooltip && valueText !== ""
         } else {
+            hoverTooltipTimer.stop()
             tooltipVisible = false
         }
         if (!pressed) {
@@ -135,8 +135,14 @@ QQC2.Slider {
         if (!hovered) {
             hoverTooltipTimer.stop()
             tooltipVisible = false
-        } else if (!pressed) {
+        } else if (!pressed && showValueTooltip) {
             hoverTooltipTimer.restart()
+        }
+    }
+    onShowValueTooltipChanged: {
+        if (!showValueTooltip) {
+            hoverTooltipTimer.stop()
+            tooltipVisible = false
         }
     }
     onEnabledChanged: {
@@ -175,7 +181,8 @@ QQC2.Slider {
         id: hoverTooltipTimer
         interval: 350
         repeat: false
-        onTriggered: if (root.enabled && root.hovered && !root.pressed && root.valueText !== "")
+        onTriggered: if (root.showValueTooltip && root.enabled && root.hovered
+                         && !root.pressed && root.valueText !== "")
                          root.tooltipVisible = true
     }
 
@@ -341,7 +348,8 @@ QQC2.Slider {
 
     Item {
         id: tooltipLayer
-        visible: root.enabled && root.tooltipVisible && root.valueText !== ""
+        visible: root.showValueTooltip && root.enabled && root.tooltipVisible
+                 && root.valueText !== ""
         enabled: false
         z: 10
         width: tooltipSurface.width

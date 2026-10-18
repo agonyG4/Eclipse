@@ -13,6 +13,8 @@ class AudioBackend {
 public:
     struct Callbacks {
         std::function<void(QVector<AudioOutput>, quint32)> outputsChanged;
+        std::function<void(QVector<AudioOutput>, quint32)> inputsChanged;
+        std::function<void(double, bool)> inputVolumeChanged;
         std::function<void(bool, bool, QString)> defaultStateChanged;
         std::function<void(double, bool)> volumeChanged;
         std::function<void(QString)> errorChanged;
@@ -24,6 +26,9 @@ public:
     virtual bool setDefaultOutput(quint32 nodeId) = 0;
     virtual bool setVolume(quint32 nodeId, double linear) = 0;
     virtual bool setMute(quint32 nodeId, bool muted) = 0;
+    virtual bool setDefaultInput(quint32) { return false; }
+    virtual bool setInputVolume(quint32, double) { return false; }
+    virtual bool setInputMute(quint32, bool) { return false; }
 };
 
 } // namespace Astrea::System

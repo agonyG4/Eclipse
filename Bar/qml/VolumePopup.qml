@@ -48,11 +48,24 @@ PopupCard {
 
             Text {
                 anchors.centerIn: parent
-                text: root.muted || root.volume === 0 ? "󰝟"
+                visible: !appleMute.hasIcon
+                text: root.muted || Math.round(Math.max(0, root.volume)) === 0 ? "󰝟"
                     : root.volume < 34 ? "󰕿"
                     : root.volume < 67 ? "󰖀" : "󰕾"
                 color: root.muted ? theme.shellIconWarning : theme.shellIconMain
                 font { family: theme.iconFontFamily; pixelSize: theme.fontSizeBody }
+            }
+            VolumeStateIcon {
+                id: appleMute
+                anchors.centerIn: parent
+                width: 16
+                height: 16
+                volume: root.volume
+                muted: root.muted
+                stateAvailable: root.defaultStateAvailable
+                foreground: theme.isLight ? theme.shellTextActive : "#ffffff"
+                mutedForeground: root.muted ? theme.shellIconWarning
+                    : theme.isLight ? theme.shellTextActive : "#ffffff"
             }
 
             MouseArea {
@@ -74,14 +87,25 @@ PopupCard {
         Text {
             anchors.verticalCenter: parent.verticalCenter
             text: "󰕿"
+            visible: !appleVolumeLow.hasIcon
             color: Qt.rgba(1, 1, 1, 0.30)
             font { family: theme.iconFontFamily; pixelSize: theme.fontSizeTitle }
+        }
+
+        AppleIcon {
+            id: appleVolumeLow
+            anchors.verticalCenter: parent.verticalCenter
+            width: 16
+            height: 16
+            iconKey: "volume-min"
+            foreground: theme.isLight ? theme.shellTextSecondary : "#ffffff"
+            opacity: 0.45
         }
 
         Item {
             id: sliderArea
             objectName: "volumeSlider"
-            width: parent.width - 14 - 14 - 20
+            width: parent.width - 16 - 16 - 20
             height: 30
             anchors.verticalCenter: parent.verticalCenter
 
@@ -177,8 +201,18 @@ PopupCard {
         Text {
             anchors.verticalCenter: parent.verticalCenter
             text: "󰕾"
+            visible: !appleVolumeHigh.hasIcon
             color: Qt.rgba(1, 1, 1, 0.30)
             font { family: theme.iconFontFamily; pixelSize: theme.fontSizeTitle }
+        }
+        AppleIcon {
+            id: appleVolumeHigh
+            anchors.verticalCenter: parent.verticalCenter
+            width: 16
+            height: 16
+            iconKey: "volume-max"
+            foreground: theme.isLight ? theme.shellTextSecondary : "#ffffff"
+            opacity: 0.45
         }
     }
 }

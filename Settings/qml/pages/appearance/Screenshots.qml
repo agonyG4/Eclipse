@@ -52,23 +52,14 @@ Item {
             + I18n.tr("apps.settings.pages.appearance.screenshots.unit.seconds", "s")
     }
 
-    function easingValue(name) {
-        if (name === "linear") return Easing.Linear
-        if (name === "in-quad") return Easing.InQuad
-        if (name === "in-out-cubic") return Easing.InOutCubic
-        return Easing.OutCubic
-    }
 
-    function replayPreview() {
-        replayAnimation.stop()
-        mockThumbnail.replayPhase = "entering"
-        mockThumbnail.replayProgress = 0
-        if (!configuration.animationsEnabled) {
-            mockThumbnail.replayPhase = "resting"
-            mockThumbnail.replayProgress = 1
-            return
-        }
-        replayAnimation.restart()
+    Component.onCompleted: SettingsController.screenshotDemoCommand("start")
+    Component.onDestruction: SettingsController.screenshotDemoCommand("stop")
+    Timer {
+        interval: 4000
+        running: true
+        repeat: true
+        onTriggered: SettingsController.screenshotDemoCommand("renew")
     }
 
     Form.ScrollPage {
@@ -78,172 +69,17 @@ Item {
         contentMargins: 28
         maxWidth: 900
 
-        Item {
-            objectName: "screenshotDesktopPreview"
-            Layout.fillWidth: true
-            Layout.preferredHeight: 238
+        Form.FormCard {
             Layout.bottomMargin: 22
-
-            Rectangle {
-                anchors.fill: parent
-                radius: Components.Theme.cardRadius
-                color: Components.Theme.cardBg
-                border.width: 1
-                border.color: Components.Theme.cardBorder
-            }
-
-            Text {
-                anchors.left: parent.left
-                anchors.top: parent.top
-                anchors.leftMargin: 20
-                anchors.topMargin: 15
-                text: I18n.tr("apps.settings.pages.appearance.screenshots.text.preview", "PREVIEW")
-                color: Components.Theme.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall
-                font.weight: Components.Theme.fontWeightBold
-                font.letterSpacing: Components.Theme.trackingHeader
-            }
-
-            Item {
-                id: previewStage
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                anchors.topMargin: 38
-                anchors.bottomMargin: 44
-                clip: false
-
-                Image {
-                    anchors.fill: parent
-                    source: "qrc:/Astrea/Settings/assets/previews/screenshot-preview.svg"
-                    fillMode: Image.PreserveAspectCrop
-                    asynchronous: false
-                    smooth: true
-                    mipmap: true
+            Form.SettingRow {
+                label: I18n.tr("apps.settings.pages.appearance.screenshots.text.live_preview", "Live desktop preview")
+                sublabel: I18n.tr("apps.settings.pages.appearance.screenshots.preview.hint", "Adjust the real screenshot thumbnail on your desktop. It remains visible while this page is open.")
+                Controls.Button {
+                    objectName: "screenshotAnimationReplay"
+                    label: I18n.tr("apps.settings.pages.appearance.screenshots.action.replay", "Replay animation")
+                    flat: true
+                    onClicked: SettingsController.screenshotDemoCommand("replay")
                 }
-
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    height: 18
-                    color: "#b20d1420"
-
-                    Row {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 9
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 5
-                        Repeater {
-                            model: ["#ff7168", "#ffc76d", "#70d09c"]
-                            Rectangle { width: 5; height: 5; radius: 3; color: modelData }
-                        }
-                    }
-                }
-
-                Item {
-                    id: mockThumbnail
-                    objectName: "screenshotMockThumbnail"
-                    property string replayPhase: "resting"
-                    property real replayProgress: 1
-                    readonly property real contentWidth: Math.max(90, Math.min(
-                        root.configuration.thumbnailWidth,
-                        root.configuration.thumbnailHeight * 1.5,
-                        previewStage.width * 0.42))
-                    readonly property real contentHeight: contentWidth / 1.5
-                    readonly property real stageMargin: Math.min(16, root.configuration.edgeMargin)
-                    readonly property string activeStyle: replayPhase === "entering"
-                        ? root.configuration.entryAnimation
-                        : (replayPhase === "exiting" ? root.configuration.exitAnimation : "fade")
-                    readonly property bool isEntering: replayPhase === "entering"
-                    readonly property bool isExiting: replayPhase === "exiting"
-                    readonly property real progress: isEntering ? replayProgress
-                        : (isExiting ? 1 - replayProgress : 1)
-                    readonly property real positionX: root.configuration.position.endsWith("left")
-                        ? stageMargin + screenshotMockVisual.shadowPadding
-                        : previewStage.width - stageMargin - screenshotMockVisual.shadowPadding - width
-                    readonly property real positionY: root.configuration.position.startsWith("top")
-                        ? stageMargin + screenshotMockVisual.shadowPadding
-                        : previewStage.height - stageMargin - screenshotMockVisual.shadowPadding - height
-                    readonly property real slideX: (root.configuration.position.endsWith("right") ? 1 : -1)
-                        * (width + stageMargin)
-                    readonly property real slideY: (root.configuration.position.startsWith("top") ? -1 : 1)
-                        * (height + stageMargin)
-                    width: contentWidth
-                    height: contentHeight
-                    x: positionX + (activeStyle === "slide-fade"
-                        ? slideX * (isEntering ? 1 - replayProgress
-                                      : (isExiting ? replayProgress : 0)) : 0)
-                    y: positionY + (activeStyle === "slide-fade"
-                        ? slideY * (isEntering ? 1 - replayProgress
-                                      : (isExiting ? replayProgress : 0)) : 0)
-                    opacity: progress
-                    scale: activeStyle === "scale-fade"
-                        ? (isEntering ? 0.92 + 0.08 * replayProgress
-                                      : (isExiting ? 1 - 0.04 * replayProgress : 1)) : 1
-
-                    Components.ScreenshotVisual {
-                        id: screenshotMockVisual
-                        objectName: "screenshotMockVisual"
-                        x: -shadowPadding
-                        y: -shadowPadding
-                        imageWidth: mockThumbnail.width
-                        imageHeight: mockThumbnail.height
-                        source: "qrc:/Astrea/Settings/assets/previews/screenshot-preview.svg"
-                        cornerRadius: root.configuration.cornerRadius
-                        borderEnabled: root.configuration.borderEnabled
-                        borderWidth: root.configuration.borderWidth
-                        borderColor: root.configuration.borderColor
-                        shadowEnabled: root.configuration.shadowEnabled
-                        shadowStrength: root.configuration.shadowStrength
-                    }
-                }
-
-                Rectangle {
-                    visible: !root.configuration.showThumbnail
-                    anchors.centerIn: parent
-                    width: hiddenLabel.implicitWidth + 28
-                    height: 30
-                    radius: 15
-                    color: "#d91b2433"
-                    border.width: 1
-                    border.color: "#88ffffff"
-                    Text {
-                        id: hiddenLabel
-                        anchors.centerIn: parent
-                        text: I18n.tr("apps.settings.pages.appearance.screenshots.status.thumbnail_hidden", "Thumbnail hidden")
-                        color: "white"
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
-                    }
-                }
-            }
-
-            Controls.Button {
-                objectName: "screenshotAnimationReplay"
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                anchors.rightMargin: 18
-                anchors.bottomMargin: 10
-                label: I18n.tr("apps.settings.pages.appearance.screenshots.action.replay", "Replay animation")
-                flat: true
-                enabled: root.configuration.animationsEnabled
-                onClicked: root.replayPreview()
-            }
-
-            Text {
-                anchors.left: parent.left
-                anchors.bottom: parent.bottom
-                anchors.leftMargin: 20
-                anchors.bottomMargin: 16
-                text: I18n.tr("apps.settings.pages.appearance.screenshots.text.live_preview", "Live preview")
-                color: Components.Theme.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall
             }
         }
 
@@ -262,6 +98,8 @@ Item {
                     objectName: "screenshotCornerRadiusSlider"
                     from: 0; to: 64; stepSize: 1
                     modelValueEnabled: true; modelValue: root.configuration.cornerRadius
+                    detentEnabled: true
+                    detentValue: 10
                     valueText: root.pixels(displayedValue)
                     onValueEdited: value => root.configuration.setCornerRadius(Math.round(value))
                 }
@@ -281,6 +119,8 @@ Item {
                 Controls.Slider {
                     from: 0; to: 8; stepSize: 1
                     modelValueEnabled: true; modelValue: root.configuration.borderWidth
+                    detentEnabled: true
+                    detentValue: 1
                     valueText: root.pixels(displayedValue)
                     enabled: root.configuration.borderEnabled
                     onValueEdited: value => root.configuration.setBorderWidth(Math.round(value))
@@ -322,6 +162,8 @@ Item {
                 Controls.Slider {
                     from: 0; to: 1; stepSize: 0.05
                     modelValueEnabled: true; modelValue: root.configuration.shadowStrength
+                    detentEnabled: true
+                    detentValue: 0.55
                     valueText: Math.round(displayedValue * 100) + "%"
                     enabled: root.configuration.shadowEnabled
                     onValueEdited: value => root.configuration.setShadowStrength(value)
@@ -342,6 +184,8 @@ Item {
                 Controls.Slider {
                     from: 120; to: 480; stepSize: 8
                     modelValueEnabled: true; modelValue: root.configuration.thumbnailWidth
+                    detentEnabled: true
+                    detentValue: 240
                     valueText: root.pixels(displayedValue)
                     onValueEdited: value => root.configuration.setThumbnailWidth(Math.round(value))
                 }
@@ -352,6 +196,8 @@ Item {
                 Controls.Slider {
                     from: 80; to: 320; stepSize: 8
                     modelValueEnabled: true; modelValue: root.configuration.thumbnailHeight
+                    detentEnabled: true
+                    detentValue: 160
                     valueText: root.pixels(displayedValue)
                     onValueEdited: value => root.configuration.setThumbnailHeight(Math.round(value))
                 }
@@ -362,6 +208,8 @@ Item {
                 Controls.Slider {
                     from: 0.5; to: 0.9; stepSize: 0.01
                     modelValueEnabled: true; modelValue: root.configuration.previewMaximumScale
+                    detentEnabled: true
+                    detentValue: 0.78
                     valueText: Math.round(displayedValue * 100) + "%"
                     onValueEdited: value => root.configuration.setPreviewMaximumScale(value)
                 }
@@ -383,6 +231,8 @@ Item {
                 Controls.Slider {
                     from: 0; to: 120; stepSize: 2
                     modelValueEnabled: true; modelValue: root.configuration.edgeMargin
+                    detentEnabled: true
+                    detentValue: 20
                     valueText: root.pixels(displayedValue)
                     onValueEdited: value => root.configuration.setEdgeMargin(Math.round(value))
                 }
@@ -423,6 +273,8 @@ Item {
                 Controls.Slider {
                     from: 0; to: 1500; stepSize: 25
                     modelValueEnabled: true; modelValue: root.configuration.entryDurationMs
+                    detentEnabled: true
+                    detentValue: 160
                     valueText: root.duration(displayedValue)
                     enabled: root.configuration.animationsEnabled
                     onValueEdited: value => root.configuration.setEntryDurationMs(Math.round(value))
@@ -458,6 +310,8 @@ Item {
                 Controls.Slider {
                     from: 0; to: 1500; stepSize: 25
                     modelValueEnabled: true; modelValue: root.configuration.exitDurationMs
+                    detentEnabled: true
+                    detentValue: 220
                     valueText: root.duration(displayedValue)
                     enabled: root.configuration.animationsEnabled
                     onValueEdited: value => root.configuration.setExitDurationMs(Math.round(value))
@@ -517,6 +371,8 @@ Item {
                 Controls.Slider {
                     from: 500; to: 30000; stepSize: 500
                     modelValueEnabled: true; modelValue: root.configuration.displayDurationMs
+                    detentEnabled: true
+                    detentValue: 5000
                     valueText: root.duration(displayedValue)
                     onValueEdited: value => root.configuration.setDisplayDurationMs(Math.round(value))
                 }
@@ -557,39 +413,4 @@ Item {
         onAccepted: root.configuration.setBorderColor(selectedColor)
     }
 
-    SequentialAnimation {
-        id: replayAnimation
-        ScriptAction {
-            script: {
-                mockThumbnail.replayPhase = "entering"
-                mockThumbnail.replayProgress = 0
-            }
-        }
-        NumberAnimation {
-            target: mockThumbnail
-            property: "replayProgress"
-            to: 1
-            duration: Math.max(1, root.configuration.entryDurationMs)
-            easing.type: root.easingValue(root.configuration.entryEasing)
-        }
-        ScriptAction {
-            script: {
-                mockThumbnail.replayPhase = "exiting"
-                mockThumbnail.replayProgress = 0
-            }
-        }
-        NumberAnimation {
-            target: mockThumbnail
-            property: "replayProgress"
-            to: 1
-            duration: Math.max(1, root.configuration.exitDurationMs)
-            easing.type: root.easingValue(root.configuration.exitEasing)
-        }
-        ScriptAction {
-            script: {
-                mockThumbnail.replayPhase = "resting"
-                mockThumbnail.replayProgress = 1
-            }
-        }
-    }
 }

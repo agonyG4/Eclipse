@@ -59,7 +59,7 @@ public:
         int entryDurationMs = 160;
         int exitDurationMs = 220;
         Easing entryEasing = Easing::OutCubic;
-        Easing exitEasing = Easing::OutCubic;
+        Easing exitEasing = Easing::InQuad;
         bool showThumbnail = true;
         bool autoCopy = true;
         bool dragEnabled = true;
@@ -68,6 +68,7 @@ public:
     };
 
     explicit ScreenshotConfiguration(QString filePath = {}, QObject *parent = nullptr);
+    ~ScreenshotConfiguration() override;
 
     int cornerRadius() const { return m_values.cornerRadius; }
     bool borderEnabled() const { return m_values.borderEnabled; }
@@ -96,31 +97,35 @@ public:
     QString lastError() const { return m_lastError; }
     QString filePath() const { return m_filePath; }
 
-    void setCornerRadius(int value);
-    void setBorderEnabled(bool value);
-    void setBorderWidth(int value);
-    void setBorderColor(const QColor &value);
-    void setShadowEnabled(bool value);
-    void setShadowStrength(qreal value);
-    void setThumbnailWidth(int value);
-    void setThumbnailHeight(int value);
-    void setPreviewMaximumScale(qreal value);
-    void setPosition(const QString &value);
-    void setEdgeMargin(int value);
-    void setAnimationsEnabled(bool value);
-    void setEntryAnimation(const QString &value);
-    void setExitAnimation(const QString &value);
-    void setEntryDurationMs(int value);
-    void setExitDurationMs(int value);
-    void setEntryEasing(const QString &value);
-    void setExitEasing(const QString &value);
-    void setShowThumbnail(bool value);
-    void setAutoCopy(bool value);
-    void setDragEnabled(bool value);
-    void setDisplayDurationMs(int value);
-    void setClickAction(const QString &value);
+    Q_INVOKABLE void setCornerRadius(int value);
+    Q_INVOKABLE void setBorderEnabled(bool value);
+    Q_INVOKABLE void setBorderWidth(int value);
+    Q_INVOKABLE void setBorderColor(const QColor &value);
+    Q_INVOKABLE void setShadowEnabled(bool value);
+    Q_INVOKABLE void setShadowStrength(qreal value);
+    Q_INVOKABLE void setThumbnailWidth(int value);
+    Q_INVOKABLE void setThumbnailHeight(int value);
+    Q_INVOKABLE void setPreviewMaximumScale(qreal value);
+    Q_INVOKABLE void setPosition(const QString &value);
+    Q_INVOKABLE void setEdgeMargin(int value);
+    Q_INVOKABLE void setAnimationsEnabled(bool value);
+    Q_INVOKABLE void setEntryAnimation(const QString &value);
+    Q_INVOKABLE void setExitAnimation(const QString &value);
+    Q_INVOKABLE void setEntryDurationMs(int value);
+    Q_INVOKABLE void setExitDurationMs(int value);
+    Q_INVOKABLE void setEntryEasing(const QString &value);
+    Q_INVOKABLE void setExitEasing(const QString &value);
+    Q_INVOKABLE void setShowThumbnail(bool value);
+    Q_INVOKABLE void setAutoCopy(bool value);
+    Q_INVOKABLE void setDragEnabled(bool value);
+    Q_INVOKABLE void setDisplayDurationMs(int value);
+    Q_INVOKABLE void setClickAction(const QString &value);
 
     Q_INVOKABLE void resetToDefaults();
+    Q_INVOKABLE bool flush();
+    QByteArray previewPayload() const;
+    bool applyTransientPayload(const QByteArray &payload);
+    void discardTransientChanges();
 
 signals:
     void configurationChanged();
@@ -145,6 +150,8 @@ private:
     QByteArray m_lastBytes;
     QFileSystemWatcher m_watcher;
     QTimer m_reloadDebounce;
+    QTimer m_persistDebounce;
+    bool m_savePending = false;
     QString m_status = QStringLiteral("ready");
     QString m_lastError;
     bool m_writable = true;

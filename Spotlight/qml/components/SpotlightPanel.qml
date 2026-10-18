@@ -1,4 +1,5 @@
 import QtQuick
+import Qt5Compat.GraphicalEffects as Legacy
 import QtQuick.Layouts
 
 Rectangle {
@@ -48,12 +49,43 @@ Rectangle {
             spacing: 12
 
             Text {
+                visible: !appleSearch.visible
                 text: "\u2315"
                 font.family: root.fontFamily
                 font.pixelSize: 24
                 color: "#99FFFFFF"
                 Layout.leftMargin: 8
                 Layout.alignment: Qt.AlignVCenter
+            }
+
+            Image {
+                id: appleSearch
+                readonly property bool appleSelected: typeof ThemeController !== "undefined"
+                    && ThemeController
+                source: {
+                    if (!appleSelected)
+                        return ""
+                    const revision = ThemeController.navigationIconOverridesRevision
+                    const theme = ThemeController.navigationIconTheme
+                    return theme.length > 0 && ThemeController.navigationIconWeight.length > 0
+                        && ThemeController.themedNavigationIcon
+                        ? ThemeController.themedNavigationIcon("search") : ""
+                }
+                visible: source.toString() !== ""
+                Layout.preferredWidth: 24
+                Layout.preferredHeight: 24
+                Layout.leftMargin: 8
+                Layout.alignment: Qt.AlignVCenter
+                sourceSize: Qt.size(24, 24)
+                fillMode: Image.PreserveAspectFit
+                opacity: 0.9
+                mipmap: false
+                // AppleOS symbols can have black paths. Always render
+                // these navigation glyphs in the Spotlight foreground.
+                layer.enabled: visible
+                layer.effect: Legacy.ColorOverlay {
+                    color: "#ffffff"
+                }
             }
 
             Item {

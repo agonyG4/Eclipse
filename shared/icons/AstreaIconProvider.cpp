@@ -5,6 +5,8 @@
 #include <QUrl>
 #include <QFileInfo>
 #include <QDir>
+#include <QCryptographicHash>
+#include <QFile>
 #include <QStandardPaths>
 #include <QReadLocker>
 #include <QWriteLocker>
@@ -70,9 +72,9 @@ AstreaIconProvider::AstreaIconProvider()
     refreshThemeState();
 
     QObject::connect(&m_themeWatcher, &QFileSystemWatcher::directoryChanged,
-                     [this]() { refreshThemeState(); });
+                     [this](const QString &path) { handleWatchedPathChanged(path); });
     QObject::connect(&m_themeWatcher, &QFileSystemWatcher::fileChanged,
-                     [this]() { refreshThemeState(); });
+                     [this](const QString &path) { handleWatchedPathChanged(path); });
 }
 
 void AstreaIconProvider::clearCache() {
@@ -112,6 +114,32 @@ QStringList AstreaIconProvider::watchedConfigDirectories() const {
     return dirs;
 }
 
+QHash<QString, QByteArray> AstreaIconProvider::currentConfigFingerprints() const
+{
+    QHash<QString, QByteArray> fingerprints;
+    for (const QString &path : watchedConfigFiles()) {
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly)) {
+            fingerprints.insert(path, QByteArrayLiteral("missing"));
+            continue;
+        }
+        fingerprints.insert(path, QByteArrayLiteral("present:")
+                                      + QCryptographicHash::hash(file.readAll(), QCryptographicHash::Sha256));
+    }
+    return fingerprints;
+}
+
+void AstreaIconProvider::handleWatchedPathChanged(const QString &path)
+{
+    // AstreaOS/screenshot.json (and other unrelated config files) share an
+    // ancestor directory with ui/theme.json. Do not invalidate every Dock icon
+    // merely because that directory was touched by an atomic config save.
+    if (watchedConfigDirectories().contains(path)
+        && currentConfigFingerprints() == m_configFingerprints)
+        return;
+    refreshThemeState();
+}
+
 void AstreaIconProvider::refreshThemeState() {
     const QStringList files = m_themeWatcher.files();
     if (!files.isEmpty())
@@ -129,6 +157,7 @@ void AstreaIconProvider::refreshThemeState() {
             m_themeWatcher.addPath(file);
     }
 
+    m_configFingerprints = currentConfigFingerprints();
     AstreaIconTheme::apply();
     clearCache();
 }

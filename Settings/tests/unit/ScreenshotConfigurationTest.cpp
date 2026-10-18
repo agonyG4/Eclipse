@@ -14,6 +14,9 @@ class ScreenshotConfigurationTest final : public QObject {
 
 private slots:
     void usesPredictableDefaults();
+    void fastEditsUpdateImmediatelyAndPersistTogether();
+    void transientPreviewNeverWritesToDisk();
+    void settersAreInvokableFromQml();
     void normalizesInvalidFieldsIndependently();
     void settersBoundNumericValuesAndRejectUnknownEnums();
     void atomicEditsPreserveUnrelatedKeys();
@@ -73,13 +76,70 @@ void ScreenshotConfigurationTest::usesPredictableDefaults()
     QCOMPARE(configuration.entryDurationMs(), 160);
     QCOMPARE(configuration.exitDurationMs(), 220);
     QCOMPARE(configuration.entryEasing(), QStringLiteral("out-cubic"));
-    QCOMPARE(configuration.exitEasing(), QStringLiteral("out-cubic"));
+    QCOMPARE(configuration.exitEasing(), QStringLiteral("in-quad"));
     QVERIFY(configuration.showThumbnail());
     QVERIFY(configuration.autoCopy());
     QVERIFY(configuration.dragEnabled());
     QCOMPARE(configuration.displayDurationMs(), 5000);
     QCOMPARE(configuration.clickAction(), QStringLiteral("preview"));
     QCOMPARE(configuration.status(), QStringLiteral("ready"));
+}
+
+void ScreenshotConfigurationTest::settersAreInvokableFromQml()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = configPath(directory);
+    ScreenshotConfiguration configuration(path);
+    QVERIFY(QMetaObject::invokeMethod(&configuration, "setCornerRadius", Q_ARG(int, 28)));
+    QVERIFY(QMetaObject::invokeMethod(&configuration, "setThumbnailWidth", Q_ARG(int, 320)));
+    QCOMPARE(configuration.cornerRadius(), 28);
+    QCOMPARE(configuration.thumbnailWidth(), 320);
+    QVERIFY(configuration.flush());
+    const QJsonObject saved = readObject(path);
+    QCOMPARE(saved.value(QStringLiteral("cornerRadius")).toInt(), 28);
+    QCOMPARE(saved.value(QStringLiteral("thumbnailSize")).toObject().value(QStringLiteral("width")).toInt(), 320);
+}
+
+void ScreenshotConfigurationTest::fastEditsUpdateImmediatelyAndPersistTogether()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = configPath(directory);
+    ScreenshotConfiguration configuration(path);
+    configuration.setCornerRadius(15);
+    configuration.setThumbnailWidth(320);
+    configuration.setShadowStrength(0.9);
+    QCOMPARE(configuration.cornerRadius(), 15);
+    QCOMPARE(configuration.thumbnailWidth(), 320);
+    QCOMPARE(configuration.shadowStrength(), 0.9);
+    QVERIFY(!QFile::exists(path)); // No synchronous write for every slider step.
+    QVERIFY(configuration.flush());
+    const QJsonObject saved = readObject(path);
+    QCOMPARE(saved.value(QStringLiteral("cornerRadius")).toInt(), 15);
+    QCOMPARE(saved.value(QStringLiteral("thumbnailSize")).toObject()
+                 .value(QStringLiteral("width")).toInt(), 320);
+}
+
+void ScreenshotConfigurationTest::transientPreviewNeverWritesToDisk()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = configPath(directory);
+    ScreenshotConfiguration configuration(path);
+    configuration.setCornerRadius(18);
+    QVERIFY(configuration.flush());
+    ScreenshotConfiguration source(directory.filePath(QStringLiteral("source.json")));
+    source.setCornerRadius(42);
+    source.setThumbnailWidth(360);
+    QVERIFY(configuration.applyTransientPayload(source.previewPayload()));
+    QCOMPARE(configuration.cornerRadius(), 42);
+    QCOMPARE(configuration.thumbnailWidth(), 360);
+    QCOMPARE(readObject(path).value(QStringLiteral("cornerRadius")).toInt(), 18);
+    QVERIFY(!configuration.applyTransientPayload(QByteArrayLiteral("not json")));
+    configuration.discardTransientChanges();
+    QCOMPARE(configuration.cornerRadius(), 18);
+    QCOMPARE(configuration.thumbnailWidth(), 240);
 }
 
 void ScreenshotConfigurationTest::normalizesInvalidFieldsIndependently()
@@ -148,6 +208,7 @@ void ScreenshotConfigurationTest::atomicEditsPreserveUnrelatedKeys()
 
     configuration.setThumbnailWidth(300);
 
+    QVERIFY(configuration.flush());
     const QJsonObject saved = readObject(path);
     QCOMPARE(saved.value(QStringLiteral("vendorExtension")).toObject()
                  .value(QStringLiteral("enabled")).toBool(), true);
@@ -171,6 +232,7 @@ void ScreenshotConfigurationTest::editingNormalizesOtherInvalidKnownFields()
 
     configuration.setEdgeMargin(32);
 
+    QVERIFY(configuration.flush());
     const QJsonObject saved = readObject(path);
     QCOMPARE(saved.value(QStringLiteral("extension")).toString(), QStringLiteral("keep"));
     QCOMPARE(saved.value(QStringLiteral("cornerRadius")).toInt(), 10);
@@ -194,6 +256,7 @@ void ScreenshotConfigurationTest::resetWritesAllDefaultsAndPreservesUnknownKeys(
 
     QCOMPARE(configuration.cornerRadius(), 10);
     QCOMPARE(configuration.position(), QStringLiteral("bottom-right"));
+    QVERIFY(configuration.flush());
     const QJsonObject saved = readObject(path);
     QCOMPARE(saved.value(QStringLiteral("extension")).toString(), QStringLiteral("keep"));
     QCOMPARE(saved.value(QStringLiteral("cornerRadius")).toInt(), 10);
@@ -246,6 +309,7 @@ void ScreenshotConfigurationTest::rapidEditsKeepTheNewestValue()
     configuration.setCornerRadius(23);
 
     QCOMPARE(configuration.cornerRadius(), 23);
+    QVERIFY(configuration.flush());
     QCOMPARE(readObject(path).value(QStringLiteral("cornerRadius")).toInt(), 23);
 }
 

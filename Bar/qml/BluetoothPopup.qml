@@ -89,9 +89,26 @@ PopupCard {
 
             Text {
                 anchors.centerIn: parent
+                visible: !applePower.hasIcon
                 text: root.powerPending ? "󰑐" : "󰂯"
                 color: root.powered ? theme.shellIconAccent : theme.shellIconMuted
                 font { family: theme.iconFontFamily; pixelSize: theme.fontSizeBody }
+                RotationAnimation on rotation {
+                    running: root.powerPending
+                    from: 0
+                    to: 360
+                    duration: theme.animationPulse
+                    loops: Animation.Infinite
+                }
+            }
+
+            AppleIcon {
+                id: applePower
+                anchors.centerIn: parent
+                width: 14
+                height: 14
+                iconKey: root.powerPending ? "refresh" : "bluetooth"
+                foreground: root.powered ? theme.shellIconAccent : theme.shellIconMuted
                 RotationAnimation on rotation {
                     running: root.powerPending
                     from: 0
@@ -186,10 +203,26 @@ PopupCard {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.scanning ? "󰑐" : "󰍉"
+                visible: !appleScan.hasIcon
                 color: root.scanning ? theme.shellIconAccent : theme.shellTextSecondary
                 font { family: theme.iconFontFamily; pixelSize: theme.fontSizeIcon }
                 RotationAnimation on rotation {
                     running: root.scanning
+                    from: 0
+                    to: 360
+                    duration: theme.animationSpin
+                    loops: Animation.Infinite
+                }
+            }
+
+            AppleIcon {
+                id: appleScan
+                anchors.verticalCenter: parent.verticalCenter
+                iconKey: root.scanning ? "refresh" : "search"
+                foreground: root.scanning ? theme.shellIconAccent
+                    : theme.isLight ? theme.shellTextSecondary : "#ffffff"
+                RotationAnimation on rotation {
+                    running: root.scanning && appleScan.visible
                     from: 0
                     to: 360
                     duration: theme.animationSpin
@@ -271,8 +304,17 @@ PopupCard {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: paired ? "󰂱" : "󰂴"
+                visible: !appleDevice.hasIcon
                 color: connected ? theme.shellIconAccent : theme.shellIconMain
                 font { family: theme.iconFontFamily; pixelSize: theme.fontSizeIcon }
+            }
+
+            AppleIcon {
+                id: appleDevice
+                anchors.verticalCenter: parent.verticalCenter
+                iconKey: paired ? "check" : "bluetooth"
+                foreground: connected ? theme.shellIconAccent
+                    : theme.isLight ? theme.shellIconMain : "#ffffff"
             }
 
             Text {

@@ -58,6 +58,9 @@ struct PipeWireAudioBackend::Impl {
     pw_metadata_events metadataEvents{};
     Callbacks callbacks;
     std::map<quint32, AudioOutput> outputs;
+    std::map<quint32, AudioOutput> inputs;
+    QString defaultInputName;
+    quint32 defaultInputId = 0;
     std::map<quint32, pw_node *> nodes;
     std::map<quint32, std::unique_ptr<NodeBinding>> nodeBindings;
     PipeWireAudioState state;
@@ -103,6 +106,39 @@ struct PipeWireAudioBackend::Impl {
             releaseNodeProxy(nodeBindings.begin()->first);
     }
 
+    quint32 defaultInputNodeId() const
+    {
+        if (defaultInputId && inputs.contains(defaultInputId)) return defaultInputId;
+        for (const auto &[id, input] : inputs)
+            if (!defaultInputName.isEmpty() && input.name == defaultInputName) return id;
+        return 0;
+    }
+
+    void publishInputs()
+    {
+        if (!callbacks.inputsChanged) return;
+        const auto chosen = defaultInputNodeId();
+        QVector<AudioOutput> values;
+        for (const auto &[id, input] : inputs) values.append(input);
+        callbacks.inputsChanged(std::move(values), chosen);
+    }
+
+    void publishInputVolume()
+    {
+        if (!callbacks.inputVolumeChanged) return;
+        const auto it = nodeBindings.find(defaultInputNodeId());
+        if (it == nodeBindings.end() || !it->second) return;
+        const auto &node = *it->second;
+        if (!node.muteKnown || (!node.volumeKnown && node.channelVolumes.isEmpty())) return;
+        double gain = node.volume;
+        if (!node.channelVolumes.isEmpty()) {
+            gain = 0;
+            for (float v : node.channelVolumes) gain += v;
+            gain /= node.channelVolumes.size();
+        }
+        callbacks.inputVolumeChanged(gain, node.muted);
+    }
+
     quint32 defaultNodeId() const
     {
         return state.defaultNodeId();
@@ -134,7 +170,8 @@ struct PipeWireAudioBackend::Impl {
         if (std::strcmp(type, PW_TYPE_INTERFACE_Node) != 0)
             return;
         const char *mediaClass = spa_dict_lookup(props, PW_KEY_MEDIA_CLASS);
-        if (!mediaClass || std::strcmp(mediaClass, "Audio/Sink") != 0)
+        const bool isInput = mediaClass && std::strcmp(mediaClass, "Audio/Source") == 0;
+        if (!mediaClass || (!isInput && std::strcmp(mediaClass, "Audio/Sink") != 0))
             return;
         const char *name = spa_dict_lookup(props, PW_KEY_NODE_NAME);
         const char *description = spa_dict_lookup(props, PW_KEY_NODE_DESCRIPTION);
@@ -147,11 +184,12 @@ struct PipeWireAudioBackend::Impl {
         output.nick = QString::fromUtf8(nick ? nick : "");
         output.mediaClass = QString::fromUtf8(mediaClass);
         output.isVirtual = virtualValue && QString::fromUtf8(virtualValue) == QStringLiteral("true");
-        impl->outputs[id] = output;
+        if (isInput) impl->inputs[id] = output;
+        else impl->outputs[id] = output;
         PipeWireNodeAudioState nodeState;
         nodeState.nodeId = id;
         nodeState.output = output;
-        impl->state.upsertNode(std::move(nodeState));
+        if (!isInput) impl->state.upsertNode(std::move(nodeState));
         impl->nodes[id] = static_cast<pw_node *>(
             pw_registry_bind(impl->registry, id, PW_TYPE_INTERFACE_Node,
                              PW_VERSION_NODE, 0));
@@ -170,8 +208,8 @@ struct PipeWireAudioBackend::Impl {
             pw_node_enum_params(binding->node, 0, SPA_PARAM_Props, 0, 1, nullptr);
             impl->nodeBindings[id] = std::move(binding);
         }
-        impl->publishOutputs();
-        impl->publishDefaultVolume();
+        if (isInput) { impl->publishInputs(); impl->publishInputVolume(); }
+        else { impl->publishOutputs(); impl->publishDefaultVolume(); }
     }
 
     static void coreError(void *data, uint32_t, int, int, const char *message)
@@ -193,16 +231,32 @@ struct PipeWireAudioBackend::Impl {
         }
         impl->releaseNodeProxy(id);
         impl->outputs.erase(id);
+        impl->inputs.erase(id);
         impl->state.removeNode(id);
         impl->publishOutputs();
+        impl->publishInputs();
     }
 
     static int metadataProperty(void *data, uint32_t, const char *key,
                                 const char *, const char *value)
     {
         auto *impl = static_cast<Impl *>(data);
-        if (!key || std::strcmp(key, "default.audio.sink") != 0)
+        if (!key) return 0;
+        if (std::strcmp(key, "default.audio.source") == 0) {
+            impl->defaultInputId = 0;
+            impl->defaultInputName.clear();
+            if (value) {
+                const QJsonDocument doc = QJsonDocument::fromJson(QByteArray(value));
+                if (doc.isObject()) {
+                    impl->defaultInputId = doc.object().value(QStringLiteral("id")).toInt();
+                    impl->defaultInputName = doc.object().value(QStringLiteral("name")).toString();
+                } else impl->defaultInputName = QString::fromUtf8(value);
+            }
+            impl->publishInputs();
+            impl->publishInputVolume();
             return 0;
+        }
+        if (std::strcmp(key, "default.audio.sink") != 0) return 0;
         impl->metadataDefaultId = 0;
         impl->defaultName.clear();
         if (value) {
@@ -230,20 +284,22 @@ struct PipeWireAudioBackend::Impl {
             return;
         auto *binding = static_cast<NodeBinding *>(data);
         auto it = binding->owner->outputs.find(binding->id);
-        if (it == binding->owner->outputs.end())
-            return;
+        const bool isInput = binding->owner->inputs.contains(binding->id);
+        if (isInput) it = binding->owner->outputs.end();
+        if (!isInput && it == binding->owner->outputs.end()) return;
+        AudioOutput &output = isInput ? binding->owner->inputs.at(binding->id) : it->second;
         const char *name = spa_dict_lookup(info->props, PW_KEY_NODE_NAME);
         const char *description = spa_dict_lookup(info->props, PW_KEY_NODE_DESCRIPTION);
         const char *nick = spa_dict_lookup(info->props, PW_KEY_NODE_NICK);
         if (name)
-            it->second.name = QString::fromUtf8(name);
+            output.name = QString::fromUtf8(name);
         if (description)
-            it->second.description = QString::fromUtf8(description);
+            output.description = QString::fromUtf8(description);
         if (nick)
-            it->second.nick = QString::fromUtf8(nick);
-        binding->owner->state.updateNodeMetadata(binding->id, it->second.name,
-                                                 it->second.description, it->second.nick);
-        binding->owner->publishOutputs();
+            output.nick = QString::fromUtf8(nick);
+        if (isInput) binding->owner->publishInputs();
+        else { binding->owner->state.updateNodeMetadata(binding->id, output.name, output.description, output.nick);
+               binding->owner->publishOutputs(); }
     }
 
     static void nodeParam(void *data, int, uint32_t id, uint32_t, uint32_t,
@@ -292,6 +348,8 @@ struct PipeWireAudioBackend::Impl {
         binding->owner->state.applyNodePropsPatch(binding->id, patch);
         if (binding->id == binding->owner->defaultNodeId())
             binding->owner->publishDefaultVolume();
+        if (binding->id == binding->owner->defaultInputNodeId())
+            binding->owner->publishInputVolume();
     }
 
     void publishOutputs()
@@ -401,6 +459,9 @@ void PipeWireAudioBackend::stop()
     m_impl->releaseMetadataProxy();
     m_impl->releaseAllNodeProxies();
     m_impl->outputs.clear();
+    m_impl->inputs.clear();
+    m_impl->defaultInputId = 0;
+    m_impl->defaultInputName.clear();
 
     if (m_impl->registry && m_impl->registryListenerAdded) {
         spa_hook_remove(&m_impl->registryListener);
@@ -452,14 +513,34 @@ bool PipeWireAudioBackend::setDefaultOutput(quint32 nodeId)
 
 bool PipeWireAudioBackend::setVolume(quint32 nodeId, double linear)
 {
-    if (!m_impl->loop)
+    if (!m_impl->loop || !std::isfinite(linear))
         return false;
-    std::byte buffer[256];
     pw_thread_loop_lock(m_impl->loop);
+
+    // Audio sinks expose per-channel software volume. Updating only SPA_PROP_volume
+    // does not update SPA_PROP_channelVolumes, which is what WirePlumber and our
+    // default-volume observer use. Apply the same gain to every known channel.
+    const auto binding = m_impl->nodeBindings.find(nodeId);
+    const qsizetype count = binding != m_impl->nodeBindings.end()
+            && binding->second && !binding->second->channelVolumes.isEmpty()
+        ? binding->second->channelVolumes.size() : 0;
+    const float gain = static_cast<float>(std::clamp(linear, 0.0, 3.375));
+    std::byte buffer[1024];
     spa_pod_builder builder = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
-    const spa_pod *pod = static_cast<const spa_pod *>(spa_pod_builder_add_object(
-        &builder, SPA_TYPE_OBJECT_Props, SPA_PARAM_Props,
-        SPA_PROP_volume, SPA_POD_Float(static_cast<float>(std::clamp(linear, 0.0, 3.375)))));
+    const spa_pod *pod = nullptr;
+    if (count > 0 && count <= 64) {
+        QVector<float> volumes(count, gain);
+        pod = static_cast<const spa_pod *>(spa_pod_builder_add_object(
+            &builder, SPA_TYPE_OBJECT_Props, SPA_PARAM_Props,
+            SPA_PROP_channelVolumes,
+            SPA_POD_Array(sizeof(float), SPA_TYPE_Float,
+                          static_cast<int>(volumes.size()), volumes.data())));
+    } else if (count == 0) {
+        // Nodes that expose only a scalar volume keep their original contract.
+        pod = static_cast<const spa_pod *>(spa_pod_builder_add_object(
+            &builder, SPA_TYPE_OBJECT_Props, SPA_PARAM_Props,
+            SPA_PROP_volume, SPA_POD_Float(gain)));
+    }
     const bool result = pod && m_impl->setProps(nodeId, pod);
     pw_thread_loop_unlock(m_impl->loop);
     return result;
@@ -478,6 +559,34 @@ bool PipeWireAudioBackend::setMute(quint32 nodeId, bool muted)
     const bool result = pod && m_impl->setProps(nodeId, pod);
     pw_thread_loop_unlock(m_impl->loop);
     return result;
+}
+
+bool PipeWireAudioBackend::setDefaultInput(quint32 nodeId)
+{
+    if (!m_impl->loop) return false;
+    pw_thread_loop_lock(m_impl->loop);
+    const auto it = m_impl->inputs.find(nodeId);
+    bool ok = false;
+    if (it != m_impl->inputs.end() && m_impl->metadata && !it->second.name.isEmpty()) {
+        QJsonObject obj;
+        obj.insert(QStringLiteral("name"), it->second.name);
+        const QByteArray json = QJsonDocument(obj).toJson(QJsonDocument::Compact);
+        ok = pw_metadata_set_property(m_impl->metadata, PW_ID_CORE, "default.audio.source",
+                                      "Spa:String:JSON", json.constData()) >= 0;
+    }
+    pw_thread_loop_unlock(m_impl->loop);
+    return ok;
+}
+
+bool PipeWireAudioBackend::setInputVolume(quint32 nodeId, double linear)
+{
+    // setVolume locks the PipeWire loop before accessing the node proxy.
+    return setVolume(nodeId, linear);
+}
+
+bool PipeWireAudioBackend::setInputMute(quint32 nodeId, bool muted)
+{
+    return setMute(nodeId, muted);
 }
 
 } // namespace Astrea::System

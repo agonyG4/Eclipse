@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QRect>
+#include <QVariantMap>
 
 #include <functional>
 
@@ -50,6 +51,7 @@ public:
     int bundleCount() const { return m_bundles.size(); }
     bool popupOpen() const;
     bool layerConfigurationRequested() const;
+    QVariantMap popupResidency() const;
 
 signals:
     void bundleCountChanged();

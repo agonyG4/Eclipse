@@ -6,6 +6,7 @@
 
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
+#include <QQuickWindow>
 #include <QScreen>
 #include <QSignalSpy>
 #include <QTest>
@@ -67,6 +68,22 @@ private:
     QString m_outputKey;
 };
 
+class TestableContextMenuSurfaceBundle final : public ContextMenuSurfaceBundle {
+public:
+    using ContextMenuSurfaceBundle::ContextMenuSurfaceBundle;
+    QString outputKey() const override { return QStringLiteral("test-output"); }
+
+protected:
+    bool configureSurface(QQuickWindow *window, bool, QString *errorOut) override
+    {
+        if (window && !window->isVisible())
+            return true;
+        if (errorOut)
+            *errorOut = QStringLiteral("test surface was visible before configuration");
+        return false;
+    }
+};
+
 } // namespace
 
 class ContextMenuSurfaceManagerTest final : public QObject {
@@ -74,6 +91,7 @@ class ContextMenuSurfaceManagerTest final : public QObject {
 
 private slots:
     void notifiesEffectiveOverlayMappingTransitions();
+    void overlaySurvivesCloseReopenAndOutputTeardown();
 };
 
 void ContextMenuSurfaceManagerTest::notifiesEffectiveOverlayMappingTransitions()
@@ -130,6 +148,70 @@ void ContextMenuSurfaceManagerTest::notifiesEffectiveOverlayMappingTransitions()
 
     manager.shutdown();
     QCOMPARE(mappingSpy.count(), 2);
+}
+
+void ContextMenuSurfaceManagerTest::overlaySurvivesCloseReopenAndOutputTeardown()
+{
+    QScreen *screen = QGuiApplication::primaryScreen();
+    QVERIFY(screen);
+    Astrea::Shell::ContextMenuController controller;
+    QQmlApplicationEngine engine;
+    TestableContextMenuSurfaceBundle bundle(screen, &engine, &controller);
+    QString error;
+    QVERIFY2(bundle.initialize(&error), qPrintable(error));
+    QCOMPARE(bundle.surfaceCount(), 1);
+    QVERIFY(!bundle.overlayResidency().value(QStringLiteral("created")).toBool());
+    bundle.map();
+
+    const QString outputKey = bundle.outputKey();
+    const auto target = Astrea::Shell::ContextMenuTarget{
+        Astrea::Shell::ContextMenuTarget::Kind::Desktop, QStringLiteral("desktop"), outputKey};
+    const auto present = [&controller, &target] {
+        return controller.present(target,
+            {Astrea::Shell::ContextMenuModel::NodeSpec{
+                .token = QStringLiteral("settings"), .label = QStringLiteral("Settings")}},
+            [](const QString &) { return true; });
+    };
+
+    QVERIFY(present());
+    QVERIFY(controller.hasActivePresentation());
+    QCOMPARE(controller.outputKey(), outputKey);
+    QVERIFY(bundle.overlayResidency().value(QStringLiteral("created")).toBool());
+    QTRY_VERIFY_WITH_TIMEOUT(bundle.overlayMapped(), 1000);
+    QCOMPARE(bundle.surfaceCount(), 2);
+    QCOMPARE(bundle.overlayResidency().value(QStringLiteral("createCount")).toULongLong(), 1ULL);
+
+    controller.close();
+    QCOMPARE(controller.lifecycle(), Astrea::Shell::ContextMenuController::Lifecycle::Closing);
+    QTRY_VERIFY_WITH_TIMEOUT(bundle.overlayMapped(), 1000);
+    controller.completeClose();
+    QVERIFY(bundle.overlayResidency().value(QStringLiteral("destroyPending")).toBool());
+
+    QVERIFY(present());
+    QCOMPARE(bundle.overlayResidency().value(QStringLiteral("createCount")).toULongLong(), 1ULL);
+    QVERIFY(!bundle.overlayResidency().value(QStringLiteral("destroyPending")).toBool());
+    QCoreApplication::processEvents();
+    QVERIFY(bundle.overlayMapped());
+
+    controller.close();
+    controller.completeClose();
+    QTRY_VERIFY_WITH_TIMEOUT(!bundle.overlayResidency().value(QStringLiteral("created")).toBool(),
+                             1000);
+    QCOMPARE(bundle.surfaceCount(), 1);
+    QCOMPARE(bundle.overlayResidency().value(QStringLiteral("createCount")).toULongLong(), 1ULL);
+    QCOMPARE(bundle.overlayResidency().value(QStringLiteral("destroyCount")).toULongLong(), 1ULL);
+
+    QVERIFY(present());
+    QCOMPARE(bundle.overlayResidency().value(QStringLiteral("createCount")).toULongLong(), 2ULL);
+    QCOMPARE(bundle.overlayResidency().value(QStringLiteral("width")).toInt(),
+             screen->geometry().width());
+    QCOMPARE(bundle.overlayResidency().value(QStringLiteral("height")).toInt(),
+             screen->geometry().height());
+    controller.invalidateOutput(outputKey);
+    bundle.destroySurfaces();
+    QVERIFY(!bundle.overlayResidency().value(QStringLiteral("created")).toBool());
+    QCOMPARE(bundle.overlayResidency().value(QStringLiteral("destroyCount")).toULongLong(), 2ULL);
+    QCOMPARE(bundle.surfaceCount(), 0);
 }
 
 int main(int argc, char **argv)

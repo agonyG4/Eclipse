@@ -6,7 +6,8 @@ Window {
 
     objectName: "screenshotSelectionOverlay"
     title: "Astrea Screenshot"
-    visible: ScreenshotController.visible
+    property bool surfaceReady: false
+    visible: surfaceReady && ScreenshotController.visible
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint
     width: Screen.width > 0 ? Screen.width : 1920

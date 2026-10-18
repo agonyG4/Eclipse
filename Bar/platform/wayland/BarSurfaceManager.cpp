@@ -145,6 +145,49 @@ bool BarSurfaceManager::layerConfigurationRequested() const
     return true;
 }
 
+QVariantMap BarSurfaceManager::popupResidency() const
+{
+    bool created = false;
+    bool visible = false;
+    bool destroyPending = false;
+    int width = 0;
+    int height = 0;
+    int liveInstances = 0;
+    int visibleInstances = 0;
+    quint64 createCount = 0;
+    quint64 destroyCount = 0;
+    for (const BarSurfaceBundle *bundle : m_bundles) {
+        if (!bundle)
+            continue;
+        const QVariantMap snapshot = bundle->popupResidency();
+        const bool live = snapshot.value(QStringLiteral("created")).toBool();
+        created = created || live;
+        visible = visible || snapshot.value(QStringLiteral("visible")).toBool();
+        destroyPending = destroyPending
+            || snapshot.value(QStringLiteral("destroyPending")).toBool();
+        visibleInstances += snapshot.value(QStringLiteral("visibleInstances")).toInt();
+        if (live) {
+            ++liveInstances;
+            width = qMax(width, snapshot.value(QStringLiteral("width")).toInt());
+            height = qMax(height, snapshot.value(QStringLiteral("height")).toInt());
+        }
+        createCount += snapshot.value(QStringLiteral("createCount")).toULongLong();
+        destroyCount += snapshot.value(QStringLiteral("destroyCount")).toULongLong();
+    }
+    return {
+        {QStringLiteral("class"), QStringLiteral("transient")},
+        {QStringLiteral("created"), created},
+        {QStringLiteral("visible"), visible},
+        {QStringLiteral("destroyPending"), destroyPending},
+        {QStringLiteral("width"), width},
+        {QStringLiteral("height"), height},
+        {QStringLiteral("liveInstances"), liveInstances},
+        {QStringLiteral("visibleInstances"), visibleInstances},
+        {QStringLiteral("createCount"), QVariant::fromValue<qulonglong>(createCount)},
+        {QStringLiteral("destroyCount"), QVariant::fromValue<qulonglong>(destroyCount)},
+    };
+}
+
 bool BarSurfaceManager::addScreen(QScreen *screen, QString *errorOut)
 {
     if (m_stopped || !m_initialized)

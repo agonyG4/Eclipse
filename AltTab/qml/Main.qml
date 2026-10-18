@@ -7,7 +7,8 @@ Window {
     id: window
 
     title: "Astrea Alt+Tab"
-    visible: AltTabController.surfaceVisible
+    property bool surfaceReady: false
+    visible: surfaceReady && AltTabController.surfaceVisible
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint
 

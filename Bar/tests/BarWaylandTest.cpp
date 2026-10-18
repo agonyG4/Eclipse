@@ -8,6 +8,7 @@
 #include <QGuiApplication>
 #include <QPointer>
 #include <QQmlApplicationEngine>
+#include <QQuickWindow>
 #include <QSignalSpy>
 #include <QTest>
 
@@ -24,6 +25,7 @@ private slots:
     void surfaceManagerShutdownIsTerminal();
     void surfaceManagerUnwindsBundleCreationFailure();
     void popupOwnershipIsLocalToEachSurfaceBundle();
+    void transientPopupFollowsCloseAndReopenLifetime();
 };
 
 namespace {
@@ -88,6 +90,21 @@ public:
 private:
     BundleCounters *m_counters = nullptr;
     bool m_initializeSuccessfully = true;
+};
+
+class TestableBarSurfaceBundle final : public BarSurfaceBundle {
+public:
+    using BarSurfaceBundle::BarSurfaceBundle;
+
+protected:
+    bool configureSurface(QQuickWindow *window, BarSurfaceKind, QString *errorOut) override
+    {
+        if (window && !window->isVisible())
+            return true;
+        if (errorOut)
+            *errorOut = QStringLiteral("test surface was visible before configuration");
+        return false;
+    }
 };
 
 } // namespace
@@ -346,6 +363,54 @@ void BarWaylandTest::popupOwnershipIsLocalToEachSurfaceBundle()
     QVERIFY(!second.popupOpen());
     second.popupController()->open(BarPopupController::PopupKind::AstreaMenu, 700);
     QVERIFY(second.popupOpen());
+}
+
+void BarWaylandTest::transientPopupFollowsCloseAndReopenLifetime()
+{
+    QScreen *screen = QGuiApplication::primaryScreen();
+    QVERIFY(screen);
+    QQmlApplicationEngine engine;
+    TestableBarSurfaceBundle bundle(screen, &engine, nullptr, nullptr, nullptr,
+                                    nullptr, nullptr, nullptr);
+    QString error;
+    QVERIFY2(bundle.initialize(&error), qPrintable(error));
+    QCOMPARE(bundle.surfaceCount(), 4);
+    QVERIFY(!bundle.popupResidency().value(QStringLiteral("created")).toBool());
+
+    bundle.map();
+    bundle.popupController()->open(BarPopupController::PopupKind::AstreaMenu, 200);
+    QTRY_VERIFY_WITH_TIMEOUT(bundle.popupResidency().value(QStringLiteral("created")).toBool(),
+                             1000);
+    QCOMPARE(bundle.popupResidency().value(QStringLiteral("createCount")).toULongLong(), 1ULL);
+    QCOMPARE(bundle.popupResidency().value(QStringLiteral("width")).toInt(),
+             screen->geometry().width());
+    QCOMPARE(bundle.popupResidency().value(QStringLiteral("height")).toInt(),
+             screen->geometry().height());
+
+    bundle.popupController()->close();
+    QVERIFY(bundle.popupController()->closing());
+    QVERIFY(bundle.popupResidency().value(QStringLiteral("created")).toBool());
+    bundle.popupController()->completeClose();
+    QVERIFY(bundle.popupResidency().value(QStringLiteral("destroyPending")).toBool());
+
+    bundle.popupController()->open(BarPopupController::PopupKind::AstreaMenu, 400);
+    QCOMPARE(bundle.popupResidency().value(QStringLiteral("createCount")).toULongLong(), 1ULL);
+    QVERIFY(!bundle.popupResidency().value(QStringLiteral("destroyPending")).toBool());
+    QCoreApplication::processEvents();
+    QVERIFY(bundle.popupResidency().value(QStringLiteral("created")).toBool());
+
+    bundle.popupController()->close();
+    bundle.popupController()->completeClose();
+    QTRY_VERIFY_WITH_TIMEOUT(!bundle.popupResidency().value(QStringLiteral("created")).toBool(),
+                             1000);
+    QCOMPARE(bundle.popupResidency().value(QStringLiteral("createCount")).toULongLong(), 1ULL);
+    QCOMPARE(bundle.popupResidency().value(QStringLiteral("destroyCount")).toULongLong(), 1ULL);
+
+    bundle.popupController()->open(BarPopupController::PopupKind::AstreaMenu, 500);
+    QCOMPARE(bundle.popupResidency().value(QStringLiteral("createCount")).toULongLong(), 2ULL);
+    bundle.destroySurfaces();
+    QVERIFY(!bundle.popupResidency().value(QStringLiteral("created")).toBool());
+    QCOMPARE(bundle.popupResidency().value(QStringLiteral("destroyCount")).toULongLong(), 2ULL);
 }
 
 int main(int argc, char **argv)

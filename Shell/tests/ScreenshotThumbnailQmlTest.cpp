@@ -61,6 +61,9 @@ QObject *load(QQmlApplicationEngine &engine, const QString &name)
     QObject *object = component.create();
     if (!object)
         qFatal("QML object failed: %s", qPrintable(component.errorString()));
+    if (object->metaObject()->indexOfProperty("surfaceReady") >= 0
+        && !object->setProperty("surfaceReady", true))
+        qFatal("QML surfaceReady gate could not be opened for the screenshot test");
     return object;
 }
 

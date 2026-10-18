@@ -7,7 +7,8 @@ Window {
 
     objectName: "screenshotPreviewSurface"
     title: "Astrea Screenshot Preview"
-    visible: ScreenshotController.previewVisible
+    property bool surfaceReady: false
+    visible: surfaceReady && ScreenshotController.previewVisible
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint
     width: Screen.width > 0 ? Screen.width : 1920

@@ -54,10 +54,13 @@ BarSurfaceBundle::BarSurfaceBundle(QScreen *screen, QQmlApplicationEngine *engin
     , m_contextMenuController(contextMenuController)
     , m_popupController(new BarPopupController(this))
     , m_layoutMetrics(new BarLayoutMetrics(this))
+    , m_popupSlot(QStringLiteral("barPopup"))
 {
     connect(m_popupController, &BarPopupController::changed,
             this, &BarSurfaceBundle::syncPopupMapping);
     connect(m_popupController, &BarPopupController::changed,
+            this, &BarSurfaceBundle::popupStateChanged);
+    connect(&m_popupSlot, &TransientQmlWindowSlot::residencyChanged,
             this, &BarSurfaceBundle::popupStateChanged);
 }
 
@@ -91,12 +94,8 @@ bool BarSurfaceBundle::initialize(QString *errorOut)
     m_tooltipWindow = createSurface(
         QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Bar/qml/TrayTooltipSurface.qml")),
         outputWidth, BarSurfacePolicy::surfaceHeight(BarSurfaceKind::TrayTooltip), errorOut, false);
-    m_popupWindow = createSurface(
-        QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Bar/qml/PopupOverlaySurface.qml")),
-        outputWidth, outputHeight, errorOut, true);
 
-    if (!m_reserveWindow || !m_launcherWindow || !m_statusWindow || !m_tooltipWindow
-        || !m_popupWindow) {
+    if (!m_reserveWindow || !m_launcherWindow || !m_statusWindow || !m_tooltipWindow) {
         destroySurfaces();
         return false;
     }
@@ -114,7 +113,6 @@ bool BarSurfaceBundle::initialize(QString *errorOut)
         {m_launcherWindow, BarSurfaceKind::Launcher},
         {m_statusWindow, BarSurfaceKind::Status},
         {m_tooltipWindow, BarSurfaceKind::TrayTooltip},
-        {m_popupWindow, BarSurfaceKind::PopupOverlay},
     };
     for (const auto &[window, kind] : surfaces) {
         if (!configureSurface(window, kind, errorOut)) {
@@ -158,8 +156,7 @@ void BarSurfaceBundle::setBarEnabled(bool enabled)
             m_launcherWindow->hide();
         if (m_statusWindow)
             m_statusWindow->hide();
-        if (m_popupWindow)
-            m_popupWindow->hide();
+        m_popupSlot.hide();
         if (m_tooltipWindow)
             m_tooltipWindow->hide();
     } else if (m_mapped) {
@@ -179,7 +176,7 @@ void BarSurfaceBundle::destroySurfaces()
     if (m_popupController)
         m_popupController->clearForOutput();
     m_mapped = false;
-    destroyWindow(m_popupWindow);
+    m_popupSlot.destroyNow();
     destroyWindow(m_tooltipWindow);
     destroyWindow(m_statusWindow);
     destroyWindow(m_launcherWindow);
@@ -199,7 +196,7 @@ void BarSurfaceBundle::updateForScreen()
         {m_reserveWindow, QSize(width, BarSurfacePolicy::surfaceHeight(BarSurfaceKind::Reserve))},
         {m_launcherWindow, QSize(width, BarSurfacePolicy::surfaceHeight(BarSurfaceKind::Launcher))},
         {m_statusWindow, QSize(width, BarSurfacePolicy::surfaceHeight(BarSurfaceKind::Status))},
-        {m_popupWindow, QSize(width, height)},
+        {m_popupSlot.window(), QSize(width, height)},
         {m_tooltipWindow, QSize(width, BarSurfacePolicy::surfaceHeight(BarSurfaceKind::TrayTooltip))},
     };
     for (const auto &[window, size] : sizes) {
@@ -212,7 +209,7 @@ void BarSurfaceBundle::updateForScreen()
         if (window == m_statusWindow && m_launcherWindow)
             window->setProperty("launcherWidth", m_launcherWindow->width());
         window->setScreen(m_screen.data());
-        if (window == m_popupWindow || window == m_tooltipWindow)
+        if (window == m_popupSlot.window() || window == m_tooltipWindow)
             window->resize(size);
     }
 }
@@ -223,12 +220,47 @@ int BarSurfaceBundle::surfaceCount() const
         + static_cast<int>(!m_launcherWindow.isNull())
         + static_cast<int>(!m_statusWindow.isNull())
         + static_cast<int>(!m_tooltipWindow.isNull())
-        + static_cast<int>(!m_popupWindow.isNull());
+        + static_cast<int>(m_popupSlot.created());
 }
 
 bool BarSurfaceBundle::popupOpen() const
 {
     return m_popupController && m_popupController->isOpen();
+}
+
+QQuickWindow *BarSurfaceBundle::createPopupSurface(QString *errorOut)
+{
+    if (!m_engine || !m_screen)
+        return nullptr;
+    const QRect geometry = m_screen->geometry();
+    const int width = qMax(1, geometry.width());
+    const int height = qMax(1, geometry.height());
+    TransientQmlWindowSlot::CreateRequest request;
+    request.sourceUrl = QUrl(QStringLiteral(
+        "qrc:/qt/qml/Astrea/Shell/Bar/qml/PopupOverlaySurface.qml"));
+    request.screen = m_screen.data();
+    request.size = QSize(width, height);
+    request.initialProperties = {
+        {QStringLiteral("barController"), objectVariant(m_barController)},
+        {QStringLiteral("clockService"), objectVariant(m_clockService)},
+        {QStringLiteral("workspaceModel"), objectVariant(m_workspaceModel)},
+        {QStringLiteral("audioService"), objectVariant(m_audioService)},
+        {QStringLiteral("networkService"), objectVariant(m_networkService)},
+        {QStringLiteral("bluetoothService"), objectVariant(m_bluetoothService)},
+        {QStringLiteral("statusNotifierService"), objectVariant(m_statusNotifier)},
+        {QStringLiteral("contextMenuController"), objectVariant(m_contextMenuController.data())},
+        {QStringLiteral("popupController"), objectVariant(m_popupController)},
+        {QStringLiteral("barGeometry"), objectVariant(m_layoutMetrics)},
+        {QStringLiteral("outputWidth"), width},
+        {QStringLiteral("outputHeight"), height},
+        {QStringLiteral("outputOriginX"), geometry.x()},
+        {QStringLiteral("outputOriginY"), geometry.y()},
+        {QStringLiteral("outputKey"), m_screen->name()},
+    };
+    request.configure = [this](QQuickWindow *window, QString *error) {
+        return configureSurface(window, BarSurfaceKind::PopupOverlay, error);
+    };
+    return m_popupSlot.ensureCreated(m_engine, request, errorOut);
 }
 
 QQuickWindow *BarSurfaceBundle::createSurface(const QUrl &sourceUrl, int width, int height,
@@ -335,10 +367,27 @@ void BarSurfaceBundle::syncTooltipMapping()
 
 void BarSurfaceBundle::syncPopupMapping()
 {
-    if (!m_popupWindow || !m_layerConfigurationRequested)
+    if (!m_layerConfigurationRequested)
         return;
-    m_popupWindow->setVisible(m_mapped && m_popupController
-                              && m_popupController->surfaceRequired());
+    const bool required = m_popupController && m_popupController->surfaceRequired();
+    if (!required) {
+        m_popupSlot.destroyWhenSafe();
+        emit popupStateChanged();
+        return;
+    }
+
+    QString error;
+    QQuickWindow *window = m_popupSlot.window();
+    if (window) {
+        m_popupSlot.cancelPendingDestruction();
+    } else {
+        window = createPopupSurface(&error);
+    }
+    if (!window) {
+        qCritical("Astrea Bar popup surface creation failed: %s", qPrintable(error));
+        return;
+    }
+    window->setVisible(m_mapped && m_barEnabled);
 }
 
 void BarSurfaceBundle::destroyWindow(QPointer<QQuickWindow> &window)

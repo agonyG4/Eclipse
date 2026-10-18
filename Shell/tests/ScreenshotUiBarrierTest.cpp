@@ -17,6 +17,7 @@ class ScreenshotUiBarrierTest final : public QObject {
 
 private slots:
     void hiddenWindowSynchronizationIsDeferredPastVisibleChanged();
+    void nullAndDestroyedTrackedWindowsAreSafe();
     void cancelInvalidatesQueuedSynchronizationAndAllowsAnotherRequest();
     void cancelDestroysOutstandingWaylandCallback();
     void waylandCallbackRechecksVisibilityBeforeCompleting();
@@ -40,6 +41,22 @@ void ScreenshotUiBarrierTest::hiddenWindowSynchronizationIsDeferredPastVisibleCh
 
     QCoreApplication::processEvents(QEventLoop::AllEvents);
     QVERIFY(completed);
+}
+
+void ScreenshotUiBarrierTest::nullAndDestroyedTrackedWindowsAreSafe()
+{
+    ScreenshotWaylandUiBarrier barrier;
+    barrier.setTrackedWindows({nullptr, nullptr, nullptr});
+    QVERIFY(barrier.trackedWindowsAreHidden());
+
+    auto *window = new QQuickWindow;
+    barrier.setTrackedWindows({window, nullptr, nullptr});
+    QVERIFY(barrier.trackedWindowsAreHidden());
+    delete window;
+    QVERIFY(barrier.trackedWindowsAreHidden());
+
+    barrier.setTrackedWindows({nullptr, nullptr, nullptr});
+    QVERIFY(barrier.trackedWindowsAreHidden());
 }
 
 void ScreenshotUiBarrierTest::cancelInvalidatesQueuedSynchronizationAndAllowsAnotherRequest()

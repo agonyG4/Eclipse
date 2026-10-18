@@ -284,6 +284,8 @@ qt_add_shaders(astrea-shared-core astrea_shared_core_shaders
 add_library(astrea-shared-layer-shell STATIC
     platform/wayland/LayerShellHelper.cpp
     platform/wayland/LayerShellHelper.hpp
+    platform/wayland/TransientQmlWindowSlot.cpp
+    platform/wayland/TransientQmlWindowSlot.hpp
 )
 
 target_include_directories(astrea-shared-layer-shell PUBLIC
@@ -297,6 +299,7 @@ endif()
 target_link_libraries(astrea-shared-layer-shell PUBLIC
     Qt6::Core
     Qt6::Gui
+    Qt6::Qml
     Qt6::Quick
 )
 
@@ -862,6 +865,19 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     )
     astrea_shared_enable_sanitizers(layer-shell-helper-test)
     add_test(NAME layer-shell-helper-test COMMAND layer-shell-helper-test)
+
+    add_executable(transient-qml-window-slot-test
+        tests/TransientQmlWindowSlotTest.cpp
+    )
+    target_include_directories(transient-qml-window-slot-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_link_libraries(transient-qml-window-slot-test PRIVATE
+        astrea-shared-layer-shell
+        Qt6::Test
+    )
+    astrea_shared_enable_sanitizers(transient-qml-window-slot-test)
+    add_test(NAME transient-qml-window-slot-test COMMAND transient-qml-window-slot-test)
 
     add_executable(rounded-effect-region-test
         tests/RoundedEffectRegionTest.cpp

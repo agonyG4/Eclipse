@@ -375,6 +375,19 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
         platform/wayland/ContextMenuSurfaceManager.cpp
         platform/wayland/ContextMenuSurfaceManager.hpp
     )
+    qt_add_resources(context-menu-surface-manager-test astrea_context_menu_surface_manager_resources
+        PREFIX "/qt/qml/Astrea/Shell"
+        FILES
+            ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuCard.qml
+            ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuItem.qml
+            ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuSeparator.qml
+            ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextSubmenu.qml
+            ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ShellMenuTheme.qml
+            ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuView.qml
+            ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/DesktopInteractionSurface.qml
+            ${CMAKE_CURRENT_SOURCE_DIR}/qml/contextmenu/ContextMenuOverlaySurface.qml
+            ${ASTREA_BAR_QML_FILES}
+    )
     target_include_directories(context-menu-surface-manager-test PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}"
         "${CMAKE_CURRENT_SOURCE_DIR}/.."
@@ -382,8 +395,11 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     )
     target_link_libraries(context-menu-surface-manager-test PRIVATE
         astrea-shell-runtime
+        astrea-shared-wayland-effects
+        astrea-shared-wayland-effectsplugin
         Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test
     )
+    qt_import_qml_plugins(context-menu-surface-manager-test)
     shell_enable_sanitizers(context-menu-surface-manager-test)
     add_test(NAME context-menu-surface-manager-test COMMAND context-menu-surface-manager-test)
 

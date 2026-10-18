@@ -107,6 +107,49 @@ bool ContextMenuSurfaceManager::layerConfigurationRequested() const
     return true;
 }
 
+QVariantMap ContextMenuSurfaceManager::overlayResidency() const
+{
+    bool created = false;
+    bool visible = false;
+    bool destroyPending = false;
+    int width = 0;
+    int height = 0;
+    int liveInstances = 0;
+    int visibleInstances = 0;
+    quint64 createCount = 0;
+    quint64 destroyCount = 0;
+    for (const ContextMenuSurfaceBundle *bundle : m_bundles) {
+        if (!bundle)
+            continue;
+        const QVariantMap snapshot = bundle->overlayResidency();
+        const bool live = snapshot.value(QStringLiteral("created")).toBool();
+        created = created || live;
+        visible = visible || snapshot.value(QStringLiteral("visible")).toBool();
+        destroyPending = destroyPending
+            || snapshot.value(QStringLiteral("destroyPending")).toBool();
+        visibleInstances += snapshot.value(QStringLiteral("visibleInstances")).toInt();
+        if (live) {
+            ++liveInstances;
+            width = qMax(width, snapshot.value(QStringLiteral("width")).toInt());
+            height = qMax(height, snapshot.value(QStringLiteral("height")).toInt());
+        }
+        createCount += snapshot.value(QStringLiteral("createCount")).toULongLong();
+        destroyCount += snapshot.value(QStringLiteral("destroyCount")).toULongLong();
+    }
+    return {
+        {QStringLiteral("class"), QStringLiteral("transient")},
+        {QStringLiteral("created"), created},
+        {QStringLiteral("visible"), visible},
+        {QStringLiteral("destroyPending"), destroyPending},
+        {QStringLiteral("width"), width},
+        {QStringLiteral("height"), height},
+        {QStringLiteral("liveInstances"), liveInstances},
+        {QStringLiteral("visibleInstances"), visibleInstances},
+        {QStringLiteral("createCount"), QVariant::fromValue<qulonglong>(createCount)},
+        {QStringLiteral("destroyCount"), QVariant::fromValue<qulonglong>(destroyCount)},
+    };
+}
+
 bool ContextMenuSurfaceManager::addScreen(QScreen *screen, QString *errorOut)
 {
     if (m_stopped || !m_initialized || !screen || m_bundles.contains(screen))
@@ -123,6 +166,10 @@ bool ContextMenuSurfaceManager::addScreen(QScreen *screen, QString *errorOut)
     }
     connect(bundle, &ContextMenuSurfaceBundle::mappingChanged,
             this, &ContextMenuSurfaceManager::syncMappingNotification);
+    connect(bundle, &ContextMenuSurfaceBundle::surfaceError, this, [this](const QString &error) {
+        qCritical("Astrea Context Menu surface creation failed: %s", qPrintable(error));
+        m_application.exit(1);
+    });
     const QPointer<QScreen> trackedScreen(screen);
     connect(screen, &QScreen::geometryChanged, this, [this, trackedScreen](const QRect &) {
         handleScreenGeometryChanged(trackedScreen.data());

@@ -71,6 +71,7 @@ bar_enable_sanitizers(astrea-bar-wayland)
 if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     find_package(Qt6 6.8 REQUIRED COMPONENTS Test)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/BarResources.cmake")
 
     add_executable(bar-core-test
         tests/BarCoreTest.cpp
@@ -87,10 +88,18 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
         tests/BarWaylandTest.cpp
     )
     target_include_directories(bar-wayland-test PRIVATE "${CMAKE_SOURCE_DIR}")
+    astrea_add_bar_qml_resources(bar-wayland-test)
     target_link_libraries(bar-wayland-test PRIVATE
         astrea-bar-wayland
+        astrea-shared-coreplugin
+        astrea-shared-system-qtplugin
+        astrea-shared-wayland-effects
+        astrea-shared-wayland-effectsplugin
+        astrea-shared-system-qt
+        astrea_system_backend
         Qt6::Test
     )
+    qt_import_qml_plugins(bar-wayland-test)
     bar_enable_sanitizers(bar-wayland-test)
     add_test(NAME bar-wayland-test COMMAND bar-wayland-test)
 
@@ -98,7 +107,6 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
         tests/BarQmlSmokeTest.cpp
     )
     target_include_directories(bar-qml-smoke-test PRIVATE "${CMAKE_SOURCE_DIR}")
-    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/BarResources.cmake")
     astrea_add_bar_qml_resources(bar-qml-smoke-test)
     target_link_libraries(bar-qml-smoke-test PRIVATE
         astrea-bar-core

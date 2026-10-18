@@ -21,6 +21,7 @@
 #include "platform/ipc/ShellIpcServer.hpp"
 #include "runtime/ShellRuntime.hpp"
 #include "platform/wayland/LayerShellHelper.hpp"
+#include "platform/wayland/TransientQmlWindowSlot.hpp"
 #include "icons/AstreaIconProvider.hpp"
 #include "icons/AstreaIconTheme.hpp"
 #include "statusnotifier/StatusNotifierIconProvider.hpp"
@@ -45,7 +46,10 @@
 #include <QQmlContext>
 #include <QQuickWindow>
 #include <QScreen>
+#include <QTimer>
 #include <QUrl>
+#include <QVariantMap>
+#include <QWindow>
 
 namespace {
 
@@ -54,6 +58,27 @@ constexpr QLatin1StringView kIpcName("astrea-shell-v1");
 bool isWaylandPlatform(const QGuiApplication &application)
 {
     return application.platformName().startsWith(QStringLiteral("wayland"), Qt::CaseInsensitive);
+}
+
+QVariantMap emptyTransientSurfaceSnapshot()
+{
+    return {
+        {QStringLiteral("class"), QStringLiteral("transient")},
+        {QStringLiteral("created"), false},
+        {QStringLiteral("visible"), false},
+        {QStringLiteral("destroyPending"), false},
+        {QStringLiteral("width"), 0},
+        {QStringLiteral("height"), 0},
+        {QStringLiteral("liveInstances"), 0},
+        {QStringLiteral("visibleInstances"), 0},
+        {QStringLiteral("createCount"), 0},
+        {QStringLiteral("destroyCount"), 0},
+    };
+}
+
+QJsonObject transientSurfaceJson(const QVariantMap &snapshot)
+{
+    return QJsonObject::fromVariantMap(snapshot);
 }
 
 } // namespace
@@ -197,6 +222,41 @@ bool AstreaShellApplication::initializeQml()
                                 static_cast<QObject *>(m_screenshotInputRegion.get()));
     m_screenshotUiBarrier = std::make_unique<ScreenshotWaylandUiBarrier>();
     m_runtime->screenshotController()->setUiBarrier(m_screenshotUiBarrier.get());
+    m_screenshotUiBarrier->setTrackedWindows({nullptr, nullptr, nullptr});
+    m_altTabSlot = std::make_unique<TransientQmlWindowSlot>(QStringLiteral("altTab"));
+    m_spotlightSlot = std::make_unique<TransientQmlWindowSlot>(QStringLiteral("spotlight"));
+    m_screenshotOverlaySlot = std::make_unique<TransientQmlWindowSlot>(
+        QStringLiteral("screenshotOverlay"));
+    m_screenshotThumbnailSlot = std::make_unique<TransientQmlWindowSlot>(
+        QStringLiteral("screenshotThumbnail"));
+    m_screenshotPreviewSlot = std::make_unique<TransientQmlWindowSlot>(
+        QStringLiteral("screenshotPreview"));
+
+    connect(m_runtime->altTabController(), &AltTabController::surfaceVisibleChanged,
+            this, &AstreaShellApplication::syncAltTabSurface, Qt::DirectConnection);
+    connect(m_runtime->spotlightController(), &SpotlightController::surfaceVisibleChanged,
+            this, &AstreaShellApplication::syncSpotlightSurface, Qt::DirectConnection);
+    auto *screenshotController = m_runtime->screenshotController();
+    connect(screenshotController, &ScreenshotController::visibleChanged,
+            this, &AstreaShellApplication::syncScreenshotOverlaySurface, Qt::DirectConnection);
+    connect(screenshotController, &ScreenshotController::phaseChanged,
+            this, &AstreaShellApplication::syncScreenshotOverlaySurface);
+    connect(screenshotController, &ScreenshotController::thumbnailVisibleChanged,
+            this, &AstreaShellApplication::syncScreenshotThumbnailSurface, Qt::DirectConnection);
+    connect(screenshotController, &ScreenshotController::thumbnailDragActiveChanged,
+            this, &AstreaShellApplication::syncScreenshotThumbnailSurface);
+    connect(screenshotController, &ScreenshotController::previewVisibleChanged,
+            this, &AstreaShellApplication::syncScreenshotPreviewSurface, Qt::DirectConnection);
+    connect(m_screenshotOverlaySlot.get(), &TransientQmlWindowSlot::windowDestroyed,
+            this, [this] { refreshScreenshotBarrierWindows(); });
+    connect(m_screenshotThumbnailSlot.get(), &TransientQmlWindowSlot::windowDestroyed,
+            this, [this] {
+        if (m_screenshotInputRegion)
+            m_screenshotInputRegion->setWindow(nullptr);
+        refreshScreenshotBarrierWindows();
+    });
+    connect(m_screenshotPreviewSlot.get(), &TransientQmlWindowSlot::windowDestroyed,
+            this, [this] { refreshScreenshotBarrierWindows(); });
     context->setContextProperty(QStringLiteral("AstreaI18n"), m_i18n.get());
     context->setContextProperty(QStringLiteral("BarController"),
                                 static_cast<QObject *>(m_runtime->barController()));
@@ -229,52 +289,6 @@ bool AstreaShellApplication::initializeQml()
         return false;
     }
     m_dockInputRegion->setWindow(m_dockWindow);
-
-    if (!loadSurface(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/AltTab/qml/Main.qml")),
-                     &window)) {
-        qCritical("Astrea shell Alt+Tab surface failed to load");
-        return false;
-    } else {
-        m_altTabWindow = window;
-    }
-
-    if (!loadSurface(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Spotlight/qml/Main.qml")),
-                     &window)) {
-        qCritical("Astrea shell Spotlight surface failed to load");
-        return false;
-    } else {
-        m_spotlightWindow = window;
-    }
-
-    if (!loadSurface(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Screenshot/ScreenshotOverlay.qml")),
-                     &window)) {
-        qCritical("Astrea shell screenshot surface failed to load");
-        return false;
-    } else {
-        m_screenshotWindow = window;
-    }
-
-    if (!loadSurface(QUrl(QStringLiteral(
-                         "qrc:/qt/qml/Astrea/Shell/Screenshot/ScreenshotThumbnail.qml")),
-                     &window)) {
-        qCritical("Astrea shell screenshot thumbnail surface failed to load");
-        return false;
-    } else {
-        m_screenshotThumbnailWindow = window;
-        m_screenshotInputRegion->setWindow(m_screenshotThumbnailWindow);
-    }
-
-    if (!loadSurface(QUrl(QStringLiteral(
-                         "qrc:/qt/qml/Astrea/Shell/Screenshot/ScreenshotPreview.qml")),
-                     &window)) {
-        qCritical("Astrea shell screenshot preview surface failed to load");
-        return false;
-    } else {
-        m_screenshotPreviewWindow = window;
-    }
-
-    m_screenshotUiBarrier->setTrackedWindows(
-        {m_screenshotWindow, m_screenshotThumbnailWindow, m_screenshotPreviewWindow});
 
     if (!configureSurfaces())
         return false;
@@ -323,6 +337,12 @@ bool AstreaShellApplication::initializeQml()
         return false;
     }
 
+    syncAltTabSurface();
+    syncSpotlightSurface();
+    syncScreenshotOverlaySurface();
+    syncScreenshotThumbnailSurface();
+    syncScreenshotPreviewSurface();
+
     connect(m_runtime->dockController(), &DockController::visibleChanged,
             this, &AstreaShellApplication::syncDockVisibility);
     connect(m_runtime->dockController(), &DockController::surfacePlacementChanged,
@@ -347,76 +367,312 @@ bool AstreaShellApplication::configureSurfaces()
         qCritical("Astrea shell Dock Layer Shell setup failed");
         return false;
     }
-
-    if (!m_altTabWindow) {
-        qCritical("Astrea shell Alt+Tab surface is unavailable");
-        return false;
-    }
-    QString error;
-    if (!AltTabLayerShellSurface::configure(m_altTabWindow, &error)) {
-        qCritical("Astrea shell Alt+Tab Layer Shell setup failed: %s", qPrintable(error));
-        return false;
-    }
-    m_altTabLayerConfigurationRequested = true;
-
-    if (!m_spotlightWindow) {
-        qCritical("Astrea shell Spotlight surface is unavailable");
-        return false;
-    }
-    error.clear();
-    if (!LayerShellSurface::configure(m_spotlightWindow, &error)) {
-        qCritical("Astrea shell Spotlight Layer Shell setup failed: %s", qPrintable(error));
-        return false;
-    }
-    m_spotlightLayerConfigurationRequested = true;
-
-    if (!m_screenshotWindow) {
-        qCritical("Astrea shell screenshot surface is unavailable");
-        return false;
-    }
-    if (!m_screenshotThumbnailWindow || !m_screenshotPreviewWindow) {
-        qCritical("Astrea shell screenshot auxiliary surfaces are unavailable");
-        return false;
-    }
-    AstreaLayerShellConfig screenshotConfig;
-    screenshotConfig.scope = QStringLiteral("astrea-screenshot");
-    screenshotConfig.layer = AstreaLayerShellConfig::Layer::Overlay;
-    screenshotConfig.keyboardInteractivity =
-        AstreaLayerShellConfig::KeyboardInteractivity::Exclusive;
-    screenshotConfig.anchorTop = true;
-    screenshotConfig.anchorBottom = true;
-    screenshotConfig.anchorLeft = true;
-    screenshotConfig.anchorRight = true;
-    screenshotConfig.exclusiveZone = -1;
-    screenshotConfig.screen = QGuiApplication::primaryScreen();
-    error.clear();
-    if (!AstreaLayerShellHelper::configure(m_screenshotWindow, screenshotConfig, &error)) {
-        qCritical("Astrea shell screenshot Layer Shell setup failed: %s", qPrintable(error));
-        return false;
-    }
-    m_screenshotLayerConfigurationRequested = true;
-
-    AstreaLayerShellConfig thumbnailConfig = screenshotConfig;
-    thumbnailConfig.scope = QStringLiteral("astrea-screenshot-thumbnail");
-    thumbnailConfig.keyboardInteractivity = AstreaLayerShellConfig::KeyboardInteractivity::None;
-    error.clear();
-    if (!AstreaLayerShellHelper::configure(m_screenshotThumbnailWindow, thumbnailConfig, &error)) {
-        qCritical("Astrea shell screenshot thumbnail Layer Shell setup failed: %s",
-                  qPrintable(error));
-        return false;
-    }
-    m_screenshotThumbnailLayerConfigurationRequested = true;
-
-    AstreaLayerShellConfig previewConfig = screenshotConfig;
-    previewConfig.scope = QStringLiteral("astrea-screenshot-preview");
-    error.clear();
-    if (!AstreaLayerShellHelper::configure(m_screenshotPreviewWindow, previewConfig, &error)) {
-        qCritical("Astrea shell screenshot preview Layer Shell setup failed: %s",
-                  qPrintable(error));
-        return false;
-    }
-    m_screenshotPreviewLayerConfigurationRequested = true;
     return true;
+}
+
+void AstreaShellApplication::syncAltTabSurface()
+{
+    if (!m_runtime || !m_engine || !m_altTabSlot)
+        return;
+    if (!m_runtime->altTabController()->surfaceVisible()) {
+        m_altTabSlot->hide();
+        m_altTabSlot->destroyWhenSafe();
+        return;
+    }
+
+    QScreen *screen = QGuiApplication::primaryScreen();
+    if (!screen)
+        return;
+    const QRect geometry = screen->geometry();
+    TransientQmlWindowSlot::CreateRequest request;
+    request.sourceUrl = QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/AltTab/qml/Main.qml"));
+    request.screen = screen;
+    request.size = geometry.size();
+    request.requireSurfaceReadyGate = true;
+    request.configure = [](QQuickWindow *window, QString *error) {
+        return AltTabLayerShellSurface::configure(window, error);
+    };
+    QString error;
+    if (!m_altTabSlot->ensureCreated(m_engine.get(), request, &error)) {
+        qCritical("Astrea shell Alt+Tab surface creation failed: %s", qPrintable(error));
+        m_application.exit(1);
+    }
+}
+
+void AstreaShellApplication::syncSpotlightSurface()
+{
+    if (!m_runtime || !m_engine || !m_spotlightSlot)
+        return;
+    if (!m_runtime->spotlightController()->surfaceVisible()) {
+        m_spotlightSlot->hide();
+        m_spotlightSlot->destroyWhenSafe();
+        return;
+    }
+
+    QScreen *screen = QGuiApplication::primaryScreen();
+    if (!screen)
+        return;
+    TransientQmlWindowSlot::CreateRequest request;
+    request.sourceUrl = QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/Spotlight/qml/Main.qml"));
+    request.screen = screen;
+    request.size = screen->geometry().size();
+    request.requireSurfaceReadyGate = true;
+    request.configure = [](QQuickWindow *window, QString *error) {
+        return LayerShellSurface::configure(window, error);
+    };
+    QString error;
+    if (!m_spotlightSlot->ensureCreated(m_engine.get(), request, &error)) {
+        qCritical("Astrea shell Spotlight surface creation failed: %s", qPrintable(error));
+        m_application.exit(1);
+    }
+}
+
+void AstreaShellApplication::syncScreenshotOverlaySurface()
+{
+    if (!m_runtime || !m_engine || !m_screenshotOverlaySlot)
+        return;
+    auto *controller = m_runtime->screenshotController();
+    if (!controller->isVisible()) {
+        m_screenshotOverlaySlot->hide();
+        QTimer::singleShot(0, this, [this] {
+            if (!m_runtime || !m_screenshotOverlaySlot)
+                return;
+            auto *current = m_runtime->screenshotController();
+            if (current->isVisible()
+                || current->phase() == ScreenshotPhase::WaitingLiveCapture)
+                return;
+            m_screenshotOverlaySlot->destroyWhenSafe();
+        });
+        return;
+    }
+
+    QScreen *screen = QGuiApplication::primaryScreen();
+    if (!screen)
+        return;
+    AstreaLayerShellConfig config;
+    config.scope = QStringLiteral("astrea-screenshot");
+    config.layer = AstreaLayerShellConfig::Layer::Overlay;
+    config.keyboardInteractivity = AstreaLayerShellConfig::KeyboardInteractivity::Exclusive;
+    config.anchorTop = true;
+    config.anchorBottom = true;
+    config.anchorLeft = true;
+    config.anchorRight = true;
+    config.exclusiveZone = -1;
+    config.screen = screen;
+
+    TransientQmlWindowSlot::CreateRequest request;
+    request.sourceUrl = QUrl(QStringLiteral(
+        "qrc:/qt/qml/Astrea/Shell/Screenshot/ScreenshotOverlay.qml"));
+    request.screen = screen;
+    request.size = screen->geometry().size();
+    request.requireSurfaceReadyGate = true;
+    request.configure = [config](QQuickWindow *window, QString *error) {
+        return AstreaLayerShellHelper::configure(window, config, error);
+    };
+    request.install = [this](QQuickWindow *, QString *) {
+        refreshScreenshotBarrierWindows();
+        return true;
+    };
+    request.beforeDestroy = [this](QQuickWindow *window) {
+        refreshScreenshotBarrierWindows(window);
+    };
+    QString error;
+    if (!m_screenshotOverlaySlot->ensureCreated(m_engine.get(), request, &error)) {
+        qCritical("Astrea shell screenshot surface creation failed: %s", qPrintable(error));
+        m_application.exit(1);
+    }
+}
+
+void AstreaShellApplication::syncScreenshotThumbnailSurface()
+{
+    if (!m_runtime || !m_engine || !m_screenshotThumbnailSlot)
+        return;
+    auto *controller = m_runtime->screenshotController();
+    if (!controller->thumbnailVisible()) {
+        if (controller->thumbnailDragActive())
+            return;
+        m_screenshotThumbnailSlot->hide();
+        QTimer::singleShot(0, this, [this] {
+            if (!m_runtime || !m_screenshotThumbnailSlot)
+                return;
+            auto *current = m_runtime->screenshotController();
+            if (current->thumbnailVisible() || current->thumbnailDragActive())
+                return;
+            m_screenshotThumbnailSlot->destroyWhenSafe();
+        });
+        return;
+    }
+
+    QScreen *screen = QGuiApplication::primaryScreen();
+    if (!screen)
+        return;
+    AstreaLayerShellConfig config;
+    config.scope = QStringLiteral("astrea-screenshot-thumbnail");
+    config.layer = AstreaLayerShellConfig::Layer::Overlay;
+    config.keyboardInteractivity = AstreaLayerShellConfig::KeyboardInteractivity::None;
+    config.anchorTop = true;
+    config.anchorBottom = true;
+    config.anchorLeft = true;
+    config.anchorRight = true;
+    config.exclusiveZone = -1;
+    config.screen = screen;
+
+    TransientQmlWindowSlot::CreateRequest request;
+    request.sourceUrl = QUrl(QStringLiteral(
+        "qrc:/qt/qml/Astrea/Shell/Screenshot/ScreenshotThumbnail.qml"));
+    request.screen = screen;
+    request.size = screen->geometry().size();
+    request.requireSurfaceReadyGate = true;
+    request.configure = [config](QQuickWindow *window, QString *error) {
+        return AstreaLayerShellHelper::configure(window, config, error);
+    };
+    request.install = [this](QQuickWindow *window, QString *) {
+        m_screenshotInputRegion->setWindow(window);
+        refreshScreenshotBarrierWindows();
+        return true;
+    };
+    request.beforeDestroy = [this](QQuickWindow *window) {
+        m_screenshotInputRegion->setWindow(nullptr);
+        refreshScreenshotBarrierWindows(window);
+    };
+    QString error;
+    if (!m_screenshotThumbnailSlot->ensureCreated(m_engine.get(), request, &error)) {
+        qCritical("Astrea shell screenshot thumbnail creation failed: %s", qPrintable(error));
+        m_application.exit(1);
+    }
+}
+
+void AstreaShellApplication::syncScreenshotPreviewSurface()
+{
+    if (!m_runtime || !m_engine || !m_screenshotPreviewSlot)
+        return;
+    if (!m_runtime->screenshotController()->previewVisible()) {
+        m_screenshotPreviewSlot->hide();
+        QTimer::singleShot(0, this, [this] {
+            if (!m_runtime || !m_screenshotPreviewSlot
+                || m_runtime->screenshotController()->previewVisible())
+                return;
+            m_screenshotPreviewSlot->destroyWhenSafe();
+        });
+        return;
+    }
+
+    QScreen *screen = QGuiApplication::primaryScreen();
+    if (!screen)
+        return;
+    AstreaLayerShellConfig config;
+    config.scope = QStringLiteral("astrea-screenshot-preview");
+    config.layer = AstreaLayerShellConfig::Layer::Overlay;
+    config.keyboardInteractivity = AstreaLayerShellConfig::KeyboardInteractivity::Exclusive;
+    config.anchorTop = true;
+    config.anchorBottom = true;
+    config.anchorLeft = true;
+    config.anchorRight = true;
+    config.exclusiveZone = -1;
+    config.screen = screen;
+
+    TransientQmlWindowSlot::CreateRequest request;
+    request.sourceUrl = QUrl(QStringLiteral(
+        "qrc:/qt/qml/Astrea/Shell/Screenshot/ScreenshotPreview.qml"));
+    request.screen = screen;
+    request.size = screen->geometry().size();
+    request.requireSurfaceReadyGate = true;
+    request.configure = [config](QQuickWindow *window, QString *error) {
+        return AstreaLayerShellHelper::configure(window, config, error);
+    };
+    request.install = [this](QQuickWindow *, QString *) {
+        refreshScreenshotBarrierWindows();
+        return true;
+    };
+    request.beforeDestroy = [this](QQuickWindow *window) {
+        refreshScreenshotBarrierWindows(window);
+    };
+    QString error;
+    if (!m_screenshotPreviewSlot->ensureCreated(m_engine.get(), request, &error)) {
+        qCritical("Astrea shell screenshot preview creation failed: %s", qPrintable(error));
+        m_application.exit(1);
+    }
+}
+
+void AstreaShellApplication::refreshScreenshotBarrierWindows(QQuickWindow *excluded)
+{
+    if (!m_screenshotUiBarrier)
+        return;
+    auto currentWindow = [excluded](const std::unique_ptr<TransientQmlWindowSlot> &slot) {
+        QQuickWindow *window = slot ? slot->window() : nullptr;
+        return window == excluded ? nullptr : window;
+    };
+    m_screenshotUiBarrier->setTrackedWindows({
+        currentWindow(m_screenshotOverlaySlot),
+        currentWindow(m_screenshotThumbnailSlot),
+        currentWindow(m_screenshotPreviewSlot),
+    });
+}
+
+QJsonObject AstreaShellApplication::surfaceResidencyJson() const
+{
+    int liveWindowCount = 0;
+    int visibleWindowCount = 0;
+    qint64 livePixelArea = 0;
+    qint64 hiddenPixelArea = 0;
+    for (QWindow *nativeWindow : QGuiApplication::allWindows()) {
+        auto *window = qobject_cast<QQuickWindow *>(nativeWindow);
+        if (!window)
+            continue;
+        ++liveWindowCount;
+        const qint64 area = qint64(qMax(0, window->width())) * qMax(0, window->height());
+        livePixelArea += area;
+        if (window->isVisible())
+            ++visibleWindowCount;
+        else
+            hiddenPixelArea += area;
+    }
+
+    const QVariantMap barPopup = m_barSurfaceManager
+        ? m_barSurfaceManager->popupResidency() : emptyTransientSurfaceSnapshot();
+    const QVariantMap contextOverlay = m_contextMenuSurfaceManager
+        ? m_contextMenuSurfaceManager->overlayResidency() : emptyTransientSurfaceSnapshot();
+    const QVariantMap altTab = m_altTabSlot
+        ? m_altTabSlot->residencySnapshot() : emptyTransientSurfaceSnapshot();
+    const QVariantMap spotlight = m_spotlightSlot
+        ? m_spotlightSlot->residencySnapshot() : emptyTransientSurfaceSnapshot();
+    const QVariantMap screenshotOverlay = m_screenshotOverlaySlot
+        ? m_screenshotOverlaySlot->residencySnapshot() : emptyTransientSurfaceSnapshot();
+    const QVariantMap screenshotThumbnail = m_screenshotThumbnailSlot
+        ? m_screenshotThumbnailSlot->residencySnapshot() : emptyTransientSurfaceSnapshot();
+    const QVariantMap screenshotPreview = m_screenshotPreviewSlot
+        ? m_screenshotPreviewSlot->residencySnapshot() : emptyTransientSurfaceSnapshot();
+    const QList<QVariantMap> transientSnapshots{
+        barPopup, contextOverlay, altTab, spotlight,
+        screenshotOverlay, screenshotThumbnail, screenshotPreview,
+    };
+    int transientCreatedCount = 0;
+    int transientVisibleCount = 0;
+    for (const QVariantMap &snapshot : transientSnapshots) {
+        transientCreatedCount += snapshot.value(QStringLiteral("liveInstances"),
+            snapshot.value(QStringLiteral("created")).toBool() ? 1 : 0).toInt();
+        transientVisibleCount += snapshot.value(QStringLiteral("visibleInstances"),
+            snapshot.value(QStringLiteral("visible")).toBool() ? 1 : 0).toInt();
+    }
+
+    return {
+        {QStringLiteral("liveWindowCount"), liveWindowCount},
+        {QStringLiteral("visibleWindowCount"), visibleWindowCount},
+        {QStringLiteral("hiddenWindowCount"), liveWindowCount - visibleWindowCount},
+        {QStringLiteral("livePixelArea"), livePixelArea},
+        {QStringLiteral("hiddenPixelArea"), hiddenPixelArea},
+        {QStringLiteral("transientCreatedCount"), transientCreatedCount},
+        {QStringLiteral("transientVisibleCount"), transientVisibleCount},
+        {QStringLiteral("surfaces"), QJsonObject{
+            {QStringLiteral("barPopup"), transientSurfaceJson(barPopup)},
+            {QStringLiteral("contextMenuOverlay"), transientSurfaceJson(contextOverlay)},
+            {QStringLiteral("altTab"), transientSurfaceJson(altTab)},
+            {QStringLiteral("spotlight"), transientSurfaceJson(spotlight)},
+            {QStringLiteral("screenshotOverlay"), transientSurfaceJson(screenshotOverlay)},
+            {QStringLiteral("screenshotThumbnail"), transientSurfaceJson(screenshotThumbnail)},
+            {QStringLiteral("screenshotPreview"), transientSurfaceJson(screenshotPreview)},
+        }},
+    };
 }
 
 bool AstreaShellApplication::configureDockSurface()
@@ -590,10 +846,19 @@ QString AstreaShellApplication::statusJson() const
             {QStringLiteral("waylandBackend"), m_layerShellWaylandBackend},
             {QStringLiteral("protocolAdvertised"), m_layerShellProtocolAdvertised},
             {QStringLiteral("dockConfigurationRequested"), m_dockLayerConfigurationRequested},
-            {QStringLiteral("altTabConfigurationRequested"), m_altTabLayerConfigurationRequested},
-            {QStringLiteral("spotlightConfigurationRequested"), m_spotlightLayerConfigurationRequested},
+            {QStringLiteral("altTabConfigurationRequested"),
+             m_altTabSlot && m_altTabSlot->created()},
+            {QStringLiteral("spotlightConfigurationRequested"),
+             m_spotlightSlot && m_spotlightSlot->created()},
+            {QStringLiteral("screenshotConfigurationRequested"),
+             m_screenshotOverlaySlot && m_screenshotOverlaySlot->created()},
+            {QStringLiteral("screenshotThumbnailConfigurationRequested"),
+             m_screenshotThumbnailSlot && m_screenshotThumbnailSlot->created()},
+            {QStringLiteral("screenshotPreviewConfigurationRequested"),
+             m_screenshotPreviewSlot && m_screenshotPreviewSlot->created()},
             {QStringLiteral("barConfigurationRequested"),
              m_barSurfaceManager && m_barSurfaceManager->layerConfigurationRequested()}}},
+        {QStringLiteral("surfaceResidency"), surfaceResidencyJson()},
         {QStringLiteral("dock"), QJsonObject{
             {QStringLiteral("visible"), dock->visible()},
             {QStringLiteral("enabled"), dock->enabled()},

@@ -1,11 +1,13 @@
 #pragma once
 
 #include "platform/wayland/BarSurfacePolicy.hpp"
+#include "platform/wayland/TransientQmlWindowSlot.hpp"
 
 #include <QObject>
 #include <QPointer>
 #include <QScreen>
 #include <QUrl>
+#include <QVariantMap>
 
 class BarClockService;
 class BarController;
@@ -46,6 +48,7 @@ public:
     QScreen *screen() const { return m_screen.data(); }
     virtual int surfaceCount() const;
     virtual bool popupOpen() const;
+    QVariantMap popupResidency() const { return m_popupSlot.residencySnapshot(); }
     virtual bool layerConfigurationRequested() const { return m_layerConfigurationRequested; }
     BarPopupController *popupController() const { return m_popupController; }
     BarLayoutMetrics *layoutMetrics() const { return m_layoutMetrics; }
@@ -56,8 +59,12 @@ signals:
 private:
     QQuickWindow *createSurface(const QUrl &sourceUrl, int width, int height,
                                 QString *errorOut, bool sizeWindow);
-    bool configureSurface(QQuickWindow *window, BarSurfaceKind kind, QString *errorOut);
+    QQuickWindow *createPopupSurface(QString *errorOut = nullptr);
     void syncPopupMapping();
+
+protected:
+    virtual bool configureSurface(QQuickWindow *window, BarSurfaceKind kind, QString *errorOut);
+
 private slots:
     void syncTooltipMapping();
 
@@ -79,7 +86,7 @@ private:
     QPointer<QQuickWindow> m_reserveWindow;
     QPointer<QQuickWindow> m_launcherWindow;
     QPointer<QQuickWindow> m_statusWindow;
-    QPointer<QQuickWindow> m_popupWindow;
+    TransientQmlWindowSlot m_popupSlot;
     QPointer<QQuickWindow> m_tooltipWindow;
     bool m_layerConfigurationRequested = false;
     bool m_mapped = false;

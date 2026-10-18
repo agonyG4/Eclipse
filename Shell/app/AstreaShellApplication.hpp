@@ -10,6 +10,7 @@
 
 class AstreaI18n;
 class QGuiApplication;
+class QJsonObject;
 class QQmlApplicationEngine;
 class QQuickWindow;
 class QScreen;
@@ -19,6 +20,7 @@ class ContextMenuSurfaceManager;
 class DockInputRegionBridge;
 class ScreenshotInputRegionBridge;
 class ScreenshotWaylandUiBarrier;
+class TransientQmlWindowSlot;
 
 namespace Paper {
 class WallpaperSurfaceManager;
@@ -40,6 +42,13 @@ private:
     bool loadSurface(const QUrl &url, QQuickWindow **windowOut);
     bool configureSurfaces();
     bool configureDockSurface();
+    void syncAltTabSurface();
+    void syncSpotlightSurface();
+    void syncScreenshotOverlaySurface();
+    void syncScreenshotThumbnailSurface();
+    void syncScreenshotPreviewSurface();
+    void refreshScreenshotBarrierWindows(QQuickWindow *excluded = nullptr);
+    QJsonObject surfaceResidencyJson() const;
     void updateDockExclusiveZone();
     void updateDockOutputGeometry();
     void syncDockVisibility();
@@ -53,24 +62,19 @@ private:
     std::unique_ptr<DockInputRegionBridge> m_dockInputRegion;
     std::unique_ptr<ScreenshotInputRegionBridge> m_screenshotInputRegion;
     std::unique_ptr<ScreenshotWaylandUiBarrier> m_screenshotUiBarrier;
+    std::unique_ptr<TransientQmlWindowSlot> m_altTabSlot;
+    std::unique_ptr<TransientQmlWindowSlot> m_spotlightSlot;
+    std::unique_ptr<TransientQmlWindowSlot> m_screenshotOverlaySlot;
+    std::unique_ptr<TransientQmlWindowSlot> m_screenshotThumbnailSlot;
+    std::unique_ptr<TransientQmlWindowSlot> m_screenshotPreviewSlot;
     QPointer<QQuickWindow> m_dockWindow;
     QPointer<QQuickWindow> m_dockTooltipWindow;
     QPointer<QScreen> m_dockScreen;
     QMetaObject::Connection m_dockGeometryConnection;
-    QPointer<QQuickWindow> m_altTabWindow;
-    QPointer<QQuickWindow> m_spotlightWindow;
-    QPointer<QQuickWindow> m_screenshotWindow;
-    QPointer<QQuickWindow> m_screenshotThumbnailWindow;
-    QPointer<QQuickWindow> m_screenshotPreviewWindow;
     std::unique_ptr<BarSurfaceManager> m_barSurfaceManager;
     std::unique_ptr<ContextMenuSurfaceManager> m_contextMenuSurfaceManager;
     std::unique_ptr<Paper::WallpaperSurfaceManager> m_wallpaperSurfaceManager;
     bool m_layerShellWaylandBackend = false;
     bool m_layerShellProtocolAdvertised = false;
     bool m_dockLayerConfigurationRequested = false;
-    bool m_altTabLayerConfigurationRequested = false;
-    bool m_spotlightLayerConfigurationRequested = false;
-    bool m_screenshotLayerConfigurationRequested = false;
-    bool m_screenshotThumbnailLayerConfigurationRequested = false;
-    bool m_screenshotPreviewLayerConfigurationRequested = false;
 };

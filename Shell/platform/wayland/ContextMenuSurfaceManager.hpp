@@ -3,6 +3,7 @@
 #include <QHash>
 #include <QObject>
 #include <QPointer>
+#include <QVariantMap>
 
 #include <functional>
 
@@ -38,6 +39,7 @@ public:
     int bundleCount() const { return m_bundles.size(); }
     bool overlayMapped() const;
     bool layerConfigurationRequested() const;
+    QVariantMap overlayResidency() const;
 
 signals:
     void bundleCountChanged();

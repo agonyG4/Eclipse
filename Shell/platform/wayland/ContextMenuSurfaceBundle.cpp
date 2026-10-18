@@ -35,6 +35,7 @@ ContextMenuSurfaceBundle::ContextMenuSurfaceBundle(QScreen *screen,
     , m_engine(engine)
     , m_controller(controller)
     , m_statusNotifier(statusNotifier)
+    , m_overlaySlot(QStringLiteral("contextMenuOverlay"))
 {
     if (m_controller) {
         connect(m_controller, &Astrea::Shell::ContextMenuController::presentationChanged,
@@ -78,17 +79,11 @@ bool ContextMenuSurfaceBundle::initialize(QString *errorOut)
     m_desktopInteractionWindow = createSurface(
         QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/ContextMenu/qml/DesktopInteractionSurface.qml")),
         commonProperties, errorOut);
-    QVariantMap overlayProperties = commonProperties;
-    overlayProperties.insert(QStringLiteral("trayService"), objectVariant(m_statusNotifier));
-    m_overlayWindow = createSurface(
-        QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Shell/ContextMenu/qml/ContextMenuOverlaySurface.qml")),
-        overlayProperties, errorOut);
-    if (!m_desktopInteractionWindow || !m_overlayWindow) {
+    if (!m_desktopInteractionWindow) {
         destroySurfaces();
         return false;
     }
-    if (!configureSurface(m_desktopInteractionWindow, false, errorOut)
-        || !configureSurface(m_overlayWindow, true, errorOut)) {
+    if (!configureSurface(m_desktopInteractionWindow, false, errorOut)) {
         destroySurfaces();
         return false;
     }
@@ -114,7 +109,7 @@ void ContextMenuSurfaceBundle::updateForScreen()
     const QRect geometry = m_screen->geometry();
     const int width = qMax(1, geometry.width());
     const int height = qMax(1, geometry.height());
-    for (const QPointer<QQuickWindow> &window : {m_desktopInteractionWindow, m_overlayWindow}) {
+    for (QQuickWindow *window : {m_desktopInteractionWindow.data(), m_overlaySlot.window()}) {
         if (!window)
             continue;
         window->setProperty("outputWidth", width);
@@ -129,7 +124,7 @@ void ContextMenuSurfaceBundle::updateForScreen()
 void ContextMenuSurfaceBundle::destroySurfaces()
 {
     m_mapped = false;
-    destroyWindow(m_overlayWindow);
+    m_overlaySlot.destroyNow();
     destroyWindow(m_desktopInteractionWindow);
     m_layerConfigurationRequested = false;
     m_screen.clear();
@@ -138,12 +133,39 @@ void ContextMenuSurfaceBundle::destroySurfaces()
 int ContextMenuSurfaceBundle::surfaceCount() const
 {
     return static_cast<int>(!m_desktopInteractionWindow.isNull())
-        + static_cast<int>(!m_overlayWindow.isNull());
+        + static_cast<int>(m_overlaySlot.created());
 }
 
 bool ContextMenuSurfaceBundle::overlayMapped() const
 {
-    return m_overlayWindow && m_overlayWindow->isVisible();
+    return m_overlaySlot.window() && m_overlaySlot.window()->isVisible();
+}
+
+QQuickWindow *ContextMenuSurfaceBundle::createOverlaySurface(QString *errorOut)
+{
+    if (!m_engine || !m_screen || !m_controller)
+        return nullptr;
+    const QRect geometry = m_screen->geometry();
+    const int width = qMax(1, geometry.width());
+    const int height = qMax(1, geometry.height());
+    TransientQmlWindowSlot::CreateRequest request;
+    request.sourceUrl = QUrl(QStringLiteral(
+        "qrc:/qt/qml/Astrea/Shell/ContextMenu/qml/ContextMenuOverlaySurface.qml"));
+    request.screen = m_screen.data();
+    request.size = QSize(width, height);
+    request.initialProperties = {
+        {QStringLiteral("contextMenuController"), objectVariant(m_controller)},
+        {QStringLiteral("outputKey"), outputKey()},
+        {QStringLiteral("outputWidth"), width},
+        {QStringLiteral("outputHeight"), height},
+        {QStringLiteral("outputOriginX"), geometry.x()},
+        {QStringLiteral("outputOriginY"), geometry.y()},
+        {QStringLiteral("trayService"), objectVariant(m_statusNotifier)},
+    };
+    request.configure = [this](QQuickWindow *window, QString *error) {
+        return configureSurface(window, true, error);
+    };
+    return m_overlaySlot.ensureCreated(m_engine, request, errorOut);
 }
 
 QQuickWindow *ContextMenuSurfaceBundle::createSurface(const QUrl &sourceUrl,
@@ -194,13 +216,29 @@ bool ContextMenuSurfaceBundle::configureSurface(QQuickWindow *window, bool overl
 
 void ContextMenuSurfaceBundle::syncOverlayMapping()
 {
-    if (!m_overlayWindow || !m_layerConfigurationRequested)
+    if (!m_layerConfigurationRequested)
         return;
     const bool wasMapped = overlayMapped();
     const bool shouldMap = Astrea::Shell::ContextMenuSurfaceMapping::overlayShouldMap(
         outputKey(), m_mapped, m_controller && m_controller->hasActivePresentation(),
         m_controller ? m_controller->outputKey() : QString());
-    m_overlayWindow->setVisible(shouldMap);
+    if (shouldMap) {
+        QString error;
+        QQuickWindow *window = m_overlaySlot.window();
+        if (window) {
+            m_overlaySlot.cancelPendingDestruction();
+        } else {
+            window = createOverlaySurface(&error);
+        }
+        if (!window) {
+            emit surfaceError(error.isEmpty()
+                ? QStringLiteral("Context menu overlay surface creation failed") : error);
+            return;
+        }
+        window->setVisible(true);
+    } else {
+        m_overlaySlot.destroyWhenSafe();
+    }
     if (wasMapped != shouldMap)
         emit mappingChanged();
 }

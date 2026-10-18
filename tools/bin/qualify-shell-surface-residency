@@ -1,0 +1,273 @@
+#!/usr/bin/env python3
+"""Collect read-only Astrea Shell surface residency and NVIDIA pmon samples."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import socket
+import statistics
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+
+SHELL_SOCKET_NAME = "astrea-shell-v1"
+SURFACE_NAMES = (
+    "barPopup",
+    "contextMenuOverlay",
+    "altTab",
+    "spotlight",
+    "screenshotOverlay",
+    "screenshotThumbnail",
+    "screenshotPreview",
+)
+
+
+def process_identity(pid: int) -> dict[str, Any]:
+    proc = Path("/proc") / str(pid)
+    executable = (proc / "exe").resolve(strict=True)
+    stat = (proc / "stat").read_text(encoding="utf-8")
+    # comm is parenthesized and may contain spaces or closing parentheses.
+    stat_fields = stat[stat.rfind(")") + 2 :].split()
+    start_ticks = int(stat_fields[19])
+    digest = hashlib.sha256(executable.read_bytes()).hexdigest()
+    return {
+        "pid": pid,
+        "exe": str(executable),
+        "sha256": digest,
+        "startTimeTicks": start_ticks,
+    }
+
+
+def find_shell_pid(requested_pid: int | None) -> int:
+    if requested_pid is not None:
+        identity = process_identity(requested_pid)
+        if Path(identity["exe"]).name != "astrea-shell":
+            raise RuntimeError(f"PID {requested_pid} is not an astrea-shell process")
+        return requested_pid
+
+    matches: list[int] = []
+    for proc in Path("/proc").iterdir():
+        if not proc.name.isdigit():
+            continue
+        try:
+            executable = (proc / "exe").resolve(strict=True)
+            if executable.name == "astrea-shell":
+                matches.append(int(proc.name))
+        except (FileNotFoundError, PermissionError, ProcessLookupError):
+            continue
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"expected exactly one astrea-shell PID, found {len(matches)}; pass --pid"
+        )
+    return matches[0]
+
+
+def shell_status() -> dict[str, Any]:
+    socket_path = Path(os.environ.get("TMPDIR", "/tmp")) / SHELL_SOCKET_NAME
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.settimeout(1.5)
+    try:
+        client.connect(str(socket_path))
+        client.sendall(b"status\n")
+        response = bytearray()
+        while b"\n" not in response and len(response) <= 1024 * 1024:
+            chunk = client.recv(65536)
+            if not chunk:
+                break
+            response.extend(chunk)
+    finally:
+        client.close()
+    if not response:
+        raise RuntimeError(f"Shell status IPC returned no data at {socket_path}")
+    status = json.loads(bytes(response).splitlines()[0])
+    if not isinstance(status, dict):
+        raise RuntimeError("Shell status IPC returned a non-object JSON value")
+    return status
+
+
+def qsg_render_thread_count(pid: int) -> int:
+    count = 0
+    for comm_path in (Path("/proc") / str(pid) / "task").glob("*/comm"):
+        try:
+            if comm_path.read_text(encoding="utf-8").strip() == "QSGRenderThread":
+                count += 1
+        except (FileNotFoundError, PermissionError, ProcessLookupError):
+            continue
+    return count
+
+
+def parse_memory_mib(value: str) -> float | None:
+    match = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*(MiB|GiB|KiB|B)?\s*", value)
+    if not match:
+        return None
+    amount = float(match.group(1))
+    unit = match.group(2) or "MiB"
+    factors = {"B": 1 / (1024 * 1024), "KiB": 1 / 1024, "MiB": 1, "GiB": 1024}
+    return amount * factors[unit]
+
+
+def nvidia_fb_for_pid(pid: int) -> tuple[float | None, str | None]:
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "pmon", "-s", "m", "-c", "1"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as error:
+        return None, f"nvidia-smi pmon unavailable: {error}"
+    if result.returncode != 0:
+        detail = result.stderr.strip() or f"exit status {result.returncode}"
+        return None, f"nvidia-smi pmon failed: {detail}"
+
+    columns: list[str] | None = None
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        if len(fields) >= 4 and fields[0] == "#" and fields[1] == "gpu":
+            columns = fields[1:]
+            continue
+        if not fields or not fields[0].isdigit() or columns is None:
+            continue
+        row = dict(zip(columns, fields))
+        if row.get("pid") != str(pid):
+            continue
+        fb = row.get("fb")
+        if fb is None or fb.upper() in {"N/A", "NA", "-"}:
+            return None, "nvidia-smi pmon did not report framebuffer memory for the Shell PID"
+        parsed = parse_memory_mib(fb)
+        if parsed is None:
+            return None, f"unrecognized NVIDIA framebuffer value: {fb}"
+        return parsed, None
+    return None, f"nvidia-smi pmon had no row for exact PID {pid}"
+
+
+def summarize(values: list[float | None]) -> dict[str, float | int] | None:
+    available = [value for value in values if value is not None]
+    if not available:
+        return None
+    return {
+        "min": min(available),
+        "median": statistics.median(available),
+        "max": max(available),
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--pid", type=int, help="exact astrea-shell PID (auto-detected if unique)")
+    parser.add_argument("--count", type=int, default=10, help="number of samples (default: 10)")
+    parser.add_argument("--interval", type=float, default=1.0, help="seconds between samples")
+    parser.add_argument("--output", type=Path, required=True, help="JSON report destination")
+    args = parser.parse_args()
+    if args.count < 1 or args.interval < 0:
+        parser.error("--count must be positive and --interval must be non-negative")
+
+    repo_root = Path(__file__).resolve().parents[2]
+    report: dict[str, Any] = {
+        "createdAt": datetime.now(timezone.utc).isoformat(),
+        "repositoryHead": None,
+        "requestedSampleCount": args.count,
+        "intervalSeconds": args.interval,
+        "process": None,
+        "samples": [],
+        "nvidiaFbMiB": None,
+        "qsgRenderThreadCount": None,
+        "surfaceResidency": None,
+        "featureState": None,
+        "measurementSupported": False,
+        "measurementUnsupportedReason": None,
+        "valid": False,
+        "invalidReason": None,
+    }
+
+    try:
+        report["repositoryHead"] = subprocess.run(
+            ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        pid = find_shell_pid(args.pid)
+        identity = process_identity(pid)
+        report["process"] = identity
+        fb_samples: list[float | None] = []
+        thread_samples: list[int] = []
+        latest_status: dict[str, Any] | None = None
+        unsupported_reasons: list[str] = []
+        next_sample_at = time.monotonic()
+        for sample_index in range(args.count):
+            current_identity = process_identity(pid)
+            if current_identity["startTimeTicks"] != identity["startTimeTicks"]:
+                raise RuntimeError("Shell PID exited or was reused during sampling")
+            status = shell_status()
+            fb_value, fb_error = nvidia_fb_for_pid(pid)
+            if fb_error:
+                unsupported_reasons.append(fb_error)
+            fb_samples.append(fb_value)
+            thread_count = qsg_render_thread_count(pid)
+            thread_samples.append(thread_count)
+            latest_status = status
+            report["samples"].append({
+                "index": sample_index + 1,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "nvidiaFbMiB": fb_value,
+                "qsgRenderThreadCount": thread_count,
+                "surfaceResidency": status.get("surfaceResidency"),
+                "featureState": {
+                    key: status.get(key)
+                    for key in ("alttab", "spotlight", "screenshot", "bar")
+                },
+            })
+            if sample_index + 1 < args.count and args.interval:
+                next_sample_at += args.interval
+                time.sleep(max(0.0, next_sample_at - time.monotonic()))
+
+        report["sampleCount"] = len(report["samples"])
+        report["nvidiaFbMiB"] = summarize(fb_samples)
+        report["qsgRenderThreadCount"] = summarize(thread_samples)
+        if latest_status is not None:
+            report["surfaceResidency"] = latest_status.get("surfaceResidency")
+            report["featureState"] = {
+                key: latest_status.get(key)
+                for key in ("alttab", "spotlight", "screenshot", "bar")
+            }
+        report["measurementSupported"] = all(value is not None for value in fb_samples)
+        if not report["measurementSupported"]:
+            report["measurementUnsupportedReason"] = "; ".join(dict.fromkeys(unsupported_reasons))
+        report["valid"] = latest_status is not None and report["surfaceResidency"] is not None
+        if not report["valid"]:
+            report["invalidReason"] = "Shell status IPC did not provide surfaceResidency"
+    except (OSError, RuntimeError, subprocess.SubprocessError, json.JSONDecodeError) as error:
+        report["sampleCount"] = len(report["samples"])
+        report["invalidReason"] = str(error)
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    print(f"report: {args.output}")
+    print(f"valid: {report['valid']} ({report['invalidReason'] or 'no invalid reason'})")
+    print(f"samples: {len(report['samples'])}/{args.count}")
+    print(f"NVIDIA FB MiB min/median/max: {report['nvidiaFbMiB']}")
+    print(f"QSGRenderThread min/median/max: {report['qsgRenderThreadCount']}")
+    residency = report.get("surfaceResidency")
+    if residency is not None:
+        print(f"transient live count: {residency.get('transientCreatedCount')}")
+        surfaces = residency.get("surfaces", {})
+        for name in SURFACE_NAMES:
+            snapshot = surfaces.get(name, {})
+            print(f"{name}.created: {snapshot.get('created')}")
+    if not report["measurementSupported"]:
+        print(f"NVIDIA measurement unsupported: {report['measurementUnsupportedReason']}")
+    return 0 if report["valid"] else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

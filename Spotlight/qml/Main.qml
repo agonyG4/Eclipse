@@ -7,7 +7,8 @@ Window {
     id: window
 
     title: "Astrea Spotlight"
-    visible: SpotlightController.surfaceVisible
+    property bool surfaceReady: false
+    visible: surfaceReady && SpotlightController.surfaceVisible
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint
 

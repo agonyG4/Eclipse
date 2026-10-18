@@ -41,6 +41,7 @@ void ScreenshotOverlayQmlSmokeTest::overlayCreatesHiddenAndSupportsFrozenAndLive
     QVERIFY2(component.errors().isEmpty(), qPrintable(component.errorString()));
     auto *window = qobject_cast<QQuickWindow *>(object);
     QVERIFY(window);
+    QVERIFY(window->setProperty("surfaceReady", true));
     QVERIFY(!window->isVisible());
 
     auto *keyboardScope = window->findChild<QQuickItem *>(QStringLiteral("keyboardScope"));
@@ -107,6 +108,7 @@ void ScreenshotOverlayQmlSmokeTest::selectionDragStaysLocalUntilNormalizedReleas
     QVERIFY2(object, qPrintable(component.errorString()));
     auto *window = qobject_cast<QQuickWindow *>(object.get());
     QVERIFY(window);
+    QVERIFY(window->setProperty("surfaceReady", true));
     window->resize(640, 480);
 
     controller.m_intent = ScreenshotIntent::LiveRegion;

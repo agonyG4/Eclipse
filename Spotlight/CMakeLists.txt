@@ -31,6 +31,7 @@ add_library(astrea-spotlight-runtime STATIC
     core/SpotlightLauncher.hpp
     core/SpotlightCatalogSource.hpp
     core/SpotlightControllerPaths.hpp
+    core/SpotlightWeatherProvider.hpp
     core/SpotlightController.cpp
     core/SpotlightController.hpp
     core/SpotlightResultsModel.cpp
@@ -41,6 +42,8 @@ add_library(astrea-spotlight-runtime STATIC
     services/GameModeMonitor.hpp
     services/SpotlightConfigWatcher.cpp
     services/SpotlightConfigWatcher.hpp
+    services/SpotlightWeatherProcessService.cpp
+    services/SpotlightWeatherProcessService.hpp
     services/SpotlightApplicationLauncherAdapter.cpp
     services/SpotlightApplicationLauncherAdapter.hpp
     services/SpotlightDesktopCatalogAdapter.cpp

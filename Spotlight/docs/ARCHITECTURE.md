@@ -73,8 +73,9 @@ optionally borrows a catalog source, and stores only controller-consumed path
 values. A null catalog source selects the Rust backend's native desktop-entry
 index mode; a non-null source selects the shared external-catalog mode.
 `SpotlightRuntimePaths` still resolves platform paths, including
-`astreaLaunch()` for Shell's shared launcher, while controller paths contain
-only the Astrea root and weather values.
+`astreaLaunch()` for Shell's shared launcher and `weatherCli()` for Shell's
+weather process service. `SpotlightControllerPaths` contains only the Astrea
+root and weather asset directory consumed by core.
 
 Shell owns one shared `ApplicationLauncher` and one shared
 `DesktopEntryCatalog`. It also owns one adapter for each service. The
@@ -84,17 +85,42 @@ the Rust backend outlive the controller that borrows them. Controller core no
 longer owns or knows the application-launcher or desktop-catalog
 implementations.
 
-Phase 3B structural debt remains only in weather orchestration through
-`QProcess`. Spotlight is not yet declared fully cleaned up or canonical.
+Weather follows the same port and adapter direction:
+
+```text
+SpotlightController
+        │ borrows
+        ▼
+SpotlightWeatherProvider
+        ▲ implemented by
+SpotlightWeatherProcessService
+        │ owns
+        ▼
+QProcess -> weather-cli summary
+```
+
+The controller owns weather enable/open/GameMode policy, the 30-minute stale
+threshold and refresh interval, startup warmup, loading/ready presentation
+state, status text, the last successful fetch time, and condition-to-icon
+mapping. `SpotlightWeatherProcessService` owns the `weather-cli` invocation,
+`QProcess` lifecycle, JSON transport parsing, process outcome translation,
+request generation, cancellation, and stale callback suppression. The service
+does not know Spotlight visibility, GameMode, refresh timing, or weather
+assets. `ShellRuntime` owns one service and declares it before the controller
+that borrows it, so the controller is destroyed first.
+
+The planned internal Spotlight layering phases are implemented. Canonical
+component promotion remains a separate decision after the final review.
 
 ## Responsibilities
 
 - `app/`: the non-resident compatibility CLI and command-line parsing.
-- `core/`: the controller, results model, backend/launcher/catalog ports, and
-  neutral controller path values. The controller remains an
-  orchestration-heavy resident object.
-- `services/`: the borrowed shared-service adapters, locale, configuration
-  watching, and GameMode monitoring used by the resident Shell composition.
+- `core/`: the controller, results model, backend/launcher/catalog/weather
+  ports, and neutral controller path values. The controller retains weather
+  policy and presentation state.
+- `services/`: the borrowed shared-service adapters, weather process service,
+  locale, configuration watching, and GameMode monitoring used by the
+  resident Shell composition.
 - `platform/runtime/`: Spotlight environment and runtime path resolution, with
   conversion to `SpotlightControllerPaths`.
 - `platform/rust/`: the C++ `SpotlightBackend` implementation around the Rust

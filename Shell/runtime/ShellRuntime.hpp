@@ -30,6 +30,7 @@ class SpotlightDesktopCatalogAdapter;
 class RustSpotlightBackend;
 class SpatialAudioConfigWatcher;
 class SpotlightController;
+class SpotlightWeatherProcessService;
 class ShellIpcServer;
 class ShellShortcutDispatcher;
 class ScreenshotController;
@@ -145,6 +146,7 @@ private:
     std::unique_ptr<DockSurfaceGeometry> m_dockSurfaceGeometry;
     std::unique_ptr<AltTabController> m_altTabController;
     std::unique_ptr<RustSpotlightBackend> m_spotlightBackend;
+    std::unique_ptr<SpotlightWeatherProcessService> m_spotlightWeather;
     std::unique_ptr<SpotlightDesktopCatalogAdapter> m_spotlightCatalogAdapter;
     std::unique_ptr<SpotlightApplicationLauncherAdapter> m_spotlightLauncherAdapter;
     std::unique_ptr<SpotlightController> m_spotlightController;

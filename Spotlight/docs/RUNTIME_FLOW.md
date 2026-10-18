@@ -7,10 +7,11 @@ unified UI and `ShellRuntime` composes the catalog, launcher,
 `SpotlightController`, `SpotlightConfigWatcher`, `GameModeMonitor`, and other
 resident services. Shell resolves `SpotlightRuntimePaths`, converts the paths
 needed by the controller to `SpotlightControllerPaths`, owns one
-`RustSpotlightBackend`, and injects it into `SpotlightController`. The backend
-owner outlives the controller. Shell owns one shared `ApplicationLauncher` and
-one shared `DesktopEntryCatalog`, plus a borrowed-service Spotlight adapter
-for each. The adapters and backend outlive the controller. Shell exposes
+`RustSpotlightBackend`, one `SpotlightWeatherProcessService`, and injects them
+into `SpotlightController` through core ports. The backend and weather service
+outlive the controller. Shell owns one shared `ApplicationLauncher` and one
+shared `DesktopEntryCatalog`, plus a borrowed-service Spotlight adapter for
+each. The adapters also outlive the controller. Shell exposes
 `SpotlightController` and `AstreaI18n` to the existing `Astrea.Shell` QML
 module.
 
@@ -75,9 +76,37 @@ directory behavior.
 
 ## Weather, configuration, and GameMode
 
-The controller starts weather refreshes when visible and weather is enabled,
-and stops them on close or while GameMode is active. Weather process execution
-remains in `SpotlightController`. `SpotlightConfigWatcher` continues to watch
+The weather dependency direction is:
+
+```text
+SpotlightController
+    -> SpotlightWeatherProvider
+
+SpotlightWeatherProcessService
+    -> SpotlightWeatherProvider
+    -> QProcess
+    -> weather-cli summary
+```
+
+`SpotlightController` owns the policy and presentation state: enabled/open and
+GameMode checks, the 30-minute stale threshold, the 30-minute periodic refresh
+timer, the 500 ms startup warmup (including while hidden), loading/ready state,
+status text, last successful fetch time, and condition-to-icon mapping. It
+cancels requests when Spotlight closes, GameMode activates, or weather is
+disabled. Close and GameMode activation retain cached successful weather.
+When GameMode becomes inactive while Spotlight is open, a missing or stale
+cache can refresh again.
+
+`SpotlightWeatherProcessService` owns each fresh `QProcess`, invokes the
+configured executable directly with the single `summary` argument, parses the
+JSON object, maps process outcomes to the core failure enum, and suppresses
+callbacks from canceled or superseded processes. The core port exposes only
+weather values and failure categories. Cancellation guarantees that a canceled
+request cannot emit a later result. There is no weather process timeout.
+
+`SpotlightRuntimePaths::weatherCli()` supplies the executable path to Shell's
+service composition. `controllerPaths()` supplies only `astreaRoot` and
+`weatherAssetDirectory` to core. `SpotlightConfigWatcher` continues to watch
 the Spotlight and component configuration files and apply updates. The
 `GameModeMonitor` continues polling `gamemoded -s` and suppressing weather
 refresh while active.
@@ -93,12 +122,9 @@ debounce into a backend catalog reload and result reset.
 ## Shutdown
 
 Closing or stopping `astrea-shell` tears down the Shell-owned Spotlight
-controller before its borrowed Rust backend, following `ShellRuntime` member
-declaration order. No standalone Spotlight resident process is started.
+controller before its borrowed Rust backend and weather provider, following
+`ShellRuntime` member declaration order. No standalone Spotlight resident
+process is started.
 
-## Remaining Phase 3 work
-
-Phase 3B remains for weather orchestration through `QProcess`. The controller
-core no longer owns or depends on the shared application-launcher or
-desktop-catalog implementations. Spotlight is not yet declared fully cleaned
-up or canonical pending Phase 3B and final review.
+The planned internal Spotlight layering phases are implemented. Canonical
+component promotion remains a separate decision after the final review.

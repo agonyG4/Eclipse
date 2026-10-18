@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Repository-specific guard for Spotlight Phase 1, Phase 2, and Phase 3A boundaries.
+"""Repository-specific guard for Spotlight Phase 1, Phase 2, Phase 3A, and Phase 3B boundaries.
 
 This checks only the small set of add_library/qt_add_executable and
 target_link_libraries declarations used by Spotlight and Shell. It is not a
@@ -7,9 +7,8 @@ general CMake parser.
 
 Phase 1 protects production source ownership and consumer links. Phase 2
 protects the backend and resolved-path dependency directions. Phase 3A protects
-the Spotlight-local launcher/catalog ports and Shell-owned adapters. Weather
-orchestration through QProcess remains explicit Phase 3B debt, so this guard
-does not claim that Spotlight is fully internally cleaned up.
+the Spotlight-local launcher/catalog ports and Shell-owned adapters. Phase 3B
+protects the provider-owned weather process boundary and Shell composition.
 
 SpotlightIpcServer is an intentional legacy/test-only exception. The
 compatibility executable uses ShellIpcClient and the resident ShellIpcServer;
@@ -34,6 +33,7 @@ RUNTIME_CPP = {
     "services/AstreaI18n.cpp",
     "services/GameModeMonitor.cpp",
     "services/SpotlightConfigWatcher.cpp",
+    "services/SpotlightWeatherProcessService.cpp",
     "services/SpotlightApplicationLauncherAdapter.cpp",
     "services/SpotlightDesktopCatalogAdapter.cpp",
     "platform/runtime/SpotlightRuntimePaths.cpp",
@@ -44,11 +44,13 @@ RUNTIME_HEADERS = {
     "core/SpotlightLauncher.hpp",
     "core/SpotlightCatalogSource.hpp",
     "core/SpotlightControllerPaths.hpp",
+    "core/SpotlightWeatherProvider.hpp",
     "core/SpotlightController.hpp",
     "core/SpotlightResultsModel.hpp",
     "services/AstreaI18n.hpp",
     "services/GameModeMonitor.hpp",
     "services/SpotlightConfigWatcher.hpp",
+    "services/SpotlightWeatherProcessService.hpp",
     "services/SpotlightApplicationLauncherAdapter.hpp",
     "services/SpotlightDesktopCatalogAdapter.hpp",
     "platform/runtime/SpotlightRuntimePaths.hpp",
@@ -56,9 +58,6 @@ RUNTIME_HEADERS = {
 }
 WAYLAND_CPP = {"platform/wayland/LayerShellSurface.cpp"}
 WAYLAND_HEADERS = {"platform/wayland/LayerShellSurface.hpp"}
-PHASE_3_DEBT = ("QProcess",)
-
-
 def without_comments(source: str) -> str:
     return re.sub(r"#[^\n]*", "", source)
 
@@ -143,6 +142,10 @@ def main() -> int:
         ) is None,
         "Phase 3A must keep core and service code in astrea-spotlight-runtime",
     )
+    require(
+        re.search(r"(?is)add_library\s*\(\s*astrea-spotlight-weather\b", spotlight) is None,
+        "Phase 3B must keep the weather service in astrea-spotlight-runtime",
+    )
 
     wayland_cpp = source_paths(spotlight, "add_library", "astrea-spotlight-wayland", ".cpp")
     require(
@@ -213,6 +216,10 @@ def main() -> int:
     forbidden_core_dependencies = re.compile(
         r"platform/(?:rust|runtime)/|RustSpotlightBackend|SpotlightRuntimePaths"
     )
+    forbidden_core_weather_transport = re.compile(
+        r"QProcess|QPointer\s*<\s*QProcess\s*>|m_weatherProc|"
+        r"m_weatherRequestGen|weatherExecutable"
+    )
     for path in core_sources:
         source = path.read_text(encoding="utf-8")
         require(
@@ -227,13 +234,20 @@ def main() -> int:
             ),
             f"Spotlight core must depend only on core launcher/catalog ports: {path.relative_to(ROOT)}",
         )
+        require(
+            forbidden_core_weather_transport.search(source) is None,
+            "Spotlight core must not own weather process transport or request generations: "
+            f"{path.relative_to(ROOT)}",
+        )
 
     backend_port_path = core_dir / "SpotlightBackend.hpp"
     launcher_port_path = core_dir / "SpotlightLauncher.hpp"
     catalog_port_path = core_dir / "SpotlightCatalogSource.hpp"
+    weather_port_path = core_dir / "SpotlightWeatherProvider.hpp"
     controller_paths_path = core_dir / "SpotlightControllerPaths.hpp"
     controller_header = (core_dir / "SpotlightController.hpp").read_text(encoding="utf-8")
     controller_cpp = (core_dir / "SpotlightController.cpp").read_text(encoding="utf-8")
+    controller_source = controller_header + controller_cpp
     backend_port = (
         backend_port_path.read_text(encoding="utf-8") if backend_port_path.is_file() else ""
     )
@@ -244,15 +258,94 @@ def main() -> int:
     )
     launcher_port = launcher_port_path.read_text(encoding="utf-8") if launcher_port_path.is_file() else ""
     catalog_port = catalog_port_path.read_text(encoding="utf-8") if catalog_port_path.is_file() else ""
+    weather_port = weather_port_path.read_text(encoding="utf-8") if weather_port_path.is_file() else ""
     require(backend_port_path.is_file(), "Spotlight core must own SpotlightBackend.hpp")
     require(launcher_port_path.is_file(), "Spotlight core must own SpotlightLauncher.hpp")
     require(catalog_port_path.is_file(), "Spotlight core must own SpotlightCatalogSource.hpp")
+    require(weather_port_path.is_file(), "Spotlight core must own SpotlightWeatherProvider.hpp")
     require(
         "SpotlightBackend &backend" in controller_header
         and "SpotlightBackend &m_backend" in controller_header
         and "SpotlightBackend *" not in controller_header
         and "RustSpotlightBackend" not in controller_header + controller_cpp,
         "SpotlightController must require and borrow the core SpotlightBackend port by reference",
+    )
+    require(
+        "SpotlightWeatherProvider &weather" in controller_header
+        and "SpotlightWeatherProvider &m_weather" in controller_header
+        and "SpotlightWeatherProvider *" not in controller_header
+        and "SpotlightWeatherProcessService" not in controller_header + controller_cpp,
+        "SpotlightController must require and borrow SpotlightWeatherProvider by reference",
+    )
+    require(
+        "kWeatherStaleThresholdSec = 30 * 60" in controller_header
+        and "kWeatherRefreshIntervalMs = 30 * 60 * 1000" in controller_header
+        and "QTimer::singleShot(500" in controller_cpp
+        and "if (!m_weatherEnabled || m_weatherLoading || m_gameModeActive)" in controller_cpp
+        and "m_weather.refresh()" in controller_cpp
+        and "m_weatherRefreshTimer.stop()" in controller_cpp
+        and "m_weatherRefreshTimer.start()" in controller_cpp,
+        "SpotlightController must retain weather enable/loading/GameMode guards and refresh timing policy",
+    )
+    weather_service_header = spotlight_root / "services/SpotlightWeatherProcessService.hpp"
+    weather_service_cpp = spotlight_root / "services/SpotlightWeatherProcessService.cpp"
+    weather_service_header_text = (
+        weather_service_header.read_text(encoding="utf-8")
+        if weather_service_header.is_file()
+        else ""
+    )
+    weather_service_cpp_text = (
+        weather_service_cpp.read_text(encoding="utf-8")
+        if weather_service_cpp.is_file()
+        else ""
+    )
+    require(
+        weather_service_header.is_file()
+        and weather_service_cpp.is_file()
+        and "class SpotlightWeatherProcessService final : public SpotlightWeatherProvider"
+            in weather_service_header_text,
+        "SpotlightWeatherProcessService must implement the core weather provider port",
+    )
+    require(
+        all(token in weather_port for token in (
+            "enum class Failure", "NoData", "InvalidData", "ConnectionFailed",
+            "virtual void refresh() = 0", "virtual void cancel() = 0",
+            "void ready(", "void failed(",
+        ))
+        and not re.search(
+            r"QProcess|ProcessError|ExitStatus|QByteArray|QJsonDocument|processId|generation|executable",
+            weather_port,
+            re.IGNORECASE,
+        ),
+        "SpotlightWeatherProvider must expose weather outcomes without process transport details",
+    )
+    require(
+        "QProcess" in weather_service_header_text + weather_service_cpp_text
+        and "summary" in weather_service_cpp_text
+        and 'setArguments({QStringLiteral("summary")})' in weather_service_cpp_text
+        and "QJsonDocument::fromJson" in weather_service_cpp_text
+        and "m_requestGeneration" in weather_service_header_text
+        and "cancel()" in weather_service_cpp_text,
+        "SpotlightWeatherProcessService must own process invocation, parsing, and cancellation",
+    )
+    require(
+        not re.search(
+            r"SpotlightController|GameMode|m_open|weatherEnabled|weatherAsset|weatherIcon|"
+            r"m_weatherRefreshTimer|QTimer|staleThreshold",
+            weather_service_header_text + weather_service_cpp_text,
+        ),
+        "SpotlightWeatherProcessService must not own controller policy, presentation, or timers",
+    )
+    cancel_body = weather_service_cpp_text.split(
+        "void SpotlightWeatherProcessService::cancel()", 1
+    )[-1]
+    require(
+        "++m_requestGeneration" in cancel_body
+        and "m_process.clear()" in cancel_body
+        and "QObject::disconnect" in cancel_body
+        and "process->kill()" in cancel_body
+        and "process->deleteLater()" in cancel_body,
+        "SpotlightWeatherProcessService cancellation must invalidate and detach before killing the process",
     )
     require(
         all(method in backend_port for method in (
@@ -270,8 +363,9 @@ def main() -> int:
     require(
         controller_paths_path.is_file()
         and all(field in controller_paths for field in (
-            "astreaRoot", "weatherExecutable", "weatherAssetDirectory",
+            "astreaRoot", "weatherAssetDirectory",
         ))
+        and "weatherExecutable" not in controller_paths
         and "launcherExecutable" not in controller_paths
         and "launcherExecutable" not in controller_header + controller_cpp
         and "SpotlightControllerPaths m_paths" in controller_header,
@@ -378,11 +472,17 @@ def main() -> int:
     runtime_paths_cpp = (
         spotlight_root / "platform/runtime/SpotlightRuntimePaths.cpp"
     ).read_text(encoding="utf-8")
+    controller_paths_impl = runtime_paths_cpp.split(
+        "SpotlightControllerPaths SpotlightRuntimePaths::controllerPaths() const", 1
+    )[1].split("\n}", 1)[0]
     require(
         "SpotlightControllerPaths controllerPaths() const" in runtime_paths_header
+        and "QString weatherCli() const" in runtime_paths_header
+        and 'QStringLiteral("/bin/weather-cli")' in runtime_paths_header
         and "SpotlightControllerPaths SpotlightRuntimePaths::controllerPaths() const" in runtime_paths_cpp
-        and all(path_method in runtime_paths_cpp for path_method in (
-            "astreaRoot()", "weatherCli()", "weatherAssetDir()",
+        and "weatherCli()" not in controller_paths_impl
+        and all(path_method in controller_paths_impl for path_method in (
+            "astreaRoot()", "weatherAssetDir()",
         )),
         "SpotlightRuntimePaths must convert only controller-consumed values into controller paths",
     )
@@ -401,6 +501,7 @@ def main() -> int:
     launcher_adapter_owner = (
         "std::unique_ptr<SpotlightApplicationLauncherAdapter> m_spotlightLauncherAdapter"
     )
+    weather_owner = "std::unique_ptr<SpotlightWeatherProcessService> m_spotlightWeather"
     controller_owner = "std::unique_ptr<SpotlightController> m_spotlightController"
     require(
         backend_owner in shell_runtime_header
@@ -408,6 +509,7 @@ def main() -> int:
         and "std::unique_ptr<ApplicationLauncher> m_launcher" in shell_runtime_header
         and catalog_adapter_owner in shell_runtime_header
         and launcher_adapter_owner in shell_runtime_header
+        and weather_owner in shell_runtime_header
         and controller_owner in shell_runtime_header
         and shell_runtime_header.index("std::unique_ptr<DesktopEntryCatalog> m_catalog")
             < shell_runtime_header.index(catalog_adapter_owner)
@@ -416,11 +518,13 @@ def main() -> int:
         and shell_runtime_header.index(backend_owner) < shell_runtime_header.index(catalog_adapter_owner)
         and shell_runtime_header.index(backend_owner) < shell_runtime_header.index(launcher_adapter_owner)
         and shell_runtime_header.index(catalog_adapter_owner) < shell_runtime_header.index(controller_owner)
-        and shell_runtime_header.index(launcher_adapter_owner) < shell_runtime_header.index(controller_owner),
+        and shell_runtime_header.index(launcher_adapter_owner) < shell_runtime_header.index(controller_owner)
+        and shell_runtime_header.index(weather_owner) < shell_runtime_header.index(controller_owner),
         "ShellRuntime must declare shared owners and adapter/backend owners before the borrowing controller",
     )
     require(
         shell_runtime_cpp.count("make_unique<RustSpotlightBackend>") == 1
+        and shell_runtime_cpp.count("make_unique<SpotlightWeatherProcessService>") == 1
         and shell_runtime_cpp.count("make_unique<SpotlightDesktopCatalogAdapter>") == 1
         and shell_runtime_cpp.count("make_unique<SpotlightApplicationLauncherAdapter>") == 1
         and shell_runtime_cpp.count("make_unique<DesktopEntryCatalog>") == 1
@@ -429,10 +533,28 @@ def main() -> int:
         and re.search(
             r"make_unique<SpotlightController>\s*\(\s*spotlightPaths\.controllerPaths\(\)\s*,\s*"
             r"\*m_spotlightBackend\s*,\s*\*m_spotlightLauncherAdapter\s*,\s*"
-            r"m_spotlightCatalogAdapter\.get\(\)",
+            r"\*m_spotlightWeather\s*,\s*m_spotlightCatalogAdapter\.get\(\)",
             shell_runtime_cpp,
         ) is not None,
         "ShellRuntime must create one shared service of each kind, one adapter each, and inject them",
+    )
+    require(
+        re.search(
+            r"make_unique<SpotlightWeatherProcessService>\s*\(\s*"
+            r"spotlightPaths\.weatherCli\(\)\s*\)",
+            shell_runtime_cpp,
+        ) is not None,
+        "ShellRuntime must construct the weather service from SpotlightRuntimePaths::weatherCli",
+    )
+    reset_body = shell_runtime_cpp.split(
+        "void ShellRuntime::resetInitializationState()", 1
+    )[1].split("\nbool ShellRuntime::initialize", 1)[0]
+    require(
+        "m_spotlightController.reset()" in reset_body
+        and "m_spotlightWeather.reset()" in reset_body
+        and reset_body.index("m_spotlightController.reset()")
+            < reset_body.index("m_spotlightWeather.reset()"),
+        "ShellRuntime rollback must reset SpotlightController before its borrowed weather provider",
     )
     require(
         "SpotlightApplicationLauncherAdapter *" not in shell_runtime_header
@@ -446,6 +568,9 @@ def main() -> int:
     require(
         "Spotlight/platform/runtime/SpotlightRuntimePaths.hpp" not in shortcut_test
         and "Spotlight/platform/rust/RustSpotlightBackend.hpp" not in shortcut_test
+        and "Spotlight/services/SpotlightWeatherProcessService.hpp" not in shortcut_test
+        and "SpotlightWeatherProcessService" not in shortcut_test
+        and "QProcess" not in shortcut_test
         and "SpotlightControllerPaths" in shortcut_test
         and "FakeSpotlightBackend" in shortcut_test,
         "ShellShortcutDispatcherTest must toggle Spotlight through core-facing test types",
@@ -457,6 +582,11 @@ def main() -> int:
         and "SpotlightDesktopCatalogAdapter" not in shortcut_test
         and "FakeSpotlightLauncher" in shortcut_test,
         "ShellShortcutDispatcherTest must use only the narrow core launcher/catalog boundary",
+    )
+    require(
+        "SpotlightWeatherProvider" in shortcut_test
+        and "FakeSpotlightWeatherProvider" in shortcut_test,
+        "ShellShortcutDispatcherTest must inject a core-facing fake weather provider",
     )
     spotlight_test = (spotlight_root / "tests/SpotlightBackendTest.cpp").read_text(encoding="utf-8")
     controller_test_start = spotlight_test.find(
@@ -474,6 +604,7 @@ def main() -> int:
         bool(controller_test_source)
         and "FakeSpotlightBackend" in spotlight_test
         and "FakeSpotlightLauncher" in spotlight_test
+        and "FakeSpotlightWeatherProvider" in spotlight_test
         and "FakeSpotlightCatalog" in spotlight_test
         and not re.search(
             r"ApplicationLauncher|ApplicationLaunchRequest|DesktopEntryCatalog",
@@ -492,10 +623,14 @@ def main() -> int:
     )
     controller_sources = controller_header + controller_cpp
     require(
-        all(debt in controller_sources for debt in PHASE_3_DEBT)
+        "QProcess" not in controller_sources
+        and "QPointer" not in controller_sources
+        and "m_weatherProc" not in controller_sources
+        and "m_weatherRequestGen" not in controller_sources
+        and "weatherExecutable" not in controller_sources
         and "ApplicationLauncher" not in controller_sources
         and "DesktopEntryCatalog" not in controller_sources,
-        "Phase 3B debt is limited to weather/QProcess orchestration",
+        "SpotlightController must not own weather process transport or executable paths",
     )
     require(
         has_link(spotlight, "astrea-spotlight-runtime", "Qt6::Core", "PUBLIC"),
@@ -616,7 +751,7 @@ def main() -> int:
             print(f"- {error}", file=sys.stderr)
         return 1
 
-    print("Spotlight Phase 1, Phase 2, and Phase 3A architecture invariants passed")
+    print("Spotlight Phase 1, Phase 2, Phase 3A, and Phase 3B architecture invariants passed")
     return 0
 
 

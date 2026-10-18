@@ -22,6 +22,7 @@
 #include "Spotlight/platform/rust/RustSpotlightBackend.hpp"
 #include "Spotlight/services/SpotlightApplicationLauncherAdapter.hpp"
 #include "Spotlight/services/SpotlightDesktopCatalogAdapter.hpp"
+#include "Spotlight/services/SpotlightWeatherProcessService.hpp"
 #include "Spotlight/services/GameModeMonitor.hpp"
 #include "Spotlight/services/SpotlightConfigWatcher.hpp"
 #include "services/SpatialAudioConfigWatcher.hpp"
@@ -86,6 +87,7 @@ void ShellRuntime::resetInitializationState()
     m_barController.reset();
     m_screenshotController.reset();
     m_spotlightController.reset();
+    m_spotlightWeather.reset();
     m_altTabController.reset();
     m_dockController.reset();
 
@@ -164,9 +166,12 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
         std::make_unique<SpotlightDesktopCatalogAdapter>(*m_catalog);
     m_spotlightLauncherAdapter =
         std::make_unique<SpotlightApplicationLauncherAdapter>(*m_launcher);
+    m_spotlightWeather = std::make_unique<SpotlightWeatherProcessService>(
+        spotlightPaths.weatherCli());
     m_spotlightController = std::make_unique<SpotlightController>(
         spotlightPaths.controllerPaths(), *m_spotlightBackend,
-        *m_spotlightLauncherAdapter, m_spotlightCatalogAdapter.get());
+        *m_spotlightLauncherAdapter, *m_spotlightWeather,
+        m_spotlightCatalogAdapter.get());
     m_screenshotController = std::make_unique<ScreenshotController>(
         m_screenCaptureClient.get());
     m_workspaceModel = std::make_unique<WorkspaceModel>();

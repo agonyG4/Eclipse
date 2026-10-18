@@ -20,12 +20,15 @@ ctest --test-dir /mnt/Aether/Desktop/GitHub/Eclipse-build \
 `spotlight-tests` links the production `astrea-spotlight-runtime`. Its existing
 tests still compile the legacy `SpotlightIpcServer.cpp` directly; that server
 is not a resident production target. The `spotlight-architecture-guard` test
-checks Phase 1 CMake ownership and the Phase 2 and Phase 3A source boundaries.
-The runtime remains one aggregate target; core and service source layers do
-not need separate CMake targets. Controller tests use fake backend, launcher,
-and catalog ports. Separate adapter tests cover request conversion, event
-forwarding, catalog snapshots, watched directories, and update forwarding.
-Existing direct Rust backend tests remain in the Spotlight suite.
+checks Phase 1 CMake ownership and the Phase 2, Phase 3A, and Phase 3B source
+boundaries. The runtime remains one aggregate target; core and service source
+layers do not need separate CMake targets. Controller tests use fake backend,
+launcher, catalog, and weather ports. Weather process-service tests use
+temporary local executables to check the CLI protocol, outcome mapping,
+permissive JSON-object handling, and cancellation without external network
+access. Existing direct Rust backend tests remain in the Spotlight suite.
+The weather process-service regressions run in `spotlight-tests` without
+linking or requiring Layer Shell.
 
 The `layer-shell-activation-structure` test protects the existing activation
 structure. Build `astrea-spotlight-wayland` explicitly even when only running
@@ -77,7 +80,8 @@ their registered QML sources.
 - Catalog/native-index creation, locale recreation, reload, watched-directory,
   update, and search behavior remain unchanged. Controller tests use core fakes;
   production adapters borrow Shell's shared launcher and catalog.
-- Weather/`QProcess` orchestration remains the Phase 3B structural debt.
+- Weather refresh policy and presentation state remain in the controller;
+  process execution and cancellation live in the provider implementation.
 - Layer Shell configuration, Bar search integration, shortcut integration,
   and QML resource/context-property APIs remain unchanged.
 - Icon diagnostics remain available from `astrea-spotlight`.

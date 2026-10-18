@@ -4,6 +4,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QTemporaryDir>
 #include <QLocalServer>
@@ -25,6 +26,7 @@
 #include "../services/SpotlightApplicationLauncherAdapter.hpp"
 #include "../services/SpotlightDesktopCatalogAdapter.hpp"
 #include "../core/SpotlightController.hpp"
+#include "../services/SpotlightWeatherProcessService.hpp"
 #include "apps/DesktopEntryCatalog.hpp"
 #include "launch/ApplicationLauncher.hpp"
 #include "icons/AstreaIconTheme.hpp"
@@ -186,6 +188,28 @@ public:
     bool launchCalled = false;
 };
 
+class FakeSpotlightWeatherProvider final : public SpotlightWeatherProvider {
+public:
+    void refresh() override { ++refreshCalls; }
+    void cancel() override { ++cancelCalls; }
+
+    void publishReady(int temperature, const QString &city, const QString &condition)
+    {
+        emit ready(temperature, city, condition);
+    }
+
+    void publishFailure(Failure failure) { emit failed(failure); }
+
+    void reset()
+    {
+        refreshCalls = 0;
+        cancelCalls = 0;
+    }
+
+    int refreshCalls = 0;
+    int cancelCalls = 0;
+};
+
 class RecordingApplicationLauncher final : public ApplicationLauncher {
 public:
     RecordingApplicationLauncher() : ApplicationLauncher(QString()) {}
@@ -206,9 +230,23 @@ static SpotlightControllerPaths testControllerPaths()
 {
     return {
         QStringLiteral("/test/astrea"),
-        QStringLiteral("/test/astrea/bin/weather-cli"),
         QStringLiteral("/test/astrea/Apps/Weather/assets/icons/weather"),
     };
+}
+
+static QString writeExecutableScript(const QString &directory, const QString &name,
+                                     const QByteArray &contents)
+{
+    const QString path = directory + QLatin1Char('/') + name;
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)
+        || file.write(contents) != contents.size())
+        return {};
+    file.close();
+    if (!QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                  | QFileDevice::ExeOwner))
+        return {};
+    return path;
 }
 
 class TestSpotlightBackend : public QObject {
@@ -216,6 +254,7 @@ class TestSpotlightBackend : public QObject {
 
 private slots:
     void initTestCase();
+    void init();
     void testResultsRoles();
     void testResultsClear();
     void testExternalCatalogSnapshot();
@@ -242,6 +281,18 @@ private slots:
     void testControllerLaunchRequestPreservesFieldsAndOrdering();
     void testControllerLaunchFailureStaysClosed();
     void testControllerLaunchTimeoutReopens();
+    void testControllerWeatherSuccessAndRefreshStatus();
+    void testControllerWeatherFailureMappings();
+    void testControllerWeatherCloseCancelsAndRetainsCache();
+    void testControllerWeatherGameModeCancelsAndResumes();
+    void testControllerWeatherDisableCancelsAndBlocksRefresh();
+    void testControllerWeatherStartupWarmupWhileHidden();
+    void testWeatherProcessServiceSuccess();
+    void testWeatherProcessServicePermissiveObject();
+    void testWeatherProcessServiceNonzeroExit();
+    void testWeatherProcessServiceInvalidJson();
+    void testWeatherProcessServiceFailedStart();
+    void testWeatherProcessServiceCancelSuppressesStaleResult();
     void testRuntimePathsConvertToControllerPaths();
     void testConfigSync_weatherDisabled();
     void testConfigSync_weatherEnabled();
@@ -262,11 +313,19 @@ private slots:
     void testIconThemeWhitespaceIgnored();
     void testIconThemeProviderSwitch();
     void testIconThemeInheritance();
+
+private:
+    FakeSpotlightWeatherProvider m_weatherProvider;
 };
 
 void TestSpotlightBackend::initTestCase() {
     QCoreApplication::setOrganizationName(QStringLiteral("AstreaOS"));
     QCoreApplication::setApplicationName(QStringLiteral("Astrea Spotlight Test"));
+}
+
+void TestSpotlightBackend::init()
+{
+    m_weatherProvider.reset();
 }
 
 void TestSpotlightBackend::testResultsRoles() {
@@ -728,7 +787,7 @@ void TestSpotlightBackend::testConfigWatcherWeatherFlag() {
 void TestSpotlightBackend::testSelectionWrapping() {
     FakeSpotlightBackend backend;
     FakeSpotlightLauncher launcher;
-    SpotlightController controller(testControllerPaths(), backend, launcher);
+    SpotlightController controller(testControllerPaths(), backend, launcher, m_weatherProvider);
     controller.setWeatherEnabled(false);
     SpotlightResultsModel *model = controller.resultsModel();
 
@@ -769,7 +828,7 @@ void TestSpotlightBackend::testControllerBackendInitialization()
 
     FakeSpotlightBackend nativeBackend;
     FakeSpotlightLauncher nativeLauncher;
-    SpotlightController nativeController(paths, nativeBackend, nativeLauncher);
+    SpotlightController nativeController(paths, nativeBackend, nativeLauncher, m_weatherProvider);
     QVERIFY2(nativeController.init(QStringLiteral("pt_BR"), &error), qPrintable(error));
     QCOMPARE(nativeBackend.createCalls, 1);
     QCOMPARE(nativeBackend.createWithCatalogCalls, 0);
@@ -781,7 +840,8 @@ void TestSpotlightBackend::testControllerBackendInitialization()
     catalog.setSnapshot(snapshot);
     FakeSpotlightBackend catalogBackend;
     FakeSpotlightLauncher catalogLauncher;
-    SpotlightController catalogController(paths, catalogBackend, catalogLauncher, &catalog);
+    SpotlightController catalogController(paths, catalogBackend, catalogLauncher,
+                                           m_weatherProvider, &catalog);
     QVERIFY2(catalogController.init(QStringLiteral("fr_FR"), &error), qPrintable(error));
     QCOMPARE(catalogBackend.createCalls, 0);
     QCOMPARE(catalogBackend.createWithCatalogCalls, 1);
@@ -798,7 +858,7 @@ void TestSpotlightBackend::testControllerSearchUsesInjectedBackend()
         {QStringLiteral("name"), QStringLiteral("Fake Application")},
     }};
     FakeSpotlightLauncher launcher;
-    SpotlightController controller(testControllerPaths(), backend, launcher);
+    SpotlightController controller(testControllerPaths(), backend, launcher, m_weatherProvider);
     controller.setWeatherEnabled(false);
     controller.setQuery(QStringLiteral("  test query  "));
 
@@ -820,7 +880,7 @@ void TestSpotlightBackend::testControllerActivationRecordsUsage()
     QStringList events;
     backend.eventLog = &events;
     launcher.eventLog = &events;
-    SpotlightController controller(testControllerPaths(), backend, launcher);
+    SpotlightController controller(testControllerPaths(), backend, launcher, m_weatherProvider);
     launcher.isOpen = [&controller] { return controller.isOpen(); };
     controller.setWeatherEnabled(false);
     controller.setQuery(QStringLiteral("fake"));
@@ -846,7 +906,8 @@ void TestSpotlightBackend::testControllerCatalogUpdateRerunsActiveSearch()
         QJsonObject{{QStringLiteral("id"), QStringLiteral("updated-app")}}
     };
     catalog.setSnapshot(currentSnapshot);
-    SpotlightController controller(testControllerPaths(), backend, launcher, &catalog);
+    SpotlightController controller(testControllerPaths(), backend, launcher,
+                                    m_weatherProvider, &catalog);
     controller.setWeatherEnabled(false);
     controller.setQuery(QStringLiteral("  active query  "));
     QCOMPARE(backend.searchCalls, 1);
@@ -875,7 +936,8 @@ void TestSpotlightBackend::testControllerCatalogUpdateFailureSkipsSearch()
     catalog.setSnapshot(QJsonArray{QJsonObject{
         {QStringLiteral("id"), QStringLiteral("rejected-snapshot")},
     }});
-    SpotlightController controller(testControllerPaths(), backend, launcher, &catalog);
+    SpotlightController controller(testControllerPaths(), backend, launcher,
+                                    m_weatherProvider, &catalog);
     controller.setWeatherEnabled(false);
     controller.setQuery(QStringLiteral("active query"));
     QCOMPARE(backend.searchCalls, 1);
@@ -896,7 +958,7 @@ void TestSpotlightBackend::testControllerNativeAndCatalogIndexModes()
     FakeSpotlightBackend nativeBackend;
     nativeBackend.watchedDirs = backendDirectories;
     FakeSpotlightLauncher nativeLauncher;
-    SpotlightController nativeController(paths, nativeBackend, nativeLauncher);
+    SpotlightController nativeController(paths, nativeBackend, nativeLauncher, m_weatherProvider);
     nativeController.setWeatherEnabled(false);
     QVERIFY(nativeController.init(QStringLiteral("en_US")));
     QCOMPARE(nativeBackend.createCalls, 1);
@@ -918,7 +980,8 @@ void TestSpotlightBackend::testControllerNativeAndCatalogIndexModes()
     catalog.setWatchedDirectories({QStringLiteral("/catalog/apps")});
     FakeSpotlightBackend catalogBackend;
     FakeSpotlightLauncher catalogLauncher;
-    SpotlightController catalogController(paths, catalogBackend, catalogLauncher, &catalog);
+    SpotlightController catalogController(paths, catalogBackend, catalogLauncher,
+                                           m_weatherProvider, &catalog);
     catalogController.setWeatherEnabled(false);
     QVERIFY(catalogController.init(QStringLiteral("en_US")));
     QCOMPARE(catalogBackend.createCalls, 0);
@@ -950,7 +1013,7 @@ void TestSpotlightBackend::testControllerLaunchRequestPreservesFieldsAndOrdering
     QStringList events;
     backend.eventLog = &events;
     launcher.eventLog = &events;
-    SpotlightController controller(testControllerPaths(), backend, launcher);
+    SpotlightController controller(testControllerPaths(), backend, launcher, m_weatherProvider);
     launcher.isOpen = [&controller] { return controller.isOpen(); };
     controller.setWeatherEnabled(false);
     controller.setQuery(QStringLiteral("launch app"));
@@ -978,7 +1041,7 @@ void TestSpotlightBackend::testControllerLaunchFailureStaysClosed()
         {QStringLiteral("name"), QStringLiteral("Failure App")},
     }};
     FakeSpotlightLauncher launcher;
-    SpotlightController controller(testControllerPaths(), backend, launcher);
+    SpotlightController controller(testControllerPaths(), backend, launcher, m_weatherProvider);
     controller.setWeatherEnabled(false);
     controller.setQuery(QStringLiteral("failure"));
     controller.launch(0);
@@ -1000,7 +1063,7 @@ void TestSpotlightBackend::testControllerLaunchTimeoutReopens()
         {QStringLiteral("name"), QStringLiteral("Timeout App")},
     }};
     FakeSpotlightLauncher launcher;
-    SpotlightController controller(testControllerPaths(), backend, launcher);
+    SpotlightController controller(testControllerPaths(), backend, launcher, m_weatherProvider);
     controller.setWeatherEnabled(false);
     controller.setQuery(QStringLiteral("timeout"));
     controller.launch(0);
@@ -1015,17 +1078,325 @@ void TestSpotlightBackend::testControllerLaunchTimeoutReopens()
     QVERIFY(controller.isOpen());
 }
 
+void TestSpotlightBackend::testControllerWeatherSuccessAndRefreshStatus()
+{
+    FakeSpotlightBackend backend;
+    FakeSpotlightLauncher launcher;
+    SpotlightController controller(testControllerPaths(), backend, launcher, m_weatherProvider);
+    QSignalSpy weatherChangedSpy(&controller, &SpotlightController::weatherChanged);
+
+    QVERIFY(controller.weatherEnabled());
+    controller.refreshWeather();
+
+    QCOMPARE(m_weatherProvider.refreshCalls, 1);
+    QVERIFY(controller.weatherLoading());
+    QVERIFY(!controller.weatherReady());
+    QCOMPARE(controller.weatherStatusText(), QStringLiteral("Loading"));
+    controller.refreshWeather();
+    QCOMPARE(m_weatherProvider.refreshCalls, 1);
+
+    m_weatherProvider.publishReady(23, QStringLiteral("Test City"),
+                                   QStringLiteral("Partly sunny"));
+
+    QVERIFY(controller.weatherReady());
+    QVERIFY(!controller.weatherLoading());
+    QCOMPARE(controller.weatherTemp(), 23);
+    QCOMPARE(controller.weatherCity(), QStringLiteral("Test City"));
+    QCOMPARE(controller.weatherCondition(), QStringLiteral("Partly sunny"));
+    QVERIFY(controller.weatherStatusText().isEmpty());
+    QCOMPARE(controller.weatherIconSource(), QUrl::fromLocalFile(
+                 QStringLiteral("/test/astrea/Apps/Weather/assets/icons/weather/partially_cloudy.png")));
+    QCOMPARE(weatherChangedSpy.count(), 2);
+
+    controller.refreshWeather();
+
+    QCOMPARE(m_weatherProvider.refreshCalls, 2);
+    QVERIFY(controller.weatherLoading());
+    QCOMPARE(controller.weatherStatusText(), QStringLiteral("Updating"));
+}
+
+void TestSpotlightBackend::testControllerWeatherFailureMappings()
+{
+    FakeSpotlightBackend backend;
+    FakeSpotlightLauncher launcher;
+    SpotlightController controller(testControllerPaths(), backend, launcher, m_weatherProvider);
+    QSignalSpy weatherChangedSpy(&controller, &SpotlightController::weatherChanged);
+
+    const QList<QPair<SpotlightWeatherProvider::Failure, QString>> failures{
+        {SpotlightWeatherProvider::Failure::NoData, QStringLiteral("No weather data")},
+        {SpotlightWeatherProvider::Failure::InvalidData, QStringLiteral("Invalid weather data")},
+        {SpotlightWeatherProvider::Failure::ConnectionFailed, QStringLiteral("Connection failed")},
+    };
+    controller.refreshWeather();
+    m_weatherProvider.publishReady(12, QStringLiteral("Previous City"),
+                                   QStringLiteral("Overcast"));
+    const int previousTemperature = controller.weatherTemp();
+    const QString previousCity = controller.weatherCity();
+    const QString previousCondition = controller.weatherCondition();
+    const QUrl previousIcon = controller.weatherIconSource();
+
+    for (const auto &[failure, expectedText] : failures) {
+        controller.refreshWeather();
+        QVERIFY(controller.weatherLoading());
+        const int changeCount = weatherChangedSpy.count();
+
+        m_weatherProvider.publishFailure(failure);
+
+        QVERIFY(!controller.weatherReady());
+        QVERIFY(!controller.weatherLoading());
+        QCOMPARE(controller.weatherStatusText(), expectedText);
+        QCOMPARE(controller.weatherTemp(), previousTemperature);
+        QCOMPARE(controller.weatherCity(), previousCity);
+        QCOMPARE(controller.weatherCondition(), previousCondition);
+        QCOMPARE(controller.weatherIconSource(), previousIcon);
+        QCOMPARE(weatherChangedSpy.count(), changeCount + 1);
+    }
+    QCOMPARE(m_weatherProvider.refreshCalls, failures.size() + 1);
+}
+
+void TestSpotlightBackend::testControllerWeatherCloseCancelsAndRetainsCache()
+{
+    FakeSpotlightBackend backend;
+    FakeSpotlightLauncher launcher;
+    SpotlightController controller(testControllerPaths(), backend, launcher, m_weatherProvider);
+
+    controller.show();
+    QCOMPARE(m_weatherProvider.refreshCalls, 1);
+    QVERIFY(controller.isOpen());
+    m_weatherProvider.publishReady(18, QStringLiteral("Cached City"),
+                                   QStringLiteral("Overcast"));
+
+    const int cachedTemperature = controller.weatherTemp();
+    const QString cachedCity = controller.weatherCity();
+    const QString cachedCondition = controller.weatherCondition();
+    const QUrl cachedIcon = controller.weatherIconSource();
+    controller.refreshWeather();
+    QCOMPARE(m_weatherProvider.refreshCalls, 2);
+    QCOMPARE(controller.weatherStatusText(), QStringLiteral("Updating"));
+
+    controller.close();
+
+    QCOMPARE(m_weatherProvider.cancelCalls, 1);
+    QVERIFY(!controller.isOpen());
+    QVERIFY(!controller.weatherLoading());
+    QVERIFY(controller.weatherReady());
+    QCOMPARE(controller.weatherTemp(), cachedTemperature);
+    QCOMPARE(controller.weatherCity(), cachedCity);
+    QCOMPARE(controller.weatherCondition(), cachedCondition);
+    QCOMPARE(controller.weatherIconSource(), cachedIcon);
+
+    controller.show();
+    QCOMPARE(m_weatherProvider.refreshCalls, 2);
+}
+
+void TestSpotlightBackend::testControllerWeatherGameModeCancelsAndResumes()
+{
+    FakeSpotlightBackend backend;
+    FakeSpotlightLauncher launcher;
+    SpotlightController controller(testControllerPaths(), backend, launcher, m_weatherProvider);
+    QSignalSpy openChangedSpy(&controller, &SpotlightController::openChanged);
+
+    controller.show();
+    QCOMPARE(m_weatherProvider.refreshCalls, 1);
+    QVERIFY(controller.weatherLoading());
+    const int openChangeCount = openChangedSpy.count();
+
+    controller.setGameModeActive(true);
+
+    QCOMPARE(m_weatherProvider.cancelCalls, 1);
+    QVERIFY(controller.isOpen());
+    QVERIFY(!controller.weatherLoading());
+    QCOMPARE(openChangedSpy.count(), openChangeCount);
+    controller.refreshWeather();
+    QCOMPARE(m_weatherProvider.refreshCalls, 1);
+
+    controller.setGameModeActive(false);
+
+    QCOMPARE(m_weatherProvider.refreshCalls, 2);
+    QVERIFY(controller.weatherLoading());
+}
+
+void TestSpotlightBackend::testControllerWeatherDisableCancelsAndBlocksRefresh()
+{
+    FakeSpotlightBackend backend;
+    FakeSpotlightLauncher launcher;
+    SpotlightController controller(testControllerPaths(), backend, launcher, m_weatherProvider);
+
+    controller.show();
+    QCOMPARE(m_weatherProvider.refreshCalls, 1);
+    controller.setWeatherEnabled(false);
+
+    QCOMPARE(m_weatherProvider.cancelCalls, 1);
+    QVERIFY(!controller.weatherEnabled());
+    QVERIFY(!controller.weatherReady());
+    QVERIFY(!controller.weatherLoading());
+    QCOMPARE(controller.weatherStatusText(), QStringLiteral("Disabled"));
+    controller.refreshWeather();
+    QCOMPARE(m_weatherProvider.refreshCalls, 1);
+
+    controller.close();
+    controller.setWeatherEnabled(true);
+    QCOMPARE(m_weatherProvider.refreshCalls, 1);
+}
+
+void TestSpotlightBackend::testControllerWeatherStartupWarmupWhileHidden()
+{
+    FakeSpotlightBackend backend;
+    FakeSpotlightLauncher launcher;
+    QElapsedTimer elapsed;
+    elapsed.start();
+    SpotlightController controller(testControllerPaths(), backend, launcher, m_weatherProvider);
+
+    QTRY_VERIFY_WITH_TIMEOUT(m_weatherProvider.refreshCalls == 1, 1500);
+
+    QVERIFY(!controller.isOpen());
+    QVERIFY(controller.weatherLoading());
+    QVERIFY(elapsed.elapsed() >= 450);
+}
+
+void TestSpotlightBackend::testWeatherProcessServiceSuccess()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString executable = writeExecutableScript(
+        tempDir.path(), QStringLiteral("weather-cli"),
+        "#!/bin/sh\n[ \"$#\" -eq 1 ] && [ \"$1\" = summary ] || exit 73\n"
+        "printf '%s\\n' '{\"temp\":23,\"city\":\"Test City\",\"condition\":\"Partly cloudy\"}'\n");
+    QVERIFY(!executable.isEmpty());
+
+    SpotlightWeatherProcessService service(executable);
+    QSignalSpy readySpy(&service, &SpotlightWeatherProvider::ready);
+    QSignalSpy failedSpy(&service, &SpotlightWeatherProvider::failed);
+    service.refresh();
+
+    QTRY_COMPARE_WITH_TIMEOUT(readySpy.count(), 1, 3000);
+    QCOMPARE(failedSpy.count(), 0);
+    const QList<QVariant> values = readySpy.takeFirst();
+    QCOMPARE(values.at(0).toInt(), 23);
+    QCOMPARE(values.at(1).toString(), QStringLiteral("Test City"));
+    QCOMPARE(values.at(2).toString(), QStringLiteral("Partly cloudy"));
+}
+
+void TestSpotlightBackend::testWeatherProcessServicePermissiveObject()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString executable = writeExecutableScript(
+        tempDir.path(), QStringLiteral("weather-cli"),
+        "#!/bin/sh\n[ \"$#\" -eq 1 ] && [ \"$1\" = summary ] || exit 73\n"
+        "printf '%s\\n' '{}'\n");
+    QVERIFY(!executable.isEmpty());
+
+    SpotlightWeatherProcessService service(executable);
+    QSignalSpy readySpy(&service, &SpotlightWeatherProvider::ready);
+    QSignalSpy failedSpy(&service, &SpotlightWeatherProvider::failed);
+    service.refresh();
+
+    QTRY_COMPARE_WITH_TIMEOUT(readySpy.count(), 1, 3000);
+    QCOMPARE(failedSpy.count(), 0);
+    const QList<QVariant> values = readySpy.takeFirst();
+    QCOMPARE(values.at(0).toInt(), 0);
+    QCOMPARE(values.at(1).toString(), QString());
+    QCOMPARE(values.at(2).toString(), QString());
+}
+
+void TestSpotlightBackend::testWeatherProcessServiceNonzeroExit()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString executable = writeExecutableScript(
+        tempDir.path(), QStringLiteral("weather-cli"),
+        "#!/bin/sh\n[ \"$#\" -eq 1 ] && [ \"$1\" = summary ] || exit 73\nexit 5\n");
+    QVERIFY(!executable.isEmpty());
+
+    SpotlightWeatherProcessService service(executable);
+    QSignalSpy readySpy(&service, &SpotlightWeatherProvider::ready);
+    QSignalSpy failedSpy(&service, &SpotlightWeatherProvider::failed);
+    service.refresh();
+
+    QTRY_COMPARE_WITH_TIMEOUT(failedSpy.count(), 1, 3000);
+    QCOMPARE(readySpy.count(), 0);
+    QCOMPARE(failedSpy.takeFirst().at(0).value<SpotlightWeatherProvider::Failure>(),
+             SpotlightWeatherProvider::Failure::NoData);
+}
+
+void TestSpotlightBackend::testWeatherProcessServiceInvalidJson()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString executable = writeExecutableScript(
+        tempDir.path(), QStringLiteral("weather-cli"),
+        "#!/bin/sh\n[ \"$#\" -eq 1 ] && [ \"$1\" = summary ] || exit 73\n"
+        "printf '%s\\n' 'not-json'\n");
+    QVERIFY(!executable.isEmpty());
+
+    SpotlightWeatherProcessService service(executable);
+    QSignalSpy readySpy(&service, &SpotlightWeatherProvider::ready);
+    QSignalSpy failedSpy(&service, &SpotlightWeatherProvider::failed);
+    service.refresh();
+
+    QTRY_COMPARE_WITH_TIMEOUT(failedSpy.count(), 1, 3000);
+    QCOMPARE(readySpy.count(), 0);
+    QCOMPARE(failedSpy.takeFirst().at(0).value<SpotlightWeatherProvider::Failure>(),
+             SpotlightWeatherProvider::Failure::InvalidData);
+}
+
+void TestSpotlightBackend::testWeatherProcessServiceFailedStart()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString executable = tempDir.path() + QStringLiteral("/missing-weather-cli");
+
+    SpotlightWeatherProcessService service(executable);
+    QSignalSpy readySpy(&service, &SpotlightWeatherProvider::ready);
+    QSignalSpy failedSpy(&service, &SpotlightWeatherProvider::failed);
+    service.refresh();
+
+    QTRY_COMPARE_WITH_TIMEOUT(failedSpy.count(), 1, 3000);
+    QCOMPARE(readySpy.count(), 0);
+    QTest::qWait(50);
+    QCOMPARE(failedSpy.count(), 1);
+    QCOMPARE(failedSpy.takeFirst().at(0).value<SpotlightWeatherProvider::Failure>(),
+             SpotlightWeatherProvider::Failure::ConnectionFailed);
+}
+
+void TestSpotlightBackend::testWeatherProcessServiceCancelSuppressesStaleResult()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString executable = writeExecutableScript(
+        tempDir.path(), QStringLiteral("weather-cli"),
+        "#!/bin/sh\n[ \"$#\" -eq 1 ] && [ \"$1\" = summary ] || exit 73\n"
+        "sleep 0.15\n"
+        "printf '%s\\n' '{\"temp\":23,\"city\":\"Test City\",\"condition\":\"Clear\"}'\n");
+    QVERIFY(!executable.isEmpty());
+
+    SpotlightWeatherProcessService service(executable);
+    QSignalSpy readySpy(&service, &SpotlightWeatherProvider::ready);
+    QSignalSpy failedSpy(&service, &SpotlightWeatherProvider::failed);
+    service.refresh();
+    service.cancel();
+
+    QTest::qWait(350);
+    QCOMPARE(readySpy.count(), 0);
+    QCOMPARE(failedSpy.count(), 0);
+
+    service.refresh();
+    QTRY_COMPARE_WITH_TIMEOUT(readySpy.count(), 1, 3000);
+    QCOMPARE(failedSpy.count(), 0);
+    QCOMPARE(readySpy.takeFirst().at(0).toInt(), 23);
+}
+
 void TestSpotlightBackend::testRuntimePathsConvertToControllerPaths()
 {
     ScopedEnvironment root("ASTREA_ROOT", "/test/resolved-root");
-    const SpotlightControllerPaths paths =
-        SpotlightRuntimePaths::fromEnvironment().controllerPaths();
+    const SpotlightRuntimePaths runtimePaths = SpotlightRuntimePaths::fromEnvironment();
+    const SpotlightControllerPaths paths = runtimePaths.controllerPaths();
 
     QCOMPARE(paths.astreaRoot, QStringLiteral("/test/resolved-root"));
-    QCOMPARE(paths.weatherExecutable,
-             QStringLiteral("/test/resolved-root/bin/weather-cli"));
     QCOMPARE(paths.weatherAssetDirectory,
              QStringLiteral("/test/resolved-root/Apps/Weather/assets/icons/weather"));
+    QCOMPARE(runtimePaths.weatherCli(), QStringLiteral("/test/resolved-root/bin/weather-cli"));
 }
 
 void TestSpotlightBackend::testApplicationLauncher() {
@@ -1415,7 +1786,7 @@ void TestSpotlightBackend::testConfigSync_weatherDisabled() {
 
     FakeSpotlightBackend backend;
     FakeSpotlightLauncher launcher;
-    SpotlightController controller(testControllerPaths(), backend, launcher);
+    SpotlightController controller(testControllerPaths(), backend, launcher, m_weatherProvider);
     QVERIFY(controller.weatherEnabled()); // default is true
 
     // Simulate the fix: apply initial watcher state after signal wiring
@@ -1449,7 +1820,7 @@ void TestSpotlightBackend::testConfigSync_weatherEnabled() {
 
     FakeSpotlightBackend backend;
     FakeSpotlightLauncher launcher;
-    SpotlightController controller(testControllerPaths(), backend, launcher);
+    SpotlightController controller(testControllerPaths(), backend, launcher, m_weatherProvider);
     QVERIFY(controller.weatherEnabled());
 
     controller.applyConfig(watcher.spotlightConfig());
@@ -1482,7 +1853,7 @@ void TestSpotlightBackend::testConfigSync_componentDisabled() {
 
     FakeSpotlightBackend backend;
     FakeSpotlightLauncher launcher;
-    SpotlightController controller(testControllerPaths(), backend, launcher);
+    SpotlightController controller(testControllerPaths(), backend, launcher, m_weatherProvider);
 
     // The fix: sync component enabled state
     controller.setComponentEnabled(watcher.componentEnabled());
@@ -1494,7 +1865,7 @@ void TestSpotlightBackend::testConfigSync_componentDisabled() {
 void TestSpotlightBackend::testDisabledComponentRejectsPresentation() {
     FakeSpotlightBackend backend;
     FakeSpotlightLauncher launcher;
-    SpotlightController controller(testControllerPaths(), backend, launcher);
+    SpotlightController controller(testControllerPaths(), backend, launcher, m_weatherProvider);
     controller.setWeatherEnabled(false);
     controller.setComponentEnabled(false);
 
@@ -1537,7 +1908,7 @@ void TestSpotlightBackend::testConfigSync_liveUpdate() {
 
     FakeSpotlightBackend backend;
     FakeSpotlightLauncher launcher;
-    SpotlightController controller(testControllerPaths(), backend, launcher);
+    SpotlightController controller(testControllerPaths(), backend, launcher, m_weatherProvider);
 
     controller.applyConfig(watcher.spotlightConfig());
     QVERIFY(controller.weatherEnabled());

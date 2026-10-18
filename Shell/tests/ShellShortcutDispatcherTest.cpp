@@ -9,6 +9,7 @@
 #include "Spotlight/core/SpotlightController.hpp"
 #include "Spotlight/core/SpotlightLauncher.hpp"
 #include "Spotlight/core/SpotlightControllerPaths.hpp"
+#include "Spotlight/core/SpotlightWeatherProvider.hpp"
 #include "platform/shortcut/ShellShortcutDispatcher.hpp"
 
 class FakeSpotlightBackend final : public SpotlightBackend {
@@ -29,6 +30,12 @@ public:
     void launch(const SpotlightLaunchRequest &) override {}
 };
 
+class FakeSpotlightWeatherProvider final : public SpotlightWeatherProvider {
+public:
+    void refresh() override {}
+    void cancel() override {}
+};
+
 class ShellShortcutDispatcherTest final : public QObject {
     Q_OBJECT
 
@@ -42,8 +49,9 @@ void ShellShortcutDispatcherTest::spotlightToggleIsIndependentFromAltTabGate()
 {
     FakeSpotlightBackend backend;
     FakeSpotlightLauncher launcher;
+    FakeSpotlightWeatherProvider weather;
     SpotlightControllerPaths paths;
-    SpotlightController spotlight(paths, backend, launcher);
+    SpotlightController spotlight(paths, backend, launcher, weather);
     spotlight.setWeatherEnabled(false);
     ShellShortcutDispatcher dispatcher(nullptr, &spotlight);
     dispatcher.setAltTabEnabled(false);
@@ -76,8 +84,9 @@ void ShellShortcutDispatcherTest::altTabToggleIsIndependentFromSpotlightGate()
     AltTabController altTab(&backend, &identity);
     FakeSpotlightBackend spotlightBackend;
     FakeSpotlightLauncher spotlightLauncher;
+    FakeSpotlightWeatherProvider spotlightWeather;
     SpotlightControllerPaths paths;
-    SpotlightController spotlight(paths, spotlightBackend, spotlightLauncher);
+    SpotlightController spotlight(paths, spotlightBackend, spotlightLauncher, spotlightWeather);
     spotlight.setWeatherEnabled(false);
     ShellShortcutDispatcher dispatcher(&altTab, &spotlight);
     dispatcher.setAltTabEnabled(true);

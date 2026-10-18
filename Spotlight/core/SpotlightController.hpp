@@ -5,11 +5,10 @@
 #include "core/SpotlightControllerPaths.hpp"
 #include "core/SpotlightLauncher.hpp"
 #include "core/SpotlightResultsModel.hpp"
+#include "core/SpotlightWeatherProvider.hpp"
 
 #include <QObject>
 #include <QTimer>
-#include <QProcess>
-#include <QPointer>
 #include <QDateTime>
 #include <QUrl>
 #include <QJsonObject>
@@ -37,6 +36,7 @@ public:
     explicit SpotlightController(const SpotlightControllerPaths &paths,
                                  SpotlightBackend &backend,
                                  SpotlightLauncher &launcher,
+                                 SpotlightWeatherProvider &weather,
                                  SpotlightCatalogSource *catalog = nullptr,
                                  QObject *parent = nullptr);
 
@@ -96,20 +96,20 @@ private slots:
     void onLaunchFailed(const QString &desktopId, const QString &error);
 
 private:
-    void applyWeather(const QJsonObject &data);
+    void applyWeather(int temperature, const QString &city, const QString &condition);
     void applyWeatherError(const QString &error);
     void clearSearchState();
 
     SpotlightControllerPaths m_paths;
     SpotlightBackend &m_backend;
     SpotlightLauncher &m_launcher;
+    SpotlightWeatherProvider &m_weather;
     SpotlightCatalogSource *m_catalog = nullptr;
     SpotlightResultsModel m_results;
 
     QTimer m_searchDebounce;
     QTimer m_closeAnimationTimer;
     QTimer m_weatherRefreshTimer;
-    QPointer<QProcess> m_weatherProc;
 
     bool m_open = false;
     bool m_componentEnabled = true;
@@ -117,7 +117,6 @@ private:
     int m_selectedIndex = -1;
     QString m_query;
     QString m_pendingQuery;
-    int m_weatherRequestGen = 0;
 
     bool m_weatherEnabled = true;
     bool m_weatherReady = false;

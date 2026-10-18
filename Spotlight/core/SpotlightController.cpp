@@ -1,6 +1,5 @@
 #include "core/SpotlightController.hpp"
 
-#include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QDir>
@@ -10,12 +9,14 @@
 SpotlightController::SpotlightController(const SpotlightControllerPaths &paths,
                                          SpotlightBackend &backend,
                                          SpotlightLauncher &launcher,
+                                         SpotlightWeatherProvider &weather,
                                          SpotlightCatalogSource *catalog,
                                          QObject *parent)
     : QObject(parent)
     , m_paths(paths)
     , m_backend(backend)
     , m_launcher(launcher)
+    , m_weather(weather)
     , m_catalog(catalog)
 {
     m_searchDebounce.setSingleShot(true);
@@ -32,6 +33,22 @@ SpotlightController::SpotlightController(const SpotlightControllerPaths &paths,
 
     m_weatherRefreshTimer.setInterval(kWeatherRefreshIntervalMs);
     connect(&m_weatherRefreshTimer, &QTimer::timeout, this, &SpotlightController::refreshWeather);
+    connect(&m_weather, &SpotlightWeatherProvider::ready,
+            this, &SpotlightController::applyWeather);
+    connect(&m_weather, &SpotlightWeatherProvider::failed, this,
+            [this](SpotlightWeatherProvider::Failure failure) {
+        switch (failure) {
+        case SpotlightWeatherProvider::Failure::NoData:
+            applyWeatherError(QStringLiteral("No weather data"));
+            break;
+        case SpotlightWeatherProvider::Failure::InvalidData:
+            applyWeatherError(QStringLiteral("Invalid weather data"));
+            break;
+        case SpotlightWeatherProvider::Failure::ConnectionFailed:
+            applyWeatherError(QStringLiteral("Connection failed"));
+            break;
+        }
+    });
 
     connect(&m_results, &QAbstractItemModel::modelReset, this, [this] {
         int next = m_results.resultCount() > 0 ? 0 : -1;
@@ -128,19 +145,10 @@ void SpotlightController::close() {
     if (!m_open && !m_surfaceVisible) return;
     m_searchDebounce.stop();
 
-    // Cancel any in-flight weather request
-    {
-        ++m_weatherRequestGen;
-        m_weatherLoading = false;
-        if (m_weatherProc) {
-            if (m_weatherProc->state() != QProcess::NotRunning) {
-                m_weatherProc->kill();
-            }
-            m_weatherProc.clear();
-        }
-        m_weatherRefreshTimer.stop();
-        emit weatherChanged();
-    }
+    m_weather.cancel();
+    m_weatherLoading = false;
+    m_weatherRefreshTimer.stop();
+    emit weatherChanged();
 
     clearSearchState();
     if (m_open) {
@@ -264,55 +272,9 @@ void SpotlightController::onLaunchFailed(const QString &desktopId, const QString
 void SpotlightController::refreshWeather() {
     if (!m_weatherEnabled || m_weatherLoading || m_gameModeActive) return;
     m_weatherLoading = true;
-    ++m_weatherRequestGen;
-    int gen = m_weatherRequestGen;
     m_weatherStatusText = m_weatherReady ? QStringLiteral("Updating") : QStringLiteral("Loading");
     emit weatherChanged();
-
-    // Create a fresh QProcess per request to avoid stale callbacks
-    auto *proc = new QProcess(this);
-    proc->setProperty("generation", gen);
-
-    connect(proc, &QProcess::finished, this, [this, proc, gen](int exitCode, QProcess::ExitStatus status) {
-        proc->deleteLater();
-        if (gen != m_weatherRequestGen) return;
-        if (proc != m_weatherProc) return;
-        m_weatherProc.clear();
-
-        m_weatherLoading = false;
-        if (exitCode != 0 || status != QProcess::NormalExit) {
-            QString stderr = QString::fromUtf8(proc->readAllStandardError()).trimmed();
-            if (!stderr.isEmpty())
-                qWarning("Weather CLI stderr: %s", qPrintable(stderr));
-            applyWeatherError(QStringLiteral("No weather data"));
-            return;
-        }
-        QByteArray out = proc->readAllStandardOutput();
-        QJsonDocument doc = QJsonDocument::fromJson(out);
-        if (!doc.isObject()) {
-            applyWeatherError(QStringLiteral("Invalid weather data"));
-            return;
-        }
-        // Only cache if we're still interested (not closed/disabled)
-        if (m_weatherEnabled)
-            applyWeather(doc.object());
-    });
-
-    connect(proc, &QProcess::errorOccurred, this, [this, proc, gen](QProcess::ProcessError err) {
-        Q_UNUSED(err);
-        proc->deleteLater();
-        if (gen != m_weatherRequestGen) return;
-        if (proc != m_weatherProc) return;
-        m_weatherProc.clear();
-
-        m_weatherLoading = false;
-        applyWeatherError(QStringLiteral("Connection failed"));
-    });
-
-    m_weatherProc = proc;
-    m_weatherProc->setProgram(m_paths.weatherExecutable);
-    m_weatherProc->setArguments({QStringLiteral("summary")});
-    m_weatherProc->start();
+    m_weather.refresh();
 }
 
 static QString normalizeWeatherCondition(const QString &condition) {
@@ -336,12 +298,13 @@ static QString normalizeWeatherCondition(const QString &condition) {
     return QStringLiteral("clear");
 }
 
-void SpotlightController::applyWeather(const QJsonObject &data) {
+void SpotlightController::applyWeather(int temperature, const QString &city,
+                                       const QString &condition) {
     m_weatherReady = true;
     m_weatherLoading = false;
-    m_weatherTemp = data.value(QStringLiteral("temp")).toInt();
-    m_weatherCity = data.value(QStringLiteral("city")).toString();
-    m_weatherCondition = data.value(QStringLiteral("condition")).toString();
+    m_weatherTemp = temperature;
+    m_weatherCity = city;
+    m_weatherCondition = condition;
     m_weatherStatusText.clear();
 
     const QString assetRoot = QUrl::fromLocalFile(
@@ -371,12 +334,8 @@ void SpotlightController::setGameModeActive(bool active) {
     m_gameModeActive = active;
     if (active) {
         // Cancel weather, but do NOT close the spotlight
-        ++m_weatherRequestGen;
+        m_weather.cancel();
         m_weatherLoading = false;
-        if (m_weatherProc) {
-            m_weatherProc->kill();
-            m_weatherProc.clear();
-        }
         m_weatherRefreshTimer.stop();
         emit weatherChanged();
     } else if (isOpen()) {
@@ -403,13 +362,9 @@ void SpotlightController::setWeatherEnabled(bool enabled) {
 
     if (!enabled) {
         m_weatherRefreshTimer.stop();
-        if (m_weatherProc) {
-            m_weatherProc->kill();
-            m_weatherProc.clear();
-        }
+        m_weather.cancel();
         m_weatherLoading = false;
         m_weatherReady = false;
-        m_weatherRequestGen++;
         applyWeatherError(QStringLiteral("Disabled"));
     } else if (isOpen() && !m_gameModeActive) {
         m_weatherRefreshTimer.start();

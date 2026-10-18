@@ -36,7 +36,7 @@ void ShellShortcutDispatcherTest::spotlightToggleIsIndependentFromAltTabGate()
 {
     FakeSpotlightBackend backend;
     SpotlightControllerPaths paths;
-    SpotlightController spotlight(paths, &backend);
+    SpotlightController spotlight(paths, backend);
     spotlight.setWeatherEnabled(false);
     ShellShortcutDispatcher dispatcher(nullptr, &spotlight);
     dispatcher.setAltTabEnabled(false);
@@ -69,7 +69,7 @@ void ShellShortcutDispatcherTest::altTabToggleIsIndependentFromSpotlightGate()
     AltTabController altTab(&backend, &identity);
     FakeSpotlightBackend spotlightBackend;
     SpotlightControllerPaths paths;
-    SpotlightController spotlight(paths, &spotlightBackend);
+    SpotlightController spotlight(paths, spotlightBackend);
     spotlight.setWeatherEnabled(false);
     ShellShortcutDispatcher dispatcher(&altTab, &spotlight);
     dispatcher.setAltTabEnabled(true);

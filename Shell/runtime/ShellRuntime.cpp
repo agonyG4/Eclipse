@@ -101,7 +101,7 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
                                                               m_identityResolver.get());
     m_spotlightBackend = std::make_unique<RustSpotlightBackend>();
     m_spotlightController = std::make_unique<SpotlightController>(
-        spotlightPaths.controllerPaths(), m_spotlightBackend.get(),
+        spotlightPaths.controllerPaths(), *m_spotlightBackend,
         m_catalog.get(), m_launcher.get());
     m_screenshotController = std::make_unique<ScreenshotController>(
         m_screenCaptureClient.get());

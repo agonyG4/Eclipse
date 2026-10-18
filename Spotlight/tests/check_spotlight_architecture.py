@@ -221,10 +221,11 @@ def main() -> int:
     )
     require(backend_port_path.is_file(), "Spotlight core must own SpotlightBackend.hpp")
     require(
-        "SpotlightBackend" in controller_header
-        and "SpotlightBackend *m_backend" in controller_header
+        "SpotlightBackend &backend" in controller_header
+        and "SpotlightBackend &m_backend" in controller_header
+        and "SpotlightBackend *" not in controller_header
         and "RustSpotlightBackend" not in controller_header + controller_cpp,
-        "SpotlightController must borrow the core SpotlightBackend port",
+        "SpotlightController must require and borrow the core SpotlightBackend port by reference",
     )
     require(
         all(method in backend_port for method in (
@@ -277,7 +278,7 @@ def main() -> int:
         and "spotlightPaths.controllerPaths()" in shell_runtime_cpp
         and re.search(
             r"make_unique<SpotlightController>\s*\(\s*spotlightPaths\.controllerPaths\(\)\s*,\s*"
-            r"m_spotlightBackend\.get\(\)",
+            r"\*m_spotlightBackend",
             shell_runtime_cpp,
         ) is not None,
         "ShellRuntime must create one Rust adapter and inject it with neutral paths",

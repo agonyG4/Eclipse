@@ -8,7 +8,7 @@
 #include <QUrl>
 
 SpotlightController::SpotlightController(const SpotlightControllerPaths &paths,
-                                         SpotlightBackend *backend,
+                                         SpotlightBackend &backend,
                                          DesktopEntryCatalog *catalog,
                                          ApplicationLauncher *launcher,
                                          QObject *parent)
@@ -59,7 +59,7 @@ SpotlightController::SpotlightController(const SpotlightControllerPaths &paths,
     if (m_catalog) {
         connect(m_catalog, &DesktopEntryCatalog::indexUpdated, this, [this] {
             QString error;
-            if (!m_backend->setCatalog(m_catalog->snapshotJson(), &error)) {
+            if (!m_backend.setCatalog(m_catalog->snapshotJson(), &error)) {
                 qWarning("Shared catalog update failed: %s", qPrintable(error));
                 return;
             }
@@ -78,8 +78,8 @@ SpotlightController::SpotlightController(const SpotlightControllerPaths &paths,
 bool SpotlightController::init(const QString &locale, QString *errorOut) {
     m_locale = locale;
     const bool created = m_catalog
-        ? m_backend->createWithCatalog(m_paths.astreaRoot, locale, m_catalog->snapshotJson(), errorOut)
-        : m_backend->create(m_paths.astreaRoot, locale, errorOut);
+        ? m_backend.createWithCatalog(m_paths.astreaRoot, locale, m_catalog->snapshotJson(), errorOut)
+        : m_backend.create(m_paths.astreaRoot, locale, errorOut);
     if (!created)
         return false;
     return true;
@@ -93,8 +93,8 @@ bool SpotlightController::setLocale(const QString &locale, QString *errorOut) {
     const int previousIndex = m_selectedIndex;
     m_locale = locale;
     const bool created = m_catalog
-        ? m_backend->createWithCatalog(m_paths.astreaRoot, locale, m_catalog->snapshotJson(), errorOut)
-        : m_backend->create(m_paths.astreaRoot, locale, errorOut);
+        ? m_backend.createWithCatalog(m_paths.astreaRoot, locale, m_catalog->snapshotJson(), errorOut)
+        : m_backend.create(m_paths.astreaRoot, locale, errorOut);
     if (!created)
         return false;
 
@@ -192,7 +192,7 @@ void SpotlightController::runSearch() {
     }
 
     QString error;
-    QJsonArray results = m_backend->search(q, 6, &error);
+    QJsonArray results = m_backend.search(q, 6, &error);
     if (!error.isEmpty()) {
         qWarning("Spotlight search error: %s", qPrintable(error));
     }
@@ -226,7 +226,7 @@ void SpotlightController::launch(int row) {
 
     // Record usage immediately on activation (before launch)
     QString err;
-    m_backend->recordLaunch(item.id, &err);
+    m_backend.recordLaunch(item.id, &err);
     if (!err.isEmpty())
         qWarning("Failed to record launch: %s", qPrintable(err));
 
@@ -239,9 +239,9 @@ void SpotlightController::reloadIndex() {
     m_results.clear();
     QString err;
     if (m_catalog)
-        m_backend->setCatalog(m_catalog->snapshotJson(), &err);
+        m_backend.setCatalog(m_catalog->snapshotJson(), &err);
     else
-        m_backend->reload(&err);
+        m_backend.reload(&err);
     if (!err.isEmpty())
         qWarning("Reload error: %s", qPrintable(err));
 }
@@ -253,7 +253,7 @@ QJsonArray SpotlightController::watchedDirectories() {
             result.append(directory);
         return result;
     }
-    return m_backend->watchedDirectories();
+    return m_backend.watchedDirectories();
 }
 
 void SpotlightController::onLaunchSucceeded(const QString &desktopId) {
@@ -370,7 +370,7 @@ void SpotlightController::applyWeatherError(const QString &error) {
 
 void SpotlightController::ensureConfig() {
     QString error;
-    m_backend->ensureConfig(&error);
+    m_backend.ensureConfig(&error);
     if (!error.isEmpty())
         qWarning("Config ensure error: %s", qPrintable(error));
 }

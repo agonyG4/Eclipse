@@ -36,7 +36,7 @@ class SpotlightController : public QObject {
 
 public:
     explicit SpotlightController(const SpotlightControllerPaths &paths,
-                                 SpotlightBackend *backend,
+                                 SpotlightBackend &backend,
                                  DesktopEntryCatalog *catalog = nullptr,
                                  ApplicationLauncher *launcher = nullptr,
                                  QObject *parent = nullptr);
@@ -105,7 +105,7 @@ private:
     void clearSearchState();
 
     SpotlightControllerPaths m_paths;
-    SpotlightBackend *m_backend = nullptr;
+    SpotlightBackend &m_backend;
     DesktopEntryCatalog *m_catalog = nullptr;
     std::unique_ptr<ApplicationLauncher> m_ownedLauncher;
     ApplicationLauncher *m_launcher = nullptr;

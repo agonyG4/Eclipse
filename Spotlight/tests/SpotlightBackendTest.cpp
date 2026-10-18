@@ -659,7 +659,7 @@ void TestSpotlightBackend::testConfigWatcherWeatherFlag() {
 
 void TestSpotlightBackend::testSelectionWrapping() {
     FakeSpotlightBackend backend;
-    SpotlightController controller(testControllerPaths(), &backend);
+    SpotlightController controller(testControllerPaths(), backend);
     controller.setWeatherEnabled(false);
     SpotlightResultsModel *model = controller.resultsModel();
 
@@ -699,7 +699,7 @@ void TestSpotlightBackend::testControllerBackendInitialization()
     QString error;
 
     FakeSpotlightBackend nativeBackend;
-    SpotlightController nativeController(paths, &nativeBackend);
+    SpotlightController nativeController(paths, nativeBackend);
     QVERIFY2(nativeController.init(QStringLiteral("pt_BR"), &error), qPrintable(error));
     QCOMPARE(nativeBackend.createCalls, 1);
     QCOMPARE(nativeBackend.createWithCatalogCalls, 0);
@@ -712,7 +712,7 @@ void TestSpotlightBackend::testControllerBackendInitialization()
     catalog.initialize(home.path());
 
     FakeSpotlightBackend catalogBackend;
-    SpotlightController catalogController(paths, &catalogBackend, &catalog);
+    SpotlightController catalogController(paths, catalogBackend, &catalog);
     QVERIFY2(catalogController.init(QStringLiteral("fr_FR"), &error), qPrintable(error));
     QCOMPARE(catalogBackend.createCalls, 0);
     QCOMPARE(catalogBackend.createWithCatalogCalls, 1);
@@ -728,7 +728,7 @@ void TestSpotlightBackend::testControllerSearchUsesInjectedBackend()
         {QStringLiteral("id"), QStringLiteral("fake-app")},
         {QStringLiteral("name"), QStringLiteral("Fake Application")},
     }};
-    SpotlightController controller(testControllerPaths(), &backend);
+    SpotlightController controller(testControllerPaths(), backend);
     controller.setWeatherEnabled(false);
     controller.setQuery(QStringLiteral("  test query  "));
 
@@ -749,7 +749,7 @@ void TestSpotlightBackend::testControllerActivationRecordsUsage()
     const SpotlightControllerPaths paths = testControllerPaths();
     RecordingApplicationLauncher launcher;
     backend.launchCalled = &launcher.launchCalled;
-    SpotlightController controller(paths, &backend, nullptr, &launcher);
+    SpotlightController controller(paths, backend, nullptr, &launcher);
     controller.setWeatherEnabled(false);
     controller.setQuery(QStringLiteral("fake"));
     controller.launch(0);
@@ -1102,7 +1102,7 @@ void TestSpotlightBackend::testConfigSync_weatherDisabled() {
     QVERIFY(!watcher.weatherEnabled());
 
     FakeSpotlightBackend backend;
-    SpotlightController controller(testControllerPaths(), &backend);
+    SpotlightController controller(testControllerPaths(), backend);
     QVERIFY(controller.weatherEnabled()); // default is true
 
     // Simulate the fix: apply initial watcher state after signal wiring
@@ -1135,7 +1135,7 @@ void TestSpotlightBackend::testConfigSync_weatherEnabled() {
     QVERIFY(watcher.weatherEnabled());
 
     FakeSpotlightBackend backend;
-    SpotlightController controller(testControllerPaths(), &backend);
+    SpotlightController controller(testControllerPaths(), backend);
     QVERIFY(controller.weatherEnabled());
 
     controller.applyConfig(watcher.spotlightConfig());
@@ -1167,7 +1167,7 @@ void TestSpotlightBackend::testConfigSync_componentDisabled() {
     QVERIFY(!watcher.componentEnabled());
 
     FakeSpotlightBackend backend;
-    SpotlightController controller(testControllerPaths(), &backend);
+    SpotlightController controller(testControllerPaths(), backend);
 
     // The fix: sync component enabled state
     controller.setComponentEnabled(watcher.componentEnabled());
@@ -1178,7 +1178,7 @@ void TestSpotlightBackend::testConfigSync_componentDisabled() {
 
 void TestSpotlightBackend::testDisabledComponentRejectsPresentation() {
     FakeSpotlightBackend backend;
-    SpotlightController controller(testControllerPaths(), &backend);
+    SpotlightController controller(testControllerPaths(), backend);
     controller.setWeatherEnabled(false);
     controller.setComponentEnabled(false);
 
@@ -1220,7 +1220,7 @@ void TestSpotlightBackend::testConfigSync_liveUpdate() {
     QVERIFY(watcher.weatherEnabled());
 
     FakeSpotlightBackend backend;
-    SpotlightController controller(testControllerPaths(), &backend);
+    SpotlightController controller(testControllerPaths(), backend);
 
     controller.applyConfig(watcher.spotlightConfig());
     QVERIFY(controller.weatherEnabled());

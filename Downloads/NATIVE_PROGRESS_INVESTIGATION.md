@@ -13,9 +13,10 @@ production native receiver implementation.
 | Brave, Astrea environment | Same candidate channel | No updates, even with libunity and a receiver present |
 | Brave, KDE compatibility, no Unity bus-name owner | Same candidate channel | No updates |
 | Zen under XWayland | `_NET_WM_XAPP_PROGRESS` X11 CARDINAL property | Confirmed with a real download and no extensions loaded |
+| Zen, native Wayland, isolated AutoConfig customization | Internal public Downloads view to the existing API's Unix socket | Confirmed per-file name, bytes and completion; no extension or automation port in final runs |
 | Firefox native Wayland implementation examined | GTK taskbar adapter calls a default no-op `nsWindow::SetProgress` | No equivalent native Wayland output found in this path; this is source evidence, not a runtime proof excluding every possible channel |
 
-The native data is aggregate application/window progress. It does not identify
+The built-in XApp/LauncherEntry data is aggregate application/window progress. It does not identify
 individual download files, filenames, per-file byte counts or distinct terminal
 reasons. It should be represented as application progress, rather than fabricated
 per-file download snapshots in the existing API.
@@ -118,6 +119,76 @@ investigation has not found a ready publisher; a browser change remains a possib
 route. Merely watching a growing `.part` file cannot supply the expected total
 size or reliably distinguish all download states.
 
+## Zen native Wayland: tested browser customization
+
+A follow-up tested the installed Zen version on native Wayland with
+`MOZ_ENABLE_WAYLAND=1`, `GDK_BACKEND=wayland` and `DISPLAY` removed from the child
+environment. Client protocol logging confirmed `wl_display` traffic. The stock
+browser's GTK taskbar logger reported changing percentages, including 3, 10, 18,
+26, 34, 42, 50, 57, 65, 73, 81, 89 and 96. A private-bus LauncherEntry receiver
+owned the Unity compatibility name but observed no progress signals. This runtime
+check supports the examined taskbar-path limitation; it does not exclude every
+other possible browser integration.
+
+An alternative was then tested without rebuilding Zen: a copy of the **installed
+runtime**, placed under the existing Aether build tree, loaded a local AutoConfig
+script. The script subscribes to `Downloads.getList(Downloads.PUBLIC).addView()`
+and maps download changes into the existing JSON Lines API. It sends records
+through `nsISocketTransportService.createUnixDomainTransport()`. No extension,
+native-messaging host, libunity or desktop-environment spoofing is used by this
+publisher. This is browser-side customization, not a capability enabled by merely
+adding a dock listener.
+
+The initial proof used Marionette to click a link, but the final four test cases
+launched the browser directly with a local download URL. They did **not** pass
+`--marionette`, `--remote-allow-system-access` or a remote-debugging flag. AutoConfig
+loads the publisher at normal startup; automation is not its delivery mechanism.
+
+Each final case used a fresh profile and a valid ZIP containing a 4 MiB member
+(4,194,424 bytes including archive headers). The downloaded archive was checked
+with `ZipFile.testzip()`. The API ran on a separate temporary Unix socket.
+
+| Case | Result |
+| --- | --- |
+| Unmodified installed Zen, public download | ZIP completed; no records appeared on the test API |
+| AutoConfig, public download with Content-Length | 15 distinct sampled records, intermediate fractions, correct filename, final `completed`, `progress: 1`, 4,194,424 received/total bytes |
+| AutoConfig, public download without Content-Length | 14 distinct sampled records, `totalBytes: null` and unknown progress while transferring; final `completed`, `progress: 1`, 4,194,424 received bytes |
+| AutoConfig, private-window download | ZIP completed; zero records appeared on the test API |
+
+The first no-automation run stopped at a diagnostic assertion because `dump()`
+logging was disabled in the fresh normal profile. The probe then enabled
+`browser.dom.window.dump.enabled` to observe startup markers. All four final cases
+passed; the publisher itself did not need a transport change for this diagnostic.
+The completion mapping uses the browser's final `target.size`, because its
+throttled `currentBytes` value was still below the actual file size in an earlier
+completion notification.
+
+This proves a route to per-file progress on native Wayland **without an extension**,
+provided that the browser installation is customized. It does not establish
+extension-free capture from an entirely unmodified Zen installation. AutoConfig
+requires installation-level files and, for this privileged script, sets
+`general.config.sandbox_enabled=false`; this is the AutoConfig script sandbox,
+not the web-content process sandbox. The installed `/opt/zen-browser-bin` runtime
+and the user's normal browser profile were not modified.
+
+The publisher is a research prototype. It uses internal browser APIs and does not
+yet implement acknowledged delivery, reconnect/replay, stable profile identity,
+removal synchronization or bounded outbound queues. Pause/resume, failure,
+cancellation and multiple concurrent downloads were not validated in these runs.
+Packaging a maintained browser integration or carrying a browser patch remains
+separate implementation work.
+
+Research artifacts in `/mnt/Aether/Desktop/GitHub/Eclipse-build/Downloads/native`:
+
+- `live-zen-wayland.py`: stock native-Wayland taskbar/D-Bus probe;
+- `zen-autoconfig-runtime/`: isolated runtime copy and its two AutoConfig files;
+- `zen-autoconfig-publisher.cfg`: the experimental publisher;
+- `probe-zen-autoconfig.py`: four-case probe without an automation port;
+- `zen-autoconfig-results.json`: successful final probe results.
+
+Profiles, downloaded ZIPs, API processes and test browser processes were cleaned
+up. No source repository was copied and no compilation was performed.
+
 ## Integration implications
 
 1. Add an application-progress contract to the headless Eclipse API: desktop/app
@@ -133,9 +204,10 @@ size or reliably distinguish all download states.
    to carry the XApp percentage to Eclipse. The examined `XwmAtomName`,
    `PropertyKind`, `X11PropertySnapshot`, and `DockAppInfo` definitions do not yet
    represent this progress field.
-5. Keeping Zen on native Wayland requires a browser-side publisher/patch for this
-   path, or retaining the extension bridge. Adding only a dock listener cannot
-   manufacture data absent from the window's native output.
+5. Keeping Zen on native Wayland requires a browser-side publisher for this path,
+   such as the tested AutoConfig customization, a maintained browser patch or the
+   existing extension bridge. Adding only a dock listener cannot manufacture data
+   absent from the window's native output.
 
 A first extension-free indicator is feasible under these conditions. Exact per-file
 ZIP presentation remains a separate integration requiring richer browser data.
@@ -149,6 +221,10 @@ ZIP presentation remains a separate integration requiring richer browser data.
 - [Firefox Wayland window implementation](https://github.com/mozilla-firefox/firefox/blob/main/widget/gtk/nsWindowWayland.cpp)
 - [Firefox Wayland window declaration](https://github.com/mozilla-firefox/firefox/blob/main/widget/gtk/nsWindowWayland.h)
 - [KDE browser integration requirements](https://community.kde.org/Plasma/Browser_Integration)
+- [Mozilla AutoConfig setup](https://support.mozilla.org/en-US/kb/customizing-firefox-using-autoconfig)
+- [Firefox AutoConfig loader and sandbox preference](https://github.com/mozilla-firefox/firefox/blob/main/extensions/pref/autoconfig/src/nsReadConfig.cpp)
+- [Firefox internal download-list views](https://github.com/mozilla-firefox/firefox/blob/main/toolkit/components/downloads/DownloadList.sys.mjs)
+- [Firefox Unix socket transport interface](https://github.com/mozilla-firefox/firefox/blob/main/netwerk/base/nsISocketTransportService.idl)
 - [Official Debian libunity source/runtime packages](https://deb.debian.org/debian/pool/main/libu/libunity/)
 
 Research scripts, packages and extracted libraries are under

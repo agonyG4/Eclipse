@@ -4,6 +4,53 @@
 progress. The included Zen/Brave extensions capture real downloads after activation
 in the browser. The API itself neither starts downloads nor opens received filenames.
 
+## Zen prototype without an extension or XWayland
+
+The native Linux Zen prototype uses AutoConfig and the browser's internal public
+downloads API. Open its isolated browser:
+
+```sh
+python3 /home/agony/GitHub/Eclipse/Downloads/tools/zen-downloads-prototype.py run
+```
+
+Keep that terminal open. In another terminal, observe its downloads:
+
+```sh
+python3 /home/agony/GitHub/Eclipse/Downloads/tools/zen-downloads-prototype.py watch
+```
+
+Download a file **inside the prototype's Zen window**. `list` returns the current
+snapshot instead of watching. The first `run` copies the installed runtime from
+`/opt/zen-browser-bin`; `prepare` can do this in advance. Later runs reuse the
+runtime and isolated profile. The existing `astrea-downloads` executable must be
+built first; no browser compilation is needed.
+
+Runtime, profile, cache, logs and saved files live under
+`/mnt/Aether/Desktop/GitHub/Eclipse-build/Downloads/zen-prototype`. Files are saved
+in its `downloads` directory. The normal Zen installation and profile are not
+modified. The launcher forces native Wayland and removes `DISPLAY`; no extension
+or debugging port is enabled. It requires an active Wayland session.
+
+The launcher starts a dedicated API socket and stops its own processes when the
+browser closes or the launcher receives Ctrl+C. An owned API that exits while
+Zen remains open is restarted. The publisher coalesces changes every second and
+replays retained snapshots every five seconds. Public downloads supply filenames,
+byte counts, states and progress; private downloads are excluded. Unknown totals
+stay `null`. Stopped history is skipped at startup. Retention is limited to 128
+downloads; completed entries are evicted first, and further downloads are skipped
+if all retained entries are active. Pending work is bounded at 256 requests;
+removals are best effort during sustained overload. IDs are session-scoped.
+
+This is a prototype using internal Gecko APIs. AutoConfig runs privileged code
+with its own script sandbox disabled **only in the isolated runtime**. Pause vs
+cancellation follows Gecko's partial-file state. Browser distribution packaging,
+cross-session reconciliation and a dock UI are separate work.
+
+The tools accept `--build-dir /absolute/Aether/path/to/Downloads` and
+`--zen-dir /absolute/path/to/installed/zen` before the command. The output directory
+must be under Aether. A copied runtime is refreshed when its source fingerprint
+changes; close the prototype browser before preparing it.
+
 ## Enable real Zen and Brave downloads
 
 The browser bridge is built alongside `astrea-downloads`. Register the native host:

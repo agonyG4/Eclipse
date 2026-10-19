@@ -21,25 +21,49 @@ API failure must retain and replay snapshots; only owned processes are stopped.
 
 ## Task 1: Producer
 
-- [ ] Add focused failing checks for public/private mapping, final target size,
+- [x] Add focused failing checks for public/private mapping, final target size,
   initial history filtering, removal, bounded retention and coalescing.
-- [ ] Implement `downloadSnapshot(download, source, id)`, `ProgressRecords` and
+- [x] Implement `downloadSnapshot(download, source, id)`, `ProgressRecords` and
   `start()` in `Downloads/zen/ZenDownloadPublisher.sys.mjs`.
-- [ ] Add AutoConfig loader `Downloads/zen/astrea-downloads.cfg`.
-- [ ] Run checks against the implementation and exercise real Gecko transport.
+- [x] Add AutoConfig loader `Downloads/zen/astrea-downloads.cfg`.
+- [x] Run checks against the implementation and exercise real Gecko transport.
 
 ## Task 2: Launcher and documentation
 
-- [ ] Add `Downloads/tools/zen-downloads-prototype.py` with prepare/run/list/watch,
+- [x] Add `Downloads/tools/zen-downloads-prototype.py` with prepare/run/list/watch,
   owned output marker, locking, isolated profile/runtime and API supervision.
-- [ ] Check foreign/symlink output refusal and preparation idempotence.
-- [ ] Prepare the stable Aether runtime and exercise real native Wayland downloads
+- [x] Check foreign/symlink output refusal and preparation idempotence.
+- [x] Prepare the stable Aether runtime and exercise real native Wayland downloads
   with the existing research probe; check replay after API restart.
-- [ ] Document the two user commands and prototype limitations in Downloads/README.md.
-- [ ] Review diff, verify output cleanup and commit the logical implementation.
+- [x] Document the two user commands and prototype limitations in Downloads/README.md.
+- [x] Review diff, verify output cleanup and commit the logical implementation.
 
 ## Execution record
 
 Research design accepted by the user's request to make this prototype. Implementation
 runs inline, as required by the user's no-subagent rule. Existing research tests
 remain authorized by the preceding request to study and test this integration.
+
+## Results
+
+- Core checks: 5/5 Node tests passed, including bounded queues and stale ACK handling.
+- Browser checks: stock control, known size, unknown size and private-window case
+  passed using fresh profiles and the new module, with no automation port or DISPLAY.
+- Actual launcher: valid 4,194,424-byte ZIP, intermediate progress, completed record,
+  forced API termination/restart, identical snapshot replay and Ctrl+C cleanup passed.
+- Preparation: repeated prepare reused the runtime; foreign output, SSD output,
+  symlink output and concurrent launcher lock were rejected.
+- Loader regression: file:// was rejected by Gecko; a resource:// substitution to
+  the isolated module fixed it. A normal-profile log marker and a 1-second publish
+  cadence required diagnostic/polling adjustments in the existing research probe.
+- Optional broken installed dictionary links are skipped during the runtime copy.
+- Final review: self-review; no subagents, branches or browser compilation used.
+- Prototype limitations: internal Gecko APIs, session-scoped identity, 128 tracked
+  downloads, bounded/best-effort overload removals; no distribution packaging/UI.
+
+Research probe outputs and scripts remain under the existing Aether build tree in
+Downloads/native. The launcher and producer are versioned in the source checkout.
+
+Self-review fix: retention originally treated paused downloads as stopped terminal
+records. A failing regression check proved the issue; eviction now prefers completed,
+then failed/cancelled records and preserves paused transfers. The 5 core checks pass.

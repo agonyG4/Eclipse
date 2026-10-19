@@ -67,6 +67,7 @@ add_subdirectory(Bar)
 add_subdirectory(Dock)
 add_subdirectory(Settings)
 add_subdirectory(Shell)
+add_subdirectory(Downloads)
 
 if(BUILD_TESTING)
     add_test(NAME create-source-archive-test

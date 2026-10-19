@@ -19,15 +19,17 @@ automatically captured from Zen or Brave in this step.
 - A watch starts with a snapshot, then ordered update/removal events. All mutations
   are serialized in the service thread. Invalid input leaves state unchanged.
 - Removal explicitly dismisses retained records. State is in memory and resets
-  when the service stops. At most 4096 records are retained; updates remain possible
-  when the limit is reached. No automatic expiry hides active downloads.
+  when the service stops. At most 4096 records and 1 MiB of serialized metadata are
+  retained; updates that fit remain possible at capacity. No automatic expiry hides
+  active downloads.
 
 ## Transport and command line
 
 Use a user-only Unix socket under Qt's runtime directory, with `--socket PATH`
 for explicit endpoints. A lock prevents a second instance from replacing a live
 endpoint and permits recovery after a crashed instance. No TCP listener.
-Bound frames (64 KiB), clients (64), and slow-client output (256 KiB).
+Bound frames (64 KiB), clients (64), and slow-client output (2 MiB), including space
+for an initial full snapshot.
 The client prints compact JSON Lines. `update JSON`, `list`, `watch`, and
 `remove SOURCE ID` support shell-driven producers and terminal inspection.
 No filesystem action is performed on received filenames.

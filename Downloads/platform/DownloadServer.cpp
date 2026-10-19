@@ -139,7 +139,9 @@ void DownloadServer::dispatch(QLocalSocket *socket, const QByteArray &line)
         return;
     }
     const auto op = request.value("op").toString();
-    if (op == "list" || op == "watch") {
+    if (op == "ping") {
+        reply(socket, {{"version", 1}, {"ok", true}});
+    } else if (op == "list" || op == "watch") {
         if (op == "watch")
             m_watchers.insert(socket);
         QJsonObject response{{"version", 1}, {"ok", true}, {"downloads", m_store.list()}};

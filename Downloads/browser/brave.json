@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Astrea Downloads",
+  "version": "0.1.0",
+  "description": "Envia o progresso dos downloads para a API local do Astrea.",
+  "permissions": ["downloads", "nativeMessaging", "storage"],
+  "background": {"service_worker": "worker.js"},
+  "minimum_chrome_version": "105",
+  "incognito": "not_allowed",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAustTI+Foot1bRbss6qbnK86VK8XVs4l9XXnqX0FAu8Xl7PgXrTj/fuZ2NxxvZUTP8V5CYLbeiEpLsNhJtNkTz+XaJI+VBpd65cuwvc8dk36BJzq1JjFrWQWmJBOWax11ARJ1cVzqVkPK5o+GgVmgyF+LYdUoO3juubHlVKkngOZNgPv3N5FzzprTg2j+H4/APLzoGZ2CIqU3HlwnTUW1tsGwzQDOWWvyG1qRmVP65vC9M31JGoWL4e9n9fGSoMNiooOeZ9b8ThE0bPc6fja0alo7/BHmVWA7XexKKZblSZvoFg+f/Si8o1bxNBKTuvDpAGbuydKCYKc19P/oqm4CiQIDAQAB"
+}

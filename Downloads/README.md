@@ -1,9 +1,62 @@
 # Download progress API
 
 `astrea-downloads` is a headless, local API for producers to publish download
-progress. This first version does not capture browser downloads automatically:
-Zen/Brave extensions or another producer must send snapshots. It neither starts
-downloads nor opens received filenames.
+progress. The included Zen/Brave extensions capture real downloads after activation
+in the browser. The API itself neither starts downloads nor opens received filenames.
+
+## Enable real Zen and Brave downloads
+
+The browser bridge is built alongside `astrea-downloads`. Register the native host:
+
+```sh
+python3 /home/agony/GitHub/Eclipse/Downloads/tools/install-browser-bridge.py
+```
+
+Then activate the extensions in each browser:
+
+- **Brave:** open `brave://extensions`, enable Developer mode, click **Load unpacked**
+  and select `/mnt/Aether/Desktop/GitHub/Eclipse-build/Downloads/browser/brave`.
+- **Zen:** open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on**
+  and select `/mnt/Aether/Desktop/GitHub/Eclipse-build/Downloads/browser/zen/manifest.json`.
+  This local development add-on is removed on browser restart. A permanent release
+  requires Mozilla signing; no signature or browser-security preferences are changed.
+
+Once loaded, the bridge starts the local API automatically. Start a normal download
+and observe it in another terminal:
+
+```sh
+/mnt/Aether/Desktop/GitHub/Eclipse-build/Downloads/astrea-downloads watch
+```
+
+Progress arrives approximately once per second while downloading. Creation,
+completion, pause, cancellation, failure and erasure trigger a fresh query. Downloads
+from private windows are skipped. Each browser profile gets a persistent random
+source identifier such as `zen:<uuid>`; URLs, cookies, referrers and page contents
+are not forwarded. The published filename is the local absolute target path.
+
+Only current downloads and up to 256 tracked IDs are synchronized, rather than the
+entire download history. Recent terminal states are replayed when the extension or
+API reconnects; older terminal records are dismissed when the tracking window fills.
+The bridge polls only while downloads are active (including paused downloads), or
+while recovering from a connection error. With no active downloads, a restarted API
+is synchronized on the next browser event. API state itself remains in memory.
+
+The host is `org.astrea.downloads`. The installer writes only its user-specific
+registration under `~/.mozilla/native-messaging-hosts` and Brave's
+`NativeMessagingHosts` directory under `XDG_CONFIG_HOME` (default `~/.config`).
+It preserves other native hosts and does not enable browser extensions. Registration
+points to the Aether build executable, so keep that build tree available.
+Use `--uninstall` to remove the registrations; disable/remove the extensions through
+the browser to stop capture. This setup supports the native Linux packages used
+here; Flatpak/Snap require additional sandbox integration.
+
+For custom installations use `--build-dir /absolute/path/to/Downloads`. The native
+host accepts `ASTREA_DOWNLOADS_SOCKET` and `ASTREA_DOWNLOADS_SERVICE` environment
+overrides; by default it uses the user runtime socket and its sibling API executable.
+The native protocol accepts `ping`, `update` and `remove`, using 32-bit native-endian
+length-prefixed UTF-8 JSON with a 64 KiB input limit. The local API additionally
+accepts `ping` as a small health check; the bridge is also compatible with a running
+first-release API that predates that operation.
 
 ## Build
 
@@ -46,7 +99,7 @@ The default is `astrea-downloads.sock` in Qt's user runtime directory.
 Only the service user can access the socket. Stop the service with Ctrl+C;
 the next startup can recover the stale socket and companion lock.
 
-## Protocol version 1
+## Local socket protocol version 1
 
 Connect to the Unix socket and send UTF-8 JSON objects separated by newlines:
 

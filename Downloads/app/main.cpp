@@ -34,7 +34,7 @@ int main(int argc, char **argv)
     app.setApplicationName("astrea-downloads");
     app.setApplicationVersion("1");
     QCommandLineParser parser;
-    parser.setApplicationDescription("Local download progress API (JSON Lines, no browser capture)");
+    parser.setApplicationDescription("Local download progress API (JSON Lines)");
     parser.addHelpOption();
     parser.addVersionOption();
     QCommandLineOption socketOption("socket", "Absolute local socket path", "path");

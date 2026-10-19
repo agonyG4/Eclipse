@@ -9,6 +9,7 @@ production native receiver implementation.
 | Browser/backend | Native channel | Result |
 | --- | --- | --- |
 | Brave, Unity/KDE environment compatibility | `com.canonical.Unity.LauncherEntry.Update` on session D-Bus | Confirmed with a real download and extensions disabled |
+| Brave, native Wayland, Unity/KDE compatibility | Same session D-Bus channel | Confirmed with `--ozone-platform=wayland`, `DISPLAY` unset and extensions disabled |
 | Brave, Astrea environment | Same candidate channel | No updates, even with libunity and a receiver present |
 | Brave, KDE compatibility, no Unity bus-name owner | Same candidate channel | No updates |
 | Zen under XWayland | `_NET_WM_XAPP_PROGRESS` X11 CARDINAL property | Confirmed with a real download and no extensions loaded |
@@ -81,6 +82,42 @@ The target file finished downloading. These values prove the live XWayland chann
 the experiment does not claim that the property reached 100 or independently
 distinguished completion from failure/cancellation.
 
+## Follow-up: no XWayland
+
+A second Brave experiment explicitly selected the headed native Wayland backend
+with `--ozone-platform=wayland`, removed `DISPLAY` from the child environment and
+enabled client Wayland protocol logging. The log contained `wl_display` traffic.
+The fresh profile again used `--disable-extensions`, the private session bus and
+the same isolated libunity/KDE compatibility settings described above.
+
+The 4 MiB local download completed. LauncherEntry updates included the same
+intermediate fractions from 0.109375 to 0.984375 and a final progress value of 1.
+Thus the demonstrated Brave publisher does not require XWayland. Its remaining
+requirements are libunity, a compatible desktop-detection result and ownership of
+the Unity compatibility name on the session bus. This experiment does not mean
+the stock Astrea session already satisfies those conditions.
+
+For Firefox, the follow-up fetched and inspected the current upstream
+`TaskbarProgress.cpp`, `nsWindow.h`, `nsWindowWayland.h` and
+`nsWindowWayland.cpp`. The adapter calls `mPrimaryWindow->SetProgress(progress)`;
+the base implementation is empty, and neither examined Wayland file implements
+an override. This establishes a gap in that specific native publisher, rather
+than a general limitation of Wayland or D-Bus. A Zen-side publisher could emit
+LauncherEntry over D-Bus while the browser remains a native Wayland client.
+The installed Zen build was not rebuilt or patched in this investigation.
+
+KDE's documented [Plasma Browser Integration](https://community.kde.org/Plasma/Browser_Integration)
+uses a browser extension plus a native host, so it does not provide an existing
+extension-free solution for this Zen requirement. A search of Zen's repository
+tree through the GitHub API was rate limited; no exhaustive claim about all
+Zen-specific patches is made here.
+
+The practical starting point without XWayland or a browser extension is therefore
+Brave's aggregate application progress. For stock Zen on native Wayland, this
+investigation has not found a ready publisher; a browser change remains a possible
+route. Merely watching a growing `.part` file cannot supply the expected total
+size or reliably distinguish all download states.
+
 ## Integration implications
 
 1. Add an application-progress contract to the headless Eclipse API: desktop/app
@@ -110,6 +147,8 @@ ZIP presentation remains a separate integration requiring richer browser data.
 - [Firefox base GTK window](https://github.com/mozilla-firefox/firefox/blob/main/widget/gtk/nsWindow.h)
 - [Firefox X11 window implementation](https://github.com/mozilla-firefox/firefox/blob/main/widget/gtk/nsWindowX11.cpp)
 - [Firefox Wayland window implementation](https://github.com/mozilla-firefox/firefox/blob/main/widget/gtk/nsWindowWayland.cpp)
+- [Firefox Wayland window declaration](https://github.com/mozilla-firefox/firefox/blob/main/widget/gtk/nsWindowWayland.h)
+- [KDE browser integration requirements](https://community.kde.org/Plasma/Browser_Integration)
 - [Official Debian libunity source/runtime packages](https://deb.debian.org/debian/pool/main/libu/libunity/)
 
 Research scripts, packages and extracted libraries are under

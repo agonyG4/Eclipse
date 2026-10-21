@@ -9,6 +9,7 @@
 #include <QTemporaryDir>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QRegularExpression>
 #include <functional>
 
 #include "../core/SpotlightResultsModel.hpp"
@@ -1362,6 +1363,9 @@ void TestSpotlightBackend::testWeatherProcessServiceFailedStart()
 
 void TestSpotlightBackend::testWeatherProcessServiceCancelSuppressesStaleResult()
 {
+    QTest::failOnWarning(QRegularExpression(
+        QStringLiteral("^QProcess: Destroyed while process .* is still running")));
+
     QTemporaryDir tempDir;
     QVERIFY(tempDir.isValid());
     const QString executable = writeExecutableScript(

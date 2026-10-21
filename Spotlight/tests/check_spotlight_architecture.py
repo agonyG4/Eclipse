@@ -343,9 +343,13 @@ def main() -> int:
         "++m_requestGeneration" in cancel_body
         and "m_process.clear()" in cancel_body
         and "QObject::disconnect" in cancel_body
-        and "process->kill()" in cancel_body
-        and "process->deleteLater()" in cancel_body,
-        "SpotlightWeatherProcessService cancellation must invalidate and detach before killing the process",
+        and "retireCanceledProcess(process)" in cancel_body
+        and "void retireCanceledProcess(QProcess *process)" in weather_service_cpp_text
+        and "process->setParent(nullptr)" in weather_service_cpp_text
+        and "QProcess::finished" in weather_service_cpp_text
+        and "process, &QObject::deleteLater" in weather_service_cpp_text
+        and "process->kill()" in weather_service_cpp_text,
+        "SpotlightWeatherProcessService cancellation must invalidate, detach, kill, and retire the process only after termination",
     )
     require(
         all(method in backend_port for method in (

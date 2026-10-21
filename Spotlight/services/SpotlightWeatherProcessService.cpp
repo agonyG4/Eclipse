@@ -7,6 +7,27 @@
 
 #include <utility>
 
+namespace {
+
+void retireCanceledProcess(QProcess *process)
+{
+    process->setParent(nullptr);
+    QObject::connect(process,
+                     QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                     process, &QObject::deleteLater);
+    QObject::connect(process, &QProcess::errorOccurred, process,
+                     [process](QProcess::ProcessError) {
+        if (process->state() == QProcess::NotRunning)
+            process->deleteLater();
+    });
+    if (process->state() != QProcess::NotRunning)
+        process->kill();
+    else
+        process->deleteLater();
+}
+
+} // namespace
+
 SpotlightWeatherProcessService::SpotlightWeatherProcessService(QString executable,
                                                                QObject *parent)
     : SpotlightWeatherProvider(parent)
@@ -16,7 +37,21 @@ SpotlightWeatherProcessService::SpotlightWeatherProcessService(QString executabl
 
 SpotlightWeatherProcessService::~SpotlightWeatherProcessService()
 {
-    cancel();
+    ++m_requestGeneration;
+    QPointer<QProcess> process = m_process;
+    m_process.clear();
+    if (!process)
+        return;
+
+    QObject::disconnect(process, nullptr, this, nullptr);
+    if (process->state() != QProcess::NotRunning) {
+        process->kill();
+        if (!process->waitForFinished(1000) && process->state() != QProcess::NotRunning) {
+            retireCanceledProcess(process);
+            return;
+        }
+    }
+    delete process;
 }
 
 void SpotlightWeatherProcessService::refresh()
@@ -84,7 +119,5 @@ void SpotlightWeatherProcessService::cancel()
         return;
 
     QObject::disconnect(process, nullptr, this, nullptr);
-    if (process->state() != QProcess::NotRunning)
-        process->kill();
-    process->deleteLater();
+    retireCanceledProcess(process);
 }

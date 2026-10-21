@@ -132,7 +132,12 @@ QImage StatusNotifierIconStore::fallbackImage(const Entry &entry, const QSize &r
     QImage overlay = entry.overlay;
     if (overlay.isNull())
         overlay = selectPixmap(entry.snapshot.overlayPixmaps, requestedSize, &ignored);
-    return compose(image, overlay);
+    image = compose(image, overlay);
+    if (!image.isNull() && requestedSize.width() > 0 && requestedSize.height() > 0
+        && image.size() != requestedSize) {
+        image = image.scaled(requestedSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    }
+    return image;
 }
 
 void StatusNotifierIconStore::updateItem(const ItemSnapshot &snapshot)

@@ -25,6 +25,7 @@ private slots:
     void malformedRegistrationsAreRejected();
     void argb32NetworkPixelsDecodeExactly();
     void iconSelectionPrefersLargerThenSmaller();
+    void iconImageScalesDetailedPixmapsToRequestedSize();
     void iconSelectionPrefersThemeNamesAndFallsBackPerEntry();
     void iconSelectionFindsItemLocalFiles();
     void iconRevisionInvalidatesProviderSource();
@@ -134,12 +135,56 @@ void StatusNotifierTest::iconSelectionPrefersLargerThenSmaller()
                         QStringLiteral(":1.4")};
     snapshot.pixmaps = {
         {8, 8, QByteArray(8 * 8 * 4, '\x01')},
-        {24, 24, QByteArray(24 * 24 * 4, '\x02')},
+        {24, 24, QByteArray(24 * 24 * 4, '\xff')},
         {32, 32, QByteArray(32 * 32 * 4, '\x03')},
     };
     store.updateItem(snapshot);
-    QCOMPARE(store.image(snapshot.address.key(), QSize(20, 20)).size(), QSize(24, 24));
-    QVERIFY(!store.image(snapshot.address.key(), QSize(40, 40)).isNull());
+    const QImage selected = store.image(snapshot.address.key(), QSize(20, 20));
+    QCOMPARE(selected.size(), QSize(20, 20));
+    QCOMPARE(selected.pixel(0, 0), qRgba(255, 255, 255, 255));
+    QCOMPARE(store.image(snapshot.address.key(), QSize(40, 40)).size(), QSize(40, 40));
+}
+
+void StatusNotifierTest::iconImageScalesDetailedPixmapsToRequestedSize()
+{
+    StatusNotifierIconStore store;
+    ItemSnapshot snapshot;
+    snapshot.address = {QStringLiteral("org.example.DetailedTray"),
+                        QStringLiteral("/StatusNotifierItem"), QStringLiteral(":1.5")};
+
+    QByteArray pixels;
+    pixels.reserve(64 * 32 * 4);
+    for (int y = 0; y < 32; ++y) {
+        for (int x = 0; x < 64; ++x) {
+            const char alpha = (x % 2 == 0) ? char(0xff) : char(0x00);
+            const bool isRed = y % 2 == 0;
+            pixels.append(alpha);
+            pixels.append(isRed ? char(0xff) : char(0x00));
+            pixels.append(char(0x00));
+            pixels.append(isRed ? char(0x00) : char(0xff));
+        }
+    }
+    snapshot.pixmaps = {{64, 32, pixels}};
+    store.updateItem(snapshot);
+
+    const QImage image = store.image(snapshot.address.key(), QSize(16, 16));
+    QCOMPARE(image.size(), QSize(16, 8));
+
+    bool hasIntermediateColor = false;
+    bool hasIntermediateAlpha = false;
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const QRgb pixel = image.pixel(x, y);
+            const int red = qRed(pixel);
+            const int alpha = qAlpha(pixel);
+            if (red > 32 && red < 224)
+                hasIntermediateColor = true;
+            if (alpha > 32 && alpha < 224)
+                hasIntermediateAlpha = true;
+        }
+    }
+    QVERIFY(hasIntermediateColor);
+    QVERIFY(hasIntermediateAlpha);
 }
 
 void StatusNotifierTest::iconSelectionPrefersThemeNamesAndFallsBackPerEntry()

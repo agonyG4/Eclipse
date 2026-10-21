@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/WorkspaceModel.hpp"
+#include "core/BarStatusOrderStore.hpp"
 
 #include <QObject>
 
@@ -17,6 +18,7 @@ class BarController final : public QObject {
     Q_PROPERTY(bool powerAvailable READ powerAvailable CONSTANT)
     Q_PROPERTY(bool notificationHistoryAvailable READ notificationHistoryAvailable CONSTANT)
     Q_PROPERTY(WorkspaceModel *workspaceModel READ workspaceModel CONSTANT)
+    Q_PROPERTY(BarStatusOrderStore *statusOrderStore READ statusOrderStore CONSTANT)
     Q_PROPERTY(QObject *workspaceController READ workspaceController WRITE setWorkspaceController
                    NOTIFY workspaceControllerChanged)
 
@@ -36,6 +38,7 @@ public:
     bool powerAvailable() const { return false; }
     bool notificationHistoryAvailable() const { return false; }
     WorkspaceModel *workspaceModel() const { return m_workspaceModel; }
+    BarStatusOrderStore *statusOrderStore() const { return m_statusOrderStore; }
     QObject *workspaceController() const { return m_workspaceController; }
     void setWorkspaceController(QObject *controller);
 
@@ -54,6 +57,7 @@ private:
     DesktopEntryCatalog *m_catalog = nullptr;
     ApplicationLauncher *m_launcher = nullptr;
     WorkspaceModel *m_workspaceModel = nullptr;
+    BarStatusOrderStore *m_statusOrderStore = nullptr;
     QObject *m_workspaceController = nullptr;
     bool m_enabled = true;
     bool m_searchAvailable = false;

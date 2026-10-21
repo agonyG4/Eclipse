@@ -21,16 +21,12 @@ Item {
     width: 16
     height: 16
 
-    Image {
+    BarIcon {
         id: artwork
         objectName: "barThemedIconArtwork"
         readonly property color resolvedTint: root.foreground
         anchors.fill: parent
         source: root.resolvedUrl
-        sourceSize: Qt.size(width, height)
-        fillMode: Image.PreserveAspectFit
-        smooth: true
-        mipmap: false
         asynchronous: false
         cache: true
         visible: root.hasIcon

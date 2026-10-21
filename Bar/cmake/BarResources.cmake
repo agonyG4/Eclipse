@@ -14,7 +14,9 @@ set(ASTREA_BAR_QML_FILES
     "${CMAKE_CURRENT_LIST_DIR}/../qml/components/ShellBarTheme.qml"
     "${CMAKE_CURRENT_LIST_DIR}/../qml/components/BarSegment.qml"
     "${CMAKE_CURRENT_LIST_DIR}/../qml/components/IndicatorButton.qml"
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/components/StatusItemLayout.qml"
     "${CMAKE_CURRENT_LIST_DIR}/../qml/components/TopbarIndicator.qml"
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/components/BarIcon.qml"
     "${CMAKE_CURRENT_LIST_DIR}/../qml/components/WorkspaceStrip.qml"
     "${CMAKE_CURRENT_LIST_DIR}/../qml/components/Clock.qml"
     "${CMAKE_CURRENT_LIST_DIR}/../qml/components/MenuAction.qml"
@@ -120,6 +122,12 @@ set_source_files_properties(
 set_source_files_properties(
     "${CMAKE_CURRENT_LIST_DIR}/../qml/components/IndicatorButton.qml"
     PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/components/IndicatorButton.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/components/StatusItemLayout.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/components/StatusItemLayout.qml")
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/../qml/components/BarIcon.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/components/BarIcon.qml")
 set_source_files_properties(
     "${CMAKE_CURRENT_LIST_DIR}/../qml/components/TopbarIndicator.qml"
     PROPERTIES QT_RESOURCE_ALIAS "Bar/qml/components/TopbarIndicator.qml")

@@ -6,17 +6,26 @@ Item {
     ShellBarTheme { id: theme }
 
     property var clockService: null
+    property var statusLayout: null
     objectName: "clock"
     implicitWidth: clockButton.width
     implicitHeight: 36
     width: clockButton.width
     height: 36
+    onWidthChanged: {
+        if (root.statusLayout)
+            root.statusLayout.rebuild()
+    }
 
     TopbarIndicator {
         id: clockButton
         objectName: "clockButton"
         anchors.centerIn: parent
         interactive: false
+        reorderable: !!root.statusLayout
+        statusLayout: root.statusLayout
+        orderKey: "builtin:clock"
+        reorderItem: root
         horizontalPadding: theme.spacingTiny
         spacing: 0
 

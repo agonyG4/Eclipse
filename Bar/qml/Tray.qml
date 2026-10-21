@@ -13,6 +13,7 @@ Item {
     property string outputKey: ""
     property var tooltipSurface: null
     property var barGeometry: null
+    property var statusLayout: null
     property int outputWidth: 1
     property int statusLeft: 0
     property int outputOriginX: 0
@@ -63,9 +64,29 @@ Item {
             id: trayRepeater
             model: root.trayService ? root.trayService.itemModel : null
 
-            delegate: Item {
+            delegate: IndicatorButton {
                 id: itemDelegate
                 objectName: "trayItem"
+                fixedWidth: ready ? 28 : 0
+                height: 28
+                horizontalPadding: 0
+                backgroundMargin: 0
+                backgroundRadius: theme.shellRadiusMedium
+                backgroundObjectName: "trayItemSurface"
+                hoverColor: theme.shellSeparator
+                pressedColor: Qt.rgba(1, 1, 1, 0.2)
+                acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
+                active: false
+                interactive: ready
+                reorderable: ready && !!root.statusLayout
+                statusLayout: root.statusLayout
+                reorderItem: itemDelegate
+                property string resolvedOrderKey: ""
+                required property var model
+                readonly property string trayId: {
+                    const row = typeof model !== "undefined" ? model : null
+                    return row && row.id !== undefined ? String(row.id) : ""
+                }
                 required property string key
                 required property string title
                 required property string iconSource
@@ -79,86 +100,85 @@ Item {
                     return root.trayService.hasUsableMenuForItem(itemDelegate.key)
                 }
 
-                width: ready ? 28 : 0
-                height: 28
                 visible: ready
 
-                Rectangle {
-                    id: hitSurface
-                    objectName: "trayItemSurface"
-                    anchors.centerIn: parent
-                    width: 28
-                    height: 28
-                    radius: theme.shellRadiusMedium
-                    color: mouse.pressed ? Qt.rgba(1, 1, 1, 0.2)
-                         : hover.hovered ? theme.shellSeparator : "transparent"
-
-                    Behavior on color {
-                        ColorAnimation { duration: theme.animationFast }
-                    }
-
-                    Image {
-                        objectName: "trayItemIcon"
-                        anchors.centerIn: parent
-                        width: 16
-                        height: 16
-                        sourceSize: Qt.size(16, 16)
-                        source: itemDelegate.iconSource
-                        fillMode: Image.PreserveAspectFit
-                        smooth: true
-                        visible: status !== Image.Error && status !== Image.Null
-                    }
-
+                BarIcon {
+                    objectName: "trayItemIcon"
+                    source: itemDelegate.iconSource
+                    visible: status !== Image.Error && status !== Image.Null
                 }
 
-                HoverHandler { id: hover }
-
-                MouseArea {
-                    id: mouse
-                    anchors.fill: parent
-                    enabled: itemDelegate.ready
-                    acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
-                    hoverEnabled: true
-                    cursorShape: itemDelegate.ready ? Qt.PointingHandCursor : Qt.ArrowCursor
-                    onEntered: {
-                        if (root.tooltipSurface && root.trayService
-                                && root.trayService.tooltipTitleForItem(itemDelegate.key) !== "") {
-                            const anchor = root.anchorFor(itemDelegate,
-                                itemDelegate.width / 2, itemDelegate.height / 2)
-                            root.tooltipSurface.showTooltip(itemDelegate.key, anchor.localX)
-                        }
-                    }
-                    onExited: {
-                        if (root.tooltipSurface)
-                            root.tooltipSurface.hideTooltip()
-                    }
-                    onWheel: event => {
-                        if (root.trayService) {
-                            root.trayService.scroll(itemDelegate.key,
-                                event.angleDelta.y, event.angleDelta.y !== 0 ? "vertical" : "horizontal")
-                            event.accepted = true
-                        }
-                    }
-                    onClicked: mouse => {
+                function updateTooltip() {
+                    if (itemDelegate.hovered && !root.statusLayout?.dragActive
+                            && root.tooltipSurface && root.trayService
+                            && root.trayService.tooltipTitleForItem(itemDelegate.key) !== "") {
                         const anchor = root.anchorFor(itemDelegate,
                             itemDelegate.width / 2, itemDelegate.height / 2)
-                        if (mouse.button === Qt.MiddleButton) {
-                            if (root.trayService)
-                                root.trayService.secondaryActivate(itemDelegate.key,
-                                    anchor.globalX, anchor.globalY)
-                        } else if (mouse.button === Qt.RightButton) {
-                            if (!root.presentContextMenu(itemDelegate) && root.trayService)
-                                root.trayService.contextMenu(itemDelegate.key,
-                                    anchor.globalX, anchor.globalY)
-                        } else if (mouse.button === Qt.LeftButton && itemDelegate.onlyMenu) {
-                            if (!root.presentContextMenu(itemDelegate) && root.trayService) {
-                                root.trayService.contextMenu(itemDelegate.key,
-                                    anchor.globalX, anchor.globalY)
-                            }
-                        } else if (root.trayService) {
-                            root.trayService.activate(itemDelegate.key,
+                        root.tooltipSurface.showTooltip(itemDelegate.key, anchor.localX)
+                    } else if (root.tooltipSurface) {
+                        root.tooltipSurface.hideTooltip()
+                    }
+                }
+
+                Component.onCompleted: {
+                    if (root.statusLayout) {
+                        let naturalKey = ""
+                        if (root.statusLayout.orderStore && root.statusLayout.orderStore.trayKey) {
+                            naturalKey = root.statusLayout.orderStore.trayKey(itemDelegate.trayId,
+                                itemDelegate.key)
+                        } else {
+                            const separator = itemDelegate.key.indexOf("|")
+                            const objectPath = separator < 0 ? itemDelegate.key
+                                : itemDelegate.key.slice(separator + 1)
+                            naturalKey = itemDelegate.trayId
+                                ? "tray:" + encodeURIComponent(itemDelegate.trayId) + ":" + objectPath
+                                : "tray-fallback:" + itemDelegate.key
+                        }
+                        itemDelegate.resolvedOrderKey = root.statusLayout.registerItem(
+                            itemDelegate, naturalKey, itemDelegate.key)
+                        itemDelegate.orderKey = itemDelegate.resolvedOrderKey
+                    }
+                }
+                Component.onDestruction: {
+                    if (root.statusLayout)
+                        root.statusLayout.unregisterItem(itemDelegate, itemDelegate.resolvedOrderKey)
+                }
+                onReadyChanged: root.statusLayout?.rebuild()
+                onHoveredChanged: updateTooltip()
+                onReorderStarted: {
+                    if (root.tooltipSurface)
+                        root.tooltipSurface.hideTooltip()
+                }
+                Connections {
+                    target: root.statusLayout
+                    function onDragActiveChanged() { itemDelegate.updateTooltip() }
+                }
+                onWheel: event => {
+                    if (root.trayService) {
+                        root.trayService.scroll(itemDelegate.key,
+                            event.angleDelta.y, event.angleDelta.y !== 0 ? "vertical" : "horizontal")
+                        event.accepted = true
+                    }
+                }
+                onButtonClicked: (button, anchorX) => {
+                    const anchor = root.anchorFor(itemDelegate,
+                        itemDelegate.width / 2, itemDelegate.height / 2)
+                    if (button === Qt.MiddleButton) {
+                        if (root.trayService)
+                            root.trayService.secondaryActivate(itemDelegate.key,
+                                anchor.globalX, anchor.globalY)
+                    } else if (button === Qt.RightButton) {
+                        if (!root.presentContextMenu(itemDelegate) && root.trayService)
+                            root.trayService.contextMenu(itemDelegate.key,
+                                anchor.globalX, anchor.globalY)
+                    } else if (button === Qt.LeftButton && itemDelegate.onlyMenu) {
+                        if (!root.presentContextMenu(itemDelegate) && root.trayService) {
+                            root.trayService.contextMenu(itemDelegate.key,
                                 anchor.globalX, anchor.globalY)
                         }
+                    } else if (button === Qt.LeftButton && root.trayService) {
+                        root.trayService.activate(itemDelegate.key,
+                            anchor.globalX, anchor.globalY)
                     }
                 }
             }

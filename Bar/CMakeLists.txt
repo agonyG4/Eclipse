@@ -27,6 +27,8 @@ endfunction()
 add_library(astrea-bar-core STATIC
     core/BarController.cpp
     core/BarController.hpp
+    core/BarStatusOrderStore.cpp
+    core/BarStatusOrderStore.hpp
     core/BarLayoutPolicy.cpp
     core/BarLayoutPolicy.hpp
     core/BarLayoutMetrics.cpp
@@ -124,6 +126,35 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     qt_import_qml_plugins(bar-qml-smoke-test)
     bar_enable_sanitizers(bar-qml-smoke-test)
     add_test(NAME bar-qml-smoke-test COMMAND bar-qml-smoke-test)
+
+    add_executable(topbar-reorder-test
+        tests/TopbarReorderTest.cpp
+    )
+    target_include_directories(topbar-reorder-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(topbar-reorder-test PRIVATE
+        astrea-bar-core
+        Qt6::Test
+    )
+    bar_enable_sanitizers(topbar-reorder-test)
+    add_test(NAME topbar-reorder-test COMMAND topbar-reorder-test)
+
+    add_executable(topbar-reorder-qml-test tests/TopbarReorderQmlTest.cpp)
+    target_include_directories(topbar-reorder-qml-test PRIVATE "${CMAKE_SOURCE_DIR}")
+    astrea_add_bar_qml_resources(topbar-reorder-qml-test)
+    target_link_libraries(topbar-reorder-qml-test PRIVATE
+        astrea-bar-core
+        astrea-shared-statusnotifier
+        astrea-shared-coreplugin
+        astrea-shared-system-qtplugin
+        astrea-shared-wayland-effects
+        astrea-shared-wayland-effectsplugin
+        astrea-shared-system-qt
+        astrea_system_backend
+        Qt6::Qml Qt6::Quick Qt6::Test
+    )
+    qt_import_qml_plugins(topbar-reorder-qml-test)
+    bar_enable_sanitizers(topbar-reorder-qml-test)
+    add_test(NAME topbar-reorder-qml-test COMMAND topbar-reorder-qml-test)
 
     add_test(NAME bar-qml-legacy-guard
         COMMAND ${Python3_EXECUTABLE}

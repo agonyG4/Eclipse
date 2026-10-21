@@ -30,6 +30,7 @@ Window {
     property var trayTooltipSurface: null
     property var popupController: null
     property var barGeometry: null
+    property var barController: null
     property var workspaceModel: null
     property int outputWidth: 1
     property int outputHeight: 1
@@ -60,6 +61,48 @@ Window {
             ? barGeometry.statusWidth(outputWidth, launcherWidth, Math.round(implicitWidth))
             : 0
 
+        StatusItemLayout {
+            id: statusItemLayout
+            orderStore: window.barController ? window.barController.statusOrderStore : null
+            popupController: window.popupController
+
+            NetworkIndicator {
+                networkService: window.networkService
+                popupController: window.popupController
+                popupKind: 3
+                anchorItem: statusPill
+                anchorOffset: window.statusLeft
+                statusLayout: statusItemLayout
+                orderKey: "builtin:network"
+                reorderable: true
+            }
+            BluetoothIndicator {
+                bluetoothService: window.bluetoothService
+                popupController: window.popupController
+                popupKind: 4
+                anchorItem: statusPill
+                anchorOffset: window.statusLeft
+                statusLayout: statusItemLayout
+                orderKey: "builtin:bluetooth"
+                reorderable: true
+            }
+            VolumeIndicator {
+                audioService: window.audioService
+                popupController: window.popupController
+                popupKind: 5
+                anchorItem: statusPill
+                anchorOffset: window.statusLeft
+                statusLayout: statusItemLayout
+                orderKey: "builtin:volume"
+                reorderable: true
+            }
+            Clock {
+                id: clock
+                clockService: window.clockService
+                statusLayout: statusItemLayout
+            }
+        }
+
         Tray {
             id: tray
             objectName: "tray"
@@ -75,41 +118,7 @@ Window {
             outputOriginX: window.outputOriginX
             outputOriginY: window.outputOriginY
             statusTop: window.barGeometry ? window.barGeometry.topMargin : 5
-        }
-
-        Item {
-            objectName: "trayNetworkSpacer"
-            width: tray.itemCount > 0 ? theme.spacingTiny : 0
-            height: 1
-        }
-
-        NetworkIndicator {
-            networkService: window.networkService
-            popupController: window.popupController
-            popupKind: 3
-            anchorItem: statusPill
-            anchorOffset: window.statusLeft
-        }
-
-        BluetoothIndicator {
-            bluetoothService: window.bluetoothService
-            popupController: window.popupController
-            popupKind: 4
-            anchorItem: statusPill
-            anchorOffset: window.statusLeft
-        }
-
-        VolumeIndicator {
-            audioService: window.audioService
-            popupController: window.popupController
-            popupKind: 5
-            anchorItem: statusPill
-            anchorOffset: window.statusLeft
-        }
-
-        Clock {
-            id: clock
-            clockService: window.clockService
+            statusLayout: statusItemLayout
         }
     }
 }

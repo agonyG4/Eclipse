@@ -7,13 +7,31 @@ IndicatorButton {
     property int popupKind: 0
     property Item anchorItem: null
     property int anchorOffset: 0
+    property string registeredOrderKey: ""
     readonly property bool popupActive: root.popupController
         ? root.popupController.surfaceRequired && root.popupController.kind === root.popupKind
         : false
 
     active: root.popupActive
 
+    onWidthChanged: {
+        if (root.statusLayout)
+            root.statusLayout.rebuild()
+    }
+
     signal activated(real anchorX)
+
+    Component.onCompleted: {
+        if (root.statusLayout && root.reorderable && root.orderKey) {
+            const item = root.reorderItem || root
+            root.registeredOrderKey = root.statusLayout.registerItem(item, root.orderKey)
+            root.orderKey = root.registeredOrderKey
+        }
+    }
+    Component.onDestruction: {
+        if (root.statusLayout && root.reorderable && root.registeredOrderKey)
+            root.statusLayout.unregisterItem(root.reorderItem || root, root.registeredOrderKey)
+    }
 
     function resolvedAnchorX() {
         if (root.anchorItem)
@@ -38,7 +56,9 @@ IndicatorButton {
     }
 
     onClicked: anchorX => {
-        root.togglePopup(anchorX)
-        root.activated(root.resolvedAnchorX())
+        if (root.interactive) {
+            root.togglePopup(anchorX)
+            root.activated(root.resolvedAnchorX())
+        }
     }
 }

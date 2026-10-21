@@ -10,6 +10,7 @@ BarController::BarController(DesktopEntryCatalog *catalog, ApplicationLauncher *
     , m_catalog(catalog)
     , m_launcher(launcher)
     , m_workspaceModel(workspaceModel)
+    , m_statusOrderStore(new BarStatusOrderStore({}, this))
 {
     if (m_catalog) {
         connect(m_catalog, &DesktopEntryCatalog::indexUpdated,

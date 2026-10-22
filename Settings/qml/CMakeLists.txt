@@ -41,6 +41,11 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     pages/system/Audio.qml
     pages/system/Display.qml
     pages/system/Internet.qml
+    pages/system/Performance.qml
+    pages/system/Language.qml
+    pages/gaming/Proton.qml
+    pages/gaming/Compatibility.qml
+    pages/apps/Applications.qml
     pages/appearance/Appearance.qml
     pages/appearance/VisualEffects.qml
     pages/appearance/MaterialProgramParameterEditor.qml
@@ -51,6 +56,8 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     pages/appearance/Animations.qml
     pages/appearance/Screenshots.qml
     pages/appearance/Wallpaper.qml
+    pages/appearance/Island.qml
+    pages/personalization/UserProfile.qml
     theme/Apps.qml
     theme/Shell.qml
     theme/State.qml

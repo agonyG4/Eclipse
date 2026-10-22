@@ -41,7 +41,8 @@ Item {
         height: 20
         radius: Components.Theme.controlRadius
         anchors.centerIn: parent
-        color: toggle.checked ? Components.Theme.accent : Qt.rgba(1, 1, 1, 0.18)
+        color: toggle.checked ? Components.Theme.accent
+            : (Components.Theme.isLight ? Qt.rgba(0, 0, 0, 0.18) : Qt.rgba(1, 1, 1, 0.18))
         Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
     }
 

@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls
 import ".." as Components
 
 Item {
@@ -46,12 +47,26 @@ Item {
         contentBottomPadding: 16
         contentSpacing: 2
 
-        Item {
+        AbstractButton {
+            objectName: "settingsProfileButton"
             width: parent.width - 32
             x: 16
             height: 64
+            padding: 0
+            focusPolicy: Qt.StrongFocus
+            Accessible.name: root.userName.length > 0 ? "User Profile, " + root.userName : "User Profile"
+            background: null
+            onClicked: root.selectId("user-profile")
+            Keys.onReturnPressed: event => {
+                event.accepted = true
+                root.selectId("user-profile")
+            }
+            Keys.onEnterPressed: event => {
+                event.accepted = true
+                root.selectId("user-profile")
+            }
 
-            RowLayout {
+            contentItem: RowLayout {
                 anchors.fill: parent
                 spacing: 12
 

@@ -13,6 +13,7 @@ private slots:
     void preservesSpacerBehavior();
     void exposesNativePageRoutes();
     void exposesHubChildrenAndAncestorLookups();
+    void exposesSevenVisualMigrationRoutes();
     void startsWithFirstNavigableSidebarDestination();
     void appliesPageAndHubNavigabilityRules();
 };
@@ -153,7 +154,7 @@ void SettingsNavigationModelTest::exposesHubChildrenAndAncestorLookups()
     QCOMPARE(customization->kind, SettingsNavigationEntry::Kind::Hub);
 
     const QVector<SettingsNavigationEntry> children = model.childrenForId(QStringLiteral("customization"));
-    QCOMPARE(children.size(), 7);
+    QCOMPARE(children.size(), 8);
     QCOMPARE(children.at(0).id, QStringLiteral("appearance"));
     QCOMPARE(children.at(1).id, QStringLiteral("visual-effects"));
     QCOMPARE(children.at(2).id, QStringLiteral("icons"));
@@ -161,9 +162,10 @@ void SettingsNavigationModelTest::exposesHubChildrenAndAncestorLookups()
     QCOMPARE(children.at(4).id, QStringLiteral("dock"));
     QCOMPARE(children.at(5).id, QStringLiteral("animations"));
     QCOMPARE(children.at(6).id, QStringLiteral("screenshots"));
+    QCOMPARE(children.at(7).id, QStringLiteral("island"));
 
     const QVariantList childDescriptors = model.childDescriptorsForId(QStringLiteral("customization"));
-    QCOMPARE(childDescriptors.size(), 7);
+    QCOMPARE(childDescriptors.size(), 8);
     QCOMPARE(childDescriptors.at(0).toMap().value(QStringLiteral("entryId")).toString(),
              QStringLiteral("appearance"));
     QCOMPARE(childDescriptors.at(1).toMap().value(QStringLiteral("entryId")).toString(),
@@ -178,6 +180,8 @@ void SettingsNavigationModelTest::exposesHubChildrenAndAncestorLookups()
              QStringLiteral("animations"));
     QCOMPARE(childDescriptors.at(6).toMap().value(QStringLiteral("entryId")).toString(),
              QStringLiteral("screenshots"));
+    QCOMPARE(childDescriptors.at(7).toMap().value(QStringLiteral("entryId")).toString(),
+             QStringLiteral("island"));
 
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("customization")), QStringLiteral("customization"));
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("wallpaper")), QStringLiteral("customization"));
@@ -187,8 +191,52 @@ void SettingsNavigationModelTest::exposesHubChildrenAndAncestorLookups()
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("icons")), QStringLiteral("customization"));
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("animations")), QStringLiteral("customization"));
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("screenshots")), QStringLiteral("customization"));
+    QCOMPARE(model.sidebarAncestorForId(QStringLiteral("island")), QStringLiteral("customization"));
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("compositor")), QStringLiteral("compositor"));
     QCOMPARE(model.sidebarAncestorForId(QStringLiteral("missing")), QString());
+}
+
+void SettingsNavigationModelTest::exposesSevenVisualMigrationRoutes()
+{
+    SettingsNavigationModel model;
+    const struct RouteExpectation {
+        const char *id;
+        const char *parent;
+        const char *label;
+        const char *source;
+    } expected[] = {
+        {"performance-settings", "performance", "Performance", "system/Performance.qml"},
+        {"proton", "performance", "Proton", "gaming/Proton.qml"},
+        {"compatibility", "more-settings", "Compatibility", "gaming/Compatibility.qml"},
+        {"language", "more-settings", "Language", "system/Language.qml"},
+        {"apps", "more-settings", "Apps", "apps/Applications.qml"},
+        {"island", "customization", "Island", "appearance/Island.qml"},
+        {"user-profile", "more-settings", "User Profile", "personalization/UserProfile.qml"},
+    };
+    for (const auto &route : expected) {
+        const QString id = QString::fromLatin1(route.id);
+        const QVariantMap descriptor = model.descriptorForId(id);
+        QVERIFY2(!descriptor.isEmpty(), route.id);
+        QCOMPARE(descriptor.value(QStringLiteral("label")).toString(), QString::fromLatin1(route.label));
+        QCOMPARE(descriptor.value(QStringLiteral("parentId")).toString(), QString::fromLatin1(route.parent));
+        QVERIFY(!descriptor.value(QStringLiteral("sidebarVisible")).toBool());
+        QVERIFY(descriptor.value(QStringLiteral("entryEnabled")).toBool());
+        QVERIFY(model.containsNavigableId(id));
+        QVERIFY(model.pageSourceForId(id).toString().endsWith(QString::fromLatin1(route.source)));
+        QCOMPARE(model.sidebarAncestorForId(id), QString::fromLatin1(route.parent));
+    }
+    const auto performanceChildren = model.childDescriptorsForId(QStringLiteral("performance"));
+    QCOMPARE(performanceChildren.size(), 2);
+    QCOMPARE(performanceChildren.at(0).toMap().value(QStringLiteral("entryId")).toString(),
+             QStringLiteral("performance-settings"));
+    QCOMPARE(performanceChildren.at(1).toMap().value(QStringLiteral("entryId")).toString(),
+             QStringLiteral("proton"));
+    const auto moreChildren = model.childDescriptorsForId(QStringLiteral("more-settings"));
+    QCOMPARE(moreChildren.size(), 4);
+    QCOMPARE(moreChildren.at(0).toMap().value(QStringLiteral("entryId")).toString(), QStringLiteral("compatibility"));
+    QCOMPARE(moreChildren.at(1).toMap().value(QStringLiteral("entryId")).toString(), QStringLiteral("language"));
+    QCOMPARE(moreChildren.at(2).toMap().value(QStringLiteral("entryId")).toString(), QStringLiteral("apps"));
+    QCOMPARE(moreChildren.at(3).toMap().value(QStringLiteral("entryId")).toString(), QStringLiteral("user-profile"));
 }
 
 void SettingsNavigationModelTest::startsWithFirstNavigableSidebarDestination()
@@ -216,13 +264,13 @@ void SettingsNavigationModelTest::appliesPageAndHubNavigabilityRules()
     QVERIFY(model.containsNavigableId(QStringLiteral("screenshots")));
     QVERIFY(!model.containsNavigableId(QStringLiteral("themes")));
     QVERIFY(!model.containsNavigableId(QStringLiteral("system")));
-    QVERIFY(!model.containsNavigableId(QStringLiteral("performance")));
-    QVERIFY(!model.containsNavigableId(QStringLiteral("more-settings")));
+    QVERIFY(model.containsNavigableId(QStringLiteral("performance")));
+    QVERIFY(model.containsNavigableId(QStringLiteral("more-settings")));
     QVERIFY(!model.containsNavigableId(QStringLiteral("missing")));
 
     QVERIFY(model.data(model.index(11, 0), SettingsNavigationModel::EnabledRole).toBool());
     QVERIFY(!model.data(model.index(9, 0), SettingsNavigationModel::EnabledRole).toBool());
-    QVERIFY(!model.data(model.index(12, 0), SettingsNavigationModel::EnabledRole).toBool());
+    QVERIFY(model.data(model.index(12, 0), SettingsNavigationModel::EnabledRole).toBool());
 }
 
 QTEST_GUILESS_MAIN(SettingsNavigationModelTest)

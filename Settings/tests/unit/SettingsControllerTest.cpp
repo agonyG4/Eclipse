@@ -80,6 +80,7 @@ private slots:
     void navigatesToInternetPage();
     void navigatesToCustomizationHub();
     void navigatesToScreenshotSettings();
+    void navigatesToVisualMigrationDestinations();
     void nestedDestinationsKeepSidebarAncestorSelected();
     void directNestedNavigationDerivesSidebarAncestor();
     void backAndForwardTraverseSessionHistory();
@@ -164,7 +165,7 @@ void SettingsControllerTest::navigatesToCustomizationHub()
     QCOMPARE(controller.selectedPageSource(),
              QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/navigation/Hub.qml")));
     QCOMPARE(controller.currentDestination().value(QStringLiteral("kind")).toString(), QStringLiteral("hub"));
-    QCOMPARE(controller.currentDestinationChildren().size(), 7);
+    QCOMPARE(controller.currentDestinationChildren().size(), 8);
     QVERIFY(controller.navigateTo(QStringLiteral("animations")));
     QCOMPARE(controller.currentDestinationId(), QStringLiteral("animations"));
     QCOMPARE(controller.selectedSidebarId(), QStringLiteral("customization"));
@@ -181,6 +182,30 @@ void SettingsControllerTest::navigatesToScreenshotSettings()
     QCOMPARE(controller.selectedSidebarId(), QStringLiteral("customization"));
     QCOMPARE(controller.selectedPageSource(),
              QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Screenshots.qml")));
+}
+
+void SettingsControllerTest::navigatesToVisualMigrationDestinations()
+{
+    SettingsController controller;
+    const struct RouteExpectation {
+        const char *id;
+        const char *parent;
+        const char *source;
+    } routes[] = {
+        {"performance-settings", "performance", "system/Performance.qml"},
+        {"proton", "performance", "gaming/Proton.qml"},
+        {"compatibility", "more-settings", "gaming/Compatibility.qml"},
+        {"language", "more-settings", "system/Language.qml"},
+        {"apps", "more-settings", "apps/Applications.qml"},
+        {"island", "customization", "appearance/Island.qml"},
+        {"user-profile", "more-settings", "personalization/UserProfile.qml"},
+    };
+    for (const auto &route : routes) {
+        QVERIFY(controller.navigateTo(QString::fromLatin1(route.id)));
+        QCOMPARE(controller.currentDestinationId(), QString::fromLatin1(route.id));
+        QCOMPARE(controller.selectedSidebarId(), QString::fromLatin1(route.parent));
+        QVERIFY(controller.selectedPageSource().toString().endsWith(QString::fromLatin1(route.source)));
+    }
 }
 
 void SettingsControllerTest::nestedDestinationsKeepSidebarAncestorSelected()
@@ -287,8 +312,6 @@ void SettingsControllerTest::invalidNavigationPreservesRouteAndHistory()
     const qsizetype signalCount = navigationSpy.count();
 
     QVERIFY(!controller.navigateTo(QStringLiteral("missing")));
-    QVERIFY(!controller.navigateTo(QStringLiteral("performance")));
-    QVERIFY(!controller.navigateTo(QStringLiteral("more-settings")));
     QCOMPARE(controller.currentDestinationId(), QStringLiteral("dock"));
     QCOMPARE(controller.selectedSidebarId(), QStringLiteral("customization"));
     QCOMPARE(navigationSpy.count(), signalCount);

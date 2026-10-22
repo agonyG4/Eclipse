@@ -210,6 +210,10 @@ private slots:
     void loadsCompositorRouteOffscreen();
     void displaySidebarClickLoadsSelectedPageWithoutTyphon();
     void loadsCustomizationHubOffscreen();
+    void loadsVisualMigrationRoutes_data();
+    void loadsVisualMigrationRoutes();
+    void localPageStateResetsAfterNavigation();
+    void sidebarProfileHeaderNavigatesWithPointerAndKeyboard();
     void loadsAnimationsRouteOffscreen();
     void loadsScreenshotsRouteOffscreen();
     void plannedEffectTextUsesRequestedEffect();
@@ -636,20 +640,233 @@ void SettingsQmlSmokeTest::loadsCustomizationHubOffscreen()
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-dock")) != nullptr);
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-animations")) != nullptr);
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-screenshots")) != nullptr);
-    QCOMPARE(countVisualItems(hubItem, QRegularExpression(QStringLiteral("^hubNavigationRow-"))), 7);
+    QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-island")) != nullptr);
+    QCOMPARE(countVisualItems(hubItem, QRegularExpression(QStringLiteral("^hubNavigationRow-"))), 8);
     const QVariantList children = settingsController.currentDestinationChildren();
-    QCOMPARE(children.size(), 7);
+    QCOMPARE(children.size(), 8);
     const QStringList expectedChildren {QStringLiteral("appearance"),
                                         QStringLiteral("visual-effects"),
                                         QStringLiteral("icons"),
                                         QStringLiteral("wallpaper"),
                                         QStringLiteral("dock"),
                                         QStringLiteral("animations"),
-                                        QStringLiteral("screenshots")};
+                                        QStringLiteral("screenshots"),
+                                        QStringLiteral("island")};
     for (qsizetype index = 0; index < expectedChildren.size(); ++index) {
         QCOMPARE(children.at(index).toMap().value(QStringLiteral("entryId")).toString(),
                  expectedChildren.at(index));
     }
+}
+
+void SettingsQmlSmokeTest::loadsVisualMigrationRoutes_data()
+{
+    QTest::addColumn<QString>("routeId");
+    QTest::addColumn<QString>("pageObjectName");
+    QTest::addColumn<QString>("parentId");
+    QTest::addColumn<int>("width");
+    QTest::addColumn<int>("themeMode");
+
+    const struct RouteExpectation {
+        const char *id;
+        const char *page;
+        const char *parent;
+    } routes[] = {
+        {"performance-settings", "performancePage", "performance"},
+        {"proton", "protonPage", "performance"},
+        {"compatibility", "compatibilityPage", "more-settings"},
+        {"language", "languagePage", "more-settings"},
+        {"apps", "applicationsPage", "more-settings"},
+        {"island", "islandPage", "customization"},
+        {"user-profile", "userProfilePage", "more-settings"},
+    };
+    const int widths[] = {1050, 800};
+    const int themeModes[] = {0, 1}; // dark, light
+    for (const auto &route : routes) {
+        for (const int width : widths) {
+            for (const int themeMode : themeModes) {
+                const QString caseName = QStringLiteral("%1-%2-%3")
+                    .arg(QString::fromLatin1(route.id))
+                    .arg(themeMode == 0 ? QStringLiteral("dark") : QStringLiteral("light"))
+                    .arg(width);
+                QTest::newRow(qPrintable(caseName))
+                    << QString::fromLatin1(route.id)
+                    << QString::fromLatin1(route.page)
+                    << QString::fromLatin1(route.parent)
+                    << width << themeMode;
+            }
+        }
+    }
+}
+
+void SettingsQmlSmokeTest::loadsVisualMigrationRoutes()
+{
+    QFETCH(QString, routeId);
+    QFETCH(QString, pageObjectName);
+    QFETCH(QString, parentId);
+    QFETCH(int, width);
+    QFETCH(int, themeMode);
+
+    QTemporaryDir home;
+    QTemporaryDir runtime;
+    QTemporaryDir configuration;
+    QVERIFY(home.isValid());
+    QVERIFY(runtime.isValid());
+    QVERIFY(configuration.isValid());
+    HomeEnvironmentGuard homeGuard(home.path());
+    RuntimeEnvironmentGuard runtimeGuard(runtime.path());
+
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController(configuration.filePath(QStringLiteral("theme.json")));
+    themeController.setThemeMode(themeMode);
+    QQmlApplicationEngine engine;
+    QList<QQmlError> qmlWarnings;
+    connect(&engine, &QQmlApplicationEngine::warnings, this,
+            [&qmlWarnings](const QList<QQmlError> &warnings) { qmlWarnings.append(warnings); });
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+
+    QCOMPARE(engine.rootObjects().size(), 1);
+    auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
+    QVERIFY(window != nullptr);
+    window->resize(width, window->height());
+    window->show();
+    QCoreApplication::processEvents();
+    QVERIFY(settingsController.navigateTo(routeId));
+    QTRY_VERIFY_WITH_TIMEOUT(window->findChild<QObject *>(pageObjectName) != nullptr, 2000);
+    QCOMPARE(settingsController.currentDestinationId(), routeId);
+    QCOMPARE(settingsController.selectedSidebarId(), parentId);
+    QCOMPARE(themeController.themeMode(), themeMode);
+
+    QTest::qWait(400);
+    QCoreApplication::processEvents();
+    const QImage screenshot = window->grabWindow();
+    QVERIFY2(!screenshot.isNull(), qPrintable(QStringLiteral("Could not render %1 at %2px")
+                                                   .arg(routeId).arg(width)));
+
+    const QString captureDirectory = qEnvironmentVariable("ASTREA_SETTINGS_VISUAL_CAPTURE_DIR");
+    if (!captureDirectory.isEmpty()) {
+        QVERIFY(QFileInfo(captureDirectory).isAbsolute());
+        QVERIFY(QDir().mkpath(captureDirectory));
+        const QString themeName = themeMode == 0 ? QStringLiteral("dark") : QStringLiteral("light");
+        const QString fileName = QStringLiteral("%1-%2-%3.png").arg(routeId, themeName).arg(width);
+        const QString outputPath = QDir(captureDirectory).filePath(fileName);
+        QVERIFY2(screenshot.save(outputPath), qPrintable(QStringLiteral("Could not save %1")
+                                                            .arg(outputPath)));
+    }
+    QVERIFY2(qmlWarnings.isEmpty(), qPrintable(qmlWarnings.isEmpty()
+        ? QString() : qmlWarnings.constFirst().toString()));
+}
+
+void SettingsQmlSmokeTest::localPageStateResetsAfterNavigation()
+{
+    QTemporaryDir home;
+    QTemporaryDir runtime;
+    QTemporaryDir configuration;
+    QVERIFY(home.isValid());
+    QVERIFY(runtime.isValid());
+    QVERIFY(configuration.isValid());
+    HomeEnvironmentGuard homeGuard(home.path());
+    RuntimeEnvironmentGuard runtimeGuard(runtime.path());
+
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController(configuration.filePath(QStringLiteral("theme.json")));
+    QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+    QCOMPARE(engine.rootObjects().size(), 1);
+    auto *root = engine.rootObjects().constFirst();
+    QObject *loader = root->findChild<QObject *>(QStringLiteral("settingsPageLoader"));
+    QVERIFY(loader != nullptr);
+    auto loadedPage = [&loader]() {
+        return qvariant_cast<QObject *>(loader->property("item"));
+    };
+    QVERIFY(settingsController.navigateTo(QStringLiteral("performance-settings")));
+    QTRY_VERIFY_WITH_TIMEOUT(loadedPage() != nullptr
+                                 && loadedPage()->objectName() == QStringLiteral("performancePage"),
+                             2000);
+    QObject *page = loadedPage();
+    QCOMPARE(page->property("selectedProfile").toInt(), 1);
+    QVERIFY(page->setProperty("selectedProfile", 2));
+    QCOMPARE(page->property("selectedProfile").toInt(), 2);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("compositor")));
+    QTRY_VERIFY_WITH_TIMEOUT(loadedPage() != nullptr
+                                 && loadedPage()->objectName() == QStringLiteral("compositorPage"),
+                             2000);
+    QVERIFY(settingsController.navigateTo(QStringLiteral("performance-settings")));
+    QTRY_VERIFY_WITH_TIMEOUT(loadedPage() != nullptr
+                                 && loadedPage()->objectName() == QStringLiteral("performancePage"),
+                             2000);
+    QObject *reloadedPage = loadedPage();
+    QVERIFY(reloadedPage != nullptr);
+    QVERIFY(reloadedPage != page);
+    QCOMPARE(reloadedPage->property("selectedProfile").toInt(), 1);
+}
+
+void SettingsQmlSmokeTest::sidebarProfileHeaderNavigatesWithPointerAndKeyboard()
+{
+    QTemporaryDir home;
+    QTemporaryDir runtime;
+    QTemporaryDir configuration;
+    QVERIFY(home.isValid());
+    QVERIFY(runtime.isValid());
+    QVERIFY(configuration.isValid());
+    HomeEnvironmentGuard homeGuard(home.path());
+    RuntimeEnvironmentGuard runtimeGuard(runtime.path());
+
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController(configuration.filePath(QStringLiteral("theme.json")));
+    QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+    QCOMPARE(engine.rootObjects().size(), 1);
+    auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
+    QVERIFY(window != nullptr);
+    window->show();
+    QCoreApplication::processEvents();
+    auto *sidebar = qobject_cast<QQuickItem *>(window->findChild<QObject *>(QStringLiteral("settingsSidebar")));
+    QVERIFY(sidebar != nullptr);
+    QQuickItem *profileButton = findVisualItem(sidebar, QStringLiteral("settingsProfileButton"));
+    QVERIFY(profileButton != nullptr);
+    const QPointF center = profileButton->mapToScene(
+        QPointF(profileButton->width() / 2.0, profileButton->height() / 2.0));
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier,
+                      QPoint(qRound(center.x()), qRound(center.y())));
+    QTRY_VERIFY_WITH_TIMEOUT(window->findChild<QObject *>(QStringLiteral("userProfilePage")) != nullptr, 2000);
+    QCOMPARE(settingsController.currentDestinationId(), QStringLiteral("user-profile"));
+    QCOMPARE(settingsController.selectedSidebarId(), QStringLiteral("more-settings"));
+
+    QVERIFY(settingsController.navigateTo(QStringLiteral("compositor")));
+    QTRY_VERIFY_WITH_TIMEOUT(window->findChild<QObject *>(QStringLiteral("compositorPage")) != nullptr, 2000);
+    profileButton->forceActiveFocus();
+    QTRY_VERIFY(profileButton->hasActiveFocus());
+    QTest::keyClick(window, Qt::Key_Space);
+    QTRY_VERIFY_WITH_TIMEOUT(window->findChild<QObject *>(QStringLiteral("userProfilePage")) != nullptr, 2000);
+    QCOMPARE(settingsController.currentDestinationId(), QStringLiteral("user-profile"));
+
+    QVERIFY(settingsController.navigateTo(QStringLiteral("compositor")));
+    QTRY_VERIFY_WITH_TIMEOUT(window->findChild<QObject *>(QStringLiteral("compositorPage")) != nullptr, 2000);
+    profileButton->forceActiveFocus();
+    QTRY_VERIFY(profileButton->hasActiveFocus());
+    QTest::keyClick(window, Qt::Key_Return);
+    QTRY_VERIFY_WITH_TIMEOUT(window->findChild<QObject *>(QStringLiteral("userProfilePage")) != nullptr, 2000);
+    QCOMPARE(settingsController.currentDestinationId(), QStringLiteral("user-profile"));
+
+    QVERIFY(settingsController.navigateTo(QStringLiteral("compositor")));
+    QTRY_VERIFY_WITH_TIMEOUT(window->findChild<QObject *>(QStringLiteral("compositorPage")) != nullptr, 2000);
+    profileButton->forceActiveFocus();
+    QTRY_VERIFY(profileButton->hasActiveFocus());
+    QTest::keyClick(window, Qt::Key_Enter);
+    QTRY_COMPARE_WITH_TIMEOUT(settingsController.currentDestinationId(),
+                              QStringLiteral("user-profile"), 2000);
 }
 
 void SettingsQmlSmokeTest::loadsAnimationsRouteOffscreen()

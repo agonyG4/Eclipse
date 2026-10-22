@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import "../../components" as Components
 import "../../components/controls" as Controls
@@ -11,47 +12,41 @@ Item {
     property string searchText: ""
     property string selectedAppId: ""
 
-    readonly property var apps: [
-        { id: "org.gnome.Calculator", name: "Calculator", description: "Perform calculations, unit conversions and quick checks.", kind: "Desktop application", size: "3.8 MB", file: "/usr/bin/gnome-calculator", category: "Utilities", privacy: "No special permissions" },
-        { id: "org.gnome.Nautilus", name: "Files", description: "Browse and organize files and folders.", kind: "Desktop application", size: "8.2 MB", file: "/usr/bin/nautilus", category: "System", privacy: "Home folder access" },
-        { id: "org.gnome.TextEditor", name: "Text Editor", description: "A simple editor for text and code.", kind: "Desktop application", size: "2.4 MB", file: "/usr/bin/gnome-text-editor", category: "Utilities", privacy: "No special permissions" },
-        { id: "org.mozilla.firefox", name: "Firefox", description: "Browse the web with Firefox.", kind: "Desktop application", size: "286 MB", file: "/usr/bin/firefox", category: "Network", privacy: "Network access" },
-        { id: "org.gnome.Terminal", name: "Terminal", description: "Use a command-line environment.", kind: "Desktop application", size: "5.1 MB", file: "/usr/bin/gnome-terminal", category: "System", privacy: "Shell access" },
-        { id: "com.spotify.Client", name: "Music Player", description: "Listen to music and podcasts.", kind: "Desktop application", size: "114 MB", file: "/usr/bin/music-player", category: "Audio", privacy: "Network access" }
-    ]
-    readonly property var filteredApps: root.apps.filter(app => root.searchText.trim() === "" || app.name.toLowerCase().indexOf(root.searchText.toLowerCase()) !== -1 || app.id.toLowerCase().indexOf(root.searchText.toLowerCase()) !== -1 || app.category.toLowerCase().indexOf(root.searchText.toLowerCase()) !== -1)
-    readonly property var selectedApp: {
-        for (let i = 0; i < root.apps.length; ++i) {
-            if (root.apps[i].id === root.selectedAppId)
-                return root.apps[i]
+    readonly property var controller: SettingsController.applications
+    readonly property var apps: controller.state.apps || []
+    readonly property var filteredApps: root.apps.filter(app => root.searchText.trim() === "" || (app.name + " " + app.id + " " + app.category).toLowerCase().indexOf(root.searchText.toLowerCase()) !== -1)
+    readonly property var selectedApp: controller.state.selected && controller.state.selected.id === root.selectedAppId ? controller.state.selected : null
+
+    Dialog {
+        id: removalDialog
+        objectName: "applicationRemovalDialog"
+        anchors.centerIn: parent
+        modal: true
+        width: Math.min(root.width - 48, 480)
+        title: root.selectedApp ? root.selectedApp.actionLabel + " — " + root.selectedApp.name : "Remove application"
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        contentItem: Text {
+            text: root.selectedApp ? "Target: " + root.selectedApp.target + "\n" + (root.selectedApp.method === "launcher" ? "Only the launcher is removed. Application files are kept." : "The selected application or package will be removed. Application data is kept.") : ""
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: Components.Theme.textPrimary
         }
-        return null
+        onAccepted: if (root.selectedApp) root.controller.uninstall(root.selectedAppId, root.selectedApp.removalToken)
     }
+    Component.onCompleted: root.controller.refresh()
 
     Form.ScrollPage {
         objectName: "applicationsScrollPage"
         anchors.fill: parent
+        enabled: !root.controller.busy
         contentMargins: 24
         maxWidth: 840
 
-        Rectangle {
-            objectName: "applicationsPreviewNotice"
-            Layout.fillWidth: true
-            Layout.bottomMargin: 18
-            implicitHeight: 34
-            radius: Components.Theme.controlRadius
-            color: Components.Theme.isLight ? Qt.rgba(0, 0, 0, 0.025) : Qt.rgba(1, 1, 1, 0.035)
-            border.width: 1
-            border.color: Components.Theme.cardBorder
-            Text {
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 12
-                text: "Visual preview · Sample data, local changes"
-                color: Components.Theme.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall
-            }
+        Components.BackendNotice {
+            objectName: "applicationsBackendStatus"
+            busy: root.controller.busy
+            error: root.controller.lastError
+            onRetry: root.controller.refresh()
         }
 
         Form.SectionHeader { text: "APPS"; Layout.bottomMargin: 10 }
@@ -79,7 +74,7 @@ Item {
                             font.weight: Components.Theme.fontWeightDemiBold
                         }
                         Text {
-                            text: root.filteredApps.length + " apps shown · " + root.apps.length + " sample entries"
+                            text: root.filteredApps.length + " apps shown · " + root.apps.length + " installed applications"
                             color: Components.Theme.textSecondary
                             font.family: Components.Theme.fontFamily
                             font.pixelSize: Components.Theme.fontSizeTiny
@@ -102,7 +97,7 @@ Item {
                     required property var modelData
                     required property int index
                     objectName: "applicationRow_" + modelData.id.replace(/[^A-Za-z0-9]/g, "_")
-                    clickable: true
+                    clickable: !root.controller.busy
                     label: modelData.name
                     sublabel: modelData.description
                     isLast: index === root.filteredApps.length - 1
@@ -112,7 +107,7 @@ Item {
                         font.family: Components.Theme.fontFamily
                         font.pixelSize: Components.Theme.fontSizeTiny
                     }
-                    onClicked: root.selectedAppId = modelData.id
+                    onClicked: { root.selectedAppId = modelData.id; root.controller.select(modelData.id) }
                 }
             }
 
@@ -201,6 +196,7 @@ Item {
             Form.SettingRow {
                 objectName: "applicationPrivacyRow"
                 label: "Permissions"
+                sublabelTextFormat: Text.PlainText
                 sublabel: root.selectedApp ? root.selectedApp.privacy : ""
                 isLast: true
             }
@@ -212,10 +208,10 @@ Item {
                 Layout.rightMargin: 18
                 Layout.bottomMargin: 14
                 spacing: 8
-                Controls.ButtonCapsule { label: "Create shortcut"; enabled: false }
-                Controls.ButtonCapsule { label: "Open location"; enabled: false }
+                Controls.ButtonCapsule { objectName: "createApplicationShortcutButton"; label: "Create shortcut"; onClicked: root.controller.createShortcut(root.selectedAppId) }
+                Controls.ButtonCapsule { objectName: "openApplicationLocationButton"; label: "Open location"; onClicked: root.controller.openLocation(root.selectedAppId) }
                 Item { Layout.fillWidth: true }
-                Controls.ButtonCapsule { objectName: "uninstallApplicationButton"; label: "Uninstall"; danger: true; enabled: false }
+                Controls.ButtonCapsule { objectName: "uninstallApplicationButton"; label: root.selectedApp ? root.selectedApp.actionLabel : "Uninstall"; danger: true; enabled: root.selectedApp !== null && !!root.selectedApp.canUninstall; onClicked: removalDialog.open() }
             }
         }
     }

@@ -14,6 +14,7 @@ Item {
 
     property string userName: ""
     property string avatarPath: ""
+    property int avatarVersion: 0
     property bool isSudo: false
     property string iconTheme: ""
     property string iconWeight: "thin"
@@ -78,7 +79,7 @@ Item {
                     Components.AvatarImage {
                         anchors.fill: parent
                         imagePath: root.avatarPath
-                        imageVersion: 0
+                        imageVersion: root.avatarVersion
                         fallbackText: root.userName.length > 0
                             ? root.userName[0].toUpperCase()
                             : "?"

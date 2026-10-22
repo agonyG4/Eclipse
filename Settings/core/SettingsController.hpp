@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/navigation/SettingsNavigationModel.hpp"
+#include "services/desktop/DesktopControllers.hpp"
 #include "services/assets/SettingsIconResolver.hpp"
 #include "services/audio/SettingsSpatialAudioController.hpp"
 #include "services/dock/SettingsDockController.hpp"
@@ -43,8 +44,8 @@ class SettingsController final : public QObject {
     Q_PROPERTY(QUrl selectedPageSource READ selectedPageSource NOTIFY navigationChanged)
     Q_PROPERTY(bool canGoBack READ canGoBack NOTIFY historyChanged)
     Q_PROPERTY(bool canGoForward READ canGoForward NOTIFY historyChanged)
-    Q_PROPERTY(QString userName READ userName CONSTANT)
-    Q_PROPERTY(QUrl avatarUrl READ avatarUrl CONSTANT)
+    Q_PROPERTY(QString userName READ userName NOTIFY userProfileChanged)
+    Q_PROPERTY(QUrl avatarUrl READ avatarUrl NOTIFY userProfileChanged)
     Q_PROPERTY(bool isSudo READ isSudo CONSTANT)
     Q_PROPERTY(SettingsWallpaperController *wallpaper READ wallpaper CONSTANT)
     Q_PROPERTY(SettingsDockController *dock READ dock CONSTANT)
@@ -53,6 +54,9 @@ class SettingsController final : public QObject {
     Q_PROPERTY(SettingsIconsController *icons READ icons CONSTANT)
     Q_PROPERTY(SettingsVisualEffectsController *visualEffects READ visualEffects CONSTANT)
     Q_PROPERTY(SettingsDisplayController *display READ display CONSTANT)
+    Q_PROPERTY(SettingsRegionController *region READ region CONSTANT)
+    Q_PROPERTY(SettingsApplicationsController *applications READ applications CONSTANT)
+    Q_PROPERTY(SettingsProfileController *profile READ profile CONSTANT)
     Q_PROPERTY(SettingsGamingController *gaming READ gaming CONSTANT)
     Q_PROPERTY(SettingsPerformanceController *performance READ performance CONSTANT)
     Q_PROPERTY(ScreenshotConfiguration *screenshots READ screenshots CONSTANT)
@@ -96,6 +100,9 @@ public:
     SettingsIconsController *icons() const { return m_iconsController.get(); }
     SettingsVisualEffectsController *visualEffects() const { return m_visualEffectsController.get(); }
     SettingsDisplayController *display() const { return m_displayController.get(); }
+    SettingsRegionController *region() const { return m_region.get(); }
+    SettingsApplicationsController *applications() const { return m_applications.get(); }
+    SettingsProfileController *profile() const { return m_profile.get(); }
     SettingsGamingController *gaming() const { return m_gamingController.get(); }
     SettingsPerformanceController *performance() const { return m_performanceController.get(); }
     Q_INVOKABLE bool copyGamingLaunchCommand();
@@ -117,6 +124,7 @@ public:
                                      const QString &weight) const;
 
 signals:
+    void userProfileChanged();
     void navigationChanged();
     void historyChanged();
     void navigationIconThemeChanged();
@@ -150,6 +158,9 @@ private:
     std::unique_ptr<SettingsIconsController> m_iconsController;
     std::unique_ptr<SettingsVisualEffectsController> m_visualEffectsController;
     std::unique_ptr<SettingsDisplayController> m_displayController;
+    std::unique_ptr<SettingsRegionController> m_region;
+    std::unique_ptr<SettingsApplicationsController> m_applications;
+    std::unique_ptr<SettingsProfileController> m_profile;
     std::unique_ptr<SettingsGamingController> m_gamingController;
     std::unique_ptr<SettingsPerformanceController> m_performanceController;
     std::unique_ptr<ScreenshotConfiguration> m_screenshotConfiguration;

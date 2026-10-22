@@ -7,13 +7,27 @@
 SettingsTranslationController::SettingsTranslationController(QObject *parent)
     : QObject(parent)
 {
-    QFile file(QStringLiteral(":/Astrea/Settings/assets/i18n/en_US.json"));
-    if (!file.open(QIODevice::ReadOnly))
-        return;
+    connect(&m_preferences, &RegionalPreferences::changed, this, &SettingsTranslationController::reload);
+    reload();
+}
 
-    const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
-    if (document.isObject())
-        m_messages = document.object().toVariantMap();
+void SettingsTranslationController::reload()
+{
+    QLocale::setDefault(QLocale(m_preferences.language()));
+    QVariantMap messages;
+    const auto load = [&messages](const QString &language) {
+        QFile file(QStringLiteral(":/Astrea/Settings/assets/i18n/%1.json").arg(language));
+        if (!file.open(QIODevice::ReadOnly)) return;
+        const auto document=QJsonDocument::fromJson(file.readAll());
+        if (!document.isObject()) return;
+        const auto localized=document.object().toVariantMap();
+        for(auto it=localized.cbegin();it!=localized.cend();++it) messages[it.key()]=it.value();
+    };
+    load("en_US");
+    if(m_preferences.language()!="en_US") load(m_preferences.language());
+    if(m_messages==messages) return;
+    m_messages=messages;
+    emit messagesChanged();
 }
 
 QVariantMap SettingsTranslationController::messages() const

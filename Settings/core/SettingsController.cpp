@@ -130,6 +130,10 @@ SettingsController::SettingsController(std::unique_ptr<SettingsNavigationModel> 
     m_iconsController = std::make_unique<SettingsIconsController>();
     m_visualEffectsController = std::make_unique<SettingsVisualEffectsController>();
     m_displayController = std::make_unique<SettingsDisplayController>();
+    m_region = std::make_unique<SettingsRegionController>();
+    m_applications = std::make_unique<SettingsApplicationsController>();
+    m_profile = std::make_unique<SettingsProfileController>();
+    connect(m_profile.get(), &SettingsProfileController::stateChanged, this, &SettingsController::userProfileChanged);
     m_gamingController = std::make_unique<SettingsGamingController>();
     m_performanceController = std::make_unique<SettingsPerformanceController>();
     m_screenshotConfiguration = std::make_unique<ScreenshotConfiguration>(QString(), this);
@@ -237,12 +241,12 @@ bool SettingsController::canGoForward() const
 
 QString SettingsController::userName() const
 {
-    return m_userProfile.userName;
+    return m_profile->state().value("displayName", m_userProfile.userName).toString();
 }
 
 QUrl SettingsController::avatarUrl() const
 {
-    return m_userProfile.avatarUrl;
+    return m_profile->state().value("avatar", m_userProfile.avatarUrl).toUrl();
 }
 
 bool SettingsController::isSudo() const

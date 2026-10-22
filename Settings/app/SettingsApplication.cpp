@@ -54,6 +54,7 @@ int SettingsApplication::run()
     m_controller->bluetooth()->start();
     m_controller->audio()->start();
     m_controller->network()->start();
+    m_controller->profile()->refresh();
     m_translationController = std::make_unique<SettingsTranslationController>();
     m_themeController = std::make_unique<ThemeController>();
     QObject::connect(m_controller->appearance(),

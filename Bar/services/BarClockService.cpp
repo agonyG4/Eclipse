@@ -5,6 +5,13 @@
 BarClockService::BarClockService(QObject *parent)
     : QObject(parent)
 {
+    const auto applyRegion = [this] {
+        m_locale = m_preferences.locale();
+        m_format = m_preferences.timeFormat() == "12h" ? ClockTimeFormat::TwelveHour : ClockTimeFormat::TwentyFourHour;
+        if (isRunning()) update();
+    };
+    connect(&m_preferences, &RegionalPreferences::changed, this, applyRegion);
+    applyRegion();
     m_timer.setSingleShot(true);
     connect(&m_timer, &QTimer::timeout, this, &BarClockService::update);
 }

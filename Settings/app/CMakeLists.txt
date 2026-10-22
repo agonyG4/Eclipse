@@ -26,7 +26,7 @@ target_link_libraries(astrea-settings PRIVATE
 )
 
 qt_import_qml_plugins(astrea-settings)
-add_dependencies(astrea-settings astrea-gaming)
+add_dependencies(astrea-settings astrea-gaming astrea-settings-profile-helper)
 # The static System QML plugin can introduce bridge references after the
 # Settings core link interface. Rescan the existing Settings backend re-export
 # with that bridge instead of linking a second Rust backend/runtime.

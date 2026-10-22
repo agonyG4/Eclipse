@@ -88,6 +88,7 @@ ApplicationWindow {
                 translationMessages: I18n.messages
                 userName: SettingsController.userName
                 avatarPath: SettingsController.avatarUrl
+                avatarVersion: SettingsController.profile.state.avatarVersion || 0
                 isSudo: SettingsController.isSudo
                 iconTheme: SettingsController.navigationIconTheme
                 iconWeight: SettingsController.navigationIconWeight

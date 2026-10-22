@@ -791,9 +791,9 @@ void SettingsQmlSmokeTest::localPageStateResetsAfterNavigation()
                                  && loadedPage()->objectName() == QStringLiteral("languagePage"),
                              2000);
     QObject *page = loadedPage();
-    QCOMPARE(page->property("selectedTimeFormat").toInt(), 0);
-    QVERIFY(page->setProperty("selectedTimeFormat", 2));
-    QCOMPARE(page->property("selectedTimeFormat").toInt(), 2);
+    QCOMPARE(page->property("countrySearch").toString(), QString());
+    QVERIFY(page->setProperty("countrySearch", QStringLiteral("Japan")));
+    QCOMPARE(page->property("countrySearch").toString(), QStringLiteral("Japan"));
     QVERIFY(settingsController.navigateTo(QStringLiteral("compositor")));
     QTRY_VERIFY_WITH_TIMEOUT(loadedPage() != nullptr
                                  && loadedPage()->objectName() == QStringLiteral("compositorPage"),
@@ -805,7 +805,7 @@ void SettingsQmlSmokeTest::localPageStateResetsAfterNavigation()
     QObject *reloadedPage = loadedPage();
     QVERIFY(reloadedPage != nullptr);
     QVERIFY(reloadedPage != page);
-    QCOMPARE(reloadedPage->property("selectedTimeFormat").toInt(), 0);
+    QCOMPARE(reloadedPage->property("countrySearch").toString(), QString());
 }
 
 void SettingsQmlSmokeTest::sidebarProfileHeaderNavigatesWithPointerAndKeyboard()

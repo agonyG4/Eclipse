@@ -9,40 +9,36 @@ Item {
     id: root
     objectName: "languagePage"
 
-    property int selectedLanguage: 0
-    property int selectedCountry: 0
-    property int selectedTimeFormat: 0
-    property bool automaticLocation: false
+    readonly property var controller: SettingsController.region
+    readonly property var snapshot: controller.state
+    readonly property var config: snapshot.config || ({})
+    readonly property var region: config.region || ({})
+    readonly property var languageEntries: snapshot.languages || []
+    readonly property var countryEntries: snapshot.countries || []
+    readonly property var languages: languageEntries.map(item => item.name)
+    readonly property var countries: countryEntries.map(item => item.name)
+    readonly property int selectedLanguage: languageEntries.map(item => item.id).indexOf(config.language || "en_US")
+    readonly property int selectedCountry: countryEntries.map(item => item.id).indexOf(region.country_code || "BR")
+    readonly property int selectedTimeFormat: timeFormatIds.indexOf(region.time_format || "system")
+    readonly property bool automaticLocation: !!region.automatic_location
     property string countrySearch: ""
+    readonly property var filteredCountries: countryEntries.filter(item => root.countrySearch.trim() === "" || (item.name + " " + item.id).toLowerCase().indexOf(root.countrySearch.toLowerCase()) !== -1)
+    readonly property var timeFormatIds: ["system", "24h", "12h"]
+    readonly property var timeFormats: ["System default (" + (snapshot.effectiveTimeFormat || "24h") + ")", "24-hour", "12-hour (AM/PM)"]
 
-    readonly property var languages: ["English (United States)", "English (United Kingdom)", "Português (Brasil)", "Español", "Français"]
-    readonly property var countries: ["United States", "United Kingdom", "Brazil", "Canada", "France", "Germany", "Japan"]
-    readonly property var filteredCountries: root.countries.filter(country => root.countrySearch.trim() === "" || country.toLowerCase().indexOf(root.countrySearch.toLowerCase()) !== -1)
-    readonly property var timeFormats: ["System default (24-hour)", "24-hour", "12-hour (AM/PM)"]
+    Component.onCompleted: root.controller.refresh()
 
     Form.ScrollPage {
         anchors.fill: parent
+        enabled: !root.controller.busy
         contentMargins: 24
         maxWidth: 840
 
-        Rectangle {
-            objectName: "languagePreviewNotice"
-            Layout.fillWidth: true
-            Layout.bottomMargin: 22
-            implicitHeight: 34
-            radius: Components.Theme.controlRadius
-            color: Components.Theme.isLight ? Qt.rgba(0, 0, 0, 0.025) : Qt.rgba(1, 1, 1, 0.035)
-            border.width: 1
-            border.color: Components.Theme.cardBorder
-            Text {
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 12
-                text: "Visual preview · Sample data, local changes"
-                color: Components.Theme.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall
-            }
+        Components.BackendNotice {
+            objectName: "languageBackendStatus"
+            busy: root.controller.busy
+            error: root.controller.lastError
+            onRetry: root.controller.refresh()
         }
 
         Form.SectionHeader { text: "LANGUAGE & REGION"; Layout.bottomMargin: 10 }
@@ -52,14 +48,14 @@ Item {
             Form.SettingRow {
                 objectName: "languageSelectRow"
                 label: "Language"
-                sublabel: "Choose the language used by apps and the shell."
+                sublabel: "Sets the preferred locale. Reopen apps to apply translations; unavailable translations use English."
                 Controls.SelectButton {
                     objectName: "languageSelect"
                     width: 190
                     options: root.languages
                     selectedIndex: root.selectedLanguage
-                    label: root.languages[root.selectedLanguage]
-                    onSelected: index => root.selectedLanguage = index
+                    label: root.languages[root.selectedLanguage] || "Loading…"
+                    onSelected: index => root.controller.setOption("language", root.languageEntries[index].id)
                 }
             }
             Form.SettingRow {
@@ -83,12 +79,11 @@ Item {
                     objectName: "countrySelect"
                     width: 164
                     enabled: root.filteredCountries.length > 0
-                    options: root.filteredCountries
-                    selectedIndex: root.filteredCountries.indexOf(root.countries[root.selectedCountry])
-                    label: root.filteredCountries.length > 0 ? root.countries[root.selectedCountry] : "No matches"
+                    options: root.filteredCountries.map(item => item.name)
+                    selectedIndex: root.filteredCountries.map(item => item.id).indexOf(root.region.country_code || "BR")
+                    label: root.filteredCountries.length > 0 ? (root.countries[root.selectedCountry] || "Select location") : "No matches"
                     onSelected: index => {
-                        const country = root.filteredCountries[index]
-                        root.selectedCountry = root.countries.indexOf(country)
+                        root.controller.setOption("country_code", root.filteredCountries[index].id)
                     }
                 }
             }
@@ -102,19 +97,20 @@ Item {
                     options: root.timeFormats
                     selectedIndex: root.selectedTimeFormat
                     label: root.timeFormats[root.selectedTimeFormat]
-                    onSelected: index => root.selectedTimeFormat = index
+                    onSelected: index => root.controller.setOption("time_format", root.timeFormatIds[index])
                 }
             }
             Form.SettingRow {
                 objectName: "automaticLocationRow"
                 label: "Automatic location"
                 sublabel: root.automaticLocation
-                    ? "Location services would choose the region automatically."
-                    : "Use the country or region selected above."
+                    ? "Allow system geolocation. The selected region still controls regional formatting."
+                    : "System geolocation is blocked; use a manually selected location."
                 Controls.ToggleSwitch {
                     accessibleName: "Automatic location"
+                    enabled: !!root.snapshot.locationAvailable
                     checked: root.automaticLocation
-                    onToggled: checked => root.automaticLocation = checked
+                    onToggled: checked => root.controller.setOption("automatic_location", checked)
                 }
                 isLast: true
             }

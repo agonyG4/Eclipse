@@ -1,5 +1,6 @@
 #pragma once
 
+#include "settings/RegionalPreferences.hpp"
 #include <QDateTime>
 #include <QLocale>
 #include <QObject>
@@ -43,6 +44,7 @@ private:
     void update();
     void scheduleNextMinute(const QDateTime &now);
 
+    RegionalPreferences m_preferences;
     QTimer m_timer;
     QLocale m_locale = QLocale::system();
     ClockTimeFormat m_format = ClockTimeFormat::Locale;

@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import "../../components" as Components
 import "../../components/controls" as Controls
@@ -9,35 +10,33 @@ Item {
     id: root
     objectName: "userProfilePage"
 
-    property string userName: "alex"
-    property string displayName: "Alex Morgan"
-    property string pendingDisplayName: "Alex Morgan"
-    property bool automaticLogin: false
+    readonly property var controller: SettingsController.profile
+    readonly property var snapshot: controller.state
+    readonly property string userName: snapshot.user || SettingsController.userName
+    readonly property string displayName: snapshot.displayName || userName
+    property string pendingDisplayName: displayName
+    readonly property bool automaticLogin: !!snapshot.automaticLogin
+    FileDialog {
+        id: avatarDialog
+        title: "Choose a profile picture"
+        nameFilters: ["Images (*.png *.jpg *.jpeg *.webp)"]
+        onAccepted: root.controller.setAvatar(selectedFile)
+    }
+
+    Component.onCompleted: root.controller.refresh()
 
     Form.ScrollPage {
         objectName: "userProfileScrollPage"
         anchors.fill: parent
+        enabled: !root.controller.busy
         contentMargins: 24
         maxWidth: 840
 
-        Rectangle {
-            objectName: "userProfilePreviewNotice"
-            Layout.fillWidth: true
-            Layout.bottomMargin: 18
-            implicitHeight: 34
-            radius: Components.Theme.controlRadius
-            color: Components.Theme.isLight ? Qt.rgba(0, 0, 0, 0.025) : Qt.rgba(1, 1, 1, 0.035)
-            border.width: 1
-            border.color: Components.Theme.cardBorder
-            Text {
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 12
-                text: "Visual preview · Sample data, local changes"
-                color: Components.Theme.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall
-            }
+        Components.BackendNotice {
+            objectName: "userProfileBackendStatus"
+            busy: root.controller.busy
+            error: root.controller.lastError || root.snapshot.accountError || ""
+            onRetry: root.controller.refresh()
         }
 
         Form.SectionHeader { text: "USER PROFILE"; Layout.bottomMargin: 10 }
@@ -59,6 +58,8 @@ Item {
                         Components.AvatarImage {
                             objectName: "userProfileAvatar"
                             anchors.fill: parent
+                            imagePath: String(root.snapshot.avatar || "")
+                            imageVersion: root.snapshot.avatarVersion || 0
                             fallbackText: root.displayName.length > 0 ? root.displayName[0].toUpperCase() : "?"
                             fallbackFontPixelSize: 36
                             fallbackFontWeight: Components.Theme.fontWeightDemiBold
@@ -81,7 +82,7 @@ Item {
                                 font.family: Components.Theme.fontFamily
                                 font.pixelSize: Components.Theme.fontSizeSmall
                             }
-                            MouseArea { anchors.fill: parent; enabled: false }
+                            MouseArea { anchors.fill: parent; enabled: !!root.snapshot.accountsAvailable && !root.controller.busy; cursorShape: Qt.PointingHandCursor; onClicked: avatarDialog.open() }
                         }
                     }
                     Text {
@@ -95,7 +96,7 @@ Item {
                     }
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        text: "Administrator · " + root.userName
+                        text: (root.snapshot.administrator ? "Administrator · " : "Standard user · ") + root.userName
                         color: Components.Theme.textSecondary
                         font.family: Components.Theme.fontFamily
                         font.pixelSize: Components.Theme.fontSizeSmall
@@ -125,15 +126,10 @@ Item {
                     }
                     Controls.ButtonCapsule {
                         objectName: "saveDisplayNameButton"
-                        label: "Update preview"
+                        label: "Save"
+                        enabled: !!root.snapshot.accountsAvailable && root.pendingDisplayName.trim().length > 0
                         primary: true
-                        onClicked: {
-                            const normalized = root.pendingDisplayName.trim().replace(/\s+/g, " ")
-                            if (normalized.length > 0) {
-                                root.pendingDisplayName = normalized
-                                root.displayName = normalized
-                            }
-                        }
+                        onClicked: root.controller.setDisplayName(root.pendingDisplayName)
                     }
                 }
             }
@@ -141,22 +137,24 @@ Item {
             Form.SettingRow {
                 objectName: "changePasswordRow"
                 label: "Change Password"
-                sublabel: "Update the login and administrator password."
+                sublabel: root.snapshot.passwordAvailable ? "Open the system password tool in a terminal." : "Install xdg-terminal-exec to open the system password tool."
                 Controls.ButtonCapsule {
                     objectName: "changePasswordButton"
                     label: "Change…"
-                    enabled: false
+                    enabled: !!root.snapshot.passwordAvailable
+                    onClicked: root.controller.changePassword()
                 }
             }
 
             Form.SettingRow {
                 objectName: "automaticLoginRow"
                 label: "Automatic Login SDDM"
-                sublabel: "Start a session for this user without asking for a password."
+                sublabel: root.snapshot.autologinAvailable ? "Start the installed session " + root.snapshot.session + " without asking for a password." : "Install the profile helper and an SDDM session to enable this control."
                 Controls.ToggleSwitch {
                     accessibleName: "Automatic Login SDDM"
+                    enabled: !!root.snapshot.autologinAvailable
                     checked: root.automaticLogin
-                    onToggled: checked => root.automaticLogin = checked
+                    onToggled: checked => root.controller.setAutomaticLogin(checked)
                 }
                 isLast: true
             }

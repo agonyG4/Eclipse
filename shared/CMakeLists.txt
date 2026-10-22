@@ -38,6 +38,8 @@ if(ASTREA_WAYLAND_EFFECTS_AVAILABLE AND NOT CMAKE_C_COMPILER_LOADED)
 endif()
 
 add_library(astrea-shared-core STATIC
+    settings/RegionalPreferences.cpp
+    settings/RegionalPreferences.hpp
     apps/DesktopEntryParser.cpp
     apps/DesktopEntryParser.hpp
     apps/DesktopEntryCatalog.cpp

@@ -5,6 +5,7 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     Main.qml
     components/AppIcon.qml
     components/AvatarImage.qml
+    components/BackendNotice.qml
     components/Theme.qml
     components/audio/DeviceRow.qml
     components/controls/Button.qml
@@ -66,6 +67,7 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
 
 set(ASTREA_SETTINGS_ASSET_RELATIVE_FILES
     i18n/en_US.json
+    i18n/pt_BR.json
     fonts/tabler-icons-300.ttf
     icons/navigation/lucide/system.svg
     icons/navigation/lucide/software-update.svg

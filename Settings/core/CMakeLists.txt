@@ -11,6 +11,16 @@ set_source_files_properties(${ASTREA_SETTINGS_BACKEND_CXXQT_HEADERS}
 )
 
 add_library(astrea-settings-core STATIC
+    ../services/desktop/NativeSettingsSupport.cpp
+    ../services/desktop/NativeSettingsSupport.hpp
+    ../services/desktop/RegionSettings.cpp
+    ../services/desktop/RegionSettings.hpp
+    ../services/desktop/ApplicationsBackend.cpp
+    ../services/desktop/ApplicationsBackend.hpp
+    ../services/desktop/ProfileBackend.cpp
+    ../services/desktop/ProfileBackend.hpp
+    ../services/desktop/DesktopControllers.cpp
+    ../services/desktop/DesktopControllers.hpp
     SettingsController.cpp
     SettingsController.hpp
     ${ASTREA_SETTINGS_BACKEND_CXXQT_HEADERS}
@@ -53,7 +63,26 @@ target_link_libraries(astrea-settings-core PUBLIC
 )
 target_link_libraries(astrea-settings-core PRIVATE
     Qt6::Network
+    Qt6::Concurrent
+    Qt6::DBus
 )
 
 settings_enable_warnings(astrea-settings-core)
 settings_enable_sanitizers(astrea-settings-core)
+
+include(GNUInstallDirs)
+set(ASTREA_PROFILE_HELPER_PATH "${CMAKE_INSTALL_FULL_LIBEXECDIR}/astrea-settings-profile-helper")
+add_library(astrea-settings-profile-platform STATIC
+    ../services/desktop/SddmAutologin.cpp ../services/desktop/SddmAutologin.hpp)
+target_include_directories(astrea-settings-profile-platform PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
+target_link_libraries(astrea-settings-profile-platform PUBLIC Qt6::Core)
+target_link_libraries(astrea-settings-core PRIVATE astrea-settings-profile-platform)
+target_compile_definitions(astrea-settings-core PRIVATE
+    ASTREA_PROFILE_HELPER_PATH="${ASTREA_PROFILE_HELPER_PATH}")
+add_executable(astrea-settings-profile-helper ../platform/linux/SettingsProfileHelper.cpp)
+target_link_libraries(astrea-settings-profile-helper PRIVATE astrea-settings-profile-platform)
+install(TARGETS astrea-settings-profile-helper RUNTIME DESTINATION "${CMAKE_INSTALL_LIBEXECDIR}")
+configure_file(../packaging/org.astrea.settings.profile.policy.in
+    "${CMAKE_CURRENT_BINARY_DIR}/org.astrea.settings.profile.policy" @ONLY)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/org.astrea.settings.profile.policy"
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/polkit-1/actions")

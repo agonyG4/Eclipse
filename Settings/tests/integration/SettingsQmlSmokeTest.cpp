@@ -786,26 +786,26 @@ void SettingsQmlSmokeTest::localPageStateResetsAfterNavigation()
     auto loadedPage = [&loader]() {
         return qvariant_cast<QObject *>(loader->property("item"));
     };
-    QVERIFY(settingsController.navigateTo(QStringLiteral("performance-settings")));
+    QVERIFY(settingsController.navigateTo(QStringLiteral("language")));
     QTRY_VERIFY_WITH_TIMEOUT(loadedPage() != nullptr
-                                 && loadedPage()->objectName() == QStringLiteral("performancePage"),
+                                 && loadedPage()->objectName() == QStringLiteral("languagePage"),
                              2000);
     QObject *page = loadedPage();
-    QCOMPARE(page->property("selectedProfile").toInt(), 1);
-    QVERIFY(page->setProperty("selectedProfile", 2));
-    QCOMPARE(page->property("selectedProfile").toInt(), 2);
+    QCOMPARE(page->property("selectedTimeFormat").toInt(), 0);
+    QVERIFY(page->setProperty("selectedTimeFormat", 2));
+    QCOMPARE(page->property("selectedTimeFormat").toInt(), 2);
     QVERIFY(settingsController.navigateTo(QStringLiteral("compositor")));
     QTRY_VERIFY_WITH_TIMEOUT(loadedPage() != nullptr
                                  && loadedPage()->objectName() == QStringLiteral("compositorPage"),
                              2000);
-    QVERIFY(settingsController.navigateTo(QStringLiteral("performance-settings")));
+    QVERIFY(settingsController.navigateTo(QStringLiteral("language")));
     QTRY_VERIFY_WITH_TIMEOUT(loadedPage() != nullptr
-                                 && loadedPage()->objectName() == QStringLiteral("performancePage"),
+                                 && loadedPage()->objectName() == QStringLiteral("languagePage"),
                              2000);
     QObject *reloadedPage = loadedPage();
     QVERIFY(reloadedPage != nullptr);
     QVERIFY(reloadedPage != page);
-    QCOMPARE(reloadedPage->property("selectedProfile").toInt(), 1);
+    QCOMPARE(reloadedPage->property("selectedTimeFormat").toInt(), 0);
 }
 
 void SettingsQmlSmokeTest::sidebarProfileHeaderNavigatesWithPointerAndKeyboard()

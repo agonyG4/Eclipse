@@ -9,30 +9,49 @@ Item {
     id: root
     objectName: "performancePage"
 
-    property int selectedProfile: 1
-    property int selectedScheduler: 0
-    property int selectedMode: 0
+    readonly property var controller: SettingsController.performance
+    readonly property var snapshot: parseSnapshot(controller.stateJson)
+    readonly property var config: snapshot.config || ({})
+    readonly property var status: snapshot.status || ({})
+    readonly property string errorMessage: controller.lastError || status.error || ""
+    readonly property var scx: status.scx || ({})
+    readonly property var current: scx.current || ({})
+    readonly property var catalog: scx.catalog || []
+    readonly property var modes: scx.modes || []
+    readonly property var supported: scx.supported || []
     property bool advancedSchedulers: false
-    property bool gamemodeEnabled: true
 
-    readonly property var profiles: ["Economy", "Balanced", "Performance"]
-    readonly property var schedulers: [
-        { name: "Bpfland", kind: "Recommended", detail: "Balanced frame pacing for gaming, desktop and multimedia." },
-        { name: "LAVD", kind: "Recommended", detail: "Low-latency scheduling for interactive workloads." },
-        { name: "Flash", kind: "Recommended", detail: "Responsive desktop scheduling with quick wakeups." },
-        { name: "P2DQ", kind: "Recommended", detail: "Throughput-focused scheduling with selectable modes." }
-    ]
-    readonly property var advanced: [
-        { name: "BORE", detail: "Example advanced scheduler · burst-oriented responsiveness." },
-        { name: "Rusty", detail: "Example advanced scheduler · experimental workload testing." }
-    ]
-    readonly property var modes: [
-        { name: "Auto", detail: "Let the scheduler choose its default policy." },
-        { name: "Gaming", detail: "Prioritize frame pacing and interactive response." },
-        { name: "Low latency", detail: "Favor quick wakeups for latency-sensitive tasks." },
-        { name: "Power save", detail: "Reduce power draw and heat where possible." },
-        { name: "Server", detail: "Favor steady throughput for sustained work." }
-    ]
+    readonly property var profileIds: ["power-saver", "balanced", "performance"]
+    readonly property var profileLabels: ["Economy", "Balanced", "Performance"]
+    readonly property int selectedProfile: Math.max(0, root.profileIds.indexOf(root.config.profile || "balanced"))
+    readonly property string selectedScheduler: root.config.scx_scheduler || "bpfland"
+    readonly property string selectedMode: root.config.scx_mode || "gaming"
+    readonly property bool schedulerAvailable: !!root.scx.scxctl && root.supported.indexOf(root.selectedScheduler) >= 0
+
+    function parseSnapshot(serialized) {
+        try { return JSON.parse(serialized || "{}") } catch (error) { return ({}) }
+    }
+    function setPreference(key, value) {
+        root.controller.setPreference(key, JSON.stringify(value))
+    }
+    function visibleSchedulers() {
+        if (root.advancedSchedulers) return root.catalog
+        return root.catalog.slice(0, 4)
+    }
+    function schedulerName(id) {
+        for (let i = 0; i < root.catalog.length; ++i) {
+            if (root.catalog[i].id === id) return root.catalog[i].label
+        }
+        return id
+    }
+    function modeName(id) {
+        for (let i = 0; i < root.modes.length; ++i) {
+            if (root.modes[i].id === id) return root.modes[i].label
+        }
+        return id
+    }
+
+    Component.onCompleted: root.controller.refresh()
 
     Form.ScrollPage {
         anchors.fill: parent
@@ -40,22 +59,36 @@ Item {
         maxWidth: 840
 
         Rectangle {
-            objectName: "performancePreviewNotice"
+            objectName: "performanceBackendStatus"
+            visible: root.controller.busy || root.errorMessage !== ""
             Layout.fillWidth: true
-            Layout.bottomMargin: 22
-            implicitHeight: 34
+            Layout.bottomMargin: 18
+            implicitHeight: statusText.implicitHeight + 18
             radius: Components.Theme.controlRadius
             color: Components.Theme.isLight ? Qt.rgba(0, 0, 0, 0.025) : Qt.rgba(1, 1, 1, 0.035)
             border.width: 1
             border.color: Components.Theme.cardBorder
             Text {
+                id: statusText
                 anchors.left: parent.left
+                anchors.right: retryRefresh.left
+                anchors.leftMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 12
-                text: "Visual preview · Sample data, local changes"
-                color: Components.Theme.textSecondary
+                text: root.controller.busy ? "Reading or applying performance settings…" : root.errorMessage
+                color: root.errorMessage !== "" ? Components.Theme.textPrimary : Components.Theme.textSecondary
                 font.family: Components.Theme.fontFamily
                 font.pixelSize: Components.Theme.fontSizeSmall
+                wrapMode: Text.Wrap
+            }
+            Controls.ButtonCapsule {
+                id: retryRefresh
+                objectName: "performanceRetryRefreshButton"
+                anchors.right: parent.right
+                anchors.rightMargin: 8
+                anchors.verticalCenter: parent.verticalCenter
+                visible: !root.controller.busy && root.errorMessage !== ""
+                label: "Retry"
+                onClicked: root.controller.refresh()
             }
         }
 
@@ -66,15 +99,18 @@ Item {
             Form.SettingRow {
                 objectName: "preferredPowerProfileRow"
                 label: "Preferred profile"
-                sublabel: "Affects the balance between responsiveness, battery life and heat."
+                sublabel: root.status.powerprofilesctl
+                    ? "Active system profile: " + (root.status.profile || "Unknown")
+                    : "powerprofilesctl is not installed; profile changes are unavailable."
                 isLast: true
                 Controls.SelectButton {
                     objectName: "powerProfileSelect"
                     width: 156
-                    options: root.profiles
+                    options: root.profileLabels
                     selectedIndex: root.selectedProfile
-                    label: root.profiles[root.selectedProfile]
-                    onSelected: index => root.selectedProfile = index
+                    label: root.profileLabels[root.selectedProfile]
+                    enabled: !!root.status.powerprofilesctl && !root.controller.busy
+                    onSelected: index => root.controller.applyProfile(root.profileIds[index])
                 }
             }
         }
@@ -84,9 +120,11 @@ Item {
             Layout.bottomMargin: 22
             Form.SettingRow {
                 label: "Active scheduler"
-                sublabel: "Current CPU scheduling policy."
+                sublabel: root.status.gamemode_active
+                    ? "GameMode is currently active."
+                    : "Observed sched-ext state from the system."
                 Text {
-                    text: "Fair scheduler"
+                    text: root.current.active ? (root.current.scheduler_label || root.current.scheduler || "Active") : "Inactive"
                     color: Components.Theme.textSecondary
                     font.family: Components.Theme.fontFamily
                     font.pixelSize: Components.Theme.fontSizeSmall
@@ -95,37 +133,38 @@ Item {
             Form.SettingRow {
                 objectName: "schedulerApplyRow"
                 label: "Apply sched-ext profile"
-                sublabel: "Selected scheduler: " + root.schedulers[root.selectedScheduler].name
+                sublabel: "Selected scheduler: " + root.schedulerName(root.selectedScheduler) + " · " + root.modeName(root.selectedMode)
                 Controls.ButtonCapsule {
-                    objectName: "applySchedulerPreviewButton"
+                    objectName: "applySchedulerButton"
                     label: "Apply"
-                    enabled: false
+                    enabled: root.schedulerAvailable && !root.controller.busy
                     Accessible.name: "Apply scheduler profile"
+                    onClicked: root.controller.applyScheduler(root.selectedScheduler, root.selectedMode)
                 }
                 isLast: true
             }
         }
 
-        Form.SectionHeader { text: "RECOMMENDED SCHEDULERS"; Layout.bottomMargin: 10 }
+        Form.SectionHeader { text: "AVAILABLE SCHEDULERS"; Layout.bottomMargin: 10 }
         Form.FormCard {
             objectName: "recommendedSchedulersCard"
             Layout.bottomMargin: 22
             Repeater {
-                model: root.schedulers
+                model: root.visibleSchedulers()
                 delegate: Form.SettingRow {
                     required property var modelData
                     required property int index
-                    clickable: true
-                    label: modelData.name
-                    sublabel: modelData.detail
-                    isLast: index === root.schedulers.length - 1
+                    clickable: !root.controller.busy && root.supported.indexOf(modelData.id) >= 0
+                    label: modelData.label
+                    sublabel: modelData.best_for + " · " + modelData.description
+                    isLast: index === root.visibleSchedulers().length - 1
                     Text {
-                        text: index === root.selectedScheduler ? "Selected" : "Choose"
-                        color: index === root.selectedScheduler ? Components.Theme.accent : Components.Theme.textTertiary
+                        text: modelData.id === root.selectedScheduler ? "Selected" : (root.supported.indexOf(modelData.id) >= 0 ? "Choose" : "Unavailable")
+                        color: modelData.id === root.selectedScheduler ? Components.Theme.accent : Components.Theme.textTertiary
                         font.family: Components.Theme.fontFamily
                         font.pixelSize: Components.Theme.fontSizeSmall
                     }
-                    onClicked: root.selectedScheduler = index
+                    onClicked: root.setPreference("scx_scheduler", modelData.id)
                 }
             }
         }
@@ -133,8 +172,8 @@ Item {
         Form.FormCard {
             Layout.bottomMargin: 22
             Form.SettingRow {
-                label: root.advancedSchedulers ? "Hide advanced schedulers" : "Show advanced schedulers"
-                sublabel: "Experimental or workload-specific choices for testing."
+                label: root.advancedSchedulers ? "Hide additional schedulers" : "Show additional schedulers"
+                sublabel: "Schedulers detected on this system, with the available choices listed above."
                 clickable: true
                 Controls.ButtonCapsule {
                     label: root.advancedSchedulers ? "Hide" : "Show"
@@ -142,14 +181,6 @@ Item {
                 }
                 onClicked: root.advancedSchedulers = !root.advancedSchedulers
                 isLast: !root.advancedSchedulers
-            }
-            Repeater {
-                model: root.advancedSchedulers ? root.advanced : []
-                delegate: Form.SettingRow {
-                    required property var modelData
-                    label: modelData.name
-                    sublabel: modelData.detail
-                }
             }
         }
 
@@ -162,17 +193,17 @@ Item {
                 delegate: Form.SettingRow {
                     required property var modelData
                     required property int index
-                    clickable: true
-                    label: modelData.name
-                    sublabel: modelData.detail
+                    clickable: !root.controller.busy
+                    label: modelData.label
+                    sublabel: modelData.description
                     isLast: index === root.modes.length - 1
                     Text {
-                        text: index === root.selectedMode ? "Selected" : ""
-                        color: Components.Theme.accent
+                        text: modelData.id === root.selectedMode ? "Selected" : "Choose"
+                        color: modelData.id === root.selectedMode ? Components.Theme.accent : Components.Theme.textTertiary
                         font.family: Components.Theme.fontFamily
                         font.pixelSize: Components.Theme.fontSizeSmall
                     }
-                    onClicked: root.selectedMode = index
+                    onClicked: root.setPreference("scx_mode", modelData.id)
                 }
             }
         }
@@ -181,12 +212,15 @@ Item {
         Form.FormCard {
             Form.SettingRow {
                 objectName: "gamemodeRow"
-                label: "Gamemode"
-                sublabel: "Request performance hints while a game is active."
+                label: "GameMode"
+                sublabel: root.status.gamemode
+                    ? (root.status.gamemode_active ? "GameMode is installed and currently active." : "Request performance hints while a game is active.")
+                    : "GameMode is not installed; this preference is unavailable."
                 Controls.ToggleSwitch {
-                    accessibleName: "Gamemode"
-                    checked: root.gamemodeEnabled
-                    onToggled: checked => root.gamemodeEnabled = checked
+                    accessibleName: "GameMode"
+                    checked: !!root.config.prefer_gamemode
+                    enabled: !!root.status.gamemode && !root.controller.busy
+                    onToggled: checked => root.setPreference("prefer_gamemode", checked)
                 }
                 isLast: true
             }

@@ -9,61 +9,86 @@ Item {
     id: root
     objectName: "protonPage"
 
-    property string launchOption: "astrea-gaming %command%"
-    property string extraArgs: ""
-    property string customEnv: "DXVK_FRAME_RATE=60"
-    property string customPrefix: ""
-    property string outputWidth: "1920"
-    property string outputHeight: "1080"
-    property string refreshRate: "60"
-    property int preset: 0
-    property int syncBehavior: 0
-    property int fsrSharpness: 2
-    property bool useSteamProfile: true
-    property bool gamemode: true
-    property bool mangohud: false
-    property bool gamescope: false
-    property bool fullscreen: true
-    property bool immediateFlips: false
-    property bool hideCursor: false
-    property bool forceCursorGrab: false
-    property bool adaptiveSync: false
-    property bool nvapi: false
-    property bool hdr: false
-    property bool fsr: false
-    property bool hideNvidia: false
-    property bool wineD3d: false
-    property bool vkd3dDxr: false
-    property bool dxvkAsync: false
-
-    readonly property var presets: ["Recommended", "NVIDIA features", "HDR display", "Diagnostics", "Custom"]
+    readonly property var controller: SettingsController.gaming
+    readonly property var snapshot: parseSnapshot(controller.stateJson)
+    readonly property var proton: snapshot.proton || ({})
+    readonly property var gamescopeConfig: snapshot.gamescope || ({})
+    readonly property var status: snapshot.status || ({})
+    readonly property var capabilities: status.capabilities || ({})
+    readonly property var launcher: status.native_launcher || ({})
+    readonly property var presetIds: ["recommended", "nvidia", "hdr", "diagnostic"]
+    readonly property var presets: ["Recommended", "NVIDIA features", "HDR display", "Diagnostics"]
+    readonly property string currentPreset: root.proton.preset || "recommended"
+    readonly property int presetIndex: Math.max(0, root.presetIds.indexOf(root.currentPreset))
+    readonly property bool customPreset: root.currentPreset === "custom"
     readonly property var syncModes: ["Proton default", "Disable Esync", "Disable Fsync", "Disable both"]
+    readonly property var syncModeIds: ["default", "disable-esync", "disable-fsync", "disable-both"]
+    readonly property int syncModeIndex: Math.max(0, root.syncModeIds.indexOf(root.proton.sync_mode || "default"))
     readonly property var sharpness: ["0", "1", "2", "3", "4", "5"]
-    readonly property bool manualGamescope: !root.useSteamProfile
+    readonly property var caps: root.capabilities
+    readonly property bool manualGamescope: !root.proton.use_gamescope_profile
+
+    function parseSnapshot(serialized) {
+        try { return JSON.parse(serialized || "{}") } catch (error) { return ({}) }
+    }
+    function setOption(key, value) {
+        root.controller.setProtonOption(key, JSON.stringify(value))
+    }
+    function setInteger(key, text) {
+        const value = Number(text)
+        if (Number.isInteger(value)) root.setOption(key, value)
+    }
+    function pathText(key) {
+        return root.status[key] || "Path is not available"
+    }
+    function activeFlags() {
+        const flags = []
+        if (root.proton.gamemode) flags.push("GameMode")
+        if (root.proton.mangohud) flags.push("MangoHud")
+        if (root.proton.gamescope) flags.push("Gamescope")
+        return flags.length ? flags.join(" · ") : "No runtime wrappers enabled"
+    }
+
+    Component.onCompleted: root.controller.refresh()
 
     Form.ScrollPage {
         objectName: "protonScrollPage"
         anchors.fill: parent
+        enabled: !root.controller.busy
         contentMargins: 24
         maxWidth: 840
 
         Rectangle {
-            objectName: "protonPreviewNotice"
+            objectName: "protonBackendStatus"
+            visible: root.controller.busy || root.controller.lastError !== ""
             Layout.fillWidth: true
-            Layout.bottomMargin: 22
-            implicitHeight: 34
+            Layout.bottomMargin: 18
+            implicitHeight: statusText.implicitHeight + 18
             radius: Components.Theme.controlRadius
             color: Components.Theme.isLight ? Qt.rgba(0, 0, 0, 0.025) : Qt.rgba(1, 1, 1, 0.035)
             border.width: 1
             border.color: Components.Theme.cardBorder
             Text {
+                id: statusText
                 anchors.left: parent.left
+                anchors.right: retryRefresh.left
+                anchors.leftMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 12
-                text: "Visual preview · Sample data, local changes"
-                color: Components.Theme.textSecondary
+                text: root.controller.busy ? "Saving Proton settings…" : root.controller.lastError
+                color: root.controller.lastError !== "" ? Components.Theme.textPrimary : Components.Theme.textSecondary
                 font.family: Components.Theme.fontFamily
                 font.pixelSize: Components.Theme.fontSizeSmall
+                wrapMode: Text.Wrap
+            }
+            Controls.ButtonCapsule {
+                id: retryRefresh
+                objectName: "protonRetryRefreshButton"
+                anchors.right: parent.right
+                anchors.rightMargin: 8
+                anchors.verticalCenter: parent.verticalCenter
+                visible: !root.controller.busy && root.controller.lastError !== ""
+                label: "Retry"
+                onClicked: root.controller.refresh()
             }
         }
 
@@ -75,7 +100,7 @@ Item {
             Form.SettingRow {
                 objectName: "steamLaunchOptionRow"
                 label: "Steam launch option"
-                sublabel: "Command used to start games through the Proton wrapper."
+                sublabel: root.launcher.available ? "Copy this command into Steam's launch options." : "The astrea-gaming launcher is unavailable."
                 RowLayout {
                     spacing: 6
                     TextField {
@@ -83,7 +108,8 @@ Item {
                         Accessible.name: "Steam launch option"
                         Layout.preferredWidth: 134
                         implicitHeight: 34
-                        text: root.launchOption
+                        readOnly: true
+                        text: root.status.launch_command || ""
                         color: Components.Theme.textPrimary
                         selectionColor: Components.Theme.accent
                         selectedTextColor: Components.Theme.accentForeground
@@ -91,14 +117,18 @@ Item {
                         font.family: Components.Theme.monoFontFamily
                         font.pixelSize: Components.Theme.fontSizeTiny
                         background: Rectangle { radius: Components.Theme.controlRadius; color: Components.Theme.windowBackground; border.width: 1; border.color: Components.Theme.cardBorder }
-                        onTextEdited: root.launchOption = text
                     }
-                    Controls.ButtonCapsule { objectName: "saveLaunchOptionButton"; label: "Save"; enabled: false }
+                    Controls.ButtonCapsule {
+                        objectName: "saveLaunchOptionButton"
+                        label: "Copy"
+                        enabled: !!root.launcher.available
+                        onClicked: SettingsController.copyGamingLaunchCommand()
+                    }
                 }
             }
-            Form.SettingRow { label: "Active flags"; sublabel: "GameMode · MangoHud optional · Gamescope optional" }
-            Form.SettingRow { label: "Command prefix"; sublabel: "Example: gamemoderun mangohud" }
-            Form.SettingRow { label: "Wrapper"; sublabel: "~/.local/bin/astrea-gaming"; sublabelTextFormat: Text.PlainText; isLast: true }
+            Form.SettingRow { label: "Active flags"; sublabel: root.activeFlags() }
+            Form.SettingRow { label: "Command prefix"; sublabel: (root.status.proton_prefix || []).join(" ") || "No command prefix"; sublabelTextFormat: Text.PlainText }
+            Form.SettingRow { label: "Wrapper"; sublabel: root.launcher.path || "Launcher is not installed"; sublabelTextFormat: Text.PlainText; isLast: true }
         }
 
         Form.SectionHeader { text: "PROFILE"; Layout.bottomMargin: 10 }
@@ -108,14 +138,14 @@ Item {
             Form.SettingRow {
                 objectName: "protonPresetRow"
                 label: "Proton preset"
-                sublabel: "Profiles for common game compatibility needs."
+                sublabel: root.customPreset ? "Custom settings are active; choose a preset to replace them." : "Profiles for common game compatibility needs."
                 Controls.SelectButton {
                     objectName: "protonPresetSelect"
                     width: 142
                     options: root.presets
-                    selectedIndex: root.preset
-                    label: root.presets[root.preset]
-                    onSelected: index => root.preset = index
+                    selectedIndex: root.presetIndex
+                    label: root.customPreset ? "Custom" : root.presets[root.presetIndex]
+                    onSelected: index => root.setOption("preset", root.presetIds[index])
                 }
             }
             Form.SettingRow {
@@ -125,9 +155,9 @@ Item {
                 Controls.SelectButton {
                     width: 142
                     options: root.syncModes
-                    selectedIndex: root.syncBehavior
-                    label: root.syncModes[root.syncBehavior]
-                    onSelected: index => root.syncBehavior = index
+                    selectedIndex: root.syncModeIndex
+                    label: root.syncModes[root.syncModeIndex]
+                    onSelected: index => root.setOption("sync_mode", root.syncModeIds[index])
                 }
                 isLast: true
             }
@@ -141,19 +171,19 @@ Item {
                 objectName: "protonGamemodeRow"
                 label: "GameMode"
                 sublabel: "Allow games to request performance hints."
-                Controls.ToggleSwitch { accessibleName: "GameMode"; checked: root.gamemode; onToggled: checked => root.gamemode = checked }
+                Controls.ToggleSwitch { accessibleName: "GameMode"; checked: !!root.proton.gamemode; enabled: !!root.caps.gamemode; onToggled: checked => root.setOption("gamemode", checked) }
             }
             Form.SettingRow {
                 objectName: "mangohudRow"
                 label: "MangoHud"
                 sublabel: "Show frame rate, frame time and hardware telemetry."
-                Controls.ToggleSwitch { accessibleName: "MangoHud"; checked: root.mangohud; onToggled: checked => root.mangohud = checked }
+                Controls.ToggleSwitch { accessibleName: "MangoHud"; checked: !!root.proton.mangohud; enabled: !!root.caps.mangohud; onToggled: checked => root.setOption("mangohud", checked) }
             }
             Form.SettingRow {
                 objectName: "protonGamescopeRow"
                 label: "Gamescope"
                 sublabel: "Wrap the game with the Gamescope options below."
-                Controls.ToggleSwitch { accessibleName: "Gamescope"; checked: root.gamescope; onToggled: checked => root.gamescope = checked }
+                Controls.ToggleSwitch { accessibleName: "Gamescope"; checked: !!root.proton.gamescope; enabled: !!root.caps.gamescope; onToggled: checked => root.setOption("gamescope", checked) }
                 isLast: true
             }
         }
@@ -165,8 +195,8 @@ Item {
             Form.SettingRow {
                 objectName: "steamGamescopeProfileRow"
                 label: "Use SteamOS profile"
-                sublabel: "Use the example resolution and refresh values below."
-                Controls.ToggleSwitch { accessibleName: "Use SteamOS profile"; checked: root.useSteamProfile; onToggled: checked => root.useSteamProfile = checked }
+                sublabel: root.manualGamescope ? "Use manually configured Gamescope values below." : "Follow the Gamescope profile configured for this Proton wrapper."
+                Controls.ToggleSwitch { accessibleName: "Use SteamOS profile"; checked: !!root.proton.use_gamescope_profile; enabled: !!root.caps.gamescope; onToggled: checked => root.setOption("use_gamescope_profile", checked) }
             }
             Form.SettingRow {
                 label: "Width"
@@ -177,14 +207,14 @@ Item {
                     enabled: root.manualGamescope
                     implicitWidth: 96
                     implicitHeight: 32
-                    text: root.outputWidth
+                    text: String(root.proton.gamescope_width || "")
                     color: Components.Theme.textPrimary
                     selectionColor: Components.Theme.accent
                     selectedTextColor: Components.Theme.accentForeground
                     font.pixelSize: Components.Theme.fontSizeSmall
                     horizontalAlignment: TextInput.AlignRight
                     background: Rectangle { radius: Components.Theme.controlRadius; color: Components.Theme.windowBackground; border.width: 1; border.color: Components.Theme.cardBorder }
-                    onTextEdited: root.outputWidth = text
+                    onEditingFinished: root.setInteger("gamescope_width", text)
                 }
             }
             Form.SettingRow {
@@ -196,14 +226,14 @@ Item {
                     enabled: root.manualGamescope
                     implicitWidth: 96
                     implicitHeight: 32
-                    text: root.outputHeight
+                    text: String(root.proton.gamescope_height || "")
                     color: Components.Theme.textPrimary
                     selectionColor: Components.Theme.accent
                     selectedTextColor: Components.Theme.accentForeground
                     font.pixelSize: Components.Theme.fontSizeSmall
                     horizontalAlignment: TextInput.AlignRight
                     background: Rectangle { radius: Components.Theme.controlRadius; color: Components.Theme.windowBackground; border.width: 1; border.color: Components.Theme.cardBorder }
-                    onTextEdited: root.outputHeight = text
+                    onEditingFinished: root.setInteger("gamescope_height", text)
                 }
             }
             Form.SettingRow {
@@ -215,21 +245,21 @@ Item {
                     enabled: root.manualGamescope
                     implicitWidth: 96
                     implicitHeight: 32
-                    text: root.refreshRate
+                    text: String(root.proton.gamescope_refresh || "")
                     color: Components.Theme.textPrimary
                     selectionColor: Components.Theme.accent
                     selectedTextColor: Components.Theme.accentForeground
                     font.pixelSize: Components.Theme.fontSizeSmall
                     horizontalAlignment: TextInput.AlignRight
                     background: Rectangle { radius: Components.Theme.controlRadius; color: Components.Theme.windowBackground; border.width: 1; border.color: Components.Theme.cardBorder }
-                    onTextEdited: root.refreshRate = text
+                    onEditingFinished: root.setInteger("gamescope_refresh", text)
                 }
             }
-            Form.SettingRow { label: "Fullscreen"; sublabel: "Start the nested session in fullscreen."; enabled: root.manualGamescope; Controls.ToggleSwitch { accessibleName: "Fullscreen"; checked: root.fullscreen; onToggled: checked => root.fullscreen = checked } }
-            Form.SettingRow { label: "Immediate flips"; sublabel: "Reduce latency on display paths that support it."; enabled: root.manualGamescope; Controls.ToggleSwitch { accessibleName: "Immediate flips"; checked: root.immediateFlips; onToggled: checked => root.immediateFlips = checked } }
-            Form.SettingRow { label: "Hide cursor"; sublabel: "Keep the pointer hidden for controller-first games."; enabled: root.manualGamescope; Controls.ToggleSwitch { accessibleName: "Hide cursor"; checked: root.hideCursor; onToggled: checked => root.hideCursor = checked } }
-            Form.SettingRow { label: "Force cursor grab"; sublabel: "Keep relative mouse input inside the game."; enabled: root.manualGamescope; Controls.ToggleSwitch { accessibleName: "Force cursor grab"; checked: root.forceCursorGrab; onToggled: checked => root.forceCursorGrab = checked } }
-            Form.SettingRow { label: "Adaptive sync"; sublabel: "Request variable refresh when the display supports it."; enabled: root.manualGamescope; Controls.ToggleSwitch { accessibleName: "Adaptive sync"; checked: root.adaptiveSync; onToggled: checked => root.adaptiveSync = checked } }
+            Form.SettingRow { label: "Fullscreen"; sublabel: "Start the nested session in fullscreen."; enabled: root.manualGamescope; Controls.ToggleSwitch { accessibleName: "Fullscreen"; checked: !!root.proton.gamescope_fullscreen; enabled: root.manualGamescope && !!root.caps.gamescope; onToggled: checked => root.setOption("gamescope_fullscreen", checked) } }
+            Form.SettingRow { label: "Immediate flips"; sublabel: "Reduce latency on display paths that support it."; enabled: root.manualGamescope; Controls.ToggleSwitch { accessibleName: "Immediate flips"; checked: !!root.proton.gamescope_immediate_flips; enabled: root.manualGamescope && !!root.caps.gamescope; onToggled: checked => root.setOption("gamescope_immediate_flips", checked) } }
+            Form.SettingRow { label: "Hide cursor"; sublabel: "Keep the pointer hidden for controller-first games."; enabled: root.manualGamescope; Controls.ToggleSwitch { accessibleName: "Hide cursor"; checked: !!root.proton.gamescope_hide_cursor; enabled: root.manualGamescope && !!root.caps.gamescope; onToggled: checked => root.setOption("gamescope_hide_cursor", checked) } }
+            Form.SettingRow { label: "Force cursor grab"; sublabel: "Keep relative mouse input inside the game."; enabled: root.manualGamescope; Controls.ToggleSwitch { accessibleName: "Force cursor grab"; checked: !!root.proton.gamescope_force_grab_cursor; enabled: root.manualGamescope && !!root.caps.gamescope; onToggled: checked => root.setOption("gamescope_force_grab_cursor", checked) } }
+            Form.SettingRow { label: "Adaptive sync"; sublabel: "Request variable refresh when the display supports it."; enabled: root.manualGamescope; Controls.ToggleSwitch { accessibleName: "Adaptive sync"; checked: !!root.proton.gamescope_adaptive_sync; enabled: root.manualGamescope && !!root.caps.gamescope; onToggled: checked => root.setOption("gamescope_adaptive_sync", checked) } }
             Form.SettingRow {
                 label: "Extra arguments"
                 sublabel: "Additional Gamescope flags after generated resolution values."
@@ -240,13 +270,13 @@ Item {
                     implicitWidth: 130
                     implicitHeight: 32
                     placeholderText: "Optional flags"
-                    text: root.extraArgs
+                    text: root.proton.gamescope_extra_args || ""
                     color: Components.Theme.textPrimary
                     selectionColor: Components.Theme.accent
                     selectedTextColor: Components.Theme.accentForeground
                     font.pixelSize: Components.Theme.fontSizeTiny
                     background: Rectangle { radius: Components.Theme.controlRadius; color: Components.Theme.windowBackground; border.width: 1; border.color: Components.Theme.cardBorder }
-                    onTextEdited: root.extraArgs = text
+                    onEditingFinished: root.setOption("gamescope_extra_args", text)
                 }
                 isLast: true
             }
@@ -256,9 +286,9 @@ Item {
         Form.FormCard {
             objectName: "protonGraphicsCard"
             Layout.bottomMargin: 22
-            Form.SettingRow { label: "NVIDIA NVAPI"; sublabel: "Enable NVIDIA-specific features for supported games."; Controls.ToggleSwitch { accessibleName: "NVIDIA NVAPI"; checked: root.nvapi; onToggled: checked => root.nvapi = checked } }
-            Form.SettingRow { label: "HDR path"; sublabel: "Enable DXVK HDR for an HDR-ready display setup."; Controls.ToggleSwitch { accessibleName: "HDR path"; checked: root.hdr; onToggled: checked => root.hdr = checked } }
-            Form.SettingRow { label: "Fullscreen FSR"; sublabel: "Upscale games rendered below native resolution."; Controls.ToggleSwitch { accessibleName: "Fullscreen FSR"; checked: root.fsr; onToggled: checked => root.fsr = checked } }
+            Form.SettingRow { label: "NVIDIA NVAPI"; sublabel: "Enable NVIDIA-specific features for supported games."; Controls.ToggleSwitch { accessibleName: "NVIDIA NVAPI"; checked: !!root.proton.enable_nvapi; onToggled: checked => root.setOption("enable_nvapi", checked) } }
+            Form.SettingRow { label: "HDR path"; sublabel: "Enable DXVK HDR for an HDR-ready display setup."; Controls.ToggleSwitch { accessibleName: "HDR path"; checked: !!root.proton.dxvk_hdr; onToggled: checked => root.setOption("dxvk_hdr", checked) } }
+            Form.SettingRow { label: "Fullscreen FSR"; sublabel: "Upscale games rendered below native resolution."; Controls.ToggleSwitch { accessibleName: "Fullscreen FSR"; checked: !!root.proton.fsr; onToggled: checked => root.setOption("fsr", checked) } }
             Form.SettingRow {
                 label: "FSR sharpness"
                 sublabel: "Lower values are sharper; used when Fullscreen FSR is on."
@@ -266,9 +296,9 @@ Item {
                     objectName: "fsrSharpnessSelect"
                     width: 132
                     options: root.sharpness
-                    selectedIndex: root.fsrSharpness
-                    label: root.sharpness[root.fsrSharpness]
-                    onSelected: index => root.fsrSharpness = index
+                    selectedIndex: Math.max(0, Number(root.proton.fsr_strength || 0))
+                    label: root.sharpness[Math.max(0, Math.min(5, Number(root.proton.fsr_strength || 0)))]
+                    onSelected: index => root.setOption("fsr_strength", index)
                 }
                 isLast: true
             }
@@ -277,10 +307,10 @@ Item {
         Form.SectionHeader { text: "ADVANCED COMPATIBILITY"; Layout.bottomMargin: 10 }
         Form.FormCard {
             objectName: "protonAdvancedCard"
-            Form.SettingRow { label: "Hide NVIDIA GPU"; sublabel: "Compatibility option for games that select the wrong GPU."; Controls.ToggleSwitch { accessibleName: "Hide NVIDIA GPU"; checked: root.hideNvidia; onToggled: checked => root.hideNvidia = checked } }
-            Form.SettingRow { label: "WineD3D fallback"; sublabel: "Use WineD3D instead of DXVK when rendering fails."; Controls.ToggleSwitch { accessibleName: "WineD3D fallback"; checked: root.wineD3d; onToggled: checked => root.wineD3d = checked } }
-            Form.SettingRow { label: "Force VKD3D DXR"; sublabel: "Force the DirectX ray tracing path for a specific game."; Controls.ToggleSwitch { accessibleName: "Force VKD3D DXR"; checked: root.vkd3dDxr; onToggled: checked => root.vkd3dDxr = checked } }
-            Form.SettingRow { label: "Legacy DXVK Async"; sublabel: "Non-default flag for older async-patched DXVK builds."; Controls.ToggleSwitch { accessibleName: "Legacy DXVK Async"; checked: root.dxvkAsync; onToggled: checked => root.dxvkAsync = checked } }
+            Form.SettingRow { label: "Hide NVIDIA GPU"; sublabel: "Compatibility option for games that select the wrong GPU."; Controls.ToggleSwitch { accessibleName: "Hide NVIDIA GPU"; checked: !!root.proton.hide_nvidia_gpu; onToggled: checked => root.setOption("hide_nvidia_gpu", checked) } }
+            Form.SettingRow { label: "WineD3D fallback"; sublabel: "Use WineD3D instead of DXVK when rendering fails."; Controls.ToggleSwitch { accessibleName: "WineD3D fallback"; checked: !!root.proton.use_wined3d; onToggled: checked => root.setOption("use_wined3d", checked) } }
+            Form.SettingRow { label: "Force VKD3D DXR"; sublabel: "Force the DirectX ray tracing path for a specific game."; Controls.ToggleSwitch { accessibleName: "Force VKD3D DXR"; checked: !!root.proton.vkd3d_dxr; onToggled: checked => root.setOption("vkd3d_dxr", checked) } }
+            Form.SettingRow { label: "Legacy DXVK Async"; sublabel: "Non-default flag for older async-patched DXVK builds."; Controls.ToggleSwitch { accessibleName: "Legacy DXVK Async"; checked: !!root.proton.dxvk_async; onToggled: checked => root.setOption("dxvk_async", checked) } }
             Form.SettingRow {
                 label: "Custom environment"
                 sublabel: "Space-separated KEY=VALUE pairs for one-off fixes."
@@ -289,14 +319,14 @@ Item {
                     Accessible.name: "Custom environment"
                     implicitWidth: 158
                     implicitHeight: 32
-                    text: root.customEnv
+                    text: root.proton.custom_env || ""
                     color: Components.Theme.textPrimary
                     selectionColor: Components.Theme.accent
                     selectedTextColor: Components.Theme.accentForeground
                     font.family: Components.Theme.monoFontFamily
                     font.pixelSize: Components.Theme.fontSizeMicro
                     background: Rectangle { radius: Components.Theme.controlRadius; color: Components.Theme.windowBackground; border.width: 1; border.color: Components.Theme.cardBorder }
-                    onTextEdited: root.customEnv = text
+                    onEditingFinished: root.setOption("custom_env", text)
                 }
             }
             Form.SettingRow {
@@ -308,14 +338,14 @@ Item {
                     implicitWidth: 158
                     implicitHeight: 32
                     placeholderText: "Optional command"
-                    text: root.customPrefix
+                    text: root.proton.custom_prefix || ""
                     color: Components.Theme.textPrimary
                     selectionColor: Components.Theme.accent
                     selectedTextColor: Components.Theme.accentForeground
                     font.family: Components.Theme.monoFontFamily
                     font.pixelSize: Components.Theme.fontSizeMicro
                     background: Rectangle { radius: Components.Theme.controlRadius; color: Components.Theme.windowBackground; border.width: 1; border.color: Components.Theme.cardBorder }
-                    onTextEdited: root.customPrefix = text
+                    onEditingFinished: root.setOption("custom_prefix", text)
                 }
                 isLast: true
             }

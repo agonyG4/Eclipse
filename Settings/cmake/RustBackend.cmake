@@ -16,4 +16,6 @@ astrea_add_cxx_qt_crate(
         src/appearance/qobject.cxxqt.h
         src/icons/qobject.cxxqt.h
         src/display/qobject.cxxqt.h
+        src/gaming/qobject.cxxqt.h
+        src/performance/qobject.cxxqt.h
 )

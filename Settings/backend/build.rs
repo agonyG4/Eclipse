@@ -6,6 +6,8 @@ fn main() {
             "src/appearance/qobject.rs",
             "src/display/qobject.rs",
             "src/icons/qobject.rs",
+            "src/gaming/qobject.rs",
+            "src/performance/qobject.rs",
             "src/visual_effects/qobject.rs",
         ])
         .build()

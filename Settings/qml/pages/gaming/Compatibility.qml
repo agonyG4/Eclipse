@@ -9,40 +9,79 @@ Item {
     id: root
     objectName: "compatibilityPage"
 
-    property int runner: 0
-    property bool useProtonProfile: true
-    property bool gamemode: true
-    property bool mangohud: false
-    property bool gamescope: false
-    property string customEnvironment: ""
-    property string customPrefix: ""
+    readonly property var controller: SettingsController.gaming
+    readonly property var snapshot: parseSnapshot(controller.stateJson)
+    readonly property var compatibility: snapshot.compatibility || ({})
+    readonly property var status: snapshot.status || ({})
+    readonly property var capabilities: status.capabilities || ({})
+    readonly property var runnerIds: availableRunnerIds()
+    readonly property var runners: runnerLabels()
+    readonly property int runnerIndex: Math.max(0, root.runnerIds.indexOf(root.compatibility.runner || "proton"))
+    readonly property bool usesWine: root.compatibility.runner === "wine" || (root.compatibility.runner === "auto" && !root.capabilities.proton)
+    readonly property bool customOptionsEnabled: !root.compatibility.use_proton_profile
 
-    readonly property var runners: ["Proton", "Wine", "Auto"]
-    readonly property bool customOptionsEnabled: !root.useProtonProfile
+    function parseSnapshot(serialized) {
+        try { return JSON.parse(serialized || "{}") } catch (error) { return ({}) }
+    }
+    function availableRunnerIds() {
+        const choices = []
+        if (root.capabilities.proton) choices.push("proton")
+        if (root.capabilities.wine) choices.push("wine")
+        choices.push("auto")
+        const configured = root.compatibility.runner || "proton"
+        if (choices.indexOf(configured) < 0) choices.unshift(configured)
+        return choices
+    }
+    function runnerLabels() {
+        return root.runnerIds.map(id => {
+            const name = id === "proton" ? "Proton" : (id === "wine" ? "Wine" : "Auto")
+            return id !== "auto" && !root.capabilities[id] ? name + " (unavailable)" : name
+        })
+    }
+    function setOption(key, value) {
+        root.controller.setCompatibilityOption(key, JSON.stringify(value))
+    }
+
+    Component.onCompleted: root.controller.refresh()
 
     Form.ScrollPage {
         objectName: "compatibilityScrollPage"
         anchors.fill: parent
+        enabled: !root.controller.busy
         contentMargins: 24
         maxWidth: 840
 
         Rectangle {
-            objectName: "compatibilityPreviewNotice"
+            objectName: "compatibilityBackendStatus"
+            visible: root.controller.busy || root.controller.lastError !== ""
             Layout.fillWidth: true
-            Layout.bottomMargin: 22
-            implicitHeight: 34
+            Layout.bottomMargin: 18
+            implicitHeight: statusText.implicitHeight + 18
             radius: Components.Theme.controlRadius
             color: Components.Theme.isLight ? Qt.rgba(0, 0, 0, 0.025) : Qt.rgba(1, 1, 1, 0.035)
             border.width: 1
             border.color: Components.Theme.cardBorder
             Text {
+                id: statusText
                 anchors.left: parent.left
+                anchors.right: retryRefresh.left
+                anchors.leftMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 12
-                text: "Visual preview · Sample data, local changes"
-                color: Components.Theme.textSecondary
+                text: root.controller.busy ? "Saving compatibility settings…" : root.controller.lastError
+                color: root.controller.lastError !== "" ? Components.Theme.textPrimary : Components.Theme.textSecondary
                 font.family: Components.Theme.fontFamily
                 font.pixelSize: Components.Theme.fontSizeSmall
+                wrapMode: Text.Wrap
+            }
+            Controls.ButtonCapsule {
+                id: retryRefresh
+                objectName: "compatibilityRetryRefreshButton"
+                anchors.right: parent.right
+                anchors.rightMargin: 8
+                anchors.verticalCenter: parent.verticalCenter
+                visible: !root.controller.busy && root.controller.lastError !== ""
+                label: "Retry"
+                onClicked: root.controller.refresh()
             }
         }
 
@@ -53,21 +92,28 @@ Item {
             Form.SettingRow {
                 objectName: "exeRunnerRow"
                 label: "Open .exe with"
-                sublabel: "Choose which Windows compatibility layer to use."
+                sublabel: root.runnerIds.length > 1
+                    ? "Select an installed compatibility runner."
+                    : "Only automatic runner selection is available on this system."
                 Controls.SelectButton {
                     objectName: "exeRunnerSelect"
                     width: 132
                     options: root.runners
-                    selectedIndex: root.runner
-                    label: root.runners[root.runner]
-                    onSelected: index => root.runner = index
+                    selectedIndex: root.runnerIndex
+                    label: root.runners[root.runnerIndex]
+                    enabled: root.runnerIds.length > 1
+                    onSelected: index => root.setOption("runner", root.runnerIds[index])
                 }
             }
             Form.SettingRow {
                 objectName: "useProtonProfileRow"
                 label: "Use Proton profile"
                 sublabel: "Reuse GameMode, MangoHud, Gamescope and flags from Proton."
-                Controls.ToggleSwitch { accessibleName: "Use Proton profile"; checked: root.useProtonProfile; onToggled: checked => root.useProtonProfile = checked }
+                Controls.ToggleSwitch {
+                    accessibleName: "Use Proton profile"
+                    checked: !!root.compatibility.use_proton_profile
+                    onToggled: checked => root.setOption("use_proton_profile", checked)
+                }
                 isLast: true
             }
         }
@@ -79,21 +125,42 @@ Item {
             Form.SettingRow {
                 objectName: "compatibilityGamemodeRow"
                 label: "GameMode"
-                sublabel: root.useProtonProfile ? "Controlled by the Proton profile." : "Add performance hints before starting the runner."
+                sublabel: root.customOptionsEnabled
+                    ? (root.capabilities.gamemode ? "Add performance hints before starting the runner." : "GameMode is not installed.")
+                    : "Controlled by the Proton profile."
                 enabled: root.customOptionsEnabled
-                Controls.ToggleSwitch { accessibleName: "GameMode"; checked: root.gamemode; enabled: root.customOptionsEnabled; onToggled: checked => root.gamemode = checked }
+                Controls.ToggleSwitch {
+                    accessibleName: "GameMode"
+                    checked: !!root.compatibility.gamemode
+                    enabled: root.customOptionsEnabled && !!root.capabilities.gamemode
+                    onToggled: checked => root.setOption("gamemode", checked)
+                }
             }
             Form.SettingRow {
                 label: "MangoHud"
-                sublabel: root.useProtonProfile ? "Controlled by the Proton profile." : "Show performance telemetry while the game runs."
+                sublabel: root.customOptionsEnabled
+                    ? (root.capabilities.mangohud ? "Show performance telemetry while the game runs." : "MangoHud is not installed.")
+                    : "Controlled by the Proton profile."
                 enabled: root.customOptionsEnabled
-                Controls.ToggleSwitch { accessibleName: "MangoHud"; checked: root.mangohud; enabled: root.customOptionsEnabled; onToggled: checked => root.mangohud = checked }
+                Controls.ToggleSwitch {
+                    accessibleName: "MangoHud"
+                    checked: !!root.compatibility.mangohud
+                    enabled: root.customOptionsEnabled && !!root.capabilities.mangohud
+                    onToggled: checked => root.setOption("mangohud", checked)
+                }
             }
             Form.SettingRow {
                 label: "Gamescope"
-                sublabel: root.useProtonProfile ? "Controlled by the Proton profile." : "Use the Gamescope tuning from the Proton page."
+                sublabel: root.customOptionsEnabled
+                    ? (root.capabilities.gamescope ? "Use Gamescope tuning from the Proton page." : "Gamescope is not installed.")
+                    : "Controlled by the Proton profile."
                 enabled: root.customOptionsEnabled
-                Controls.ToggleSwitch { accessibleName: "Gamescope"; checked: root.gamescope; enabled: root.customOptionsEnabled; onToggled: checked => root.gamescope = checked }
+                Controls.ToggleSwitch {
+                    accessibleName: "Gamescope"
+                    checked: !!root.compatibility.gamescope
+                    enabled: root.customOptionsEnabled && !!root.capabilities.gamescope
+                    onToggled: checked => root.setOption("gamescope", checked)
+                }
                 isLast: true
             }
         }
@@ -104,7 +171,7 @@ Item {
             Layout.bottomMargin: 22
             Form.SettingRow {
                 label: "Custom environment"
-                sublabel: root.useProtonProfile ? "Turn off Use Proton profile to edit these options." : "Space-separated KEY=VALUE pairs for this runner."
+                sublabel: root.customOptionsEnabled ? "Space-separated KEY=VALUE pairs for this runner." : "Turn off Use Proton profile to edit these options."
                 enabled: root.customOptionsEnabled
                 TextField {
                     objectName: "compatibilityEnvironmentField"
@@ -113,19 +180,19 @@ Item {
                     implicitWidth: 158
                     implicitHeight: 32
                     placeholderText: "KEY=VALUE"
-                    text: root.customEnvironment
+                    text: root.compatibility.extra_env || ""
                     color: Components.Theme.textPrimary
                     selectionColor: Components.Theme.accent
                     selectedTextColor: Components.Theme.accentForeground
                     font.family: Components.Theme.monoFontFamily
                     font.pixelSize: Components.Theme.fontSizeMicro
                     background: Rectangle { radius: Components.Theme.controlRadius; color: Components.Theme.windowBackground; border.width: 1; border.color: Components.Theme.cardBorder }
-                    onTextEdited: root.customEnvironment = text
+                    onEditingFinished: root.setOption("extra_env", text)
                 }
             }
             Form.SettingRow {
                 label: "Custom prefix"
-                sublabel: root.useProtonProfile ? "Turn off Use Proton profile to edit these options." : "Command inserted before Wine or Proton launches the game."
+                sublabel: root.customOptionsEnabled ? "Arguments inserted before Wine or Proton launches the game." : "Turn off Use Proton profile to edit these options."
                 enabled: root.customOptionsEnabled
                 TextField {
                     objectName: "compatibilityPrefixField"
@@ -134,14 +201,14 @@ Item {
                     implicitWidth: 158
                     implicitHeight: 32
                     placeholderText: "Optional command"
-                    text: root.customPrefix
+                    text: root.compatibility.extra_prefix || ""
                     color: Components.Theme.textPrimary
                     selectionColor: Components.Theme.accent
                     selectedTextColor: Components.Theme.accentForeground
                     font.family: Components.Theme.monoFontFamily
                     font.pixelSize: Components.Theme.fontSizeMicro
                     background: Rectangle { radius: Components.Theme.controlRadius; color: Components.Theme.windowBackground; border.width: 1; border.color: Components.Theme.cardBorder }
-                    onTextEdited: root.customPrefix = text
+                    onEditingFinished: root.setOption("extra_prefix", text)
                 }
                 isLast: true
             }
@@ -153,15 +220,14 @@ Item {
             Form.SettingRow {
                 objectName: "compatibilityPrefixPathRow"
                 label: "Prefix"
-                sublabel: "~/.local/share/AstreaOS/windows-prefixes/shared/proton/pfx"
+                sublabel: (root.usesWine ? root.status.wine_prefix_path : root.status.prefix_path) || "Path is not available"
                 sublabelTextFormat: Text.PlainText
             }
             Form.SettingRow {
                 objectName: "compatibilityLogsPathRow"
                 label: "Logs"
-                sublabel: "~/.local/state/AstreaOS/windows-prefixes/logs"
+                sublabel: root.status.log_path || "Path is not available"
                 sublabelTextFormat: Text.PlainText
-                Controls.ButtonCapsule { objectName: "saveCompatibilityButton"; label: "Save"; enabled: false }
                 isLast: true
             }
         }

@@ -13,6 +13,7 @@ option(ASTREA_SETTINGS_BUILD_TESTS "Build Settings unit tests" ON)
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Core5Compat Gui Network Qml Quick QuickControls2)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/RustBackend.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/GamingLauncher.cmake)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/SettingsWarnings.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/SettingsSanitizers.cmake)

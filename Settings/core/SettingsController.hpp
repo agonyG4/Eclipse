@@ -15,6 +15,8 @@
 #include <astrea_settings_backend/src/appearance/qobject.cxxqt.h>
 #include <astrea_settings_backend/src/display/qobject.cxxqt.h>
 #include <astrea_settings_backend/src/icons/qobject.cxxqt.h>
+#include <astrea_settings_backend/src/gaming/qobject.cxxqt.h>
+#include <astrea_settings_backend/src/performance/qobject.cxxqt.h>
 #include <astrea_settings_backend/src/visual_effects/qobject.cxxqt.h>
 
 #include <QObject>
@@ -51,6 +53,8 @@ class SettingsController final : public QObject {
     Q_PROPERTY(SettingsIconsController *icons READ icons CONSTANT)
     Q_PROPERTY(SettingsVisualEffectsController *visualEffects READ visualEffects CONSTANT)
     Q_PROPERTY(SettingsDisplayController *display READ display CONSTANT)
+    Q_PROPERTY(SettingsGamingController *gaming READ gaming CONSTANT)
+    Q_PROPERTY(SettingsPerformanceController *performance READ performance CONSTANT)
     Q_PROPERTY(ScreenshotConfiguration *screenshots READ screenshots CONSTANT)
     Q_PROPERTY(Astrea::System::BluetoothService *bluetooth READ bluetooth CONSTANT)
     Q_PROPERTY(Astrea::System::AudioService *audio READ audio CONSTANT)
@@ -92,6 +96,9 @@ public:
     SettingsIconsController *icons() const { return m_iconsController.get(); }
     SettingsVisualEffectsController *visualEffects() const { return m_visualEffectsController.get(); }
     SettingsDisplayController *display() const { return m_displayController.get(); }
+    SettingsGamingController *gaming() const { return m_gamingController.get(); }
+    SettingsPerformanceController *performance() const { return m_performanceController.get(); }
+    Q_INVOKABLE bool copyGamingLaunchCommand();
     ScreenshotConfiguration *screenshots() const { return m_screenshotConfiguration.get(); }
     Astrea::System::BluetoothService *bluetooth() const { return m_bluetoothService.get(); }
     Astrea::System::AudioService *audio() const { return m_audioService.get(); }
@@ -143,6 +150,8 @@ private:
     std::unique_ptr<SettingsIconsController> m_iconsController;
     std::unique_ptr<SettingsVisualEffectsController> m_visualEffectsController;
     std::unique_ptr<SettingsDisplayController> m_displayController;
+    std::unique_ptr<SettingsGamingController> m_gamingController;
+    std::unique_ptr<SettingsPerformanceController> m_performanceController;
     std::unique_ptr<ScreenshotConfiguration> m_screenshotConfiguration;
     QTimer m_screenshotPreviewUpdate;
     QTimer m_dockPreviewUpdate;

@@ -8,6 +8,7 @@
 #include <utility>
 #include <QLocalSocket>
 #include <QGuiApplication>
+#include <QClipboard>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -129,6 +130,8 @@ SettingsController::SettingsController(std::unique_ptr<SettingsNavigationModel> 
     m_iconsController = std::make_unique<SettingsIconsController>();
     m_visualEffectsController = std::make_unique<SettingsVisualEffectsController>();
     m_displayController = std::make_unique<SettingsDisplayController>();
+    m_gamingController = std::make_unique<SettingsGamingController>();
+    m_performanceController = std::make_unique<SettingsPerformanceController>();
     m_screenshotConfiguration = std::make_unique<ScreenshotConfiguration>(QString(), this);
     m_screenshotPreviewUpdate.setSingleShot(true);
     m_screenshotPreviewUpdate.setInterval(16);
@@ -182,6 +185,19 @@ void SettingsController::syncDockOnExit()
 SettingsNavigationModel *SettingsController::navigationModel()
 {
     return m_navigationModel.get();
+}
+
+bool SettingsController::copyGamingLaunchCommand()
+{
+    const auto state = QJsonDocument::fromJson(
+        m_gamingController->property("stateJson").toString().toUtf8()).object();
+    const QString command = state.value(QStringLiteral("status")).toObject()
+                                .value(QStringLiteral("launch_command")).toString();
+    auto *clipboard = QGuiApplication::clipboard();
+    if (command.isEmpty() || !clipboard)
+        return false;
+    clipboard->setText(command);
+    return true;
 }
 
 QString SettingsController::currentDestinationId() const

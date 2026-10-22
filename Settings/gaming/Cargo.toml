@@ -1,0 +1,20 @@
+[package]
+name = "astrea_gaming"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "astrea-gaming"
+path = "src/bin/astrea-gaming.rs"
+
+[dependencies]
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+shlex = "2"
+
+[dev-dependencies]
+tempfile = "3"

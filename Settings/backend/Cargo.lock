@@ -15,9 +15,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
+name = "astrea_gaming"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+ "shlex",
+]
+
+
+[[package]]
 name = "astrea_settings_backend"
 version = "0.1.0"
 dependencies = [
+ "astrea_gaming",
  "astrea_system_backend",
  "cxx",
  "cxx-qt",

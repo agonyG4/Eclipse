@@ -78,6 +78,7 @@ function(add_settings_qml_integration_test target source)
 endfunction()
 
 add_settings_qml_integration_test(settings-qml-smoke-test integration/SettingsQmlSmokeTest.cpp)
+add_settings_qml_integration_test(settings-gaming-qml-test integration/SettingsGamingQmlTest.cpp)
 add_settings_qml_integration_test(settings-component-smoke-test integration/SettingsComponentSmokeTest.cpp)
 add_settings_qml_integration_test(settings-bluetooth-qml-test integration/SettingsBluetoothQmlTest.cpp)
 add_settings_qml_integration_test(settings-audio-qml-test integration/SettingsAudioQmlTest.cpp)

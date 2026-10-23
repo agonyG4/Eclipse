@@ -97,7 +97,7 @@ Item {
                     : "Only automatic runner selection is available on this system."
                 Controls.SelectButton {
                     objectName: "exeRunnerSelect"
-                    width: 132
+                    width: 190
                     options: root.runners
                     selectedIndex: root.runnerIndex
                     label: root.runners[root.runnerIndex]
@@ -180,6 +180,7 @@ Item {
                     implicitWidth: 158
                     implicitHeight: 32
                     placeholderText: "KEY=VALUE"
+                    placeholderTextColor: Components.Theme.textTertiary
                     text: root.compatibility.extra_env || ""
                     color: Components.Theme.textPrimary
                     selectionColor: Components.Theme.accent
@@ -201,6 +202,7 @@ Item {
                     implicitWidth: 158
                     implicitHeight: 32
                     placeholderText: "Optional command"
+                    placeholderTextColor: Components.Theme.textTertiary
                     text: root.compatibility.extra_prefix || ""
                     color: Components.Theme.textPrimary
                     selectionColor: Components.Theme.accent

@@ -740,6 +740,17 @@ void SettingsQmlSmokeTest::loadsVisualMigrationRoutes()
     QCOMPARE(settingsController.selectedSidebarId(), parentId);
     QCOMPARE(themeController.themeMode(), themeMode);
 
+    if (routeId == QStringLiteral("performance-settings"))
+        QTRY_VERIFY_WITH_TIMEOUT(!settingsController.performance()->busy(), 15000);
+    else if (routeId == QStringLiteral("proton") || routeId == QStringLiteral("compatibility"))
+        QTRY_VERIFY_WITH_TIMEOUT(!settingsController.gaming()->busy(), 15000);
+    else if (routeId == QStringLiteral("language"))
+        QTRY_VERIFY_WITH_TIMEOUT(!settingsController.region()->busy(), 15000);
+    else if (routeId == QStringLiteral("apps"))
+        QTRY_VERIFY_WITH_TIMEOUT(!settingsController.applications()->busy(), 15000);
+    else if (routeId == QStringLiteral("user-profile"))
+        QTRY_VERIFY_WITH_TIMEOUT(!settingsController.profile()->busy(), 15000);
+
     QTest::qWait(400);
     QCoreApplication::processEvents();
     const QImage screenshot = window->grabWindow();
@@ -755,6 +766,22 @@ void SettingsQmlSmokeTest::loadsVisualMigrationRoutes()
         const QString outputPath = QDir(captureDirectory).filePath(fileName);
         QVERIFY2(screenshot.save(outputPath), qPrintable(QStringLiteral("Could not save %1")
                                                             .arg(outputPath)));
+        // Capture the remaining controls on long settings pages as review evidence.
+        auto *page = window->findChild<QObject *>(pageObjectName);
+        for (auto *child : page->findChildren<QObject *>()) {
+            if (!child->property("contentY").isValid())
+                continue;
+            const qreal bottom = child->property("contentHeight").toReal() -
+                                 child->property("height").toReal();
+            if (bottom <= 0)
+                continue;
+            child->setProperty("contentY", bottom);
+            QTest::qWait(150);
+            const auto bottomPath = QDir(captureDirectory).filePath(
+                QStringLiteral("%1-%2-%3-bottom.png").arg(routeId, themeName).arg(width));
+            QVERIFY(window->grabWindow().save(bottomPath));
+            break;
+        }
     }
     QVERIFY2(qmlWarnings.isEmpty(), qPrintable(qmlWarnings.isEmpty()
         ? QString() : qmlWarnings.constFirst().toString()));

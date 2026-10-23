@@ -101,29 +101,35 @@ Item {
                 objectName: "steamLaunchOptionRow"
                 label: "Steam launch option"
                 sublabel: root.launcher.available ? "Copy this command into Steam's launch options." : "The astrea-gaming launcher is unavailable."
-                RowLayout {
-                    spacing: 6
-                    TextField {
-                        objectName: "steamLaunchOptionField"
-                        Accessible.name: "Steam launch option"
-                        Layout.preferredWidth: 134
-                        implicitHeight: 34
-                        readOnly: true
-                        text: root.status.launch_command || ""
-                        color: Components.Theme.textPrimary
-                        selectionColor: Components.Theme.accent
-                        selectedTextColor: Components.Theme.accentForeground
-                        placeholderTextColor: Components.Theme.textTertiary
-                        font.family: Components.Theme.monoFontFamily
-                        font.pixelSize: Components.Theme.fontSizeTiny
-                        background: Rectangle { radius: Components.Theme.controlRadius; color: Components.Theme.windowBackground; border.width: 1; border.color: Components.Theme.cardBorder }
-                    }
-                    Controls.ButtonCapsule {
-                        objectName: "saveLaunchOptionButton"
-                        label: "Copy"
-                        enabled: !!root.launcher.available
-                        onClicked: SettingsController.copyGamingLaunchCommand()
-                    }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.leftMargin: 18
+                Layout.rightMargin: 18
+                Layout.topMargin: 10
+                Layout.bottomMargin: 14
+                spacing: 6
+                TextField {
+                    objectName: "steamLaunchOptionField"
+                    Accessible.name: "Steam launch option"
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    implicitHeight: 34
+                    readOnly: true
+                    text: root.status.launch_command || ""
+                    color: Components.Theme.textPrimary
+                    selectionColor: Components.Theme.accent
+                    selectedTextColor: Components.Theme.accentForeground
+                    placeholderTextColor: Components.Theme.textTertiary
+                    font.family: Components.Theme.monoFontFamily
+                    font.pixelSize: Components.Theme.fontSizeTiny
+                    background: Rectangle { radius: Components.Theme.controlRadius; color: Components.Theme.windowBackground; border.width: 1; border.color: Components.Theme.cardBorder }
+                }
+                Controls.ButtonCapsule {
+                    objectName: "saveLaunchOptionButton"
+                    label: "Copy"
+                    enabled: !!root.launcher.available
+                    onClicked: SettingsController.copyGamingLaunchCommand()
                 }
             }
             Form.SettingRow { label: "Active flags"; sublabel: root.activeFlags() }

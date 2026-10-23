@@ -247,6 +247,18 @@ void SettingsGamingQmlTest::protonAndCompatibilityOptionsPersistAndPagesReloadFr
         QVERIFY(launchCommand.contains(QStringLiteral("%command%")));
         QCOMPARE(launchField->property("text").toString(), launchCommand);
         QVERIFY(launchField->property("readOnly").toBool());
+        const auto availableTextWidth = [launchField] {
+            return launchField->property("width").toDouble() -
+                   launchField->property("leftPadding").toDouble() -
+                   launchField->property("rightPadding").toDouble();
+        };
+        QTRY_VERIFY2_WITH_TIMEOUT(
+            launchField->property("contentWidth").toDouble() <= availableTextWidth(),
+            qPrintable(QString("Launch command needs %1 px, field has %2 px: %3")
+                           .arg(launchField->property("contentWidth").toDouble())
+                           .arg(availableTextWidth())
+                           .arg(launchCommand)),
+            2000);
         QVERIFY(settings.copyGamingLaunchCommand());
         QCOMPARE(QGuiApplication::clipboard()->text(), launchCommand);
 

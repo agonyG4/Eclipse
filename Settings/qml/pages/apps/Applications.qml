@@ -24,12 +24,54 @@ Item {
         modal: true
         width: Math.min(root.width - 48, 480)
         title: root.selectedApp ? root.selectedApp.actionLabel + " — " + root.selectedApp.name : "Remove application"
-        standardButtons: Dialog.Ok | Dialog.Cancel
+        padding: 18
+        background: Rectangle {
+            color: Components.Theme.popupBg
+            radius: Components.Theme.cornerRadius
+            border.width: 1
+            border.color: Components.Theme.cardBorder
+        }
+        header: Text {
+            text: removalDialog.title
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: Components.Theme.textPrimary
+            font.family: Components.Theme.fontFamily
+            font.pixelSize: Components.Theme.fontSizeLarge
+            font.weight: Components.Theme.fontWeightDemiBold
+            leftPadding: 18
+            rightPadding: 18
+            topPadding: 16
+        }
+        footer: Item {
+            implicitHeight: 52
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 18
+                anchors.rightMargin: 18
+                anchors.bottomMargin: 12
+                Item { Layout.fillWidth: true }
+                Controls.ButtonCapsule {
+                    objectName: "cancelApplicationRemovalButton"
+                    label: "Cancel"
+                    onClicked: removalDialog.reject()
+                }
+                Controls.ButtonCapsule {
+                    objectName: "confirmApplicationRemovalButton"
+                    label: root.selectedApp ? root.selectedApp.actionLabel : "Remove"
+                    danger: true
+                    focus: false
+                    onClicked: removalDialog.accept()
+                }
+            }
+        }
         contentItem: Text {
             text: root.selectedApp ? "Target: " + root.selectedApp.target + "\n" + (root.selectedApp.method === "launcher" ? "Only the launcher is removed. Application files are kept." : "The selected application or package will be removed. Application data is kept.") : ""
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
             color: Components.Theme.textPrimary
+            font.family: Components.Theme.fontFamily
+            font.pixelSize: Components.Theme.fontSizeSmall
         }
         onAccepted: if (root.selectedApp) root.controller.uninstall(root.selectedAppId, root.selectedApp.removalToken)
     }

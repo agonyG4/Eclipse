@@ -66,23 +66,15 @@ Item {
                             borderWidth: 1
                             borderColor: Components.Theme.cardBorder
                         }
-                        Rectangle {
+                        Controls.ButtonCapsule {
+                            objectName: "changeAvatarButton"
                             anchors.right: parent.right
                             anchors.bottom: parent.bottom
-                            width: 27
-                            height: 27
-                            radius: 14
-                            color: Components.Theme.cardBg
-                            border.width: 1
-                            border.color: Components.Theme.cardBorder
-                            Text {
-                                anchors.centerIn: parent
-                                text: "✎"
-                                color: Components.Theme.textTertiary
-                                font.family: Components.Theme.fontFamily
-                                font.pixelSize: Components.Theme.fontSizeSmall
-                            }
-                            MouseArea { anchors.fill: parent; enabled: !!root.snapshot.accountsAvailable && !root.controller.busy; cursorShape: Qt.PointingHandCursor; onClicked: avatarDialog.open() }
+                            label: "Edit"
+                            accessibleName: "Choose a profile picture"
+                            horizontalPadding: 8
+                            enabled: !!root.snapshot.accountsAvailable && !root.controller.busy
+                            onClicked: avatarDialog.open()
                         }
                     }
                     Text {

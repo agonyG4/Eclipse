@@ -120,9 +120,7 @@ Item {
             Layout.bottomMargin: 22
             Form.SettingRow {
                 label: "Active scheduler"
-                sublabel: root.status.gamemode_active
-                    ? "GameMode is currently active."
-                    : "Observed sched-ext state from the system."
+                sublabel: "Observed sched-ext state from the system."
                 Text {
                     text: root.current.active ? (root.current.scheduler_label || root.current.scheduler || "Active") : "Inactive"
                     color: Components.Theme.textSecondary

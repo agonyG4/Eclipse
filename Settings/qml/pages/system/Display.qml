@@ -192,7 +192,12 @@ FocusScope {
         const hz = Number(milliHz) / 1000
         if (!Number.isFinite(hz) || hz <= 0)
             return "Unavailable"
-        return String(Number(hz.toFixed(3)))
+        // Mode timings land just off the nominal rate (164.999 for 165 Hz);
+        // show the nominal rate, but keep real fractional rates like 59.94.
+        const nominal = Math.round(hz)
+        if (Math.abs(hz - nominal) < 0.015)
+            return String(nominal)
+        return String(Number(hz.toFixed(2)))
     }
 
     function formatScale(scaleMilli) {

@@ -100,6 +100,7 @@ qt_add_executable(astrea-dock
 target_include_directories(astrea-dock PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Shell"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../shared"
 )
 target_link_libraries(astrea-dock PRIVATE
     Qt6::Core Qt6::Network

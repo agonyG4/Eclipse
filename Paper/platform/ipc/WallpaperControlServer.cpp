@@ -1,6 +1,7 @@
 #include "WallpaperControlServer.hpp"
 
 #include "core/WallpaperService.hpp"
+#include "launch/SessionInstance.hpp"
 
 #include <QDir>
 #include <QEventLoop>
@@ -144,7 +145,9 @@ QString WallpaperControlServer::defaultEndpoint()
     if (runtime.isEmpty()) {
         return {};
     }
-    return QDir(runtime).filePath(QStringLiteral("astrea-shell/wallpaper.sock"));
+    return QDir(runtime).filePath(QStringLiteral("astrea-shell/")
+                                 + astrea::sessionScopedName(QStringLiteral("wallpaper"))
+                                 + QStringLiteral(".sock"));
 }
 
 QByteArray WallpaperControlServer::requestReply(const QString &endpoint,

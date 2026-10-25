@@ -2,6 +2,7 @@
 #include "icons/AstreaIconProvider.hpp"
 #include "icons/AstreaIconTheme.hpp"
 #include "platform/ipc/ShellIpcClient.hpp"
+#include "launch/SessionInstance.hpp"
 
 #include <QCoreApplication>
 #include <QGuiApplication>
@@ -71,7 +72,7 @@ int main(int argc, char **argv)
     }
 
     if (request.mode == CommandLineRequest::Mode::Status) {
-        const QByteArray reply = ShellIpcClient::requestReply(QString::fromLatin1(kShellIpcName),
+        const QByteArray reply = ShellIpcClient::requestReply(astrea::sessionScopedName(QString::fromLatin1(kShellIpcName)),
                                                               QStringLiteral("status"));
         QTextStream out(stdout);
         if (reply.isEmpty()) {
@@ -85,5 +86,5 @@ int main(int argc, char **argv)
     QString line = QStringLiteral("spotlight ") + request.command;
     if (!request.argument.isEmpty())
         line += QLatin1Char(' ') + request.argument;
-    return ShellIpcClient::send(QString::fromLatin1(kShellIpcName), line) ? 0 : 1;
+    return ShellIpcClient::send(astrea::sessionScopedName(QString::fromLatin1(kShellIpcName)), line) ? 0 : 1;
 }

@@ -4,6 +4,7 @@
 #include "services/wallpaper/SettingsWallpaperController.hpp"
 #include "theme/ThemePackCatalog.hpp"
 #include "theme/IconOverrides.hpp"
+#include "launch/SessionInstance.hpp"
 
 #include <utility>
 #include <QLocalSocket>
@@ -161,7 +162,7 @@ void SettingsController::publishDockPreviewState()
     if (payload.size() > 3000)
         return;
     QLocalSocket socket;
-    socket.connectToServer(QStringLiteral("astrea-shell-v1"));
+    socket.connectToServer(astrea::sessionScopedName(QStringLiteral("astrea-shell-v1")));
     if (!socket.waitForConnected(8))
         return;
     socket.write(QByteArrayLiteral("dock live ") + payload + '\n');
@@ -177,7 +178,7 @@ void SettingsController::syncDockOnExit()
         return;
     m_dockController->flush();
     QLocalSocket socket;
-    socket.connectToServer(QStringLiteral("astrea-shell-v1"));
+    socket.connectToServer(astrea::sessionScopedName(QStringLiteral("astrea-shell-v1")));
     if (!socket.waitForConnected(50))
         return;
     socket.write(QByteArrayLiteral("dock sync\n"));
@@ -435,7 +436,7 @@ void SettingsController::publishScreenshotPreviewState()
         return;
     const QByteArray payload = m_screenshotConfiguration->previewPayload().toBase64();
     QLocalSocket socket;
-    socket.connectToServer(QStringLiteral("astrea-shell-v1"));
+    socket.connectToServer(astrea::sessionScopedName(QStringLiteral("astrea-shell-v1")));
     if (!socket.waitForConnected(20))
         return;
     socket.write(QByteArrayLiteral("screenshot-config live ") + payload + '\n');
@@ -457,7 +458,7 @@ bool SettingsController::screenshotDemoCommand(const QString &action)
         m_screenshotConfiguration->flush();
     }
     QLocalSocket socket;
-    socket.connectToServer(QStringLiteral("astrea-shell-v1"));
+    socket.connectToServer(astrea::sessionScopedName(QStringLiteral("astrea-shell-v1")));
     if (!socket.waitForConnected(250))
         return false;
     const QByteArray command = QByteArray("screenshot-demo ") + action.toUtf8() + '\n';

@@ -1,5 +1,6 @@
 #include "app/CommandLine.hpp"
 #include "platform/ipc/ShellIpcClient.hpp"
+#include "launch/SessionInstance.hpp"
 
 #include <QCoreApplication>
 #include <QTextStream>
@@ -20,7 +21,7 @@ int main(int argc, char **argv)
     QString line;
     switch (request.mode) {
     case CommandLineRequest::Mode::Status: {
-        const QByteArray reply = ShellIpcClient::requestReply(QString::fromLatin1(kShellIpcName),
+        const QByteArray reply = ShellIpcClient::requestReply(astrea::sessionScopedName(QString::fromLatin1(kShellIpcName)),
                                                               QStringLiteral("status"));
         QTextStream out(stdout);
         if (reply.isEmpty()) {
@@ -36,5 +37,5 @@ int main(int argc, char **argv)
     case CommandLineRequest::Mode::Quit: line = QStringLiteral("shell quit"); break;
     case CommandLineRequest::Mode::Daemon: return 2;
     }
-    return ShellIpcClient::send(QString::fromLatin1(kShellIpcName), line) ? 0 : 1;
+    return ShellIpcClient::send(astrea::sessionScopedName(QString::fromLatin1(kShellIpcName)), line) ? 0 : 1;
 }

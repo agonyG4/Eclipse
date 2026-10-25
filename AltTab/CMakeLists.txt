@@ -83,6 +83,7 @@ qt_add_executable(astrea-alt-tab
 target_include_directories(astrea-alt-tab PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Shell"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../shared"
 )
 target_link_libraries(astrea-alt-tab PRIVATE
     Qt6::Core Qt6::Network

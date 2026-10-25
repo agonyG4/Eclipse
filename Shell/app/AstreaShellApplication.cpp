@@ -1,5 +1,6 @@
 #include "app/AstreaShellApplication.hpp"
 #include "app/ScreenshotShortcutStatus.hpp"
+#include "launch/SessionInstance.hpp"
 
 #include "AltTab/core/AltTabController.hpp"
 #include "AltTab/platform/wayland/LayerShellSurface.hpp"
@@ -156,7 +157,7 @@ bool AstreaShellApplication::initializeRuntime()
 bool AstreaShellApplication::listenForCommands()
 {
     QString error;
-    if (!m_runtime->ipcServer()->listen(QString::fromLatin1(kIpcName), &error)) {
+    if (!m_runtime->ipcServer()->listen(astrea::sessionScopedName(QString::fromLatin1(kIpcName)), &error)) {
         qCritical("Astrea shell IPC listen failed: %s", qPrintable(error));
         return false;
     }

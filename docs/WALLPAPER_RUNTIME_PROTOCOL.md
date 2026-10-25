@@ -14,6 +14,10 @@ printf 'wallpaper remove {"id":"astrea://wallpaper/user/000000000000000000000000
   | socat - UNIX-CONNECT:"$XDG_RUNTIME_DIR/astrea-shell/wallpaper.sock"
 ```
 
+A secondary Typhon session (started while another one is running) exports
+`ASTREA_SESSION_INSTANCE`, and its Shell listens on
+`wallpaper-$ASTREA_SESSION_INSTANCE.sock` instead.
+
 On a Shell with wallpaper removal support, the expected response is a normal
 known-action error such as `wallpaper-not-found`. If the response contains
 `Unknown Paper wallpaper action`, the active Shell server is older than the

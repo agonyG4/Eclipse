@@ -1,5 +1,6 @@
 #include "services/wallpaper/SettingsWallpaperController.hpp"
 
+#include "launch/SessionInstance.hpp"
 #include "platform/paper/PaperProtocol.hpp"
 
 #include <QDir>
@@ -118,7 +119,7 @@ QString SettingsWallpaperController::defaultEndpoint()
     auto runtime = qEnvironmentVariable("XDG_RUNTIME_DIR");
     if (runtime.isEmpty())
         runtime = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
-    return runtime.isEmpty() ? QString() : QDir(runtime).filePath(QStringLiteral("astrea-shell/wallpaper.sock"));
+    return runtime.isEmpty() ? QString() : QDir(runtime).filePath(QStringLiteral("astrea-shell/") + astrea::sessionScopedName(QStringLiteral("wallpaper")) + QStringLiteral(".sock"));
 }
 
 bool SettingsWallpaperController::isSupportedFit(const QString &fit)

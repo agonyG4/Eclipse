@@ -489,7 +489,53 @@ FocusScope {
 
     Connections {
         target: root.controller
-        function onSnapshotChanged() { root.reconcileSelection() }
+        function onSnapshotChanged() {
+            root.reconcileSelection()
+            root.transactionDeadlineMs = root.transactionActive
+                ? Date.now() + Number(root.controller.transactionRemainingMs) : 0
+        }
+    }
+
+    // A temporary apply waits for Keep or Revert and Typhon reverts it on
+    // timeout. The controller only learns about that from a new snapshot,
+    // so poll while a transaction is open and count the deadline down here.
+    readonly property bool transactionActive:
+        Boolean(root.controller && root.controller.transactionActive)
+    readonly property bool confirmationPending:
+        Boolean(root.controller && root.controller.confirmationPending)
+    readonly property string transactionState:
+        root.controller ? String(root.controller.transactionState) : "none"
+    property double transactionDeadlineMs: 0
+    property int transactionSecondsLeft: 0
+    readonly property string transactionStatusText: {
+        if (root.transactionState === "pending_confirmation")
+            return "Keep these display settings? Reverting in "
+                + root.transactionSecondsLeft + " s."
+        if (root.transactionState === "persistence_pending")
+            return "Saving display settings…"
+        if (root.transactionState === "rolling_back")
+            return "Reverting display settings…"
+        if (root.transactionState === "rollback_failed")
+            return "Could not revert the display settings."
+        return ""
+    }
+
+    function updateTransactionCountdown() {
+        root.transactionSecondsLeft = Math.max(0,
+            Math.ceil((root.transactionDeadlineMs - Date.now()) / 1000))
+    }
+
+    Timer {
+        objectName: "displayTransactionPoll"
+        interval: 1000
+        repeat: true
+        running: root.transactionActive
+        triggeredOnStart: true
+        onTriggered: {
+            root.updateTransactionCountdown()
+            if (root.controller && !root.controller.busy)
+                root.controller.refresh()
+        }
     }
 
     component DisplaySelector: Controls.SelectButton {
@@ -1424,10 +1470,50 @@ FocusScope {
                     Layout.bottomMargin: 8
                     spacing: Components.Theme.spacingMedium
 
-                    Item { Layout.fillWidth: true }
+                    Text {
+                        objectName: "displayTransactionStatus"
+                        visible: root.transactionActive
+                        Layout.fillWidth: true
+                        text: root.transactionStatusText
+                        textFormat: Text.PlainText
+                        color: root.transactionState === "rollback_failed"
+                            ? Components.Theme.errorColor : Components.Theme.textPrimary
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeNormal
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Item {
+                        visible: !root.transactionActive
+                        Layout.fillWidth: true
+                    }
+
+                    Controls.Button {
+                        objectName: "displayRevertButton"
+                        visible: root.confirmationPending
+                        text: "Revert"
+                        enabled: Boolean(root.controller && !root.controller.busy)
+                        onClicked: {
+                            if (root.controller)
+                                root.controller.revert()
+                        }
+                    }
+
+                    Controls.Button {
+                        objectName: "displayKeepButton"
+                        visible: root.confirmationPending
+                        text: "Keep changes"
+                        primary: true
+                        enabled: Boolean(root.controller && !root.controller.busy)
+                        onClicked: {
+                            if (root.controller)
+                                root.controller.confirm()
+                        }
+                    }
 
                     Controls.Button {
                         objectName: "displayApplyButton"
+                        visible: !root.confirmationPending
                         text: "Apply"
                         primary: true
                         enabled: Boolean(root.selectedOutput

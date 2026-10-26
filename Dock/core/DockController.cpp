@@ -45,7 +45,9 @@ DockConfig normalizedConfig(const DockConfig &config)
 
 QString identityFingerprint(const Astrea::Dock::DockRuntimeWindow &window)
 {
-    return window.appId + QLatin1Char('|') + window.title;
+    const QString metadata = window.appId + QLatin1Char('|') + window.title;
+    return window.windowIcon.isEmpty() ? metadata
+        : metadata + QLatin1Char('|') + QString::number(qHash(window.windowIcon));
 }
 
 } // namespace
@@ -816,6 +818,7 @@ void DockController::resolveTaskIdentities()
         input.className = window->appId;
         input.initialClass = window->appId;
         input.title = window->title;
+        input.windowIcon = window->windowIcon;
         input.initialTitle = window->title;
         input.openGeneration = snapshot.generation;
         input.metadataFingerprint = identityFingerprint(*window);

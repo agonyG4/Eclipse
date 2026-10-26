@@ -16,6 +16,7 @@ struct WindowIdentityInput {
     int themeRevision = 0;
     int desktopIndexRevision = 0;
     int steamIndexRevision = 0;
+    QString windowIcon;
 };
 
 struct AppIdentity {

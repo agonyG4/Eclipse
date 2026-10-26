@@ -3,6 +3,8 @@
 #include "platform/typhon/TyphonShellAuthenticator.hpp"
 #include "platform/typhon/TyphonWaylandDisplay.hpp"
 
+#include "platform/typhon/TyphonWindowIcon.hpp"
+#include <QIcon>
 #include <QHash>
 #include <QVector>
 #include <QtAlgorithms>
@@ -198,6 +200,7 @@ private:
         quint64 token = 0;
         astrea_toplevel_v1 *proxy = nullptr;
         bool closed = false;
+        QString iconName;
     };
 
     static void registryGlobal(void *data, wl_registry *registry, uint32_t name,
@@ -208,7 +211,7 @@ private:
             || qstrcmp(interfaceName, "astrea_toplevel_manager_v1") != 0 || version < 1) {
             return;
         }
-        self->m_managerVersion = qMin(version, 3u);
+        self->m_managerVersion = qMin(version, 4u);
         self->m_manager = static_cast<astrea_toplevel_manager_v1 *>(
             wl_registry_bind(registry, name, &astrea_toplevel_manager_v1_interface,
                              self->m_managerVersion));
@@ -355,6 +358,26 @@ private:
         if (!handle->owner->liveHandleEvent(handle))
             return;
         emit handle->owner->titleChanged(handle->token, QString::fromUtf8(title ? title : ""));
+    }
+
+    static void handleIconName(void *data, astrea_toplevel_v1 *, const char *name)
+    {
+        auto *handle = static_cast<HandleState *>(data);
+        if (!handle->owner->liveHandleEvent(handle))
+            return;
+        handle->iconName = QString::fromUtf8(name ? name : "");
+        emit handle->owner->iconChanged(handle->token,
+            QIcon::hasThemeIcon(handle->iconName) ? handle->iconName : QString());
+    }
+
+    static void handleIconPixels(void *data, astrea_toplevel_v1 *, int32_t fd, uint32_t size)
+    {
+        const QString source = windowIconFromPixels(fd, size);
+        auto *handle = static_cast<HandleState *>(data);
+        if (!handle->owner->liveHandleEvent(handle))
+            return;
+        if (!QIcon::hasThemeIcon(handle->iconName))
+            emit handle->owner->iconChanged(handle->token, source);
     }
 
     static void handlePid(void *data, astrea_toplevel_v1 *, uint32_t pid)
@@ -611,7 +634,9 @@ const astrea_toplevel_v1_listener GeneratedTyphonProtocolAdapter::kHandleListene
     &GeneratedTyphonProtocolAdapter::handleState,
     &GeneratedTyphonProtocolAdapter::handleFocusSerial,
     &GeneratedTyphonProtocolAdapter::handleDone,
-    &GeneratedTyphonProtocolAdapter::handleClosed
+    &GeneratedTyphonProtocolAdapter::handleClosed,
+    &GeneratedTyphonProtocolAdapter::handleIconName,
+    &GeneratedTyphonProtocolAdapter::handleIconPixels
 };
 
 } // namespace

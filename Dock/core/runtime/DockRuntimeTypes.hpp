@@ -19,6 +19,7 @@ struct DockRuntimeWindow {
     bool fullscreen = false;
     quint64 focusSerial = 0;
     quint64 revision = 0;
+    QString windowIcon;
 };
 
 struct DockRuntimeSnapshot {

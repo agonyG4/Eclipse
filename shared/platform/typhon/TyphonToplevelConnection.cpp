@@ -175,6 +175,10 @@ void TyphonToplevelConnection::bindAdapter(quint64 generation)
         if (generation == m_generation && m_started)
             handleResult(m_model.titleChanged(generation, token, title));
     }));
+    m_adapterConnections.append(connect(m_adapter, &TyphonProtocolAdapter::iconChanged,
+        this, [this, generation](quint64 token, const QString &source) {
+            handleResult(m_model.iconChanged(generation, token, source));
+        }));
     m_adapterConnections.append(connect(m_adapter, &TyphonProtocolAdapter::pidChanged,
                                         this, [this, generation](quint64 token, quint32 pid) {
         if (generation == m_generation && m_started)

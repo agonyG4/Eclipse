@@ -549,6 +549,7 @@ astrea_shared_enable_sanitizers(astrea-shared-wayland-effects)
 add_library(astrea-shared-typhon STATIC
     platform/typhon/TyphonProtocolAdapter.cpp
     platform/typhon/TyphonProtocolAdapter.hpp
+    platform/typhon/TyphonWindowIcon.hpp
     platform/typhon/TyphonProtocolTypes.hpp
     platform/typhon/TyphonActionState.cpp
     platform/typhon/TyphonActionState.hpp
@@ -751,6 +752,11 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     )
     target_link_libraries(typhon-shortcut-protocol-contract-test PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME typhon-shortcut-protocol-contract-test COMMAND typhon-shortcut-protocol-contract-test)
+
+    add_executable(typhon-window-icon-test tests/TyphonWindowIconTest.cpp)
+    target_include_directories(typhon-window-icon-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(typhon-window-icon-test PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
+    add_test(NAME typhon-window-icon-test COMMAND typhon-window-icon-test)
 
     add_executable(typhon-toplevel-protocol-contract-test
         tests/TyphonToplevelProtocolContractTest.cpp

@@ -80,6 +80,7 @@ TyphonToplevelModel::PendingHandleState *TyphonToplevelModel::pendingForUpdate(q
     pending.id = committed->id;
     pending.appId = committed->appId;
     pending.title = committed->title;
+    pending.windowIcon = committed->windowIcon;
     pending.pid = committed->pid;
     pending.kind = committed->kind;
     pending.states = committed->states;
@@ -142,6 +143,8 @@ TYPHON_METADATA_EVENT(appIdChanged, appId, const QString &, appId,
                       "metadata event after handle terminal state")
 TYPHON_METADATA_EVENT(titleChanged, title, const QString &, title,
                       "metadata event after handle terminal state")
+TYPHON_METADATA_EVENT(iconChanged, windowIcon, const QString &, source,
+                      "icon event after handle terminal state")
 TYPHON_METADATA_EVENT(pidChanged, pid, quint32, pid,
                       "metadata event after handle terminal state")
 
@@ -204,6 +207,7 @@ std::optional<Toplevel> TyphonToplevelModel::toToplevel(const PendingHandleState
     result.id = pending.id.value();
     result.appId = pending.appId.value();
     result.title = pending.title.value();
+    result.windowIcon = pending.windowIcon;
     result.pid = pending.pid.value();
     result.kind = pending.kind.value();
     result.states = pending.states.value();

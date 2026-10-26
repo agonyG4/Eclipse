@@ -288,6 +288,7 @@ WindowSnapshot TyphonWindowSource::mapSnapshotForTest(const Snapshot &snapshot) 
         window.appId = toplevel.appId;
         window.className = toplevel.appId;
         window.title = toplevel.title;
+        window.windowIcon = toplevel.windowIcon;
         window.initialTitle = toplevel.title;
         window.displayName = WindowInfo::displayNameFromMetadata(window.className, window.title);
         window.isActive = hasState(toplevel.states, ToplevelStateFlag::Active);

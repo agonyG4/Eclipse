@@ -45,6 +45,7 @@ class TyphonToplevelModelTest final : public QObject {
     Q_OBJECT
 
 private slots:
+    void iconsCommitAtomicallyAndResetWithDefault();
     void zeroWindowInitialRevisionCommits();
     void fieldsMayArriveAcrossDispatchTurns();
     void managerDoneIsTheOnlyPublicationBoundary();
@@ -69,6 +70,26 @@ private slots:
     void stress100MapUpdateCloseRemapCycles();
     void stress100StaleGenerationCallbackCycles();
 };
+
+void TyphonToplevelModelTest::iconsCommitAtomicallyAndResetWithDefault()
+{
+    TyphonToplevelModel model;
+    model.startGeneration(4);
+    addComplete(model, 4, 1, QStringLiteral("7"), 1);
+    commit(model, 4, 1, 1);
+    const QString source = QStringLiteral("data:image/png;base64,icon");
+    QCOMPARE(model.iconChanged(4, 1, source), TyphonToplevelModel::EventResult::Accepted);
+    QVERIFY(model.snapshot().windows[0].windowIcon.isEmpty());
+    QCOMPARE(model.handleDone(4, 1, 2), TyphonToplevelModel::EventResult::Accepted);
+    commit(model, 4, 2, 1);
+    QCOMPARE(model.snapshot().windows[0].windowIcon, source);
+    QCOMPARE(model.iconChanged(3, 1, QString()), TyphonToplevelModel::EventResult::IgnoredStaleGeneration);
+    QCOMPARE(model.snapshot().windows[0].windowIcon, source);
+    QCOMPARE(model.iconChanged(4, 1, QString()), TyphonToplevelModel::EventResult::Accepted);
+    QCOMPARE(model.handleDone(4, 1, 3), TyphonToplevelModel::EventResult::Accepted);
+    commit(model, 4, 3, 1);
+    QVERIFY(model.snapshot().windows[0].windowIcon.isEmpty());
+}
 
 void TyphonToplevelModelTest::zeroWindowInitialRevisionCommits()
 {

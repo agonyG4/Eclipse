@@ -30,6 +30,7 @@ struct WindowInfo {
     bool iconPending = false;
     bool showFallbackText = true;
     quint64 backendGeneration = 0;
+    QString windowIcon;
 
     // Backward compatible getters / helpers
     QString address() const { return windowId.value; }

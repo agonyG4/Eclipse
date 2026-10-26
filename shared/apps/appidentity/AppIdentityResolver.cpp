@@ -69,7 +69,8 @@ AppIdentity AppIdentityResolver::resolveSync(const WindowIdentityInput &input) {
                               + QLatin1Char(':') + fingerprint
                               + QLatin1Char(':') + QString::number(input.themeRevision)
                               + QLatin1Char(':') + QString::number(input.desktopIndexRevision)
-                              + QLatin1Char(':') + QString::number(input.steamIndexRevision);
+                              + QLatin1Char(':') + QString::number(input.steamIndexRevision)
+                              + (input.windowIcon.isEmpty() ? QString() : QLatin1Char(':') + QString::number(qHash(input.windowIcon)));
     AppIdentity identity;
     if (m_cache.lookup(cacheKey, identity))
         return identity;
@@ -97,6 +98,14 @@ void AppIdentityResolver::resolveAsync(const WindowIdentityInput &input, quint64
 
 AppIdentity AppIdentityResolver::resolveFast(const WindowIdentityInput &input) {
     AppIdentity result;
+    if (!input.windowIcon.isEmpty()) {
+        result.stableKey = input.address;
+        result.iconName = input.windowIcon;
+        result.displayName = input.title.isEmpty() ? input.className : input.title;
+        result.source = QStringLiteral("window-icon");
+        result.showFallbackText = false;
+        return result;
+    }
     result.stableKey = input.address;
     result.showFallbackText = true;
     result.source = QStringLiteral("fallback");
@@ -261,7 +270,8 @@ void AppIdentityResolver::onDeepResolved(const WindowIdentityInput &input, const
                              + QLatin1Char(':') + input.metadataFingerprint
                              + QLatin1Char(':') + QString::number(input.themeRevision)
                              + QLatin1Char(':') + QString::number(input.desktopIndexRevision)
-                             + QLatin1Char(':') + QString::number(input.steamIndexRevision);
+                             + QLatin1Char(':') + QString::number(input.steamIndexRevision)
+                              + (input.windowIcon.isEmpty() ? QString() : QLatin1Char(':') + QString::number(qHash(input.windowIcon)));
     m_cache.insert(cacheKey, identity);
     emit identityResolved(input.address, identity);
 }

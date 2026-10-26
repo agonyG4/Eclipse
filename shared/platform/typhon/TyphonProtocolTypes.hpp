@@ -88,6 +88,7 @@ struct Toplevel {
     FocusSerial focusSerial = 0;
     Revision revision = 0;
     quint32 rawStateBits = 0;
+    QString windowIcon;
 };
 
 struct Snapshot {

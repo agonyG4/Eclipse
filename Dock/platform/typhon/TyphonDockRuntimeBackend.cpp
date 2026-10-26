@@ -14,6 +14,7 @@ DockRuntimeWindow dockWindow(const Astrea::Typhon::Toplevel &window)
     result.id = window.id;
     result.appId = window.appId;
     result.title = window.title;
+    result.windowIcon = window.windowIcon;
     result.pid = window.pid;
     result.active = Astrea::Typhon::hasState(
         window.states, Astrea::Typhon::ToplevelStateFlag::Active);

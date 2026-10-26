@@ -26,6 +26,7 @@ public:
     EventResult appIdChanged(quint64 generation, quint64 token, const QString &appId);
     EventResult titleChanged(quint64 generation, quint64 token, const QString &title);
     EventResult pidChanged(quint64 generation, quint64 token, quint32 pid);
+    EventResult iconChanged(quint64 generation, quint64 token, const QString &source);
     EventResult kindChanged(quint64 generation, quint64 token, Astrea::Typhon::ToplevelKind kind);
     EventResult stateChanged(quint64 generation, quint64 token,
                              Astrea::Typhon::ToplevelStates states,
@@ -59,6 +60,7 @@ private:
         std::optional<QString> id;
         std::optional<QString> appId;
         std::optional<QString> title;
+        QString windowIcon;
         std::optional<quint32> pid;
         std::optional<Astrea::Typhon::ToplevelKind> kind;
         std::optional<Astrea::Typhon::ToplevelStates> states;

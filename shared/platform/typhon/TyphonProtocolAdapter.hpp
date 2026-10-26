@@ -59,6 +59,7 @@ signals:
     void identifierChanged(quint64 token, QString id);
     void appIdChanged(quint64 token, QString appId);
     void titleChanged(quint64 token, QString title);
+    void iconChanged(quint64 token, QString source);
     void pidChanged(quint64 token, quint32 pid);
     void kindChanged(quint64 token, Astrea::Typhon::ToplevelKind kind);
     void stateChanged(quint64 token, Astrea::Typhon::ToplevelStates states, quint32 rawStateBits);

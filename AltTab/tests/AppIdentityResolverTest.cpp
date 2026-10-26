@@ -10,6 +10,8 @@ class TestAppIdentityResolver : public QObject {
     Q_OBJECT
 
 private slots:
+    void testWindowIconOverridesClassFallback();
+    void testWindowIconChangesInvalidateCache();
     void testSoberAlias();
     void testZenAlias();
     void testKittyAlias();
@@ -25,6 +27,30 @@ private slots:
     void testAsyncResolution();
     void testSharedCatalogResolution();
 };
+
+void TestAppIdentityResolver::testWindowIconOverridesClassFallback() {
+    AppIdentityResolver resolver;
+    WindowIdentityInput input;
+    input.className = QStringLiteral("unknown-portable-game");
+    input.windowIcon = QStringLiteral("data:image/png;base64,window-pixels");
+    const AppIdentity identity = resolver.resolveSync(input);
+    QCOMPARE(identity.iconName, input.windowIcon);
+    QCOMPARE(identity.source, QStringLiteral("window-icon"));
+    QVERIFY(!identity.iconPending);
+}
+
+void TestAppIdentityResolver::testWindowIconChangesInvalidateCache() {
+    AppIdentityResolver resolver;
+    WindowIdentityInput input;
+    input.address = QStringLiteral("7");
+    input.className = QStringLiteral("portable-game");
+    input.metadataFingerprint = QStringLiteral("same-window-metadata");
+    resolver.resolveSync(input);
+    input.windowIcon = QStringLiteral("application-games");
+    QCOMPARE(resolver.resolveSync(input).iconName, input.windowIcon);
+    input.windowIcon.clear();
+    QVERIFY(resolver.resolveSync(input).iconName != QStringLiteral("application-games"));
+}
 
 void TestAppIdentityResolver::testSoberAlias() {
     AppIdentityResolver resolver;

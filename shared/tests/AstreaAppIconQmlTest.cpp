@@ -1,3 +1,4 @@
+#include <QBuffer>
 #include <QColor>
 #include <QFile>
 #include <QGuiApplication>
@@ -272,6 +273,7 @@ class AstreaAppIconQmlTest final : public QObject {
     Q_OBJECT
 
 private slots:
+    void acceptsInlineWindowIconPixels();
     void computesResolutionAwareSourceTarget();
     void spotlightUsesLogicalExtentAtEachDpr();
     void keepsSourceQualityIndependentFromPresentationScale();
@@ -297,6 +299,24 @@ static std::unique_ptr<QQuickItem> createIcon(QQmlEngine &engine)
     if (!component.isReady())
         return {};
     return std::unique_ptr<QQuickItem>(qobject_cast<QQuickItem *>(component.create()));
+}
+
+void AstreaAppIconQmlTest::acceptsInlineWindowIconPixels()
+{
+    QQmlEngine engine;
+    auto icon = createIcon(engine);
+    QVERIFY(icon);
+    QImage pixels(2, 2, QImage::Format_ARGB32_Premultiplied);
+    pixels.fill(Qt::red);
+    QByteArray png;
+    QBuffer buffer(&png);
+    QVERIFY(buffer.open(QIODevice::WriteOnly));
+    QVERIFY(pixels.save(&buffer, "PNG"));
+    const QString source = QStringLiteral("data:image/png;base64,") + QString::fromLatin1(png.toBase64());
+    icon->setProperty("iconRadius", 0);
+    icon->setProperty("iconSource", source);
+    QCOMPARE(icon->property("resolvedSource").toString(), source);
+    QTRY_VERIFY(icon->property("ready").toBool());
 }
 
 void AstreaAppIconQmlTest::computesResolutionAwareSourceTarget()

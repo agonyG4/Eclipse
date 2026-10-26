@@ -84,6 +84,13 @@ pub mod qobject {
             transform: QString,
         ) -> bool;
         #[qinvokable]
+        #[cxx_name = "setDraftColorDepth"]
+        fn set_draft_color_depth(
+            self: Pin<&mut SettingsDisplayController>,
+            output_id: QString,
+            bits: i32,
+        ) -> bool;
+        #[qinvokable]
         #[cxx_name = "applyDraft"]
         fn apply_draft(self: Pin<&mut SettingsDisplayController>, output_id: QString);
         #[qinvokable]
@@ -208,6 +215,29 @@ impl qobject::SettingsDisplayController {
             scale_milli,
             transform,
         );
+        match result {
+            Ok(()) => {
+                self.as_mut().snapshot_changed();
+                true
+            }
+            Err(error) => {
+                self.as_mut().set_local_error(error);
+                false
+            }
+        }
+    }
+
+    fn set_draft_color_depth(mut self: Pin<&mut Self>, output_id: QString, bits: i32) -> bool {
+        let Some(bits) = u8::try_from(bits).ok() else {
+            self.as_mut()
+                .set_local_error(String::from("Display color depth must be 8 or 10 bits."));
+            return false;
+        };
+        let result = self
+            .as_mut()
+            .rust_mut()
+            .state
+            .set_draft_color_depth(&output_id.to_string(), bits);
         match result {
             Ok(()) => {
                 self.as_mut().snapshot_changed();
@@ -497,6 +527,30 @@ fn output_map(
         &mut map,
         "vrrMutationSupported",
         output.mutation_capabilities.vrr_mutation_supported,
+    );
+    put_u32(
+        &mut map,
+        "currentColorDepthBits",
+        u32::from(output.color_depth_bits),
+    );
+    put_u32(
+        &mut map,
+        "colorDepthBits",
+        u32::from(draft.map_or(output.color_depth_bits, |draft| draft.color_depth_bits)),
+    );
+    let mut color_depth_options = QList::default();
+    for bits in &output.mutation_capabilities.color_depth_bits {
+        color_depth_options.append(QVariant::from(&u32::from(*bits)));
+    }
+    map.insert(
+        QString::from("colorDepthOptions"),
+        QVariant::from(&color_depth_options),
+    );
+    put_bool(
+        &mut map,
+        "colorDepthSelectionSupported",
+        output.mutation_capabilities.mode_selection_supported
+            && output.mutation_capabilities.color_depth_bits.len() > 1,
     );
     put_bool(&mut map, "draftPresent", draft.is_some());
     put_u32(

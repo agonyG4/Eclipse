@@ -13,6 +13,10 @@ pub const MAX_CONTROL_OUTPUTS: usize = 32;
 pub const MAX_CONTROL_OUTPUT_MODES: usize = 128;
 pub const OUTPUT_CONFIRMATION_TIMEOUT_MS: u32 = 15_000;
 
+pub fn is_supported_color_depth(bits: u8) -> bool {
+    matches!(bits, 8 | 10)
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum OutputRequest {
     Get,
@@ -30,6 +34,8 @@ pub struct OutputConfigureRequest {
     pub mode_id: u32,
     pub scale_milli: u32,
     pub transform: OutputTransform,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color_depth_bits: Option<u8>,
 }
 
 impl OutputConfigureRequest {
@@ -39,6 +45,9 @@ impl OutputConfigureRequest {
             || self.base_configuration_generation == 0
             || self.mode_id == 0
             || self.scale_milli == 0
+            || self
+                .color_depth_bits
+                .is_some_and(|bits| !is_supported_color_depth(bits))
         {
             return Err(OutputSnapshotError::InvalidStructure);
         }
@@ -172,6 +181,7 @@ pub struct OutputMutationCapabilities {
     pub enable_disable_supported: bool,
     pub topology_supported: bool,
     pub vrr_mutation_supported: bool,
+    pub color_depth_bits: Vec<u8>,
 }
 
 impl OutputMutationCapabilities {
@@ -179,8 +189,20 @@ impl OutputMutationCapabilities {
         self.scale.supports(scale_milli) && self.transform.supports(transform)
     }
 
+    pub fn supports_color_depth(&self, bits: u8) -> bool {
+        self.color_depth_bits.contains(&bits)
+    }
+
     fn validate(&self) -> bool {
-        self.scale.validate() && self.transform.validate()
+        self.scale.validate()
+            && self.transform.validate()
+            && !self.color_depth_bits.is_empty()
+            && self
+                .color_depth_bits
+                .iter()
+                .all(|bits| is_supported_color_depth(*bits))
+            && self.color_depth_bits.len()
+                == self.color_depth_bits.iter().collect::<HashSet<_>>().len()
     }
 }
 
@@ -233,6 +255,7 @@ pub struct OutputSnapshot {
     pub configuration_generation: u64,
     pub scale_milli: u32,
     pub transform: OutputTransform,
+    pub color_depth_bits: u8,
     pub mutation_capabilities: OutputMutationCapabilities,
     pub position: PositionSnapshot,
     pub focused: bool,
@@ -291,6 +314,7 @@ impl OutputListSnapshot {
                 || output.name.is_empty()
                 || output.configuration_generation == 0
                 || output.scale_milli == 0
+                || !is_supported_color_depth(output.color_depth_bits)
                 || !ids.insert(output.id.as_str())
                 || output.modes.len() > MAX_CONTROL_OUTPUT_MODES
                 || !output.mutation_capabilities.validate()

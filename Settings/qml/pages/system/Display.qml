@@ -422,6 +422,32 @@ FocusScope {
             root.selectedScaleMilli(output), root.selectedTransform(output))
     }
 
+    function colorDepthText(bits) {
+        const value = Number(bits)
+        return value > 0 ? String(value) + "-bit" : "Unavailable"
+    }
+
+    function colorDepthOptions(output) {
+        if (!output || !output.colorDepthOptions)
+            return []
+        return output.colorDepthOptions.map(value => Number(value))
+    }
+
+    function selectedColorDepthIndex(output) {
+        return root.colorDepthOptions(output).indexOf(Number(output
+            ? output.colorDepthBits : 0))
+    }
+
+    function selectColorDepth(index) {
+        const output = root.selectedOutput
+        const options = root.colorDepthOptions(output)
+        if (!root.controller || !output
+                || output.colorDepthSelectionSupported !== true
+                || index < 0 || index >= options.length)
+            return
+        root.controller.setDraftColorDepth(String(output.id), options[index])
+    }
+
     function scaleValues(output) {
         if (!output || !output.scaleValuesMilli)
             return []
@@ -1307,11 +1333,20 @@ FocusScope {
                             DisplaySelector {
                                 objectName: "displayColorDepthControl"
                                 controlWidth: 130
-                                label: "Unavailable"
-                                enabled: false
-                                showChevron: false
-                                textPrimary: Components.Theme.textTertiary
-                                textSecondary: Components.Theme.textTertiary
+                                label: root.selectedOutput
+                                    ? root.colorDepthText(root.selectedOutput.colorDepthBits)
+                                    : "Unavailable"
+                                options: root.colorDepthOptions(root.selectedOutput).map(
+                                    bits => root.colorDepthText(bits))
+                                selectedIndex: root.selectedColorDepthIndex(root.selectedOutput)
+                                enabled: Boolean(root.selectedOutput
+                                    && root.selectedOutput.colorDepthSelectionSupported === true)
+                                showChevron: enabled
+                                textPrimary: enabled
+                                    ? Components.Theme.textPrimary : Components.Theme.textTertiary
+                                textSecondary: enabled
+                                    ? Components.Theme.textSecondary : Components.Theme.textTertiary
+                                onSelected: index => root.selectColorDepth(index)
                             }
                         }
 

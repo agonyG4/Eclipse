@@ -1,6 +1,6 @@
 use crate::typhon::output::{
     OutputConfigureRequest, OutputListSnapshot, OutputSnapshot, OutputTransactionRequest,
-    OutputTransactionSnapshot, OutputTransform,
+    OutputTransactionSnapshot, OutputTransform, is_supported_color_depth,
 };
 use std::collections::HashMap;
 
@@ -11,6 +11,7 @@ pub struct OutputDraft {
     pub mode_id: u32,
     pub scale_milli: u32,
     pub transform: OutputTransform,
+    pub color_depth_bits: u8,
 }
 
 impl OutputDraft {
@@ -21,6 +22,7 @@ impl OutputDraft {
             .is_none_or(|mode| mode.id != self.mode_id)
             || output.scale_milli != self.scale_milli
             || output.transform != self.transform
+            || output.color_depth_bits != self.color_depth_bits
     }
 
     pub fn is_stale(&self, output: &OutputSnapshot) -> bool {
@@ -49,7 +51,12 @@ impl OutputDraft {
                 .mutation_capabilities
                 .transform
                 .supports(self.transform);
-        mode_supported && scale_supported && transform_supported
+        let color_depth_supported = output.color_depth_bits == self.color_depth_bits
+            || (output.mutation_capabilities.mode_selection_supported
+                && output
+                    .mutation_capabilities
+                    .supports_color_depth(self.color_depth_bits));
+        mode_supported && scale_supported && transform_supported && color_depth_supported
     }
 
     pub fn can_apply(
@@ -71,6 +78,7 @@ impl OutputDraft {
             mode_id: self.mode_id,
             scale_milli: self.scale_milli,
             transform: self.transform,
+            color_depth_bits: Some(self.color_depth_bits),
         }
     }
 }
@@ -185,6 +193,28 @@ impl DisplayState {
         Ok(())
     }
 
+    pub fn set_draft_color_depth(&mut self, output_id: &str, bits: u8) -> Result<(), String> {
+        let output = self
+            .outputs
+            .iter()
+            .find(|output| output.id == output_id)
+            .ok_or_else(|| String::from("The selected output is no longer available."))?;
+        if !is_supported_color_depth(bits) {
+            return Err(String::from("Display color depth must be 8 or 10 bits."));
+        }
+        let draft = self
+            .drafts
+            .get_mut(output_id)
+            .ok_or_else(|| String::from("The selected output has no current mode."))?;
+        if draft.base_configuration_generation != output.configuration_generation {
+            return Err(String::from(
+                "The display draft is based on a stale configuration.",
+            ));
+        }
+        draft.color_depth_bits = bits;
+        Ok(())
+    }
+
     pub fn can_apply(&self, output_id: &str) -> bool {
         if !self.available {
             return false;
@@ -248,6 +278,7 @@ fn draft_from_output(output: &OutputSnapshot) -> Option<OutputDraft> {
         mode_id: output.current_mode.as_ref()?.id,
         scale_milli: output.scale_milli,
         transform: output.transform,
+        color_depth_bits: output.color_depth_bits,
     })
 }
 
@@ -325,6 +356,7 @@ mod tests {
             configuration_generation: 1,
             scale_milli: 1000,
             transform: OutputTransform::Normal,
+            color_depth_bits: 8,
             mutation_capabilities: OutputMutationCapabilities {
                 mode_selection_supported: true,
                 scale: ScaleMutationCapability {
@@ -340,6 +372,7 @@ mod tests {
                 enable_disable_supported: false,
                 topology_supported: false,
                 vrr_mutation_supported: false,
+                color_depth_bits: vec![8, 10],
             },
             position: PositionSnapshot { x: 0, y: 0 },
             focused: true,
@@ -705,9 +738,77 @@ mod tests {
             mode_id: 77,
             scale_milli: 1000,
             transform: OutputTransform::Normal,
+            color_depth_bits: 8,
         };
         let request = draft.configure_request();
         assert_eq!(request.base_configuration_generation, 18);
         assert_eq!(request.mode_id, 77);
+    }
+
+    #[test]
+    fn depth_only_draft_differs_and_applies_when_supported() {
+        let mut state = DisplayState::default();
+        state.apply(snapshot()).unwrap();
+        state.set_draft_color_depth("output-1", 10).unwrap();
+
+        let draft = state.draft("output-1").unwrap();
+        assert_eq!(draft.color_depth_bits, 10);
+        assert_eq!(draft.mode_id, 1);
+        assert!(draft.differs_from(&state.outputs()[0]));
+        assert!(state.can_apply("output-1"));
+        assert_eq!(
+            state
+                .draft("output-1")
+                .unwrap()
+                .configure_request()
+                .color_depth_bits,
+            Some(10)
+        );
+    }
+
+    #[test]
+    fn unsupported_depth_cannot_apply() {
+        let mut single_depth = snapshot();
+        single_depth.outputs[0]
+            .mutation_capabilities
+            .color_depth_bits = vec![8];
+        let mut state = DisplayState::default();
+        state.apply(single_depth).unwrap();
+        state.set_draft_color_depth("output-1", 10).unwrap();
+
+        assert!(
+            !state
+                .draft("output-1")
+                .unwrap()
+                .values_supported(&state.outputs()[0])
+        );
+        assert!(!state.can_apply("output-1"));
+    }
+
+    #[test]
+    fn depth_draft_rejects_values_other_than_eight_or_ten() {
+        let mut state = DisplayState::default();
+        state.apply(snapshot()).unwrap();
+        assert!(state.set_draft_color_depth("output-1", 12).is_err());
+        assert_eq!(state.draft("output-1").unwrap().color_depth_bits, 8);
+    }
+
+    #[test]
+    fn mode_draft_keeps_the_chosen_color_depth() {
+        let mut state = DisplayState::default();
+        state.apply(snapshot()).unwrap();
+        state.set_draft_color_depth("output-1", 10).unwrap();
+        state
+            .set_draft("output-1", 2, 1000, OutputTransform::Normal)
+            .unwrap();
+        assert_eq!(state.draft("output-1").unwrap().color_depth_bits, 10);
+    }
+
+    #[test]
+    fn unsupported_depth_capability_is_rejected_by_snapshot_validation() {
+        let mut invalid = snapshot();
+        invalid.outputs[0].mutation_capabilities.color_depth_bits = vec![8, 12];
+        let mut state = DisplayState::default();
+        assert!(state.apply(invalid).is_err());
     }
 }

@@ -414,6 +414,7 @@ mod tests {
             mode_id: 7,
             scale_milli: 1000,
             transform: OutputTransform::Normal,
+            color_depth_bits: Some(10),
         }));
         let encoded = encode_control_request(11, request).unwrap();
         let value: Value = serde_json::from_slice(&encoded[..encoded.len() - 1]).unwrap();
@@ -426,6 +427,7 @@ mod tests {
         assert_eq!(value["args"]["modeId"], 7);
         assert_eq!(value["args"]["scaleMilli"], 1000);
         assert_eq!(value["args"]["transform"], "normal");
+        assert_eq!(value["args"]["colorDepthBits"], 10);
         assert_eq!(encoded.last(), Some(&b'\n'));
     }
 
@@ -474,13 +476,15 @@ mod tests {
                 "configurationGeneration": 9,
                 "scaleMilli": 1000,
                 "transform": "normal",
+                "colorDepthBits": 8,
                 "mutationCapabilities": {
                     "modeSelectionSupported": true,
                     "scale": {"supported": false, "minMilli": null, "maxMilli": null, "valuesMilli": []},
                     "transform": {"supported": false, "transforms": []},
                     "enableDisableSupported": false,
                     "topologySupported": false,
-                    "vrrMutationSupported": false
+                    "vrrMutationSupported": false,
+                    "colorDepthBits": [8, 10]
                 },
                 "position": {"x": 0, "y": 0},
                 "focused": true,
@@ -692,6 +696,7 @@ mod tests {
                 mode_id: 2,
                 scale_milli: 1000,
                 transform: OutputTransform::Normal,
+                color_depth_bits: None,
             }),
             OutputRequest::Confirm(OutputTransactionRequest {
                 version: 1,
@@ -724,11 +729,11 @@ mod tests {
             valid_output(),
              {"id":"output-1", "name":"HDMI-A-1", "make":null, "model":null,
              "serial":null, "enabled":false, "currentMode":null, "physicalSizeMm":null,
-             "configurationGeneration":9, "scaleMilli":1000, "transform":"normal",
+             "configurationGeneration":9, "scaleMilli":1000, "transform":"normal","colorDepthBits":8,
              "mutationCapabilities":{"modeSelectionSupported":true,
                "scale":{"supported":false,"minMilli":null,"maxMilli":null,"valuesMilli":[]},
                "transform":{"supported":false,"transforms":[]},
-               "enableDisableSupported":false,"topologySupported":false,"vrrMutationSupported":false},
+               "enableDisableSupported":false,"topologySupported":false,"vrrMutationSupported":false,"colorDepthBits":[8,10]},
              "position":{"x":0,"y":0},
              "focused":false, "backend":"atomic", "vrr":{"state":"unavailable"},
              "directScanout":{"state":"unavailable"}, "modes":[], "modesTruncated":false}
@@ -782,6 +787,21 @@ mod tests {
                 .is_ok()
         );
 
+        let mut unsupported_color_depth = valid_output_list();
+        unsupported_color_depth["outputs"][0]["colorDepthBits"] = json!(9);
+        assert_eq!(
+            decode_control_response(&program_response(95, unsupported_color_depth), 95, &request),
+            Err(ProtocolError::InvalidJson)
+        );
+
+        let mut unsupported_capability = valid_output_list();
+        unsupported_capability["outputs"][0]["mutationCapabilities"]["colorDepthBits"] =
+            json!([8, 12]);
+        assert_eq!(
+            decode_control_response(&program_response(96, unsupported_capability), 96, &request),
+            Err(ProtocolError::InvalidJson)
+        );
+
         let wrong_result_shape = json!([{"outputs": [], "total": 0, "truncated": false}]);
         assert_eq!(
             decode_control_response(&program_response(94, wrong_result_shape), 94, &request),
@@ -810,12 +830,27 @@ mod tests {
                     mode_id,
                     scale_milli: 1000,
                     transform: OutputTransform::Normal,
+                    color_depth_bits: None,
                 }));
             assert_eq!(
                 encode_control_request(13, request),
                 Err(ProtocolError::InvalidJson)
             );
         }
+        let unsupported_depth =
+            ControlRequest::Output(OutputRequest::Configure(OutputConfigureRequest {
+                version: 1,
+                output_id: "output-1".into(),
+                base_configuration_generation: 9,
+                mode_id: 2,
+                scale_milli: 1000,
+                transform: OutputTransform::Normal,
+                color_depth_bits: Some(9),
+            }));
+        assert_eq!(
+            encode_control_request(14, unsupported_depth),
+            Err(ProtocolError::InvalidJson)
+        );
     }
 
     fn valid_output() -> Value {
@@ -824,11 +859,11 @@ mod tests {
             "serial": null, "enabled": true,
             "currentMode": {"id":2,"width":1920,"height":1080,"refreshMillihz":165000},
             "physicalSizeMm": {"widthMm":600,"heightMm":340}, "configurationGeneration":9,
-            "scaleMilli":1000, "transform":"normal",
+            "scaleMilli":1000, "transform":"normal","colorDepthBits":8,
             "mutationCapabilities":{"modeSelectionSupported":true,
               "scale":{"supported":false,"minMilli":null,"maxMilli":null,"valuesMilli":[]},
               "transform":{"supported":false,"transforms":[]},
-              "enableDisableSupported":false,"topologySupported":false,"vrrMutationSupported":false},
+              "enableDisableSupported":false,"topologySupported":false,"vrrMutationSupported":false,"colorDepthBits":[8,10]},
             "position":{"x":0,"y":0}, "focused":true,
             "backend":"atomic", "vrr":{"state":"available"},
             "directScanout":{"state":"unavailable"},

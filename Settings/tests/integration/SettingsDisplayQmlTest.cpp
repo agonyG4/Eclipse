@@ -56,6 +56,32 @@ public:
     }
     return false;
   }
+  Q_INVOKABLE bool setDraftColorDepth(const QString &outputId, int bits) {
+    ++setDraftColorDepthCount;
+    lastDraftColorDepthBits = bits;
+    for (qsizetype index = 0; index < m_outputs.size(); ++index) {
+      QVariantMap output = m_outputs.at(index).toMap();
+      if (output.value(QStringLiteral("id")).toString() != outputId)
+        continue;
+      if (!output.value(QStringLiteral("colorDepthSelectionSupported")).toBool())
+        return false;
+      const int current =
+          output.value(QStringLiteral("currentColorDepthBits")).toInt();
+      output.insert(QStringLiteral("colorDepthBits"), bits);
+      output.insert(QStringLiteral("draftPresent"), true);
+      output.insert(QStringLiteral("draftModeId"),
+                    output.value(QStringLiteral("currentModeId")));
+      output.insert(QStringLiteral("draftScaleMilli"),
+                    output.value(QStringLiteral("scaleMilli")));
+      output.insert(QStringLiteral("draftTransform"),
+                    output.value(QStringLiteral("transform")));
+      output.insert(QStringLiteral("canApplyDraft"), bits != current);
+      m_outputs[index] = output;
+      emit snapshotChanged();
+      return true;
+    }
+    return false;
+  }
   Q_INVOKABLE void applyDraft(const QString &outputId) {
     ++applyDraftCount;
     lastApplyOutputId = outputId;
@@ -112,6 +138,8 @@ public:
   int confirmCount = 0;
   int revertCount = 0;
   int setDraftCount = 0;
+  int setDraftColorDepthCount = 0;
+  int lastDraftColorDepthBits = 0;
   QString lastDraftOutputId;
   QString lastDraftTransform;
   QString lastApplyOutputId;
@@ -264,6 +292,10 @@ displayOutput(const QString &name = QStringLiteral("DP-1"),
           {QStringLiteral("scaleMutationSupported"), false},
           {QStringLiteral("scaleValuesMilli"), QVariantList{1000, 1250, 1500}},
           {QStringLiteral("vrrMutationSupported"), false},
+          {QStringLiteral("currentColorDepthBits"), 8},
+          {QStringLiteral("colorDepthBits"), 8},
+          {QStringLiteral("colorDepthOptions"), QVariantList{8}},
+          {QStringLiteral("colorDepthSelectionSupported"), false},
           {QStringLiteral("draftPresent"), false},
           {QStringLiteral("draftModeId"), 0},
           {QStringLiteral("draftScaleMilli"), 0},
@@ -367,6 +399,7 @@ private slots:
   void refreshSelectorUsesOnlySelectedResolutionModes();
   void refreshSelectionUpdatesExactDraftMode();
   void scaleSelectorUsesCapabilityAndTypedDraft();
+  void colorDepthSelectorUsesCapabilityAndTypedDraft();
   void applyFollowsDraftCapabilityAndUsesBackend();
   void unsupportedControlsHaveNoInteractiveAffordance();
   void showsPreferredModeSemantics();
@@ -601,6 +634,9 @@ void SettingsDisplayQmlTest::
   QVERIFY(scaleControl != nullptr);
   QVERIFY(!vrrControl->property("enabled").toBool());
   QVERIFY(!colorDepthControl->property("enabled").toBool());
+  QCOMPARE(colorDepthControl->property("label").toString(),
+           QStringLiteral("8-bit"));
+  QCOMPARE(colorDepthControl->property("options").toList().size(), 1);
   QVERIFY(!scaleControl->property("enabled").toBool());
   QCOMPARE(vrrControl->property("label").toString(),
            QStringLiteral("Supported"));
@@ -618,10 +654,12 @@ void SettingsDisplayQmlTest::
   QVERIFY(!nightShift->property("enabled").toBool());
   clickItem(qobject_cast<QQuickItem *>(refreshControl));
   clickItem(qobject_cast<QQuickItem *>(vrrControl));
+  clickItem(qobject_cast<QQuickItem *>(colorDepthControl));
   clickItem(qobject_cast<QQuickItem *>(scaleControl));
   clickItem(qobject_cast<QQuickItem *>(apply));
   clickItem(qobject_cast<QQuickItem *>(nightShift));
   QCOMPARE(fixture.display()->setDraftCount, 0);
+  QCOMPARE(fixture.display()->setDraftColorDepthCount, 0);
   QCOMPARE(fixture.display()->applyDraftCount, 0);
   QCOMPARE(fixture.display()->confirmCount, 0);
   QCOMPARE(fixture.display()->revertCount, 0);
@@ -793,6 +831,40 @@ void SettingsDisplayQmlTest::scaleSelectorUsesCapabilityAndTypedDraft() {
   QVERIFY(projected.value(QStringLiteral("canApplyDraft")).toBool());
 }
 
+void SettingsDisplayQmlTest::colorDepthSelectorUsesCapabilityAndTypedDraft() {
+  DisplayPageFixture fixture;
+  QVariantMap output = displayOutput();
+  output.insert(QStringLiteral("colorDepthOptions"), QVariantList{8, 10});
+  output.insert(QStringLiteral("colorDepthSelectionSupported"), true);
+  fixture.display()->setOutput(output);
+  QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.errors()));
+
+  QObject *colorDepth =
+      fixture.object(QStringLiteral("displayColorDepthControl"));
+  QVERIFY(colorDepth != nullptr);
+  QVERIFY(colorDepth->property("enabled").toBool());
+  QVERIFY(colorDepth->property("showChevron").toBool());
+  QCOMPARE(colorDepth->property("label").toString(), QStringLiteral("8-bit"));
+  const QVariantList options = colorDepth->property("options").toList();
+  QCOMPARE(options.size(), 2);
+  QCOMPARE(options.at(0).toString(), QStringLiteral("8-bit"));
+  QCOMPARE(options.at(1).toString(), QStringLiteral("10-bit"));
+  QCOMPARE(colorDepth->property("selectedIndex").toInt(), 0);
+  QVERIFY(QMetaObject::invokeMethod(colorDepth, "selected", Qt::DirectConnection,
+                                    Q_ARG(int, 1)));
+
+  QCOMPARE(fixture.display()->setDraftColorDepthCount, 1);
+  QCOMPARE(fixture.display()->lastDraftColorDepthBits, 10);
+  const QVariantMap projected = fixture.display()->outputs().first().toMap();
+  QCOMPARE(projected.value(QStringLiteral("currentColorDepthBits")).toUInt(),
+           8U);
+  QCOMPARE(projected.value(QStringLiteral("colorDepthBits")).toUInt(), 10U);
+  QVERIFY(projected.value(QStringLiteral("canApplyDraft")).toBool());
+  QCOMPARE(colorDepth->property("label").toString(),
+           QStringLiteral("10-bit"));
+  QCOMPARE(colorDepth->property("selectedIndex").toInt(), 1);
+}
+
 void SettingsDisplayQmlTest::applyFollowsDraftCapabilityAndUsesBackend() {
   DisplayPageFixture fixture;
   QVariantMap output = displayOutput();
@@ -820,6 +892,7 @@ void SettingsDisplayQmlTest::unsupportedControlsHaveNoInteractiveAffordance() {
                              QStringLiteral("displayColorDepthControl"),
                              QStringLiteral("displayVrrControl"),
                              QStringLiteral("displayScaleControl"),
+                             QStringLiteral("displayColorDepthControl"),
                              QStringLiteral("displayNightShiftControl"),
                              QStringLiteral("displayNightShiftStrengthControl"),
                              QStringLiteral("displayNightShiftScheduleControl"),
@@ -841,7 +914,7 @@ void SettingsDisplayQmlTest::unsupportedControlsHaveNoInteractiveAffordance() {
   QCOMPARE(fixture.object(QStringLiteral("displayColorDepthControl"))
                ->property("label")
                .toString(),
-           QStringLiteral("Unavailable"));
+           QStringLiteral("8-bit"));
   QCOMPARE(fixture.object(QStringLiteral("displayVrrControl"))
                ->property("label")
                .toString(),

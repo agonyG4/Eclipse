@@ -1,9 +1,10 @@
 cmake_minimum_required(VERSION 3.16)
-project(AstreaShared LANGUAGES CXX)
+project(AstreaShared VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick DBus ShaderTools)
@@ -60,6 +61,7 @@ add_library(astrea-shared-core STATIC
 target_include_directories(astrea-shared-core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
+set_target_properties(astrea-shared-core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 if(NOT MSVC)
     target_compile_options(astrea-shared-core PRIVATE -Wall -Wextra -Wpedantic)
@@ -274,6 +276,63 @@ qt_add_qml_module(astrea-shared-core
     QML_FILES
         qml/AstreaAppIcon.qml
         qml/ShellMaterialTheme.qml
+)
+
+# Keep the generated static QML plugin reachable through the single public SDK
+# target. External applications need not know about this implementation detail.
+add_library(astrea-sdk-core SHARED
+    sdk/Core.cpp
+    sdk/QmlPlugin.cpp
+    include/AstreaSDK/Core.hpp
+)
+add_library(AstreaSDK::Core ALIAS astrea-sdk-core)
+set_target_properties(astrea-sdk-core PROPERTIES EXPORT_NAME Core)
+set_target_properties(astrea-sdk-core PROPERTIES OUTPUT_NAME AstreaSDKCore)
+target_include_directories(astrea-sdk-core PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+target_compile_definitions(astrea-sdk-core PRIVATE ASTREA_SDK_CORE_BUILD)
+target_link_libraries(astrea-sdk-core
+    PUBLIC Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick
+    PRIVATE
+    astrea-shared-core
+    astrea-shared-coreplugin
+)
+set_target_properties(astrea-shared-coreplugin PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+include(CMakePackageConfigHelpers)
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/AstreaSDKConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/AstreaSDKConfig.cmake"
+    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/AstreaSDK"
+)
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/AstreaSDKConfigVersion.cmake"
+    VERSION "${PROJECT_VERSION}"
+    COMPATIBILITY ExactVersion
+)
+
+install(TARGETS astrea-sdk-core
+    EXPORT AstreaSDKTargets
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT AstreaSDK
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT AstreaSDK
+    INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+)
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/AstreaSDK"
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}" COMPONENT AstreaSDK
+)
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/AstreaSDKConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/AstreaSDKConfigVersion.cmake"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/AstreaSDK"
+    COMPONENT AstreaSDK
+)
+install(EXPORT AstreaSDKTargets
+    FILE AstreaSDKTargets.cmake
+    NAMESPACE AstreaSDK::
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/AstreaSDK"
+    COMPONENT AstreaSDK
 )
 
 qt_add_shaders(astrea-shared-core astrea_shared_core_shaders
@@ -753,6 +812,15 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     add_test(NAME astrea-app-icon-qml-test COMMAND astrea-app-icon-qml-test)
     set_tests_properties(astrea-app-icon-qml-test PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QML_IMPORT_PATH=${CMAKE_BINARY_DIR}"
+    )
+
+    add_test(NAME astrea-sdk-install-consumer-test
+        COMMAND ${CMAKE_COMMAND}
+            "-DASTREA_SDK_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/examples/sdk-consumer"
+            "-DASTREA_SDK_BUILD_DIR=${CMAKE_BINARY_DIR}"
+            "-DASTREA_SDK_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/sdk-install-prefix"
+            "-DASTREA_SDK_RELOCATED_PREFIX=${CMAKE_BINARY_DIR}/sdk-relocated-prefix"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/RunSDKConsumerTest.cmake"
     )
 
     add_executable(system-services-test

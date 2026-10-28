@@ -66,6 +66,18 @@ Item {
         contentMargins: 32
         maxWidth: 900
 
+        Text {
+            objectName: "animationsError"
+            visible: root.controller.lastError !== ""
+            text: root.controller.lastError
+            color: Components.Theme.errorColor
+            font.family: Components.Theme.fontFamily
+            font.pixelSize: Components.Theme.fontSizeSmall
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
+            Layout.bottomMargin: 10
+        }
+
         Form.SectionHeader {
             text: I18n.tr("apps.settings.pages.animations.general", "GENERAL")
             Layout.bottomMargin: 12
@@ -105,7 +117,7 @@ Item {
                     from: 0.5
                     to: 2.0
                     stepSize: 0.05
-                    enabled: root.controller.available && !root.controller.busy
+                    enabled: root.controller.available
                     modelValueEnabled: root.controller.available && !root.controller.busy
                     modelValue: root.controller.speed
                     valueText: Number(displayedValue).toFixed(2) + "×"
@@ -155,8 +167,8 @@ Item {
                             from: 0.25
                             to: 4.0
                             stepSize: 0.05
-                            enabled: root.controller.available && !root.controller.busy && (slotData.effective || "none") !== "none"
-                            modelValueEnabled: enabled
+                            enabled: root.controller.available && (slotData.effective || "none") !== "none"
+                            modelValueEnabled: enabled && !root.controller.busy
                             modelValue: slotData.speed || 1.0
                             valueText: Number(displayedValue).toFixed(2) + "×"
                             detentEnabled: true
@@ -197,8 +209,8 @@ Item {
                             from: 0.25
                             to: 4.0
                             stepSize: 0.05
-                            enabled: root.controller.available && !root.controller.busy && (slotData.effective || "none") !== "none"
-                            modelValueEnabled: enabled
+                            enabled: root.controller.available && (slotData.effective || "none") !== "none"
+                            modelValueEnabled: enabled && !root.controller.busy
                             modelValue: slotData.speed || 1.0
                             valueText: Number(displayedValue).toFixed(2) + "×"
                             detentEnabled: true
@@ -238,8 +250,8 @@ Item {
                             from: 0.25
                             to: 4.0
                             stepSize: 0.05
-                            enabled: root.controller.available && !root.controller.busy && (slotData.effective || "none") !== "none"
-                            modelValueEnabled: enabled
+                            enabled: root.controller.available && (slotData.effective || "none") !== "none"
+                            modelValueEnabled: enabled && !root.controller.busy
                             modelValue: slotData.speed || 1.0
                             valueText: Number(displayedValue).toFixed(2) + "×"
                             detentEnabled: true

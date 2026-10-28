@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 
 pub const MIN_SPEED: f64 = 0.5;
 pub const MAX_SPEED: f64 = 2.0;
+pub const MIN_SLOT_SPEED: f64 = 0.25;
+pub const MAX_SLOT_SPEED: f64 = 4.0;
 
 fn default_true() -> bool {
     true
@@ -18,6 +20,8 @@ pub struct AnimationConfiguration {
     pub speed: f64,
     #[serde(default)]
     pub overrides: BTreeMap<String, String>,
+    #[serde(default)]
+    pub slot_speeds: BTreeMap<String, f64>,
 }
 
 impl Default for AnimationConfiguration {
@@ -28,6 +32,7 @@ impl Default for AnimationConfiguration {
             preset: String::from("astrea"),
             speed: 1.0,
             overrides: BTreeMap::new(),
+            slot_speeds: BTreeMap::new(),
         }
     }
 }
@@ -87,6 +92,7 @@ pub struct AnimationSlotCapability {
     pub requested: Option<String>,
     pub effective: Option<String>,
     pub override_effect: Option<String>,
+    pub speed: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -117,6 +123,7 @@ pub struct AnimationState {
     configuration: AnimationConfiguration,
     pending_mutations: Vec<AnimationMutation>,
     pending_speed: Option<f64>,
+    pending_slot_speeds: BTreeMap<String, f64>,
 }
 
 impl AnimationState {
@@ -133,7 +140,7 @@ impl AnimationState {
     }
 
     pub fn has_overrides(&self) -> bool {
-        !self.configuration.overrides.is_empty()
+        !self.configuration.overrides.is_empty() || !self.configuration.slot_speeds.is_empty()
     }
 
     pub fn set_speed(&mut self, value: f64) -> Option<f64> {
@@ -145,6 +152,15 @@ impl AnimationState {
         Some(speed)
     }
 
+    pub fn set_slot_speed(&mut self, slot_id: &str, value: f64) -> Option<f64> {
+        if !self.available || !value.is_finite() {
+            return None;
+        }
+        let speed = value.clamp(MIN_SLOT_SPEED, MAX_SLOT_SPEED);
+        self.pending_slot_speeds.insert(slot_id.to_owned(), speed);
+        Some(speed)
+    }
+
     pub fn enqueue_mutation(&mut self, mutation: AnimationMutation) {
         if self.available {
             self.pending_mutations.push(mutation);
@@ -152,7 +168,11 @@ impl AnimationState {
     }
 
     pub fn pending_configuration(&self) -> Option<AnimationConfiguration> {
-        if !self.available || (self.pending_speed.is_none() && self.pending_mutations.is_empty()) {
+        if !self.available
+            || (self.pending_speed.is_none()
+                && self.pending_slot_speeds.is_empty()
+                && self.pending_mutations.is_empty())
+        {
             return None;
         }
         let mut configuration = self.configuration.clone();
@@ -162,12 +182,21 @@ impl AnimationState {
         if let Some(speed) = self.pending_speed {
             configuration.speed = speed;
         }
+        for (slot_id, &speed) in &self.pending_slot_speeds {
+            // 1x is the default, so it is stored as no entry.
+            if speed == 1.0 {
+                configuration.slot_speeds.remove(slot_id);
+            } else {
+                configuration.slot_speeds.insert(slot_id.clone(), speed);
+            }
+        }
         Some(configuration)
     }
 
     pub fn mark_submitted(&mut self) {
         self.pending_mutations.clear();
         self.pending_speed = None;
+        self.pending_slot_speeds.clear();
     }
 
     pub fn apply_snapshot(&mut self, snapshot: AnimationSnapshot) -> Result<(), StateError> {
@@ -256,6 +285,12 @@ impl AnimationState {
                     requested: snapshot.requested.get(&slot.id).cloned(),
                     effective: snapshot.effective.get(&slot.id).cloned(),
                     override_effect: self.configuration.overrides.get(&slot.id).cloned(),
+                    speed: self
+                        .configuration
+                        .slot_speeds
+                        .get(&slot.id)
+                        .copied()
+                        .unwrap_or(1.0),
                 }
             })
             .collect()
@@ -277,7 +312,10 @@ fn apply_mutation(configuration: &mut AnimationConfiguration, mutation: &Animati
         AnimationMutation::ClearSlotOverride(slot_id) => {
             configuration.overrides.remove(slot_id);
         }
-        AnimationMutation::ResetOverrides => configuration.overrides.clear(),
+        AnimationMutation::ResetOverrides => {
+            configuration.overrides.clear();
+            configuration.slot_speeds.clear();
+        }
         AnimationMutation::RestoreDefaults => *configuration = AnimationConfiguration::default(),
     }
 }
@@ -436,6 +474,22 @@ mod tests {
         );
     }
 
+    #[test]
+    fn slot_speed_is_clamped_and_one_x_clears_the_entry() {
+        let mut state = AnimationState::default();
+        state.set_available();
+        assert_eq!(state.set_slot_speed("workspace.switch", 9.0), Some(4.0));
+        let configuration = state.pending_configuration().unwrap();
+        assert_eq!(configuration.slot_speeds["workspace.switch"], 4.0);
+        state.mark_submitted();
+        state.configuration = configuration;
+        assert!(state.has_overrides());
+
+        state.set_slot_speed("workspace.switch", 1.0);
+        let configuration = state.pending_configuration().unwrap();
+        assert!(configuration.slot_speeds.is_empty());
+    }
+
     fn test_configuration(_availability: &str) -> AnimationConfiguration {
         AnimationConfiguration {
             enabled: true,
@@ -443,6 +497,7 @@ mod tests {
             preset: "astrea".to_owned(),
             speed: 1.0,
             overrides: Default::default(),
+            slot_speeds: Default::default(),
         }
     }
 

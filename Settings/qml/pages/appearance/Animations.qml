@@ -147,13 +147,31 @@ Item {
                     label: modelData === "window.open" ? I18n.tr("apps.settings.pages.animations.slot.open", "Open") : modelData === "window.close" ? I18n.tr("apps.settings.pages.animations.slot.close", "Close") : modelData === "window.minimize" ? I18n.tr("apps.settings.pages.animations.slot.minimize", "Minimize") : I18n.tr("apps.settings.pages.animations.slot.restore", "Restore")
                     sublabel: root.plannedText(slotData) || root.unavailableText(slotData) || root.effectLabel(slotData.effective)
                     isLast: index === 3
-                    Controls.SelectButton {
-                        width: 180
-                        enabled: root.controller.available && !root.controller.busy && slotData.availableEffects && slotData.availableEffects.length > 0
-                        options: root.availableOptions(slotData)
-                        selectedIndex: root.selectedIndex(slotData)
-                        label: selectedIndex >= 0 && selectedIndex < options.length ? options[selectedIndex] : root.effectLabel(slotData.effective)
-                        onSelected: index => root.controller.setSlotEffect(modelData, slotData.availableEffects[index])
+                    Row {
+                        spacing: 12
+                        Controls.Slider {
+                            width: 150
+                            anchors.verticalCenter: parent.verticalCenter
+                            from: 0.25
+                            to: 4.0
+                            stepSize: 0.05
+                            enabled: root.controller.available && !root.controller.busy && (slotData.effective || "none") !== "none"
+                            modelValueEnabled: enabled
+                            modelValue: slotData.speed || 1.0
+                            valueText: Number(displayedValue).toFixed(2) + "×"
+                            detentEnabled: true
+                            detentValue: 1.0
+                            onValueEdited: value => root.controller.setSlotSpeed(modelData, value)
+                            onPressedChanged: if (!pressed) root.controller.flush()
+                        }
+                        Controls.SelectButton {
+                            width: 180
+                            enabled: root.controller.available && !root.controller.busy && slotData.availableEffects && slotData.availableEffects.length > 0
+                            options: root.availableOptions(slotData)
+                            selectedIndex: root.selectedIndex(slotData)
+                            label: selectedIndex >= 0 && selectedIndex < options.length ? options[selectedIndex] : root.effectLabel(slotData.effective)
+                            onSelected: index => root.controller.setSlotEffect(modelData, slotData.availableEffects[index])
+                        }
                     }
                 }
             }
@@ -171,13 +189,31 @@ Item {
                     label: modelData === "window.move" ? I18n.tr("apps.settings.pages.animations.slot.movement", "Movement") : modelData === "window.resize" ? I18n.tr("apps.settings.pages.animations.slot.resize", "Resize") : modelData === "layout.reflow" ? I18n.tr("apps.settings.pages.animations.slot.reflow", "Tiled layout") : modelData === "window.maximize" ? I18n.tr("apps.settings.pages.animations.slot.maximize", "Maximize") : I18n.tr("apps.settings.pages.animations.slot.fullscreen", "Fullscreen")
                     sublabel: root.effectLabel(slotData.effective)
                     isLast: index === 4
-                    Controls.SelectButton {
-                        width: 180
-                        enabled: root.controller.available && !root.controller.busy
-                        options: root.availableOptions(slotData)
-                        selectedIndex: root.selectedIndex(slotData)
-                        label: selectedIndex >= 0 && selectedIndex < options.length ? options[selectedIndex] : root.effectLabel(slotData.effective)
-                        onSelected: index => root.controller.setSlotEffect(modelData, slotData.availableEffects[index])
+                    Row {
+                        spacing: 12
+                        Controls.Slider {
+                            width: 150
+                            anchors.verticalCenter: parent.verticalCenter
+                            from: 0.25
+                            to: 4.0
+                            stepSize: 0.05
+                            enabled: root.controller.available && !root.controller.busy && (slotData.effective || "none") !== "none"
+                            modelValueEnabled: enabled
+                            modelValue: slotData.speed || 1.0
+                            valueText: Number(displayedValue).toFixed(2) + "×"
+                            detentEnabled: true
+                            detentValue: 1.0
+                            onValueEdited: value => root.controller.setSlotSpeed(modelData, value)
+                            onPressedChanged: if (!pressed) root.controller.flush()
+                        }
+                        Controls.SelectButton {
+                            width: 180
+                            enabled: root.controller.available && !root.controller.busy
+                            options: root.availableOptions(slotData)
+                            selectedIndex: root.selectedIndex(slotData)
+                            label: selectedIndex >= 0 && selectedIndex < options.length ? options[selectedIndex] : root.effectLabel(slotData.effective)
+                            onSelected: index => root.controller.setSlotEffect(modelData, slotData.availableEffects[index])
+                        }
                     }
                 }
             }
@@ -194,13 +230,31 @@ Item {
                     label: modelData === "workspace.switch" ? I18n.tr("apps.settings.pages.animations.slot.switch_workspace", "Switch workspace") : modelData === "workspace.special" ? I18n.tr("apps.settings.pages.animations.slot.special_workspace", "Special workspace") : I18n.tr("apps.settings.pages.animations.slot.move_workspace", "Move window between workspaces")
                     sublabel: root.plannedText(slotData) || root.unavailableText(slotData) || root.effectLabel(slotData.effective)
                     isLast: index === 2
-                    Controls.SelectButton {
-                        width: 180
-                        enabled: root.controller.available && !root.controller.busy && slotData.availableEffects && slotData.availableEffects.length > 1
-                        options: root.availableOptions(slotData)
-                        selectedIndex: root.selectedIndex(slotData)
-                        label: selectedIndex >= 0 && selectedIndex < options.length ? options[selectedIndex] : root.effectLabel(slotData.effective)
-                        onSelected: index => root.controller.setSlotEffect(modelData, slotData.availableEffects[index])
+                    Row {
+                        spacing: 12
+                        Controls.Slider {
+                            width: 150
+                            anchors.verticalCenter: parent.verticalCenter
+                            from: 0.25
+                            to: 4.0
+                            stepSize: 0.05
+                            enabled: root.controller.available && !root.controller.busy && (slotData.effective || "none") !== "none"
+                            modelValueEnabled: enabled
+                            modelValue: slotData.speed || 1.0
+                            valueText: Number(displayedValue).toFixed(2) + "×"
+                            detentEnabled: true
+                            detentValue: 1.0
+                            onValueEdited: value => root.controller.setSlotSpeed(modelData, value)
+                            onPressedChanged: if (!pressed) root.controller.flush()
+                        }
+                        Controls.SelectButton {
+                            width: 180
+                            enabled: root.controller.available && !root.controller.busy && slotData.availableEffects && slotData.availableEffects.length > 1
+                            options: root.availableOptions(slotData)
+                            selectedIndex: root.selectedIndex(slotData)
+                            label: selectedIndex >= 0 && selectedIndex < options.length ? options[selectedIndex] : root.effectLabel(slotData.effective)
+                            onSelected: index => root.controller.setSlotEffect(modelData, slotData.availableEffects[index])
+                        }
                     }
                 }
             }

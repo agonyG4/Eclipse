@@ -127,6 +127,8 @@ struct AnimationSetArguments {
     preset: String,
     speed: f64,
     overrides: std::collections::BTreeMap<String, String>,
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    slot_speeds: std::collections::BTreeMap<String, f64>,
 }
 
 pub fn encode_request(id: u64, request: AnimationRequest) -> Result<Vec<u8>, ProtocolError> {
@@ -147,6 +149,7 @@ pub fn encode_control_request(id: u64, request: ControlRequest) -> Result<Vec<u8
                 preset: configuration.preset,
                 speed: configuration.speed,
                 overrides: configuration.overrides,
+                slot_speeds: configuration.slot_speeds,
             }),
         ),
         ControlRequest::Material(MaterialRequest::Get) => {
@@ -884,6 +887,7 @@ mod tests {
             overrides: [("window.move".to_owned(), "geometry.macos".to_owned())]
                 .into_iter()
                 .collect(),
+            slot_speeds: Default::default(),
         };
         let encoded = encode_request(2, AnimationRequest::Set(configuration)).unwrap();
         let request: Value = serde_json::from_slice(&encoded[..encoded.len() - 1]).unwrap();

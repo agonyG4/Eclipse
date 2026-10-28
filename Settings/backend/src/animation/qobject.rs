@@ -82,6 +82,13 @@ pub mod qobject {
         #[cxx_name = "setSpeed"]
         fn set_speed(self: Pin<&mut SettingsAnimationController>, value: f64);
         #[qinvokable]
+        #[cxx_name = "setSlotSpeed"]
+        fn set_slot_speed(
+            self: Pin<&mut SettingsAnimationController>,
+            slot_id: &QString,
+            value: f64,
+        );
+        #[qinvokable]
         #[cxx_name = "setSlotEffect"]
         fn set_slot_effect(
             self: Pin<&mut SettingsAnimationController>,
@@ -327,6 +334,7 @@ impl qobject::SettingsAnimationController {
             insert_optional_string(&mut slot, "requested", capability.requested.as_deref());
             insert_optional_string(&mut slot, "effective", capability.effective.as_deref());
             insert_optional_string(&mut slot, "override", capability.override_effect.as_deref());
+            insert_variant(&mut slot, "speed", QVariant::from(&capability.speed));
             slots.append(QVariant::from(&slot));
         }
         slots
@@ -383,6 +391,26 @@ impl qobject::SettingsAnimationController {
 
     fn set_speed(mut self: Pin<&mut Self>, value: f64) {
         if self.as_mut().rust_mut().state.set_speed(value).is_some() {
+            let token = {
+                let mut rust = self.as_mut().rust_mut();
+                rust.debounce_token = rust.debounce_token.wrapping_add(1);
+                rust.debounce_token
+            };
+            if let Some(worker) = self.rust().worker.as_ref() {
+                worker.schedule_debounce(token);
+            }
+        }
+    }
+
+    fn set_slot_speed(mut self: Pin<&mut Self>, slot_id: &QString, value: f64) {
+        let slot_id = String::from(slot_id);
+        if self
+            .as_mut()
+            .rust_mut()
+            .state
+            .set_slot_speed(&slot_id, value)
+            .is_some()
+        {
             let token = {
                 let mut rust = self.as_mut().rust_mut();
                 rust.debounce_token = rust.debounce_token.wrapping_add(1);

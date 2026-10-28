@@ -22,7 +22,9 @@ Item {
             "none": I18n.tr("apps.settings.pages.animations.effect.none", "None"),
             "geometry.kde": I18n.tr("apps.settings.pages.animations.effect.geometry_kde", "KDE Geometry"),
             "geometry.macos": I18n.tr("apps.settings.pages.animations.effect.geometry_macos", "macOS Spring"),
+            "geometry.hyprland": I18n.tr("apps.settings.pages.animations.effect.geometry_hyprland", "Hyprland Geometry"),
             "minimize.lamp": I18n.tr("apps.settings.pages.animations.effect.lamp", "Lamp"),
+            "window.popin": I18n.tr("apps.settings.pages.animations.effect.popin", "Pop In"),
             "window.scale": I18n.tr("apps.settings.pages.animations.effect.scale", "Scale"),
             "window.glide": I18n.tr("apps.settings.pages.animations.effect.glide", "Glide"),
             "minimize.squash": I18n.tr("apps.settings.pages.animations.effect.squash", "Squash"),
@@ -86,7 +88,7 @@ Item {
                 Controls.SelectButton {
                     width: 180
                     enabled: root.controller.available && !root.controller.busy
-                    options: root.controller.presets.map(id => id === "astrea" ? I18n.tr("apps.settings.pages.animations.preset.astrea", "Astrea") : id === "kde" ? I18n.tr("apps.settings.pages.animations.preset.kde", "KDE") : I18n.tr("apps.settings.pages.animations.preset.macos", "macOS"))
+                    options: root.controller.presets.map(id => id === "astrea" ? I18n.tr("apps.settings.pages.animations.preset.astrea", "Astrea") : id === "kde" ? I18n.tr("apps.settings.pages.animations.preset.kde", "KDE") : id === "hyprland" ? I18n.tr("apps.settings.pages.animations.preset.hyprland", "Hyprland") : I18n.tr("apps.settings.pages.animations.preset.macos", "macOS"))
                     selectedIndex: Math.max(0, root.controller.presets.indexOf(root.controller.preset))
                     label: selectedIndex >= 0 && selectedIndex < options.length ? options[selectedIndex] : I18n.tr("apps.settings.pages.animations.unavailable", "Unavailable")
                     onSelected: index => root.controller.setPreset(root.controller.presets[index])

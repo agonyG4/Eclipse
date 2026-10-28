@@ -28,7 +28,10 @@ Item {
             "window.scale": I18n.tr("apps.settings.pages.animations.effect.scale", "Scale"),
             "window.glide": I18n.tr("apps.settings.pages.animations.effect.glide", "Glide"),
             "minimize.squash": I18n.tr("apps.settings.pages.animations.effect.squash", "Squash"),
-            "workspace.slide": I18n.tr("apps.settings.pages.animations.effect.slide", "Slide")
+            "workspace.slide": I18n.tr("apps.settings.pages.animations.effect.slide", "Slide"),
+            "workspace.slide.hyprland": I18n.tr("apps.settings.pages.animations.effect.slide_hyprland", "Hyprland Slide"),
+            "special.slide": I18n.tr("apps.settings.pages.animations.effect.special_drop", "Drop"),
+            "special.slide.hyprland": I18n.tr("apps.settings.pages.animations.effect.special_slide_hyprland", "Hyprland Slide")
         }
         return labels[id] || id || I18n.tr("apps.settings.pages.animations.effect.unavailable", "Unavailable")
     }
@@ -182,15 +185,24 @@ Item {
 
         Form.SectionHeader { text: I18n.tr("apps.settings.pages.animations.workspaces", "WORKSPACES"); Layout.bottomMargin: 12 }
         Form.FormCard {
-            Form.SettingRow {
-                label: I18n.tr("apps.settings.pages.animations.slot.switch_workspace", "Switch workspace")
-                sublabel: root.effectLabel(root.slot("workspace.switch").effective)
-                isLast: false
-            }
-            Form.SettingRow {
-                label: I18n.tr("apps.settings.pages.animations.slot.move_workspace", "Move window between workspaces")
-                sublabel: root.effectLabel(root.slot("workspace.window-move").effective)
-                isLast: true
+            Repeater {
+                model: ["workspace.switch", "workspace.special", "workspace.window-move"]
+                delegate: Form.SettingRow {
+                    required property string modelData
+                    required property int index
+                    readonly property var slotData: root.slot(modelData)
+                    label: modelData === "workspace.switch" ? I18n.tr("apps.settings.pages.animations.slot.switch_workspace", "Switch workspace") : modelData === "workspace.special" ? I18n.tr("apps.settings.pages.animations.slot.special_workspace", "Special workspace") : I18n.tr("apps.settings.pages.animations.slot.move_workspace", "Move window between workspaces")
+                    sublabel: root.plannedText(slotData) || root.unavailableText(slotData) || root.effectLabel(slotData.effective)
+                    isLast: index === 2
+                    Controls.SelectButton {
+                        width: 180
+                        enabled: root.controller.available && !root.controller.busy && slotData.availableEffects && slotData.availableEffects.length > 1
+                        options: root.availableOptions(slotData)
+                        selectedIndex: root.selectedIndex(slotData)
+                        label: selectedIndex >= 0 && selectedIndex < options.length ? options[selectedIndex] : root.effectLabel(slotData.effective)
+                        onSelected: index => root.controller.setSlotEffect(modelData, slotData.availableEffects[index])
+                    }
+                }
             }
         }
     }

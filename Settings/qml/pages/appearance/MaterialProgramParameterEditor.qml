@@ -69,12 +69,24 @@ Item {
                         font.family: Components.Theme.fontFamily
                         font.pixelSize: Components.Theme.fontSizeSmall
                     }
-                    QQC2.Button {
+                    Text {
+                        id: resetParameter
                         visible: parameterRow.descriptor.overridden
                         enabled: root.enabled
                         text: I18n.tr("apps.settings.pages.visual_effects.reset", "Reset")
+                        color: enabled ? Components.Theme.accent : Components.Theme.textTertiary
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeSmall
+                        activeFocusOnTab: enabled
+                        Accessible.role: Accessible.Button
                         Accessible.name: I18n.tr("apps.settings.pages.visual_effects.reset_parameter", "Reset parameter")
-                        onClicked: root.controller.clearMaterialProgramParameter(parameterRow.descriptor.name)
+                        Keys.onSpacePressed: root.controller.clearMaterialProgramParameter(parameterRow.descriptor.name)
+                        MouseArea {
+                            anchors { fill: parent; margins: -6 }
+                            enabled: resetParameter.enabled
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.controller.clearMaterialProgramParameter(parameterRow.descriptor.name)
+                        }
                     }
                 }
 

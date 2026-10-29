@@ -178,7 +178,7 @@ Item {
                         }
                         Controls.SelectButton {
                             width: 180
-                            enabled: root.controller.available && !root.controller.busy && slotData.availableEffects && slotData.availableEffects.length > 0
+                            enabled: root.controller.available && !root.controller.busy && (slotData.availableEffects || []).length > 0
                             options: root.availableOptions(slotData)
                             selectedIndex: root.selectedIndex(slotData)
                             label: selectedIndex >= 0 && selectedIndex < options.length ? options[selectedIndex] : root.effectLabel(slotData.effective)
@@ -261,7 +261,7 @@ Item {
                         }
                         Controls.SelectButton {
                             width: 180
-                            enabled: root.controller.available && !root.controller.busy && slotData.availableEffects && slotData.availableEffects.length > 1
+                            enabled: root.controller.available && !root.controller.busy && (slotData.availableEffects || []).length > 1
                             options: root.availableOptions(slotData)
                             selectedIndex: root.selectedIndex(slotData)
                             label: selectedIndex >= 0 && selectedIndex < options.length ? options[selectedIndex] : root.effectLabel(slotData.effective)

@@ -14,7 +14,7 @@ Item {
     property string sym: ""
     FontLoader { id: tablerIcons; source: "qrc:/Astrea/Settings/assets/fonts/tabler-icons-300.ttf" }
 
-    readonly property string chevronGlyph: "\uf054"
+    readonly property string chevronGlyph: "\u203A"
     property bool isLast: false
     signal clicked()
 
@@ -109,9 +109,9 @@ Item {
 
         Text {
             text: root.chevronGlyph
-            color: Components.Theme.textSecondary
-            font.family: tablerIcons.name
-            font.pixelSize: Components.Theme.fontSizeNormal
+            color: Components.Theme.textTertiary
+            font.family: Components.Theme.fontFamily
+            font.pixelSize: Components.Theme.fontSizeLarge
             opacity: root.enabled ? 0.72 : Components.Theme.opacityDisabled
         }
     }

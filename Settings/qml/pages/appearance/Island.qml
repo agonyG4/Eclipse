@@ -20,36 +20,22 @@ Item {
     Form.ScrollPage {
         objectName: "islandScrollPage"
         anchors.fill: parent
-        contentMargins: 24
-        maxWidth: 840
+        contentMargins: 32
+        maxWidth: 900
 
-        Rectangle {
+        Form.PageHeader {
             objectName: "islandPreviewNotice"
-            Layout.fillWidth: true
-            Layout.bottomMargin: 18
-            implicitHeight: 34
-            radius: Components.Theme.controlRadius
-            color: Components.Theme.isLight ? Qt.rgba(0, 0, 0, 0.025) : Qt.rgba(1, 1, 1, 0.035)
-            border.width: 1
-            border.color: Components.Theme.cardBorder
-            Text {
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 12
-                text: "Visual preview · Sample data, local changes"
-                color: Components.Theme.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall
-            }
+            title: I18n.tr("settings.nav.island", "Island")
+            subtitle: I18n.tr("apps.settings.pages.island.subtitle", "Preview only: changes here are not saved yet.")
         }
 
         Rectangle {
             objectName: "islandLivePreview"
             Layout.fillWidth: true
             Layout.preferredHeight: 178
-            Layout.bottomMargin: 22
+            Layout.bottomMargin: 24
             radius: Components.Theme.cardRadius
-            color: Components.Theme.isLight ? Qt.darker(Components.Theme.windowBackground, 1.04) : Qt.lighter(Components.Theme.windowBackground, 1.08)
+            color: Components.Theme.cardBg
             border.width: 1
             border.color: Components.Theme.cardBorder
 
@@ -58,10 +44,10 @@ Item {
                 anchors.top: parent.top
                 anchors.leftMargin: 18
                 anchors.topMargin: 14
-                text: "ISLAND PREVIEW"
-                color: Components.Theme.textTertiary
+                text: "PREVIEW"
+                color: Components.Theme.textSecondary
                 font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeTiny
+                font.pixelSize: Components.Theme.fontSizeSmall
                 font.weight: Components.Theme.fontWeightBold
                 font.letterSpacing: Components.Theme.trackingHeader
             }
@@ -119,10 +105,10 @@ Item {
             }
         }
 
-        Form.SectionHeader { text: "SYSTEM"; Layout.bottomMargin: 10 }
+        Form.SectionHeader { text: "SYSTEM"; Layout.bottomMargin: 12 }
         Form.FormCard {
             objectName: "islandSystemCard"
-            Layout.bottomMargin: 22
+            Layout.bottomMargin: 24
             Form.SettingRow {
                 objectName: "enableIslandRow"
                 label: "Enable Island"
@@ -146,10 +132,10 @@ Item {
             }
         }
 
-        Form.SectionHeader { text: "ISLAND LOOK & FEEL"; Layout.bottomMargin: 10 }
+        Form.SectionHeader { text: "ISLAND LOOK & FEEL"; Layout.bottomMargin: 12 }
         Form.FormCard {
             objectName: "islandAppearanceCard"
-            Layout.bottomMargin: 22
+            Layout.bottomMargin: 24
             Form.SettingRow {
                 objectName: "islandStyleRow"
                 label: "Style"
@@ -166,7 +152,7 @@ Item {
             }
         }
 
-        Form.SectionHeader { text: "FEATURES"; Layout.bottomMargin: 10 }
+        Form.SectionHeader { text: "FEATURES"; Layout.bottomMargin: 12 }
         Form.FormCard {
             objectName: "islandFeaturesCard"
             Form.SettingRow {

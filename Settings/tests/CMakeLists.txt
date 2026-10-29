@@ -121,3 +121,8 @@ add_test(NAME settings-structure-test
         -DWAYLAND_EFFECTS_SOURCE_FILES=${_wayland_effects_production_source_argument}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/static/SettingsStructureTest.cmake
 )
+
+# Design-review tool: captures every route from the real app. Not a test.
+add_settings_qml_integration_test(settings-route-gallery tools/SettingsRouteGallery.cpp)
+target_sources(settings-route-gallery PRIVATE ../app/SettingsApplication.cpp)
+set_tests_properties(settings-route-gallery PROPERTIES DISABLED TRUE)

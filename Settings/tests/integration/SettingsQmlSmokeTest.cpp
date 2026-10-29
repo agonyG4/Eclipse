@@ -2210,7 +2210,7 @@ void SettingsQmlSmokeTest::loadsWallpaperRouteFromHubOffscreen()
     QVERIFY(page != nullptr);
     QObject *scroll = page->findChild<QObject *>(QStringLiteral("wallpaperScrollPage"));
     QVERIFY(scroll != nullptr);
-    QCOMPARE(scroll->property("contentMargins").toInt(), 28);
+    QCOMPARE(scroll->property("contentMargins").toInt(), 32);
     for (const auto name : {"currentWallpaperCard", "wallpaperPreview", "transitionCard",
                             "wallpaperLibraryCard", "dynamicWallpapersSection",
                             "userWallpapersSection", "landscapesSection"}) {

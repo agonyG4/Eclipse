@@ -864,8 +864,8 @@ FocusScope {
 
     Form.ScrollPage {
         anchors.fill: parent
-        contentMargins: 28
-        maxWidth: 1000
+        contentMargins: 32
+        maxWidth: 900
 
         ColumnLayout {
             id: pageContents
@@ -873,6 +873,11 @@ FocusScope {
             Layout.fillWidth: true
             width: parent.width
             spacing: 0
+
+            Form.PageHeader {
+                title: I18n.tr("settings.nav.display", "Display")
+                subtitle: I18n.tr("settings.pages.display.subtitle", "Resolution, refresh rate, scale and color.")
+            }
 
             Form.FormCard {
                 objectName: "displayStatusCard"
@@ -1123,11 +1128,12 @@ FocusScope {
                     text: "RESOLUTION"
                 }
 
-                ColumnLayout {
+                Form.FormCard {
                     objectName: "displayResolutionList"
                     Layout.fillWidth: true
                     Layout.bottomMargin: 24
-                    spacing: 2
+                    margins: 4
+                    spacing: 0
 
                     Repeater {
                         model: root.visibleResolutionGroups
@@ -1145,7 +1151,7 @@ FocusScope {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 36
                             implicitHeight: 36
-                            radius: 8
+                            radius: Components.Theme.controlRadius
                             color: selected
                                 ? Qt.rgba(Components.Theme.accent.r,
                                           Components.Theme.accent.g,
@@ -1155,8 +1161,8 @@ FocusScope {
                                               Components.Theme.accent.g,
                                               Components.Theme.accent.b, 0.06)
                                     : "transparent")
-                            border.width: selected || (interactive && activeFocus) ? 1 : 0
-                            border.color: selected || (interactive && activeFocus)
+                            border.width: interactive && activeFocus ? 1 : 0
+                            border.color: interactive && activeFocus
                                 ? Components.Theme.accent : "transparent"
                             activeFocusOnTab: interactive
                             Accessible.role: Accessible.Button
@@ -1259,6 +1265,8 @@ FocusScope {
                         visible: root.allResolutionGroups.length
                             > root.defaultResolutionGroups.length
                         Layout.topMargin: 6
+                        Layout.leftMargin: 12
+                        Layout.bottomMargin: 8
                         text: root.showAllResolutions
                             ? "⌃  Show less" : "⌄  Show all resolutions"
                         textFormat: Text.PlainText
@@ -1283,6 +1291,8 @@ FocusScope {
                             && Boolean(root.selectedOutput.modesTruncated))
                         Layout.fillWidth: true
                         Layout.topMargin: 8
+                        Layout.leftMargin: 12
+                        Layout.bottomMargin: 8
                         text: "Some available modes are not shown."
                         textFormat: Text.PlainText
                         color: Components.Theme.warningColor

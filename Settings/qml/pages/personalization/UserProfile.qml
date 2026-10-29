@@ -29,8 +29,13 @@ Item {
         objectName: "userProfileScrollPage"
         anchors.fill: parent
         enabled: !root.controller.busy
-        contentMargins: 24
-        maxWidth: 840
+        contentMargins: 32
+        maxWidth: 900
+
+        Form.PageHeader {
+            title: I18n.tr("settings.pages.user_profile.title", "User Profile")
+            subtitle: I18n.tr("settings.pages.user_profile.subtitle", "Your name, picture and sign-in.")
+        }
 
         Components.BackendNotice {
             objectName: "userProfileBackendStatus"
@@ -39,10 +44,9 @@ Item {
             onRetry: root.controller.refresh()
         }
 
-        Form.SectionHeader { text: "USER PROFILE"; Layout.bottomMargin: 10 }
         Form.FormCard {
             objectName: "userProfileCard"
-            Layout.bottomMargin: 22
+            Layout.bottomMargin: 24
 
             Item {
                 objectName: "userProfileHeader"

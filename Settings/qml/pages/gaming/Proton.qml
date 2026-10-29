@@ -55,14 +55,19 @@ Item {
         objectName: "protonScrollPage"
         anchors.fill: parent
         enabled: !root.controller.busy
-        contentMargins: 24
-        maxWidth: 840
+        contentMargins: 32
+        maxWidth: 900
+
+        Form.PageHeader {
+            title: "Proton"
+            subtitle: "How Steam games launch through Proton."
+        }
 
         Rectangle {
             objectName: "protonBackendStatus"
             visible: root.controller.busy || root.controller.lastError !== ""
             Layout.fillWidth: true
-            Layout.bottomMargin: 18
+            Layout.bottomMargin: 24
             implicitHeight: statusText.implicitHeight + 18
             radius: Components.Theme.controlRadius
             color: Components.Theme.isLight ? Qt.rgba(0, 0, 0, 0.025) : Qt.rgba(1, 1, 1, 0.035)
@@ -75,7 +80,7 @@ Item {
                 anchors.leftMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.controller.busy ? "Saving Proton settings…" : root.controller.lastError
-                color: root.controller.lastError !== "" ? Components.Theme.textPrimary : Components.Theme.textSecondary
+                color: root.controller.lastError !== "" ? Components.Theme.errorColor : Components.Theme.textSecondary
                 font.family: Components.Theme.fontFamily
                 font.pixelSize: Components.Theme.fontSizeSmall
                 wrapMode: Text.Wrap
@@ -92,11 +97,10 @@ Item {
             }
         }
 
-        Form.SectionHeader { text: "PROTON"; Layout.bottomMargin: 10 }
-        Form.SectionHeader { text: "SETUP"; Layout.bottomMargin: 10 }
+        Form.SectionHeader { text: "SETUP"; Layout.bottomMargin: 12 }
         Form.FormCard {
             objectName: "protonSetupCard"
-            Layout.bottomMargin: 22
+            Layout.bottomMargin: 24
             Form.SettingRow {
                 objectName: "steamLaunchOptionRow"
                 label: "Steam launch option"
@@ -137,10 +141,10 @@ Item {
             Form.SettingRow { label: "Wrapper"; sublabel: root.launcher.path || "Launcher is not installed"; sublabelTextFormat: Text.PlainText; isLast: true }
         }
 
-        Form.SectionHeader { text: "PROFILE"; Layout.bottomMargin: 10 }
+        Form.SectionHeader { text: "PROFILE"; Layout.bottomMargin: 12 }
         Form.FormCard {
             objectName: "protonProfileCard"
-            Layout.bottomMargin: 22
+            Layout.bottomMargin: 24
             Form.SettingRow {
                 objectName: "protonPresetRow"
                 label: "Proton preset"
@@ -169,10 +173,10 @@ Item {
             }
         }
 
-        Form.SectionHeader { text: "RUNTIME"; Layout.bottomMargin: 10 }
+        Form.SectionHeader { text: "RUNTIME"; Layout.bottomMargin: 12 }
         Form.FormCard {
             objectName: "protonRuntimeCard"
-            Layout.bottomMargin: 22
+            Layout.bottomMargin: 24
             Form.SettingRow {
                 objectName: "protonGamemodeRow"
                 label: "GameMode"
@@ -194,10 +198,10 @@ Item {
             }
         }
 
-        Form.SectionHeader { text: "GAMESCOPE"; Layout.bottomMargin: 10 }
+        Form.SectionHeader { text: "GAMESCOPE"; Layout.bottomMargin: 12 }
         Form.FormCard {
             objectName: "gamescopeCard"
-            Layout.bottomMargin: 22
+            Layout.bottomMargin: 24
             Form.SettingRow {
                 objectName: "steamGamescopeProfileRow"
                 label: "Use SteamOS profile"
@@ -288,10 +292,10 @@ Item {
             }
         }
 
-        Form.SectionHeader { text: "GRAPHICS FEATURES"; Layout.bottomMargin: 10 }
+        Form.SectionHeader { text: "GRAPHICS FEATURES"; Layout.bottomMargin: 12 }
         Form.FormCard {
             objectName: "protonGraphicsCard"
-            Layout.bottomMargin: 22
+            Layout.bottomMargin: 24
             Form.SettingRow { label: "NVIDIA NVAPI"; sublabel: "Enable NVIDIA-specific features for supported games."; Controls.ToggleSwitch { accessibleName: "NVIDIA NVAPI"; checked: !!root.proton.enable_nvapi; onToggled: checked => root.setOption("enable_nvapi", checked) } }
             Form.SettingRow { label: "HDR path"; sublabel: "Enable DXVK HDR for an HDR-ready display setup."; Controls.ToggleSwitch { accessibleName: "HDR path"; checked: !!root.proton.dxvk_hdr; onToggled: checked => root.setOption("dxvk_hdr", checked) } }
             Form.SettingRow { label: "Fullscreen FSR"; sublabel: "Upscale games rendered below native resolution."; Controls.ToggleSwitch { accessibleName: "Fullscreen FSR"; checked: !!root.proton.fsr; onToggled: checked => root.setOption("fsr", checked) } }
@@ -310,7 +314,7 @@ Item {
             }
         }
 
-        Form.SectionHeader { text: "ADVANCED COMPATIBILITY"; Layout.bottomMargin: 10 }
+        Form.SectionHeader { text: "ADVANCED COMPATIBILITY"; Layout.bottomMargin: 12 }
         Form.FormCard {
             objectName: "protonAdvancedCard"
             Form.SettingRow { label: "Hide NVIDIA GPU"; sublabel: "Compatibility option for games that select the wrong GPU."; Controls.ToggleSwitch { accessibleName: "Hide NVIDIA GPU"; checked: !!root.proton.hide_nvidia_gpu; onToggled: checked => root.setOption("hide_nvidia_gpu", checked) } }

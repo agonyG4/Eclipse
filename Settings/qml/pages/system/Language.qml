@@ -31,8 +31,13 @@ Item {
     Form.ScrollPage {
         anchors.fill: parent
         enabled: !root.controller.busy
-        contentMargins: 24
-        maxWidth: 840
+        contentMargins: 32
+        maxWidth: 900
+
+        Form.PageHeader {
+            title: I18n.tr("settings.pages.language.title", "Language & Region")
+            subtitle: I18n.tr("settings.pages.language.subtitle", "Language, regional formats and time.")
+        }
 
         Components.BackendNotice {
             objectName: "languageBackendStatus"
@@ -41,10 +46,9 @@ Item {
             onRetry: root.controller.refresh()
         }
 
-        Form.SectionHeader { text: "LANGUAGE & REGION"; Layout.bottomMargin: 10 }
         Form.FormCard {
             objectName: "languageRegionCard"
-            Layout.bottomMargin: 22
+            Layout.bottomMargin: 24
             Form.SettingRow {
                 objectName: "languageSelectRow"
                 label: "Language"

@@ -66,11 +66,16 @@ Item {
         id: scrollPage
         objectName: "screenshotsScrollPage"
         anchors.fill: parent
-        contentMargins: 28
+        contentMargins: 32
         maxWidth: 900
 
+        Form.PageHeader {
+            title: I18n.tr("settings.nav.screenshots", "Screenshots")
+            subtitle: I18n.tr("apps.settings.pages.appearance.screenshots.subtitle", "How the screenshot thumbnail looks and behaves after a capture.")
+        }
+
         Form.FormCard {
-            Layout.bottomMargin: 22
+            Layout.bottomMargin: 24
             Form.SettingRow {
                 label: I18n.tr("apps.settings.pages.appearance.screenshots.text.live_preview", "Live desktop preview")
                 sublabel: I18n.tr("apps.settings.pages.appearance.screenshots.preview.hint", "Adjust the real screenshot thumbnail on your desktop. It remains visible while this page is open.")
@@ -89,12 +94,15 @@ Item {
         }
 
         Form.FormCard {
-            Layout.bottomMargin: 22
+            Layout.bottomMargin: 24
 
             Form.SettingRow {
                 label: I18n.tr("apps.settings.pages.appearance.screenshots.label.corner_radius", "Corner radius")
                 sublabel: I18n.tr("apps.settings.pages.appearance.screenshots.sublabel.corner_radius", "Round the screenshot image and border together")
                 Controls.Slider {
+                    showEndpointGlyphs: false
+                    showValueLabel: true
+                    showValueTooltip: false
                     objectName: "screenshotCornerRadiusSlider"
                     from: 0; to: 64; stepSize: 1
                     modelValueEnabled: true; modelValue: root.configuration.cornerRadius
@@ -117,6 +125,9 @@ Item {
                 label: I18n.tr("apps.settings.pages.appearance.screenshots.label.border_width", "Border width")
                 sublabel: I18n.tr("apps.settings.pages.appearance.screenshots.sublabel.border_width", "Set the edge thickness")
                 Controls.Slider {
+                    showEndpointGlyphs: false
+                    showValueLabel: true
+                    showValueTooltip: false
                     from: 0; to: 8; stepSize: 1
                     modelValueEnabled: true; modelValue: root.configuration.borderWidth
                     detentEnabled: true
@@ -160,6 +171,9 @@ Item {
                 label: I18n.tr("apps.settings.pages.appearance.screenshots.label.shadow_strength", "Shadow strength")
                 sublabel: I18n.tr("apps.settings.pages.appearance.screenshots.sublabel.shadow_strength", "Adjust the shadow opacity and spread")
                 Controls.Slider {
+                    showEndpointGlyphs: false
+                    showValueLabel: true
+                    showValueTooltip: false
                     from: 0; to: 1; stepSize: 0.05
                     modelValueEnabled: true; modelValue: root.configuration.shadowStrength
                     detentEnabled: true
@@ -177,11 +191,14 @@ Item {
         }
 
         Form.FormCard {
-            Layout.bottomMargin: 22
+            Layout.bottomMargin: 24
             Form.SettingRow {
                 label: I18n.tr("apps.settings.pages.appearance.screenshots.label.thumbnail_width", "Thumbnail width")
                 sublabel: I18n.tr("apps.settings.pages.appearance.screenshots.sublabel.thumbnail_width", "Maximum width while preserving the screenshot aspect ratio")
                 Controls.Slider {
+                    showEndpointGlyphs: false
+                    showValueLabel: true
+                    showValueTooltip: false
                     from: 120; to: 480; stepSize: 8
                     modelValueEnabled: true; modelValue: root.configuration.thumbnailWidth
                     detentEnabled: true
@@ -194,6 +211,9 @@ Item {
                 label: I18n.tr("apps.settings.pages.appearance.screenshots.label.thumbnail_height", "Thumbnail height")
                 sublabel: I18n.tr("apps.settings.pages.appearance.screenshots.sublabel.thumbnail_height", "Maximum height while preserving the screenshot aspect ratio")
                 Controls.Slider {
+                    showEndpointGlyphs: false
+                    showValueLabel: true
+                    showValueTooltip: false
                     from: 80; to: 320; stepSize: 8
                     modelValueEnabled: true; modelValue: root.configuration.thumbnailHeight
                     detentEnabled: true
@@ -206,6 +226,9 @@ Item {
                 label: I18n.tr("apps.settings.pages.appearance.screenshots.label.preview_size", "Maximum preview size")
                 sublabel: I18n.tr("apps.settings.pages.appearance.screenshots.sublabel.preview_size", "Limit preview size relative to the display")
                 Controls.Slider {
+                    showEndpointGlyphs: false
+                    showValueLabel: true
+                    showValueTooltip: false
                     from: 0.5; to: 0.9; stepSize: 0.01
                     modelValueEnabled: true; modelValue: root.configuration.previewMaximumScale
                     detentEnabled: true
@@ -229,6 +252,9 @@ Item {
                 label: I18n.tr("apps.settings.pages.appearance.screenshots.label.edge_margin", "Edge margin")
                 sublabel: I18n.tr("apps.settings.pages.appearance.screenshots.sublabel.edge_margin", "Keep the thumbnail and shadow away from the display edge")
                 Controls.Slider {
+                    showEndpointGlyphs: false
+                    showValueLabel: true
+                    showValueTooltip: false
                     from: 0; to: 120; stepSize: 2
                     modelValueEnabled: true; modelValue: root.configuration.edgeMargin
                     detentEnabled: true
@@ -245,7 +271,7 @@ Item {
         }
 
         Form.FormCard {
-            Layout.bottomMargin: 22
+            Layout.bottomMargin: 24
             Form.SettingRow {
                 label: I18n.tr("apps.settings.pages.appearance.screenshots.label.animations", "Animations")
                 sublabel: I18n.tr("apps.settings.pages.appearance.screenshots.sublabel.animations", "Animate screenshot arrival and dismissal")
@@ -271,6 +297,9 @@ Item {
                 label: I18n.tr("apps.settings.pages.appearance.screenshots.label.entry_duration", "Entry duration")
                 sublabel: I18n.tr("apps.settings.pages.appearance.screenshots.sublabel.entry_duration", "Set the appearance transition length")
                 Controls.Slider {
+                    showEndpointGlyphs: false
+                    showValueLabel: true
+                    showValueTooltip: false
                     from: 0; to: 1500; stepSize: 25
                     modelValueEnabled: true; modelValue: root.configuration.entryDurationMs
                     detentEnabled: true
@@ -308,6 +337,9 @@ Item {
                 label: I18n.tr("apps.settings.pages.appearance.screenshots.label.exit_duration", "Exit duration")
                 sublabel: I18n.tr("apps.settings.pages.appearance.screenshots.sublabel.exit_duration", "Set the dismissal transition length")
                 Controls.Slider {
+                    showEndpointGlyphs: false
+                    showValueLabel: true
+                    showValueTooltip: false
                     from: 0; to: 1500; stepSize: 25
                     modelValueEnabled: true; modelValue: root.configuration.exitDurationMs
                     detentEnabled: true
@@ -337,7 +369,7 @@ Item {
         }
 
         Form.FormCard {
-            Layout.bottomMargin: 22
+            Layout.bottomMargin: 24
             Form.SettingRow {
                 label: I18n.tr("apps.settings.pages.appearance.screenshots.label.show_thumbnail", "Show thumbnail")
                 sublabel: I18n.tr("apps.settings.pages.appearance.screenshots.sublabel.show_thumbnail", "Show the saved image after a capture")
@@ -369,6 +401,9 @@ Item {
                 label: I18n.tr("apps.settings.pages.appearance.screenshots.label.display_duration", "Display duration")
                 sublabel: I18n.tr("apps.settings.pages.appearance.screenshots.sublabel.display_duration", "How long the thumbnail stays visible while idle")
                 Controls.Slider {
+                    showEndpointGlyphs: false
+                    showValueLabel: true
+                    showValueTooltip: false
                     from: 500; to: 30000; stepSize: 500
                     modelValueEnabled: true; modelValue: root.configuration.displayDurationMs
                     detentEnabled: true

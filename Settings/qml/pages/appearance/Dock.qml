@@ -55,8 +55,13 @@ Item {
         id: scrollPage
         objectName: "dockScrollPage"
         anchors.fill: parent
-        contentMargins: 28
+        contentMargins: 32
         maxWidth: 900
+
+        Form.PageHeader {
+            title: I18n.tr("settings.nav.dock", "Dock")
+            subtitle: I18n.tr("apps.settings.pages.appearance.dock.subtitle", "Size, position and behavior of the Dock.")
+        }
 
         Item {
             objectName: "dockPreview"
@@ -165,6 +170,9 @@ Item {
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.icon_size", "Choose the resting size of Dock icons")
 
                 Controls.Slider {
+                    showEndpointGlyphs: false
+                    showValueLabel: true
+                    showValueTooltip: false
                     objectName: "iconSizeSlider"
                     from: 32
                     to: 64
@@ -185,6 +193,9 @@ Item {
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.icon_spacing", "Set the distance between neighboring icons")
 
                 Controls.Slider {
+                    showEndpointGlyphs: false
+                    showValueLabel: true
+                    showValueTooltip: false
                     objectName: "itemSpacingSlider"
                     from: 4
                     to: 24
@@ -205,6 +216,9 @@ Item {
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.panel_padding", "Set the space between the panel edge and icons")
 
                 Controls.Slider {
+                    showEndpointGlyphs: false
+                    showValueLabel: true
+                    showValueTooltip: false
                     objectName: "panelPaddingSlider"
                     from: 8
                     to: 32
@@ -248,6 +262,9 @@ Item {
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.edge_margin", "Preserved while Floating Dock is disabled")
 
                 Controls.Slider {
+                    showEndpointGlyphs: false
+                    showValueLabel: true
+                    showValueTooltip: false
                     objectName: "edgeMarginSlider"
                     from: 0
                     to: 48
@@ -268,6 +285,9 @@ Item {
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.corner_radius", "Round the Dock panel corners")
 
                 Controls.Slider {
+                    showEndpointGlyphs: false
+                    showValueLabel: true
+                    showValueTooltip: false
                     objectName: "cornerRadiusSlider"
                     from: 0
                     to: 48
@@ -310,6 +330,9 @@ Item {
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.magnification_strength", "Set how large hovered icons become")
 
                 Controls.Slider {
+                    showEndpointGlyphs: false
+                    showValueLabel: true
+                    showValueTooltip: false
                     objectName: "magnificationScaleSlider"
                     enabled: root.magnificationSelected
                     from: 1.0
@@ -331,6 +354,9 @@ Item {
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.magnification_radius", "Set how far magnification reaches along the Dock")
 
                 Controls.Slider {
+                    showEndpointGlyphs: false
+                    showValueLabel: true
+                    showValueTooltip: false
                     objectName: "magnificationRadiusSlider"
                     enabled: root.magnificationSelected
                     from: 1.0
@@ -375,6 +401,9 @@ Item {
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.animation_speed", "Adjust how quickly Dock transitions complete")
 
                 Controls.Slider {
+                    showEndpointGlyphs: false
+                    showValueLabel: true
+                    showValueTooltip: false
                     objectName: "animationSpeedSlider"
                     enabled: root.controller.animationsEnabled
                     from: 0.25
@@ -419,6 +448,9 @@ Item {
                 isLast: true
 
                 Controls.Slider {
+                    showEndpointGlyphs: false
+                    showValueLabel: true
+                    showValueTooltip: false
                     objectName: "indicatorSizeSlider"
                     enabled: root.controller.indicatorStyle !== "none"
                     from: 1

@@ -105,7 +105,13 @@ Item {
         id: scrollPage
         objectName: "wallpaperScrollPage"
         anchors.fill: parent
-        contentMargins: 28
+        contentMargins: 32
+        maxWidth: 900
+
+        Form.PageHeader {
+            title: I18n.tr("settings.nav.wallpaper", "Wallpaper")
+            subtitle: I18n.tr("apps.settings.pages.paper.wallpaper.subtitle", "Pick the picture behind your windows.")
+        }
 
         Form.SectionHeader {
             text: I18n.tr("apps.settings.pages.paper.wallpaper.text.current", "CURRENT")
@@ -116,9 +122,9 @@ Item {
             id: currentWallpaperCard
             objectName: "currentWallpaperCard"
             Layout.fillWidth: true
-            Layout.bottomMargin: 8
+            Layout.bottomMargin: 12
             implicitHeight: currentWallpaperRow.implicitHeight + 32
-            radius: 12
+            radius: Components.Theme.cardRadius
             color: Components.Theme.cardBg
             border.width: 1
             border.color: Components.Theme.cardBorder
@@ -257,8 +263,8 @@ Item {
                               ? root.controller.currentDisplayName
                               : I18n.tr("apps.settings.pages.paper.wallpaper.text.my_wallpaper", "My Wallpaper")
                         font.family: Components.Theme.fontFamily
-                        font.pixelSize: 15
-                        font.weight: Font.Medium
+                        font.pixelSize: Components.Theme.fontSizeLarge
+                        font.weight: Components.Theme.fontWeightMedium
                         color: Components.Theme.textPrimary
                         elide: Text.ElideRight
                     }
@@ -270,7 +276,7 @@ Item {
                             Layout.fillWidth: true
                             text: I18n.tr("apps.settings.pages.paper.wallpaper.text.show_on_all_workspaces", "Show on all workspaces")
                             font.family: Components.Theme.fontFamily
-                            font.pixelSize: 13
+                            font.pixelSize: Components.Theme.fontSizeNormal
                             color: Components.Theme.textPrimary
                         }
                         Controls.ToggleSwitch {
@@ -288,7 +294,7 @@ Item {
                             Layout.fillWidth: true
                             text: I18n.tr("apps.settings.pages.paper.wallpaper.text.use_blurred_wallpaper", "Use blurred wallpaper")
                             font.family: Components.Theme.fontFamily
-                            font.pixelSize: 13
+                            font.pixelSize: Components.Theme.fontSizeNormal
                             color: Components.Theme.textPrimary
                         }
                         Controls.ToggleSwitch {
@@ -299,77 +305,30 @@ Item {
                         }
                     }
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        Repeater {
-                            model: [
-                                { id: "screensaver", label: I18n.tr("apps.settings.pages.paper.screensaver.text.screensaver", "Screensaver") },
-                                { id: "lockscreen", label: I18n.tr("apps.settings.pages.paper.lockscreen.text.lockscreen", "Lockscreen") }
-                            ]
-
-                            delegate: Rectangle {
-                                required property var modelData
-                                Layout.fillWidth: true
-                                height: 30
-                                radius: 8
-                                color: Qt.rgba(1, 1, 1, 0.04)
-                                border.width: 1
-                                border.color: Components.Theme.cardBorder
-                                Behavior on color { ColorAnimation { duration: 120 } }
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: modelData.label
-                                    font.family: Components.Theme.fontFamily
-                                    font.pixelSize: 12
-                                    font.weight: Font.Medium
-                                    color: Components.Theme.textPrimary
-                                }
-
-                            }
-                        }
-                    }
                 }
             }
         }
 
-        Rectangle {
+        Form.FormCard {
             id: transitionCard
             objectName: "transitionCard"
-            Layout.fillWidth: true
-            Layout.bottomMargin: 28
-            implicitHeight: transitionRow.implicitHeight
-            radius: 12
-            color: Components.Theme.cardBg
-            border.width: 1
-            border.color: Components.Theme.cardBorder
+            Layout.bottomMargin: 24
 
             Form.SettingRow {
                 id: transitionRow
-                anchors.left: parent.left
-                anchors.right: parent.right
                 label: I18n.tr("apps.settings.pages.paper.wallpaper.label.transition", "Transition")
-                sublabel: I18n.tr("apps.settings.pages.paper.wallpaper.sublabel.awww_wallpaper_animation", "awww wallpaper animation")
+                sublabel: I18n.tr("apps.settings.pages.paper.wallpaper.sublabel.awww_wallpaper_animation", "How the desktop changes to a new wallpaper")
                 isLast: true
 
                 Controls.SelectButton {
                     objectName: "transitionSelector"
-                    implicitWidth: 140
+                    width: 180
                     label: root.transitions[0]
                     options: root.transitions
                     selectedIndex: 0
                     enabled: false
                 }
             }
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.bottomMargin: 24
-            height: 1
-            color: Components.Theme.cardBorder
         }
 
         Form.SectionHeader {
@@ -382,7 +341,7 @@ Item {
             objectName: "wallpaperLibraryCard"
             Layout.fillWidth: true
             implicitHeight: libraryColumn.implicitHeight
-            radius: 12
+            radius: Components.Theme.cardRadius
             color: Components.Theme.cardBg
             border.width: 1
             border.color: Components.Theme.cardBorder
@@ -427,7 +386,6 @@ Item {
             }
         }
 
-        Item { Layout.preferredHeight: 28 }
     }
 
     Rectangle {

@@ -5,7 +5,7 @@ import "../.." as Components
 QQC2.Slider {
     id: root
 
-    implicitWidth: 216
+    implicitWidth: 216 + (showValueLabel ? valueLabelWidth + valueLabelGap : 0)
     implicitHeight: 32
     clip: false
 
@@ -18,6 +18,10 @@ QQC2.Slider {
     property real detentReleaseDistancePx: 14
     property string valueText: ""
     property bool showValueTooltip: true
+    // Shows valueText beside the track, like the percentages on the Audio page.
+    property bool showValueLabel: false
+    property real valueLabelWidth: 56
+    readonly property real valueLabelGap: 10
     property bool modelValueEnabled: false
     property real modelValue: value
 
@@ -30,7 +34,7 @@ QQC2.Slider {
     leftPadding: showEndpointGlyphs
         ? endpointSize + endpointGap - thumbWidth / 2
         : 0
-    rightPadding: leftPadding
+    rightPadding: showValueLabel ? valueLabelWidth + valueLabelGap : leftPadding
 
     readonly property real trackHeight: 4
     readonly property real thumbWidth: 28
@@ -260,6 +264,22 @@ QQC2.Slider {
                 color: Components.Theme.cardBg
                 opacity: 0.45
             }
+        }
+
+        Text {
+            visible: root.showValueLabel
+            x: root.width - width
+            width: root.valueLabelWidth
+            height: root.height
+            horizontalAlignment: Text.AlignRight
+            verticalAlignment: Text.AlignVCenter
+            text: root.valueText
+            color: Components.Theme.textPrimary
+            opacity: root.enabled ? 1 : Components.Theme.opacityMuted
+            font.family: Components.Theme.fontFamily
+            font.pixelSize: Components.Theme.fontSizeNormal
+            font.features: { "tnum": 1 }
+            elide: Text.ElideRight
         }
 
         Rectangle {

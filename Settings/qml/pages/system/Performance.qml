@@ -55,14 +55,19 @@ Item {
 
     Form.ScrollPage {
         anchors.fill: parent
-        contentMargins: 24
-        maxWidth: 840
+        contentMargins: 32
+        maxWidth: 900
+
+        Form.PageHeader {
+            title: "Performance"
+            subtitle: "Power profile, CPU scheduler and tuning."
+        }
 
         Rectangle {
             objectName: "performanceBackendStatus"
             visible: root.controller.busy || root.errorMessage !== ""
             Layout.fillWidth: true
-            Layout.bottomMargin: 18
+            Layout.bottomMargin: 24
             implicitHeight: statusText.implicitHeight + 18
             radius: Components.Theme.controlRadius
             color: Components.Theme.isLight ? Qt.rgba(0, 0, 0, 0.025) : Qt.rgba(1, 1, 1, 0.035)
@@ -75,7 +80,7 @@ Item {
                 anchors.leftMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.controller.busy ? "Reading or applying performance settings…" : root.errorMessage
-                color: root.errorMessage !== "" ? Components.Theme.textPrimary : Components.Theme.textSecondary
+                color: root.errorMessage !== "" ? Components.Theme.errorColor : Components.Theme.textSecondary
                 font.family: Components.Theme.fontFamily
                 font.pixelSize: Components.Theme.fontSizeSmall
                 wrapMode: Text.Wrap
@@ -92,10 +97,9 @@ Item {
             }
         }
 
-        Form.SectionHeader { text: "PERFORMANCE"; Layout.bottomMargin: 10 }
-        Form.SectionHeader { text: "POWER PROFILE"; Layout.bottomMargin: 10 }
+        Form.SectionHeader { text: "POWER PROFILE"; Layout.bottomMargin: 12 }
         Form.FormCard {
-            Layout.bottomMargin: 22
+            Layout.bottomMargin: 24
             Form.SettingRow {
                 objectName: "preferredPowerProfileRow"
                 label: "Preferred profile"
@@ -115,9 +119,9 @@ Item {
             }
         }
 
-        Form.SectionHeader { text: "SCHED-EXT"; Layout.bottomMargin: 10 }
+        Form.SectionHeader { text: "SCHED-EXT"; Layout.bottomMargin: 12 }
         Form.FormCard {
-            Layout.bottomMargin: 22
+            Layout.bottomMargin: 24
             Form.SettingRow {
                 label: "Active scheduler"
                 sublabel: "Observed sched-ext state from the system."
@@ -143,10 +147,10 @@ Item {
             }
         }
 
-        Form.SectionHeader { text: "AVAILABLE SCHEDULERS"; Layout.bottomMargin: 10 }
+        Form.SectionHeader { text: "AVAILABLE SCHEDULERS"; Layout.bottomMargin: 12 }
         Form.FormCard {
             objectName: "recommendedSchedulersCard"
-            Layout.bottomMargin: 22
+            Layout.bottomMargin: 24
             Repeater {
                 model: root.visibleSchedulers()
                 delegate: Form.SettingRow {
@@ -168,7 +172,7 @@ Item {
         }
 
         Form.FormCard {
-            Layout.bottomMargin: 22
+            Layout.bottomMargin: 24
             Form.SettingRow {
                 label: root.advancedSchedulers ? "Hide additional schedulers" : "Show additional schedulers"
                 sublabel: "Schedulers detected on this system, with the available choices listed above."
@@ -182,10 +186,10 @@ Item {
             }
         }
 
-        Form.SectionHeader { text: "SCHEDULER MODE"; Layout.bottomMargin: 10 }
+        Form.SectionHeader { text: "SCHEDULER MODE"; Layout.bottomMargin: 12 }
         Form.FormCard {
             objectName: "schedulerModesCard"
-            Layout.bottomMargin: 22
+            Layout.bottomMargin: 24
             Repeater {
                 model: root.modes
                 delegate: Form.SettingRow {
@@ -206,7 +210,7 @@ Item {
             }
         }
 
-        Form.SectionHeader { text: "SYSTEM BEHAVIOR"; Layout.bottomMargin: 10 }
+        Form.SectionHeader { text: "SYSTEM BEHAVIOR"; Layout.bottomMargin: 12 }
         Form.FormCard {
             Form.SettingRow {
                 objectName: "gamemodeRow"

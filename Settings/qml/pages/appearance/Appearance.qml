@@ -320,7 +320,12 @@ Item {
         objectName: "appearanceScrollPage"
         anchors.fill: parent
         contentMargins: 32
-        maxWidth: 760
+        maxWidth: 900
+
+        Form.PageHeader {
+            title: I18n.tr("settings.appearance.title", "Appearance")
+            subtitle: I18n.tr("settings.appearance.subtitle", "Light or dark mode, accent color, icons and theme.")
+        }
 
         Text {
             objectName: "appearancePersistenceError"
@@ -335,108 +340,13 @@ Item {
         }
 
         Form.SectionHeader {
-            text: I18n.tr("settings.appearance.theme_package", "VISUAL THEME PACKAGE")
+            text: I18n.tr("apps.settings.pages.appearance.text.appearance", "APPEARANCE")
             Layout.bottomMargin: 12
         }
 
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.bottomMargin: Components.Theme.spacingXLarge
-            spacing: Components.Theme.spacingMedium
-
-            Controls.SelectButton {
-                id: visualThemePicker
-                objectName: "visualThemePicker"
-                Layout.preferredWidth: 236
-                options: root.visualThemeChoices.map(theme => theme.name)
-                selectedIndex: Math.max(0, root.visualThemeChoices.findIndex(
-                    theme => theme.id === SettingsController.visualTheme))
-                label: options[selectedIndex] || "Astrea Default"
-                onSelected: index => SettingsController.setVisualTheme(
-                    root.visualThemeChoices[index].id)
-            }
-
-            Text {
-                Layout.fillWidth: true
-                text: I18n.tr("settings.appearance.theme_package_help",
-                    "Custom themes can override colors, typography and icons. Icon packs remain independently selectable.")
-                color: Components.Theme.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall
-                wrapMode: Text.WordWrap
-            }
-        }
-
-        Form.SectionHeader {
-            text: I18n.tr("apps.settings.pages.appearance.text.system_theme", "SYSTEM THEME")
-            Layout.bottomMargin: 10
-        }
-
-        Form.FormCard {
-            objectName: "systemTheme-astrea"
-            readonly property bool selected: true
-            Layout.fillWidth: true
-            Layout.bottomMargin: 18
-            margins: 10
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 16
-
-                MaterialPreview {
-                    objectName: "materialPreview-system-theme-astrea"
-                    Layout.preferredWidth: 180
-                    Layout.preferredHeight: 96
-                    wallpaperSource: root.wallpaperController
-                        ? root.wallpaperController.effectivePreviewUrl : ""
-                    wallpaperFit: root.wallpaperController
-                        ? root.wallpaperController.effectiveFit : "cover"
-                    controller: SettingsController.visualEffects
-                    liveEffectEnabled: false
-                    themeVariant: Components.Theme.isLight ? "light" : "dark"
-                }
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 4
-
-                    Text {
-                        text: I18n.tr("apps.settings.pages.appearance.system_theme.astrea", "Astrea")
-                        color: Components.Theme.textPrimary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeNormal
-                        font.weight: Components.Theme.fontWeightDemiBold
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: I18n.tr("apps.settings.pages.appearance.system_theme.astrea_description",
-                                      "The built-in Astrea system theme")
-                        color: Components.Theme.textSecondary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
-                        wrapMode: Text.WordWrap
-                    }
-                }
-
-                Text {
-                    text: "\uf00c"
-                    color: Components.Theme.accent
-                    font.family: Components.Theme.monoFontFamily
-                    font.pixelSize: 14
-                    font.weight: Components.Theme.fontWeightBold
-                }
-            }
-        }
-
-        Form.SectionHeader {
-            text: I18n.tr("apps.settings.pages.appearance.text.appearance", "APPEARANCE")
-            Layout.bottomMargin: 10
-        }
-
         Form.FormCard {
             Layout.fillWidth: true
-            Layout.bottomMargin: 18
+            Layout.bottomMargin: 24
             margins: 8
 
             GridLayout {
@@ -470,26 +380,28 @@ Item {
 
         Form.SectionHeader {
             text: I18n.tr("apps.settings.pages.appearance.text.accent_color", "ACCENT COLOR")
-            Layout.bottomMargin: 10
+            Layout.bottomMargin: 12
         }
 
         Form.FormCard {
             Layout.fillWidth: true
-            Layout.bottomMargin: 20
-            margins: 10
+            Layout.bottomMargin: 24
+            margins: 0
 
             RowLayout {
                 Layout.fillWidth: true
+                Layout.margins: Components.Theme.spacingXLarge
+                Layout.topMargin: 14
+                Layout.bottomMargin: 14
                 spacing: 16
 
                 Text {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
-                    text: I18n.tr("apps.settings.pages.appearance.text.accent_color_label", "Accent color")
-                    color: Components.Theme.textPrimary
+                    text: I18n.tr("apps.settings.pages.appearance.text.accent_color_help", "Used for selections, switches and highlights")
+                    color: Components.Theme.textSecondary
                     font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeNormal
-                    font.weight: Components.Theme.fontWeightMedium
+                    font.pixelSize: Components.Theme.fontSizeSmall
                     elide: Text.ElideRight
                 }
 
@@ -551,12 +463,12 @@ Item {
 
         Form.SectionHeader {
             text: I18n.tr("apps.settings.pages.appearance.text.app_icons", "APP ICONS")
-            Layout.bottomMargin: 10
+            Layout.bottomMargin: 12
         }
 
         Form.FormCard {
             Layout.fillWidth: true
-            Layout.bottomMargin: 20
+            Layout.bottomMargin: 24
             margins: 8
 
             GridLayout {
@@ -584,6 +496,92 @@ Item {
                     choiceGroup: "iconAppearance"
                     choiceId: "tinted"
                     label: I18n.tr("apps.settings.pages.appearance.option.tinted", "Tinted")
+                }
+            }
+        }
+
+        Form.SectionHeader {
+            text: I18n.tr("apps.settings.pages.appearance.text.theme", "THEME")
+            Layout.bottomMargin: 12
+        }
+
+        Form.FormCard {
+            Layout.bottomMargin: 24
+
+            RowLayout {
+                objectName: "systemTheme-astrea"
+                readonly property bool selected: true
+                Layout.fillWidth: true
+                Layout.margins: 10
+                spacing: 16
+
+                MaterialPreview {
+                    objectName: "materialPreview-system-theme-astrea"
+                    Layout.preferredWidth: 180
+                    Layout.preferredHeight: 96
+                    wallpaperSource: root.wallpaperController
+                        ? root.wallpaperController.effectivePreviewUrl : ""
+                    wallpaperFit: root.wallpaperController
+                        ? root.wallpaperController.effectiveFit : "cover"
+                    controller: SettingsController.visualEffects
+                    liveEffectEnabled: false
+                    themeVariant: Components.Theme.isLight ? "light" : "dark"
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+
+                    Text {
+                        text: I18n.tr("apps.settings.pages.appearance.system_theme.astrea", "Astrea")
+                        color: Components.Theme.textPrimary
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeNormal
+                        font.weight: Components.Theme.fontWeightDemiBold
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: I18n.tr("apps.settings.pages.appearance.system_theme.astrea_description",
+                                      "The built-in Astrea system theme")
+                        color: Components.Theme.textSecondary
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeSmall
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
+                Text {
+                    text: "\uf00c"
+                    color: Components.Theme.accent
+                    font.family: Components.Theme.monoFontFamily
+                    font.pixelSize: 14
+                    font.weight: Components.Theme.fontWeightBold
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.leftMargin: Components.Theme.spacingXLarge
+                Layout.preferredHeight: 1
+                color: Components.Theme.cardBorder
+            }
+
+            Form.SettingRow {
+                label: I18n.tr("settings.appearance.theme_package.label", "Theme package")
+                sublabel: I18n.tr("settings.appearance.theme_package_help",
+                    "Custom themes can override colors, typography and icons. Icon packs remain independently selectable.")
+                isLast: true
+                Controls.SelectButton {
+                    id: visualThemePicker
+                    objectName: "visualThemePicker"
+                    width: 220
+                    options: root.visualThemeChoices.map(theme => theme.name)
+                    selectedIndex: Math.max(0, root.visualThemeChoices.findIndex(
+                        theme => theme.id === SettingsController.visualTheme))
+                    label: options[selectedIndex] || "Astrea Default"
+                    onSelected: index => SettingsController.setVisualTheme(
+                        root.visualThemeChoices[index].id)
                 }
             }
         }

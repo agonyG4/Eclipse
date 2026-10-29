@@ -43,27 +43,9 @@ Item {
         contentMargins: 32
         maxWidth: 900
 
-        Form.SectionHeader {
-            text: I18n.tr("apps.settings.pages.system.compositor.text.compositor", "COMPOSITOR")
-            Layout.bottomMargin: 12
-        }
-
-        Form.FormCard {
-            Layout.bottomMargin: 24
-
-            Form.SettingRow {
-                label: I18n.tr("apps.settings.pages.system.compositor.label.astrea_compositor", "Astrea compositor")
-                sublabel: I18n.tr("apps.settings.pages.system.compositor.sublabel.configuration_preview", "Configuration preview. These controls are not connected to the compositor yet.")
-                isLast: true
-
-                Text {
-                    text: I18n.tr("apps.settings.pages.system.compositor.status.preview", "Preview")
-                    color: Components.Theme.accent
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeSmall
-                    font.weight: Components.Theme.fontWeightMedium
-                }
-            }
+        Form.PageHeader {
+            title: I18n.tr("settings.nav.compositor", "Compositor")
+            subtitle: I18n.tr("apps.settings.pages.system.compositor.sublabel.configuration_preview", "Configuration preview. These controls are not connected to the compositor yet.")
         }
 
         Form.SectionHeader {

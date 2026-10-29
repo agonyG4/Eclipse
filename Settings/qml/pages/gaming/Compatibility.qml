@@ -48,14 +48,19 @@ Item {
         objectName: "compatibilityScrollPage"
         anchors.fill: parent
         enabled: !root.controller.busy
-        contentMargins: 24
-        maxWidth: 840
+        contentMargins: 32
+        maxWidth: 900
+
+        Form.PageHeader {
+            title: "Compatibility"
+            subtitle: "How Windows programs open outside Steam."
+        }
 
         Rectangle {
             objectName: "compatibilityBackendStatus"
             visible: root.controller.busy || root.controller.lastError !== ""
             Layout.fillWidth: true
-            Layout.bottomMargin: 18
+            Layout.bottomMargin: 24
             implicitHeight: statusText.implicitHeight + 18
             radius: Components.Theme.controlRadius
             color: Components.Theme.isLight ? Qt.rgba(0, 0, 0, 0.025) : Qt.rgba(1, 1, 1, 0.035)
@@ -68,7 +73,7 @@ Item {
                 anchors.leftMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.controller.busy ? "Saving compatibility settings…" : root.controller.lastError
-                color: root.controller.lastError !== "" ? Components.Theme.textPrimary : Components.Theme.textSecondary
+                color: root.controller.lastError !== "" ? Components.Theme.errorColor : Components.Theme.textSecondary
                 font.family: Components.Theme.fontFamily
                 font.pixelSize: Components.Theme.fontSizeSmall
                 wrapMode: Text.Wrap
@@ -85,10 +90,10 @@ Item {
             }
         }
 
-        Form.SectionHeader { text: "COMPATIBILITY"; Layout.bottomMargin: 10 }
+        Form.SectionHeader { text: "RUNNER"; Layout.bottomMargin: 12 }
         Form.FormCard {
             objectName: "compatibilityGeneralCard"
-            Layout.bottomMargin: 22
+            Layout.bottomMargin: 24
             Form.SettingRow {
                 objectName: "exeRunnerRow"
                 label: "Open .exe with"
@@ -118,10 +123,10 @@ Item {
             }
         }
 
-        Form.SectionHeader { text: "RUNTIME"; Layout.bottomMargin: 10 }
+        Form.SectionHeader { text: "RUNTIME"; Layout.bottomMargin: 12 }
         Form.FormCard {
             objectName: "compatibilityRuntimeCard"
-            Layout.bottomMargin: 22
+            Layout.bottomMargin: 24
             Form.SettingRow {
                 objectName: "compatibilityGamemodeRow"
                 label: "GameMode"
@@ -165,10 +170,10 @@ Item {
             }
         }
 
-        Form.SectionHeader { text: "ADVANCED"; Layout.bottomMargin: 10 }
+        Form.SectionHeader { text: "ADVANCED"; Layout.bottomMargin: 12 }
         Form.FormCard {
             objectName: "compatibilityAdvancedCard"
-            Layout.bottomMargin: 22
+            Layout.bottomMargin: 24
             Form.SettingRow {
                 label: "Custom environment"
                 sublabel: root.customOptionsEnabled ? "Space-separated KEY=VALUE pairs for this runner." : "Turn off Use Proton profile to edit these options."
@@ -216,7 +221,7 @@ Item {
             }
         }
 
-        Form.SectionHeader { text: "PATHS"; Layout.bottomMargin: 10 }
+        Form.SectionHeader { text: "PATHS"; Layout.bottomMargin: 12 }
         Form.FormCard {
             objectName: "compatibilityPathsCard"
             Form.SettingRow {

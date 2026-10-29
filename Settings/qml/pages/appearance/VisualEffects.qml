@@ -153,6 +153,11 @@ Item {
         contentMargins: 32
         maxWidth: 900
 
+        Form.PageHeader {
+            title: I18n.tr("apps.settings.pages.visual_effects.title", "Visual Effects")
+            subtitle: I18n.tr("apps.settings.pages.visual_effects.subtitle", "Tune the material behind panels, menus and the Dock.")
+        }
+
         Text {
             objectName: "visualEffectsUnavailable"
             visible: !root.available || (!!root.controller && root.controller.lastError.length > 0)

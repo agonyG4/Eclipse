@@ -23,6 +23,7 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     components/feedback/StatusDot.qml
     components/form/FormCard.qml
     components/form/IconListRow.qml
+    components/form/PageHeader.qml
     components/form/ScrollPage.qml
     components/form/SectionHeader.qml
     components/form/SettingRow.qml

@@ -311,6 +311,11 @@ Item {
         contentMargins: 32
         maxWidth: 900
 
+        Form.PageHeader {
+            title: I18n.tr("apps.settings.pages.animations.title", "Animations")
+            subtitle: I18n.tr("apps.settings.pages.animations.subtitle", "Choose how windows and workspaces move.")
+        }
+
         Text {
             objectName: "animationsError"
             visible: root.controller.lastError !== ""

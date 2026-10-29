@@ -253,10 +253,17 @@ void SettingsAnimationsQmlTest::slotRowExpandsIntoASteppedSpeedControl() {
   QCOMPARE(fixture.controller().lastSlotSpeed.first, QStringLiteral("workspace.switch"));
   QCOMPARE(fixture.controller().lastSlotSpeed.second, 2.0);
 
+  // The wallpaper toggle lives in the Switch workspace panel, next to its speed.
+  QObject *wallpaperOption =
+      fixture.object(QStringLiteral("animationWallpaperOption_workspace.switch"));
+  QVERIFY(wallpaperOption != nullptr);
+  QVERIFY(wallpaperOption->property("visible").toBool());
   QObject *wallpaper = fixture.object(QStringLiteral("slideWallpaperToggle"));
   QVERIFY(wallpaper != nullptr);
   QVERIFY(wallpaper->property("enabled").toBool());
   QVERIFY(!wallpaper->property("checked").toBool());
+  QVERIFY(QMetaObject::invokeMethod(wallpaper, "toggled", Q_ARG(bool, true)));
+  QVERIFY(fixture.controller().slideWallpaper());
 
   // A row without an animation does not expand.
   QObject *none = fixture.object(QStringLiteral("animationSlotRow_window.fullscreen"));

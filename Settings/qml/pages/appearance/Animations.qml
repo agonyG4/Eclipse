@@ -156,6 +156,7 @@ Item {
         required property string title
         property bool last: false
         property int minimumChoices: 1
+        property bool wallpaperOption: false
         readonly property var slotData: root.slot(slotId)
         readonly property bool animated: (slotData.effective || "none") !== "none"
         readonly property bool expanded: animated && root.expandedSlot === slotId
@@ -205,49 +206,92 @@ Item {
         Item {
             objectName: "animationSpeedPanel_" + slotRow.slotId
             Layout.fillWidth: true
-            implicitHeight: slotRow.expanded ? speedPanel.implicitHeight + Components.Theme.spacingMedium * 2 : 0
+            implicitHeight: slotRow.expanded ? panelColumn.implicitHeight + Components.Theme.spacingMedium * 2 : 0
             clip: true
             Behavior on implicitHeight { NumberAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
 
-            RowLayout {
-                id: speedPanel
+            ColumnLayout {
+                id: panelColumn
                 anchors {
                     left: parent.left; right: parent.right; top: parent.top
                     leftMargin: Components.Theme.spacingXLarge; rightMargin: Components.Theme.spacingXLarge
                     topMargin: Components.Theme.spacingMedium
                 }
-                spacing: Components.Theme.spacingLarge
+                spacing: Components.Theme.spacingMedium
                 opacity: slotRow.expanded ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: Components.Theme.animationQuick } }
 
-                Text {
-                    Layout.preferredWidth: 72
-                    Layout.alignment: Qt.AlignTop
-                    topPadding: 6
-                    text: I18n.tr("apps.settings.pages.animations.label.slot_speed", "Speed")
-                    color: Components.Theme.textSecondary
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeNormal
-                }
-                SpeedControl {
+                RowLayout {
+                    id: speedPanel
                     Layout.fillWidth: true
-                    sliderName: "animationSpeedSlider_" + slotRow.slotId
-                    stops: root.slotSpeedStops
-                    speed: slotRow.slotData.speed || 1.0
-                    controlEnabled: root.controller.available
-                    onSpeedEdited: speed => root.controller.setSlotSpeed(slotRow.slotId, speed)
-                    onReleased: root.controller.flush()
+                    spacing: Components.Theme.spacingLarge
+
+                    Text {
+                        Layout.preferredWidth: 72
+                        Layout.alignment: Qt.AlignTop
+                        topPadding: 6
+                        text: I18n.tr("apps.settings.pages.animations.label.slot_speed", "Speed")
+                        color: Components.Theme.textSecondary
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeNormal
+                    }
+                    SpeedControl {
+                        Layout.fillWidth: true
+                        sliderName: "animationSpeedSlider_" + slotRow.slotId
+                        stops: root.slotSpeedStops
+                        speed: slotRow.slotData.speed || 1.0
+                        controlEnabled: root.controller.available
+                        onSpeedEdited: speed => root.controller.setSlotSpeed(slotRow.slotId, speed)
+                        onReleased: root.controller.flush()
+                    }
+                    Text {
+                        Layout.preferredWidth: 64
+                        Layout.alignment: Qt.AlignTop
+                        topPadding: 6
+                        horizontalAlignment: Text.AlignRight
+                        text: root.speedText(slotRow.slotData.speed || 1.0)
+                        color: Components.Theme.textPrimary
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeNormal
+                        font.features: { "tnum": 1 }
+                    }
                 }
-                Text {
-                    Layout.preferredWidth: 64
-                    Layout.alignment: Qt.AlignTop
-                    topPadding: 6
-                    horizontalAlignment: Text.AlignRight
-                    text: root.speedText(slotRow.slotData.speed || 1.0)
-                    color: Components.Theme.textPrimary
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeNormal
-                    font.features: { "tnum": 1 }
+
+                RowLayout {
+                    objectName: "animationWallpaperOption_" + slotRow.slotId
+                    // Only the plain slide moves workspaces side by side, so only it can carry the wallpaper.
+                    visible: slotRow.wallpaperOption && slotRow.slotData.effective === "workspace.slide"
+                    Layout.fillWidth: true
+                    spacing: Components.Theme.spacingLarge
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Text {
+                            Layout.fillWidth: true
+                            text: I18n.tr("apps.settings.pages.animations.slide_wallpaper.label", "Slide wallpaper with workspaces")
+                            color: Components.Theme.textPrimary
+                            font.family: Components.Theme.fontFamily
+                            font.pixelSize: Components.Theme.fontSizeNormal
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: I18n.tr("apps.settings.pages.animations.slide_wallpaper.description", "The wallpaper moves along with each workspace instead of staying still.")
+                            color: Components.Theme.textSecondary
+                            font.family: Components.Theme.fontFamily
+                            font.pixelSize: Components.Theme.fontSizeSmall
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                    Controls.ToggleSwitch {
+                        objectName: "slideWallpaperToggle"
+                        accessibleName: I18n.tr("apps.settings.pages.animations.slide_wallpaper.label", "Slide wallpaper with workspaces")
+                        Layout.alignment: Qt.AlignVCenter
+                        enabled: root.controller.available && !root.controller.busy
+                        checked: root.controller.slideWallpaper
+                        onToggled: targetChecked => root.controller.setSlideWallpaper(targetChecked)
+                    }
                 }
             }
 
@@ -391,19 +435,7 @@ Item {
                 slotId: "workspace.switch"
                 title: I18n.tr("apps.settings.pages.animations.slot.switch_workspace", "Switch workspace")
                 minimumChoices: 1
-            }
-            Form.SettingRow {
-                id: wallpaperRow
-                readonly property bool sliding: (root.slot("workspace.switch").effective || "none") === "workspace.slide"
-                label: I18n.tr("apps.settings.pages.animations.slide_wallpaper.label", "Slide wallpaper with workspaces")
-                sublabel: I18n.tr("apps.settings.pages.animations.slide_wallpaper.description", "The wallpaper moves along with each workspace instead of staying still.")
-                Controls.ToggleSwitch {
-                    objectName: "slideWallpaperToggle"
-                    accessibleName: I18n.tr("apps.settings.pages.animations.slide_wallpaper.label", "Slide wallpaper with workspaces")
-                    enabled: root.controller.available && !root.controller.busy && wallpaperRow.sliding
-                    checked: root.controller.slideWallpaper
-                    onToggled: targetChecked => root.controller.setSlideWallpaper(targetChecked)
-                }
+                wallpaperOption: true
             }
             Repeater {
                 model: [

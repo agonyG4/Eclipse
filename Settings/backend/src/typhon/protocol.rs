@@ -124,6 +124,7 @@ struct AnimationSetArguments {
     version: u8,
     enabled: bool,
     animate_maximized_window_open: bool,
+    slide_wallpaper: bool,
     preset: String,
     speed: f64,
     overrides: std::collections::BTreeMap<String, String>,
@@ -146,6 +147,7 @@ pub fn encode_control_request(id: u64, request: ControlRequest) -> Result<Vec<u8
                 version: 1,
                 enabled: configuration.enabled,
                 animate_maximized_window_open: configuration.animate_maximized_window_open,
+                slide_wallpaper: configuration.slide_wallpaper,
                 preset: configuration.preset,
                 speed: configuration.speed,
                 overrides: configuration.overrides,
@@ -882,6 +884,7 @@ mod tests {
         let configuration = AnimationConfiguration {
             enabled: false,
             animate_maximized_window_open: false,
+            slide_wallpaper: false,
             preset: "macos".to_owned(),
             speed: 1.25,
             overrides: [("window.move".to_owned(), "geometry.macos".to_owned())]

@@ -22,6 +22,7 @@ pub mod qobject {
         #[qproperty(bool, busy, READ = busy, NOTIFY = busy_changed)]
         #[qproperty(bool, enabled, READ = enabled, NOTIFY = snapshot_changed)]
         #[qproperty(bool, animate_maximized_window_open, cxx_name = "animateMaximizedWindowOpen", READ = animate_maximized_window_open, NOTIFY = snapshot_changed)]
+        #[qproperty(bool, slide_wallpaper, cxx_name = "slideWallpaper", READ = slide_wallpaper, NOTIFY = snapshot_changed)]
         #[qproperty(QString, preset, READ = preset, NOTIFY = snapshot_changed)]
         #[qproperty(f64, speed, READ = speed, NOTIFY = snapshot_changed)]
         #[qproperty(u64, generation, READ = generation, NOTIFY = snapshot_changed)]
@@ -39,6 +40,8 @@ pub mod qobject {
         fn enabled(self: &SettingsAnimationController) -> bool;
         #[cxx_name = "animateMaximizedWindowOpen"]
         fn animate_maximized_window_open(self: &SettingsAnimationController) -> bool;
+        #[cxx_name = "slideWallpaper"]
+        fn slide_wallpaper(self: &SettingsAnimationController) -> bool;
         fn preset(self: &SettingsAnimationController) -> QString;
         fn speed(self: &SettingsAnimationController) -> f64;
         fn generation(self: &SettingsAnimationController) -> u64;
@@ -75,6 +78,9 @@ pub mod qobject {
             self: Pin<&mut SettingsAnimationController>,
             value: bool,
         );
+        #[qinvokable]
+        #[cxx_name = "setSlideWallpaper"]
+        fn set_slide_wallpaper(self: Pin<&mut SettingsAnimationController>, value: bool);
         #[qinvokable]
         #[cxx_name = "setPreset"]
         fn set_preset(self: Pin<&mut SettingsAnimationController>, value: &QString);
@@ -285,6 +291,10 @@ impl qobject::SettingsAnimationController {
         QString::from(&self.rust().state.configuration().preset)
     }
 
+    fn slide_wallpaper(&self) -> bool {
+        self.rust().state.display_configuration().slide_wallpaper
+    }
+
     fn speed(&self) -> f64 {
         self.rust().state.display_configuration().speed
     }
@@ -379,6 +389,14 @@ impl qobject::SettingsAnimationController {
             .rust_mut()
             .state
             .enqueue_mutation(AnimationMutation::SetAnimateMaximizedWindowOpen(value));
+        self.submit_pending();
+    }
+
+    fn set_slide_wallpaper(mut self: Pin<&mut Self>, value: bool) {
+        self.as_mut()
+            .rust_mut()
+            .state
+            .enqueue_mutation(AnimationMutation::SetSlideWallpaper(value));
         self.submit_pending();
     }
 

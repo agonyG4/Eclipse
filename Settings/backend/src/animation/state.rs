@@ -16,6 +16,8 @@ pub struct AnimationConfiguration {
     pub enabled: bool,
     #[serde(default = "default_true")]
     pub animate_maximized_window_open: bool,
+    #[serde(default)]
+    pub slide_wallpaper: bool,
     pub preset: String,
     pub speed: f64,
     #[serde(default)]
@@ -29,6 +31,7 @@ impl Default for AnimationConfiguration {
         Self {
             enabled: true,
             animate_maximized_window_open: true,
+            slide_wallpaper: false,
             preset: String::from("astrea"),
             speed: 1.0,
             overrides: BTreeMap::new(),
@@ -99,6 +102,7 @@ pub struct AnimationSlotCapability {
 pub enum AnimationMutation {
     SetEnabled(bool),
     SetAnimateMaximizedWindowOpen(bool),
+    SetSlideWallpaper(bool),
     SetPreset(String),
     SetSlotEffect { slot_id: String, effect_id: String },
     ClearSlotOverride(String),
@@ -314,6 +318,7 @@ fn apply_mutation(configuration: &mut AnimationConfiguration, mutation: &Animati
         AnimationMutation::SetAnimateMaximizedWindowOpen(value) => {
             configuration.animate_maximized_window_open = *value
         }
+        AnimationMutation::SetSlideWallpaper(value) => configuration.slide_wallpaper = *value,
         AnimationMutation::SetPreset(value) => configuration.preset.clone_from(value),
         AnimationMutation::SetSlotEffect { slot_id, effect_id } => {
             configuration
@@ -523,6 +528,7 @@ mod tests {
         AnimationConfiguration {
             enabled: true,
             animate_maximized_window_open: true,
+            slide_wallpaper: false,
             preset: "astrea".to_owned(),
             speed: 1.0,
             overrides: Default::default(),

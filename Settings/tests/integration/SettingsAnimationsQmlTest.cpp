@@ -33,6 +33,7 @@ class FakeAnimationController final : public QObject {
   Q_PROPERTY(bool busy READ busy CONSTANT)
   Q_PROPERTY(bool enabled READ enabled CONSTANT)
   Q_PROPERTY(bool animateMaximizedWindowOpen READ animateMaximizedWindowOpen CONSTANT)
+  Q_PROPERTY(bool slideWallpaper READ slideWallpaper NOTIFY snapshotChanged)
   Q_PROPERTY(QString preset READ preset CONSTANT)
   Q_PROPERTY(double speed READ speed NOTIFY snapshotChanged)
   Q_PROPERTY(bool hasOverrides READ hasOverrides NOTIFY snapshotChanged)
@@ -60,9 +61,8 @@ public:
         slotCapability(QStringLiteral("window.maximize"), geometry, QStringLiteral("geometry.hyprland")),
         slotCapability(QStringLiteral("window.fullscreen"), geometry, QStringLiteral("none")),
         slotCapability(QStringLiteral("workspace.switch"),
-                       {QStringLiteral("none"), QStringLiteral("workspace.slide"),
-                        QStringLiteral("workspace.slide.hyprland")},
-                       QStringLiteral("workspace.slide.hyprland"), 0.75),
+                       {QStringLiteral("none"), QStringLiteral("workspace.slide")},
+                       QStringLiteral("workspace.slide"), 0.75),
         slotCapability(QStringLiteral("workspace.special"),
                        {QStringLiteral("none"), QStringLiteral("special.slide"),
                         QStringLiteral("special.slide.hyprland")},
@@ -76,6 +76,7 @@ public:
   bool busy() const { return false; }
   bool enabled() const { return true; }
   bool animateMaximizedWindowOpen() const { return true; }
+  bool slideWallpaper() const { return m_slideWallpaper; }
   QString preset() const { return QStringLiteral("hyprland"); }
   double speed() const { return m_speed; }
   bool hasOverrides() const { return true; }
@@ -89,6 +90,10 @@ public:
   Q_INVOKABLE void refresh() {}
   Q_INVOKABLE void setEnabled(bool) {}
   Q_INVOKABLE void setAnimateMaximizedWindowOpen(bool) {}
+  Q_INVOKABLE void setSlideWallpaper(bool value) {
+    m_slideWallpaper = value;
+    emit snapshotChanged();
+  }
   Q_INVOKABLE void setPreset(const QString &) {}
   Q_INVOKABLE void setSpeed(double value) {
     m_speed = value;
@@ -118,6 +123,7 @@ signals:
   void snapshotChanged();
 
 private:
+  bool m_slideWallpaper = false;
   double m_speed = 1.0;
   QVariantList m_slots;
 };
@@ -246,6 +252,11 @@ void SettingsAnimationsQmlTest::slotRowExpandsIntoASteppedSpeedControl() {
   QVERIFY(QMetaObject::invokeMethod(slider, "valueEdited", Q_ARG(qreal, 6.0)));
   QCOMPARE(fixture.controller().lastSlotSpeed.first, QStringLiteral("workspace.switch"));
   QCOMPARE(fixture.controller().lastSlotSpeed.second, 2.0);
+
+  QObject *wallpaper = fixture.object(QStringLiteral("slideWallpaperToggle"));
+  QVERIFY(wallpaper != nullptr);
+  QVERIFY(wallpaper->property("enabled").toBool());
+  QVERIFY(!wallpaper->property("checked").toBool());
 
   // A row without an animation does not expand.
   QObject *none = fixture.object(QStringLiteral("animationSlotRow_window.fullscreen"));

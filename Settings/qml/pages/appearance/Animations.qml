@@ -35,9 +35,8 @@ Item {
             "window.glide": I18n.tr("apps.settings.pages.animations.effect.glide", "Glide"),
             "minimize.squash": I18n.tr("apps.settings.pages.animations.effect.squash", "Squash"),
             "workspace.slide": I18n.tr("apps.settings.pages.animations.effect.slide", "Slide"),
-            "workspace.slide.hyprland": I18n.tr("apps.settings.pages.animations.effect.slide_hyprland", "Hyprland Slide"),
             "special.slide": I18n.tr("apps.settings.pages.animations.effect.special_drop", "Drop"),
-            "special.slide.hyprland": I18n.tr("apps.settings.pages.animations.effect.special_slide_hyprland", "Hyprland Slide")
+            "special.slide.hyprland": I18n.tr("apps.settings.pages.animations.effect.slide", "Slide")
         }
         return labels[id] || id || I18n.tr("apps.settings.pages.animations.effect.unavailable", "Unavailable")
     }
@@ -388,9 +387,26 @@ Item {
 
         Form.SectionHeader { text: I18n.tr("apps.settings.pages.animations.workspaces", "WORKSPACES"); Layout.bottomMargin: 12 }
         Form.FormCard {
+            SlotRow {
+                slotId: "workspace.switch"
+                title: I18n.tr("apps.settings.pages.animations.slot.switch_workspace", "Switch workspace")
+                minimumChoices: 1
+            }
+            Form.SettingRow {
+                id: wallpaperRow
+                readonly property bool sliding: (root.slot("workspace.switch").effective || "none") === "workspace.slide"
+                label: I18n.tr("apps.settings.pages.animations.slide_wallpaper.label", "Slide wallpaper with workspaces")
+                sublabel: I18n.tr("apps.settings.pages.animations.slide_wallpaper.description", "The wallpaper moves along with each workspace instead of staying still.")
+                Controls.ToggleSwitch {
+                    objectName: "slideWallpaperToggle"
+                    accessibleName: I18n.tr("apps.settings.pages.animations.slide_wallpaper.label", "Slide wallpaper with workspaces")
+                    enabled: root.controller.available && !root.controller.busy && wallpaperRow.sliding
+                    checked: root.controller.slideWallpaper
+                    onToggled: targetChecked => root.controller.setSlideWallpaper(targetChecked)
+                }
+            }
             Repeater {
                 model: [
-                    { id: "workspace.switch", title: I18n.tr("apps.settings.pages.animations.slot.switch_workspace", "Switch workspace") },
                     { id: "workspace.special", title: I18n.tr("apps.settings.pages.animations.slot.special_workspace", "Special workspace") },
                     { id: "workspace.window-move", title: I18n.tr("apps.settings.pages.animations.slot.move_workspace", "Move window between workspaces") }
                 ]
@@ -399,7 +415,7 @@ Item {
                     required property int index
                     slotId: modelData.id
                     title: modelData.title
-                    last: index === 2
+                    last: index === 1
                     minimumChoices: 1
                 }
             }

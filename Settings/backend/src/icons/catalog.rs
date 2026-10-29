@@ -147,7 +147,8 @@ impl ThemeCatalog {
         let mut themes = self
             .themes
             .iter()
-            .filter(|theme| theme.id != "hicolor")
+            // Cursor-only themes (no icon directories) are not icon themes.
+            .filter(|theme| theme.id != "hicolor" && !theme.directories.is_empty())
             .collect::<Vec<_>>();
         themes.sort_by(|left, right| {
             left.name
@@ -163,7 +164,10 @@ impl ThemeCatalog {
     }
 
     pub fn contains_visible(&self, id: &str) -> bool {
-        id != "hicolor" && self.theme(id).is_some()
+        id != "hicolor"
+            && self
+                .theme(id)
+                .is_some_and(|theme| !theme.directories.is_empty())
     }
 }
 

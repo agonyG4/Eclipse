@@ -487,8 +487,18 @@ impl cxx_qt::Initialize for qobject::SettingsIconsController {
     }
 }
 
+// QML resolves a bare path against the page's qrc: base, so previews travel as file URLs.
 fn path_string(path: &Path) -> String {
-    path.to_string_lossy().into_owned()
+    use std::os::unix::ffi::OsStrExt;
+    let mut url = String::from("file://");
+    for &byte in path.as_os_str().as_bytes() {
+        if byte.is_ascii_alphanumeric() || b"/-._~".contains(&byte) {
+            url.push(byte as char);
+        } else {
+            url.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    url
 }
 
 fn insert_string(map: &mut QMap<QMapPair_QString_QVariant>, key: &str, value: &str) {

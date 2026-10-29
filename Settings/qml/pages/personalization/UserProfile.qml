@@ -51,12 +51,15 @@ Item {
             Item {
                 objectName: "userProfileHeader"
                 Layout.fillWidth: true
-                implicitHeight: 178
+                implicitHeight: profileHeaderColumn.implicitHeight + 48
                 ColumnLayout {
+                    id: profileHeaderColumn
                     anchors.centerIn: parent
-                    spacing: 10
+                    spacing: 8
                     Item {
+                        id: avatarFrame
                         Layout.alignment: Qt.AlignHCenter
+                        Layout.bottomMargin: 4
                         width: 88
                         height: 88
                         Components.AvatarImage {
@@ -70,14 +73,28 @@ Item {
                             borderWidth: 1
                             borderColor: Components.Theme.cardBorder
                         }
-                        Controls.ButtonCapsule {
-                            objectName: "changeAvatarButton"
-                            anchors.right: parent.right
-                            anchors.bottom: parent.bottom
-                            label: "Edit"
-                            accessibleName: "Choose a profile picture"
-                            horizontalPadding: 8
+                        // The picture itself is the target; hover reveals what clicking does.
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: Qt.rgba(0, 0, 0, avatarMouse.containsMouse && avatarMouse.enabled ? 0.45 : 0)
+                            Behavior on color { ColorAnimation { duration: Components.Theme.animationQuick } }
+                            Text {
+                                anchors.centerIn: parent
+                                visible: avatarMouse.containsMouse && avatarMouse.enabled
+                                text: "Edit"
+                                color: "#ffffff"
+                                font.family: Components.Theme.fontFamily
+                                font.pixelSize: Components.Theme.fontSizeSmall
+                                font.weight: Components.Theme.fontWeightMedium
+                            }
+                        }
+                        MouseArea {
+                            id: avatarMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
                             enabled: !!root.snapshot.accountsAvailable && !root.controller.busy
+                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                             onClicked: avatarDialog.open()
                         }
                     }
@@ -97,8 +114,27 @@ Item {
                         font.family: Components.Theme.fontFamily
                         font.pixelSize: Components.Theme.fontSizeSmall
                     }
+                    Controls.ButtonCapsule {
+                        objectName: "changeAvatarButton"
+                        Layout.alignment: Qt.AlignHCenter
+                        Layout.topMargin: 6
+                        label: "Change Picture…"
+                        accessibleName: "Choose a profile picture"
+                        enabled: !!root.snapshot.accountsAvailable && !root.controller.busy
+                        onClicked: avatarDialog.open()
+                    }
                 }
             }
+        }
+
+        Form.SectionHeader {
+            text: "ACCOUNT"
+            Layout.bottomMargin: 12
+        }
+
+        Form.FormCard {
+            objectName: "userAccountCard"
+            Layout.bottomMargin: 24
 
             Form.SettingRow {
                 objectName: "displayNameRow"
@@ -109,21 +145,30 @@ Item {
                     TextField {
                         objectName: "displayNameField"
                         Accessible.name: "Display Name"
-                        Layout.preferredWidth: 138
-                        implicitHeight: 34
+                        Layout.preferredWidth: 180
+                        implicitHeight: 32
+                        leftPadding: 10
+                        rightPadding: 10
                         text: root.pendingDisplayName
                         color: Components.Theme.textPrimary
                         selectionColor: Components.Theme.accent
                         selectedTextColor: Components.Theme.accentForeground
                         font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
-                        background: Rectangle { radius: Components.Theme.controlRadius; color: Components.Theme.windowBackground; border.width: 1; border.color: Components.Theme.cardBorder }
+                        font.pixelSize: Components.Theme.fontSizeNormal
+                        background: Rectangle {
+                            radius: Components.Theme.controlRadius
+                            color: Components.Theme.windowBackground
+                            border.width: 1
+                            border.color: parent.activeFocus ? Components.Theme.accent : Components.Theme.cardBorder
+                        }
                         onTextEdited: root.pendingDisplayName = text
                     }
                     Controls.ButtonCapsule {
                         objectName: "saveDisplayNameButton"
                         label: "Save"
+                        // Only a real change is worth saving.
                         enabled: !!root.snapshot.accountsAvailable && root.pendingDisplayName.trim().length > 0
+                            && root.pendingDisplayName.trim() !== root.displayName
                         primary: true
                         onClicked: root.controller.setDisplayName(root.pendingDisplayName)
                     }
@@ -140,14 +185,25 @@ Item {
                     enabled: !!root.snapshot.passwordAvailable
                     onClicked: root.controller.changePassword()
                 }
+                isLast: true
             }
+        }
+
+        Form.SectionHeader {
+            text: "SIGN-IN"
+            Layout.bottomMargin: 12
+        }
+
+        Form.FormCard {
+            objectName: "userSignInCard"
+            Layout.bottomMargin: 24
 
             Form.SettingRow {
                 objectName: "automaticLoginRow"
-                label: "Automatic Login SDDM"
+                label: "Automatic login"
                 sublabel: root.snapshot.autologinAvailable ? "Start the installed session " + root.snapshot.session + " without asking for a password." : "Install the profile helper and an SDDM session to enable this control."
                 Controls.ToggleSwitch {
-                    accessibleName: "Automatic Login SDDM"
+                    accessibleName: "Automatic login"
                     enabled: !!root.snapshot.autologinAvailable
                     checked: root.automaticLogin
                     onToggled: checked => root.controller.setAutomaticLogin(checked)

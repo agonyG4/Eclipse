@@ -124,6 +124,7 @@ pub struct AnimationState {
     pending_mutations: Vec<AnimationMutation>,
     pending_speed: Option<f64>,
     pending_slot_speeds: BTreeMap<String, f64>,
+    in_flight: Option<AnimationConfiguration>,
 }
 
 impl AnimationState {
@@ -133,6 +134,19 @@ impl AnimationState {
 
     pub fn configuration(&self) -> &AnimationConfiguration {
         &self.configuration
+    }
+
+    /// What the page shows: unsent edits, then the request in flight, then
+    /// the last confirmed configuration. Showing the confirmed value while a
+    /// newer one is on its way made sliders jump back and forth.
+    pub fn display_configuration(&self) -> AnimationConfiguration {
+        self.pending_configuration()
+            .or_else(|| self.in_flight.clone())
+            .unwrap_or_else(|| self.configuration.clone())
+    }
+
+    pub fn clear_in_flight(&mut self) {
+        self.in_flight = None;
     }
 
     pub fn snapshot(&self) -> Option<&AnimationSnapshot> {
@@ -194,6 +208,7 @@ impl AnimationState {
     }
 
     pub fn mark_submitted(&mut self) {
+        self.in_flight = self.pending_configuration();
         self.pending_mutations.clear();
         self.pending_speed = None;
         self.pending_slot_speeds.clear();
@@ -252,6 +267,7 @@ impl AnimationState {
         let Some(snapshot) = self.snapshot.as_ref() else {
             return Vec::new();
         };
+        let display = self.display_configuration();
         snapshot
             .catalog
             .slots
@@ -284,13 +300,8 @@ impl AnimationState {
                     unavailable_effects,
                     requested: snapshot.requested.get(&slot.id).cloned(),
                     effective: snapshot.effective.get(&slot.id).cloned(),
-                    override_effect: self.configuration.overrides.get(&slot.id).cloned(),
-                    speed: self
-                        .configuration
-                        .slot_speeds
-                        .get(&slot.id)
-                        .copied()
-                        .unwrap_or(1.0),
+                    override_effect: display.overrides.get(&slot.id).cloned(),
+                    speed: display.slot_speeds.get(&slot.id).copied().unwrap_or(1.0),
                 }
             })
             .collect()
@@ -472,6 +483,24 @@ mod tests {
             state.snapshot().unwrap().config,
             Some(test_configuration("available"))
         );
+    }
+
+    #[test]
+    fn display_keeps_the_submitted_speed_until_the_reply_arrives() {
+        let mut state = AnimationState::default();
+        state.set_available();
+        state.set_slot_speed("workspace.switch", 0.5);
+        assert_eq!(
+            state.display_configuration().slot_speeds["workspace.switch"],
+            0.5
+        );
+        state.mark_submitted();
+        assert_eq!(
+            state.display_configuration().slot_speeds["workspace.switch"],
+            0.5
+        );
+        state.clear_in_flight();
+        assert!(state.display_configuration().slot_speeds.is_empty());
     }
 
     #[test]

@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import "../../components" as Components
 import "../../components/controls" as Controls
@@ -9,6 +10,11 @@ Item {
     objectName: "animationsPage"
 
     readonly property var controller: SettingsController.animations
+    // Speed is a multiplier on duration: above 1x is faster. Fixed stops keep
+    // the value readable and stop the thumb from wobbling between neighbours.
+    readonly property var slotSpeedStops: [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0]
+    readonly property var globalSpeedStops: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
+    property string expandedSlot: ""
     readonly property var slotById: {
         const result = {}
         for (const slot of root.controller.slots)
@@ -57,6 +63,202 @@ Item {
         const selected = slot.override || slot.requested || "none"
         const index = values.indexOf(selected)
         return index >= 0 ? index : Math.max(0, values.indexOf("none"))
+    }
+
+    function nearestStop(stops, speed) {
+        let best = 0
+        for (let i = 1; i < stops.length; ++i) {
+            if (Math.abs(stops[i] - speed) < Math.abs(stops[best] - speed))
+                best = i
+        }
+        return best
+    }
+    function speedText(speed) {
+        if (Math.abs(speed - 1.0) < 0.001)
+            return I18n.tr("apps.settings.pages.animations.speed.normal", "Normal")
+        const digits = Number.isInteger(speed) ? 0 : Number.isInteger(Math.round(speed * 1000) / 100) ? 1 : 2
+        return Number(speed).toLocaleString(Qt.locale(), "f", digits) + "×"
+    }
+    function slotSummary(slot) {
+        const status = root.plannedText(slot) || root.unavailableText(slot)
+        if (status)
+            return status
+        const speed = slot.speed || 1.0
+        const effect = root.effectLabel(slot.effective)
+        if ((slot.effective || "none") === "none" || Math.abs(speed - 1.0) < 0.001)
+            return effect
+        return effect + " · " + root.speedText(speed)
+    }
+
+    component SpeedControl: ColumnLayout {
+        id: speedControl
+        required property var stops
+        property real speed: 1.0
+        property bool controlEnabled: true
+        property string sliderName: ""
+        signal speedEdited(real speed)
+        signal released()
+        spacing: 2
+
+        Controls.Slider {
+            id: speedSlider
+            objectName: speedControl.sliderName
+            Layout.fillWidth: true
+            from: 0
+            to: speedControl.stops.length - 1
+            stepSize: 1
+            snapMode: QQC2.Slider.SnapAlways
+            showEndpointGlyphs: false
+            showValueTooltip: false
+            enabled: speedControl.controlEnabled
+            modelValueEnabled: true
+            modelValue: root.nearestStop(speedControl.stops, speedControl.speed)
+            onValueEdited: value => speedControl.speedEdited(speedControl.stops[Math.round(value)])
+            onPressedChanged: if (!pressed) speedControl.released()
+        }
+        Item {
+            Layout.fillWidth: true
+            implicitHeight: 5
+            Repeater {
+                model: speedControl.stops.length
+                Rectangle {
+                    required property int index
+                    readonly property bool isNormal: Math.abs(speedControl.stops[index] - 1.0) < 0.001
+                    x: speedSlider.trackStart + speedSlider.trackWidth * index / (speedControl.stops.length - 1) - width / 2
+                    width: isNormal ? 2 : 1
+                    height: isNormal ? 5 : 4
+                    radius: width / 2
+                    color: Components.Theme.textTertiary
+                    opacity: speedControl.controlEnabled ? (isNormal ? 0.9 : 0.55) : 0.3
+                }
+            }
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            Text {
+                text: I18n.tr("apps.settings.pages.animations.speed.slower", "Slower")
+                color: Components.Theme.textTertiary
+                font.family: Components.Theme.fontFamily
+                font.pixelSize: Components.Theme.fontSizeTiny
+            }
+            Item { Layout.fillWidth: true }
+            Text {
+                text: I18n.tr("apps.settings.pages.animations.speed.faster", "Faster")
+                color: Components.Theme.textTertiary
+                font.family: Components.Theme.fontFamily
+                font.pixelSize: Components.Theme.fontSizeTiny
+            }
+        }
+    }
+
+    component SlotRow: ColumnLayout {
+        id: slotRow
+        required property string slotId
+        required property string title
+        property bool last: false
+        property int minimumChoices: 1
+        readonly property var slotData: root.slot(slotId)
+        readonly property bool animated: (slotData.effective || "none") !== "none"
+        readonly property bool expanded: animated && root.expandedSlot === slotId
+        function toggle() { root.expandedSlot = slotRow.expanded ? "" : slotRow.slotId }
+        objectName: "animationSlotRow_" + slotId
+        Layout.fillWidth: true
+        spacing: 0
+
+        Form.SettingRow {
+            label: slotRow.title
+            sublabel: root.slotSummary(slotRow.slotData)
+            isLast: slotRow.last && !slotRow.expanded
+            clickable: slotRow.animated
+            onClicked: slotRow.toggle()
+            Row {
+                spacing: 6
+                Controls.SelectButton {
+                    width: 180
+                    enabled: root.controller.available && !root.controller.busy && (slotRow.slotData.availableEffects || []).length > slotRow.minimumChoices
+                    options: root.availableOptions(slotRow.slotData)
+                    selectedIndex: root.selectedIndex(slotRow.slotData)
+                    label: selectedIndex >= 0 && selectedIndex < options.length ? options[selectedIndex] : root.effectLabel(slotRow.slotData.effective)
+                    onSelected: index => root.controller.setSlotEffect(slotRow.slotId, slotRow.slotData.availableEffects[index])
+                }
+                Item {
+                    width: 24
+                    height: parent.height
+                    opacity: slotRow.animated ? 1 : 0
+                    Text {
+                        anchors.centerIn: parent
+                        text: "\u203A"
+                        color: Components.Theme.textTertiary
+                        font.pixelSize: Components.Theme.fontSizeLarge
+                        rotation: slotRow.expanded ? 90 : 0
+                        Behavior on rotation { NumberAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: slotRow.animated
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: slotRow.toggle()
+                    }
+                }
+            }
+        }
+
+        Item {
+            objectName: "animationSpeedPanel_" + slotRow.slotId
+            Layout.fillWidth: true
+            implicitHeight: slotRow.expanded ? speedPanel.implicitHeight + Components.Theme.spacingMedium * 2 : 0
+            clip: true
+            Behavior on implicitHeight { NumberAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
+
+            RowLayout {
+                id: speedPanel
+                anchors {
+                    left: parent.left; right: parent.right; top: parent.top
+                    leftMargin: Components.Theme.spacingXLarge; rightMargin: Components.Theme.spacingXLarge
+                    topMargin: Components.Theme.spacingMedium
+                }
+                spacing: Components.Theme.spacingLarge
+                opacity: slotRow.expanded ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: Components.Theme.animationQuick } }
+
+                Text {
+                    Layout.preferredWidth: 72
+                    Layout.alignment: Qt.AlignTop
+                    topPadding: 6
+                    text: I18n.tr("apps.settings.pages.animations.label.slot_speed", "Speed")
+                    color: Components.Theme.textSecondary
+                    font.family: Components.Theme.fontFamily
+                    font.pixelSize: Components.Theme.fontSizeNormal
+                }
+                SpeedControl {
+                    Layout.fillWidth: true
+                    sliderName: "animationSpeedSlider_" + slotRow.slotId
+                    stops: root.slotSpeedStops
+                    speed: slotRow.slotData.speed || 1.0
+                    controlEnabled: root.controller.available
+                    onSpeedEdited: speed => root.controller.setSlotSpeed(slotRow.slotId, speed)
+                    onReleased: root.controller.flush()
+                }
+                Text {
+                    Layout.preferredWidth: 64
+                    Layout.alignment: Qt.AlignTop
+                    topPadding: 6
+                    horizontalAlignment: Text.AlignRight
+                    text: root.speedText(slotRow.slotData.speed || 1.0)
+                    color: Components.Theme.textPrimary
+                    font.family: Components.Theme.fontFamily
+                    font.pixelSize: Components.Theme.fontSizeNormal
+                    font.features: { "tnum": 1 }
+                }
+            }
+
+            Rectangle {
+                visible: !slotRow.last
+                anchors { bottom: parent.bottom; left: parent.left; right: parent.right; leftMargin: Components.Theme.spacingXLarge }
+                height: 1
+                color: Components.Theme.cardBorder
+            }
+        }
     }
 
     Component.onCompleted: root.controller.refresh()
@@ -111,25 +313,19 @@ Item {
             }
             Form.SettingRow {
                 label: I18n.tr("apps.settings.pages.animations.label.speed", "Animation speed")
-                sublabel: I18n.tr("apps.settings.pages.animations.sublabel.speed", "Scale the duration and spring time domain")
-                Controls.Slider {
-                    width: 260
-                    from: 0.5
-                    to: 2.0
-                    stepSize: 0.05
-                    enabled: root.controller.available
-                    modelValueEnabled: root.controller.available && !root.controller.busy
-                    modelValue: root.controller.speed
-                    valueText: Number(displayedValue).toFixed(2) + "×"
-                    detentEnabled: true
-                    detentValue: 1.0
-                    onValueEdited: value => root.controller.setSpeed(value)
-                    onPressedChanged: if (!pressed) root.controller.flush()
+                sublabel: root.speedText(root.controller.speed) + " — " + I18n.tr("apps.settings.pages.animations.sublabel.speed_all", "Applies to every animation")
+                SpeedControl {
+                    width: 300
+                    stops: root.globalSpeedStops
+                    speed: root.controller.speed
+                    controlEnabled: root.controller.available
+                    onSpeedEdited: speed => root.controller.setSpeed(speed)
+                    onReleased: root.controller.flush()
                 }
             }
             Form.SettingRow {
                 label: I18n.tr("apps.settings.pages.animations.label.reset", "Reset customizations")
-                sublabel: I18n.tr("apps.settings.pages.animations.sublabel.reset", "Clear slot overrides while keeping the selected preset")
+                sublabel: I18n.tr("apps.settings.pages.animations.sublabel.reset", "Restore the preset's effects and speeds")
                 clickable: root.controller.available && !root.controller.busy
                 onClicked: root.controller.resetOverrides()
                 Text { text: I18n.tr("apps.settings.pages.animations.action.reset", "Reset"); color: Components.Theme.accent; font.pixelSize: Components.Theme.fontSizeSmall }
@@ -151,40 +347,19 @@ Item {
                 }
             }
             Repeater {
-                model: ["window.open", "window.close", "window.minimize", "window.restore"]
-                delegate: Form.SettingRow {
-                    required property string modelData
+                model: [
+                    { id: "window.open", title: I18n.tr("apps.settings.pages.animations.slot.open", "Open") },
+                    { id: "window.close", title: I18n.tr("apps.settings.pages.animations.slot.close", "Close") },
+                    { id: "window.minimize", title: I18n.tr("apps.settings.pages.animations.slot.minimize", "Minimize") },
+                    { id: "window.restore", title: I18n.tr("apps.settings.pages.animations.slot.restore", "Restore") }
+                ]
+                delegate: SlotRow {
+                    required property var modelData
                     required property int index
-                    readonly property var slotData: root.slot(modelData)
-                    label: modelData === "window.open" ? I18n.tr("apps.settings.pages.animations.slot.open", "Open") : modelData === "window.close" ? I18n.tr("apps.settings.pages.animations.slot.close", "Close") : modelData === "window.minimize" ? I18n.tr("apps.settings.pages.animations.slot.minimize", "Minimize") : I18n.tr("apps.settings.pages.animations.slot.restore", "Restore")
-                    sublabel: root.plannedText(slotData) || root.unavailableText(slotData) || root.effectLabel(slotData.effective)
-                    isLast: index === 3
-                    Row {
-                        spacing: 12
-                        Controls.Slider {
-                            width: 150
-                            anchors.verticalCenter: parent.verticalCenter
-                            from: 0.25
-                            to: 4.0
-                            stepSize: 0.05
-                            enabled: root.controller.available && (slotData.effective || "none") !== "none"
-                            modelValueEnabled: enabled && !root.controller.busy
-                            modelValue: slotData.speed || 1.0
-                            valueText: Number(displayedValue).toFixed(2) + "×"
-                            detentEnabled: true
-                            detentValue: 1.0
-                            onValueEdited: value => root.controller.setSlotSpeed(modelData, value)
-                            onPressedChanged: if (!pressed) root.controller.flush()
-                        }
-                        Controls.SelectButton {
-                            width: 180
-                            enabled: root.controller.available && !root.controller.busy && (slotData.availableEffects || []).length > 0
-                            options: root.availableOptions(slotData)
-                            selectedIndex: root.selectedIndex(slotData)
-                            label: selectedIndex >= 0 && selectedIndex < options.length ? options[selectedIndex] : root.effectLabel(slotData.effective)
-                            onSelected: index => root.controller.setSlotEffect(modelData, slotData.availableEffects[index])
-                        }
-                    }
+                    slotId: modelData.id
+                    title: modelData.title
+                    last: index === 3
+                    minimumChoices: 0
                 }
             }
         }
@@ -193,40 +368,20 @@ Item {
         Form.FormCard {
             Layout.bottomMargin: 24
             Repeater {
-                model: ["window.move", "window.resize", "layout.reflow", "window.maximize", "window.fullscreen"]
-                delegate: Form.SettingRow {
-                    required property string modelData
+                model: [
+                    { id: "window.move", title: I18n.tr("apps.settings.pages.animations.slot.movement", "Movement") },
+                    { id: "window.resize", title: I18n.tr("apps.settings.pages.animations.slot.resize", "Resize") },
+                    { id: "layout.reflow", title: I18n.tr("apps.settings.pages.animations.slot.reflow", "Tiled layout") },
+                    { id: "window.maximize", title: I18n.tr("apps.settings.pages.animations.slot.maximize", "Maximize") },
+                    { id: "window.fullscreen", title: I18n.tr("apps.settings.pages.animations.slot.fullscreen", "Fullscreen") }
+                ]
+                delegate: SlotRow {
+                    required property var modelData
                     required property int index
-                    readonly property var slotData: root.slot(modelData)
-                    label: modelData === "window.move" ? I18n.tr("apps.settings.pages.animations.slot.movement", "Movement") : modelData === "window.resize" ? I18n.tr("apps.settings.pages.animations.slot.resize", "Resize") : modelData === "layout.reflow" ? I18n.tr("apps.settings.pages.animations.slot.reflow", "Tiled layout") : modelData === "window.maximize" ? I18n.tr("apps.settings.pages.animations.slot.maximize", "Maximize") : I18n.tr("apps.settings.pages.animations.slot.fullscreen", "Fullscreen")
-                    sublabel: root.effectLabel(slotData.effective)
-                    isLast: index === 4
-                    Row {
-                        spacing: 12
-                        Controls.Slider {
-                            width: 150
-                            anchors.verticalCenter: parent.verticalCenter
-                            from: 0.25
-                            to: 4.0
-                            stepSize: 0.05
-                            enabled: root.controller.available && (slotData.effective || "none") !== "none"
-                            modelValueEnabled: enabled && !root.controller.busy
-                            modelValue: slotData.speed || 1.0
-                            valueText: Number(displayedValue).toFixed(2) + "×"
-                            detentEnabled: true
-                            detentValue: 1.0
-                            onValueEdited: value => root.controller.setSlotSpeed(modelData, value)
-                            onPressedChanged: if (!pressed) root.controller.flush()
-                        }
-                        Controls.SelectButton {
-                            width: 180
-                            enabled: root.controller.available && !root.controller.busy
-                            options: root.availableOptions(slotData)
-                            selectedIndex: root.selectedIndex(slotData)
-                            label: selectedIndex >= 0 && selectedIndex < options.length ? options[selectedIndex] : root.effectLabel(slotData.effective)
-                            onSelected: index => root.controller.setSlotEffect(modelData, slotData.availableEffects[index])
-                        }
-                    }
+                    slotId: modelData.id
+                    title: modelData.title
+                    last: index === 4
+                    minimumChoices: 0
                 }
             }
         }
@@ -234,40 +389,18 @@ Item {
         Form.SectionHeader { text: I18n.tr("apps.settings.pages.animations.workspaces", "WORKSPACES"); Layout.bottomMargin: 12 }
         Form.FormCard {
             Repeater {
-                model: ["workspace.switch", "workspace.special", "workspace.window-move"]
-                delegate: Form.SettingRow {
-                    required property string modelData
+                model: [
+                    { id: "workspace.switch", title: I18n.tr("apps.settings.pages.animations.slot.switch_workspace", "Switch workspace") },
+                    { id: "workspace.special", title: I18n.tr("apps.settings.pages.animations.slot.special_workspace", "Special workspace") },
+                    { id: "workspace.window-move", title: I18n.tr("apps.settings.pages.animations.slot.move_workspace", "Move window between workspaces") }
+                ]
+                delegate: SlotRow {
+                    required property var modelData
                     required property int index
-                    readonly property var slotData: root.slot(modelData)
-                    label: modelData === "workspace.switch" ? I18n.tr("apps.settings.pages.animations.slot.switch_workspace", "Switch workspace") : modelData === "workspace.special" ? I18n.tr("apps.settings.pages.animations.slot.special_workspace", "Special workspace") : I18n.tr("apps.settings.pages.animations.slot.move_workspace", "Move window between workspaces")
-                    sublabel: root.plannedText(slotData) || root.unavailableText(slotData) || root.effectLabel(slotData.effective)
-                    isLast: index === 2
-                    Row {
-                        spacing: 12
-                        Controls.Slider {
-                            width: 150
-                            anchors.verticalCenter: parent.verticalCenter
-                            from: 0.25
-                            to: 4.0
-                            stepSize: 0.05
-                            enabled: root.controller.available && (slotData.effective || "none") !== "none"
-                            modelValueEnabled: enabled && !root.controller.busy
-                            modelValue: slotData.speed || 1.0
-                            valueText: Number(displayedValue).toFixed(2) + "×"
-                            detentEnabled: true
-                            detentValue: 1.0
-                            onValueEdited: value => root.controller.setSlotSpeed(modelData, value)
-                            onPressedChanged: if (!pressed) root.controller.flush()
-                        }
-                        Controls.SelectButton {
-                            width: 180
-                            enabled: root.controller.available && !root.controller.busy && (slotData.availableEffects || []).length > 1
-                            options: root.availableOptions(slotData)
-                            selectedIndex: root.selectedIndex(slotData)
-                            label: selectedIndex >= 0 && selectedIndex < options.length ? options[selectedIndex] : root.effectLabel(slotData.effective)
-                            onSelected: index => root.controller.setSlotEffect(modelData, slotData.availableEffects[index])
-                        }
-                    }
+                    slotId: modelData.id
+                    title: modelData.title
+                    last: index === 2
+                    minimumChoices: 1
                 }
             }
         }

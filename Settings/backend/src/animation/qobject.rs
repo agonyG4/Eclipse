@@ -197,6 +197,7 @@ impl SettingsAnimationControllerRust {
     ) -> Option<WorkerEventEffects> {
         let refresh = self.requests.finish(id)?;
         self.busy = false;
+        self.state.clear_in_flight();
         let mut effects = WorkerEventEffects {
             busy_changed: true,
             submit_pending: true,
@@ -285,7 +286,7 @@ impl qobject::SettingsAnimationController {
     }
 
     fn speed(&self) -> f64 {
-        self.rust().state.configuration().speed
+        self.rust().state.display_configuration().speed
     }
 
     fn generation(&self) -> u64 {
@@ -399,6 +400,7 @@ impl qobject::SettingsAnimationController {
             if let Some(worker) = self.rust().worker.as_ref() {
                 worker.schedule_debounce(token);
             }
+            self.as_mut().snapshot_changed();
         }
     }
 
@@ -419,6 +421,7 @@ impl qobject::SettingsAnimationController {
             if let Some(worker) = self.rust().worker.as_ref() {
                 worker.schedule_debounce(token);
             }
+            self.as_mut().snapshot_changed();
         }
     }
 
@@ -521,14 +524,16 @@ impl qobject::SettingsAnimationController {
         let Some(effects) = self.as_mut().rust_mut().handle_worker_event(event) else {
             return;
         };
+        // The snapshot goes first: controls resync when busy clears and must
+        // read the new values, not the previous ones.
+        if effects.snapshot_changed {
+            self.as_mut().snapshot_changed();
+        }
         if effects.busy_changed {
             self.as_mut().busy_changed();
         }
         if effects.availability_changed {
             self.as_mut().availability_changed();
-        }
-        if effects.snapshot_changed {
-            self.as_mut().snapshot_changed();
         }
         if effects.error_changed {
             self.as_mut().error_changed();

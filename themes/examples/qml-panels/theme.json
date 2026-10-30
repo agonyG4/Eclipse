@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "id": "qml-panels",
+  "name": "QML Panels Example",
+  "components": {
+    "apiVersion": 1,
+    "spotlightPanel": "qml/SpotlightPanel.qml",
+    "altTabPanel": "qml/AltTabPanel.qml"
+  }
+}

@@ -97,11 +97,53 @@ ignored independently, so partial themes retain valid overrides.
 
 The shared `ThemeTokens` QML object resolves a token against a component's own fallback
 and follows live `ThemeController` updates when one is present. It can also be used by
-SDK consumers without a `ThemeController`. Theme packages are data only: arbitrary
-QML/script execution, unrestricted compositor effects, full layout replacement and
-per-component QML plugins are not implemented. This avoids executing untrusted code
-inside the compositor; richer component APIs need a separate versioned, trusted
-extension mechanism.
+SDK consumers without a `ThemeController`. By default packages remain data only. The
+optional API 1 panel components below execute package QML only when the application is
+started with the explicit `ASTREA_ALLOW_THEME_QML=1` environment opt-in.
+
+## Optional QML panels (API 1)
+
+The example at `themes/examples/qml-panels` replaces only Spotlight and Alt+Tab inner
+panels. Install the directory as `~/.local/share/AstreaOS/themes/qml-panels/`, select
+`qml-panels` as the visual theme, then launch the application with the opt-in set, for
+example `ASTREA_ALLOW_THEME_QML=1 astrea-shell`. Selecting a package alone never runs
+its QML. The opt-in must be present when the process starts; toggling it later has no
+effect. No user configuration or packaged service enables it automatically.
+
+The manifest may add:
+
+```json
+"components": {
+  "apiVersion": 1,
+  "spotlightPanel": "qml/SpotlightPanel.qml",
+  "altTabPanel": "qml/AltTabPanel.qml"
+}
+```
+
+The resolver accepts only existing canonical `.qml` files inside the package directory.
+Absolute paths, URLs, traversal, symlink escapes, unknown component names and unsupported
+API versions are rejected. A rejected or missing component leaves the built-in panel in
+place. `Astrea.Shared.ThemeComponentLoader` is public in the installed SDK and accepts
+`source`, `fallbackComponent`, optional `initialProperties` and optional `validateItem`;
+its `item`, `usingFallback` and `error` properties report the active content and status.
+The requested source stays bound while a failed external item is discarded.
+
+Each external panel must declare `readonly property int themeApiVersion: 1` and a
+`controller` property. Spotlight receives `SpotlightController`; it must provide a
+callable `focusSearch()` and a finite, nonnegative `radius`. Alt+Tab receives
+`AltTabController` and `AltTabWindowModel` as `windowModel`; it must provide a non-null
+Item `backdropItem` (the rounded background). Use `Astrea.Shared.ThemeTokens` to follow
+the selected style tokens. Keep the panel's geometry within its loader and provide
+keyboard focus in the panel: Spotlight focus moves to search, while Alt+Tab focus handles
+selection and commit/cancel keys. Backdrop regions track the loaded background and use
+zero radius when a custom radius is invalid. Native windows, focus cancellation, surface
+readiness, LayerShell lifecycle, compositor adapters and hit testing remain host-owned.
+
+The only supported executable theme surfaces are Spotlight and Alt+Tab panels. Dock,
+Bar and Settings layout replacement is not supported; their independent shared-token
+customization remains available. External QML runs as trusted application code with the
+Shell's permissions and access to its QML engine. This API is not a sandbox and packages
+must come from sources the user trusts.
 
 Visual theme and icon pack preferences are stored independently in
 `~/.config/AstreaOS/ui/navigation-icons.json` as `visual_theme`, `theme`, and `weight`.

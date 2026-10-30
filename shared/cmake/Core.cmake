@@ -56,6 +56,7 @@ function(astrea_shared_add_theme_tokens_test)
     target_include_directories(astrea-theme-tokens-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
     target_compile_definitions(astrea-theme-tokens-test PRIVATE
         ASTREA_THEME_TOKENS_QML="${CMAKE_CURRENT_SOURCE_DIR}/qml/ThemeTokens.qml"
+        ASTREA_THEME_PANEL_EXAMPLES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../themes/examples/qml-panels/qml"
         ASTREA_QML_IMPORT_PATH="${CMAKE_BINARY_DIR}")
     target_link_libraries(astrea-theme-tokens-test PRIVATE
         astrea-shared-core astrea-shared-coreplugin Qt6::Test Qt6::Qml Qt6::Quick)
@@ -64,6 +65,14 @@ function(astrea_shared_add_theme_tokens_test)
     add_dependencies(astrea-theme-tokens-test astrea-shared-coreplugin)
     set_tests_properties(astrea-theme-tokens-test PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QML_IMPORT_PATH=${CMAKE_BINARY_DIR}")
+endfunction()
+
+function(astrea_shared_add_theme_components_test)
+    add_executable(astrea-theme-components-test tests/ThemeComponentsTest.cpp)
+    target_include_directories(astrea-theme-components-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(astrea-theme-components-test PRIVATE astrea-shared-core Qt6::Test)
+    astrea_shared_enable_sanitizers(astrea-theme-components-test)
+    add_test(NAME astrea-theme-components-test COMMAND astrea-theme-components-test)
 endfunction()
 
 astrea_shared_enable_sanitizers(astrea-shared-core)
@@ -75,6 +84,7 @@ qt_add_qml_module(astrea-shared-core
     QML_FILES
         qml/AstreaAppIcon.qml
         qml/ThemeTokens.qml
+        qml/ThemeComponentLoader.qml
         qml/ShellMaterialTheme.qml
 )
 

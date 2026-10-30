@@ -13,6 +13,7 @@
 #include <QRegularExpression>
 #include <QResource>
 #include <QStandardPaths>
+#include <QUrlQuery>
 
 #include <cerrno>
 #include <fcntl.h>
@@ -172,6 +173,17 @@ void ThemeController::setAudioOsdStyle(int value)
 QString ThemeController::configPath() const { return m_configPath; }
 bool ThemeController::loaded() const { return m_loaded; }
 
+QUrl ThemeController::themedComponent(const QString &name) const
+{
+    QUrl result = Astrea::ThemePacks::component(m_visualTheme, name);
+    if (result.isEmpty())
+        return result;
+    QUrlQuery query(result);
+    query.addQueryItem(QStringLiteral("astreaRevision"), QString::number(m_themeComponentsRevision));
+    result.setQuery(query);
+    return result;
+}
+
 void ThemeController::applyConfig(const QVariantMap &config)
 {
     const auto value = [&config](const QString &key) { return config.value(key); };
@@ -221,6 +233,8 @@ void ThemeController::reload()
             applyConfig(document.object().toVariantMap());
     }
     reloadNavigationIcons();
+    ++m_themeComponentsRevision;
+    emit themeComponentsRevisionChanged();
     updateWatchPaths();
     m_reloading = false;
 }
@@ -468,6 +482,28 @@ void ThemeController::updateWatchPaths()
                 m_watcher.addPath(manifestPath);
             if (QFileInfo(packagePath).isDir())
                 m_watcher.addPath(packagePath);
+
+            for (const QString &componentName : {QStringLiteral("spotlightPanel"),
+                                                  QStringLiteral("altTabPanel")}) {
+                const QString configuredPath = Astrea::ThemePacks::configuredComponentPath(
+                    m_requestedVisualTheme, componentName);
+                if (!configuredPath.isEmpty()) {
+                    QDir nearest = QFileInfo(configuredPath).absoluteDir();
+                    while (!nearest.exists() && nearest.cdUp()) {
+                    }
+                    if (nearest.exists())
+                        m_watcher.addPath(nearest.absolutePath());
+                }
+                const QUrl componentUrl = Astrea::ThemePacks::component(
+                    m_requestedVisualTheme, componentName, QStringLiteral("1"));
+                if (componentUrl.isLocalFile()) {
+                    const QString componentPath = componentUrl.toLocalFile();
+                    m_watcher.addPath(componentPath);
+                    const QFileInfo componentInfo(componentPath);
+                    if (componentInfo.dir().exists())
+                        m_watcher.addPath(componentInfo.absolutePath());
+                }
+            }
 
             QDir existing(themesPath);
             while (!existing.exists() && existing.cdUp()) {

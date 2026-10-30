@@ -22,6 +22,7 @@ class ThemeController final : public QObject {
     Q_PROPERTY(QString navigationIconWeight READ navigationIconWeight NOTIFY navigationIconWeightChanged)
     Q_PROPERTY(int navigationIconOverridesRevision READ navigationIconOverridesRevision NOTIFY navigationIconOverridesChanged)
     Q_PROPERTY(QString visualTheme READ visualTheme NOTIFY visualThemeChanged)
+    Q_PROPERTY(int themeComponentsRevision READ themeComponentsRevision NOTIFY themeComponentsRevisionChanged)
     Q_PROPERTY(QVariantMap styleTokens READ styleTokens NOTIFY visualThemeChanged)
     Q_PROPERTY(QString iconAppearance READ iconAppearance NOTIFY iconAppearanceChanged)
     Q_PROPERTY(QString accentHex READ accentHex NOTIFY accentHexChanged)
@@ -48,6 +49,8 @@ public:
     QString navigationIconWeight() const { return m_navigationIconWeight; }
     int navigationIconOverridesRevision() const { return m_navigationIconOverridesRevision; }
     QString visualTheme() const { return m_visualTheme; }
+    int themeComponentsRevision() const { return m_themeComponentsRevision; }
+    Q_INVOKABLE QUrl themedComponent(const QString &name) const;
     QVariantMap styleTokens() const { return m_styleTokens; }
     Q_INVOKABLE QUrl themedNavigationIcon(const QString &key) const;
     void setIconTheme(const QString &value);
@@ -74,6 +77,7 @@ signals:
     void navigationIconWeightChanged();
     void navigationIconOverridesChanged();
     void visualThemeChanged();
+    void themeComponentsRevisionChanged();
     void iconAppearanceChanged();
     void accentHexChanged();
     void audioOsdStyleChanged();
@@ -106,6 +110,7 @@ private:
     QString m_navigationIconWeight = QStringLiteral("regular");
     QJsonObject m_navigationIconOverrides;
     int m_navigationIconOverridesRevision = 0;
+    int m_themeComponentsRevision = 0;
     QString m_visualTheme = QStringLiteral("astrea");
     QString m_requestedVisualTheme = QStringLiteral("astrea");
     QVariantMap m_styleTokens;

@@ -9,6 +9,7 @@
 #include <QRegularExpression>
 #include <QSet>
 #include <QStandardPaths>
+#include <QUrl>
 #include <QString>
 #include <QStringList>
 #include <QUrl>
@@ -18,10 +19,9 @@
 #include <optional>
 #include <cmath>
 
-// Lightweight, declarative, cross-process icon-pack discovery.
-// A pack may supply its own Settings and/or Shell SVGs without changing
-// the built-in Eclipse or Apple resources. Executable QML is never loaded
-// from theme packages.
+// Lightweight, declarative, cross-process theme package discovery.
+// A pack may supply its own Settings/Shell SVGs, visual tokens and explicitly
+// opted-in API 1 inner panels without changing native application surfaces.
 namespace Astrea::ThemePacks {
 
 struct Pack {
@@ -30,7 +30,10 @@ struct Pack {
     QString directory;
     QString settingsIcons;
     QString shellIcons;
+    QJsonObject components;
 };
+
+inline std::optional<Pack> find(const QString &id);
 
 inline bool validId(const QString &value)
 {
@@ -77,16 +80,66 @@ inline std::optional<Pack> readPack(const QString &base, const QString &id)
     if ((!settingsDir.isEmpty() && !validRelativeDirectory(settingsDir))
         || (!shellDir.isEmpty() && !validRelativeDirectory(shellDir))
         || (settingsDir.isEmpty() && shellDir.isEmpty()
-            && json.value(QStringLiteral("style")).toObject().isEmpty()))
+            && json.value(QStringLiteral("style")).toObject().isEmpty()
+            && json.value(QStringLiteral("components")).toObject().isEmpty()))
         return std::nullopt;
     const QFileInfo canonicalRoot(folder);
     if (!canonicalRoot.isDir())
         return std::nullopt;
     Pack pack{id, json.value(QStringLiteral("name")).toString(id),
-              canonicalRoot.canonicalFilePath(), settingsDir, shellDir};
+              canonicalRoot.canonicalFilePath(), settingsDir, shellDir,
+              json.value(QStringLiteral("components")).toObject()};
     if (pack.name.trimmed().isEmpty() || pack.name.size() > 80)
         pack.name = id;
     return pack;
+}
+
+inline QString configuredComponentPath(const QString &id, const QString &name)
+{
+    if (name != QStringLiteral("spotlightPanel") && name != QStringLiteral("altTabPanel"))
+        return {};
+    const auto pack = find(id);
+    if (!pack)
+        return {};
+    const QJsonObject components = pack->components;
+    if (components.value(QStringLiteral("apiVersion")).toInt(-1) != 1)
+        return {};
+    const QString relative = components.value(name).toString();
+    if (relative.isEmpty() || QDir::isAbsolutePath(relative)
+        || relative.contains(QLatin1Char('\\')) || relative.contains(QLatin1Char(':')))
+        return {};
+    const QString normalized = QDir::cleanPath(relative);
+    if (normalized != relative || normalized == QStringLiteral(".")
+        || normalized == QStringLiteral("..") || normalized.startsWith(QStringLiteral("../")))
+        return {};
+    if (!relative.endsWith(QStringLiteral(".qml"), Qt::CaseSensitive))
+        return {};
+    return QDir(pack->directory).filePath(relative);
+}
+
+inline QUrl component(const QString &id, const QString &name, const QString &startupOptIn)
+{
+    if (startupOptIn != QStringLiteral("1"))
+        return {};
+    const auto pack = find(id);
+    if (!pack)
+        return {};
+    const QString candidate = configuredComponentPath(id, name);
+    if (candidate.isEmpty())
+        return {};
+    const QFileInfo info(candidate);
+    const QString canonical = info.canonicalFilePath();
+    if (!info.isFile() || canonical.isEmpty()
+        || !canonical.startsWith(pack->directory + QLatin1Char('/')))
+        return {};
+    return QUrl::fromLocalFile(canonical);
+}
+
+inline QUrl component(const QString &id, const QString &name)
+{
+    static const bool startupOptIn = qEnvironmentVariable("ASTREA_ALLOW_THEME_QML")
+        == QStringLiteral("1");
+    return startupOptIn ? component(id, name, QStringLiteral("1")) : QUrl{};
 }
 
 inline std::optional<Pack> find(const QString &id)

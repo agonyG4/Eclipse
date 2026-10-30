@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import QtQuick.Layouts
 import Qt5Compat.GraphicalEffects
 import Astrea.Shared as Shared
@@ -7,12 +8,15 @@ import "."
 Item {
     id: root
 
+    property real availableWidth: Screen.width > 0 ? Screen.width : 1920
     readonly property bool open: AltTabController.open
     readonly property Item backdropItem: panel
     Shared.ThemeTokens { id: themeTokens }
 
-    width: Math.min(Math.max(220, appRow.implicitWidth + 34), (parent ? parent.width : 1920) - 120)
+    width: Math.min(Math.max(220, appRow.implicitWidth + 34), availableWidth - 120)
     height: 116
+    implicitWidth: width
+    implicitHeight: height
 
     scale: open ? 1.0 : 0.96
     opacity: open ? 1.0 : 0.0

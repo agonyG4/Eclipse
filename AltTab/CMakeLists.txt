@@ -139,8 +139,11 @@ if(BUILD_TESTING AND ASTREA_ALT_TAB_BUILD_TESTS)
     add_alttab_test(alttab-shortcut-routing-test tests/AltTabShortcutRoutingTest.cpp)
     add_alttab_test(alttab-qml-selection-test tests/AltTabQmlSelectionTest.cpp)
     target_link_libraries(alttab-qml-selection-test PRIVATE astrea-shared-coreplugin)
+    target_link_libraries(alttab-qml-selection-test PRIVATE astrea-shared-wayland-effectsplugin)
     target_compile_definitions(alttab-qml-selection-test PRIVATE
         ASTREA_ALTTAB_PANEL_QML="${CMAKE_CURRENT_SOURCE_DIR}/qml/components/AltTabPanel.qml"
+        ASTREA_ALTTAB_MAIN_QML="${CMAKE_CURRENT_SOURCE_DIR}/qml/Main.qml"
+        ASTREA_ALTTAB_EXAMPLE_PANEL_QML="${CMAKE_CURRENT_SOURCE_DIR}/../themes/examples/qml-panels/qml/AltTabPanel.qml"
         ASTREA_QML_IMPORT_PATH="${CMAKE_BINARY_DIR}"
     )
 
@@ -153,4 +156,6 @@ if(BUILD_TESTING AND ASTREA_ALT_TAB_BUILD_TESTS)
                 "LSAN_OPTIONS=${_lsan_options};ASAN_OPTIONS=detect_leaks=1:halt_on_error=1;UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1"
         )
     endif()
+    set_property(TEST alttab-qml-selection-test APPEND PROPERTY ENVIRONMENT
+        "ASTREA_ALLOW_THEME_QML=1;QT_QPA_PLATFORM=offscreen;QML_IMPORT_PATH=${CMAKE_BINARY_DIR}")
 endif()

@@ -12,10 +12,6 @@ Rectangle {
     readonly property string fontFamily: themeTokens.value("fontFamily",
         SpotlightController ? SpotlightController.fontFamily : "SF Pro Display")
 
-    anchors.horizontalCenter: parent.horizontalCenter
-    anchors.top: parent.top
-    anchors.topMargin: parent.height * 0.25
-
     width: 600
     height: hasQuery ? Math.min(contentColumn.implicitHeight + 28, 450) : 58
     radius: themeTokens.value("spotlightRadius", 24)
@@ -110,6 +106,7 @@ Rectangle {
 
                 TextInput {
                     id: searchInput
+                    objectName: "spotlightSearchInput"
                     anchors.fill: parent
                     font.family: root.fontFamily
                     font.pixelSize: themeTokens.value("fontSizeTitle", 22)

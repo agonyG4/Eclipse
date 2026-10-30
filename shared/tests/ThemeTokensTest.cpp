@@ -11,6 +11,7 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QSaveFile>
+#include <QQuickItem>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -57,7 +58,36 @@ private slots:
     void catalogValidatesAndFlattensAllowedTokens();
     void catalogKeepsValidPartialValuesAndRejectsUnknownOrInvalidValues();
     void controllerReloadsManifestReplacementAndRecovery();
+    void componentUrlsAreOptedInVersionedAndLiveReloaded();
     void qmlBindingsResolveLiveTokensAndWorkWithoutController();
+    void componentLoaderKeepsFallbackAndSwitchesExternalSources();
+    void examplePanelsMeetFocusAndBackdropContracts();
+};
+
+class ExamplePanelController final : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(QString query READ query NOTIFY queryChanged)
+    Q_PROPERTY(QString fontFamily READ fontFamily CONSTANT)
+    Q_PROPERTY(bool open READ open CONSTANT)
+public:
+    QString query() const { return {}; }
+    QString fontFamily() const { return QStringLiteral("Inter"); }
+    bool open() const { return true; }
+    Q_INVOKABLE void scheduleSearch(const QString &) {}
+    Q_INVOKABLE void close() {}
+    Q_INVOKABLE void activateCurrent() {}
+    Q_INVOKABLE void cancel() {}
+    Q_INVOKABLE void commit() {}
+    Q_INVOKABLE void step(int) {}
+signals:
+    void queryChanged();
+};
+
+class QmlLifecycleTracker final : public QObject {
+    Q_OBJECT
+public:
+    int destructions = 0;
+    Q_INVOKABLE void noteDestroyed() { ++destructions; }
 };
 
 void ThemeTokensTest::catalogValidatesAndFlattensAllowedTokens()
@@ -156,6 +186,38 @@ void ThemeTokensTest::controllerReloadsManifestReplacementAndRecovery()
     QTRY_COMPARE_WITH_TIMEOUT(lateController.visualTheme(), lateId, 3000);
 }
 
+void ThemeTokensTest::componentUrlsAreOptedInVersionedAndLiveReloaded()
+{
+    const QString id = QStringLiteral("component-watch-test");
+    const QString componentPath = QDir(dataRoot).filePath(
+        QStringLiteral("AstreaOS/themes/%1/qml/Spotlight.qml").arg(id));
+    QVERIFY(writeJson(configPath(QStringLiteral("navigation-icons.json")),
+                      {{QStringLiteral("visual_theme"), id}}));
+    QJsonObject manifest = packageManifest(id, {});
+    manifest.insert(QStringLiteral("components"), QJsonObject{
+        {QStringLiteral("apiVersion"), 1},
+        {QStringLiteral("spotlightPanel"), QStringLiteral("qml/Spotlight.qml")}});
+    QVERIFY(writeJson(packageManifestPath(id), manifest));
+    QFile componentFile(componentPath);
+    QVERIFY(QDir().mkpath(QFileInfo(componentPath).absolutePath()));
+    QVERIFY(componentFile.open(QIODevice::WriteOnly));
+    QCOMPARE(componentFile.write("import QtQuick\nItem {}\n"), qint64(23));
+    componentFile.close();
+
+    qputenv("ASTREA_ALLOW_THEME_QML", "1");
+    ThemeController controller(configPath(QStringLiteral("theme.json")));
+    QUrl first = controller.themedComponent(QStringLiteral("spotlightPanel"));
+    QVERIFY(first.isLocalFile());
+    QVERIFY(first.hasQuery());
+    const int initialRevision = controller.themeComponentsRevision();
+    QVERIFY(replaceJson(componentPath, manifest));
+    QTRY_VERIFY_WITH_TIMEOUT(controller.themeComponentsRevision() > initialRevision, 3000);
+    const QUrl updated = controller.themedComponent(QStringLiteral("spotlightPanel"));
+    QVERIFY(updated.hasQuery());
+    QVERIFY(updated != first);
+    qunsetenv("ASTREA_ALLOW_THEME_QML");
+}
+
 void ThemeTokensTest::qmlBindingsResolveLiveTokensAndWorkWithoutController()
 {
     const QString id = QStringLiteral("qml-test");
@@ -236,6 +298,95 @@ void ThemeTokensTest::qmlBindingsResolveLiveTokensAndWorkWithoutController()
     QCOMPARE(fallbackTheme->property("fontFamily").toString(), QStringLiteral("Inter Variable"));
     QCOMPARE(fallbackTheme->property("fontSizeCaption").toInt(), 11);
     QCOMPARE(fallbackTheme->property("tooltipFontSize").toInt(), 13);
+}
+
+void ThemeTokensTest::componentLoaderKeepsFallbackAndSwitchesExternalSources()
+{
+    QTemporaryDir files;
+    QVERIFY(files.isValid());
+    const QString validPath = files.filePath(QStringLiteral("Valid.qml"));
+    const QString invalidPath = files.filePath(QStringLiteral("Invalid.qml"));
+    const QString wrongContractPath = files.filePath(QStringLiteral("WrongContract.qml"));
+    const QString malformedPath = files.filePath(QStringLiteral("Malformed.qml"));
+    auto write = [](const QString &path, const QByteArray &data) {
+        QFile file(path);
+        return file.open(QIODevice::WriteOnly) && file.write(data) == data.size();
+    };
+    QVERIFY(write(validPath, "import QtQuick\nItem { objectName: \"valid\"; property int themeApiVersion: 1; width: 240; height: 80; Component.onDestruction: QmlLifecycleTracker.noteDestroyed() }\n"));
+    QVERIFY(write(invalidPath, "import QtQuick\nQtObject { objectName: \"invalid\"; Component.onDestruction: QmlLifecycleTracker.noteDestroyed() }\n"));
+    QVERIFY(write(wrongContractPath, "import QtQuick\nItem { objectName: \"wrong-contract\"; property int themeApiVersion: 2; width: 90; height: 30; Component.onDestruction: QmlLifecycleTracker.noteDestroyed() }\n"));
+    QVERIFY(write(malformedPath, "import QtQuick\nItem { invalid syntax }\n"));
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(ASTREA_QML_IMPORT_PATH));
+    QmlLifecycleTracker lifecycle;
+    engine.rootContext()->setContextProperty(QStringLiteral("QmlLifecycleTracker"), &lifecycle);
+    QQmlComponent component(&engine);
+    const QByteArray qml = "import QtQuick\nimport Astrea.Shared 1.0\n"
+        "Item { property alias loader: l; ThemeComponentLoader { id:l; "
+        "fallbackComponent: Component { Rectangle { objectName: 'fallback'; width: 123; height: 45; Component.onDestruction: QmlLifecycleTracker.noteDestroyed() } } "
+        "validateItem: function(o) { return o.themeApiVersion === 1 } } }";
+    component.setData(qml, QUrl::fromLocalFile(files.filePath(QStringLiteral("Host.qml"))));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    std::unique_ptr<QObject> host(component.create());
+    QVERIFY2(host, qPrintable(component.errorString()));
+    auto *loader = qobject_cast<QQuickItem *>(host->property("loader").value<QObject *>());
+    QVERIFY(loader);
+    auto item = [&]() { return loader->property("item").value<QObject *>(); };
+    QVERIFY(item());
+    QCOMPARE(item()->objectName(), QStringLiteral("fallback"));
+    QVERIFY(loader->setProperty("source", QUrl::fromLocalFile(validPath)));
+    QTRY_VERIFY_WITH_TIMEOUT(!loader->property("usingFallback").toBool(), 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(lifecycle.destructions >= 1, 3000);
+    QVERIFY(item());
+    QCOMPARE(item()->objectName(), QStringLiteral("valid"));
+    QVERIFY(loader->setProperty("source", QUrl::fromLocalFile(invalidPath)));
+    QTRY_VERIFY_WITH_TIMEOUT(loader->property("usingFallback").toBool(), 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(lifecycle.destructions >= 3, 3000);
+    QCOMPARE(item()->objectName(), QStringLiteral("fallback"));
+    QVERIFY(!loader->property("error").toString().isEmpty());
+    for (const QString &rejected : {wrongContractPath, malformedPath,
+                                    files.filePath(QStringLiteral("Missing.qml"))}) {
+        QVERIFY(loader->setProperty("source", QUrl::fromLocalFile(rejected)));
+        QTRY_VERIFY_WITH_TIMEOUT(loader->property("usingFallback").toBool(), 3000);
+        QCOMPARE(item()->objectName(), QStringLiteral("fallback"));
+        QVERIFY(!loader->property("error").toString().isEmpty());
+    }
+    QVERIFY(loader->setProperty("source", QUrl{}));
+    QTRY_VERIFY_WITH_TIMEOUT(loader->property("usingFallback").toBool(), 3000);
+    QCOMPARE(item()->objectName(), QStringLiteral("fallback"));
+}
+
+void ThemeTokensTest::examplePanelsMeetFocusAndBackdropContracts()
+{
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(ASTREA_QML_IMPORT_PATH));
+    ExamplePanelController controller;
+
+    QQmlComponent spotlightComponent(&engine, QUrl::fromLocalFile(
+        QStringLiteral(ASTREA_THEME_PANEL_EXAMPLES_DIR "/SpotlightPanel.qml")));
+    QVERIFY2(spotlightComponent.isReady(), qPrintable(spotlightComponent.errorString()));
+    std::unique_ptr<QObject> spotlight(spotlightComponent.createWithInitialProperties({
+        {QStringLiteral("controller"), QVariant::fromValue(static_cast<QObject *>(&controller))}}));
+    QVERIFY2(spotlight, qPrintable(spotlightComponent.errorString()));
+    QVERIFY(qobject_cast<QQuickItem *>(spotlight.get()));
+    QCOMPARE(spotlight->property("themeApiVersion").toInt(), 1);
+    QVERIFY(spotlight->property("radius").toDouble() >= 0.0);
+    QVERIFY(QMetaObject::invokeMethod(spotlight.get(), "focusSearch"));
+
+    QQmlComponent altTabComponent(&engine, QUrl::fromLocalFile(
+        QStringLiteral(ASTREA_THEME_PANEL_EXAMPLES_DIR "/AltTabPanel.qml")));
+    QVERIFY2(altTabComponent.isReady(), qPrintable(altTabComponent.errorString()));
+    std::unique_ptr<QObject> altTab(altTabComponent.createWithInitialProperties({
+        {QStringLiteral("controller"), QVariant::fromValue(static_cast<QObject *>(&controller))},
+        {QStringLiteral("windowModel"), QVariant::fromValue(static_cast<QObject *>(nullptr))},
+        {QStringLiteral("availableWidth"), 1280.0}}));
+    QVERIFY2(altTab, qPrintable(altTabComponent.errorString()));
+    QVERIFY(qobject_cast<QQuickItem *>(altTab.get()));
+    QCOMPARE(altTab->property("themeApiVersion").toInt(), 1);
+    QObject *backdrop = altTab->property("backdropItem").value<QObject *>();
+    QVERIFY(qobject_cast<QQuickItem *>(backdrop));
+    QVERIFY(backdrop->property("radius").toDouble() >= 0.0);
 }
 
 } // namespace

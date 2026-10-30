@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Window
 import Astrea.Effects
+import Astrea.Shared as Shared
 import "components" as Components
 
 Window {
@@ -25,14 +26,16 @@ Window {
                  && ThemeController.shellStyle === 2
 
         BackdropRegion {
-            item: panel
-            enabled: panel.visible && panel.opacity > 0.001
-            radius: panel.radius
+            item: window.loadedPanel
+            enabled: window.loadedPanel && window.loadedPanel.visible && window.loadedPanel.opacity > 0.001
+            radius: window.loadedPanel && Number.isFinite(window.loadedPanel.radius)
+                    && window.loadedPanel.radius >= 0 ? window.loadedPanel.radius : 0
         }
     }
 
     property bool hadActiveFocus: false
     property bool focusPending: false
+    property var loadedPanel: panel.item
 
     onVisibleChanged: {
         if (visible) {
@@ -47,7 +50,7 @@ Window {
             hadActiveFocus = true
             if (focusPending && visible && SpotlightController.open) {
                 focusPending = false
-                panel.focusSearch()
+                if (loadedPanel) loadedPanel.focusSearch()
             }
         } else if (hadActiveFocus && visible && SpotlightController.open) {
             SpotlightController.close()
@@ -58,7 +61,7 @@ Window {
         target: SpotlightController
         function onFocusRequested() {
             if (window.active) {
-                panel.focusSearch()
+                if (window.loadedPanel) window.loadedPanel.focusSearch()
             } else {
                 window.focusPending = true
             }
@@ -74,7 +77,7 @@ Window {
             if (window.focusPending && window.visible && window.active
                     && SpotlightController.open) {
                 window.focusPending = false
-                panel.focusSearch()
+                if (window.loadedPanel) window.loadedPanel.focusSearch()
             }
         }
     }
@@ -84,15 +87,37 @@ Window {
         enabled: SpotlightController.open
         onClicked: function(mouse) {
             var inside = mouse.x >= panel.x && mouse.x <= panel.x + panel.width
-                && mouse.y >= panel.y && mouse.y <= panel.y + panel.height
+                && window.loadedPanel && mouse.y >= panel.y && mouse.y <= panel.y + panel.height
             if (!inside) SpotlightController.close()
         }
     }
 
-    Components.SpotlightPanel {
+    Shared.ThemeComponentLoader {
         id: panel
+        objectName: "spotlightPanelLoader"
+        width: item ? item.width : 600
+        height: item ? item.height : 58
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
         anchors.topMargin: parent.height * 0.25
+        source: typeof ThemeController !== "undefined" && ThemeController
+                ? (ThemeController.themeComponentsRevision >= 0
+                   ? ThemeController.themedComponent("spotlightPanel") : "") : ""
+        initialProperties: ({ controller: SpotlightController })
+        validateItem: function(candidate) {
+            return candidate.themeApiVersion === 1
+                    && candidate.controller === SpotlightController
+                    && typeof candidate.focusSearch === "function"
+                    && Number.isFinite(candidate.radius) && candidate.radius >= 0
+        }
+        fallbackComponent: Components.SpotlightPanel {}
+
+        Connections {
+            target: panel
+            function onItemChanged() {
+                if (window.active && window.visible && SpotlightController.open && window.loadedPanel)
+                    window.loadedPanel.focusSearch()
+            }
+        }
     }
 }

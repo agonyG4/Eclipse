@@ -143,6 +143,37 @@ bool hasPixel(const QImage &image, const QPoint &point, const QColor &color)
         && image.pixelColor(point) == color;
 }
 
+bool installedSharedTypesWork(QQmlEngine &engine)
+{
+    QQmlComponent component(&engine);
+    component.setData(R"qml(
+        import QtQuick
+        import Astrea.Shared 1.0
+        Item {
+            property color tokenColor: themeTokens.value("accent", "#123456")
+            property alias loader: themeLoader
+            ThemeTokens { id: themeTokens }
+            ThemeComponentLoader {
+                id: themeLoader
+                fallbackComponent: Component { Rectangle { objectName: "sdk-theme-fallback"; width: 40; height: 30 } }
+            }
+        }
+    )qml", QUrl::fromLocalFile(QStringLiteral("/relocated-sdk-consumer.qml")));
+    if (!component.isReady()) {
+        qCritical().noquote() << "Installed shared QML types did not load:" << component.errorString();
+        return false;
+    }
+    std::unique_ptr<QObject> root(component.create());
+    if (!root) {
+        qCritical().noquote() << "Installed shared QML types did not instantiate:" << component.errorString();
+        return false;
+    }
+    QObject *loader = root->property("loader").value<QObject *>();
+    QObject *fallback = loader ? loader->property("item").value<QObject *>() : nullptr;
+    return fallback && fallback->objectName() == QStringLiteral("sdk-theme-fallback")
+        && root->property("tokenColor").value<QColor>() == QColor(QStringLiteral("#123456"));
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -185,6 +216,10 @@ int main(int argc, char **argv)
         QString error;
         if (!AstreaSDK::Core::initializeQmlEngine(engine, &error)) {
             qCritical().noquote() << "SDK initialization failed:" << error;
+            return 1;
+        }
+        if (!installedSharedTypesWork(engine)) {
+            qCritical("The relocated SDK did not expose ThemeTokens and ThemeComponentLoader");
             return 1;
         }
 

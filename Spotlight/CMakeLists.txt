@@ -122,6 +122,20 @@ if(BUILD_TESTING AND ASTREA_SPOTLIGHT_BUILD_TESTS)
     )
     astrea_enable_sanitizers(spotlight-tests)
     add_test(NAME spotlight-tests COMMAND spotlight-tests)
+
+    add_executable(spotlight-qml-panel-test tests/SpotlightQmlPanelTest.cpp)
+    target_link_libraries(spotlight-qml-panel-test PRIVATE
+        Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test
+        astrea-shared-coreplugin astrea-shared-wayland-effectsplugin
+    )
+    target_compile_definitions(spotlight-qml-panel-test PRIVATE
+        ASTREA_SPOTLIGHT_MAIN_QML="${CMAKE_CURRENT_SOURCE_DIR}/qml/Main.qml"
+        ASTREA_SPOTLIGHT_EXAMPLE_PANEL_QML="${CMAKE_CURRENT_SOURCE_DIR}/../themes/examples/qml-panels/qml/SpotlightPanel.qml"
+        ASTREA_QML_IMPORT_PATH="${CMAKE_BINARY_DIR}"
+    )
+    add_test(NAME spotlight-qml-panel-test COMMAND spotlight-qml-panel-test)
+    set_tests_properties(spotlight-qml-panel-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QML_IMPORT_PATH=${CMAKE_BINARY_DIR};ASTREA_ALLOW_THEME_QML=1")
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     add_test(
         NAME spotlight-architecture-guard

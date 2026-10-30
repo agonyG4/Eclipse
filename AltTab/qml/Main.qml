@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Window
 import Astrea.Effects
+import Astrea.Shared as Shared
 import "components"
 
 Window {
@@ -25,14 +26,20 @@ Window {
                  && ThemeController.shellStyle === 2
 
         BackdropRegion {
-            item: altTabPanel.backdropItem
-            enabled: altTabPanel.visible && altTabPanel.opacity > 0.001
-            radius: altTabPanel.backdropItem ? altTabPanel.backdropItem.radius : 0
+            item: window.loadedPanel && window.loadedPanel.backdropItem
+                  ? window.loadedPanel.backdropItem : null
+            enabled: window.loadedPanel && window.loadedPanel.visible
+                     && window.loadedPanel.opacity > 0.001
+            radius: window.loadedPanel && window.loadedPanel.backdropItem
+                    && Number.isFinite(window.loadedPanel.backdropItem.radius)
+                    && window.loadedPanel.backdropItem.radius >= 0
+                    ? window.loadedPanel.backdropItem.radius : 0
         }
     }
 
     property bool hadActiveFocus: false
     property bool focusPending: false
+    property var loadedPanel: altTabPanel.item
 
     onVisibleChanged: {
         if (visible) {
@@ -47,7 +54,7 @@ Window {
             hadActiveFocus = true
             if (focusPending && visible && AltTabController.open) {
                 focusPending = false
-                altTabPanel.forceActiveFocus()
+                if (loadedPanel) loadedPanel.forceActiveFocus()
             }
         } else if (hadActiveFocus && visible && AltTabController.open) {
             AltTabController.cancel()
@@ -70,12 +77,13 @@ Window {
             if (window.focusPending && window.visible && window.active
                     && AltTabController.open) {
                 window.focusPending = false
-                altTabPanel.forceActiveFocus()
+                if (window.loadedPanel) window.loadedPanel.forceActiveFocus()
             }
         }
     }
 
     MouseArea {
+        objectName: "altTabOutsideClickArea"
         anchors.fill: parent
         enabled: AltTabController.open
         onClicked: function(mouse) {
@@ -86,8 +94,31 @@ Window {
         }
     }
 
-    AltTabPanel {
+    Shared.ThemeComponentLoader {
         id: altTabPanel
+        objectName: "altTabPanelLoader"
+        width: item ? item.width : 220
+        height: item ? item.height : 116
         anchors.centerIn: parent
+        source: typeof ThemeController !== "undefined" && ThemeController
+                ? (ThemeController.themeComponentsRevision >= 0
+                   ? ThemeController.themedComponent("altTabPanel") : "") : ""
+        initialProperties: ({ controller: AltTabController, windowModel: AltTabWindowModel,
+                              availableWidth: window.width })
+        validateItem: function(candidate) {
+            return candidate.themeApiVersion === 1
+                    && candidate.controller === AltTabController
+                    && candidate.windowModel === AltTabWindowModel
+                    && candidate.backdropItem instanceof Item
+        }
+        fallbackComponent: AltTabPanel {}
+
+        Connections {
+            target: altTabPanel
+            function onItemChanged() {
+                if (window.active && window.visible && AltTabController.open && window.loadedPanel)
+                    window.loadedPanel.forceActiveFocus()
+            }
+        }
     }
 }

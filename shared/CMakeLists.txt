@@ -31,6 +31,7 @@ if(ASTREA_BUILD_SDK_ONLY)
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QML_IMPORT_PATH=${CMAKE_BINARY_DIR}")
 
         astrea_shared_add_theme_tokens_test()
+        astrea_shared_add_theme_components_test()
 
         add_test(NAME astrea-sdk-install-consumer-test
             COMMAND ${CMAKE_COMMAND}
@@ -647,6 +648,7 @@ option(ASTREA_SHARED_BUILD_TESTS "Build shared foundation tests" ON)
 if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     find_package(Qt6 6.8 REQUIRED COMPONENTS Test)
     astrea_shared_add_theme_tokens_test()
+    astrea_shared_add_theme_components_test()
 
     add_executable(dock-config-contract-test
         tests/DockConfigTest.cpp

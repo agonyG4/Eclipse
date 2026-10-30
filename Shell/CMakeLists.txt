@@ -202,6 +202,7 @@ set_source_files_properties(
 qt_add_qml_module(astrea-shell
     URI Astrea.Shell
     VERSION 1.0
+    IMPORT_PATH "${CMAKE_BINARY_DIR}"
     QML_FILES ${_shell_qml_files}
 )
 astrea_add_bar_qml_resources(astrea-shell)

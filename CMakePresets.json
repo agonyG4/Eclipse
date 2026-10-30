@@ -12,6 +12,7 @@
       "generator": "Ninja",
       "binaryDir": "/mnt/Aether/Desktop/GitHub/Eclipse-${presetName}-build",
       "environment": {
+        "CARGO_HOME": "$penv{ASTREA_CARGO_HOME}",
         "CARGO_TARGET_DIR": "$penv{ASTREA_CARGO_TARGET_DIR}",
         "TMPDIR": "$penv{ASTREA_TMPDIR}",
         "XDG_CACHE_HOME": "$penv{ASTREA_XDG_CACHE_HOME}"

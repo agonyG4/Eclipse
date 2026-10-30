@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 import subprocess
 import unittest
@@ -14,6 +15,15 @@ SPEC.loader.exec_module(MODULE)
 
 
 class CMakePresetPathTest(unittest.TestCase):
+    def test_base_preset_maps_cargo_home_from_shared_gate_environment(self):
+        presets = json.loads((PROJECT_ROOT / "CMakePresets.json").read_text())
+        base = next(
+            preset for preset in presets["configurePresets"] if preset["name"] == "base"
+        )
+        self.assertEqual(
+            base["environment"]["CARGO_HOME"], "$penv{ASTREA_CARGO_HOME}"
+        )
+
     def test_debug_uses_stable_aether_default(self):
         os.environ.pop("ASTREA_CMAKE_BUILD_ROOT", None)
         self.assertEqual(

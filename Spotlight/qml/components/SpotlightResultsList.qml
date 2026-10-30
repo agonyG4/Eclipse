@@ -1,11 +1,13 @@
 import QtQuick
 import QtQuick.Layouts
+import Astrea.Shared as Shared
 
 ColumnLayout {
     id: root
+    Shared.ThemeTokens { id: themeTokens }
 
     property string queryText: ""
-    property string fontFamily: "SF Pro Display"
+    property string fontFamily: themeTokens.value("fontFamily", "SF Pro Display")
     readonly property int resultRowHeight: 50
     readonly property int resultIconSize: 40
     readonly property int count: resultList.count
@@ -31,7 +33,7 @@ ColumnLayout {
     Rectangle {
         Layout.fillWidth: true
         height: 1
-        color: "#15FFFFFF"
+        color: themeTokens.value("shellSurface", "#15FFFFFF")
         Layout.topMargin: 12
         Layout.bottomMargin: 8
     }
@@ -57,8 +59,9 @@ ColumnLayout {
 
             width: resultList.width
             height: root.resultRowHeight
-            radius: 7
-            color: resultList.currentIndex === resultDelegate.index ? "#007AFF" : "transparent"
+            radius: themeTokens.value("cornerRadiusSmall", 7)
+            color: resultList.currentIndex === resultDelegate.index
+                ? themeTokens.value("accent", "#007AFF") : "transparent"
 
             RowLayout {
                 anchors {
@@ -66,7 +69,7 @@ ColumnLayout {
                     leftMargin: 12
                     rightMargin: 12
                 }
-                spacing: 15
+                spacing: themeTokens.value("spacingLarge", 15)
 
                 AstreaAppIcon {
                     Layout.preferredWidth: root.resultIconSize
@@ -82,8 +85,8 @@ ColumnLayout {
                 Text {
                     text: resultDelegate.name
                     font.family: root.fontFamily
-                    font.pixelSize: 17
-                    color: "white"
+                    font.pixelSize: themeTokens.value("fontSizeSubtitle", 17)
+                    color: themeTokens.value("shellTextMain", "white")
                     Layout.fillWidth: true
                     elide: Text.ElideRight
                 }

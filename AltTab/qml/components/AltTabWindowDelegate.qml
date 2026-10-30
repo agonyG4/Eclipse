@@ -1,11 +1,14 @@
 import QtQuick
 import QtQuick.Layouts
 import Qt5Compat.GraphicalEffects
+import Astrea.Shared as Shared
 import "."
 
 Item {
     id: root
     objectName: "altTabWindowDelegate"
+    Shared.ThemeTokens { id: themeTokens }
+    readonly property color accent: themeTokens.value("accent", "#007aff")
 
     property int windowIndex: 0
     property bool windowSelected: false
@@ -24,24 +27,25 @@ Item {
     Rectangle {
         id: tileBg
         anchors.fill: parent
-        radius: 22
+        radius: themeTokens.value("altTabRadius", 22)
         color: "transparent"
 
         Rectangle {
             id: selectionHighlight
+            objectName: "altTabSelectionHighlight"
             anchors.fill: parent
             radius: parent.radius
             color: windowSelected
-                ? Qt.rgba(0.0, 0.48, 1.0, 0.25)
+                ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.25)
                 : "transparent"
             border.color: windowSelected
-                ? Qt.rgba(0.0, 0.48, 1.0, 0.40)
+                ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.40)
                 : "transparent"
             border.width: 1
             scale: windowSelected ? 1.06 : 1.0
 
-            Behavior on color { ColorAnimation { duration: 90 } }
-            Behavior on scale { NumberAnimation { duration: 90; easing.type: Easing.OutCubic } }
+            Behavior on color { ColorAnimation { duration: themeTokens.value("animationInstant", 90) } }
+            Behavior on scale { NumberAnimation { duration: themeTokens.value("animationInstant", 90); easing.type: Easing.OutCubic } }
         }
 
         AstreaAppIcon {
@@ -58,8 +62,8 @@ Item {
             maximumPresentationLogicalSize: 84
             iconRadius: windowSelected ? 18 : 15
             fallbackRadius: iconRadius
-            fallbackColor: "#22FFFFFF"
-            fallbackFontSize: 27
+            fallbackColor: themeTokens.value("shellSurface", "#22FFFFFF")
+            fallbackFontSize: themeTokens.value("fontSizeIconLarge", 27)
 
             Behavior on width { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
             Behavior on height { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }

@@ -1,13 +1,16 @@
 import QtQuick
 import Qt5Compat.GraphicalEffects as Legacy
 import QtQuick.Layouts
+import Astrea.Shared as Shared
 
 Rectangle {
     id: root
+    Shared.ThemeTokens { id: themeTokens }
 
-    readonly property color placeholderTextColor: "#66FFFFFF"
+    readonly property color placeholderTextColor: themeTokens.value("shellTextSecondary", "#66FFFFFF")
     readonly property bool hasQuery: searchInput.text.length > 0
-    readonly property string fontFamily: SpotlightController ? SpotlightController.fontFamily : "SF Pro Display"
+    readonly property string fontFamily: themeTokens.value("fontFamily",
+        SpotlightController ? SpotlightController.fontFamily : "SF Pro Display")
 
     anchors.horizontalCenter: parent.horizontalCenter
     anchors.top: parent.top
@@ -15,18 +18,18 @@ Rectangle {
 
     width: 600
     height: hasQuery ? Math.min(contentColumn.implicitHeight + 28, 450) : 58
-    radius: 24
-    color: "#80343434"
-    border.color: "#33FFFFFF"
+    radius: themeTokens.value("spotlightRadius", 24)
+    color: themeTokens.value("shellBackground", "#80343434")
+    border.color: themeTokens.value("shellBorder", "#33FFFFFF")
     border.width: 1
     clip: true
 
     scale: SpotlightController.open ? 1.0 : 0.98
     opacity: SpotlightController.open ? 1.0 : 0.0
 
-    Behavior on height { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
-    Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
-    Behavior on opacity { NumberAnimation { duration: 120 } }
+    Behavior on height { NumberAnimation { duration: themeTokens.value("animationHover", 140); easing.type: Easing.OutCubic } }
+    Behavior on scale { NumberAnimation { duration: themeTokens.value("animationStandard", 180); easing.type: Easing.OutBack } }
+    Behavior on opacity { NumberAnimation { duration: themeTokens.value("animationQuick", 120) } }
 
     function focusSearch() {
         searchInput.forceActiveFocus()
@@ -41,19 +44,19 @@ Rectangle {
             right: parent.right
             margins: 14
         }
-        spacing: 0
+        spacing: themeTokens.value("spacingTiny", 0)
 
         RowLayout {
             Layout.fillWidth: true
             Layout.preferredHeight: 30
-            spacing: 12
+            spacing: themeTokens.value("spacingMedium", 12)
 
             Text {
                 visible: !appleSearch.visible
                 text: "\u2315"
                 font.family: root.fontFamily
-                font.pixelSize: 24
-                color: "#99FFFFFF"
+                font.pixelSize: themeTokens.value("fontSizeHero", 24)
+                color: themeTokens.value("shellTextLight", "#99FFFFFF")
                 Layout.leftMargin: 8
                 Layout.alignment: Qt.AlignVCenter
             }
@@ -84,7 +87,7 @@ Rectangle {
                 // these navigation glyphs in the Spotlight foreground.
                 layer.enabled: visible
                 layer.effect: Legacy.ColorOverlay {
-                    color: "#ffffff"
+                    color: themeTokens.value("shellTextMain", "#ffffff")
                 }
             }
 
@@ -97,7 +100,7 @@ Rectangle {
                     anchors.fill: parent
                     text: (AstreaI18n && AstreaI18n.messages && AstreaI18n.tr("spotlight.placeholder", "Spotlight Search")) || "Spotlight Search"
                     font.family: root.fontFamily
-                    font.pixelSize: 22
+                    font.pixelSize: themeTokens.value("fontSizeTitle", 22)
                     font.weight: Font.Light
                     color: root.placeholderTextColor
                     verticalAlignment: Text.AlignVCenter
@@ -109,11 +112,11 @@ Rectangle {
                     id: searchInput
                     anchors.fill: parent
                     font.family: root.fontFamily
-                    font.pixelSize: 22
+                    font.pixelSize: themeTokens.value("fontSizeTitle", 22)
                     font.weight: Font.Light
                     color: "white"
-                    selectionColor: "#407AFF"
-                    selectedTextColor: "white"
+                    selectionColor: themeTokens.value("accent", "#407AFF")
+                    selectedTextColor: themeTokens.value("accentForeground", "white")
                     clip: true
                     verticalAlignment: TextInput.AlignVCenter
 

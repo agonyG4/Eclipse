@@ -1,11 +1,13 @@
 import QtQuick
 import QtQuick.Layouts
+import Astrea.Shared as Shared
 
 RowLayout {
     id: root
+    Shared.ThemeTokens { id: themeTokens }
 
     property var controller: null
-    property color textColor: "#66FFFFFF"
+    property color textColor: themeTokens.value("shellTextSecondary", "#66FFFFFF")
     property string fontFamily: "SF Pro Display"
 
     Layout.maximumWidth: 68
@@ -29,7 +31,7 @@ RowLayout {
     Text {
         text: "\u25CB"
         visible: root.controller === null || !root.controller.weatherReady
-        font.pixelSize: 18
+        font.pixelSize: themeTokens.value("fontSizeIconLarge", 18)
         color: root.textColor
         Layout.alignment: Qt.AlignVCenter
     }
@@ -38,7 +40,7 @@ RowLayout {
         Layout.maximumWidth: 46
         text: root.controller && root.controller.weatherReady ? root.controller.weatherTemp + "\u00B0" : "--\u00B0"
         font.family: root.fontFamily
-        font.pixelSize: 18
+        font.pixelSize: themeTokens.value("fontSizeIconLarge", 18)
         font.weight: Font.Medium
         color: root.textColor
         elide: Text.ElideRight

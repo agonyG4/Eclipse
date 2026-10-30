@@ -4,6 +4,7 @@ import Astrea.Settings 1.0 as Borealis
 
 Item {
     id: theme
+    objectName: "settingsTheme"
     visible: false
     width: 0
     height: 0
@@ -45,8 +46,11 @@ Item {
     }
 
     readonly property var packStyle: Borealis.State.styleTokens
-    readonly property string fontFamily: packStyle.fontFamily || Borealis.Tokens.fontFamily
+    readonly property string fontFamily: Borealis.Tokens.fontFamily
     readonly property string monoFontFamily: Borealis.Tokens.monoFontFamily
+    readonly property string fontFamilyDisplay: Borealis.Tokens.fontFamilyDisplay
+    readonly property string fontFamilyText: Borealis.Tokens.fontFamilyText
+    readonly property string iconFontFamily: Borealis.Tokens.iconFontFamily
 
     readonly property int fontSizeHero: Borealis.Tokens.fontSizeHero
     readonly property int fontSizeHeader: Borealis.Tokens.fontSizeHeader
@@ -59,6 +63,8 @@ Item {
     readonly property int fontSizeSmall: Borealis.Tokens.fontSizeSmall
     readonly property int fontSizeTiny: Borealis.Tokens.fontSizeTiny
     readonly property int fontSizeMicro: Borealis.Tokens.fontSizeMicro
+    readonly property int fontSizeBody: Borealis.Tokens.fontSizeBody
+    readonly property int fontSizeCaption: Borealis.Tokens.fontSizeCaption
 
     readonly property int fontWeightLight: Borealis.Tokens.fontWeightLight
     readonly property int fontWeightNormal: Borealis.Tokens.fontWeightNormal

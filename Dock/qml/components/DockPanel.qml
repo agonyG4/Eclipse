@@ -8,6 +8,7 @@ Item {
     id: root
 
     Shared.ShellMaterialTheme { id: shellMaterial }
+    readonly property real dockRadius: shellMaterial.tokens.value("dockRadius", DockController.cornerRadius)
 
     readonly property bool vertical: DockController.vertical
     readonly property bool growsPositiveCross: DockController.position === "left"
@@ -114,6 +115,9 @@ Item {
     function animationDuration(base) {
         if (!DockController.animationsEnabled)
             return 0
+        const themedDuration = shellMaterial.tokens.value("animationFast", undefined)
+        if (themedDuration !== undefined)
+            return Math.max(0, Math.round(base * themedDuration / 150 / root.animationSpeed))
         return Math.max(1, Math.round(base / root.animationSpeed))
     }
 
@@ -141,7 +145,7 @@ Item {
         height: root.vertical
             ? root.restingHeight + root.magnificationExtraPrimary
             : root.restingHeight
-        radius: DockController.cornerRadius
+        radius: root.dockRadius
         color: shellMaterial.background
         border.color: shellMaterial.border
         border.width: 1

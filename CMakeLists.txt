@@ -84,6 +84,8 @@ add_subdirectory(Shell)
 add_subdirectory(Downloads)
 
 if(BUILD_TESTING)
+    include(shared/cmake/ThemeConsumerTests.cmake)
+    astrea_add_theme_consumer_qml_test()
     add_test(NAME create-source-archive-test
         COMMAND bash ${CMAKE_SOURCE_DIR}/tools/create-source-archive-test.sh
                 ${CMAKE_SOURCE_DIR}/tools/create-source-archive)

@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Qt5Compat.GraphicalEffects
+import Astrea.Shared as Shared
 import "."
 
 Item {
@@ -8,6 +9,7 @@ Item {
 
     readonly property bool open: AltTabController.open
     readonly property Item backdropItem: panel
+    Shared.ThemeTokens { id: themeTokens }
 
     width: Math.min(Math.max(220, appRow.implicitWidth + 34), (parent ? parent.width : 1920) - 120)
     height: 116
@@ -15,8 +17,8 @@ Item {
     scale: open ? 1.0 : 0.96
     opacity: open ? 1.0 : 0.0
 
-    Behavior on scale { NumberAnimation { duration: 130; easing.type: Easing.OutCubic } }
-    Behavior on opacity { NumberAnimation { duration: 90 } }
+    Behavior on scale { NumberAnimation { duration: themeTokens.value("animationSubtle", 130); easing.type: Easing.OutCubic } }
+    Behavior on opacity { NumberAnimation { duration: themeTokens.value("animationInstant", 90) } }
 
     onOpenChanged: {
         if (open) {
@@ -44,24 +46,25 @@ Item {
 
         Rectangle {
             id: panel
+            objectName: "altTabPanelBackground"
             anchors.fill: parent
-            radius: 26
-            color: "#80343434"
-            border.color: "#33FFFFFF"
+            radius: themeTokens.value("altTabRadius", 26)
+            color: themeTokens.value("shellBackground", "#80343434")
+            border.color: themeTokens.value("shellBorder", "#33FFFFFF")
             border.width: 1
             clip: true
 
             Rectangle {
                 anchors.fill: parent
                 radius: parent.radius
-                color: "#10000000"
+                color: themeTokens.value("shellSurface", "#10000000")
                 visible: true
             }
 
             Row {
                 id: appRow
                 anchors.centerIn: parent
-                spacing: 12
+                spacing: themeTokens.value("spacingMedium", 12)
 
                 Repeater {
                     model: AltTabWindowModel

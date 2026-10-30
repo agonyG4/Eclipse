@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/AltTabWindowModel.hpp"
-#include "platform/compositor/CompositorBackend.hpp"
+#include "core/CompositorBackend.hpp"
 #include "apps/appidentity/AppIdentityResolver.hpp"
 
 #include <QBasicTimer>

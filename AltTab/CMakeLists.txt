@@ -24,6 +24,7 @@ endif()
 add_library(astrea-alttab-types STATIC
     core/WindowInfo.cpp
     platform/compositor/CompositorBackend.cpp
+    core/CompositorBackend.hpp
 )
 target_include_directories(astrea-alttab-types PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(astrea-alttab-types PUBLIC Qt6::Core Qt6::Gui astrea-shared-core)
@@ -51,6 +52,8 @@ add_library(astrea-alttab-core STATIC
     core/AltTabController.cpp
     core/AltTabShortcutRouter.cpp
     core/AltTabShortcutRouter.hpp
+    platform/typhon/AltTabShortcutAdapter.cpp
+    platform/typhon/AltTabShortcutAdapter.hpp
     core/AltTabWindowModel.cpp
     platform/compositor/AutoCompositorBackend.cpp
     platform/compositor/AutoCompositorBackend.hpp

@@ -1,6 +1,17 @@
 #pragma once
 
-#include "platform/typhon/TyphonShortcutClient.hpp"
+#include <QMetaType>
+#include <QString>
+
+// Platform-neutral lifecycle phases used by AltTab shortcut policy.
+enum class AltTabShortcutPhase {
+    Pressed,
+    Repeated,
+    Released,
+    Cancelled,
+};
+
+Q_DECLARE_METATYPE(AltTabShortcutPhase)
 
 enum class AltTabShortcutAction {
     Ignore,
@@ -10,5 +21,5 @@ enum class AltTabShortcutAction {
 };
 Q_DECLARE_METATYPE(AltTabShortcutAction)
 
-AltTabShortcutAction mapTyphonShortcut(const QString &namespaceName, const QString &name,
-                                       TyphonShortcutPhase phase);
+AltTabShortcutAction mapAltTabShortcut(const QString &namespaceName, const QString &name,
+                                       AltTabShortcutPhase phase);

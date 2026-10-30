@@ -12,7 +12,7 @@
 #include <QUrl>
 #include <QString>
 #include <QStringList>
-#include <QUrl>
+
 #include <QVariantList>
 #include <QVariantMap>
 

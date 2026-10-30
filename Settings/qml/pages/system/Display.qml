@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Window
+import "DisplayLogic.js" as DisplayLogic
 import "../../components" as Components
 import "../../components/controls" as Controls
 import "../../components/form" as Form
@@ -38,7 +39,7 @@ FocusScope {
     readonly property bool backendUnavailable:
         !Boolean(root.controller) || !Boolean(root.controller.available)
     readonly property bool refreshFailed:
-        Boolean(root.controller && root.nonEmpty(root.controller.lastError))
+        Boolean(root.controller && DisplayLogic.nonEmpty(root.controller.lastError))
     readonly property bool loading:
         Boolean(root.controller && Boolean(root.controller.busy)
             && root.outputs.length === 0 && !root.refreshFailed)
@@ -49,9 +50,9 @@ FocusScope {
         Boolean(!root.backendUnavailable && !root.refreshFailed
             && root.selectedOutput !== null)
     readonly property var allResolutionGroups:
-        root.resolutionGroups(root.selectedOutput)
+        DisplayLogic.resolutionGroups(root.selectedOutput)
     readonly property var defaultResolutionGroups:
-        root.defaultResolutionSubset(root.allResolutionGroups)
+        DisplayLogic.defaultResolutionSubset(root.allResolutionGroups)
     readonly property var visibleResolutionGroups:
         root.showAllResolutions
             ? root.allResolutionGroups : root.defaultResolutionGroups
@@ -65,105 +66,25 @@ FocusScope {
 
     onSelectedOutputIdChanged: root.showAllResolutions = false
 
-    function nonEmpty(value) {
-        return value !== undefined && value !== null
-            && String(value).trim().length > 0
-    }
+    function nonEmpty(value) { return DisplayLogic.nonEmpty(value) }
 
-    function isBuiltIn(output) {
-        const name = output && root.nonEmpty(output.name)
-            ? String(output.name).toLowerCase() : ""
-        return name.startsWith("edp") || name.startsWith("lvds")
-    }
+    function isBuiltIn(output) { return DisplayLogic.isBuiltIn(output) }
 
-    function titleFor(output) {
-        if (!output)
-            return "Display"
-        if (root.nonEmpty(output.model))
-            return String(output.model).trim()
-        if (root.nonEmpty(output.make))
-            return String(output.make).trim()
-        if (root.nonEmpty(output.name))
-            return String(output.name)
-        return root.isBuiltIn(output) ? "Laptop Display" : "Display"
-    }
+    function titleFor(output) { return DisplayLogic.titleFor(output) }
 
-    function kindFor(output) {
-        return root.isBuiltIn(output) ? "Built-in display" : "External display"
-    }
+    function kindFor(output) { return DisplayLogic.kindFor(output) }
 
-    function subtitleFor(output) {
-        if (!output)
-            return ""
-        const pieces = [root.kindFor(output)]
-        const make = root.nonEmpty(output.make) ? String(output.make).trim() : ""
-        if (make !== "" && make !== root.titleFor(output))
-            pieces.push(make)
-        if (root.nonEmpty(output.name))
-            pieces.push(String(output.name))
-        return pieces.join(" · ")
-    }
+    function subtitleFor(output) { return DisplayLogic.subtitleFor(output) }
 
-    function monitorSelectorLabel(output) {
-        if (!output)
-            return "Display"
-        const title = root.titleFor(output)
-        const connector = root.nonEmpty(output.name) ? String(output.name) : ""
-        return connector !== "" && connector !== title
-            ? title + " · " + connector : title
-    }
+    function monitorSelectorLabel(output) { return DisplayLogic.monitorSelectorLabel(output) }
 
-    function isQuarterTurn(output) {
-        const transform = output && output.transform !== undefined
-            ? String(output.transform) : "normal"
-        return transform === "90" || transform === "270"
-            || transform === "flipped_90" || transform === "flipped_270"
-    }
+    function isQuarterTurn(output) { return DisplayLogic.isQuarterTurn(output) }
 
-    function outputWidth(output) {
-        if (!output || !Boolean(output.hasCurrentMode))
-            return 240
-        const width = Number(output.currentWidth)
-        const height = Number(output.currentHeight)
-        if (width <= 0 || height <= 0)
-            return 240
-        return root.isQuarterTurn(output) ? height : width
-    }
+    function outputWidth(output) { return DisplayLogic.outputWidth(output) }
 
-    function outputHeight(output) {
-        if (!output || !Boolean(output.hasCurrentMode))
-            return 135
-        const width = Number(output.currentWidth)
-        const height = Number(output.currentHeight)
-        if (width <= 0 || height <= 0)
-            return 135
-        return root.isQuarterTurn(output) ? width : height
-    }
+    function outputHeight(output) { return DisplayLogic.outputHeight(output) }
 
-    function boundsForOutputs() {
-        if (root.outputs.length === 0)
-            return { minX: 0, minY: 0, width: 1920, height: 1080 }
-
-        let minX = Number(root.outputs[0].x) || 0
-        let minY = Number(root.outputs[0].y) || 0
-        let maxX = minX + root.outputWidth(root.outputs[0])
-        let maxY = minY + root.outputHeight(root.outputs[0])
-        for (let index = 1; index < root.outputs.length; ++index) {
-            const output = root.outputs[index]
-            const x = Number(output.x) || 0
-            const y = Number(output.y) || 0
-            minX = Math.min(minX, x)
-            minY = Math.min(minY, y)
-            maxX = Math.max(maxX, x + root.outputWidth(output))
-            maxY = Math.max(maxY, y + root.outputHeight(output))
-        }
-        return {
-            minX: minX,
-            minY: minY,
-            width: Math.max(1, maxX - minX),
-            height: Math.max(1, maxY - minY)
-        }
-    }
+    function boundsForOutputs() { return DisplayLogic.boundsForOutputs(root.outputs) }
 
     function reconcileSelection() {
         for (let index = 0; index < root.outputs.length; ++index) {
@@ -180,210 +101,37 @@ FocusScope {
             ? String(root.outputs[0].id) : ""
     }
 
-    function resolutionKey(group) {
-        return String(group.width) + "x" + String(group.height)
-    }
+    function resolutionKey(group) { return DisplayLogic.resolutionKey(group) }
 
-    function formatResolution(group) {
-        return String(group.width) + " × " + String(group.height)
-    }
+    function formatResolution(group) { return DisplayLogic.formatResolution(group) }
 
-    function formatRate(milliHz) {
-        const hz = Number(milliHz) / 1000
-        if (!Number.isFinite(hz) || hz <= 0)
-            return "Unavailable"
-        // Mode timings land just off the nominal rate (164.999 for 165 Hz);
-        // show the nominal rate, but keep real fractional rates like 59.94.
-        const nominal = Math.round(hz)
-        if (Math.abs(hz - nominal) < 0.015)
-            return String(nominal)
-        return String(Number(hz.toFixed(2)))
-    }
+    function formatRate(milliHz) { return DisplayLogic.formatRate(milliHz) }
 
-    function formatScale(scaleMilli) {
-        const percent = Number(scaleMilli) / 10
-        if (!Number.isFinite(percent) || percent <= 0)
-            return "Unavailable"
-        return (Number.isInteger(percent)
-            ? String(percent) : String(Number(percent.toFixed(1)))) + "%"
-    }
+    function formatScale(scaleMilli) { return DisplayLogic.formatScale(scaleMilli) }
 
-    function currentMode(output) {
-        if (!output || !Boolean(output.hasCurrentMode) || !output.modes)
-            return null
-        return root.modeById(output, output.currentModeId)
-    }
+    function currentMode(output) { return DisplayLogic.currentMode(output) }
 
-    function modeById(output, modeId) {
-        if (!output || !output.modes || modeId === undefined || modeId === null)
-            return null
-        const requestedId = String(modeId)
-        for (let index = 0; index < output.modes.length; ++index) {
-            if (String(output.modes[index].id) === requestedId)
-                return output.modes[index]
-        }
-        return null
-    }
+    function modeById(output, modeId) { return DisplayLogic.modeById(output, modeId) }
 
-    function selectedMode(output) {
-        if (!output)
-            return null
-        const draft = Boolean(output.draftPresent)
-            ? root.modeById(output, output.draftModeId) : null
-        return draft || root.currentMode(output)
-    }
+    function selectedMode(output) { return DisplayLogic.selectedMode(output) }
 
-    function selectedScaleMilli(output) {
-        if (!output)
-            return 0
-        const draftScale = Number(output.draftScaleMilli)
-        return Boolean(output.draftPresent) && draftScale > 0
-            ? draftScale : Number(output.scaleMilli)
-    }
+    function selectedScaleMilli(output) { return DisplayLogic.selectedScaleMilli(output) }
 
-    function selectedTransform(output) {
-        if (!output)
-            return "normal"
-        return Boolean(output.draftPresent)
-            ? String(output.draftTransform) : String(output.transform)
-    }
+    function selectedTransform(output) { return DisplayLogic.selectedTransform(output) }
 
-    function rateText(mode) {
-        if (!mode)
-            return "Unavailable"
-        const rate = root.formatRate(mode.refreshMilliHz)
-        return rate === "Unavailable" ? rate
-            : rate + " Hz" + (Boolean(mode.interlaced) ? " (interlaced)" : "")
-    }
+    function rateText(mode) { return DisplayLogic.rateText(mode) }
 
-    function refreshLabel(output) {
-        if (!output || !Boolean(output.hasCurrentMode))
-            return "Unavailable"
-        const rate = root.formatRate(output.currentRefreshMilliHz)
-        if (rate === "Unavailable")
-            return rate
-        const mode = root.currentMode(output)
-        return rate + " Hz" + (mode && mode.interlaced ? " (interlaced)" : "")
-    }
+    function refreshLabel(output) { return DisplayLogic.refreshLabel(output) }
 
-    function selectedRefreshLabel(output) {
-        if (!output)
-            return "Unavailable"
-        const mode = root.selectedMode(output)
-        return mode ? root.rateText(mode) : root.refreshLabel(output)
-    }
+    function selectedRefreshLabel(output) { return DisplayLogic.selectedRefreshLabel(output) }
 
-    function modeSummary(output) {
-        if (!output || !Boolean(output.hasCurrentMode))
-            return "No current mode"
-        return String(output.currentWidth) + " × " + String(output.currentHeight)
-            + " • " + root.refreshLabel(output)
-    }
+    function modeSummary(output) { return DisplayLogic.modeSummary(output) }
 
-    function vrrText(state) {
-        switch (String(state)) {
-        case "active": return "Active"
-        case "available":
-        case "configured": return "Supported"
-        case "unavailable": return "Not supported"
-        case "degraded": return "Unavailable"
-        default: return "Unavailable"
-        }
-    }
+    function vrrText(state) { return DisplayLogic.vrrText(state) }
 
-    function resolutionGroups(output) {
-        if (!output || !output.modes)
-            return []
+    function resolutionGroups(output) { return DisplayLogic.resolutionGroups(output) }
 
-        const selectionMode = root.selectedMode(output)
-        const selectionWidth = selectionMode
-            ? Number(selectionMode.width) : Number(output.currentWidth)
-        const selectionHeight = selectionMode
-            ? Number(selectionMode.height) : Number(output.currentHeight)
-
-        const bySize = Object.create(null)
-        for (let index = 0; index < output.modes.length; ++index) {
-            const mode = output.modes[index]
-            const width = Number(mode.width)
-            const height = Number(mode.height)
-            if (width <= 0 || height <= 0)
-                continue
-            const key = String(width) + "x" + String(height)
-            if (!bySize[key]) {
-                bySize[key] = {
-                    width: width,
-                    height: height,
-                    preferred: false,
-                    current: (selectionMode !== null || Boolean(output.hasCurrentMode))
-                        && selectionWidth === width
-                        && selectionHeight === height,
-                    rates: []
-                }
-            }
-            const group = bySize[key]
-            group.preferred = group.preferred || Boolean(mode.preferred)
-            group.rates.push({
-                id: mode.id,
-                refreshMilliHz: Number(mode.refreshMilliHz),
-                interlaced: Boolean(mode.interlaced),
-                preferred: Boolean(mode.preferred)
-            })
-        }
-
-        const groups = Object.keys(bySize).map(key => bySize[key])
-        if (Boolean(output.hasCurrentMode)) {
-            const currentKey = String(Number(output.currentWidth)) + "x"
-                + String(Number(output.currentHeight))
-            if (!bySize[currentKey] && Number(output.currentWidth) > 0
-                    && Number(output.currentHeight) > 0) {
-                groups.push({
-                    width: Number(output.currentWidth),
-                    height: Number(output.currentHeight),
-                    preferred: false,
-                    current: true,
-                    rates: []
-                })
-            }
-        }
-
-        groups.sort((left, right) =>
-            right.width * right.height - left.width * left.height
-                || right.width - left.width || right.height - left.height)
-        for (let groupIndex = 0; groupIndex < groups.length; ++groupIndex) {
-            groups[groupIndex].rates.sort((left, right) =>
-                left.refreshMilliHz - right.refreshMilliHz
-                    || Number(left.interlaced) - Number(right.interlaced)
-                    || Number(left.id) - Number(right.id))
-        }
-        return groups
-    }
-
-    function modeForResolution(group, output) {
-        if (!group || !group.rates || group.rates.length === 0)
-            return null
-
-        const current = root.selectedMode(output)
-        if (current) {
-            const matching = group.rates.filter(mode =>
-                Number(mode.refreshMilliHz) === Number(current.refreshMilliHz)
-                    && Boolean(mode.interlaced) === Boolean(current.interlaced))
-            if (matching.length > 0)
-                return matching.sort((left, right) =>
-                    Number(left.id) - Number(right.id))[0]
-        }
-
-        const preferred = group.rates.filter(mode => Boolean(mode.preferred))
-        const candidates = preferred.length > 0 ? preferred : group.rates
-        const preservingInterlace = current
-            ? candidates.filter(mode =>
-                Boolean(mode.interlaced) === Boolean(current.interlaced)) : []
-        const ranked = (preservingInterlace.length > 0
-            ? preservingInterlace : candidates).slice().sort((left, right) =>
-                Number(right.refreshMilliHz) - Number(left.refreshMilliHz)
-                    || Number(left.interlaced) - Number(right.interlaced)
-                    || Number(left.id) - Number(right.id))
-        return ranked.length > 0 ? ranked[0] : null
-    }
+    function modeForResolution(group, output) { return DisplayLogic.modeForResolution(group, output) }
 
     function setDraftForMode(output, mode, scaleMilli, transform) {
         if (!root.controller || !output || !mode)
@@ -396,21 +144,14 @@ FocusScope {
         const output = root.selectedOutput
         if (!output || output.modeSelectionSupported !== true)
             return
-        const mode = root.modeForResolution(group, output)
+        const mode = DisplayLogic.modeForResolution(group, output)
         if (!mode)
             return
-        root.setDraftForMode(output, mode, root.selectedScaleMilli(output),
-            root.selectedTransform(output))
+        root.setDraftForMode(output, mode, DisplayLogic.selectedScaleMilli(output),
+            DisplayLogic.selectedTransform(output))
     }
 
-    function selectedRefreshIndex(output, group) {
-        if (!output || !group || !group.rates)
-            return -1
-        const selected = root.selectedMode(output)
-        if (!selected)
-            return -1
-        return group.rates.findIndex(mode => String(mode.id) === String(selected.id))
-    }
+    function selectedRefreshIndex(output, group) { return DisplayLogic.selectedRefreshIndex(output, group) }
 
     function selectRefresh(index) {
         const output = root.selectedOutput
@@ -419,28 +160,18 @@ FocusScope {
                 || index < 0 || index >= group.rates.length)
             return
         root.setDraftForMode(output, group.rates[index],
-            root.selectedScaleMilli(output), root.selectedTransform(output))
+            DisplayLogic.selectedScaleMilli(output), DisplayLogic.selectedTransform(output))
     }
 
-    function colorDepthText(bits) {
-        const value = Number(bits)
-        return value > 0 ? String(value) + "-bit" : "Unavailable"
-    }
+    function colorDepthText(bits) { return DisplayLogic.colorDepthText(bits) }
 
-    function colorDepthOptions(output) {
-        if (!output || !output.colorDepthOptions)
-            return []
-        return output.colorDepthOptions.map(value => Number(value))
-    }
+    function colorDepthOptions(output) { return DisplayLogic.colorDepthOptions(output) }
 
-    function selectedColorDepthIndex(output) {
-        return root.colorDepthOptions(output).indexOf(Number(output
-            ? output.colorDepthBits : 0))
-    }
+    function selectedColorDepthIndex(output) { return DisplayLogic.selectedColorDepthIndex(output) }
 
     function selectColorDepth(index) {
         const output = root.selectedOutput
-        const options = root.colorDepthOptions(output)
+        const options = DisplayLogic.colorDepthOptions(output)
         if (!root.controller || !output
                 || output.colorDepthSelectionSupported !== true
                 || index < 0 || index >= options.length)
@@ -448,62 +179,26 @@ FocusScope {
         root.controller.setDraftColorDepth(String(output.id), options[index])
     }
 
-    function scaleValues(output) {
-        if (!output || !output.scaleValuesMilli)
-            return []
-        return output.scaleValuesMilli.map(value => Number(value))
-    }
+    function scaleValues(output) { return DisplayLogic.scaleValues(output) }
 
-    function scaleLabels(output) {
-        return root.scaleValues(output).map(value => root.formatScale(value))
-    }
+    function scaleLabels(output) { return DisplayLogic.scaleLabels(output) }
 
-    function selectedScaleIndex(output) {
-        const values = root.scaleValues(output)
-        const selected = root.selectedScaleMilli(output)
-        return values.findIndex(value => Number(value) === selected)
-    }
+    function selectedScaleIndex(output) { return DisplayLogic.selectedScaleIndex(output) }
 
     function selectScale(index) {
         const output = root.selectedOutput
-        const values = root.scaleValues(output)
+        const values = DisplayLogic.scaleValues(output)
         if (!output || output.scaleMutationSupported !== true
                 || index < 0 || index >= values.length)
             return
-        const mode = root.selectedMode(output)
+        const mode = DisplayLogic.selectedMode(output)
         if (!mode)
             return
         root.setDraftForMode(output, mode, values[index],
-            root.selectedTransform(output))
+            DisplayLogic.selectedTransform(output))
     }
 
-    function defaultResolutionSubset(groups) {
-        if (!groups || groups.length <= 5)
-            return groups || []
-
-        const selected = []
-        const add = group => {
-            if (group && selected.length < 5
-                    && !selected.some(item => root.resolutionKey(item)
-                        === root.resolutionKey(group)))
-                selected.push(group)
-        }
-        const current = groups.find(group => group.current)
-        const preferred = groups.find(group => group.preferred)
-        add(current)
-        add(preferred)
-        add(groups[0])
-
-        const commonSizes = ["1600x900", "1366x768", "1280x720", "1024x768"]
-        for (let index = 0; index < commonSizes.length && selected.length < 5; ++index)
-            add(groups.find(group => root.resolutionKey(group) === commonSizes[index]))
-        for (let index = 0; index < groups.length && selected.length < 5; ++index)
-            add(groups[index])
-        selected.sort((left, right) =>
-            right.width * right.height - left.width * left.height
-                || right.width - left.width || right.height - left.height)
-        return selected
-    }
+    function defaultResolutionSubset(groups) { return DisplayLogic.defaultResolutionSubset(groups) }
 
     Component.onCompleted: {
         root.reconcileSelection()
@@ -597,13 +292,13 @@ FocusScope {
 
                 readonly property bool active:
                     String(modelData.id) === root.selectedOutputId
-                readonly property bool laptop: root.isBuiltIn(modelData)
+                readonly property bool laptop: DisplayLogic.isBuiltIn(modelData)
                 readonly property bool hasCurrentMode:
                     Boolean(modelData.hasCurrentMode)
                 readonly property real screenWidth:
-                    Math.max(56, root.outputWidth(modelData) * preview.previewScale)
+                    Math.max(56, DisplayLogic.outputWidth(modelData) * preview.previewScale)
                 readonly property real screenHeight:
-                    Math.max(36, root.outputHeight(modelData) * preview.previewScale)
+                    Math.max(36, DisplayLogic.outputHeight(modelData) * preview.previewScale)
                 readonly property real bezel: laptop ? 12 : 10
                 readonly property real chassisHeight: laptop ? 16 : 38
 
@@ -716,7 +411,7 @@ FocusScope {
                             objectName: "displayWallpaperPreview"
                             readonly property bool hasUsableSource:
                                 Boolean(root.wallpaper)
-                                    && root.nonEmpty(root.wallpaper.effectivePreviewUrl)
+                                    && DisplayLogic.nonEmpty(root.wallpaper.effectivePreviewUrl)
                             anchors.fill: parent
                             visible: Boolean(modelData.enabled)
                                 && monitorItem.hasCurrentMode
@@ -779,7 +474,7 @@ FocusScope {
                                 anchors.verticalCenter: parent.verticalCenter
                                 anchors.leftMargin: Components.Theme.spacingSmall
                                 anchors.rightMargin: Components.Theme.spacingSmall
-                                text: root.nonEmpty(modelData.name)
+                                text: DisplayLogic.nonEmpty(modelData.name)
                                     ? String(modelData.name) : "Display"
                                 textFormat: Text.PlainText
                                 color: Components.Theme.textPrimary
@@ -997,7 +692,7 @@ FocusScope {
                                     objectName: "displayOutputTitle"
                                     width: parent.width
                                     horizontalAlignment: Text.AlignHCenter
-                                    text: root.titleFor(root.selectedOutput)
+                                    text: DisplayLogic.titleFor(root.selectedOutput)
                                     textFormat: Text.PlainText
                                     color: Components.Theme.textPrimary
                                     font.family: Components.Theme.fontFamily
@@ -1009,7 +704,7 @@ FocusScope {
                                     objectName: "displayOutputSubtitle"
                                     width: parent.width
                                     horizontalAlignment: Text.AlignHCenter
-                                    text: root.subtitleFor(root.selectedOutput)
+                                    text: DisplayLogic.subtitleFor(root.selectedOutput)
                                     textFormat: Text.PlainText
                                     color: Components.Theme.textSecondary
                                     font.family: Components.Theme.fontFamily
@@ -1020,7 +715,7 @@ FocusScope {
                                     objectName: "displayModeSummary"
                                     width: parent.width
                                     horizontalAlignment: Text.AlignHCenter
-                                    text: root.modeSummary(root.selectedOutput)
+                                    text: DisplayLogic.modeSummary(root.selectedOutput)
                                     textFormat: Text.PlainText
                                     color: Components.Theme.textTertiary
                                     font.family: Components.Theme.fontFamily
@@ -1065,7 +760,7 @@ FocusScope {
                         model: root.outputs
                         textRole: "name"
                         currentIndex: root.selectedIndex
-                        displayText: root.monitorSelectorLabel(root.selectedOutput)
+                        displayText: DisplayLogic.monitorSelectorLabel(root.selectedOutput)
                         onActivated: index => {
                             if (index >= 0 && index < root.outputs.length)
                                 root.selectedOutputId = String(root.outputs[index].id)
@@ -1082,7 +777,7 @@ FocusScope {
                             leftPadding: Components.Theme.spacingMedium
                             rightPadding: monitorSelector.indicator.width
                                 + Components.Theme.spacingLarge
-                            text: root.monitorSelectorLabel(root.selectedOutput)
+                            text: DisplayLogic.monitorSelectorLabel(root.selectedOutput)
                             textFormat: Text.PlainText
                             color: Components.Theme.textPrimary
                             font.family: Components.Theme.fontFamily
@@ -1107,7 +802,7 @@ FocusScope {
                             required property var modelData
                             width: monitorSelector.width
                             contentItem: Text {
-                                text: root.monitorSelectorLabel(modelData)
+                                text: DisplayLogic.monitorSelectorLabel(modelData)
                                 textFormat: Text.PlainText
                                 color: index === root.selectedIndex
                                     ? Components.Theme.accent
@@ -1145,7 +840,7 @@ FocusScope {
                                 Boolean(root.selectedOutput)
                                     && root.selectedOutput.modeSelectionSupported === true
                                     && modelData.rates.length > 0
-                            readonly property string key: root.resolutionKey(modelData)
+                            readonly property string key: DisplayLogic.resolutionKey(modelData)
 
                             objectName: "displayResolutionRow_" + key
                             Layout.fillWidth: true
@@ -1166,7 +861,7 @@ FocusScope {
                                 ? Components.Theme.accent : "transparent"
                             activeFocusOnTab: interactive
                             Accessible.role: Accessible.Button
-                            Accessible.name: root.formatResolution(modelData)
+                            Accessible.name: DisplayLogic.formatResolution(modelData)
 
                             Keys.onPressed: function(event) {
                                 if (interactive && (event.key === Qt.Key_Space
@@ -1192,7 +887,7 @@ FocusScope {
 
                                 Text {
                                     objectName: "displayResolutionLabel_" + key
-                                    text: root.formatResolution(modelData)
+                                    text: DisplayLogic.formatResolution(modelData)
                                     textFormat: Text.PlainText
                                     color: selected
                                         ? Components.Theme.accent
@@ -1320,11 +1015,11 @@ FocusScope {
                             DisplaySelector {
                                 objectName: "displayRefreshControl"
                                 controlWidth: 130
-                                label: root.selectedRefreshLabel(root.selectedOutput)
+                                label: DisplayLogic.selectedRefreshLabel(root.selectedOutput)
                                 options: root.currentResolutionGroup
                                     ? root.currentResolutionGroup.rates.map(
-                                        mode => root.rateText(mode)) : []
-                                selectedIndex: root.selectedRefreshIndex(
+                                        mode => DisplayLogic.rateText(mode)) : []
+                                selectedIndex: DisplayLogic.selectedRefreshIndex(
                                     root.selectedOutput, root.currentResolutionGroup)
                                 enabled: Boolean(root.selectedOutput
                                     && root.selectedOutput.modeSelectionSupported === true
@@ -1344,11 +1039,11 @@ FocusScope {
                                 objectName: "displayColorDepthControl"
                                 controlWidth: 130
                                 label: root.selectedOutput
-                                    ? root.colorDepthText(root.selectedOutput.colorDepthBits)
+                                    ? DisplayLogic.colorDepthText(root.selectedOutput.colorDepthBits)
                                     : "Unavailable"
-                                options: root.colorDepthOptions(root.selectedOutput).map(
-                                    bits => root.colorDepthText(bits))
-                                selectedIndex: root.selectedColorDepthIndex(root.selectedOutput)
+                                options: DisplayLogic.colorDepthOptions(root.selectedOutput).map(
+                                    bits => DisplayLogic.colorDepthText(bits))
+                                selectedIndex: DisplayLogic.selectedColorDepthIndex(root.selectedOutput)
                                 enabled: Boolean(root.selectedOutput
                                     && root.selectedOutput.colorDepthSelectionSupported === true)
                                 showChevron: enabled
@@ -1370,7 +1065,7 @@ FocusScope {
                                 objectName: "displayVrrControl"
                                 controlWidth: 160
                                 label: root.selectedOutput
-                                    ? root.vrrText(root.selectedOutput.vrrState)
+                                    ? DisplayLogic.vrrText(root.selectedOutput.vrrState)
                                     : "Unavailable"
                                 enabled: false
                                 showChevron: false
@@ -1388,14 +1083,14 @@ FocusScope {
                                 objectName: "displayScaleControl"
                                 controlWidth: 130
                                 label: root.selectedOutput
-                                    ? root.formatScale(
-                                        root.selectedScaleMilli(root.selectedOutput))
+                                    ? DisplayLogic.formatScale(
+                                        DisplayLogic.selectedScaleMilli(root.selectedOutput))
                                     : "Unavailable"
-                                options: root.scaleLabels(root.selectedOutput)
-                                selectedIndex: root.selectedScaleIndex(root.selectedOutput)
+                                options: DisplayLogic.scaleLabels(root.selectedOutput)
+                                selectedIndex: DisplayLogic.selectedScaleIndex(root.selectedOutput)
                                 enabled: Boolean(root.selectedOutput
                                     && root.selectedOutput.scaleMutationSupported === true
-                                    && root.selectedMode(root.selectedOutput)
+                                    && DisplayLogic.selectedMode(root.selectedOutput)
                                     && options.length > 0)
                                 showChevron: enabled
                                 onSelected: index => root.selectScale(index)

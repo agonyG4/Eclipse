@@ -1,7 +1,6 @@
 #include "runtime/ShellRuntime.hpp"
 
 #include "AltTab/core/AltTabController.hpp"
-#include "AltTab/core/AltTabShortcutRouter.hpp"
 #include "AltTab/platform/compositor/CompositorBackend.hpp"
 #include "AltTab/platform/hyprland/HyprlandWindowSource.hpp"
 #include "AltTab/platform/runtime/AltTabRuntimePaths.hpp"

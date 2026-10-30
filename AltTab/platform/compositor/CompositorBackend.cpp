@@ -1,4 +1,4 @@
-#include "platform/compositor/CompositorBackend.hpp"
+#include "core/CompositorBackend.hpp"
 
 // CompositorBackend is an abstract QObject base class.
 // This translation unit is required so that MOC-generated code

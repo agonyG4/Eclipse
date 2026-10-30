@@ -1,12 +1,13 @@
 #include <QTest>
 
-#include "core/AltTabShortcutRouter.hpp"
+#include "platform/typhon/AltTabShortcutAdapter.hpp"
 
 class AltTabShortcutRoutingTest final : public QObject {
     Q_OBJECT
 
 private slots:
     void mapsNativeLifecycleEvents();
+    void mapsPlatformNeutralLifecyclePhases();
     void ignoresNonAltTabShellFeatures();
     void ignoresOtherNamespacesAndTerminalPhases();
 };
@@ -25,6 +26,19 @@ void AltTabShortcutRoutingTest::mapsNativeLifecycleEvents()
     QCOMPARE(mapTyphonShortcut(QStringLiteral("astrea-shell"), QStringLiteral("alt_tab_commit"),
                                TyphonShortcutPhase::Pressed),
              AltTabShortcutAction::Commit);
+}
+
+void AltTabShortcutRoutingTest::mapsPlatformNeutralLifecyclePhases()
+{
+    QCOMPARE(mapAltTabShortcut(QStringLiteral("astrea-shell"), QStringLiteral("alt_tab_next"),
+                               AltTabShortcutPhase::Pressed),
+             AltTabShortcutAction::Next);
+    QCOMPARE(mapAltTabShortcut(QStringLiteral("astrea-shell"), QStringLiteral("alt_tab_next"),
+                               AltTabShortcutPhase::Repeated),
+             AltTabShortcutAction::Next);
+    QCOMPARE(mapAltTabShortcut(QStringLiteral("astrea-shell"), QStringLiteral("alt_tab_commit"),
+                               AltTabShortcutPhase::Released),
+             AltTabShortcutAction::Ignore);
 }
 
 void AltTabShortcutRoutingTest::ignoresNonAltTabShellFeatures()

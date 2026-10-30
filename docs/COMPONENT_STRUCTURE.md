@@ -80,3 +80,23 @@ their existing resident targets.
 ## Scope
 
 Use the structure to make existing ownership and dependency direction visible. It does not require splitting large files, creating a library for every directory, or adding abstractions without a real boundary to protect.
+
+
+## Current ownership notes
+
+AltTab keeps its shortcut policy and compositor contract in `AltTab/core/`.
+The Typhon shortcut phase translation lives in `AltTab/platform/typhon/`, and
+the old compositor include path forwards to the core contract for compatibility.
+`AltTabController` depends on the core contract; concrete compositor adapters
+remain platform owned.
+
+`Settings/qml/pages/system/DisplayLogic.js` contains pure display naming,
+bounds, mode grouping and selection, and formatting calculations. It receives
+output or mode values as arguments; display UI state, route selection,
+controller mutations, and refresh timers remain in `Display.qml`.
+
+Shell keeps screenshot slot ownership and teardown in
+`AstreaShellApplication`; `ScreenshotSurfaces.cpp` holds the existing surface
+composition methods without changing their receiver, callbacks, or destruction
+order. `SettingsController` remains a broad integration point and is not
+split as part of this cleanup.

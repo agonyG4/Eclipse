@@ -79,6 +79,7 @@ shell_enable_sanitizers(astrea-shell-runtime)
 qt_add_executable(astrea-shell
     app/main.cpp
     app/AstreaShellApplication.cpp
+    app/ScreenshotSurfaces.cpp
     app/AstreaShellApplication.hpp
     platform/wayland/ContextMenuSurfaceBundle.cpp
     platform/wayland/ContextMenuSurfaceBundle.hpp

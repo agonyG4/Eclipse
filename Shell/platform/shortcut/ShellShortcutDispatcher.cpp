@@ -1,6 +1,7 @@
 #include "platform/shortcut/ShellShortcutDispatcher.hpp"
 
 #include "AltTab/core/AltTabController.hpp"
+#include "AltTab/platform/typhon/AltTabShortcutAdapter.hpp"
 #include "screenshot/ScreenshotController.hpp"
 #include "Spotlight/core/SpotlightController.hpp"
 
@@ -17,17 +18,16 @@ ShellShortcutDispatcher::ShellShortcutDispatcher(AltTabController *altTabControl
 ShellShortcutAction mapTyphonShellShortcut(const QString &namespaceName, const QString &name,
                                            TyphonShortcutPhase phase)
 {
+    const auto altTabAction = mapTyphonShortcut(namespaceName, name, phase);
+    if (altTabAction == AltTabShortcutAction::Next)
+        return ShellShortcutAction::AltTabNext;
+    if (altTabAction == AltTabShortcutAction::Previous)
+        return ShellShortcutAction::AltTabPrevious;
+    if (altTabAction == AltTabShortcutAction::Commit)
+        return ShellShortcutAction::AltTabCommit;
     if (namespaceName != QStringLiteral("astrea-shell")
         || phase == TyphonShortcutPhase::Released || phase == TyphonShortcutPhase::Cancelled)
         return ShellShortcutAction::Ignore;
-    if (name == QStringLiteral("alt_tab_next")
-        && (phase == TyphonShortcutPhase::Pressed || phase == TyphonShortcutPhase::Repeated))
-        return ShellShortcutAction::AltTabNext;
-    if (name == QStringLiteral("alt_tab_previous")
-        && (phase == TyphonShortcutPhase::Pressed || phase == TyphonShortcutPhase::Repeated))
-        return ShellShortcutAction::AltTabPrevious;
-    if (name == QStringLiteral("alt_tab_commit") && phase == TyphonShortcutPhase::Pressed)
-        return ShellShortcutAction::AltTabCommit;
     if (name == QStringLiteral("spotlight_toggle") && phase == TyphonShortcutPhase::Pressed)
         return ShellShortcutAction::SpotlightToggle;
     if (name == QStringLiteral("screenshot_quick") && phase == TyphonShortcutPhase::Pressed)

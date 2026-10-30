@@ -42,6 +42,7 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     pages/system/Bluetooth.qml
     pages/system/Audio.qml
     pages/system/Display.qml
+    pages/system/DisplayLogic.js
     pages/system/Internet.qml
     pages/system/Performance.qml
     pages/system/Language.qml

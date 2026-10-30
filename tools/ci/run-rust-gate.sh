@@ -3,8 +3,12 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd -- "$script_dir/../.." && pwd)"
+source "$script_dir/set-build-output-env.sh"
 
 cd -- "$project_root"
+printf 'Cargo target directory: %s\n' "$(realpath -m "$CARGO_TARGET_DIR")"
+printf 'Cargo home: %s\n' "$(realpath -m "$CARGO_HOME")"
+printf 'Temporary directory: %s\n' "$(realpath -m "$TMPDIR")"
 rustc --version
 cargo --version
 

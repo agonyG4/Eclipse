@@ -98,6 +98,12 @@ jobs:
           rustup toolchain install stable --profile minimal --component rustfmt --component clippy
           rustup default stable
       - name: Run Rust gate
+        env:
+          ASTREA_CMAKE_BUILD_ROOT: ${{ runner.temp }}
+          ASTREA_CARGO_TARGET_DIR: ${{ runner.temp }}/Eclipse-target
+          ASTREA_CARGO_HOME: ${{ runner.temp }}/cargo-home
+          ASTREA_TMPDIR: ${{ runner.temp }}/tmp
+          ASTREA_XDG_CACHE_HOME: ${{ runner.temp }}/cache
         run: tools/ci/run-rust-gate.sh
 
   qml:
@@ -149,6 +155,12 @@ jobs:
           rustup default stable
       - name: Run QML gate
         env:
+          ASTREA_CMAKE_BUILD_ROOT: ${{ runner.temp }}
+          ASTREA_CARGO_TARGET_DIR: ${{ runner.temp }}/Eclipse-target
+          ASTREA_CARGO_HOME: ${{ runner.temp }}/cargo-home
+          ASTREA_TMPDIR: ${{ runner.temp }}/tmp
+          ASTREA_XDG_CACHE_HOME: ${{ runner.temp }}/cache
+          ASTREA_CMAKE_BUILD_DIR: ${{ runner.temp }}/Eclipse-build
           QT_QPA_PLATFORM: offscreen
         run: tools/ci/run-qml-gate.sh
 
@@ -159,14 +171,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        preset:
-          - debug
-          - release
-          - clang
-          - asan
-          - ubsan
-          - no-typhon
-          - no-layer-shell
+        include:
+          - preset: debug
+            build_dir: Eclipse-build
+          - preset: release
+            build_dir: Eclipse-release-build
+          - preset: clang
+            build_dir: Eclipse-clang-build
+          - preset: asan
+            build_dir: Eclipse-asan-build
+          - preset: ubsan
+            build_dir: Eclipse-ubsan-build
+          - preset: no-typhon
+            build_dir: Eclipse-no-typhon-build
+          - preset: no-layer-shell
+            build_dir: Eclipse-no-layer-shell-build
     steps:
       # actions/checkout v7.0.1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -213,6 +232,11 @@ jobs:
           rustup default stable
       - name: Run CMake gate
         env:
+          ASTREA_CMAKE_BUILD_ROOT: ${{ runner.temp }}
+          ASTREA_CARGO_TARGET_DIR: ${{ runner.temp }}/Eclipse-target
+          ASTREA_CARGO_HOME: ${{ runner.temp }}/cargo-home
+          ASTREA_TMPDIR: ${{ runner.temp }}/tmp
+          ASTREA_XDG_CACHE_HOME: ${{ runner.temp }}/cache
           QT_QPA_PLATFORM: offscreen
         run: tools/ci/run-cmake-gate.sh "${{ matrix.preset }}"
       - name: Upload CMake diagnostics on failure
@@ -222,9 +246,9 @@ jobs:
         with:
           name: cmake-diagnostics-${{ matrix.preset }}-${{ github.run_id }}
           path: |
-            build/${{ matrix.preset }}/Testing/Temporary/LastTest.log
-            build/${{ matrix.preset }}/ctest.junit.xml
-            build/${{ matrix.preset }}/CMakeCache.txt
+            ${{ runner.temp }}/${{ matrix.build_dir }}/Testing/Temporary/LastTest.log
+            ${{ runner.temp }}/${{ matrix.build_dir }}/ctest.junit.xml
+            ${{ runner.temp }}/${{ matrix.build_dir }}/CMakeCache.txt
           if-no-files-found: ignore
           retention-days: 5
           compression-level: 0

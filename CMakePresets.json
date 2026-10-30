@@ -10,10 +10,16 @@
       "name": "base",
       "hidden": true,
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/${presetName}",
+      "binaryDir": "/mnt/Aether/Desktop/GitHub/Eclipse-${presetName}-build",
+      "environment": {
+        "CARGO_TARGET_DIR": "$penv{ASTREA_CARGO_TARGET_DIR}",
+        "TMPDIR": "$penv{ASTREA_TMPDIR}",
+        "XDG_CACHE_HOME": "$penv{ASTREA_XDG_CACHE_HOME}"
+      },
       "cacheVariables": {
         "BUILD_TESTING": "ON",
         "ASTREA_BUILD_TESTS": "ON",
+        "ASTREA_BUILD_SDK_ONLY": "OFF",
         "ASTREA_ENABLE_LAYER_SHELL": "ON",
         "ASTREA_ENABLE_TYPHON_BACKEND": "ON",
         "ASTREA_ENABLE_ASAN": "OFF",
@@ -25,6 +31,7 @@
       "name": "debug",
       "displayName": "Debug",
       "inherits": "base",
+      "binaryDir": "/mnt/Aether/Desktop/GitHub/Eclipse-build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
       }
@@ -33,6 +40,7 @@
       "name": "release",
       "displayName": "Release",
       "inherits": "base",
+      "binaryDir": "/mnt/Aether/Desktop/GitHub/Eclipse-release-build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
@@ -41,6 +49,7 @@
       "name": "clang",
       "displayName": "Clang Debug",
       "inherits": "base",
+      "binaryDir": "/mnt/Aether/Desktop/GitHub/Eclipse-clang-build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_C_COMPILER": "clang",
@@ -51,6 +60,7 @@
       "name": "asan",
       "displayName": "AddressSanitizer Debug",
       "inherits": "base",
+      "binaryDir": "/mnt/Aether/Desktop/GitHub/Eclipse-asan-build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "ASTREA_ENABLE_ASAN": "ON",
@@ -61,6 +71,7 @@
       "name": "ubsan",
       "displayName": "UndefinedBehaviorSanitizer Debug",
       "inherits": "base",
+      "binaryDir": "/mnt/Aether/Desktop/GitHub/Eclipse-ubsan-build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "ASTREA_ENABLE_ASAN": "OFF",
@@ -71,6 +82,7 @@
       "name": "no-typhon",
       "displayName": "Debug without Typhon",
       "inherits": "base",
+      "binaryDir": "/mnt/Aether/Desktop/GitHub/Eclipse-no-typhon-build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "ASTREA_ENABLE_TYPHON_BACKEND": "OFF"
@@ -80,6 +92,7 @@
       "name": "no-layer-shell",
       "displayName": "Debug without Layer Shell",
       "inherits": "base",
+      "binaryDir": "/mnt/Aether/Desktop/GitHub/Eclipse-no-layer-shell-build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "ASTREA_ENABLE_LAYER_SHELL": "OFF"

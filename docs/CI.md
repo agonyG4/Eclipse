@@ -34,7 +34,21 @@ The root `CMakePresets.json` defines exactly these configure, build, and test pr
 - `no-typhon`: Debug with Typhon disabled.
 - `no-layer-shell`: Debug with LayerShellQt explicitly disabled for non-production/test builds.
 
-All presets use Ninja, write to `build/<preset>`, and enable `BUILD_TESTING` and `ASTREA_BUILD_TESTS`. The five normal presets require LayerShellQt and receive its prefix through standard `CMAKE_PREFIX_PATH` discovery. CTest runs with one job and prints output on failure. The total test count is intentionally not part of the contract.
+All presets use Ninja and enable `BUILD_TESTING` and `ASTREA_BUILD_TESTS`. The `debug` preset writes to `/mnt/Aether/Desktop/GitHub/Eclipse-build`; `release`, `clang`, `asan`, `ubsan`, `no-typhon`, and `no-layer-shell` use stable sibling build directories under `/mnt/Aether/Desktop/GitHub`. Before invoking a preset directly, set its Cargo and cache paths explicitly:
+
+```sh
+export ASTREA_CARGO_TARGET_DIR=/mnt/Aether/Desktop/GitHub/Eclipse-target
+export ASTREA_CARGO_HOME=/mnt/Aether/Desktop/GitHub/cargo-home
+export ASTREA_TMPDIR=/mnt/Aether/Desktop/GitHub/tmp
+export ASTREA_XDG_CACHE_HOME=/mnt/Aether/Desktop/GitHub/cache
+export CARGO_TARGET_DIR="$ASTREA_CARGO_TARGET_DIR"
+export TMPDIR="$ASTREA_TMPDIR"
+export XDG_CACHE_HOME="$ASTREA_XDG_CACHE_HOME"
+```
+
+`tools/ci/run-cmake-gate.sh` sets these paths before configuring, building, or testing and prints the resolved build/output directories. On hosted CI, the workflow sets them and `ASTREA_CMAKE_BUILD_ROOT` under the runner's temporary directory, and the gate passes the resolved binary directory with `-B`. The five normal presets require LayerShellQt and receive its prefix through standard `CMAKE_PREFIX_PATH` discovery. CTest runs with one job and prints output on failure. The total test count is intentionally not part of the contract.
+
+For SDK work without compositor or system-backend dependencies, configure with `-DASTREA_BUILD_SDK_ONLY=ON`. This path requires Qt Core, Gui, Qml, Quick, and ShaderTools, and reaches the SDK and its focused icon, QML, configure, and install-consumer tests before any LayerShellQt, Wayland, PipeWire, or CXX-Qt/Cargo probing.
 
 ## Local gates
 
@@ -45,7 +59,7 @@ tools/ci/run-rust-gate.sh
 tools/ci/run-qml-gate.sh
 ```
 
-The Rust gate prints `rustc` and `cargo` versions, then runs locked format checking, clippy with `-D warnings`, and tests for `Spotlight/backend`, `Settings/backend`, and `shared/backend`. The QML gate builds the generated `astrea-shell_qmllint` and `astrea-settings-ui_qmllint` targets with `QT_QPA_PLATFORM=offscreen`; those targets own the authoritative QML file registration for Shell, Dock, AltTab, Spotlight, and Settings. Set `ASTREA_CMAKE_BUILD_DIR` to place its build tree outside the checkout.
+The Rust gate prints its Aether Cargo/cache paths and `rustc`/`cargo` versions, then runs locked format checking, clippy with `-D warnings`, and tests for `Spotlight/backend`, `Settings/backend`, and `shared/backend`. The QML gate reuses `/mnt/Aether/Desktop/GitHub/Eclipse-build` locally and builds the generated `astrea-shell_qmllint` and `astrea-settings-ui_qmllint` targets with `QT_QPA_PLATFORM=offscreen`; those targets own the authoritative QML file registration for Shell, Dock, AltTab, Spotlight, and Settings. `tools/ci/set-build-output-env.sh` centralizes local Aether paths; hosted workflow steps explicitly override them with runner temp paths. `ASTREA_CMAKE_BUILD_DIR` can select another build directory under that configured output root.
 
 Run the complete local contract with:
 
@@ -53,9 +67,9 @@ Run the complete local contract with:
 tools/ci/run-all-local.sh
 ```
 
-It runs the JUnit helper tests, Rust, QML, and then `debug`, `release`, `clang`, `asan`, `ubsan`, `no-typhon`, and `no-layer-shell` sequentially. Individual CMake runs are available with `tools/ci/run-cmake-gate.sh <preset>`. Unknown preset names return exit status 2.
+It sets the shared Aether output environment, runs the JUnit helper tests, Rust, QML, and then `debug`, `release`, `clang`, `asan`, `ubsan`, `no-typhon`, and `no-layer-shell` sequentially. Individual CMake runs are available with `tools/ci/run-cmake-gate.sh <preset>`. Unknown preset names return exit status 2.
 
-Each CMake gate creates a unique mode-0700 `XDG_RUNTIME_DIR`, cleans it with a trap, configures with the matching preset, builds, runs serial CTest, writes `build/<preset>/ctest.junit.xml`, and validates that report. The five Typhon-enabled presets must build these concrete targets before the full build:
+Each CMake gate creates a unique mode-0700 `XDG_RUNTIME_DIR` under its configured temporary directory, cleans it with a trap, configures with the matching preset, builds, runs serial CTest, writes `ctest.junit.xml` in the preset's binary directory, and validates that report. The five Typhon-enabled presets must build these concrete targets before the full build:
 
 ```text
 typhon-protocol-integration-test
@@ -73,7 +87,7 @@ Run the same named gate locally. For example:
 tools/ci/run-cmake-gate.sh asan
 ```
 
-Inspect `build/asan/Testing/Temporary/LastTest.log`, `build/asan/ctest.junit.xml`, and `build/asan/CMakeCache.txt`. The workflow uploads these files only when a CMake matrix job fails, with five-day retention; successful compiled output is not uploaded. ASan and UBSan are mandatory matrix entries and are not allowed to continue on error.
+Inspect the configured build directory's `Testing/Temporary/LastTest.log`, `ctest.junit.xml`, and `CMakeCache.txt`. The workflow uploads these files only when a CMake matrix job fails, with five-day retention; successful compiled output is not uploaded. ASan and UBSan are mandatory matrix entries and are not allowed to continue on error.
 
 The CI matrix may run configurations concurrently because each has an isolated build directory. Tests within each configuration remain serial to avoid fixed runtime-socket collisions.
 

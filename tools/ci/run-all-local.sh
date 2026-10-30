@@ -3,6 +3,7 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd -- "$script_dir/../.." && pwd)"
+source "$script_dir/set-build-output-env.sh"
 
 cd -- "$project_root"
 python3 -m unittest discover -s tools/ci/tests -p 'test_*.py'

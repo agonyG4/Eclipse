@@ -25,8 +25,10 @@ esac
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd -- "$script_dir/../.." && pwd)"
-build_dir="$project_root/build/$preset"
-runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/eclipse-$preset-runtime.XXXXXX")"
+source "$script_dir/set-build-output-env.sh"
+
+build_dir="$(python3 "$script_dir/preset-binary-dir.py" "$project_root" "$preset")"
+runtime_dir="$(mktemp -d "$ASTREA_TMPDIR/eclipse-$preset-runtime.XXXXXX")"
 
 cleanup() {
     rm -rf -- "$runtime_dir"
@@ -40,17 +42,23 @@ export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-2}"
 
 cd -- "$project_root"
 
-cmake --fresh --preset "$preset"
+printf 'CMake binary directory: %s\n' "$build_dir"
+printf 'Cargo target directory: %s\n' "$ASTREA_CARGO_TARGET_DIR"
+printf 'Cargo home: %s\n' "$CARGO_HOME"
+printf 'Temporary directory: %s\n' "$ASTREA_TMPDIR"
+printf 'XDG cache directory: %s\n' "$ASTREA_XDG_CACHE_HOME"
+cmake --preset "$preset" -B "$build_dir"
 
 if [[ "$junit_mode" == "typhon" ]]; then
-    cmake --build --preset "$preset" --target \
+cmake --build "$build_dir" --target \
         typhon-protocol-integration-test \
         typhon-shortcut-protocol-integration-test \
         shell-unified-runtime-integration-test
 fi
 
-cmake --build --preset "$preset"
+cmake --build "$build_dir"
 
 junit_path="$build_dir/ctest.junit.xml"
-ctest --preset "$preset" --output-junit "$junit_path"
+ctest --test-dir "$build_dir" --output-on-failure --parallel 1 \
+    --output-junit "$junit_path"
 python3 "$script_dir/check-ctest-junit.py" --mode "$junit_mode" "$junit_path"

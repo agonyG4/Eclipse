@@ -63,15 +63,21 @@ relative to the package prefix, so the installation can be moved.
 
 ## Installation and independent use
 
-Configure Eclipse with a desired install prefix and build the existing Shared
-Core and its plugin. For example:
+Configure Eclipse in SDK-only mode with a desired install prefix, then build
+and install the standalone SDK. SDK-only mode configures Shared Core and the
+SDK without probing LayerShellQt, Wayland, PipeWire, or CXX-Qt/Cargo. For
+example:
 
 ```sh
+export CARGO_TARGET_DIR=/mnt/Aether/Desktop/GitHub/Eclipse-target
+export TMPDIR=/mnt/Aether/Desktop/GitHub/tmp
+export XDG_CACHE_HOME=/mnt/Aether/Desktop/GitHub/cache
 cmake -S /home/agony/GitHub/Eclipse \
   -B /mnt/Aether/Desktop/GitHub/Eclipse-build \
+  -DASTREA_BUILD_SDK_ONLY=ON \
   -DCMAKE_INSTALL_PREFIX=/opt/astrea
 cmake --build /mnt/Aether/Desktop/GitHub/Eclipse-build \
-  --target astrea-shared-core astrea-shared-coreplugin
+  --target astrea-sdk-core
 cmake --install /mnt/Aether/Desktop/GitHub/Eclipse-build \
   --component AstreaSDK
 ```
@@ -148,3 +154,10 @@ with the configured local Qt toolchain and offscreen platform. It does not
 qualify every Qt distribution, platform plugin, packaging format, production
 compositor, or runtime deployment layout. Existing Shell and Settings tests
 remain the regression checks for their consumers.
+
+SDK-only configuration also registers `astrea-sdk-only-configure-test`. It
+configures a nested SDK-only build with PkgConfig, LayerShellQt, and CXX-Qt
+package discovery disabled and FetchContent disconnected. The probe build is
+placed under the active CMake binary directory. SDK-only mode requires Qt
+Core, Gui, Qml, Quick, and ShaderTools; Test is required only when focused
+tests are enabled.

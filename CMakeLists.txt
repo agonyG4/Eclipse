@@ -8,6 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 include(GNUInstallDirs)
 
 option(ASTREA_BUILD_TESTS "Build Eclipse component tests" ON)
+option(ASTREA_BUILD_SDK_ONLY "Configure only the standalone Astrea Core SDK" OFF)
 option(ASTREA_ENABLE_LAYER_SHELL
     "Require LayerShellQt for the production unified shell"
     ON)
@@ -17,6 +18,21 @@ option(ASTREA_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSa
 if(ASTREA_ENABLE_SANITIZERS)
     set(ASTREA_ENABLE_ASAN ON CACHE BOOL "Enable AddressSanitizer" FORCE)
     set(ASTREA_ENABLE_UBSAN ON CACHE BOOL "Enable UndefinedBehaviorSanitizer" FORCE)
+endif()
+
+include(CTest)
+
+if(ASTREA_BUILD_SDK_ONLY)
+    find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick ShaderTools)
+    if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
+        find_package(Qt6 6.8 REQUIRED COMPONENTS Test)
+    endif()
+    if(COMMAND qt_policy)
+        qt_policy(SET QTP0001 NEW)
+        qt_policy(SET QTP0004 NEW)
+    endif()
+    add_subdirectory(shared)
+    return()
 endif()
 
 find_package(PkgConfig QUIET)
@@ -54,8 +70,6 @@ endif()
 
 include(cmake/AstreaLayerShell.cmake)
 astrea_configure_layer_shell()
-
-include(CTest)
 
 if(NOT TARGET astrea-shared-core)
     add_subdirectory(shared)

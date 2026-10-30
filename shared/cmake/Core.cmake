@@ -51,6 +51,21 @@ function(astrea_shared_enable_sanitizers target)
     endif()
 endfunction()
 
+function(astrea_shared_add_theme_tokens_test)
+    add_executable(astrea-theme-tokens-test tests/ThemeTokensTest.cpp)
+    target_include_directories(astrea-theme-tokens-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_definitions(astrea-theme-tokens-test PRIVATE
+        ASTREA_THEME_TOKENS_QML="${CMAKE_CURRENT_SOURCE_DIR}/qml/ThemeTokens.qml"
+        ASTREA_QML_IMPORT_PATH="${CMAKE_BINARY_DIR}")
+    target_link_libraries(astrea-theme-tokens-test PRIVATE
+        astrea-shared-core astrea-shared-coreplugin Qt6::Test Qt6::Qml Qt6::Quick)
+    astrea_shared_enable_sanitizers(astrea-theme-tokens-test)
+    add_test(NAME astrea-theme-tokens-test COMMAND astrea-theme-tokens-test)
+    add_dependencies(astrea-theme-tokens-test astrea-shared-coreplugin)
+    set_tests_properties(astrea-theme-tokens-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QML_IMPORT_PATH=${CMAKE_BINARY_DIR}")
+endfunction()
+
 astrea_shared_enable_sanitizers(astrea-shared-core)
 
 qt_add_qml_module(astrea-shared-core

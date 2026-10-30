@@ -30,18 +30,7 @@ if(ASTREA_BUILD_SDK_ONLY)
         set_tests_properties(astrea-app-icon-qml-test PROPERTIES
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QML_IMPORT_PATH=${CMAKE_BINARY_DIR}")
 
-        add_executable(astrea-theme-tokens-test tests/ThemeTokensTest.cpp)
-        target_include_directories(astrea-theme-tokens-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
-        target_compile_definitions(astrea-theme-tokens-test PRIVATE
-            ASTREA_THEME_TOKENS_QML="${CMAKE_CURRENT_SOURCE_DIR}/qml/ThemeTokens.qml"
-            ASTREA_QML_IMPORT_PATH="${CMAKE_BINARY_DIR}")
-        target_link_libraries(astrea-theme-tokens-test PRIVATE
-            astrea-shared-core astrea-shared-coreplugin Qt6::Test Qt6::Qml Qt6::Quick)
-        astrea_shared_enable_sanitizers(astrea-theme-tokens-test)
-        add_test(NAME astrea-theme-tokens-test COMMAND astrea-theme-tokens-test)
-        add_dependencies(astrea-theme-tokens-test astrea-shared-coreplugin)
-        set_tests_properties(astrea-theme-tokens-test PROPERTIES
-            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QML_IMPORT_PATH=${CMAKE_BINARY_DIR}")
+        astrea_shared_add_theme_tokens_test()
 
         add_test(NAME astrea-sdk-install-consumer-test
             COMMAND ${CMAKE_COMMAND}
@@ -657,6 +646,7 @@ astrea_shared_enable_sanitizers(astrea-shared-typhon)
 option(ASTREA_SHARED_BUILD_TESTS "Build shared foundation tests" ON)
 if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     find_package(Qt6 6.8 REQUIRED COMPONENTS Test)
+    astrea_shared_add_theme_tokens_test()
 
     add_executable(dock-config-contract-test
         tests/DockConfigTest.cpp

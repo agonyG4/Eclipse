@@ -418,13 +418,16 @@ void ThemeController::reloadNavigationIcons()
         emit navigationIconOverridesChanged();
     }
     QFile visualConfig(path);
-    QString nextVisualTheme = QStringLiteral("astrea");
+    QString requestedVisualTheme = QStringLiteral("astrea");
     if (visualConfig.open(QIODevice::ReadOnly)) {
-        const QString requested = QJsonDocument::fromJson(visualConfig.readAll())
+        requestedVisualTheme = QJsonDocument::fromJson(visualConfig.readAll())
             .object().value(QStringLiteral("visual_theme")).toString();
-        if (Astrea::ThemePacks::find(requested).has_value())
-            nextVisualTheme = requested;
+        if (requestedVisualTheme.isEmpty())
+            requestedVisualTheme = QStringLiteral("astrea");
     }
+    m_requestedVisualTheme = requestedVisualTheme;
+    const QString nextVisualTheme = Astrea::ThemePacks::find(requestedVisualTheme).has_value()
+        ? requestedVisualTheme : QStringLiteral("astrea");
     const QVariantMap nextTokens = Astrea::ThemePacks::styleTokens(nextVisualTheme);
     if (nextVisualTheme != m_visualTheme || nextTokens != m_styleTokens) {
         m_visualTheme = nextVisualTheme;
@@ -453,4 +456,24 @@ void ThemeController::updateWatchPaths()
     }
     if (directory.exists())
         m_watcher.addPath(directory.absolutePath());
+
+    if (Astrea::ThemePacks::validId(m_requestedVisualTheme)
+        && m_requestedVisualTheme != QStringLiteral("astrea")) {
+        for (const QString &base : QStandardPaths::standardLocations(
+                 QStandardPaths::GenericDataLocation)) {
+            const QString themesPath = QDir(base).filePath(QStringLiteral("AstreaOS/themes"));
+            const QString packagePath = QDir(themesPath).filePath(m_requestedVisualTheme);
+            const QString manifestPath = QDir(packagePath).filePath(QStringLiteral("theme.json"));
+            if (QFileInfo(manifestPath).isFile())
+                m_watcher.addPath(manifestPath);
+            if (QFileInfo(packagePath).isDir())
+                m_watcher.addPath(packagePath);
+
+            QDir existing(themesPath);
+            while (!existing.exists() && existing.cdUp()) {
+            }
+            if (existing.exists())
+                m_watcher.addPath(existing.absolutePath());
+        }
+    }
 }

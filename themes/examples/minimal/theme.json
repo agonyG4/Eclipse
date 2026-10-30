@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "id": "minimal",
+  "name": "Minimal",
+  "style": {
+    "colors": {
+      "accent": "#c38fff",
+      "accentForeground": "#180d22",
+      "textPrimary": "#f3eafb",
+      "textSecondary": "#cab5dc",
+      "cardBg": "#211b2c",
+      "cardBorder": "#42364f",
+      "shellBackground": "#18131f",
+      "shellSurface": "#251e30",
+      "shellSurfaceElevated": "#30263d",
+      "shellBorder": "#4a3f55",
+      "shellTextMain": "#f3eafb",
+      "shellIconMain": "#f3eafb",
+      "tooltipSurface": "#30263d",
+      "tooltipBorder": "#4a3f55"
+    },
+    "metrics": {
+      "radiusSmall": 6,
+      "shellRadiusLarge": 14,
+      "spacing": 8
+    },
+    "typography": {
+      "fontFamily": "Inter",
+      "fontSizeBody": 14,
+      "tooltipFontSize": 13
+    },
+    "durations": {
+      "animationFast": 115,
+      "animationPopover": 180
+    }
+  }
+}

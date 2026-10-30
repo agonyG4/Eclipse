@@ -107,6 +107,7 @@ private:
     QJsonObject m_navigationIconOverrides;
     int m_navigationIconOverridesRevision = 0;
     QString m_visualTheme = QStringLiteral("astrea");
+    QString m_requestedVisualTheme = QStringLiteral("astrea");
     QVariantMap m_styleTokens;
     QString m_iconAppearance = QStringLiteral("default");
     QString m_accentHex = QStringLiteral("#0a84ff");

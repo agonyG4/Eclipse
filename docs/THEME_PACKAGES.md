@@ -22,22 +22,30 @@ choose the icon pack. Installed theme packages are also searched under system XD
   "schema": 1,
   "id": "minimal",
   "name": "Minimal",
-  "icons": { "settings": "icons/settings", "shell": "icons/shell" },
   "style": {
     "colors": {
       "accent": "#c38fff",
+      "accentForeground": "#180d22",
       "textPrimary": "#f3eafb",
       "textSecondary": "#cab5dc",
       "cardBg": "#211b2c",
       "cardBorder": "#42364f",
       "shellBackground": "#18131f",
       "shellSurface": "#251e30",
+      "shellSurfaceElevated": "#30263d",
       "shellBorder": "#4a3f55",
       "shellTextMain": "#f3eafb",
-      "shellIconMain": "#f3eafb"
+      "shellIconMain": "#f3eafb",
+      "tooltipSurface": "#30263d",
+      "tooltipBorder": "#4a3f55"
     },
-    "fontFamily": "Inter",
-    "animationFast": 115
+    "metrics": { "radiusSmall": 6, "shellRadiusLarge": 14, "spacing": 8 },
+    "typography": {
+      "fontFamily": "Inter",
+      "fontSizeBody": 14,
+      "tooltipFontSize": 13
+    },
+    "durations": { "animationFast": 115, "animationPopover": 180 }
   }
 }
 ```
@@ -51,13 +59,49 @@ the UI. An icon is `icons/settings/<key>.svg`, `icons/shell/<key>.svg`, or an eq
 existing UI icon, including Tabler in Settings and legacy glyphs in Shell.
 Broken manifests, invalid paths and resource paths escaping a package are rejected.
 
-Theme `style` values are optional; missing values inherit Astrea defaults.
-The v1 runtime supports the documented semantic colors, one installed `fontFamily`,
-and `animationFast` (0–2000 ms). Theme packages are data only: arbitrary QML/script
-execution, unrestricted compositor effects, full layout replacement and per-component
-QML plugins are not implemented in v1. This intentionally avoids executing untrusted
-code inside the compositor. Those richer component APIs need a separate versioned,
-trusted extension mechanism.
+Theme `style` values are optional; missing or invalid values inherit each component's
+existing Astrea defaults. Colors accept `#RRGGBB` or `#AARRGGBB`. Supported color roles
+are `accent`, `accentForeground`, `textPrimary`, `textSecondary`, `textTertiary`,
+`cardBg`, `cardBorder`, `popupBg`, `windowBackground`, `windowBorder`, `windowWash`,
+`errorColor`, `warningColor`, `successColor`, `shellBackground`, `shellSurface`,
+`shellSurfaceElevated`, `shellBorder`, `shellBorderHover`, `shellHover`, `shellPressed`,
+`shellActive`, `shellTextMain`, `shellTextSecondary`, `shellTextLight`, `shellTextDim`,
+`shellTextActive`, `shellIconMain`, `shellIconActive`, `shellIconMuted`,
+`shellIconWarning`, `shellIconAccent`, `shellSeparator`, `shellShadow`,
+`tooltipSurface`, `tooltipBorder`, `tooltipShadow`, `workspaceActive`, and
+`workspaceInactive`.
+
+`style.metrics` accepts finite numbers from 0 through 256 for `radiusSmall`,
+`radiusMedium`, `radiusLarge`, `cornerRadiusSmall`, `cornerRadius`, `cornerRadiusLarge`,
+`cardRadius`, `controlRadius`, `shellRadiusSmall`, `shellRadiusMedium`,
+`shellRadiusLarge`, `shellControlRadius`, `shellTileRadius`, `shellPillRadius`,
+`spacingTiny`, `spacingMicro`, `spacingSmall`, `spacing`, `spacingMedium`,
+`spacingLarge`, `spacingXLarge`, `pageMargin`, `dockRadius`, `spotlightRadius`,
+`altTabRadius`, and `contextMenuRadius`.
+
+`style.typography` accepts nonempty family names (up to 80 characters, without path
+separators or control characters) for `fontFamily`, `monoFontFamily`,
+`fontFamilyDisplay`, `fontFamilyText`, and `iconFontFamily`. Its integer size keys from
+1 through 96 are `fontSizeHero`, `fontSizeHeader`, `fontSizeIconLarge`,
+`fontSizeAvatar`, `fontSizeSubtitle`, `fontSizeTitle`, `fontSizeLarge`,
+`fontSizeNormal`, `fontSizeSmall`, `fontSizeTiny`, `fontSizeMicro`, `fontSizeBody`,
+`fontSizeCaption`, `fontSizeExtraSmall`, `fontSizeIcon`, and `tooltipFontSize`.
+`style.durations` accepts integer milliseconds from 0 through 2000 for
+`animationMicro`, `animationQuick`, `animationFast`, `animationNormal`,
+`animationSlow`, `animationPopover`, `animationHover`, `animationSubtle`,
+`animationStandard`, `animationInstant`, `animationSlider`, `animationPulse`, and
+`animationSpin`. The original top-level `style.fontFamily` and
+`style.animationFast` remain supported; valid nested typography/duration values take
+precedence. Numeric zero is a valid override. Unknown keys and invalid values are
+ignored independently, so partial themes retain valid overrides.
+
+The shared `ThemeTokens` QML object resolves a token against a component's own fallback
+and follows live `ThemeController` updates when one is present. It can also be used by
+SDK consumers without a `ThemeController`. Theme packages are data only: arbitrary
+QML/script execution, unrestricted compositor effects, full layout replacement and
+per-component QML plugins are not implemented. This avoids executing untrusted code
+inside the compositor; richer component APIs need a separate versioned, trusted
+extension mechanism.
 
 Visual theme and icon pack preferences are stored independently in
 `~/.config/AstreaOS/ui/navigation-icons.json` as `visual_theme`, `theme`, and `weight`.

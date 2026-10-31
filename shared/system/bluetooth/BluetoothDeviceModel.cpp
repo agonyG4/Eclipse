@@ -63,6 +63,20 @@ void BluetoothDeviceModel::replace(QVector<BluetoothDevice> devices)
         const auto rightPriority = std::tuple{right.connected, right.paired, right.discovered};
         if (leftPriority != rightPriority)
             return leftPriority > rightPriority;
+        // Nearby discovery prioritizes identified devices, then signal strength.
+        // Do not disturb the established ordering of paired/connected devices.
+        if (!left.paired && !right.paired && left.discovered && right.discovered) {
+            const bool leftNamed = !left.name.trimmed().isEmpty();
+            const bool rightNamed = !right.name.trimmed().isEmpty();
+            if (leftNamed != rightNamed)
+                return leftNamed;
+            const bool leftHasSignal = left.rssi != -1;
+            const bool rightHasSignal = right.rssi != -1;
+            if (leftHasSignal != rightHasSignal)
+                return leftHasSignal;
+            if (leftHasSignal && left.rssi != right.rssi)
+                return left.rssi > right.rssi;
+        }
         const QString leftName = left.name.isEmpty() ? left.address : left.name;
         const QString rightName = right.name.isEmpty() ? right.address : right.name;
         const int nameCompare = QString::compare(leftName, rightName, Qt::CaseInsensitive);

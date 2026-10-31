@@ -55,8 +55,14 @@ pub fn resolve_bluetooth_display_identity(
 ) -> BluetoothDisplayIdentity {
     let alias = sanitize_one_line(raw.alias);
     let remote_name = sanitize_one_line(raw.remote_name);
-    let explicit_alias =
-        !alias.is_empty() && (remote_name.is_empty() || raw.alias != raw.remote_name);
+    // BlueZ uses the device address as Alias when no friendly name is known.
+    // That fallback is transport identity, not an explicitly chosen user alias.
+    let alias_is_address = is_current_identity(&alias, raw.address, raw.object_path)
+        || is_hardware_address(&alias)
+        || is_bluez_device_token(&alias);
+    let explicit_alias = !alias.is_empty()
+        && !alias_is_address
+        && (remote_name.is_empty() || raw.alias != raw.remote_name);
 
     let (display_name, name_source) = if explicit_alias {
         (alias, BluetoothDeviceNameSource::ExplicitAlias)

@@ -2253,6 +2253,30 @@ void SystemServicesTest::bluetoothDeviceModelPreservesOrderingAndRoles()
     model.replace({availableB, paired, connected});
     QCOMPARE(resetSpy.count(), 3);
     QCOMPARE(model.rowCount(), 3);
+
+    auto namedStrong = availableB;
+    namedStrong.id = QStringLiteral("named-strong");
+    namedStrong.name = QStringLiteral("Zebra");
+    namedStrong.rssi = -38;
+    auto namedWeak = availableB;
+    namedWeak.id = QStringLiteral("named-weak");
+    namedWeak.name = QStringLiteral("Alpha");
+    namedWeak.rssi = -80;
+    auto unnamedStrong = availableB;
+    unnamedStrong.id = QStringLiteral("unnamed-strong");
+    unnamedStrong.name.clear();
+    unnamedStrong.rssi = -30;
+    auto unnamedUnknown = availableB;
+    unnamedUnknown.id = QStringLiteral("unnamed-no-signal");
+    unnamedUnknown.name.clear();
+    unnamedUnknown.rssi = -1;
+    model.replace({unnamedStrong, namedWeak, unnamedUnknown, namedStrong, paired});
+    const QStringList expected{QStringLiteral("paired"), QStringLiteral("named-strong"),
+                               QStringLiteral("named-weak"), QStringLiteral("unnamed-strong"),
+                               QStringLiteral("unnamed-no-signal")};
+    for (int row = 0; row < expected.size(); ++row)
+        QCOMPARE(model.data(model.index(row, 0), BluetoothDeviceModel::IdRole).toString(),
+                 expected[row]);
 }
 
 void SystemServicesTest::wifiPowerOldReplyCannotSettleReplacementRequest()

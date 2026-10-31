@@ -33,6 +33,30 @@ fn explicit_alias_wins_even_when_it_looks_technical() {
 }
 
 #[test]
+fn bluez_address_fallback_alias_is_not_a_friendly_name() {
+    let address = "44:CA:06:4A:16:9B";
+    let object_path = "/org/bluez/hci0/dev_44_CA_06_4A_16_9B";
+
+    for alias in [
+        address,
+        "44-CA-06-4A-16-9B",
+        "44CA064A169B",
+        "dev_44_CA_06_4A_16_9B",
+    ] {
+        let identity = resolve(alias, "", address, object_path, "");
+        assert_eq!(
+            identity.display_name, "",
+            "BlueZ identity fallback {alias:?} must not be presented as a name"
+        );
+    }
+
+    let with_remote_name =
+        resolve("44-CA-06-4A-16-9B", "Wireless Keyboard", address, object_path, "input-keyboard");
+    assert_eq!(with_remote_name.display_name, "Wireless Keyboard");
+    assert_eq!(with_remote_name.kind, BluetoothDeviceKind::Keyboard);
+}
+
+#[test]
 fn alias_equal_to_name_uses_ordinary_remote_name_resolution() {
     let identity = resolve(
         "LE_WH-1000XM3",

@@ -324,12 +324,10 @@ FocusScope {
                 readonly property real screenInset: laptop ? 6 : 5
                 // The glass stays black in both themes; only the stand follows the theme.
                 readonly property bool lightDevice: Components.Theme.isLight
-                // Opaque so the shadows never show through the stand.
-                readonly property color standTint:
-                    Qt.tint(Components.Theme.windowBackground,
-                            Qt.rgba(Components.Theme.textPrimary.r,
-                                    Components.Theme.textPrimary.g,
-                                    Components.Theme.textPrimary.b, 0.22))
+                // White stand on dark pages; light silver on light pages so it
+                // still reads against the background. Opaque so the shadows
+                // never show through it.
+                readonly property color standTint: lightDevice ? "#d9d9de" : "#f5f5f7"
 
                 width: screenWidth + bezel * 2
                 height: bezel + screenHeight + slot.below
@@ -1025,7 +1023,7 @@ FocusScope {
                             > root.defaultResolutionGroups.length
                         Layout.topMargin: 6
                         Layout.leftMargin: 12
-                        Layout.bottomMargin: 8
+                        Layout.bottomMargin: 4
                         text: root.showAllResolutions
                             ? "⌃  Show less" : "⌄  Show all resolutions"
                         textFormat: Text.PlainText
@@ -1051,7 +1049,7 @@ FocusScope {
                         Layout.fillWidth: true
                         Layout.topMargin: 8
                         Layout.leftMargin: 12
-                        Layout.bottomMargin: 8
+                        Layout.bottomMargin: 4
                         text: "Some available modes are not shown."
                         textFormat: Text.PlainText
                         color: Components.Theme.warningColor

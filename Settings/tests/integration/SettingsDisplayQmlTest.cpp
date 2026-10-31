@@ -452,6 +452,7 @@ private slots:
   void mixedScaleDisplaysDoNotOverlap();
   void missingPhysicalSizeFallsBackToPixels();
   void standFollowsThemeWhileGlassStaysBlack();
+  void resolutionCardInsetsRowsOnEverySide();
   void mouseWheelGlidesInsteadOfJumping();
   void waylandMouseWheelWithPixelDeltaGlides();
   void touchpadScrollStillScrolls();
@@ -1282,10 +1283,13 @@ void SettingsDisplayQmlTest::standFollowsThemeWhileGlassStaysBlack() {
   QVERIFY(body != nullptr);
   QVERIFY(stand != nullptr);
   QVERIFY(body->property("color").value<QColor>().lightnessF() < 0.1);
-  QVERIFY(stand->property("color").value<QColor>().lightnessF() < 0.5);
+  // A white stand on dark pages...
+  QVERIFY(stand->property("color").value<QColor>().lightnessF() > 0.9);
 
+  // ...and a silver one on light pages, so it does not vanish.
   fixture.theme()->setThemeMode(1);
-  QTRY_VERIFY(stand->property("color").value<QColor>().lightnessF() > 0.6);
+  QTRY_VERIFY(stand->property("color").value<QColor>().lightnessF() < 0.9);
+  QVERIFY(stand->property("color").value<QColor>().lightnessF() > 0.6);
   QVERIFY(body->property("color").value<QColor>().lightnessF() < 0.1);
   captureVisual(qobject_cast<QQuickItem *>(fixture.object(
                     QStringLiteral("displayPreviewMonitor_output-1"))),
@@ -1509,6 +1513,23 @@ void SettingsDisplayQmlTest::hiResWheelStepLandsWithoutAnimation() {
             QPointingDevice::primaryPointingDevice());
   const qreal moved = targets.flickable->property("contentY").toReal();
   QVERIFY2(moved > 0.0, qPrintable(QString::number(moved)));
+}
+
+void SettingsDisplayQmlTest::resolutionCardInsetsRowsOnEverySide() {
+  DisplayPageFixture fixture;
+  QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.errors()));
+  auto *card = qobject_cast<QQuickItem *>(
+      fixture.object(QStringLiteral("displayResolutionList")));
+  auto *first = qobject_cast<QQuickItem *>(
+      fixture.object(QStringLiteral("displayResolutionRow_1920x1080")));
+  QVERIFY(card != nullptr);
+  QVERIFY(first != nullptr);
+  const qreal inset = card->property("margins").toReal();
+  QVERIFY(inset > 0.0);
+  const QRectF row = first->mapRectToItem(card, first->boundingRect());
+  QCOMPARE(row.left(), inset);
+  QCOMPARE(card->width() - row.right(), inset);
+  QCOMPARE(row.top(), inset);
 }
 
 void SettingsDisplayQmlTest::showsPreferredModeSemantics() {

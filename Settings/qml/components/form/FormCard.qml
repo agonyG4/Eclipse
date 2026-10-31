@@ -9,7 +9,8 @@ Rectangle {
     color: Components.Theme.cardBg
     border.width: 1
     border.color: Components.Theme.cardBorder
-    implicitHeight: Math.max(48, contentCol.implicitHeight)
+    // Margins inset the content on every side, top and bottom included.
+    implicitHeight: Math.max(48, contentCol.implicitHeight + margins * 2)
 
     default property alias content: contentCol.data
     property real spacing: 0
@@ -17,6 +18,7 @@ Rectangle {
 
     ColumnLayout {
         id: contentCol
+        anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.margins: cardRoot.margins

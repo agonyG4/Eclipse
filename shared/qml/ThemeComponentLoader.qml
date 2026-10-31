@@ -20,11 +20,11 @@ Item {
         externalAccepted = false
         loadError = ""
         external.active = false
-        external.active = true
         if (source && String(source).length > 0)
             external.setSource(source, initialProperties || ({}))
         else
             external.source = ""
+        external.active = true
     }
 
     onSourceChanged: reload()

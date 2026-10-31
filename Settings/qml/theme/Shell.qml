@@ -43,7 +43,7 @@ QtObject {
     readonly property color iconActive: themeTokens.value("shellIconActive", isLight ? Qt.rgba(0.03, 0.04, 0.05, 0.96) : "#ffffff")
     readonly property color iconMuted: themeTokens.value("shellIconMuted", isLight ? Qt.rgba(0.13, 0.15, 0.18, 0.32) : Qt.rgba(1, 1, 1, 0.25))
     readonly property color iconWarning: themeTokens.value("shellIconWarning", "#ff375f")
-    readonly property color iconAccent: themeTokens.value("shellIconAccent", Borealis.State.accentHex)
+    readonly property color iconAccent: themeTokens.value("shellIconAccent", "#60aaff")
 
     readonly property real radiusLarge: themeTokens.value("shellRadiusLarge", 14)
     readonly property real radiusMedium: themeTokens.value("shellRadiusMedium", 8)

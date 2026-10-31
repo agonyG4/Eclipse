@@ -5,6 +5,7 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QGuiApplication>
+#include <QHash>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QQmlComponent>
@@ -61,6 +62,7 @@ private slots:
     void componentUrlsAreOptedInVersionedAndLiveReloaded();
     void qmlBindingsResolveLiveTokensAndWorkWithoutController();
     void componentLoaderKeepsFallbackAndSwitchesExternalSources();
+    void componentLoaderDoesNotRecreatePreviousSource();
     void examplePanelsMeetFocusAndBackdropContracts();
 };
 
@@ -86,6 +88,8 @@ signals:
 class QmlLifecycleTracker final : public QObject {
     Q_OBJECT
 public:
+    QHash<QString, int> creations;
+    Q_INVOKABLE void noteCreated(const QString &name) { ++creations[name]; }
     int destructions = 0;
     Q_INVOKABLE void noteDestroyed() { ++destructions; }
 };
@@ -355,6 +359,43 @@ void ThemeTokensTest::componentLoaderKeepsFallbackAndSwitchesExternalSources()
     QVERIFY(loader->setProperty("source", QUrl{}));
     QTRY_VERIFY_WITH_TIMEOUT(loader->property("usingFallback").toBool(), 3000);
     QCOMPARE(item()->objectName(), QStringLiteral("fallback"));
+}
+
+void ThemeTokensTest::componentLoaderDoesNotRecreatePreviousSource()
+{
+    QTemporaryDir files;
+    QVERIFY(files.isValid());
+    for (const QString &name : {QStringLiteral("A"), QStringLiteral("B")}) {
+        QFile file(files.filePath(name + QStringLiteral(".qml")));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        const QByteArray qml = "import QtQuick\nItem { required property int marker; "
+            "Component.onCompleted: QmlLifecycleTracker.noteCreated('" + name.toUtf8() + "') }\n";
+        QCOMPARE(file.write(qml), qint64(qml.size()));
+    }
+    QmlLifecycleTracker lifecycle;
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(ASTREA_QML_IMPORT_PATH));
+    engine.rootContext()->setContextProperty(QStringLiteral("QmlLifecycleTracker"), &lifecycle);
+    QQmlComponent component(&engine);
+    component.setData("import QtQuick\nimport Astrea.Shared 1.0\n"
+        "ThemeComponentLoader { initialProperties: ({ marker: 42 }); "
+        "fallbackComponent: Component { Item { objectName: 'fallback' } } }", QUrl());
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    std::unique_ptr<QObject> loader(component.create());
+    QVERIFY2(loader, qPrintable(component.errorString()));
+    for (const QString &name : {QStringLiteral("A"), QStringLiteral("B")}) {
+        QVERIFY(loader->setProperty("source", QUrl::fromLocalFile(files.filePath(name + QStringLiteral(".qml")))));
+        QTRY_VERIFY_WITH_TIMEOUT(!loader->property("usingFallback").toBool(), 3000);
+        QObject *item = loader->property("item").value<QObject *>();
+        QVERIFY(item);
+        QCOMPARE(item->property("marker").toInt(), 42);
+        QCOMPARE(lifecycle.creations.value(name), 1);
+        QCOMPARE(lifecycle.creations.value(QStringLiteral("A")), 1);
+    }
+    QVERIFY(loader->setProperty("source", QUrl{}));
+    QTRY_VERIFY_WITH_TIMEOUT(loader->property("usingFallback").toBool(), 3000);
+    QCOMPARE(lifecycle.creations.value(QStringLiteral("A")), 1);
+    QCOMPARE(lifecycle.creations.value(QStringLiteral("B")), 1);
 }
 
 void ThemeTokensTest::examplePanelsMeetFocusAndBackdropContracts()

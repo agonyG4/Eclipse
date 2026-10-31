@@ -61,6 +61,7 @@ void ThemeConsumersQmlTest::actualConsumersResolveLivePackageTokens()
     const QJsonObject style{
         {QStringLiteral("colors"), QJsonObject{
              {QStringLiteral("accent"), QStringLiteral("#123456")},
+             {QStringLiteral("shellIconAccent"), QStringLiteral("#abcdef")},
              {QStringLiteral("shellBackground"), QStringLiteral("#223344")},
              {QStringLiteral("shellBorder"), QStringLiteral("#334455")},
              {QStringLiteral("shellTextMain"), QStringLiteral("#445566")},
@@ -158,6 +159,7 @@ void ThemeConsumersQmlTest::actualConsumersResolveLivePackageTokens()
 
     QObject *settingsTheme = engine.singletonInstance<QObject *>("Astrea.Settings", "Theme");
     QVERIFY(settingsTheme);
+    QCOMPARE(settingsTheme->property("shellIconAccent").value<QColor>(), QColor("#60aaff"));
     const QColor defaultSettingsAccent = settingsTheme->property("accent").value<QColor>();
     const QColor defaultSettingsText = settingsTheme->property("textPrimary").value<QColor>();
     const double defaultSettingsRadius = settingsTheme->property("radiusSmall").toDouble();
@@ -190,6 +192,7 @@ void ThemeConsumersQmlTest::actualConsumersResolveLivePackageTokens()
     altTab->setProperty("windowSelected", true);
     QTRY_COMPARE_WITH_TIMEOUT(highlight->property("color").value<QColor>().alpha(), 64, 3000);
     QCOMPARE(settingsTheme->property("accent").value<QColor>(), QColor("#123456"));
+    QCOMPARE(settingsTheme->property("shellIconAccent").value<QColor>(), QColor("#abcdef"));
     QCOMPARE(settingsTheme->property("accentForeground").value<QColor>(), QColor("#ffffff"));
     QCOMPARE(settingsTheme->property("textPrimary").value<QColor>(), QColor("#667788"));
     QCOMPARE(settingsTheme->property("radiusSmall").toDouble(), 0.0);
@@ -215,6 +218,7 @@ void ThemeConsumersQmlTest::actualConsumersResolveLivePackageTokens()
     QCOMPARE(settingsTheme->property("textPrimary").value<QColor>(), defaultSettingsText);
     QCOMPARE(settingsTheme->property("radiusSmall").toDouble(), defaultSettingsRadius);
     QCOMPARE(settingsTheme->property("fontFamily").toString(), QStringLiteral("Inter"));
+    QCOMPARE(settingsTheme->property("shellIconAccent").value<QColor>(), QColor("#60aaff"));
 
     QVERIFY(writeJson(navigation, {{QStringLiteral("visual_theme"), QStringLiteral("astrea")}}));
     controller.reload();

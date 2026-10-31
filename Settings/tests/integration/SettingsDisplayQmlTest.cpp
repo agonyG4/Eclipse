@@ -1,5 +1,7 @@
 #include "theme/ThemeController.hpp"
 
+#include <cmath>
+
 #include <QColor>
 #include <QDir>
 #include <QGuiApplication>
@@ -455,6 +457,9 @@ private slots:
   void touchpadScrollStillScrolls();
   void wheelPastTopBouncesBack();
   void touchpadOverscrollRubberBandsAndSpringsBack();
+  void touchpadReleaseCarriesInertia();
+  void wheelLatchHoldsThePageFor400ms();
+  void hiResWheelStepLandsWithoutAnimation();
 };
 
 void SettingsDisplayQmlTest::projectsAuthoritativeReadOnlyOutputSnapshot() {
@@ -1331,6 +1336,10 @@ const QPointingDevice *touchpadDevice() {
   return &device;
 }
 
+qreal wheelStep(const ScrollFixture &targets) {
+  return targets.flickable->parentItem()->property("wheelStep").toReal();
+}
+
 void verifyWheelNotchGlides(QQuickItem *page, QPoint pixelDelta) {
   const ScrollFixture targets = scrollTargets(page);
   QVERIFY(targets.layer != nullptr);
@@ -1343,11 +1352,13 @@ void verifyWheelNotchGlides(QQuickItem *page, QPoint pixelDelta) {
             QPointingDevice::primaryPointingDevice());
 
   // One notch must not land instantly...
-  QTest::qWait(40);
+  const qreal step = wheelStep(targets);
+  QVERIFY(step > 0.0);
+  QTest::qWait(30);
   const qreal midway = targets.flickable->property("contentY").toReal();
-  QVERIFY2(midway < 100.0, qPrintable(QString::number(midway)));
+  QVERIFY2(midway < step, qPrintable(QString::number(midway)));
   // ...and must settle exactly one step down.
-  QTRY_COMPARE(targets.flickable->property("contentY").toReal(), 100.0);
+  QTRY_COMPARE(targets.flickable->property("contentY").toReal(), step);
 }
 
 } // namespace
@@ -1438,6 +1449,66 @@ void SettingsDisplayQmlTest::touchpadOverscrollRubberBandsAndSpringsBack() {
            qPrintable(QString::number(stretched)));
   sendWheel(targets.layer, QPoint(), QPoint(), Qt::ScrollEnd, touchpadDevice());
   QTRY_COMPARE(targets.flickable->property("contentY").toReal(), 0.0);
+}
+
+void SettingsDisplayQmlTest::touchpadReleaseCarriesInertia() {
+  DisplayPageFixture fixture;
+  QQuickItem *page = fixture.createPage();
+  QVERIFY2(page != nullptr, qPrintable(fixture.errors()));
+  const ScrollFixture targets = scrollTargets(page);
+  QVERIFY(targets.flickable != nullptr);
+  QTRY_VERIFY(targets.flickable->property("contentHeight").toReal() >
+              targets.flickable->height() + 400.0);
+
+  sendWheel(targets.layer, QPoint(), QPoint(), Qt::ScrollBegin, touchpadDevice());
+  for (int i = 0; i < 6; ++i) {
+    sendWheel(targets.layer, QPoint(0, -12), QPoint(0, -96), Qt::ScrollUpdate,
+              touchpadDevice());
+    QTest::qWait(8);
+  }
+  const qreal released = targets.flickable->property("contentY").toReal();
+  sendWheel(targets.layer, QPoint(), QPoint(), Qt::ScrollEnd, touchpadDevice());
+  QTest::qWait(120);
+  const qreal coasting = targets.flickable->property("contentY").toReal();
+  QVERIFY2(coasting > released + 5.0,
+           qPrintable(QStringLiteral("%1 -> %2").arg(released).arg(coasting)));
+  // Once the glide ends, the page rests on a whole physical pixel
+  // (the offscreen test window has a device pixel ratio of 1).
+  QTest::qWait(600);
+  const qreal rest = targets.flickable->property("contentY").toReal();
+  QCOMPARE(rest, std::round(rest));
+}
+
+void SettingsDisplayQmlTest::wheelLatchHoldsThePageFor400ms() {
+  DisplayPageFixture fixture;
+  QQuickItem *page = fixture.createPage();
+  QVERIFY2(page != nullptr, qPrintable(fixture.errors()));
+  const ScrollFixture targets = scrollTargets(page);
+  QVERIFY(targets.flickable != nullptr);
+  auto *latch = qobject_cast<QQuickItem *>(
+      fixture.object(QStringLiteral("scrollPageWheelLatch")));
+  QVERIFY(latch != nullptr);
+  QVERIFY(!latch->isEnabled());
+
+  sendWheel(targets.layer, QPoint(), QPoint(0, -120), Qt::NoScrollPhase,
+            QPointingDevice::primaryPointingDevice());
+  QVERIFY(latch->isEnabled());
+  QTRY_VERIFY_WITH_TIMEOUT(!latch->isEnabled(), 1000);
+}
+
+void SettingsDisplayQmlTest::hiResWheelStepLandsWithoutAnimation() {
+  DisplayPageFixture fixture;
+  QQuickItem *page = fixture.createPage();
+  QVERIFY2(page != nullptr, qPrintable(fixture.errors()));
+  const ScrollFixture targets = scrollTargets(page);
+  QVERIFY(targets.flickable != nullptr);
+  QTRY_VERIFY(targets.flickable->property("contentHeight").toReal() >
+              targets.flickable->height() + 100.0);
+  // A hi-res wheel tick of 1/60 notch moves about a pixel: no glide.
+  sendWheel(targets.layer, QPoint(), QPoint(0, -2), Qt::NoScrollPhase,
+            QPointingDevice::primaryPointingDevice());
+  const qreal moved = targets.flickable->property("contentY").toReal();
+  QVERIFY2(moved > 0.0, qPrintable(QString::number(moved)));
 }
 
 void SettingsDisplayQmlTest::showsPreferredModeSemantics() {

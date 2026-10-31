@@ -269,22 +269,14 @@ FocusScope {
     component DisplayPreview: Item {
         id: preview
         objectName: "displayOutputPreview"
-        implicitHeight: Math.ceil(bounds.height * previewScale) + 48
-        height: implicitHeight
+        implicitHeight: 252
+        height: 252
 
         readonly property var bounds: root.boundsForOutputs()
         readonly property var referenceBounds: DisplayLogic.boundsForOutputs(root.outputs, true)
-        readonly property real availableWidth: Math.max(1, width - 48)
-        readonly property real referenceScale: Math.min(
-            availableWidth / Math.max(1, referenceBounds.width),
-            212 / Math.max(1, referenceBounds.height))
-        // Retain the relative size of modes without making small previews illegible.
         readonly property real previewScale: Math.max(0.001, Math.min(
-            availableWidth / Math.max(1, bounds.width),
-            212 / Math.max(1, bounds.height),
-            referenceScale * Math.sqrt(Math.min(
-                referenceBounds.width / Math.max(1, bounds.width),
-                referenceBounds.height / Math.max(1, bounds.height)))
+            Math.max(1, width - 40) / Math.max(1, referenceBounds.width),
+            Math.max(1, height - 64) / Math.max(1, referenceBounds.height)
         ))
         property bool previewReady: false
 
@@ -308,8 +300,8 @@ FocusScope {
                     DisplayLogic.outputWidth(modelData) * preview.previewScale
                 readonly property real screenHeight:
                     DisplayLogic.outputHeight(modelData) * preview.previewScale
-                readonly property real bezel: laptop ? 10 : 8
-                readonly property real chassisHeight: laptop ? 16 : 26
+                readonly property real bezel: laptop ? 12 : 10
+                readonly property real chassisHeight: laptop ? 16 : 38
 
                 width: screenWidth + bezel * 2
                 height: screenHeight + bezel * 2 + chassisHeight
@@ -350,14 +342,15 @@ FocusScope {
                     }
                 }
 
-                // A quiet shadow gives the chassis depth against translucent backgrounds.
                 Rectangle {
-                    x: screenFrame.x - 3
-                    y: screenFrame.y + 4
-                    width: screenFrame.width + 6
-                    height: screenFrame.height + 3
+                    anchors.fill: screenFrame
+                    anchors.margins: -3
                     radius: screenFrame.radius + 3
-                    color: Qt.rgba(0, 0, 0, 0.18)
+                    color: "transparent"
+                    border.width: monitorItem.active ? 1 : 0
+                    border.color: Qt.rgba(Components.Theme.accent.r,
+                                          Components.Theme.accent.g,
+                                          Components.Theme.accent.b, 0.55)
                 }
 
                 Rectangle {
@@ -367,17 +360,9 @@ FocusScope {
                     width: monitorItem.screenWidth
                     height: monitorItem.screenHeight
                     radius: monitorItem.laptop ? 10 : 9
-                    gradient: Gradient {
-                        GradientStop { position: 0; color: "#3a3a44" }
-                        GradientStop { position: 0.46; color: "#24242c" }
-                        GradientStop { position: 1; color: "#15151c" }
-                    }
+                    color: "#202027"
                     border.width: 1
-                    border.color: monitorItem.active
-                        ? Qt.rgba(Components.Theme.accent.r,
-                                  Components.Theme.accent.g,
-                                  Components.Theme.accent.b, 0.48)
-                        : Qt.rgba(1, 1, 1, 0.18)
+                    border.color: Qt.rgba(1, 1, 1, 0.22)
                     clip: true
 
                     Behavior on width {
@@ -396,7 +381,6 @@ FocusScope {
                         id: screenSurface
                         anchors.fill: parent
                         anchors.margins: monitorItem.laptop ? 6 : 4
-                        anchors.bottomMargin: monitorItem.laptop ? 6 : 7
                         radius: Math.max(4, screenFrame.radius - 4)
                         color: Components.Theme.windowBackground
                         clip: true
@@ -477,10 +461,8 @@ FocusScope {
                             anchors.bottom: parent.bottom
                             anchors.margins: 8
                             width: Math.min(parent.width - 16, connectorLabel.implicitWidth + 16)
-                            height: 18
-                            radius: 4
-                            border.width: 1
-                            border.color: Qt.rgba(1, 1, 1, 0.10)
+                            height: 20
+                            radius: 5
                             color: Qt.rgba(Components.Theme.windowBackground.r,
                                            Components.Theme.windowBackground.g,
                                            Components.Theme.windowBackground.b, 0.62)
@@ -517,14 +499,22 @@ FocusScope {
                     visible: !monitorItem.laptop
                     anchors.horizontalCenter: screenFrame.horizontalCenter
                     y: screenFrame.y + screenFrame.height + 1
-                    width: Math.max(14, screenFrame.width * 0.075)
-                    height: 16
-                    radius: 1
+                    width: Math.max(13, screenFrame.width * 0.10)
+                    height: 20
+                    radius: 2
                     gradient: Gradient {
-                        orientation: Gradient.Horizontal
-                        GradientStop { position: 0; color: "#3b3b45" }
-                        GradientStop { position: 0.45; color: "#777781" }
-                        GradientStop { position: 1; color: "#3b3b45" }
+                        GradientStop {
+                            position: 0
+                            color: Qt.rgba(Components.Theme.textPrimary.r,
+                                           Components.Theme.textPrimary.g,
+                                           Components.Theme.textPrimary.b, 0.35)
+                        }
+                        GradientStop {
+                            position: 1
+                            color: Qt.rgba(Components.Theme.textPrimary.r,
+                                           Components.Theme.textPrimary.g,
+                                           Components.Theme.textPrimary.b, 0.14)
+                        }
                     }
                 }
 
@@ -532,16 +522,13 @@ FocusScope {
                     objectName: "displayMonitorStandBase_" + String(modelData.id)
                     visible: !monitorItem.laptop
                     anchors.horizontalCenter: screenFrame.horizontalCenter
-                    y: screenFrame.y + screenFrame.height + 16
-                    width: Math.max(48, screenFrame.width * 0.32)
+                    y: screenFrame.y + screenFrame.height + 20
+                    width: Math.max(48, screenFrame.width * 0.40)
                     height: 5
-                    radius: 2.5
-                    border.width: 1
-                    border.color: Qt.rgba(1, 1, 1, 0.10)
-                    gradient: Gradient {
-                        GradientStop { position: 0; color: "#65656f" }
-                        GradientStop { position: 1; color: "#33333d" }
-                    }
+                    radius: 3
+                    color: Qt.rgba(Components.Theme.textPrimary.r,
+                                   Components.Theme.textPrimary.g,
+                                   Components.Theme.textPrimary.b, 0.16)
                 }
 
                 Rectangle {
@@ -691,7 +678,7 @@ FocusScope {
                             anchors.horizontalCenter: parent.horizontalCenter
                             anchors.top: parent.top
                             width: Math.min(620, previewColumn.width)
-                            spacing: 10
+                            spacing: 14
 
                             DisplayPreview { width: previewDevice.width }
 
@@ -709,7 +696,7 @@ FocusScope {
                                     textFormat: Text.PlainText
                                     color: Components.Theme.textPrimary
                                     font.family: Components.Theme.fontFamily
-                                    font.pixelSize: 20
+                                    font.pixelSize: 22
                                     font.weight: Components.Theme.fontWeightDemiBold
                                     elide: Text.ElideRight
                                 }

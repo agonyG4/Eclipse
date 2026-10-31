@@ -322,6 +322,11 @@ FocusScope {
                 // minus the distance between the two edges.
                 readonly property real cornerRadius: laptop ? 14 : 16
                 readonly property real screenInset: laptop ? 6 : 5
+                // White hardware in the light theme, black glass in the dark one.
+                readonly property bool lightDevice: Components.Theme.isLight
+                readonly property color bodyColor: lightDevice ? "#f5f5f7" : "#0a0a0c"
+                readonly property color rimColor: lightDevice
+                    ? Qt.rgba(0, 0, 0, 0.14) : Qt.rgba(1, 1, 1, 0.16)
                 // Opaque so the shadows never show through the stand.
                 readonly property color standTint:
                     Qt.tint(Components.Theme.windowBackground,
@@ -374,7 +379,7 @@ FocusScope {
                     offset.y: 12
                     blur: 36
                     spread: -6
-                    color: Qt.rgba(0, 0, 0, 0.38)
+                    color: Qt.rgba(0, 0, 0, monitorItem.lightDevice ? 0.18 : 0.38)
                 }
 
                 RectangularShadow {
@@ -383,7 +388,7 @@ FocusScope {
                     radius: screenFrame.radius
                     offset.y: 1
                     blur: 3
-                    color: Qt.rgba(0, 0, 0, 0.30)
+                    color: Qt.rgba(0, 0, 0, monitorItem.lightDevice ? 0.14 : 0.30)
                 }
 
                 Rectangle {
@@ -404,13 +409,17 @@ FocusScope {
                         NumberAnimation { duration: Components.Theme.animationNormal }
                     }
 
-                    // Black glass body with a hairline rim.
+                    // Device body with a hairline rim.
                     ContinuousRect {
+                        objectName: "displayMonitorBody_" + String(modelData.id)
                         anchors.fill: parent
                         radius: parent.radius
-                        color: "#0a0a0c"
+                        color: monitorItem.bodyColor
                         borderWidth: 1
-                        borderColor: Qt.rgba(1, 1, 1, 0.16)
+                        borderColor: monitorItem.rimColor
+                        Behavior on color {
+                            ColorAnimation { duration: Components.Theme.animationNormal }
+                        }
                     }
 
                     Item {
@@ -508,7 +517,7 @@ FocusScope {
                             anchors.fill: parent
                             radius: screenSurface.radius
                             borderWidth: 1
-                            borderColor: Qt.rgba(0, 0, 0, 0.30)
+                            borderColor: Qt.rgba(0, 0, 0, monitorItem.lightDevice ? 0.35 : 0.30)
                         }
 
                         Text {

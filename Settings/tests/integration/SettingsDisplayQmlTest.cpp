@@ -397,6 +397,7 @@ public:
     return findObject(m_page, name);
   }
   FakeDisplayController *display() { return m_settings.display(); }
+  ThemeController *theme() { return &m_theme; }
   FakeWallpaper *wallpaper() { return m_settings.wallpaper(); }
 
 private:
@@ -447,6 +448,7 @@ private slots:
   void sameAspectModeKeepsPhysicalSize();
   void mixedScaleDisplaysDoNotOverlap();
   void missingPhysicalSizeFallsBackToPixels();
+  void deviceBodyFollowsThemeMode();
 };
 
 void SettingsDisplayQmlTest::projectsAuthoritativeReadOnlyOutputSnapshot() {
@@ -1256,6 +1258,22 @@ void SettingsDisplayQmlTest::missingPhysicalSizeFallsBackToPixels() {
   const qreal height = monitor->property("screenHeight").toReal();
   QVERIFY(width > 0.0);
   QVERIFY(qAbs(width / height - 16.0 / 9.0) < 0.01);
+}
+
+void SettingsDisplayQmlTest::deviceBodyFollowsThemeMode() {
+  DisplayPageFixture fixture;
+  fixture.theme()->setThemeMode(0);
+  QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.errors()));
+  QObject *body =
+      fixture.object(QStringLiteral("displayMonitorBody_output-1"));
+  QVERIFY(body != nullptr);
+  QVERIFY(body->property("color").value<QColor>().lightnessF() < 0.1);
+
+  fixture.theme()->setThemeMode(1);
+  QTRY_VERIFY(body->property("color").value<QColor>().lightnessF() > 0.9);
+  captureVisual(qobject_cast<QQuickItem *>(fixture.object(
+                    QStringLiteral("displayPreviewMonitor_output-1"))),
+                QStringLiteral("display-light-theme.png"));
 }
 
 void SettingsDisplayQmlTest::showsPreferredModeSemantics() {

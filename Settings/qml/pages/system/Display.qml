@@ -309,10 +309,12 @@ FocusScope {
                 readonly property real screenInset: laptop ? 6 : 5
                 readonly property real ringGap: 3
                 readonly property real ringWidth: 2
+                // Opaque so the ring and shadows never show through the stand.
                 readonly property color standTint:
-                    Qt.rgba(Components.Theme.textPrimary.r,
-                            Components.Theme.textPrimary.g,
-                            Components.Theme.textPrimary.b, 0.22)
+                    Qt.tint(Components.Theme.windowBackground,
+                            Qt.rgba(Components.Theme.textPrimary.r,
+                                    Components.Theme.textPrimary.g,
+                                    Components.Theme.textPrimary.b, 0.22))
 
                 width: screenWidth + bezel * 2
                 height: screenHeight + bezel * 2 + chassisHeight
@@ -353,8 +355,12 @@ FocusScope {
                     }
                 }
 
+                // Layering, back to front: shadows, selection ring, stand, body.
+                // The body always sits on top so the stand emerges from behind it.
+
                 // Ambient elevation, the way macOS lifts a window off the desktop.
                 RectangularShadow {
+                    z: -3
                     anchors.fill: screenFrame
                     radius: screenFrame.radius
                     offset.y: 12
@@ -364,6 +370,7 @@ FocusScope {
                 }
 
                 RectangularShadow {
+                    z: -3
                     anchors.fill: screenFrame
                     radius: screenFrame.radius
                     offset.y: 1
@@ -373,7 +380,7 @@ FocusScope {
 
                 Rectangle {
                     objectName: "displaySelectionRing_" + String(modelData.id)
-                    z: 1 // keep the ring above the stand where they cross
+                    z: -2
                     anchors.fill: screenFrame
                     anchors.margins: -(monitorItem.ringGap + monitorItem.ringWidth)
                     radius: screenFrame.radius + monitorItem.ringGap + monitorItem.ringWidth
@@ -574,17 +581,19 @@ FocusScope {
                 // Stand and foot share one tint so they read as a single piece.
                 Rectangle {
                     objectName: "displayMonitorStand_" + String(modelData.id)
+                    z: -1
                     visible: !monitorItem.laptop
                     anchors.horizontalCenter: screenFrame.horizontalCenter
-                    y: screenFrame.y + screenFrame.height - 2
+                    y: screenFrame.y + screenFrame.height - 8
                     width: Math.max(12, screenFrame.width * 0.09)
-                    height: 22
+                    height: 28
                     color: monitorItem.standTint
                 }
 
                 Rectangle {
                     id: standBase
                     objectName: "displayMonitorStandBase_" + String(modelData.id)
+                    z: -1
                     visible: !monitorItem.laptop
                     anchors.horizontalCenter: screenFrame.horizontalCenter
                     y: screenFrame.y + screenFrame.height + 20
@@ -597,6 +606,7 @@ FocusScope {
                 Rectangle {
                     id: laptopDeck
                     objectName: "displayLaptopChassis_" + String(modelData.id)
+                    z: -1
                     visible: monitorItem.laptop
                     anchors.horizontalCenter: screenFrame.horizontalCenter
                     y: screenFrame.y + screenFrame.height + 2

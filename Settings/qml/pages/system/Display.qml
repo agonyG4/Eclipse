@@ -613,24 +613,7 @@ FocusScope {
                     y: screenFrame.y + screenFrame.height
                     width: Math.max(13, screenFrame.width * 0.10)
                     height: 21
-                    // Brushed aluminium neck, shaded where it tucks under the panel.
-                    gradient: Gradient {
-                        orientation: Gradient.Horizontal
-                        GradientStop { position: 0; color: "#3c3c45" }
-                        GradientStop { position: 0.35; color: "#8a8a94" }
-                        GradientStop { position: 0.6; color: "#6a6a74" }
-                        GradientStop { position: 1; color: "#34343c" }
-                    }
-
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        height: 6
-                        gradient: Gradient {
-                            GradientStop { position: 0; color: Qt.rgba(0, 0, 0, 0.55) }
-                            GradientStop { position: 1; color: Qt.rgba(0, 0, 0, 0) }
-                        }
-                    }
+                    color: "#3a3a42"
                 }
 
                 Rectangle {
@@ -640,26 +623,9 @@ FocusScope {
                     anchors.horizontalCenter: screenFrame.horizontalCenter
                     y: screenFrame.y + screenFrame.height + 20
                     width: Math.max(48, screenFrame.width * 0.40)
-                    height: 6
-                    radius: 3
-                    gradient: Gradient {
-                        GradientStop { position: 0; color: "#7c7c86" }
-                        GradientStop { position: 0.5; color: "#4a4a53" }
-                        GradientStop { position: 1; color: "#2a2a31" }
-                    }
-
-                    Rectangle {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        y: 0.5
-                        width: parent.width - parent.radius * 2
-                        height: 1
-                        gradient: Gradient {
-                            orientation: Gradient.Horizontal
-                            GradientStop { position: 0; color: Qt.rgba(1, 1, 1, 0) }
-                            GradientStop { position: 0.5; color: Qt.rgba(1, 1, 1, 0.45) }
-                            GradientStop { position: 1; color: Qt.rgba(1, 1, 1, 0) }
-                        }
-                    }
+                    height: 5
+                    radius: 2.5
+                    color: "#3a3a42"
                 }
 
                 Rectangle {
@@ -669,34 +635,19 @@ FocusScope {
                     anchors.horizontalCenter: screenFrame.horizontalCenter
                     y: screenFrame.y + screenFrame.height + 1
                     width: screenFrame.width + 24
-                    height: 9
+                    height: 8
                     radius: 2
-                    bottomLeftRadius: 6
-                    bottomRightRadius: 6
-                    gradient: Gradient {
-                        GradientStop { position: 0; color: "#8a8a94" }
-                        GradientStop { position: 0.3; color: "#5c5c66" }
-                        GradientStop { position: 1; color: "#2c2c33" }
-                    }
+                    bottomLeftRadius: 5
+                    bottomRightRadius: 5
+                    color: "#3a3a42"
 
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.leftMargin: 2
-                        anchors.rightMargin: 2
-                        y: 0.5
-                        height: 1
-                        color: Qt.rgba(1, 1, 1, 0.35)
-                    }
-
-                    // Finger notch for opening the lid.
                     Rectangle {
                         anchors.horizontalCenter: parent.horizontalCenter
                         width: Math.max(24, parent.width * 0.16)
                         height: 3
                         bottomLeftRadius: 3
                         bottomRightRadius: 3
-                        color: Qt.rgba(0, 0, 0, 0.35)
+                        color: Qt.rgba(0, 0, 0, 0.30)
                     }
                 }
             }

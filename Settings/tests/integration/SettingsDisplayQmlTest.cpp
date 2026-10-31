@@ -12,6 +12,7 @@
 #include <QQuickWindow>
 #include <QTemporaryDir>
 #include <QUrl>
+#include <QWheelEvent>
 #include <Qt>
 #include <QtTest>
 
@@ -449,6 +450,7 @@ private slots:
   void mixedScaleDisplaysDoNotOverlap();
   void missingPhysicalSizeFallsBackToPixels();
   void standFollowsThemeWhileGlassStaysBlack();
+  void mouseWheelGlidesInsteadOfJumping();
 };
 
 void SettingsDisplayQmlTest::projectsAuthoritativeReadOnlyOutputSnapshot() {
@@ -1279,6 +1281,38 @@ void SettingsDisplayQmlTest::standFollowsThemeWhileGlassStaysBlack() {
   captureVisual(qobject_cast<QQuickItem *>(fixture.object(
                     QStringLiteral("displayPreviewMonitor_output-1"))),
                 QStringLiteral("display-light-theme.png"));
+}
+
+void SettingsDisplayQmlTest::mouseWheelGlidesInsteadOfJumping() {
+  DisplayPageFixture fixture;
+  QQuickItem *page = fixture.createPage();
+  QVERIFY2(page != nullptr, qPrintable(fixture.errors()));
+  auto *layer = qobject_cast<QQuickItem *>(
+      fixture.object(QStringLiteral("scrollPageWheelLayer")));
+  QVERIFY(layer != nullptr);
+  auto *scrollPage = layer->parentItem();
+  QVERIFY(scrollPage != nullptr);
+  auto *flickable =
+      qvariant_cast<QQuickItem *>(scrollPage->property("contentItem"));
+  QVERIFY(flickable != nullptr);
+  QTRY_VERIFY(flickable->property("contentHeight").toReal() >
+              flickable->height() + 100.0);
+  QCOMPARE(flickable->property("contentY").toReal(), 0.0);
+
+  const QPointF local(layer->width() / 2.0, layer->height() / 2.0);
+  const QPointF scenePoint = layer->mapToScene(local);
+  QWheelEvent notch(scenePoint, scenePoint, QPoint(), QPoint(0, -120),
+                    Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false,
+                    Qt::MouseEventNotSynthesized,
+                    QPointingDevice::primaryPointingDevice());
+  QCoreApplication::sendEvent(layer->window(), &notch);
+
+  // One notch must not land instantly...
+  QTest::qWait(40);
+  const qreal midway = flickable->property("contentY").toReal();
+  QVERIFY2(midway < 100.0, qPrintable(QString::number(midway)));
+  // ...and must settle exactly one step down.
+  QTRY_COMPARE(flickable->property("contentY").toReal(), 100.0);
 }
 
 void SettingsDisplayQmlTest::showsPreferredModeSemantics() {

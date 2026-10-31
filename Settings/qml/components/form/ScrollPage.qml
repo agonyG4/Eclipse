@@ -39,8 +39,46 @@ ScrollView {
         policy: ScrollBar.AsNeeded
     }
 
-    // We use a custom scrollbar style to make it look premium (optional, but good)
-    // For now, we'll keep the default or slightly customize it.
+    // Mouse wheels arrive in coarse notches; glide each notch into place the
+    // way macOS does, folding rapid notches into one continuous motion.
+    // Touchpads send pixel deltas with their own momentum and keep the native
+    // path. The layer sits above the page but only claims wheel events.
+    property real wheelStep: 100
+    property real wheelTarget: 0
+    readonly property Item wheelLayer: Item {
+        objectName: "scrollPageWheelLayer"
+        parent: root
+        anchors.fill: parent
+        z: 1
+
+        WheelHandler {
+            acceptedDevices: PointerDevice.Mouse
+            onWheel: event => {
+                const flick = root.contentItem
+                const notches = event.angleDelta.y / 120
+                if (!flick || notches === 0 || event.pixelDelta.y !== 0) {
+                    event.accepted = false
+                    return
+                }
+                const limit = Math.max(0, flick.contentHeight - flick.height)
+                if (!wheelGlide.running)
+                    root.wheelTarget = flick.contentY
+                root.wheelTarget = Math.max(0, Math.min(limit,
+                    root.wheelTarget - notches * root.wheelStep))
+                wheelGlide.to = root.wheelTarget
+                wheelGlide.restart()
+                event.accepted = true
+            }
+        }
+    }
+
+    NumberAnimation {
+        id: wheelGlide
+        target: root.contentItem
+        property: "contentY"
+        duration: Components.Theme.animationSlow
+        easing.type: Components.Theme.easingStandard
+    }
 
     ColumnLayout {
         id: contentColumn

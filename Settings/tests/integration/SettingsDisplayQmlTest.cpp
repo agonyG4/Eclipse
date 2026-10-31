@@ -564,7 +564,7 @@ void SettingsDisplayQmlTest::
   QVERIFY(preview->width() > 0.0);
   QVERIFY(preview->property("height").toReal() <= 260.0);
   QVERIFY(qAbs(previewOpenArea->implicitHeight() - preview->height() -
-               identity->implicitHeight() - 38.0) < 0.5);
+               identity->implicitHeight() - 34.0) < 0.5);
   QTRY_VERIFY(identity->mapToItem(page, QPointF(0, 0)).y() >
               preview->mapToItem(page, QPointF(0, 0)).y());
   QObject *title = fixture.object(QStringLiteral("displayOutputTitle"));

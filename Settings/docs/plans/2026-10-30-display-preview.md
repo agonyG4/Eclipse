@@ -22,3 +22,8 @@ Implementation and verification:
    existing bindings when metadata changes.
 4. Run focused QML integration and compositor protocol tests using the existing
    Aether build trees; inspect the diff and commit only this task's changes.
+
+Visual refinement: use a single selection rim and subtle chassis shadow, a shaded
+metal stand, and a content-sized preview stage. Keep smaller modes readable with
+a compressed size range while preserving their aspect ratios and relative sizes.
+Keep identity text close to the device instead of reserving an empty fixed stage.

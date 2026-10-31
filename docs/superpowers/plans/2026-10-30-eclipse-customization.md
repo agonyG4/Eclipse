@@ -91,11 +91,12 @@ Cargo, temporary output and caches explicitly redirected to Aether:
 - Icon QML rendering passed 17/17 cases under Xvfb/xcb and software GL. The offscreen
   software scenegraph cannot render its ShaderEffect pixel cases; those assertions
   remain enabled.
-- The broader Settings QML smoke suite had 64 passing cases and five failures: four
-  Applications variants have no astrea-icon provider registered in that fixture, and
-  the screenshots test expects screenshotMockVisual, absent from the page. These
-  test/page/provider files were not changed by this implementation; existing user
-  changes to them remain intact. This is not a whole-suite passing result.
+- The broader Settings QML smoke suite now passes 69/69 cases. Its Applications
+  fixture registers the production astrea-icon provider, and the screenshots route
+  checks the current desktop-preview controls and configuration binding. No warning
+  assertions were disabled. The dedicated screenshot Settings suite also passes 5/5;
+  it locates the screenshots route by ID instead of requiring a stale total count of
+  Customization pages. These fixture corrections are committed in `aee0ba9`.
 - Original dirty-file hashes were preserved. The only addition to an originally dirty
   file is the owned DisplayLogic.js resource entry in Settings/qml/CMakeLists.txt.
 
@@ -106,3 +107,21 @@ services remain owned by the host. SettingsController remains broad because it c
 pre-existing user edits. Screenshot method bodies were extracted unchanged into the
 same class; existing screenshot tests do not instantiate AstreaShellApplication, so
 live compositor composition and teardown still require an interactive session check.
+
+## Native Wayland follow-up
+
+The newly built test binaries also ran against the current session's
+`/run/user/1000/oblivion-one-tty` compositor with Qt's Wayland platform. Test output,
+caches and temporary configuration remained on Aether, and a separate session-instance
+name kept fixture IPC isolated. Passing QtTest totals (including setup/cleanup) were:
+Spotlight panels 3/3, AltTab panels 5/5, theme tokens and live reload 10/10,
+screenshot overlay 4/4, and screenshot thumbnails 12/12.
+
+These runs exercise the current QML and shared libraries with native Wayland windows,
+including panel replacement, atomic file edits, focus, hit testing and screenshot
+presentation behavior. They use fixture controllers. Analytic background coverage is
+unavailable without the Shell capability handoff, so they do not establish visual blur
+correctness or full AstreaShellApplication compositor lifecycle. The desktop's running
+Shell is still the existing build/release binary; it was not replaced during these tests.
+A session using the updated Aether Shell binary is still required for that final visual
+and native ownership check.

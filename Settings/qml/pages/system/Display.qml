@@ -610,10 +610,24 @@ FocusScope {
                     objectName: "displayMonitorStand_" + String(modelData.id)
                     visible: !monitorItem.laptop
                     anchors.horizontalCenter: screenFrame.horizontalCenter
-                    y: screenFrame.y + screenFrame.height
+                    y: screenFrame.y + screenFrame.height + 1
                     width: Math.max(13, screenFrame.width * 0.10)
-                    height: 21
-                    color: "#3a3a42"
+                    height: 20
+                    radius: 2
+                    gradient: Gradient {
+                        GradientStop {
+                            position: 0
+                            color: Qt.rgba(Components.Theme.textPrimary.r,
+                                           Components.Theme.textPrimary.g,
+                                           Components.Theme.textPrimary.b, 0.35)
+                        }
+                        GradientStop {
+                            position: 1
+                            color: Qt.rgba(Components.Theme.textPrimary.r,
+                                           Components.Theme.textPrimary.g,
+                                           Components.Theme.textPrimary.b, 0.14)
+                        }
+                    }
                 }
 
                 Rectangle {
@@ -624,8 +638,10 @@ FocusScope {
                     y: screenFrame.y + screenFrame.height + 20
                     width: Math.max(48, screenFrame.width * 0.40)
                     height: 5
-                    radius: 2.5
-                    color: "#3a3a42"
+                    radius: 3
+                    color: Qt.rgba(Components.Theme.textPrimary.r,
+                                   Components.Theme.textPrimary.g,
+                                   Components.Theme.textPrimary.b, 0.16)
                 }
 
                 Rectangle {
@@ -633,21 +649,22 @@ FocusScope {
                     objectName: "displayLaptopChassis_" + String(modelData.id)
                     visible: monitorItem.laptop
                     anchors.horizontalCenter: screenFrame.horizontalCenter
-                    y: screenFrame.y + screenFrame.height + 1
+                    y: screenFrame.y + screenFrame.height + 3
                     width: screenFrame.width + 24
-                    height: 8
-                    radius: 2
-                    bottomLeftRadius: 5
-                    bottomRightRadius: 5
-                    color: "#3a3a42"
+                    height: 10
+                    radius: 5
+                    color: Qt.rgba(Components.Theme.textPrimary.r,
+                                   Components.Theme.textPrimary.g,
+                                   Components.Theme.textPrimary.b, 0.17)
 
                     Rectangle {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        width: Math.max(24, parent.width * 0.16)
+                        width: Math.max(24, parent.width * 0.18)
                         height: 3
-                        bottomLeftRadius: 3
-                        bottomRightRadius: 3
-                        color: Qt.rgba(0, 0, 0, 0.30)
+                        radius: 2
+                        color: Qt.rgba(Components.Theme.windowBackground.r,
+                                       Components.Theme.windowBackground.g,
+                                       Components.Theme.windowBackground.b, 0.24)
                     }
                 }
             }

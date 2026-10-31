@@ -1,8 +1,8 @@
 import QtQuick
-import Qt5Compat.GraphicalEffects as Legacy
 import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import "../" as Components
+import "../controls" as Controls
 
 // Compact, keyboard-accessible device selection shared by audio device groups.
 Item {
@@ -19,6 +19,7 @@ Item {
     required property bool isVirtual
 
     property bool inputDevice: false
+    property bool selected: false
     property bool lastInGroup: false
     signal activated(int nodeId)
 
@@ -94,23 +95,24 @@ Item {
             implicitHeight: 34
             padding: 0
             spacing: 0
-            enabled: root.enabled && !root.isDefault
-            hoverEnabled: false
+            enabled: root.enabled
+            hoverEnabled: true
             focusPolicy: Qt.StrongFocus
             Accessible.name: root.deviceTitle
-            Accessible.description: root.isDefault
-                ? I18n.tr("apps.settings.pages.system.audio.label.default", "Default")
-                : I18n.tr("apps.settings.pages.system.audio.action.set_default",
-                          "Set as default output")
+            Accessible.description: root.inputDevice
+                ? I18n.tr("settings.audio.select_input", "Select input device")
+                : I18n.tr("settings.audio.select_output", "Select output device")
 
             background: Rectangle {
                 radius: width / 2
-                color: root.isDefault
+                color: root.selected
                     ? Components.Theme.accent
                     : Qt.rgba(Components.Theme.textPrimary.r,
                               Components.Theme.textPrimary.g,
                               Components.Theme.textPrimary.b,
-                              Components.Theme.isLight ? 0.07 : 0.13)
+                              deviceSelector.hovered
+                                  ? (Components.Theme.isLight ? 0.13 : 0.22)
+                                  : (Components.Theme.isLight ? 0.07 : 0.13))
                 border.width: deviceSelector.activeFocus ? 2 : 0
                 border.color: Components.Theme.accent
                 Behavior on color {
@@ -119,31 +121,26 @@ Item {
             }
 
             contentItem: Item {
-                Image {
+                Controls.ThemedIcon {
                     id: themedDeviceIcon
+                    objectName: (root.inputDevice ? "audioInputArtwork_" : "audioOutputArtwork_") + root.nodeId
                     anchors.centerIn: parent
                     width: 18
                     height: 18
-                    source: root.deviceIconSource
-                    sourceSize: Qt.size(width, height)
-                    fillMode: Image.PreserveAspectFit
-                    mipmap: false
-                    visible: source.toString() !== ""
-                    layer.enabled: visible
-                    layer.effect: Legacy.ColorOverlay {
-                        color: root.isDefault
-                            ? Components.Theme.accentForeground : Components.Theme.textSecondary
-                    }
+                    iconSource: root.deviceIconSource
+                    tint: root.selected
+                        ? Components.Theme.accentForeground : Components.Theme.textSecondary
                 }
 
                 Text {
+                    objectName: (root.inputDevice ? "audioInputFallback_" : "audioOutputFallback_") + root.nodeId
                     anchors.centerIn: parent
-                    visible: !themedDeviceIcon.visible
+                    visible: !themedDeviceIcon.ready
                     anchors.verticalCenterOffset: -1
                     text: root.deviceGlyph
                     font.family: "JetBrainsMono Nerd Font"
                     font.pixelSize: 17
-                    color: root.isDefault
+                    color: root.selected
                         ? Components.Theme.accentForeground
                         : Components.Theme.textSecondary
                     Accessible.ignored: true
@@ -183,15 +180,6 @@ Item {
             }
         }
 
-        Text {
-            objectName: "audioOutputDefault_" + root.nodeId
-            visible: root.isDefault
-            text: I18n.tr("apps.settings.pages.system.audio.label.default", "Default")
-            color: Components.Theme.accent
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeSmall
-            font.weight: Components.Theme.fontWeightMedium
-        }
 
     }
 

@@ -2,6 +2,7 @@ qt_add_executable(astrea-settings
     main.cpp
     SettingsApplication.cpp
     SettingsApplication.hpp
+    SettingsFontPolicy.hpp
 )
 
 target_include_directories(astrea-settings PRIVATE

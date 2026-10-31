@@ -19,6 +19,8 @@ add_library(astrea-settings-core STATIC
     ../services/desktop/ApplicationsBackend.hpp
     ../services/desktop/ProfileBackend.cpp
     ../services/desktop/ProfileBackend.hpp
+    ../services/devices/SettingsDeviceInventory.cpp
+    ../services/devices/SettingsDeviceInventory.hpp
     ../services/desktop/DesktopControllers.cpp
     ../services/desktop/DesktopControllers.hpp
     SettingsController.cpp
@@ -41,6 +43,10 @@ add_library(astrea-settings-core STATIC
     ../services/assets/SettingsIconResolver.hpp
     ../services/dock/SettingsDockController.cpp
     ../services/dock/SettingsDockController.hpp
+    ../services/network/SettingsFirewallStatus.cpp
+    ../services/network/SettingsFirewallStatus.hpp
+    ../services/network/SettingsFirewallManager.cpp
+    ../services/network/SettingsFirewallManager.hpp
     ../services/i18n/SettingsTranslationController.cpp
     ../services/i18n/SettingsTranslationController.hpp
     ../services/profile/SettingsUserProfileProvider.cpp

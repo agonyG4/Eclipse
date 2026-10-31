@@ -10,6 +10,8 @@
 #include <QQmlContext>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QStandardPaths>
+#include <QSettings>
 #include <QtQml>
 #include <QtTest>
 
@@ -134,7 +136,8 @@ private:
 
 class BluetoothPageFixture final {
 public:
-    BluetoothPageFixture()
+    explicit BluetoothPageFixture(const QString &source =
+        QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Bluetooth.qml"))
     {
         auto backend = std::make_unique<PageBluetoothBackend>();
         m_backend = backend.get();
@@ -151,7 +154,7 @@ public:
         m_engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &m_theme);
         m_component = std::make_unique<QQmlComponent>(
             &m_engine,
-            QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Bluetooth.qml")));
+            QUrl(source));
         m_window.resize(1000, 760);
     }
 
@@ -188,7 +191,8 @@ public:
             return nullptr;
         if (QObject *object = m_page->findChild<QObject *>(objectName))
             return object;
-        return findVisualObject(m_page, objectName);
+        // Popup contents are reparented into the window overlay, outside the page's visual tree.
+        return findVisualObject(m_window.contentItem(), objectName);
     }
     void publish(const Astrea::System::BluetoothSnapshot &snapshot)
     {
@@ -234,12 +238,15 @@ class SettingsBluetoothQmlTest final : public QObject {
     Q_OBJECT
 
 private slots:
+    void initTestCase();
+    void standaloneDevicesPageListsAndCustomizesBluetooth();
     void pageLoadsOffscreenWithTypedBluetoothEnums();
     void showsBluetoothAvailabilityStatesSeparately();
     void powerToggleUsesAuthoritativeStateAndRespectsPendingAndPairing();
     void ownsOneScanLeaseUntilPageDestructionWhilePoweredOff();
     void failedScanAcquisitionIsNotReleased();
     void emptyStatesFollowAuthoritativeDeviceComposition();
+    void unnamedNearbyDevicesStayHiddenInNormalDiscovery();
     void pageDestructionCancelsActivePairing();
     void presentsSharedDevicesAndDispatchesActions();
     void resolvesDeviceKindFallbacksAndKeepsDuplicateNamesPathKeyed();
@@ -285,6 +292,213 @@ Astrea::System::BluetoothDevice bluetoothDevice(const QString &id, const QString
 }
 
 } // namespace
+
+void SettingsBluetoothQmlTest::initTestCase()
+{
+    // QML QtCore.Settings must be isolated from the real desktop's preferences.
+    QStandardPaths::setTestModeEnabled(true);
+    QCoreApplication::setOrganizationName(QStringLiteral("AstreaOS-QmlTest"));
+    QCoreApplication::setOrganizationDomain(QStringLiteral("astreaos.test"));
+    QCoreApplication::setApplicationName(QStringLiteral("BluetoothPickerTest"));
+}
+
+void SettingsBluetoothQmlTest::standaloneDevicesPageListsAndCustomizesBluetooth()
+{
+    // Avoid inheriting overrides from a previous invocation of this test executable.
+    QSettings preferences;
+    preferences.remove(QStringLiteral("ConnectedDeviceIcons/overridesJson"));
+    preferences.sync();
+    BluetoothPageFixture fixture(
+        QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Devices.qml"));
+    QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.componentErrors()));
+    QCOMPARE(fixture.page()->objectName(), QStringLiteral("devicesPage"));
+
+    auto snapshot = readyBluetoothSnapshot();
+    snapshot.powered = true;
+    auto connected = bluetoothDevice(QStringLiteral("devices_test"), QStringLiteral("Device For Test"),
+                                     true, true,
+                                     Astrea::System::BluetoothDeviceKind::Keyboard);
+    auto disconnected = bluetoothDevice(QStringLiteral("offline_test"), QStringLiteral("Offline"),
+                                        true, false);
+    snapshot.devices = {connected, disconnected};
+    fixture.publish(snapshot);
+
+    QTRY_COMPARE(fixture.page()->property("connectedBluetoothCount").toInt(), 1);
+    QTRY_COMPARE(fixture.page()->property("knownBluetoothCount").toInt(), 2);
+    QCOMPARE(fixture.page()->property("iconChoices").toList().size(), 46);
+    QCOMPARE(fixture.page()->property("iconCategories").toList().size(), 6);
+    QVERIFY(fixture.controller()->setNavigationIconTheme(QStringLiteral("lucide")));
+    QObject *row = fixture.findObject(
+        QStringLiteral("deviceRow_bluetooth__org_bluez_hci0_devices_test"));
+    QVERIFY(row != nullptr);
+    QVERIFY(row->property("visible").toBool());
+    QCOMPARE(row->property("chosenIconKey").toString(), QStringLiteral("keyboard"));
+
+    // The small device glyph must resolve as a ready, directly rendered SVG.
+    // It must not rely on a 24px offscreen ColorOverlay texture.
+    QObject *artwork = fixture.findObject(
+        QStringLiteral("deviceArtwork_bluetooth__org_bluez_hci0_devices_test"));
+    QVERIFY(artwork != nullptr);
+    QTRY_VERIFY(artwork->property("ready").toBool());
+    const QUrl vectorSource = artwork->property("imageSource").toUrl();
+    QVERIFY(vectorSource.toString().startsWith(QStringLiteral("data:image/svg+xml;base64,")));
+    const QByteArray svg = QByteArray::fromBase64(
+        vectorSource.toString().section(QLatin1Char(','), 1).toLatin1());
+    QVERIFY(svg.contains("viewBox"));
+    QVERIFY(!svg.contains("currentColor"));
+
+    QObject *offlineRow = fixture.findObject(
+        QStringLiteral("deviceRow_bluetooth__org_bluez_hci0_offline_test"));
+    QVERIFY(offlineRow != nullptr);
+    QVERIFY(offlineRow->property("visible").toBool());
+    QCOMPARE(offlineRow->property("deviceDetail").toString(),
+             QStringLiteral("Paired · Disconnected"));
+
+    QObject *button = fixture.findObject(
+        QStringLiteral("deviceIconButton_bluetooth__org_bluez_hci0_devices_test"));
+    QVERIFY(button != nullptr);
+    QVERIFY(QMetaObject::invokeMethod(button, "clicked"));
+    QObject *picker = fixture.findObject(QStringLiteral("deviceIconPicker"));
+    QVERIFY(picker != nullptr);
+    QTRY_VERIFY(picker->property("visible").toBool());
+
+    // Category rail uses the same native Qt ScrollBar control as ScrollPage.
+    // The accent belongs only to the selected segment, not to a custom slider.
+    QVERIFY(fixture.findObject(QStringLiteral("deviceIconSelectedSegment")) != nullptr);
+    QObject *categoryRail = fixture.findObject(QStringLiteral("deviceIconCategoriesScroll"));
+    QVERIFY(categoryRail != nullptr);
+    QObject *scrollBar = fixture.findObject(QStringLiteral("deviceIconCategoryScrollbar"));
+    QVERIFY(scrollBar != nullptr);
+    QVERIFY(fixture.findObject(QStringLiteral("deviceIconCategoryScrollSlider")) == nullptr);
+    QVERIFY(fixture.findObject(QStringLiteral("deviceIconScrollSlider")) == nullptr);
+
+    QObject *iconGrid = fixture.findObject(QStringLiteral("deviceIconGrid"));
+    QVERIFY(iconGrid != nullptr);
+    QVERIFY(fixture.findObject(QStringLiteral("deviceIconVerticalScrollbar")) != nullptr);
+
+    // A narrow popup must scroll horizontally, while the icon grid uses
+    // three columns instead of clipping the fourth outside its gutter.
+    QVERIFY(picker->setProperty("width", 320));
+    QTRY_VERIFY(categoryRail->property("contentWidth").toDouble()
+                > categoryRail->property("width").toDouble());
+    QTRY_VERIFY(scrollBar->property("visible").toBool());
+    QTRY_COMPARE(iconGrid->property("visibleColumns").toInt(), 3);
+    QVERIFY(categoryRail->setProperty("contentX", 80));
+    QTRY_VERIFY(categoryRail->property("contentX").toDouble() > 0);
+    QTRY_VERIFY(scrollBar->property("position").toDouble() > 0);
+
+    // With sufficient width, four fully visible icon cells fit the viewport.
+    QVERIFY(picker->setProperty("width", 468));
+    QTRY_COMPARE(iconGrid->property("visibleColumns").toInt(), 4);
+    QVERIFY(iconGrid->property("cellHeight").toDouble() <= 76);
+
+    // The Circle variants are integrated into normal categories for AppleOS,
+    // with no extra mode or button. Lucide shows only supported icon choices.
+    QVERIFY(fixture.findObject(QStringLiteral("deviceIconCircleToggle")) == nullptr);
+    QCOMPARE(fixture.page()->property("filteredIconChoices").toList().size(), 46);
+    QVERIFY(fixture.controller()->setNavigationIconTheme(QStringLiteral("apple")));
+    QTRY_COMPARE(fixture.page()->property("filteredIconChoices").toList().size(), 54);
+    QObject *audioTab = fixture.findObject(QStringLiteral("deviceIconCategory_audio"));
+    QVERIFY(audioTab != nullptr);
+    QVERIFY(QMetaObject::invokeMethod(audioTab, "clicked"));
+    QTRY_COMPARE(fixture.page()->property("pickerCategory").toString(), QStringLiteral("audio"));
+    QTRY_VERIFY(fixture.findObject(QStringLiteral("deviceIconOption_headphones-circle")) != nullptr);
+    QVERIFY(QMetaObject::invokeMethod(
+        fixture.findObject(QStringLiteral("deviceIconOption_headphones-circle")), "clicked"));
+    QTRY_COMPARE(row->property("chosenIconKey").toString(), QStringLiteral("headphones-circle"));
+    QTRY_VERIFY(!picker->property("visible").toBool());
+
+    QVERIFY(QMetaObject::invokeMethod(button, "clicked"));
+    QTRY_VERIFY(picker->property("visible").toBool());
+    QVERIFY(QMetaObject::invokeMethod(
+        fixture.findObject(QStringLiteral("deviceIconReset")), "clicked"));
+    QTRY_COMPARE(row->property("chosenIconKey").toString(), QStringLiteral("keyboard"));
+    QVERIFY(fixture.controller()->setNavigationIconTheme(QStringLiteral("lucide")));
+    QTRY_VERIFY(!picker->property("visible").toBool());
+
+    QVERIFY(QMetaObject::invokeMethod(button, "clicked"));
+    QTRY_VERIFY(picker->property("visible").toBool());
+    QObject *inputTab = fixture.findObject(QStringLiteral("deviceIconCategory_input"));
+    QVERIFY(inputTab != nullptr);
+    QVERIFY(QMetaObject::invokeMethod(inputTab, "clicked"));
+    QCOMPARE(fixture.page()->property("pickerCategory").toString(), QStringLiteral("input"));
+
+    QTRY_VERIFY(fixture.findObject(QStringLiteral("deviceIconOption_xbox")) != nullptr);
+    QTRY_VERIFY(fixture.findObject(QStringLiteral("deviceIconOption_playstation")) != nullptr);
+    QVERIFY(QMetaObject::invokeMethod(
+        fixture.findObject(QStringLiteral("deviceIconOption_xbox")), "clicked"));
+    QTRY_COMPARE(row->property("chosenIconKey").toString(), QStringLiteral("xbox"));
+    QTRY_VERIFY(!picker->property("visible").toBool());
+
+    QVERIFY(QMetaObject::invokeMethod(button, "clicked"));
+    QTRY_VERIFY(picker->property("visible").toBool());
+    QVERIFY(QMetaObject::invokeMethod(
+        fixture.findObject(QStringLiteral("deviceIconCategory_input")), "clicked"));
+    QTRY_VERIFY(fixture.findObject(QStringLiteral("deviceIconOption_playstation")) != nullptr);
+    QVERIFY(QMetaObject::invokeMethod(
+        fixture.findObject(QStringLiteral("deviceIconOption_playstation")), "clicked"));
+    QTRY_COMPARE(row->property("chosenIconKey").toString(), QStringLiteral("playstation"));
+    QTRY_VERIFY(!picker->property("visible").toBool());
+
+    QVERIFY(QMetaObject::invokeMethod(button, "clicked"));
+    QTRY_VERIFY(picker->property("visible").toBool());
+    QVERIFY(QMetaObject::invokeMethod(
+        fixture.findObject(QStringLiteral("deviceIconReset")), "clicked"));
+    QTRY_COMPARE(row->property("chosenIconKey").toString(), QStringLiteral("keyboard"));
+
+    // Original SF Symbols have stable preference keys. With Lucide selected,
+    // their fallback stays a recognizable category icon instead of disappearing.
+    QVERIFY(QMetaObject::invokeMethod(button, "clicked"));
+    QTRY_VERIFY(picker->property("visible").toBool());
+    QObject *storageTab = fixture.findObject(QStringLiteral("deviceIconCategory_storage"));
+    QVERIFY(storageTab != nullptr);
+    QVERIFY(QMetaObject::invokeMethod(storageTab, "clicked"));
+    QTRY_COMPARE(fixture.page()->property("pickerCategory").toString(), QStringLiteral("storage"));
+    QTRY_VERIFY(fixture.findObject(QStringLiteral("deviceIconOption_sd-card")) != nullptr);
+    QVERIFY(QMetaObject::invokeMethod(
+        fixture.findObject(QStringLiteral("deviceIconOption_sd-card")), "clicked"));
+    QTRY_COMPARE(row->property("chosenIconKey").toString(), QStringLiteral("sd-card"));
+    QCOMPARE(row->property("paintedIconKey").toString(), QStringLiteral("hard-drive"));
+    QTRY_VERIFY(!picker->property("visible").toBool());
+
+    QVERIFY(QMetaObject::invokeMethod(button, "clicked"));
+    QTRY_VERIFY(picker->property("visible").toBool());
+    QVERIFY(QMetaObject::invokeMethod(
+        fixture.findObject(QStringLiteral("deviceIconReset")), "clicked"));
+    QTRY_COMPARE(row->property("chosenIconKey").toString(), QStringLiteral("keyboard"));
+
+    // Paired devices remain customizable after disconnecting.
+    connected.connected = false;
+    snapshot.devices = {connected, disconnected};
+    fixture.publish(snapshot);
+    QTRY_COMPARE(fixture.page()->property("connectedBluetoothCount").toInt(), 0);
+    QCOMPARE(fixture.page()->property("knownBluetoothCount").toInt(), 2);
+    // Bluetooth model reset can replace the QML delegate; resolve the current one.
+    row = fixture.findObject(QStringLiteral("deviceRow_bluetooth__org_bluez_hci0_devices_test"));
+    QVERIFY(row != nullptr);
+    QVERIFY(row->property("visible").toBool());
+    QCOMPARE(row->property("deviceDetail").toString(),
+             QStringLiteral("Paired · Disconnected"));
+    button = fixture.findObject(QStringLiteral("deviceIconButton_bluetooth__org_bluez_hci0_devices_test"));
+    QVERIFY(button != nullptr);
+    QVERIFY(QMetaObject::invokeMethod(button, "clicked"));
+    QTRY_VERIFY(picker->property("visible").toBool());
+    QVERIFY(QMetaObject::invokeMethod(
+        fixture.findObject(QStringLiteral("deviceIconCategory_input")), "clicked"));
+    QTRY_VERIFY(fixture.findObject(QStringLiteral("deviceIconOption_gamepad")) != nullptr);
+    QVERIFY(QMetaObject::invokeMethod(
+        fixture.findObject(QStringLiteral("deviceIconOption_gamepad")), "clicked"));
+    QTRY_COMPARE(row->property("chosenIconKey").toString(), QStringLiteral("gamepad"));
+
+    // Unpairing a disconnected device removes it from the inventory.
+    connected.paired = false;
+    snapshot.devices = {connected, disconnected};
+    fixture.publish(snapshot);
+    QTRY_COMPARE(fixture.page()->property("knownBluetoothCount").toInt(), 1);
+    row = fixture.findObject(QStringLiteral("deviceRow_bluetooth__org_bluez_hci0_devices_test"));
+    QVERIFY(row != nullptr);
+    QVERIFY(!row->property("visible").toBool());
+}
 
 void SettingsBluetoothQmlTest::pageLoadsOffscreenWithTypedBluetoothEnums()
 {
@@ -420,6 +634,40 @@ void SettingsBluetoothQmlTest::emptyStatesFollowAuthoritativeDeviceComposition()
     fixture.publish(snapshot);
     QVERIFY(!myDevicesEmpty->property("visible").toBool());
     QVERIFY(!otherDevicesEmpty->property("visible").toBool());
+}
+
+void SettingsBluetoothQmlTest::unnamedNearbyDevicesStayHiddenInNormalDiscovery()
+{
+    BluetoothPageFixture fixture;
+    QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.componentErrors()));
+
+    auto snapshot = readyBluetoothSnapshot();
+    snapshot.powered = true;
+    auto named = bluetoothDevice(QStringLiteral("named"), QStringLiteral("Keyboard"), false);
+    auto unnamed = bluetoothDevice(QStringLiteral("unnamed"), QString{}, false);
+    auto pairedUnnamed = bluetoothDevice(QStringLiteral("paired_unnamed"), QString{}, true);
+    snapshot.devices = {unnamed, named, pairedUnnamed};
+    fixture.publish(snapshot);
+
+    // Ordinary discovery must not expose raw BLE identifiers or a diagnostic toggle.
+    QVERIFY(fixture.findObject(QStringLiteral("showUnnamedBluetoothDevices")) == nullptr);
+    QVERIFY(!fixture.page()->property("showUnnamedDevices").isValid());
+    QTRY_COMPARE(fixture.page()->property("visibleOtherDeviceCount").toInt(), 1);
+    QTRY_COMPARE(fixture.page()->property("pairedDeviceCount").toInt(), 1);
+    QVERIFY(fixture.findObject(QStringLiteral("deviceRow_named_other"))->property("visible").toBool());
+    QVERIFY(!fixture.findObject(QStringLiteral("deviceRow_unnamed_other"))->property("visible").toBool());
+    QVERIFY(fixture.findObject(QStringLiteral("deviceRow_paired_unnamed_mine"))->property("visible").toBool());
+
+    snapshot.devices = {unnamed, pairedUnnamed};
+    fixture.publish(snapshot);
+    QTRY_COMPARE(fixture.page()->property("visibleOtherDeviceCount").toInt(), 0);
+    QCOMPARE(fixture.page()->property("pairedDeviceCount").toInt(), 1);
+    auto *empty = fixture.findObject(QStringLiteral("otherDevicesEmptyState"));
+    QVERIFY(empty);
+    QVERIFY(empty->property("visible").toBool());
+    QCOMPARE(empty->property("text").toString(), QStringLiteral("No other devices found"));
+    // The raw device is still present in the authoritative model for diagnostics.
+    QCOMPARE(fixture.controller()->bluetooth()->devicesModel()->rowCount(), 2);
 }
 
 void SettingsBluetoothQmlTest::pageDestructionCancelsActivePairing()
@@ -584,6 +832,18 @@ void SettingsBluetoothQmlTest::resolvesDeviceKindFallbacksAndKeepsDuplicateNames
     snapshot.powered = true;
     snapshot.devices = devices;
     fixture.publish(snapshot);
+
+    // Unnamed delegates retain their fallback metadata for paired flows, but
+    // must not become visible in the nearby-device discovery list.
+    QTRY_COMPARE(fixture.page()->property("visibleOtherDeviceCount").toInt(), 4);
+    QObject *unnamedHeadsetRow = fixture.findObject(
+        QStringLiteral("deviceRow_dev_AA_BB_CC_DD_EE_FF_other"));
+    QObject *unnamedKeyboardRow = fixture.findObject(
+        QStringLiteral("deviceRow_technical_keyboard_other"));
+    QVERIFY(unnamedHeadsetRow);
+    QVERIFY(unnamedKeyboardRow);
+    QVERIFY(!unnamedHeadsetRow->property("visible").toBool());
+    QVERIFY(!unnamedKeyboardRow->property("visible").toBool());
 
     for (qsizetype index = 0; index < fallbackCases.size(); ++index) {
         const QString id = QStringLiteral("kind_%1").arg(index);

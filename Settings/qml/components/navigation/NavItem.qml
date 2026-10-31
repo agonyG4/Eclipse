@@ -1,8 +1,8 @@
 import QtQuick
-import Qt5Compat.GraphicalEffects as Legacy
 import QtQuick.Layouts
 import QtQuick.Effects
 import ".." as Components
+import "../controls" as Controls
 
 Item {
     id: root
@@ -93,34 +93,17 @@ Item {
                 }
             }
 
-            Image {
+            Controls.ThemedIcon {
                 id: navIcon
                 objectName: "navigationThemedIcon"
                 anchors.centerIn: parent
                 width: 18
                 height: 18
-
-                readonly property string resolvedSource: root.iconSource
+                iconSource: root.iconSource
+                visible: root.iconSource !== ""
                 readonly property color resolvedTint: root.selected
                     ? root.accentForeground : root.activeForeground
-
-                source: resolvedSource
-                visible: resolvedSource !== ""
-
-                // Render the SVG at its displayed size. Downsampling a 2x image
-                // with mipmaps and another offscreen effect softened fine outlines.
-                sourceSize: Qt.size(width, height)
-                fillMode: Image.PreserveAspectFit
-                mipmap: false
-                smooth: true
-
-                // SVG icons may be black or white depending on their source.
-                // Always tint the silhouette to the semantic foreground,
-                // including dark mode and selected navigation rows.
-                layer.enabled: visible
-                layer.effect: Legacy.ColorOverlay {
-                    color: navIcon.resolvedTint
-                }
+                tint: resolvedTint
             }
         }
 

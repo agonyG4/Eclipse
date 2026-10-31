@@ -11,19 +11,69 @@ Item {
 
     property string searchText: ""
     property string selectedAppId: ""
+    property real savedListScrollY: 0
+
+    // Page-local refinements. Core Borealis theme colors and components remain authoritative.
+    readonly property real groupRadius: Math.max(16, Components.Theme.cardRadius + 4)
+    readonly property real insetRadius: Math.max(10, groupRadius - 6)
+
+    readonly property color quietSurface: Components.Theme.isLight
+        ? Qt.rgba(0, 0, 0, 0.035) : Qt.rgba(1, 1, 1, 0.043)
+    readonly property color quietBorder: Components.Theme.isLight
+        ? Qt.rgba(0, 0, 0, 0.065) : Qt.rgba(1, 1, 1, 0.07)
+    readonly property color hoverSurface: Components.Theme.isLight
+        ? Qt.rgba(0, 0, 0, 0.052) : Qt.rgba(1, 1, 1, 0.065)
 
     readonly property var controller: SettingsController.applications
     readonly property var apps: controller.state.apps || []
-    readonly property var filteredApps: root.apps.filter(app => root.searchText.trim() === "" || (app.name + " " + app.id + " " + app.category).toLowerCase().indexOf(root.searchText.toLowerCase()) !== -1)
-    readonly property var selectedApp: controller.state.selected && controller.state.selected.id === root.selectedAppId ? controller.state.selected : null
+    readonly property var selectedApp: controller.state.selected
+        && controller.state.selected.id === root.selectedAppId
+        ? controller.state.selected : null
+    readonly property var selectedSummary: root.apps.find(app => app.id === root.selectedAppId) || null
+    readonly property var displayApp: root.selectedApp || root.selectedSummary
+    readonly property var filteredApps: root.apps.filter(function(app) {
+        const query = root.searchText.trim().toLocaleLowerCase()
+        return query === "" || [app.name, app.description, app.id]
+            .join(" ").toLocaleLowerCase().indexOf(query) !== -1
+    })
+
+    function openApp(app) {
+        if (!app || !app.id)
+            return
+        root.savedListScrollY = appsList.contentY
+        root.selectedAppId = app.id
+        root.controller.select(app.id)
+    }
+
+    function closeDetails() {
+        root.selectedAppId = ""
+        Qt.callLater(() => {
+            if (root.selectedAppId === "")
+                appsList.contentY = Math.max(0, Math.min(root.savedListScrollY,
+                    Math.max(0, appsList.contentHeight - appsList.height)))
+        })
+    }
+
+    Component.onCompleted: root.controller.refresh()
+
+    Connections {
+        target: root.controller
+        function onStateChanged() {
+            if (root.selectedAppId !== "" && !root.controller.busy
+                    && root.apps.length > 0 && !root.selectedSummary)
+                root.closeDetails()
+        }
+    }
 
     Dialog {
         id: removalDialog
         objectName: "applicationRemovalDialog"
         anchors.centerIn: parent
         modal: true
-        width: Math.min(root.width - 48, 480)
-        title: root.selectedApp ? root.selectedApp.actionLabel + " — " + root.selectedApp.name : "Remove application"
+        width: Math.min(root.width - 40, 480)
+        title: root.selectedApp
+            ? root.selectedApp.actionLabel + " — " + root.selectedApp.name
+            : "Remove application"
         padding: 18
         background: Rectangle {
             color: Components.Theme.popupBg
@@ -66,194 +116,631 @@ Item {
             }
         }
         contentItem: Text {
-            text: root.selectedApp ? "Target: " + root.selectedApp.target + "\n" + (root.selectedApp.method === "launcher" ? "Only the launcher is removed. Application files are kept." : "The selected application or package will be removed. Application data is kept.") : ""
+            text: root.selectedApp
+                ? "Target: " + root.selectedApp.target + "\n"
+                    + (root.selectedApp.method === "launcher"
+                        ? "Only the launcher is removed. Application files are kept."
+                        : "The application or package will be removed. Application data is kept.")
+                : ""
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
             color: Components.Theme.textPrimary
             font.family: Components.Theme.fontFamily
             font.pixelSize: Components.Theme.fontSizeSmall
         }
-        onAccepted: if (root.selectedApp) root.controller.uninstall(root.selectedAppId, root.selectedApp.removalToken)
-    }
-    Component.onCompleted: root.controller.refresh()
-
-    Form.ScrollPage {
-        objectName: "applicationsScrollPage"
-        anchors.fill: parent
-        enabled: !root.controller.busy
-        contentMargins: 24
-        maxWidth: 840
-
-        Components.BackendNotice {
-            objectName: "applicationsBackendStatus"
-            busy: root.controller.busy
-            error: root.controller.lastError
-            onRetry: root.controller.refresh()
+        onAccepted: {
+            if (root.selectedApp && root.selectedApp.canUninstall)
+                root.controller.uninstall(root.selectedAppId, root.selectedApp.removalToken)
         }
+    }
 
-        Form.SectionHeader { text: "APPS"; Layout.bottomMargin: 10 }
-        Form.FormCard {
-            objectName: "installedApplicationsCard"
-            visible: root.selectedApp === null
-            Layout.bottomMargin: 22
+    Item {
+        id: catalogPage
+        anchors.fill: parent
+        visible: root.selectedAppId === ""
 
-            Item {
+        ColumnLayout {
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.topMargin: 16
+            anchors.bottomMargin: 18
+            // Same column as Form.ScrollPage: 32px margins, 900px wide.
+            width: Math.min(900, Math.max(0, parent.width - 78))
+            spacing: 0
+
+            RowLayout {
                 Layout.fillWidth: true
-                implicitHeight: 62
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 18
-                    anchors.rightMargin: 18
-                    spacing: 10
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 2
-                        Text {
-                            text: "Installed applications"
-                            color: Components.Theme.textPrimary
-                            font.family: Components.Theme.fontFamily
-                            font.pixelSize: Components.Theme.fontSizeLarge
-                            font.weight: Components.Theme.fontWeightDemiBold
-                        }
-                        Text {
-                            text: root.filteredApps.length + " apps shown · " + root.apps.length + " installed applications"
-                            color: Components.Theme.textSecondary
-                            font.family: Components.Theme.fontFamily
-                            font.pixelSize: Components.Theme.fontSizeTiny
-                        }
-                    }
-                    Controls.SearchField {
-                        objectName: "applicationsSearchField"
-                        Layout.preferredWidth: 176
-                        controlHeight: 36
-                        placeholderText: "Search apps"
-                        text: root.searchText
-                        onTextEdited: value => root.searchText = value
-                    }
-                }
-            }
-
-            Repeater {
-                model: root.filteredApps
-                delegate: Form.SettingRow {
-                    required property var modelData
-                    required property int index
-                    objectName: "applicationRow_" + modelData.id.replace(/[^A-Za-z0-9]/g, "_")
-                    clickable: !root.controller.busy
-                    label: modelData.name
-                    sublabel: modelData.description
-                    isLast: index === root.filteredApps.length - 1
+                Layout.bottomMargin: Components.Theme.spacingXLarge
+                spacing: Components.Theme.spacingLarge
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    spacing: Components.Theme.spacingMicro
                     Text {
-                        text: root.selectedAppId === modelData.id ? "Selected" : modelData.category
-                        color: root.selectedAppId === modelData.id ? Components.Theme.accent : Components.Theme.textTertiary
+                        objectName: "applicationsCatalogTitle"
+                        Layout.fillWidth: true
+                        text: "Apps"
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        color: Components.Theme.textPrimary
                         font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeTiny
+                        font.pixelSize: Components.Theme.fontSizeHero
+                        font.weight: Components.Theme.fontWeightDemiBold
                     }
-                    onClicked: { root.selectedAppId = modelData.id; root.controller.select(modelData.id) }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Browse and manage apps on this device."
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        color: Components.Theme.textSecondary
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeNormal
+                    }
+                }
+                Rectangle {
+                    Layout.alignment: Qt.AlignVCenter
+                    Layout.preferredHeight: 29
+                    Layout.preferredWidth: appsCount.implicitWidth + 20
+                    radius: height / 2
+                    color: root.quietSurface
+                    border { width: 1; color: root.quietBorder }
+                    Text {
+                        id: appsCount
+                        objectName: "applicationsCountLabel"
+                        anchors.centerIn: parent
+                        text: root.filteredApps.length === root.apps.length
+                            ? root.apps.length + " apps"
+                            : root.filteredApps.length + " of " + root.apps.length
+                        color: Components.Theme.textSecondary
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeSmall
+                        font.weight: Components.Theme.fontWeightMedium
+                    }
                 }
             }
 
-            Item {
-                visible: root.filteredApps.length === 0
+            // Restore the original AstreaOS overview/search card.
+            Form.FormCard {
+                objectName: "applicationsOverviewCard"
+                Layout.bottomMargin: 24
+                radius: root.groupRadius
+                Item {
+                    Layout.fillWidth: true
+                    implicitHeight: overviewContent.implicitHeight + 24
+                    ColumnLayout {
+                        id: overviewContent
+                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
+                        spacing: 17
+                        Controls.SearchField {
+                            objectName: "applicationsSearchField"
+                            Layout.fillWidth: true
+                            controlHeight: 46
+                            surfaceColor: root.quietSurface
+                            borderColor: root.quietBorder
+                            placeholderText: "Search applications"
+                            iconText: "⌕"
+                            text: root.searchText
+                            onTextEdited: value => {
+                                root.searchText = value
+                                appsList.positionViewAtBeginning()
+                            }
+                        }
+                    }
+                }
+            }
+
+            Components.BackendNotice {
+                objectName: "applicationsBackendStatus"
+                busy: root.controller.busy
+                error: root.controller.lastError
+                onRetry: root.controller.refresh()
+            }
+
+            Rectangle {
+                id: installedCard
+                objectName: "installedApplicationsCard"
                 Layout.fillWidth: true
-                implicitHeight: 64
+                Layout.bottomMargin: 18
+                // The native virtualized ListView is the catalog's only scrollable area.
+                Layout.preferredHeight: Math.max(104, Math.min(root.filteredApps.length * 78 + 12,
+                    Math.max(104, catalogPage.height - overviewContent.implicitHeight - 170)))
+                radius: root.groupRadius
+                color: Components.Theme.cardBg
+                border.width: 1
+                border.color: Components.Theme.cardBorder
+                clip: true
+
+                ListView {
+                    id: appsList
+                    objectName: "installedApplicationsList"
+                    anchors { fill: parent; topMargin: 6; bottomMargin: 6 }
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    model: root.filteredApps
+                    reuseItems: true
+                    ScrollBar.vertical: ScrollBar {
+                        objectName: "applicationsListScrollbar"
+                        policy: ScrollBar.AsNeeded
+                    }
+                    delegate: ItemDelegate {
+                        id: appRow
+                        required property var modelData
+                        required property int index
+                        objectName: "applicationRow_" + modelData.id.replace(/[^A-Za-z0-9]/g, "_")
+                        width: ListView.view.width
+                        height: 78
+                        padding: 0
+                        hoverEnabled: true
+                        activeFocusOnTab: true
+                        Accessible.name: modelData.name
+                        Accessible.description: modelData.description || modelData.category
+                        onClicked: root.openApp(modelData)
+
+                        background: Rectangle {
+                            anchors { fill: parent; margins: 5; leftMargin: 7; rightMargin: 7 }
+                            radius: root.insetRadius
+                            color: appRow.pressed ? root.quietSurface
+                                : (appRow.hovered || appRow.activeFocus ? root.hoverSurface : "transparent")
+                            border.width: appRow.activeFocus ? 1 : 0
+                            border.color: Components.Theme.accent
+                            Behavior on color {
+                                ColorAnimation {
+                                    duration: Components.Theme.animationQuick
+                                    easing.type: Easing.OutCubic
+                                }
+                            }
+                        }
+                        contentItem: Item {
+                            RowLayout {
+                                anchors { fill: parent; leftMargin: 19; rightMargin: 19 }
+                                spacing: 13
+                                Components.AppIcon {
+                                    appData: appRow.modelData
+                                    iconSize: 46
+                                    iconRadius: 0
+                                    fallbackColor: Qt.rgba(Components.Theme.accent.r,
+                                                           Components.Theme.accent.g,
+                                                           Components.Theme.accent.b, 0.12)
+                                    fallbackTextColor: Components.Theme.textPrimary
+                                    Layout.preferredWidth: 46
+                                    Layout.preferredHeight: 46
+                                }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 0
+                                    spacing: 3
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: appRow.modelData.name || appRow.modelData.id
+                                        color: Components.Theme.textPrimary
+                                        font.family: Components.Theme.fontFamily
+                                        font.pixelSize: Components.Theme.fontSizeNormal + 2
+                                        font.weight: Components.Theme.fontWeightMedium
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: appRow.modelData.description || appRow.modelData.id
+                                        color: Components.Theme.textSecondary
+                                        font.family: Components.Theme.fontFamily
+                                        font.pixelSize: Components.Theme.fontSizeSmall
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                                Text {
+                                    objectName: "applicationRowChevron"
+                                    text: "›"
+                                    color: Components.Theme.textTertiary
+                                    font.family: Components.Theme.fontFamily
+                                    font.pixelSize: 23
+                                    opacity: appRow.hovered ? 1 : 0.68
+                                    Layout.alignment: Qt.AlignVCenter
+                                    Behavior on opacity {
+                                        NumberAnimation { duration: Components.Theme.animationQuick }
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                anchors { bottom: parent.bottom; left: parent.left; right: parent.right;
+                                          leftMargin: 76; rightMargin: 18 }
+                                height: 1
+                                color: root.quietBorder
+                                visible: appRow.index !== root.filteredApps.length - 1
+                            }
+                        }
+                        HoverHandler { cursorShape: Qt.PointingHandCursor }
+                    }
+                }
+
                 Text {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.leftMargin: 16
-                    anchors.rightMargin: 16
-                    text: "No apps match “" + root.searchText + "”."
+                    anchors.centerIn: parent
+                    visible: !root.controller.busy && root.filteredApps.length === 0
+                    text: root.searchText.trim() !== ""
+                        ? "No applications match your search."
+                        : "No installed applications found."
                     color: Components.Theme.textSecondary
                     font.family: Components.Theme.fontFamily
                     font.pixelSize: Components.Theme.fontSizeSmall
-                    horizontalAlignment: Text.AlignHCenter
-                    wrapMode: Text.Wrap
+                }
+            }
+            Item { Layout.fillHeight: true }
+        }
+    }
+
+    Form.ScrollPage {
+        id: detailScroll
+        objectName: "applicationsScrollPage"
+        anchors.fill: parent
+        visible: root.selectedAppId !== ""
+        contentMargins: 32
+        maxWidth: 900
+
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.bottomMargin: 16
+            spacing: 12
+            Controls.ButtonCapsule {
+                objectName: "closeApplicationDetailsButton"
+                label: "‹  Back"
+                horizontalPadding: 16
+                onClicked: root.closeDetails()
+            }
+            Text {
+                text: "Applications"
+                font.family: Components.Theme.fontFamily
+                font.pixelSize: Components.Theme.fontSizeSmall
+                color: Components.Theme.textTertiary
+            }
+            Item { Layout.fillWidth: true }
+        }
+
+        Components.BackendNotice {
+            busy: root.controller.busy && !root.selectedApp
+            error: root.controller.lastError
+            onRetry: root.controller.select(root.selectedAppId)
+        }
+
+        // Retain the original 64px app-identity card, with calmer typography.
+        Form.FormCard {
+            objectName: "applicationDetailsCard"
+            radius: root.groupRadius
+            Layout.bottomMargin: 18
+            Item {
+                Layout.fillWidth: true
+                implicitHeight: 132
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 22
+                    spacing: 19
+                    Components.AppIcon {
+                        objectName: "applicationDetailIcon"
+                        appData: root.displayApp
+                        iconSize: 76
+                        iconRadius: 0
+                        fallbackColor: Qt.rgba(Components.Theme.accent.r, Components.Theme.accent.g,
+                                               Components.Theme.accent.b, 0.14)
+                        fallbackTextColor: Components.Theme.textPrimary
+                        Layout.preferredWidth: 76
+                        Layout.preferredHeight: 76
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        spacing: 4
+                        Text {
+                            objectName: "applicationDetailTitle"
+                            Layout.fillWidth: true
+                            text: root.displayApp ? root.displayApp.name : "Loading application…"
+                            color: Components.Theme.textPrimary
+                            font.family: Components.Theme.fontFamily
+                            font.pixelSize: 23
+                            font.weight: Components.Theme.fontWeightDemiBold
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.displayApp
+                                ? (root.displayApp.description || root.displayApp.id) : ""
+                            color: Components.Theme.textSecondary
+                            font.family: Components.Theme.fontFamily
+                            font.pixelSize: Components.Theme.fontSizeSmall
+                            wrapMode: Text.Wrap
+                            maximumLineCount: 2
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
+            }
+        }
+
+        // Two inset metadata pills and two compact technical rows, as in AstreaOS.
+        Form.FormCard {
+            objectName: "applicationInformationCard"
+            radius: root.groupRadius
+            Layout.bottomMargin: 18
+            Item {
+                Layout.fillWidth: true
+                implicitHeight: infoContent.implicitHeight + 44
+                ColumnLayout {
+                    id: infoContent
+                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 22 }
+                    spacing: 14
+
+                    Text {
+                        text: "Information"
+                        color: Components.Theme.textPrimary
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeTitle
+                        font.weight: Components.Theme.fontWeightDemiBold
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            Layout.preferredHeight: 72
+                            radius: root.insetRadius
+                            color: root.quietSurface
+                            border { width: 1; color: root.quietBorder }
+                            ColumnLayout {
+                                anchors { fill: parent; margins: 12 }
+                                spacing: 4
+                                Text {
+                                    text: "Type"
+                                    color: Components.Theme.textSecondary
+                                    font.family: Components.Theme.fontFamily
+                                    font.pixelSize: Components.Theme.fontSizeTiny
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: root.selectedApp ? root.selectedApp.kind : "Loading…"
+                                    color: Components.Theme.textPrimary
+                                    font.family: Components.Theme.fontFamily
+                                    font.pixelSize: Components.Theme.fontSizeNormal
+                                    font.weight: Components.Theme.fontWeightMedium
+                                    elide: Text.ElideRight
+                                }
+                            }
+                        }
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            Layout.preferredHeight: 72
+                            radius: root.insetRadius
+                            color: root.quietSurface
+                            border { width: 1; color: root.quietBorder }
+                            ColumnLayout {
+                                anchors { fill: parent; margins: 12 }
+                                spacing: 4
+                                Text {
+                                    text: "Installed size"
+                                    color: Components.Theme.textSecondary
+                                    font.family: Components.Theme.fontFamily
+                                    font.pixelSize: Components.Theme.fontSizeTiny
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: root.selectedApp ? root.selectedApp.size : "Checking…"
+                                    color: Components.Theme.textPrimary
+                                    font.family: Components.Theme.fontFamily
+                                    font.pixelSize: Components.Theme.fontSizeNormal
+                                    font.weight: Components.Theme.fontWeightMedium
+                                    elide: Text.ElideRight
+                                }
+                            }
+                        }
+                    }
+
+                    Item {
+                        objectName: "applicationIdRow"
+                        Layout.fillWidth: true
+                        implicitHeight: 30
+                        RowLayout {
+                            anchors.fill: parent
+                            spacing: 10
+                            Text {
+                                text: "ID"
+                                color: Components.Theme.textSecondary
+                                font.family: Components.Theme.fontFamily
+                                font.pixelSize: Components.Theme.fontSizeSmall
+                                Layout.preferredWidth: 60
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.displayApp ? root.displayApp.id : ""
+                                color: Components.Theme.textPrimary
+                                font.family: Components.Theme.fontFamily
+                                font.pixelSize: Components.Theme.fontSizeSmall
+                                elide: Text.ElideMiddle
+                                textFormat: Text.PlainText
+                            }
+                        }
+                    }
+                    Item {
+                        objectName: "applicationFileRow"
+                        Layout.fillWidth: true
+                        implicitHeight: 30
+                        RowLayout {
+                            anchors.fill: parent
+                            spacing: 10
+                            Text {
+                                text: "File"
+                                color: Components.Theme.textSecondary
+                                font.family: Components.Theme.fontFamily
+                                font.pixelSize: Components.Theme.fontSizeSmall
+                                Layout.preferredWidth: 60
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.selectedApp ? root.selectedApp.file : ""
+                                color: Components.Theme.textPrimary
+                                font.family: Components.Theme.fontFamily
+                                font.pixelSize: Components.Theme.fontSizeSmall
+                                elide: Text.ElideMiddle
+                                textFormat: Text.PlainText
+                            }
+                        }
+                    }
                 }
             }
         }
 
         Form.FormCard {
-            objectName: "applicationDetailsCard"
-            visible: root.selectedApp !== null
-            Layout.bottomMargin: 22
-
+            Layout.bottomMargin: 18
+            radius: root.groupRadius
             Item {
                 Layout.fillWidth: true
-                implicitHeight: 74
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 18
-                    anchors.rightMargin: 18
-                    spacing: 12
-                    Rectangle {
-                        Layout.preferredWidth: 44
-                        Layout.preferredHeight: 44
-                        radius: Components.Theme.cornerRadius
-                        color: Qt.rgba(Components.Theme.accent.r, Components.Theme.accent.g, Components.Theme.accent.b, 0.15)
-                        Text {
-                            anchors.centerIn: parent
-                            text: root.selectedApp ? root.selectedApp.name.slice(0, 1) : "A"
-                            color: Components.Theme.accent
-                            font.family: Components.Theme.fontFamily
-                            font.pixelSize: Components.Theme.fontSizeTitle
-                            font.weight: Components.Theme.fontWeightDemiBold
-                        }
+                implicitHeight: privacyContent.implicitHeight + 44
+                ColumnLayout {
+                    id: privacyContent
+                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 22 }
+                    spacing: 14
+                    Text {
+                        text: "Privacy & access"
+                        color: Components.Theme.textPrimary
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeTitle
+                        font.weight: Components.Theme.fontWeightDemiBold
                     }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 2
-                        Text {
-                            objectName: "applicationDetailTitle"
-                            text: root.selectedApp ? root.selectedApp.name : ""
-                            color: Components.Theme.textPrimary
-                            font.family: Components.Theme.fontFamily
-                            font.pixelSize: Components.Theme.fontSizeLarge
-                            font.weight: Components.Theme.fontWeightDemiBold
-                        }
-                        Text {
-                            text: root.selectedApp ? root.selectedApp.description : ""
-                            color: Components.Theme.textSecondary
-                            font.family: Components.Theme.fontFamily
-                            font.pixelSize: Components.Theme.fontSizeTiny
-                            elide: Text.ElideRight
+                    Repeater {
+                        model: root.selectedApp ? (root.selectedApp.privacyItems || []) : []
+                        delegate: Rectangle {
+                            required property var modelData
                             Layout.fillWidth: true
+                            implicitHeight: privacyRow.implicitHeight + 24
+                            radius: root.insetRadius
+                            color: root.quietSurface
+                            border { width: 1; color: root.quietBorder }
+                            ColumnLayout {
+                                id: privacyRow
+                                anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
+                                spacing: 3
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: modelData.name
+                                    color: Components.Theme.textPrimary
+                                    font.family: Components.Theme.fontFamily
+                                    font.pixelSize: Components.Theme.fontSizeNormal
+                                    font.weight: Components.Theme.fontWeightMedium
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: modelData.description
+                                    textFormat: Text.PlainText
+                                    color: Components.Theme.textSecondary
+                                    font.family: Components.Theme.fontFamily
+                                    font.pixelSize: Components.Theme.fontSizeSmall
+                                    wrapMode: Text.Wrap
+                                }
+                            }
                         }
                     }
-                    Controls.ButtonCapsule {
-                        objectName: "closeApplicationDetailsButton"
-                        label: "Back"
-                        onClicked: root.selectedAppId = ""
+                    Text {
+                        id: privacyNote
+                        Layout.fillWidth: true
+                        text: root.selectedApp ? root.selectedApp.privacyNote
+                            : "Checking sandbox permissions…"
+                        color: Components.Theme.textSecondary
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeSmall
+                        wrapMode: Text.Wrap
+                        textFormat: Text.PlainText
                     }
                 }
             }
+        }
 
-            Form.SectionHeader { text: "INFORMATION"; Layout.bottomMargin: 6 }
-            Form.SettingRow { label: "Type"; sublabel: root.selectedApp ? root.selectedApp.kind : "" }
-            Form.SettingRow { label: "Size"; sublabel: root.selectedApp ? root.selectedApp.size : "" }
-            Form.SettingRow { objectName: "applicationIdRow"; label: "ID"; sublabel: root.selectedApp ? root.selectedApp.id : "" }
-            Form.SettingRow { objectName: "applicationFileRow"; label: "File"; sublabel: root.selectedApp ? root.selectedApp.file : ""; sublabelTextFormat: Text.PlainText; isLast: true }
-
-            Form.SectionHeader { text: "PRIVACY"; Layout.topMargin: 16; Layout.bottomMargin: 6 }
-            Form.SettingRow {
-                objectName: "applicationPrivacyRow"
-                label: "Permissions"
-                sublabelTextFormat: Text.PlainText
-                sublabel: root.selectedApp ? root.selectedApp.privacy : ""
-                isLast: true
-            }
-
-            Form.SectionHeader { text: "ACTIONS"; Layout.topMargin: 16; Layout.bottomMargin: 8 }
-            RowLayout {
+        Form.FormCard {
+            Layout.bottomMargin: 28
+            radius: root.groupRadius
+            Item {
                 Layout.fillWidth: true
-                Layout.leftMargin: 18
-                Layout.rightMargin: 18
-                Layout.bottomMargin: 14
-                spacing: 8
-                Controls.ButtonCapsule { objectName: "createApplicationShortcutButton"; label: "Create shortcut"; onClicked: root.controller.createShortcut(root.selectedAppId) }
-                Controls.ButtonCapsule { objectName: "openApplicationLocationButton"; label: "Open location"; onClicked: root.controller.openLocation(root.selectedAppId) }
-                Item { Layout.fillWidth: true }
-                Controls.ButtonCapsule { objectName: "uninstallApplicationButton"; label: root.selectedApp ? root.selectedApp.actionLabel : "Uninstall"; danger: true; enabled: root.selectedApp !== null && !!root.selectedApp.canUninstall; onClicked: removalDialog.open() }
+                implicitHeight: actionsContent.implicitHeight + 44
+                ColumnLayout {
+                    id: actionsContent
+                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 22 }
+                    spacing: 15
+                    Text {
+                        text: "Actions"
+                        color: Components.Theme.textPrimary
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeTitle
+                        font.weight: Components.Theme.fontWeightDemiBold
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 9
+                        Controls.Button {
+                            objectName: "createApplicationShortcutButton"
+                            label: "Create shortcut"
+                            controlHeight: 36
+                            enabled: root.selectedApp !== null && !root.controller.busy
+                            onClicked: root.controller.createShortcut(root.selectedAppId)
+                        }
+                        Controls.Button {
+                            objectName: "openApplicationLocationButton"
+                            label: "Open location"
+                            controlHeight: 36
+                            enabled: root.selectedApp !== null && !root.controller.busy
+                            onClicked: root.controller.openLocation(root.selectedAppId)
+                        }
+                        Item { Layout.fillWidth: true }
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: 1
+                        color: root.quietBorder
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            spacing: 4
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.selectedApp && root.selectedApp.method === "launcher"
+                                    ? "Remove launcher" : "Uninstall application"
+                                color: Components.Theme.textPrimary
+                                font.family: Components.Theme.fontFamily
+                                font.pixelSize: Components.Theme.fontSizeNormal
+                                font.weight: Components.Theme.fontWeightMedium
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.selectedApp && root.selectedApp.method === "launcher"
+                                    ? "Only the shortcut entry will be removed."
+                                    : "Application files may be removed. Your data is kept."
+                                color: Components.Theme.textSecondary
+                                font.family: Components.Theme.fontFamily
+                                font.pixelSize: Components.Theme.fontSizeSmall
+                                wrapMode: Text.Wrap
+                            }
+                        }
+                        Controls.Button {
+                            objectName: "uninstallApplicationButton"
+                            label: root.selectedApp ? root.selectedApp.actionLabel : "Uninstall"
+                            danger: true
+                            controlHeight: 36
+                            foregroundColor: Components.Theme.errorColor
+                            color: enabled
+                                ? Qt.rgba(Components.Theme.errorColor.r, Components.Theme.errorColor.g,
+                                          Components.Theme.errorColor.b, 0.09)
+                                : root.quietSurface
+                            border.color: Qt.rgba(Components.Theme.errorColor.r,
+                                                  Components.Theme.errorColor.g,
+                                                  Components.Theme.errorColor.b, 0.20)
+                            enabled: root.selectedApp !== null
+                                && !!root.selectedApp.canUninstall && !root.controller.busy
+                            onClicked: removalDialog.open()
+                        }
+                    }
+                }
             }
         }
     }

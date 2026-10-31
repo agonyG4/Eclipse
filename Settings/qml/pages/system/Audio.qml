@@ -1,5 +1,4 @@
 import QtQuick
-import Qt5Compat.GraphicalEffects as Legacy
 import QtQuick.Layouts
 import Astrea.System 1.0
 import "../../components" as Components
@@ -28,6 +27,10 @@ FocusScope {
     readonly property int inputCount: inputRepeater.count
     readonly property bool inputReady: root.audio && root.audio.available && root.audio.ready
         && root.serviceState === System.Ready && root.audio.inputStateAvailable
+
+    // Local highlight only; PipeWire's default remains authoritative.
+    property int selectedOutputId: -1
+    property int selectedInputId: -1
 
     function statusText() {
         if (!root.audio || root.serviceState === System.Unavailable)
@@ -113,8 +116,152 @@ FocusScope {
 
         Form.FormCard {
             Layout.bottomMargin: Components.Theme.spacingXLarge
-            margins: Components.Theme.spacingTiny
 
+            Form.SettingRow {
+                label: I18n.tr("apps.settings.pages.system.audio.label.system_volume",
+                               "System volume")
+                sublabel: I18n.tr("apps.settings.pages.system.audio.sublabel.system_volume",
+                                  "Adjust playback volume for the current default output.")
+
+                RowLayout {
+                    spacing: Components.Theme.spacingMicro
+
+                    Item {
+                        Layout.preferredWidth: 18
+                        Layout.preferredHeight: 18
+                        Layout.alignment: Qt.AlignVCenter
+                        visible: root.hasDefaultState
+
+                        Controls.ThemedIcon {
+                            id: volumeMinIcon
+                            objectName: "audioVolumeMinIcon"
+                            anchors.centerIn: parent
+                            width: 16
+                            height: 16
+                            iconKey: "volume-min"
+                            tint: Components.Theme.textSecondary
+                            Accessible.ignored: true
+                        }
+
+                        Text {
+                            objectName: "audioVolumeLowIcon"
+                            anchors.centerIn: parent
+                            visible: !volumeMinIcon.ready
+                            text: "\uf027" // volume-low, Lucide fallback
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: 16
+                            color: Components.Theme.textSecondary
+                            Accessible.ignored: true
+                        }
+                    }
+
+                    Controls.Slider {
+                        id: volumeSlider
+                        objectName: "audioVolumeSlider"
+                        Layout.preferredWidth: 200
+                        Layout.minimumWidth: 120
+                        showEndpointGlyphs: false
+                        showValueTooltip: false
+                        from: 0
+                        to: 150
+                        stepSize: 1
+                        detentEnabled: true
+                        detentValue: 100
+                        modelValueEnabled: true
+                        modelValue: root.audio ? root.audio.volume : 0
+                        valueText: root.hasDefaultState
+                            ? Math.round(root.audio.volume) + "%" : ""
+                        enabled: root.canMutateDefault
+                        visible: root.hasDefaultState
+                        Accessible.name: I18n.tr("apps.settings.pages.system.audio.label.system_volume",
+                                                 "System volume")
+                        onValueEdited: value => {
+                            if (root.canMutateDefault)
+                                root.audio.setVolume(value)
+                        }
+                    }
+
+                    Item {
+                        Layout.preferredWidth: 18
+                        Layout.preferredHeight: 18
+                        Layout.alignment: Qt.AlignVCenter
+                        visible: root.hasDefaultState
+
+                        Controls.ThemedIcon {
+                            id: volumeMaxIcon
+                            objectName: "audioVolumeMaxIcon"
+                            anchors.centerIn: parent
+                            width: 16
+                            height: 16
+                            iconKey: "volume-max"
+                            tint: Components.Theme.textSecondary
+                            Accessible.ignored: true
+                        }
+
+                        Text {
+                            objectName: "audioVolumeHighIcon"
+                            anchors.centerIn: parent
+                            visible: !volumeMaxIcon.ready
+                            text: "\uf028" // volume-high, Lucide fallback
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: 16
+                            color: Components.Theme.textSecondary
+                            Accessible.ignored: true
+                        }
+                    }
+
+                    Typography.TextLabel {
+                        objectName: "audioVolumePercent"
+                        visible: root.hasDefaultState
+                        text: root.audio ? Math.round(root.audio.volume) + "%" : ""
+                        textColor: Components.Theme.textPrimary
+                        font.pixelSize: Components.Theme.fontSizeNormal
+                        font.weight: Components.Theme.fontWeightMedium
+                        Layout.preferredWidth: 43
+                        horizontalAlignment: Text.AlignRight
+                    }
+
+                    Typography.TextLabel {
+                        objectName: "audioVolumeLoading"
+                        visible: !root.hasDefaultState
+                        text: I18n.tr("apps.settings.pages.system.audio.status.waiting",
+                                      "Waiting for current audio state…")
+                        textColor: Components.Theme.textSecondary
+                        font.pixelSize: Components.Theme.fontSizeSmall
+                    }
+                }
+            }
+
+            Form.SettingRow {
+                label: I18n.tr("apps.settings.pages.system.audio.label.mute", "Mute")
+                sublabel: I18n.tr("apps.settings.pages.system.audio.sublabel.mute",
+                                  "Mute the current default output.")
+                isLast: false
+
+                RowLayout {
+                    Controls.ToggleSwitch {
+                        id: muteToggle
+                        objectName: "audioMuteToggle"
+                        checked: root.audio ? root.audio.muted : false
+                        enabled: root.canMutateDefault
+                        visible: root.hasDefaultState
+                        accessibleName: I18n.tr("apps.settings.pages.system.audio.label.mute", "Mute")
+                        onToggled: targetChecked => {
+                            if (root.canMutateDefault)
+                                root.audio.setMuted(targetChecked)
+                        }
+                    }
+
+                    Typography.TextLabel {
+                        objectName: "audioMuteLoading"
+                        visible: !root.hasDefaultState
+                        text: I18n.tr("apps.settings.pages.system.audio.status.waiting",
+                                      "Waiting for current audio state…")
+                        textColor: Components.Theme.textSecondary
+                        font.pixelSize: Components.Theme.fontSizeSmall
+                    }
+                }
+            }
             Repeater {
                 id: outputRepeater
                 model: root.audio ? root.audio.outputsModel : null
@@ -124,10 +271,10 @@ FocusScope {
                     enabled: root.audio
                         ? root.audio.available && root.audio.ready
                             && root.serviceState === System.Ready : false
-                    onActivated: selectedNodeId => {
-                        if (root.audio && !isDefault)
-                            root.audio.setDefaultOutput(selectedNodeId)
-                    }
+                    selected: root.selectedOutputId === nodeId
+                        || (root.selectedOutputId < 0 && isDefault)
+                    onActivated: selectedNodeId => root.selectedOutputId = selectedNodeId
+
                 }
             }
 
@@ -165,45 +312,41 @@ FocusScope {
 
         Form.FormCard {
             Layout.bottomMargin: Components.Theme.spacingXLarge
-            margins: Components.Theme.spacingTiny
-
-            Repeater {
-                id: inputRepeater
-                model: root.audio ? root.audio.inputsModel : null
-                delegate: AudioComponents.DeviceRow {
-                    inputDevice: true
-                    lastInGroup: index === root.inputCount - 1
-                    enabled: root.audio && root.audio.available
-                        && root.audio.ready && root.serviceState === System.Ready
-                    onActivated: selectedNodeId => {
-                        if (root.audio && !isDefault)
-                            root.audio.setDefaultInput(selectedNodeId)
-                    }
-                }
-            }
-
-            Typography.TextLabel {
-                objectName: "audioNoInputs"
-                Layout.fillWidth: true
-                Layout.margins: Components.Theme.spacingLarge
-                visible: root.audio && root.audio.available && root.inputCount === 0
-                text: I18n.tr("settings.audio.no_inputs", "No microphones found")
-                textColor: Components.Theme.textSecondary
-                horizontalAlignment: Text.AlignHCenter
-            }
-        }
-
-        Form.SectionHeader {
-            text: I18n.tr("settings.audio.section.input_level", "INPUT LEVEL")
-            Layout.bottomMargin: Components.Theme.spacingMedium
-        }
-        Form.FormCard {
-            Layout.bottomMargin: Components.Theme.spacingXLarge
             Form.SettingRow {
                 label: I18n.tr("settings.audio.input_volume", "Microphone volume")
                 sublabel: I18n.tr("settings.audio.input_volume_description", "Adjust the selected microphone's input gain.")
                 RowLayout {
-                    spacing: Components.Theme.spacingMedium
+                    spacing: Components.Theme.spacingMicro
+
+                    Item {
+                        Layout.preferredWidth: 18
+                        Layout.preferredHeight: 18
+                        Layout.alignment: Qt.AlignVCenter
+                        visible: root.inputReady
+
+                        Controls.ThemedIcon {
+                            id: inputMicrophoneIcon
+                            objectName: "audioInputMicrophoneIcon"
+                            anchors.centerIn: parent
+                            width: 18
+                            height: 18
+                            iconKey: "microphone"
+                            tint: Components.Theme.textSecondary
+                            Accessible.ignored: true
+                        }
+
+                        Text {
+                            objectName: "audioInputMicrophoneFallback"
+                            anchors.centerIn: parent
+                            visible: !inputMicrophoneIcon.ready
+                            text: "\uf130"
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: 17
+                            color: Components.Theme.textSecondary
+                            Accessible.ignored: true
+                        }
+                    }
+
                     Controls.Slider {
                         objectName: "audioInputVolumeSlider"
                         Layout.preferredWidth: 200
@@ -231,7 +374,7 @@ FocusScope {
             }
             Form.SettingRow {
                 label: I18n.tr("settings.audio.input_mute", "Mute microphone")
-                isLast: true
+                isLast: false
                 Controls.ToggleSwitch {
                     objectName: "audioInputMuteToggle"
                     checked: root.audio ? root.audio.inputMuted : false
@@ -242,178 +385,29 @@ FocusScope {
                     }
                 }
             }
-        }
+            Repeater {
+                id: inputRepeater
+                model: root.audio ? root.audio.inputsModel : null
+                delegate: AudioComponents.DeviceRow {
+                    inputDevice: true
+                    lastInGroup: index === root.inputCount - 1
+                    enabled: root.audio && root.audio.available
+                        && root.audio.ready && root.serviceState === System.Ready
+                    selected: root.selectedInputId === nodeId
+                        || (root.selectedInputId < 0 && isDefault)
+                    onActivated: selectedNodeId => root.selectedInputId = selectedNodeId
 
-        Form.SectionHeader {
-            text: I18n.tr("apps.settings.pages.system.audio.section.volume", "VOLUME")
-            Layout.bottomMargin: Components.Theme.spacingMedium
-        }
-
-        Form.FormCard {
-            Layout.bottomMargin: Components.Theme.spacingXLarge
-
-            Form.SettingRow {
-                label: I18n.tr("apps.settings.pages.system.audio.label.system_volume",
-                               "System volume")
-                sublabel: I18n.tr("apps.settings.pages.system.audio.sublabel.system_volume",
-                                  "Adjust playback volume for the current default output.")
-
-                RowLayout {
-                    spacing: Components.Theme.spacingMedium
-
-                    Item {
-                        Layout.preferredWidth: 16
-                        Layout.preferredHeight: 18
-                        Layout.alignment: Qt.AlignVCenter
-                        visible: root.hasDefaultState
-
-                        Image {
-                            id: volumeMinAppleIcon
-                            objectName: "audioVolumeMinAppleIcon"
-                            anchors.centerIn: parent
-                            width: 16
-                            height: 16
-                            readonly property bool appleSelected:
-                                SettingsController.navigationIconTheme === "apple"
-                            source: appleSelected ? SettingsController.iconUrlForWeight(
-                                "volume-min", "apple", SettingsController.navigationIconWeight) : ""
-                            sourceSize: Qt.size(width, height)
-                            fillMode: Image.PreserveAspectFit
-                            visible: appleSelected && status === Image.Ready
-                            layer.enabled: visible
-                            layer.effect: Legacy.ColorOverlay {
-                                color: Components.Theme.textSecondary
-                            }
-                            Accessible.ignored: true
-                        }
-
-                        Text {
-                            objectName: "audioVolumeLowIcon"
-                            anchors.centerIn: parent
-                            visible: !volumeMinAppleIcon.visible
-                            text: "\uf027" // volume-low, Lucide fallback
-                            font.family: "JetBrainsMono Nerd Font"
-                            font.pixelSize: 16
-                            color: Components.Theme.textSecondary
-                            Accessible.ignored: true
-                        }
-                    }
-
-                    Controls.Slider {
-                        id: volumeSlider
-                        objectName: "audioVolumeSlider"
-                        Layout.preferredWidth: 200
-                        Layout.minimumWidth: 120
-                        showEndpointGlyphs: false
-                        showValueTooltip: false
-                        from: 0
-                        to: 150
-                        stepSize: 1
-                        detentEnabled: true
-                        detentValue: 100
-                        modelValueEnabled: true
-                        modelValue: root.audio ? root.audio.volume : 0
-                        valueText: root.hasDefaultState
-                            ? Math.round(root.audio.volume) + "%" : ""
-                        enabled: root.canMutateDefault
-                        visible: root.hasDefaultState
-                        Accessible.name: I18n.tr("apps.settings.pages.system.audio.label.system_volume",
-                                                 "System volume")
-                        onValueEdited: value => {
-                            if (root.canMutateDefault)
-                                root.audio.setVolume(value)
-                        }
-                    }
-
-                    Item {
-                        Layout.preferredWidth: 16
-                        Layout.preferredHeight: 18
-                        Layout.alignment: Qt.AlignVCenter
-                        visible: root.hasDefaultState
-
-                        Image {
-                            id: volumeMaxAppleIcon
-                            objectName: "audioVolumeMaxAppleIcon"
-                            anchors.centerIn: parent
-                            width: 16
-                            height: 16
-                            readonly property bool appleSelected:
-                                SettingsController.navigationIconTheme === "apple"
-                            source: appleSelected ? SettingsController.iconUrlForWeight(
-                                "volume-max", "apple", SettingsController.navigationIconWeight) : ""
-                            sourceSize: Qt.size(width, height)
-                            fillMode: Image.PreserveAspectFit
-                            visible: appleSelected && status === Image.Ready
-                            layer.enabled: visible
-                            layer.effect: Legacy.ColorOverlay {
-                                color: Components.Theme.textSecondary
-                            }
-                            Accessible.ignored: true
-                        }
-
-                        Text {
-                            objectName: "audioVolumeHighIcon"
-                            anchors.centerIn: parent
-                            visible: !volumeMaxAppleIcon.visible
-                            text: "\uf028" // volume-high, Lucide fallback
-                            font.family: "JetBrainsMono Nerd Font"
-                            font.pixelSize: 16
-                            color: Components.Theme.textSecondary
-                            Accessible.ignored: true
-                        }
-                    }
-
-                    Typography.TextLabel {
-                        objectName: "audioVolumePercent"
-                        visible: root.hasDefaultState
-                        text: root.audio ? Math.round(root.audio.volume) + "%" : ""
-                        textColor: Components.Theme.textPrimary
-                        font.pixelSize: Components.Theme.fontSizeNormal
-                        font.weight: Components.Theme.fontWeightMedium
-                        Layout.preferredWidth: 43
-                        horizontalAlignment: Text.AlignRight
-                    }
-
-                    Typography.TextLabel {
-                        objectName: "audioVolumeLoading"
-                        visible: !root.hasDefaultState
-                        text: I18n.tr("apps.settings.pages.system.audio.status.waiting",
-                                      "Waiting for current audio state…")
-                        textColor: Components.Theme.textSecondary
-                        font.pixelSize: Components.Theme.fontSizeSmall
-                    }
                 }
             }
 
-            Form.SettingRow {
-                label: I18n.tr("apps.settings.pages.system.audio.label.mute", "Mute")
-                sublabel: I18n.tr("apps.settings.pages.system.audio.sublabel.mute",
-                                  "Mute the current default output.")
-                isLast: true
-
-                RowLayout {
-                    Controls.ToggleSwitch {
-                        id: muteToggle
-                        objectName: "audioMuteToggle"
-                        checked: root.audio ? root.audio.muted : false
-                        enabled: root.canMutateDefault
-                        visible: root.hasDefaultState
-                        accessibleName: I18n.tr("apps.settings.pages.system.audio.label.mute", "Mute")
-                        onToggled: targetChecked => {
-                            if (root.canMutateDefault)
-                                root.audio.setMuted(targetChecked)
-                        }
-                    }
-
-                    Typography.TextLabel {
-                        objectName: "audioMuteLoading"
-                        visible: !root.hasDefaultState
-                        text: I18n.tr("apps.settings.pages.system.audio.status.waiting",
-                                      "Waiting for current audio state…")
-                        textColor: Components.Theme.textSecondary
-                        font.pixelSize: Components.Theme.fontSizeSmall
-                    }
-                }
+            Typography.TextLabel {
+                objectName: "audioNoInputs"
+                Layout.fillWidth: true
+                Layout.margins: Components.Theme.spacingLarge
+                visible: root.audio && root.audio.available && root.inputCount === 0
+                text: I18n.tr("settings.audio.no_inputs", "No microphones found")
+                textColor: Components.Theme.textSecondary
+                horizontalAlignment: Text.AlignHCenter
             }
         }
 
@@ -465,4 +459,5 @@ FocusScope {
             }
         }
     }
+
 }

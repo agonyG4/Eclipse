@@ -1,7 +1,7 @@
 import QtQuick
-import Qt5Compat.GraphicalEffects as Legacy
 import QtQuick.Layouts
 import ".." as Components
+import "../controls" as Controls
 
 Item {
     id: root
@@ -52,21 +52,14 @@ Item {
                 ? Qt.rgba(1, 1, 1, 0.10)
                 : Qt.rgba(1, 1, 1, 0.055)
 
-            Image {
+            Controls.ThemedIcon {
                 anchors.centerIn: parent
                 width: 20
                 height: 20
-                source: root.iconSource
-                sourceSize: Qt.size(width, height)
-                fillMode: Image.PreserveAspectFit
-                smooth: true
-                mipmap: false
+                iconSource: root.iconSource
+                tint: Components.Theme.textPrimary
                 visible: root.iconSource !== ""
                 opacity: root.enabled ? 1 : Components.Theme.opacityMuted
-                layer.enabled: visible
-                layer.effect: Legacy.ColorOverlay {
-                    color: Components.Theme.textPrimary
-                }
             }
 
             Text {

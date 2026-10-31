@@ -4,6 +4,8 @@
 #include "services/desktop/DesktopControllers.hpp"
 #include "services/assets/SettingsIconResolver.hpp"
 #include "services/audio/SettingsSpatialAudioController.hpp"
+#include "services/network/SettingsFirewallStatus.hpp"
+#include "services/network/SettingsFirewallManager.hpp"
 #include "services/dock/SettingsDockController.hpp"
 #include "services/profile/SettingsUserProfile.hpp"
 #include "services/wallpaper/SettingsWallpaperController.hpp"
@@ -21,6 +23,7 @@
 #include <astrea_settings_backend/src/visual_effects/qobject.cxxqt.h>
 
 #include <QObject>
+#include <QCache>
 #include <QJsonObject>
 #include <QTimer>
 #include <QString>
@@ -63,6 +66,8 @@ class SettingsController final : public QObject {
     Q_PROPERTY(Astrea::System::BluetoothService *bluetooth READ bluetooth CONSTANT)
     Q_PROPERTY(Astrea::System::AudioService *audio READ audio CONSTANT)
     Q_PROPERTY(Astrea::System::NetworkService *network READ network CONSTANT)
+    Q_PROPERTY(SettingsFirewallStatus *firewall READ firewall CONSTANT)
+    Q_PROPERTY(SettingsFirewallManager *firewallManager READ firewallManager CONSTANT)
     Q_PROPERTY(SettingsSpatialAudioController *spatialAudio READ spatialAudio CONSTANT)
 
 public:
@@ -110,8 +115,11 @@ public:
     Astrea::System::BluetoothService *bluetooth() const { return m_bluetoothService.get(); }
     Astrea::System::AudioService *audio() const { return m_audioService.get(); }
     Astrea::System::NetworkService *network() const { return m_networkService.get(); }
+    SettingsFirewallStatus *firewall() const { return m_firewallStatus.get(); }
+    SettingsFirewallManager *firewallManager() const { return m_firewallManager.get(); }
     SettingsSpatialAudioController *spatialAudio() const { return m_spatialAudioController.get(); }
 
+    Q_INVOKABLE QVariantList connectedHardwareDevices() const;
     Q_INVOKABLE bool navigateTo(const QString &id);
     Q_INVOKABLE void goBack();
     Q_INVOKABLE void goForward();
@@ -122,6 +130,10 @@ public:
     Q_INVOKABLE bool setVisualTheme(const QString &id);
     Q_INVOKABLE QUrl iconUrlForWeight(const QString &iconKey, const QString &iconTheme,
                                      const QString &weight) const;
+    // Materialize a colorized vector at source without GPU layer re-rasterization.
+    Q_INVOKABLE QUrl tintedSymbolUrl(const QString &iconKey, const QString &iconTheme,
+                                     const QString &weight, const QString &hexColor) const;
+    Q_INVOKABLE QUrl tintedSymbolSource(const QUrl &source, const QString &hexColor) const;
 
 signals:
     void userProfileChanged();
@@ -140,6 +152,8 @@ private:
     void publishDockPreviewState();
     void syncDockOnExit();
 
+    // Bound vector URL cache: one SVG+color transformation per source revision.
+    mutable QCache<QString, QUrl> m_tintedSymbolCache{256};
     std::unique_ptr<SettingsNavigationModel> m_navigationModel;
     const SettingsUserProfile m_userProfile;
     const SettingsIconResolver m_iconResolver;
@@ -150,6 +164,8 @@ private:
     std::unique_ptr<Astrea::System::BluetoothService> m_bluetoothService;
     std::unique_ptr<Astrea::System::AudioService> m_audioService;
     std::unique_ptr<Astrea::System::NetworkService> m_networkService;
+    std::unique_ptr<SettingsFirewallStatus> m_firewallStatus;
+    std::unique_ptr<SettingsFirewallManager> m_firewallManager;
     std::unique_ptr<SettingsSpatialAudioController> m_spatialAudioController;
     std::unique_ptr<SettingsWallpaperController> m_wallpaperController;
     std::unique_ptr<SettingsDockController> m_dockController;

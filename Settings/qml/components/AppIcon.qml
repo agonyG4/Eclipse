@@ -116,14 +116,11 @@ Rectangle {
 
     function reloadIcon() {
         const nextSource = root.iconSource(root.resolvedIconName)
-        if (nextSource.length === 0)
-            return
-
+        // A deferred closure can run after a recycled ListView delegate is destroyed.
+        // Clearing synchronously also prevents stale icons when the entry disappears.
         iconImage.source = ""
-        Qt.callLater(() => {
-            if (root.iconSource(root.resolvedIconName) === nextSource)
-                iconImage.source = nextSource
-        })
+        if (nextSource.length !== 0)
+            iconImage.source = nextSource
     }
 
     onResolvedIconNameChanged: {

@@ -101,14 +101,19 @@ DesktopEntryRecord ApplicationsBackend::resolve(const QString &id) const
 QVariantList ApplicationsBackend::inventory() const
 {
     QVariantList list;
-    for (const auto &record : records())
+    for (const auto &record : records()) {
+        const bool flatpak = !field(record.sourceFilePath, "X-Flatpak").isEmpty();
+        const QString source = flatpak ? "Flatpak"
+            : inside(record.sourceFilePath, m_dataHome + "/applications") ? "User" : "System";
         list.append(QVariantMap{
             {"id", record.id},
             {"name", localized(record.name, record.localizedNames)},
             {"description", localized(record.comment, record.localizedComments)},
             {"category", record.categories.isEmpty() ? "Application" : record.categories[0]},
+            {"source", source},
             {"file", record.sourceFilePath},
             {"icon", record.icon}});
+    }
     return list;
 }
 QVariantMap ApplicationsBackend::details(const QString &id) const
@@ -118,9 +123,12 @@ QVariantMap ApplicationsBackend::details(const QString &id) const
                        {"name", localized(record.name, record.localizedNames)},
                        {"description", localized(record.comment, record.localizedComments)},
                        {"file", record.sourceFilePath},
+                       {"icon", record.icon},
                        {"kind", "Desktop application"},
                        {"size", "Not available"},
                        {"privacy", "Native application: permissions are not isolated per app."},
+                       {"privacyNote", "Native applications are not sandboxed per application. Access is controlled by the system and the application."},
+                       {"privacyItems", QVariantList{}},
                        {"canUninstall", false},
                        {"target", ""},
                        {"actionLabel", "Uninstall"}};
@@ -142,6 +150,44 @@ QVariantMap ApplicationsBackend::details(const QString &id) const
             result["privacy"] = permissions.code == 0
                                     ? permissions.out
                                     : "Could not read Flatpak permissions: " + permissions.error;
+            result["privacyNote"] = permissions.code == 0
+                ? "These are Flatpak sandbox capabilities, not a history of granted portal permissions. Audio server access may also expose microphones. Camera portal decisions are managed separately."
+                : "Flatpak permissions could not be loaded. No access should be inferred from this view.";
+            if (permissions.code == 0) {
+                QString section;
+                QHash<QString, QStringList> context;
+                for (const auto &line : permissions.out.split('\n')) {
+                    const auto trimmed = line.trimmed();
+                    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+                        section = trimmed;
+                        continue;
+                    }
+                    if (section != "[Context]")
+                        continue;
+                    const auto equal = trimmed.indexOf('=');
+                    if (equal <= 0)
+                        continue;
+                    context.insert(trimmed.left(equal), trimmed.mid(equal + 1)
+                        .split(';', Qt::SkipEmptyParts));
+                }
+                const auto shares = context.value("shared");
+                const auto sockets = context.value("sockets");
+                const auto filesystems = context.value("filesystems");
+                const auto devices = context.value("devices");
+                const auto readable = [](const QStringList &values) {
+                    return values.isEmpty() ? QStringLiteral("No direct access declared")
+                                            : values.join(", ");
+                };
+                result["privacyItems"] = QVariantList{
+                    QVariantMap{{"name", "Network"},
+                                {"description", shares.contains("network") ? "Shared with host" : "Not directly shared"}},
+                    QVariantMap{{"name", "Audio server"},
+                                {"description", sockets.contains("pulseaudio") || sockets.contains("pipewire")
+                                    ? "Shared with host (may include microphone access)"
+                                    : "No audio server socket declared"}},
+                    QVariantMap{{"name", "Files and folders"}, {"description", readable(filesystems)}},
+                    QVariantMap{{"name", "Devices"}, {"description", readable(devices)}}};
+            }
         }
     } else if (inside(record.sourceFilePath, m_dataHome + "/applications")) {
         result["method"] = "launcher";

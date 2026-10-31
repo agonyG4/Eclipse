@@ -208,6 +208,7 @@ class SettingsQmlSmokeTest final : public QObject {
 
 private slots:
     void loadsCompositorRouteOffscreen();
+    void sharedPageHeaderAlignsWithBackToolbar();
     void displaySidebarClickLoadsSelectedPageWithoutTyphon();
     void loadsCustomizationHubOffscreen();
     void loadsVisualMigrationRoutes_data();
@@ -490,6 +491,87 @@ void SettingsQmlSmokeTest::loadsCompositorRouteOffscreen()
                              1000);
     QVERIFY(!loadedPage()->property("animationsEnabled").isValid());
     QVERIFY2(qmlWarnings.isEmpty(), qPrintable(qmlWarnings.isEmpty() ? QString() : qmlWarnings.constFirst().toString()));
+}
+
+void SettingsQmlSmokeTest::sharedPageHeaderAlignsWithBackToolbar()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    SettingsController settingsController;
+    SettingsTranslationController translationController;
+    ThemeController themeController(directory.filePath(QStringLiteral("theme.json")));
+    QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/Main.qml")));
+    QCOMPARE(engine.rootObjects().size(), 1);
+    auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
+    QVERIFY(window);
+    window->show();
+    QVERIFY(settingsController.navigateTo(QStringLiteral("bluetooth")));
+    auto *loader = window->findChild<QObject *>(QStringLiteral("settingsPageLoader"));
+    auto *toolbar = qobject_cast<QQuickItem *>(window->findChild<QObject *>(
+        QStringLiteral("settingsNavigationToolbar")));
+    QVERIFY(loader);
+    QVERIFY(toolbar);
+    QTRY_VERIFY_WITH_TIMEOUT(qvariant_cast<QObject *>(loader->property("item")) != nullptr, 3000);
+    auto *page = qobject_cast<QQuickItem *>(qvariant_cast<QObject *>(loader->property("item")));
+    QVERIFY(page);
+    QQuickItem *title = nullptr;
+    QList<QQuickItem *> items{page};
+    while (!items.isEmpty()) {
+        QQuickItem *candidate = items.takeLast();
+        if (candidate->property("text").toString() == QStringLiteral("Bluetooth")) {
+            title = candidate;
+            break;
+        }
+        items.append(candidate->childItems());
+    }
+    QVERIFY(title);
+    const qreal titleTop = title->mapToScene(QPointF(0, 0)).y();
+    const qreal toolbarBottom = toolbar->mapToScene(QPointF(0, toolbar->height())).y();
+    const qreal gap = titleTop - toolbarBottom;
+    QVERIFY2(gap >= 0 && gap <= 32,
+             qPrintable(QStringLiteral("Bluetooth heading gap is %1 px").arg(gap)));
+    // The former footer must remain below the page, not consume its top inset.
+    QQuickItem *scroll = title->parentItem();
+    while (scroll && !scroll->property("topContentInset").isValid())
+        scroll = scroll->parentItem();
+    QVERIFY(scroll);
+    // The page column sits in the ScrollView's flickable content item, at any title depth.
+    const QQuickItem *contentColumn = title;
+    while (contentColumn && contentColumn->parentItem()
+           && contentColumn->parentItem()->parentItem()
+           && contentColumn->parentItem()->parentItem()->parentItem() != scroll)
+        contentColumn = contentColumn->parentItem();
+    QVERIFY(contentColumn);
+    const qreal trailingSpace =
+        scroll->property("contentHeight").toReal() - contentColumn->height();
+    QVERIFY2(trailingSpace >= 40 && trailingSpace <= 48,
+             qPrintable(QStringLiteral("Expected 44 px trailing gutter, got %1").arg(trailingSpace)));
+
+    // A second, structurally different page uses the same ScrollPage layout.
+    QVERIFY(settingsController.navigateTo(QStringLiteral("compositor")));
+    QTRY_VERIFY_WITH_TIMEOUT(qvariant_cast<QObject *>(loader->property("item")) != nullptr
+        && qvariant_cast<QObject *>(loader->property("item"))->objectName()
+            == QStringLiteral("compositorPage"), 3000);
+    page = qobject_cast<QQuickItem *>(qvariant_cast<QObject *>(loader->property("item")));
+    QVERIFY(page);
+    title = nullptr;
+    items = {page};
+    while (!items.isEmpty()) {
+        QQuickItem *candidate = items.takeLast();
+        if (candidate->property("text").toString() == QStringLiteral("Compositor")) {
+            title = candidate;
+            break;
+        }
+        items.append(candidate->childItems());
+    }
+    QVERIFY(title);
+    const qreal compositorGap = title->mapToScene(QPointF(0, 0)).y() - toolbarBottom;
+    QVERIFY2(compositorGap >= 0 && compositorGap <= 32,
+             qPrintable(QStringLiteral("Compositor heading gap is %1 px").arg(compositorGap)));
 }
 
 void SettingsQmlSmokeTest::displaySidebarClickLoadsSelectedPageWithoutTyphon()
@@ -1126,15 +1208,20 @@ void SettingsQmlSmokeTest::loadsIconsRouteOffscreen()
     QTRY_VERIFY_WITH_TIMEOUT(
         (artwork = findVisualItem(renderWindow->contentItem(),
                                   QStringLiteral("navigationThemedIcon"))) != nullptr, 1000);
-    QTRY_VERIFY_WITH_TIMEOUT(QQmlProperty(artwork,
-                              QStringLiteral("layer.enabled")).read().toBool(), 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(artwork->property("ready").toBool(), 1000);
+    const QUrl darkIconUrl = artwork->property("imageSource").toUrl();
+    QVERIFY(darkIconUrl.toString().startsWith(QStringLiteral("data:image/svg+xml;base64,")));
+    const QByteArray darkSvg = QByteArray::fromBase64(
+        darkIconUrl.toString().section(QLatin1Char(','), 1).toLatin1());
+    QVERIFY(!darkSvg.contains("fill='black'"));
+    QVERIFY(darkSvg.contains("viewBox"));
     const QColor darkForeground = artwork->property("resolvedTint").value<QColor>();
     QVERIFY2(darkForeground.red() >= 180 && darkForeground.green() >= 180
              && darkForeground.blue() >= 180, qPrintable(darkForeground.name()));
     themeController.setThemeMode(1);
     QCOMPARE(themeController.themeMode(), 1);
     QCoreApplication::processEvents();
-    QVERIFY(QQmlProperty(artwork, QStringLiteral("layer.enabled")).read().toBool());
+    QTRY_VERIFY_WITH_TIMEOUT(artwork->property("ready").toBool(), 1000);
     const QColor lightForeground = artwork->property("resolvedTint").value<QColor>();
     QVERIFY2(lightForeground.red() < 180 && lightForeground.green() < 180
              && lightForeground.blue() < 180, qPrintable(lightForeground.name()));
@@ -1178,15 +1265,16 @@ void SettingsQmlSmokeTest::loadsIconsRouteOffscreen()
     QVERIFY(!source.contains(QStringLiteral("visible: root.controller.busy")));
     QVERIFY(source.contains(QStringLiteral("controller.lastError")));
     QVERIFY(source.contains(QStringLiteral("No installed themes match your search.")));
-    // MultiEffect's colorization leaves black SF Symbol pixels black on the
-    // actual GPU. Theme glyphs must use alpha-based ColorOverlay instead.
+    // Monochrome SVG tinting now happens in the vector source. This eliminates
+    // the intermediate ColorOverlay texture and preserves high-DPI sharpness.
     QFile navQml(QStringLiteral(ASTREA_ECLIPSE_SOURCE_DIR
                                 "/Settings/qml/components/navigation/NavItem.qml"));
     QVERIFY(navQml.open(QIODevice::ReadOnly));
     const QByteArray navigationSource = navQml.readAll();
-    QVERIFY(navigationSource.contains("layer.effect: Legacy.ColorOverlay"));
-    QVERIFY(!navigationSource.contains("colorizationColor: navIcon.resolvedTint"));
-    QVERIFY(source.contains(QStringLiteral("layer.effect: Legacy.ColorOverlay")));
+    QVERIFY(navigationSource.contains("Controls.ThemedIcon"));
+    QVERIFY(!navigationSource.contains("Legacy.ColorOverlay"));
+    QVERIFY(source.contains(QStringLiteral("Controls.ThemedIcon")));
+    QVERIFY(!source.contains(QStringLiteral("Legacy.ColorOverlay")));
     QVERIFY2(qmlWarnings.isEmpty(),
              qPrintable(qmlWarnings.isEmpty() ? QString() : qmlWarnings.constFirst().toString()));
 }
@@ -2584,7 +2672,7 @@ void SettingsQmlSmokeTest::sidebarHidesNestedDestinations()
     QVERIFY(sidebar != nullptr);
     QVERIFY(sidebar->findChild<QObject *>(QStringLiteral("settingsSidebarRow-wallpaper")) == nullptr);
     QVERIFY(sidebar->findChild<QObject *>(QStringLiteral("settingsSidebarRow-dock")) == nullptr);
-    QCOMPARE(settingsController.navigationModel()->rowCount(), 13);
+    QCOMPARE(settingsController.navigationModel()->rowCount(), 14);
 }
 
 void SettingsQmlSmokeTest::wallpaperTranslationKeysExist()

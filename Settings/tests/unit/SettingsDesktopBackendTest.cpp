@@ -74,6 +74,10 @@ class SettingsDesktopBackendTest : public QObject
         auto apps = backend.inventory();
         QCOMPARE(apps.size(), 1);
         QCOMPARE(apps[0].toMap()["name"].toString(), QString("User demo"));
+        QCOMPARE(apps[0].toMap()["source"].toString(), QString("User"));
+        const auto details = backend.details("demo");
+        QVERIFY(!details["privacyNote"].toString().isEmpty());
+        QVERIFY(details["privacyItems"].toList().isEmpty());
         QVERIFY(write(dir.filePath("user/applications/demo.desktop"),
                       "[Desktop Entry]\nType=Application\nName=Hidden\nHidden=true\n"));
         QVERIFY(backend.inventory().isEmpty());

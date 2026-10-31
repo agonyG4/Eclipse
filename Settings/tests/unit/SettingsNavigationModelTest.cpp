@@ -23,13 +23,13 @@ void SettingsNavigationModelTest::exposesExactSidebarOrder()
     SettingsNavigationModel model;
     const QStringList expected{
         QStringLiteral("system"), QStringLiteral("software-update"), QStringLiteral("internet"),
-        QStringLiteral("bluetooth"), QStringLiteral("audio"), QStringLiteral("display"),
+        QStringLiteral("bluetooth"), QStringLiteral("devices"), QStringLiteral("audio"), QStringLiteral("display"),
         QStringLiteral("components"),
         QStringLiteral("services"), QStringLiteral("compositor"), QString(),
         QStringLiteral("performance"), QStringLiteral("customization"), QStringLiteral("more-settings"),
     };
 
-    QCOMPARE(model.rowCount(), 13);
+    QCOMPARE(model.rowCount(), 14);
     QCOMPARE(model.rowCount(), expected.size());
     for (int row = 0; row < expected.size(); ++row)
         QCOMPARE(model.get(row).value(QStringLiteral("entryId")).toString(), expected.at(row));
@@ -42,7 +42,7 @@ void SettingsNavigationModelTest::exposesCanonicalKindsAndVisibility()
         QStringLiteral("page"), QStringLiteral("page"), QStringLiteral("page"),
         QStringLiteral("page"),
         QStringLiteral("page"), QStringLiteral("page"), QStringLiteral("page"),
-        QStringLiteral("page"), QStringLiteral("page"), QStringLiteral("spacer"),
+        QStringLiteral("page"), QStringLiteral("page"), QStringLiteral("page"), QStringLiteral("spacer"),
         QStringLiteral("hub"), QStringLiteral("hub"), QStringLiteral("hub"),
     };
 
@@ -90,7 +90,7 @@ void SettingsNavigationModelTest::allCatalogueEntriesHaveUniqueStableIds()
 void SettingsNavigationModelTest::preservesSpacerBehavior()
 {
     SettingsNavigationModel model;
-    const QModelIndex spacer = model.index(9, 0);
+    const QModelIndex spacer = model.index(10, 0);
     QCOMPARE(model.data(spacer, SettingsNavigationModel::KindRole).toString(), QStringLiteral("spacer"));
     QVERIFY(!model.data(spacer, SettingsNavigationModel::EnabledRole).toBool());
     QCOMPARE(model.data(spacer, SettingsNavigationModel::ParentIdRole).toString(), QString());
@@ -124,6 +124,8 @@ void SettingsNavigationModelTest::exposesNativePageRoutes()
     QCOMPARE(model.pageSourceForId(QStringLiteral("internet")),
              QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Internet.qml")));
     QCOMPARE(model.pageSourceForId(QStringLiteral("bluetooth")), bluetoothRoute);
+    QCOMPARE(model.pageSourceForId(QStringLiteral("devices")),
+             QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Devices.qml")));
     QCOMPARE(model.pageSourceForId(QStringLiteral("audio")),
              QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Audio.qml")));
     QCOMPARE(model.pageSourceForId(QStringLiteral("display")),
@@ -269,7 +271,7 @@ void SettingsNavigationModelTest::appliesPageAndHubNavigabilityRules()
     QVERIFY(!model.containsNavigableId(QStringLiteral("missing")));
 
     QVERIFY(model.data(model.index(11, 0), SettingsNavigationModel::EnabledRole).toBool());
-    QVERIFY(!model.data(model.index(9, 0), SettingsNavigationModel::EnabledRole).toBool());
+    QVERIFY(!model.data(model.index(10, 0), SettingsNavigationModel::EnabledRole).toBool());
     QVERIFY(model.data(model.index(12, 0), SettingsNavigationModel::EnabledRole).toBool());
 }
 

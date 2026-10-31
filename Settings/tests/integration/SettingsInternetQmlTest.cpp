@@ -9,6 +9,8 @@
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
 #include <QQmlContext>
+#include <QQmlEngine>
+#include <QJSValue>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QtTest>
@@ -268,6 +270,8 @@ class SettingsInternetQmlTest final : public QObject {
 private slots:
     void serviceHealthAndConnectionProjection();
     void wiredConnectionDetailsProjectAndClear();
+    void layoutHasCompactDetailsAndWifiUnavailableState();
+    void firewallConfirmationsUseMockedBackendOnly();
     void wifiPowerAndScanAreAuthoritative();
     void availableNetworksRemainInformationalPlainTextRows();
     void dnsSectionProjectsModeProviderAndConnectionServers();
@@ -310,6 +314,11 @@ void SettingsInternetQmlTest::serviceHealthAndConnectionProjection()
     QCOMPARE(page.find(QStringLiteral("connectionName"))->property("text").toString(),
              QStringLiteral("<i>Lab & guest</i>"));
     QCOMPARE(page.find(QStringLiteral("connectionName"))->property("textFormat").toInt(), 0);
+    QCOMPARE(page.find(QStringLiteral("internetActiveConnectionRow"))
+                 ->property("labelTextFormat").toInt(), 0);
+    QCOMPARE(page.find(QStringLiteral("internetActiveConnectionRow"))
+                 ->property("label").toString(),
+             QStringLiteral("<i>Lab & guest</i>"));
     QCOMPARE(page.find(QStringLiteral("connectionTypeLabel"))->property("text").toString(),
              QStringLiteral("Wi-Fi"));
     QCOMPARE(page.find(QStringLiteral("connectionInterface"))->property("text").toString(),
@@ -370,10 +379,14 @@ void SettingsInternetQmlTest::wiredConnectionDetailsProjectAndClear()
     snapshot.ipv6Gateway = QStringLiteral("fe80::1");
     page.publish(snapshot);
 
-    QCOMPARE(page.find(QStringLiteral("connectionDetailsSection"))->property("visible").toBool(),
-             true);
-    QCOMPARE(page.find(QStringLiteral("connectionIpv4Addresses"))->property("visible").toBool(),
-             true);
+    // No technical details on the default screen.
+    QVERIFY(!page.find(QStringLiteral("connectionDetailsSection"))->property("visible").toBool());
+    QVERIFY(!page.find(QStringLiteral("dnsSection"))->property("visible").toBool());
+    QVERIFY(QMetaObject::invokeMethod(
+        page.find(QStringLiteral("internetConnectionDetailsButton")), "clicked"));
+    page.events();
+    QVERIFY(page.find(QStringLiteral("connectionDetailsSection"))->property("visible").toBool());
+    QVERIFY(page.find(QStringLiteral("connectionIpv4Addresses"))->property("visible").toBool());
     QCOMPARE(page.find(QStringLiteral("connectionIpv4Addresses"))->property("sublabel").toString(),
              QStringLiteral("192.168.1.50/24\n192.168.1.51/24"));
     QCOMPARE(page.find(QStringLiteral("connectionIpv4Gateway"))->property("sublabel").toString(),
@@ -382,6 +395,11 @@ void SettingsInternetQmlTest::wiredConnectionDetailsProjectAndClear()
              QStringLiteral("2804:abcd::1234/64"));
     QCOMPARE(page.find(QStringLiteral("connectionIpv6Gateway"))->property("sublabel").toString(),
              QStringLiteral("fe80::1"));
+    QVERIFY(!page.find(QStringLiteral("connectionHardwareAddress"))->property("visible").toBool());
+
+    QVERIFY(QMetaObject::invokeMethod(page.find(QStringLiteral("internetTabHardware")), "clicked"));
+    page.events();
+    QVERIFY(!page.find(QStringLiteral("connectionIpv4Addresses"))->property("visible").toBool());
     QCOMPARE(page.find(QStringLiteral("connectionHardwareAddress"))->property("sublabel").toString(),
              QStringLiteral("AA:BB:CC:DD:EE:FF"));
     QCOMPARE(page.find(QStringLiteral("connectionMtu"))->property("sublabel").toString(),
@@ -415,9 +433,10 @@ void SettingsInternetQmlTest::wiredConnectionDetailsProjectAndClear()
     snapshot.connectionType = Astrea::System::NetworkConnectionType::Other;
     snapshot.ipv4Addresses = {QStringLiteral("10.0.0.5/24")};
     page.publish(snapshot);
+    QVERIFY(QMetaObject::invokeMethod(page.find(QStringLiteral("internetTabTcpip")), "clicked"));
+    page.events();
     QVERIFY(page.find(QStringLiteral("connectionIpv4Addresses"))->property("visible").toBool());
     QVERIFY(!page.find(QStringLiteral("connectionLink"))->property("visible").toBool());
-    QVERIFY(!page.find(QStringLiteral("connectionLinkSpeed"))->property("visible").toBool());
 
     snapshot.connectionType = Astrea::System::NetworkConnectionType::Wired;
     snapshot.hardwareAddress.clear();
@@ -432,6 +451,9 @@ void SettingsInternetQmlTest::wiredConnectionDetailsProjectAndClear()
     QVERIFY(!page.find(QStringLiteral("connectionIpv4Gateway"))->property("visible").toBool());
     QVERIFY(!page.find(QStringLiteral("connectionIpv6Addresses"))->property("visible").toBool());
     QVERIFY(!page.find(QStringLiteral("connectionIpv6Gateway"))->property("visible").toBool());
+
+    QVERIFY(QMetaObject::invokeMethod(page.find(QStringLiteral("internetTabHardware")), "clicked"));
+    page.events();
     QVERIFY(!page.find(QStringLiteral("connectionHardwareAddress"))->property("visible").toBool());
     QVERIFY(!page.find(QStringLiteral("connectionMtu"))->property("visible").toBool());
     QCOMPARE(page.find(QStringLiteral("connectionLink"))->property("sublabel").toString(),
@@ -451,6 +473,7 @@ void SettingsInternetQmlTest::wiredConnectionDetailsProjectAndClear()
     snapshot.ipv6Gateway = QStringLiteral("stale ipv6 gateway");
     page.publish(snapshot);
     QVERIFY(!page.find(QStringLiteral("connectionDetailsSection"))->property("visible").toBool());
+    QVERIFY(page.find(QStringLiteral("networkOverviewCard"))->property("visible").toBool());
     for (const QString &name : {QStringLiteral("connectionIpv4Addresses"),
                                 QStringLiteral("connectionIpv4Gateway"),
                                 QStringLiteral("connectionIpv6Addresses"),
@@ -462,6 +485,225 @@ void SettingsInternetQmlTest::wiredConnectionDetailsProjectAndClear()
         QVERIFY(!page.find(name)->property("visible").toBool());
         QVERIFY(page.find(name)->property("sublabel").toString().isEmpty());
     }
+}
+
+void SettingsInternetQmlTest::layoutHasCompactDetailsAndWifiUnavailableState()
+{
+    Page page;
+    QVERIFY2(page.create() != nullptr, qPrintable(page.errors()));
+    QVERIFY(page.controller->network()->start());
+
+    auto snapshot = connectedNetwork();
+    snapshot.wifiAvailable = false;
+    snapshot.wifiHardwareEnabled = false;
+    snapshot.ipv4Addresses = {QStringLiteral("192.168.100.13/24")};
+    snapshot.ipv4Gateway = QStringLiteral("192.168.100.1");
+    snapshot.hardwareAddress = QStringLiteral("AA:BB:CC:DD:EE:FF");
+    snapshot.interfaceName = QStringLiteral("eno1");
+    snapshot.mtu = 1500;
+    page.publish(snapshot);
+
+    const auto capture = [&page](const char *stage) {
+        if (!qEnvironmentVariableIsSet("ASTREA_CAPTURE_NETWORK"))
+            return;
+        // Offscreen Qt has no translucent compositor backdrop; supply a dark
+        // reference background only for optional visual captures.
+        page.root->window()->setColor(QColor(QStringLiteral("#191923")));
+        QTest::qWait(100);
+        const QImage image = page.root->window()->grabWindow();
+        image.save(QStringLiteral("/tmp/astrea-network-") + QString::fromLatin1(stage)
+                   + QStringLiteral(".png"));
+    };
+    capture("overview");
+
+    auto *overview = qobject_cast<QQuickItem *>(
+        page.find(QStringLiteral("networkOverviewCard")));
+    auto *ipv4 = qobject_cast<QQuickItem *>(
+        page.find(QStringLiteral("connectionIpv4Addresses")));
+    auto *gateway = qobject_cast<QQuickItem *>(
+        page.find(QStringLiteral("connectionIpv4Gateway")));
+    QVERIFY(overview && ipv4 && gateway);
+    QVERIFY(overview->height() > 0);
+    QVERIFY2(overview->height() < 180, "Connection summary must remain compact.");
+    QVERIFY(overview->height() >= 52);
+    QVERIFY(page.find(QStringLiteral("internetConnectionSection"))->property("visible").toBool());
+    QVERIFY(page.find(QStringLiteral("internetHeading"))->property("visible").toBool());
+    // The overview has one compact group: active connection, firewall, optional Wi-Fi.
+    QVERIFY(page.find(QStringLiteral("internetNetworkSettingsCard")) == nullptr);
+    auto *connection = qobject_cast<QQuickItem *>(page.find(
+        QStringLiteral("internetActiveConnectionRow")));
+    auto *firewall = qobject_cast<QQuickItem *>(page.find(
+        QStringLiteral("internetFirewallRow")));
+    QVERIFY(connection != nullptr);
+    QVERIFY(firewall != nullptr);
+    QVERIFY(firewall->isVisible());
+    QVERIFY(connection->parentItem() == firewall->parentItem());
+    QVERIFY(firewall->y() > connection->y());
+    QCOMPARE(firewall->property("sublabel").toString(), QStringLiteral("UFW service"));
+    QVERIFY(firewall->property("clickable").toBool());
+    auto *firewallState = page.find(QStringLiteral("internetFirewallState"));
+    QVERIFY(firewallState != nullptr);
+    const auto *service = page.controller->firewall();
+    QVERIFY(service != nullptr);
+    const QString expectedState = service->known()
+        ? (service->active() ? QStringLiteral("Active") : QStringLiteral("Inactive"))
+        : QStringLiteral("Unavailable");
+    QCOMPARE(firewallState->property("text").toString(), expectedState);
+
+    // Firewall management opens without requiring an active network and does not
+    // prompt for privileges until the user explicitly clicks Authorize.
+    QVERIFY(QMetaObject::invokeMethod(firewall, "clicked"));
+    page.events();
+    QObject *overviewObject = page.find(QStringLiteral("networkOverviewCard"));
+    QVERIFY(overviewObject);
+    QVERIFY(!overviewObject->property("visible").toBool());
+    QObject *panel = page.find(QStringLiteral("internetFirewallPanel"));
+    QVERIFY2(panel, "FirewallPanel was not instantiated");
+    QVERIFY(panel->property("visible").toBool());
+    QObject *authorize = page.find(QStringLiteral("firewallAuthorizeButton"));
+    QVERIFY2(authorize, "Firewall authorization button not found");
+    QVERIFY(authorize->property("enabled").toBool());
+    QObject *toggle = page.find(QStringLiteral("firewallEnableToggle"));
+    QVERIFY2(toggle, "Firewall toggle not found");
+    QVERIFY(!toggle->property("enabled").toBool());
+    QVERIFY(!page.controller->firewallManager()->busy());
+    QVERIFY(!page.controller->firewallManager()->loaded());
+    QObject *confirmation = panel->property("confirmationDialog").value<QObject *>();
+    QVERIFY2(confirmation, "Firewall confirmation dialog not exposed");
+    QVERIFY(!confirmation->property("visible").toBool());
+    QVERIFY(QMetaObject::invokeMethod(page.find(QStringLiteral("internetDetailsBack")), "clicked"));
+    page.events();
+
+    QVERIFY(!page.find(QStringLiteral("connectionDetailsCard"))->property("visible").toBool());
+    QVERIFY(!page.find(QStringLiteral("dnsCard"))->property("visible").toBool());
+    QVERIFY(!page.find(QStringLiteral("internetWifiPowerRow"))->property("visible").toBool());
+    QVERIFY(!page.find(QStringLiteral("wifiPowerToggle"))->property("visible").toBool());
+    QVERIFY(!page.find(QStringLiteral("availableNetworksSection"))->property("visible").toBool());
+    QVERIFY(!page.find(QStringLiteral("wifiScanButton"))->property("enabled").toBool());
+
+    // Advanced settings remain reachable from the connection's info button.
+    auto *connectionInfo = page.find(QStringLiteral("internetConnectionDetailsButton"));
+    QVERIFY(connectionInfo != nullptr);
+    QVERIFY(QMetaObject::invokeMethod(connectionInfo, "clicked"));
+    page.events();
+    QVERIFY(QMetaObject::invokeMethod(page.find(QStringLiteral("internetTabDns")), "clicked"));
+    page.events();
+    QVERIFY(page.find(QStringLiteral("dnsCard"))->property("visible").toBool());
+    QVERIFY(QMetaObject::invokeMethod(page.find(QStringLiteral("internetDetailsBack")), "clicked"));
+    page.events();
+
+    QVERIFY(QMetaObject::invokeMethod(connectionInfo, "clicked"));
+    page.events();
+    capture("tcpip");
+    QVERIFY(!overview->isVisible());
+    QVERIFY(page.find(QStringLiteral("internetDetailsBack"))->property("visible").toBool());
+    QVERIFY(page.find(QStringLiteral("connectionDetailsCard"))->property("visible").toBool());
+    QVERIFY(ipv4->isVisible());
+    QVERIFY(gateway->isVisible());
+    QCOMPARE(ipv4->parentItem(), gateway->parentItem());
+
+    QVERIFY(QMetaObject::invokeMethod(page.find(QStringLiteral("internetTabDns")), "clicked"));
+    page.events();
+    capture("dns");
+    QVERIFY(page.find(QStringLiteral("dnsCard"))->property("visible").toBool());
+    QVERIFY(!page.find(QStringLiteral("connectionDetailsCard"))->property("visible").toBool());
+
+    QVERIFY(QMetaObject::invokeMethod(page.find(QStringLiteral("internetTabHardware")), "clicked"));
+    page.events();
+    QVERIFY(page.find(QStringLiteral("connectionDetailsCard"))->property("visible").toBool());
+    capture("hardware");
+    QVERIFY(page.find(QStringLiteral("connectionHardwareAddress"))->property("visible").toBool());
+    QVERIFY(page.find(QStringLiteral("connectionHardwareInterface"))->property("visible").toBool());
+    QVERIFY(page.find(QStringLiteral("connectionDownloadRate"))->property("visible").toBool());
+    QVERIFY(page.find(QStringLiteral("connectionUploadRate"))->property("visible").toBool());
+    QVERIFY(!ipv4->isVisible());
+
+    QVERIFY(QMetaObject::invokeMethod(page.find(QStringLiteral("internetDetailsBack")), "clicked"));
+    page.events();
+    QVERIFY(overview->isVisible());
+    QVERIFY(!page.find(QStringLiteral("internetDetailsBack"))->property("visible").toBool());
+
+    snapshot.wifiAvailable = true;
+    snapshot.wifiHardwareEnabled = true;
+    snapshot.wifiEnabled = true;
+    page.publish(snapshot);
+    QVERIFY(page.find(QStringLiteral("wifiPowerToggle"))->property("visible").toBool());
+    QVERIFY(page.find(QStringLiteral("availableNetworksSection"))->property("visible").toBool());
+}
+
+void SettingsInternetQmlTest::firewallConfirmationsUseMockedBackendOnly()
+{
+    Page page;
+    QVERIFY2(page.create(), qPrintable(page.errors()));
+    auto *row = page.find(QStringLiteral("internetFirewallRow"));
+    QVERIFY(row != nullptr);
+    QVERIFY(QMetaObject::invokeMethod(row, "clicked"));
+    page.events();
+
+    QObject *panel = page.find(QStringLiteral("internetFirewallPanel"));
+    QVERIFY(panel != nullptr);
+    QQmlEngine *engine = qmlEngine(panel);
+    QVERIFY(engine != nullptr);
+    QJSValue mock = engine->evaluate(R"JS(
+        ({
+            loaded: true, busy: false, enabled: false, loggingEnabled: false,
+            incomingPolicy: "deny", outgoingPolicy: "allow", errorText: "",
+            rules: [{target:"22/tcp", action:"allow", source:"Anywhere",
+                     sourceSpec:"any", port:22, protocol:"tcp", removable:true}],
+            calls: [],
+            setEnabled: function(value) { this.calls.push("enabled:" + value); },
+            setDefaultPolicy: function(direction, value) {
+                this.calls.push("policy:" + direction + ":" + value);
+            },
+            setLogging: function(value) { this.calls.push("logging:" + value); },
+            addRule: function(action, port, proto, source) {
+                this.calls.push("add:" + action + ":" + port + ":" + proto + ":" + source);
+            },
+            removeRule: function(action, port, proto, source) {
+                this.calls.push("remove:" + action + ":" + port + ":" + proto + ":" + source);
+            }
+        })
+    )JS");
+    QVERIFY2(!mock.isError(), qPrintable(mock.toString()));
+    QVERIFY(panel->setProperty("manager", QVariant::fromValue(mock)));
+    page.events();
+
+    QObject *toggle = page.find(QStringLiteral("firewallEnableToggle"));
+    QObject *remove = page.find(QStringLiteral("firewallRemoveRule_0"));
+    QObject *confirm = panel->property("confirmationDialog").value<QObject *>();
+    QVERIFY(toggle && remove && confirm);
+    QVERIFY(toggle->property("enabled").toBool());
+    QVERIFY(remove->property("visible").toBool());
+    if (qEnvironmentVariableIsSet("ASTREA_CAPTURE_NETWORK")) {
+        page.root->window()->setColor(QColor(QStringLiteral("#191923")));
+        QTest::qWait(120);
+        page.root->window()->grabWindow().save(QStringLiteral("/tmp/astrea-firewall-settings.png"));
+    }
+
+    QVERIFY(QMetaObject::invokeMethod(toggle, "toggled", Q_ARG(bool, true)));
+    page.events();
+    QVERIFY(confirm->property("visible").toBool());
+    QCOMPARE(mock.property("calls").property("length").toInt(), 0);
+    QVERIFY(QMetaObject::invokeMethod(confirm, "reject"));
+    page.events();
+    QCOMPARE(mock.property("calls").property("length").toInt(), 0);
+
+    QVERIFY(QMetaObject::invokeMethod(toggle, "toggled", Q_ARG(bool, true)));
+    page.events();
+    QVERIFY(QMetaObject::invokeMethod(confirm, "accept"));
+    page.events();
+    QCOMPARE(mock.property("calls").property("length").toInt(), 1);
+    QCOMPARE(mock.property("calls").property(0).toString(), QStringLiteral("enabled:true"));
+
+    QVERIFY(QMetaObject::invokeMethod(remove, "clicked"));
+    page.events();
+    QVERIFY(confirm->property("visible").toBool());
+    QCOMPARE(mock.property("calls").property("length").toInt(), 1);
+    QVERIFY(QMetaObject::invokeMethod(confirm, "accept"));
+    page.events();
+    QCOMPARE(mock.property("calls").property(1).toString(),
+             QStringLiteral("remove:allow:22:tcp:any"));
+    QCOMPARE(mock.property("calls").property("length").toInt(), 2);
 }
 
 void SettingsInternetQmlTest::wifiPowerAndScanAreAuthoritative()
@@ -515,7 +757,8 @@ void SettingsInternetQmlTest::wifiPowerAndScanAreAuthoritative()
                 ->property("visible").toBool());
     snapshot.wifiAvailable = false;
     page.publish(snapshot);
-    QVERIFY(page.find(QStringLiteral("wifiUnavailableMessage"))->property("visible").toBool());
+    QVERIFY(!page.find(QStringLiteral("internetWifiPowerRow"))->property("visible").toBool());
+    QVERIFY(!page.find(QStringLiteral("availableNetworksSection"))->property("visible").toBool());
     QVERIFY(!toggle->property("enabled").toBool());
 }
 
@@ -588,6 +831,11 @@ void SettingsInternetQmlTest::dnsSectionProjectsModeProviderAndConnectionServers
     snapshot.activeIpv6DnsServers = {QStringLiteral("2606:4700:4700::1111")};
     page.publish(snapshot);
 
+    QVERIFY(QMetaObject::invokeMethod(
+        page.find(QStringLiteral("internetConnectionDetailsButton")), "clicked"));
+    QVERIFY(QMetaObject::invokeMethod(page.find(QStringLiteral("internetTabDns")), "clicked"));
+    page.events();
+
     QTRY_VERIFY_WITH_TIMEOUT(page.find(QStringLiteral("dnsSection")), 1000);
     QObject *mode = page.find(QStringLiteral("dnsModeSelector"));
     QObject *provider = page.find(QStringLiteral("dnsProviderValue"));
@@ -596,7 +844,7 @@ void SettingsInternetQmlTest::dnsSectionProjectsModeProviderAndConnectionServers
     QCOMPARE(mode->property("label").toString(), QStringLiteral("Automatic"));
     QCOMPARE(provider->property("sublabel").toString(), QStringLiteral("Automatic"));
     QCOMPARE(active->property("sublabel").toString(),
-             QStringLiteral("1.1.1.1\n1.0.0.1\n2606:4700:4700::1111"));
+             QStringLiteral("1.1.1.1  ·  1.0.0.1  ·  2606:4700:4700::1111"));
     QCOMPARE(active->property("sublabelTextFormat").toInt(), 0);
 
     snapshot.dnsMode = Astrea::System::NetworkDnsMode::Custom;
@@ -621,6 +869,11 @@ void SettingsInternetQmlTest::dnsPresetDraftRequiresExplicitApplyAndShowsPartial
     auto snapshot = connectedNetwork();
     snapshot.dnsMode = Astrea::System::NetworkDnsMode::Automatic;
     page.publish(snapshot);
+
+    QVERIFY(QMetaObject::invokeMethod(
+        page.find(QStringLiteral("internetConnectionDetailsButton")), "clicked"));
+    QVERIFY(QMetaObject::invokeMethod(page.find(QStringLiteral("internetTabDns")), "clicked"));
+    page.events();
 
     QObject *mode = page.find(QStringLiteral("dnsModeSelector"));
     QObject *preset = page.find(QStringLiteral("dnsPresetSelector"));
@@ -661,6 +914,11 @@ void SettingsInternetQmlTest::dnsInvalidDraftAndExternalChangeRemainExplicit()
     auto snapshot = connectedNetwork();
     snapshot.dnsMode = Astrea::System::NetworkDnsMode::Automatic;
     page.publish(snapshot);
+
+    QVERIFY(QMetaObject::invokeMethod(
+        page.find(QStringLiteral("internetConnectionDetailsButton")), "clicked"));
+    QVERIFY(QMetaObject::invokeMethod(page.find(QStringLiteral("internetTabDns")), "clicked"));
+    page.events();
 
     QObject *mode = page.find(QStringLiteral("dnsModeSelector"));
     QObject *preset = page.find(QStringLiteral("dnsPresetSelector"));
@@ -712,6 +970,11 @@ void SettingsInternetQmlTest::dnsOwnRefreshChurnDoesNotMarkDraftExternal()
         auto snapshot = connectedNetwork();
         snapshot.dnsMode = Astrea::System::NetworkDnsMode::Automatic;
         page.publish(snapshot);
+
+    QVERIFY(QMetaObject::invokeMethod(
+        page.find(QStringLiteral("internetConnectionDetailsButton")), "clicked"));
+    QVERIFY(QMetaObject::invokeMethod(page.find(QStringLiteral("internetTabDns")), "clicked"));
+    page.events();
 
         QObject *mode = page.find(QStringLiteral("dnsModeSelector"));
         QObject *preset = page.find(QStringLiteral("dnsPresetSelector"));
@@ -779,6 +1042,11 @@ void SettingsInternetQmlTest::dnsFingerprintUsesOpaqueRevisionAndDnsState()
     snapshot.dnsMode = Astrea::System::NetworkDnsMode::Automatic;
     page.publish(snapshot);
 
+    QVERIFY(QMetaObject::invokeMethod(
+        page.find(QStringLiteral("internetConnectionDetailsButton")), "clicked"));
+    QVERIFY(QMetaObject::invokeMethod(page.find(QStringLiteral("internetTabDns")), "clicked"));
+    page.events();
+
     const auto fingerprint = [&page] {
         QVariant result;
         const bool invoked = QMetaObject::invokeMethod(
@@ -819,6 +1087,11 @@ void SettingsInternetQmlTest::dnsAuthoritySwitchLoadsNewDraftAfterPartialSuccess
     auto snapshot = connectedNetwork();
     snapshot.dnsMode = Astrea::System::NetworkDnsMode::Automatic;
     page.publish(snapshot);
+
+    QVERIFY(QMetaObject::invokeMethod(
+        page.find(QStringLiteral("internetConnectionDetailsButton")), "clicked"));
+    QVERIFY(QMetaObject::invokeMethod(page.find(QStringLiteral("internetTabDns")), "clicked"));
+    page.events();
     QObject *mode = page.find(QStringLiteral("dnsModeSelector"));
     QObject *preset = page.find(QStringLiteral("dnsPresetSelector"));
     QObject *input = page.find(QStringLiteral("dnsCustomInput"));
@@ -870,6 +1143,11 @@ void SettingsInternetQmlTest::dnsConflictPreservesDraftForExplicitResolution()
     auto snapshot = connectedNetwork();
     snapshot.dnsMode = Astrea::System::NetworkDnsMode::Automatic;
     page.publish(snapshot);
+
+    QVERIFY(QMetaObject::invokeMethod(
+        page.find(QStringLiteral("internetConnectionDetailsButton")), "clicked"));
+    QVERIFY(QMetaObject::invokeMethod(page.find(QStringLiteral("internetTabDns")), "clicked"));
+    page.events();
     QObject *mode = page.find(QStringLiteral("dnsModeSelector"));
     QObject *preset = page.find(QStringLiteral("dnsPresetSelector"));
     QObject *input = page.find(QStringLiteral("dnsCustomInput"));
@@ -900,6 +1178,11 @@ void SettingsInternetQmlTest::dnsIndeterminateRequiresAuthoritativeReload()
     auto snapshot = connectedNetwork();
     snapshot.dnsMode = Astrea::System::NetworkDnsMode::Automatic;
     page.publish(snapshot);
+
+    QVERIFY(QMetaObject::invokeMethod(
+        page.find(QStringLiteral("internetConnectionDetailsButton")), "clicked"));
+    QVERIFY(QMetaObject::invokeMethod(page.find(QStringLiteral("internetTabDns")), "clicked"));
+    page.events();
     QObject *mode = page.find(QStringLiteral("dnsModeSelector"));
     QObject *preset = page.find(QStringLiteral("dnsPresetSelector"));
     QObject *input = page.find(QStringLiteral("dnsCustomInput"));
@@ -938,6 +1221,11 @@ void SettingsInternetQmlTest::dnsFailedOutcomeKeepsDraftRetryable()
     auto snapshot = connectedNetwork();
     snapshot.dnsMode = Astrea::System::NetworkDnsMode::Automatic;
     page.publish(snapshot);
+
+    QVERIFY(QMetaObject::invokeMethod(
+        page.find(QStringLiteral("internetConnectionDetailsButton")), "clicked"));
+    QVERIFY(QMetaObject::invokeMethod(page.find(QStringLiteral("internetTabDns")), "clicked"));
+    page.events();
     QObject *mode = page.find(QStringLiteral("dnsModeSelector"));
     QObject *preset = page.find(QStringLiteral("dnsPresetSelector"));
     QObject *input = page.find(QStringLiteral("dnsCustomInput"));
@@ -981,6 +1269,11 @@ void SettingsInternetQmlTest::dnsSlowStateRemainsPendingInPresentation()
     auto snapshot = connectedNetwork();
     snapshot.dnsMode = Astrea::System::NetworkDnsMode::Automatic;
     page.publish(snapshot);
+
+    QVERIFY(QMetaObject::invokeMethod(
+        page.find(QStringLiteral("internetConnectionDetailsButton")), "clicked"));
+    QVERIFY(QMetaObject::invokeMethod(page.find(QStringLiteral("internetTabDns")), "clicked"));
+    page.events();
     QObject *mode = page.find(QStringLiteral("dnsModeSelector"));
     QObject *preset = page.find(QStringLiteral("dnsPresetSelector"));
     QObject *apply = page.find(QStringLiteral("dnsApplyButton"));

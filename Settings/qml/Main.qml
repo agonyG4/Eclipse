@@ -20,6 +20,8 @@ ApplicationWindow {
     font.family: Theme.fontFamily
     font.pixelSize: Theme.fontSizeNormal
     font.weight: Theme.fontWeightNormal
+    font.hintingPreference: Font.PreferVerticalHinting
+    font.kerning: true
     color: "transparent"
     flags: Qt.Window | Qt.FramelessWindowHint
     background: Rectangle { color: "transparent" }

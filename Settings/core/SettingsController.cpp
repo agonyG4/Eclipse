@@ -1,3 +1,4 @@
+#include "services/devices/SettingsDeviceInventory.hpp"
 #include "core/SettingsController.hpp"
 
 #include "services/dock/SettingsDockController.hpp"
@@ -16,6 +17,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSaveFile>
+#include <QRegularExpression>
+#include <QColor>
 #include <QStandardPaths>
 
 namespace {
@@ -90,6 +93,8 @@ SettingsController::SettingsController(std::unique_ptr<SettingsNavigationModel> 
                                   : std::make_unique<Astrea::System::AudioService>())
     , m_networkService(networkService ? std::move(networkService)
                                       : std::make_unique<Astrea::System::NetworkService>())
+    , m_firewallStatus(std::make_unique<SettingsFirewallStatus>(this))
+    , m_firewallManager(std::make_unique<SettingsFirewallManager>(this))
     , m_spatialAudioController(std::make_unique<SettingsSpatialAudioController>())
 {
     if (!m_navigationModel)
@@ -321,6 +326,89 @@ QUrl SettingsController::iconUrlForWeight(const QString &iconKey, const QString 
     return m_iconResolver.resolve(iconKey, iconTheme, weight);
 }
 
+QUrl SettingsController::tintedSymbolUrl(const QString &iconKey, const QString &iconTheme,
+                                          const QString &weight, const QString &hexColor) const
+{
+    return tintedSymbolSource(iconUrlForWeight(iconKey, iconTheme, weight), hexColor);
+}
+
+QUrl SettingsController::tintedSymbolSource(const QUrl &source, const QString &hexColor) const
+{
+    // Do not alter user-installed Apple SVGs. This is an in-memory presentation
+    // copy so the SVG can be rasterized directly at the display's physical DPI.
+    const QColor tint(hexColor);
+    if (!tint.isValid() || !hexColor.startsWith(QLatin1Char('#')))
+        return {};
+    const QString path = source.isLocalFile()
+        ? source.toLocalFile()
+        : source.scheme() == QStringLiteral("qrc")
+            ? QLatin1Char(':') + source.path() : QString{};
+    if (path.isEmpty())
+        return {};
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    if (file.size() > 131072)
+        return source; // Preserve supported user-provided raster icon overrides.
+    const QFileInfo iconFile(path);
+    const QString cacheKey = path + QLatin1Char('|') + tint.name(QColor::HexRgb)
+        + QLatin1Char('|') + QString::number(iconFile.size())
+        + QLatin1Char('|') + QString::number(iconFile.lastModified().toMSecsSinceEpoch());
+    if (const QUrl *cached = m_tintedSymbolCache.object(cacheKey))
+        return *cached;
+    QByteArray svg = file.readAll();
+    if (!svg.contains("<svg") || !svg.contains("viewBox"))
+        return source; // PNG and non-SVG icon overrides remain displayable.
+
+    // Preserve the original SF symbol geometry and alpha coverage. Replacing
+    // CSS currentColor avoids the 24px ColorOverlay scene-graph texture pass
+    // which previously clipped and blurred small, detailed SVGs.
+    const QByteArray tintHex = tint.name(QColor::HexRgb).toUtf8();
+    svg.replace("currentColor", tintHex);
+    // Apple reference SVGs may hardcode black/white rather than currentColor.
+    // Preserve 'none', opacity, paths, and geometry (including cutouts).
+    static const QRegularExpression monochromePaint(
+        QStringLiteral(R"svg(((?:fill|stroke)\s*=\s*["'])(?:black|white|#[0-9a-fA-F]{3,8})(["']))svg"),
+        QRegularExpression::CaseInsensitiveOption);
+    QString recolored = QString::fromUtf8(svg);
+    recolored.replace(monochromePaint, QStringLiteral("\\1") + QString::fromLatin1(tintHex)
+                                   + QStringLiteral("\\2"));
+    svg = recolored.toUtf8();
+
+    // SF Symbols from the reference set use 1em root dimensions. QtSvg
+    // interprets physical dimensions more reliably than relative em units.
+    static const QRegularExpression viewBoxPattern(
+        QStringLiteral(R"svg(viewBox="([-+\d.]+)\s+([-+\d.]+)\s+([\d.]+)\s+([\d.]+)")svg"));
+    const auto match = viewBoxPattern.match(QString::fromUtf8(svg.left(1024)));
+    if (match.hasMatch()) {
+        bool widthOk = false;
+        bool heightOk = false;
+        const double width = match.captured(3).toDouble(&widthOk);
+        const double height = match.captured(4).toDouble(&heightOk);
+        if (widthOk && heightOk && width > 0.0 && height > 0.0) {
+            // Small optical margin prevents paths touching the vector bounds.
+            const double x = match.captured(1).toDouble() - width * 0.04;
+            const double y = match.captured(2).toDouble() - height * 0.04;
+            const double paddedWidth = width * 1.08;
+            const double paddedHeight = height * 1.08;
+            const QByteArray oldViewBox = match.captured(0).toUtf8();
+            const QByteArray newViewBox = QStringLiteral("viewBox=\"%1 %2 %3 %4\"")
+                .arg(x, 0, 'f', 4).arg(y, 0, 'f', 4)
+                .arg(paddedWidth, 0, 'f', 4).arg(paddedHeight, 0, 'f', 4).toUtf8();
+            svg.replace(oldViewBox, newViewBox);
+            svg.replace("width=\"1em\"", QByteArray("width=\"") + QByteArray::number(paddedWidth) + "px\"");
+            svg.replace("height=\"1em\"", QByteArray("height=\"") + QByteArray::number(paddedHeight) + "px\"");
+            svg.replace("width='1em'", QByteArray("width='") + QByteArray::number(paddedWidth) + "px'");
+            svg.replace("height='1em'", QByteArray("height='") + QByteArray::number(paddedHeight) + "px'");
+        }
+    }
+    const QUrl result(QStringLiteral("data:image/svg+xml;base64,")
+                      + QString::fromLatin1(svg.toBase64()));
+    m_tintedSymbolCache.insert(cacheKey, new QUrl(result));
+    return result;
+}
+
 bool SettingsController::setNavigationIconTheme(const QString &theme)
 {
     if (theme != QStringLiteral("lucide") && theme != QStringLiteral("apple"))
@@ -469,4 +557,9 @@ bool SettingsController::screenshotDemoCommand(const QString &action)
         m_screenshotPreviewUpdate.start();
     }
     return sent;
+}
+
+QVariantList SettingsController::connectedHardwareDevices() const
+{
+    return SettingsDeviceInventory::enumerate();
 }

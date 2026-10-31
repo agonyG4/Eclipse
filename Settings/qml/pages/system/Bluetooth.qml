@@ -1,10 +1,12 @@
 import QtQuick
 import QtQuick.Controls
+import QtCore as QtCore
 import QtQuick.Layouts
 import QtQml.Models
 import Astrea.System 1.0
 import "../../components" as Components
 import "../../components/controls" as Controls
+import "../../components/typography" as Typography
 import "../../components/form" as Form
 import "../../components/menu" as Menu
 
@@ -17,14 +19,29 @@ FocusScope {
     property bool pageActive: true
     readonly property string scanOwner: "settings-bluetooth-page"
     property int pairedDeviceCount: 0
-    readonly property int otherDeviceCount:
-        bluetoothDeviceCountModel.items.count - root.pairedDeviceCount
+    property int visibleOtherDeviceCount: 0
 
     property string menuDevicePath: ""
     property string menuDeviceName: ""
     property bool menuDeviceTrusted: false
     property string pendingForgetObjectPath: ""
     property string pendingForgetName: ""
+
+    // Read-only mirror of custom icons selected on the standalone Devices page.
+    QtCore.Settings {
+        id: bluetoothIconPreferences
+        category: "ConnectedDeviceIcons"
+        property string overridesJson: "{}"
+    }
+
+    function deviceIconOverride(path) {
+        try {
+            const value = JSON.parse(bluetoothIconPreferences.overridesJson || "{}")["bluetooth:" + path]
+            return typeof value === "string" && /^[a-z0-9-]+$/.test(value) ? value : ""
+        } catch (error) {
+            return ""
+        }
+    }
 
     property var displayedRequestId: 0
     property var displayedRequestKind: null
@@ -51,11 +68,16 @@ FocusScope {
     function updateDeviceSectionCounts() {
         const items = bluetoothDeviceCountModel.items
         let pairedCount = 0
+        let nearbyCount = 0
         for (let index = 0; index < items.count; ++index) {
-            if (items.get(index).model.paired)
+            const device = items.get(index).model
+            if (device.paired)
                 ++pairedCount
+            else if (device.discovered && root.hasDeviceName(device.name))
+                ++nearbyCount
         }
         root.pairedDeviceCount = pairedCount
+        root.visibleOtherDeviceCount = nearbyCount
     }
 
     readonly property string statusText: {
@@ -301,20 +323,10 @@ FocusScope {
         contentMargins: 32
         maxWidth: 900
 
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.bottomMargin: 4
-            spacing: Components.Theme.spacingLarge
-
-            Text {
-                Layout.fillWidth: true
-                text: I18n.tr("settings.bluetooth.title", "Bluetooth")
-                color: Components.Theme.textPrimary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeHero
-                font.weight: Components.Theme.fontWeightDemiBold
-                Accessible.name: text
-            }
+        Form.PageHeader {
+            title: I18n.tr("settings.bluetooth.title", "Bluetooth")
+            subtitle: I18n.tr("settings.bluetooth.accessories_help",
+                              "Connect to accessories you can use for music streaming, typing, and gaming.")
 
             Controls.ToggleSwitch {
                 id: bluetoothPowerToggle
@@ -331,20 +343,10 @@ FocusScope {
             }
         }
 
-        Text {
+        ColumnLayout {
             Layout.fillWidth: true
-            Layout.bottomMargin: Components.Theme.spacingXLarge
-            text: I18n.tr("settings.bluetooth.accessories_help",
-                          "Connect to accessories you can use for music streaming, typing, and gaming.")
-            color: Components.Theme.textSecondary
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeNormal
-            wrapMode: Text.WordWrap
-        }
-
-        Form.FormCard {
-            Layout.bottomMargin: Components.Theme.spacingXLarge
-            margins: Components.Theme.spacingLarge
+            Layout.bottomMargin: Components.Theme.spacingLarge
+            spacing: Components.Theme.spacingSmall
 
             ColumnLayout {
                 Layout.fillWidth: true
@@ -353,12 +355,15 @@ FocusScope {
                 Text {
                     objectName: "bluetoothServiceStatus"
                     Layout.fillWidth: true
+                    visible: !root.bluetooth || root.bluetooth.state !== System.Ready
+                        || !root.bluetooth.available || !root.bluetooth.adapterAvailable
+                        || root.bluetooth.powerPending || !root.bluetooth.powered
                     text: root.statusText
                     color: root.bluetooth && root.bluetooth.available
                            ? Components.Theme.textPrimary
                            : Components.Theme.textSecondary
                     font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeLarge
+                    font.pixelSize: Components.Theme.fontSizeSmall
                     font.weight: Components.Theme.fontWeightMedium
                     wrapMode: Text.WordWrap
                 }
@@ -431,27 +436,22 @@ FocusScope {
             Layout.bottomMargin: Components.Theme.spacingMedium
         }
 
-        ColumnLayout {
-            Layout.fillWidth: true
+        Form.FormCard {
             Layout.bottomMargin: Components.Theme.spacingXLarge
-            spacing: Components.Theme.spacingSmall
-
             Repeater {
                 id: pairedDeviceRepeater
                 model: root.bluetooth ? root.bluetooth.devicesModel : null
-                delegate: BluetoothDeviceRow {
-                    pairedSection: true
-                }
+                delegate: BluetoothDeviceRow { pairedSection: true }
             }
-
-            Text {
+            Typography.TextLabel {
                 objectName: "myDevicesEmptyState"
                 visible: root.pairedDeviceCount === 0
                 Layout.fillWidth: true
+                Layout.preferredHeight: visible ? 52 : 0
+                leftPadding: Components.Theme.spacingXLarge
+                verticalAlignment: Text.AlignVCenter
                 text: I18n.tr("settings.bluetooth.empty.my_devices", "No paired devices yet")
-                color: Components.Theme.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeNormal
+                textColor: Components.Theme.textSecondary
             }
         }
 
@@ -461,32 +461,28 @@ FocusScope {
             Layout.bottomMargin: Components.Theme.spacingMedium
         }
 
-        ColumnLayout {
-            Layout.fillWidth: true
+        Form.FormCard {
             Layout.bottomMargin: Components.Theme.spacingXLarge
-            spacing: Components.Theme.spacingSmall
-
             Repeater {
                 id: otherDeviceRepeater
                 model: root.bluetooth ? root.bluetooth.devicesModel : null
-                delegate: BluetoothDeviceRow {
-                    pairedSection: false
-                }
+                delegate: BluetoothDeviceRow { pairedSection: false }
             }
-
-            Text {
+            Typography.TextLabel {
                 objectName: "otherDevicesEmptyState"
-                visible: root.otherDeviceCount === 0
+                visible: root.visibleOtherDeviceCount === 0
                 Layout.fillWidth: true
+                Layout.preferredHeight: visible ? 52 : 0
+                leftPadding: Components.Theme.spacingXLarge
+                verticalAlignment: Text.AlignVCenter
                 text: I18n.tr("settings.bluetooth.empty.other_devices", "No other devices found")
-                color: Components.Theme.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeNormal
+                textColor: Components.Theme.textSecondary
             }
         }
+
     }
 
-    component BluetoothDeviceRow: Form.FormCard {
+    component BluetoothDeviceRow: Item {
             id: deviceRow
             property bool pairedSection: true
             required property string objectPath
@@ -507,42 +503,73 @@ FocusScope {
             }
             readonly property string sectionObjectSuffix: pairedSection ? "mine" : "other"
             readonly property string displayName: root.deviceNameOrFallback(name, deviceKind)
+            readonly property string deviceIconKey: {
+                switch (deviceKind) {
+                case System.BluetoothDeviceKind.Keyboard: return "keyboard"
+                case System.BluetoothDeviceKind.Mouse: return "mouse"
+                case System.BluetoothDeviceKind.Gamepad: return "gamepad"
+                case System.BluetoothDeviceKind.Headphones:
+                case System.BluetoothDeviceKind.Headset: return "headphones"
+                case System.BluetoothDeviceKind.Speaker: return "speaker"
+                case System.BluetoothDeviceKind.Audio: return "audio"
+                case System.BluetoothDeviceKind.Phone: return "smartphone"
+                case System.BluetoothDeviceKind.Tablet: return "tablet"
+                case System.BluetoothDeviceKind.Computer: return "display"
+                case System.BluetoothDeviceKind.Printer: return "printer"
+                case System.BluetoothDeviceKind.Camera: return "camera"
+                case System.BluetoothDeviceKind.Network: return "internet"
+                default: return "bluetooth"
+                }
+            }
+            readonly property string effectiveDeviceIconKey:
+                root.deviceIconOverride(deviceRow.objectPath) || deviceIconKey
+            readonly property url deviceIconSource: SettingsController.iconUrlForWeight(
+                effectiveDeviceIconKey, SettingsController.navigationIconTheme,
+                SettingsController.navigationIconWeight)
+
             readonly property bool activePairingDevice: root.bluetooth && root.bluetooth.pairing
                 && root.bluetooth.pairingDevicePath === objectPath
             readonly property bool belongsInSection: paired
-                ? pairedSection : (!pairedSection && discovered)
+                ? pairedSection
+                : (!pairedSection && discovered && root.hasDeviceName(name))
 
             objectName: "deviceRow_" + deviceId + "_" + sectionObjectSuffix
             visible: belongsInSection
             Layout.fillWidth: true
+            implicitHeight: 64
             Layout.preferredHeight: visible ? implicitHeight : 0
-            margins: Components.Theme.spacingMedium
-            spacing: Components.Theme.spacingSmall
 
             RowLayout {
-                Layout.fillWidth: true
+                anchors.fill: parent
+                anchors.leftMargin: Components.Theme.spacingLarge
+                anchors.rightMargin: Components.Theme.spacingLarge
                 spacing: Components.Theme.spacingMedium
 
-                Text {
+                Item {
                     Layout.preferredWidth: 36
-                    horizontalAlignment: Text.AlignHCenter
-                    text: {
-                        if (deviceRow.deviceKind === System.BluetoothDeviceKind.Keyboard)
-                            return "\uf11c"
-                        if (deviceRow.deviceKind === System.BluetoothDeviceKind.Gamepad)
-                            return "\uf11b"
-                        if (deviceRow.deviceKind === System.BluetoothDeviceKind.Headset
-                                || deviceRow.deviceKind === System.BluetoothDeviceKind.Headphones
-                                || deviceRow.deviceKind === System.BluetoothDeviceKind.Speaker
-                                || deviceRow.deviceKind === System.BluetoothDeviceKind.Audio)
-                            return "\uf025"
-                        return "\uf293"
+                    Layout.preferredHeight: 36
+                    Layout.alignment: Qt.AlignVCenter
+
+                    Controls.ThemedIcon {
+                        id: bluetoothDeviceArtwork
+                        objectName: "deviceArtwork_" + deviceRow.deviceId + "_" + deviceRow.sectionObjectSuffix
+                        anchors.centerIn: parent
+                        width: 22
+                        height: 22
+                        iconSource: deviceRow.deviceIconSource
+                        tint: deviceRow.connected
+                            ? Components.Theme.accent : Components.Theme.textSecondary
+                        Accessible.ignored: true
                     }
-                    color: deviceRow.connected ? Components.Theme.accent : Components.Theme.textSecondary
-                    font.family: "JetBrainsMono Nerd Font"
-                    font.pixelSize: Components.Theme.fontSizeIconLarge
-                    Accessible.name: I18n.tr("settings.bluetooth.accessibility.device_icon",
-                                              "Bluetooth device icon")
+                    Text {
+                        anchors.centerIn: parent
+                        visible: !bluetoothDeviceArtwork.ready
+                        text: "\uf293"
+                        color: Components.Theme.textSecondary
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Components.Theme.fontSizeIconLarge
+                        Accessible.ignored: true
+                    }
                 }
 
                 ColumnLayout {
@@ -630,7 +657,7 @@ FocusScope {
                 Controls.ButtonCapsule {
                     objectName: "deviceMore_" + deviceRow.deviceId + "_" + deviceRow.sectionObjectSuffix
                     visible: deviceRow.paired
-                    label: I18n.tr("settings.bluetooth.action.more", "More")
+                    label: "⋯"
                     accessibleName: I18n.tr("settings.bluetooth.accessibility.device_actions",
                                              "Actions for %1").replace("%1", deviceRow.displayName)
                     onClicked: {
@@ -639,6 +666,17 @@ FocusScope {
                                             deviceRow.trusted, point.x, point.y)
                     }
                 }
+            }
+
+            // Rows hide per section, so draw the divider above every row but the first shown.
+            Rectangle {
+                visible: deviceRow.y > 0.5
+                anchors {
+                    top: parent.top; right: parent.right; left: parent.left
+                    leftMargin: Components.Theme.spacingLarge + 36 + Components.Theme.spacingMedium
+                }
+                height: 1
+                color: Components.Theme.cardBorder
             }
         }
 

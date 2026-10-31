@@ -15,6 +15,19 @@ function(add_settings_unit_test target source)
     add_test(NAME ${target} COMMAND ${target})
 endfunction()
 
+
+# Verify the application's typography policy without requiring production UI assets.
+qt_add_executable(settings-font-policy-test unit/SettingsFontPolicyTest.cpp)
+target_include_directories(settings-font-policy-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/..")
+target_link_libraries(settings-font-policy-test PRIVATE Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
+settings_enable_warnings(settings-font-policy-test)
+settings_enable_sanitizers(settings-font-policy-test)
+add_test(NAME settings-font-policy-test COMMAND settings-font-policy-test)
+set_tests_properties(settings-font-policy-test PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+add_settings_unit_test(settings-firewall-status-test unit/SettingsFirewallStatusTest.cpp)
+add_settings_unit_test(settings-firewall-manager-test unit/SettingsFirewallManagerTest.cpp)
 add_settings_unit_test(settings-desktop-backend-test unit/SettingsDesktopBackendTest.cpp)
 target_link_libraries(settings-desktop-backend-test PRIVATE astrea-bar-core)
 add_settings_unit_test(settings-controller-test unit/SettingsControllerTest.cpp)
@@ -26,6 +39,7 @@ add_settings_unit_test(settings-icons-controller-test unit/SettingsIconsControll
 add_settings_unit_test(settings-dock-controller-test unit/SettingsDockControllerTest.cpp)
 add_settings_unit_test(settings-wallpaper-controller-test unit/SettingsWallpaperControllerTest.cpp)
 add_settings_unit_test(settings-navigation-model-test unit/SettingsNavigationModelTest.cpp)
+add_settings_unit_test(settings-device-inventory-test unit/SettingsDeviceInventoryTest.cpp)
 add_settings_unit_test(settings-user-profile-provider-test unit/SettingsUserProfileProviderTest.cpp)
 add_settings_unit_test(screenshot-configuration-test unit/ScreenshotConfigurationTest.cpp)
 target_link_libraries(screenshot-configuration-test PRIVATE astrea-shared-core)

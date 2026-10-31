@@ -7,6 +7,7 @@ Item {
     property string label: ""
     property string sublabel: ""
     property int sublabelTextFormat: Text.AutoText
+    property int labelTextFormat: Text.AutoText
     property bool   isLast:  false
     property bool   clickable: false
     property bool   controlBlocksRowClick: true
@@ -15,9 +16,30 @@ Item {
     property color textPrimary: Components.Theme.textPrimary
     property color textSecondary: Components.Theme.textSecondary
     property color cardBorder: Components.Theme.cardBorder
-    property color rowHoverBg:    Qt.rgba(1, 1, 1, 0.055)
+    property color rowHoverBg: Components.Theme.isLight
+        ? Qt.rgba(0, 0, 0, 0.045) : Qt.rgba(1, 1, 1, 0.055)
 
     default property alias control: slot.data
+
+    Layout.fillWidth: true
+    Layout.minimumWidth: 0
+    activeFocusOnTab: sr.clickable
+    Accessible.role: sr.clickable ? Accessible.Button : Accessible.StaticText
+    Accessible.name: sr.label
+    Accessible.description: sr.sublabel
+    Keys.onReturnPressed: (event) => {
+        if (sr.clickable) {
+            sr.clicked()
+            event.accepted = true
+        }
+    }
+    Keys.onSpacePressed: (event) => {
+        if (sr.clickable) {
+            sr.clicked()
+            event.accepted = true
+        }
+    }
+
     implicitWidth: parent ? parent.width : 200
     implicitHeight: Math.max(sr.sublabel !== "" ? 64 : 52, rowLayout.implicitHeight + Components.Theme.spacingMedium * 2)
 
@@ -27,7 +49,7 @@ Item {
         anchors { fill: parent; leftMargin: Components.Theme.spacingMicro; rightMargin: Components.Theme.spacingMicro; topMargin: Components.Theme.spacingTiny; bottomMargin: Components.Theme.spacingTiny }
         radius: Components.Theme.controlRadius
         color: rowArea.containsMouse && sr.clickable ? sr.rowHoverBg : "transparent"
-        Behavior on color { ColorAnimation { duration: Components.Theme.animationSlow; easing.type: Easing.OutQuart } }
+        Behavior on color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
     }
 
     RowLayout {
@@ -42,6 +64,7 @@ Item {
 
             Text {
                 text: sr.label;
+                textFormat: sr.labelTextFormat
                 color: sr.textPrimary;
                 font.family: Components.Theme.fontFamily
                 font.pixelSize: Components.Theme.fontSizeLarge;

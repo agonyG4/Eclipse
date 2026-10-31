@@ -10,6 +10,9 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     components/audio/DeviceRow.qml
     components/controls/Button.qml
     components/controls/ButtonCapsule.qml
+    components/controls/HoverTooltip.qml
+    components/controls/DeviceSymbol.qml
+    components/controls/ThemedIcon.qml
     components/controls/DualButton.qml
     components/controls/FloatingButton.qml
     components/controls/ToggleSwitch.qml
@@ -28,6 +31,8 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     components/form/SectionHeader.qml
     components/form/SettingRow.qml
     components/menu/ContextMenu.qml
+    components/network/NetworkDetailCell.qml
+    components/network/FirewallPanel.qml
     components/menu/ContextMenuAction.qml
     components/menu/ContextMenuDivider.qml
     components/navigation/NavItem.qml
@@ -40,6 +45,7 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     pages/navigation/Hub.qml
     pages/system/Compositor.qml
     pages/system/Bluetooth.qml
+    pages/system/Devices.qml
     pages/system/Audio.qml
     pages/system/Display.qml
     pages/system/DisplayLogic.js
@@ -90,9 +96,22 @@ set(ASTREA_SETTINGS_ASSET_RELATIVE_FILES
     icons/navigation/lucide/animations.svg
     icons/navigation/lucide/screenshots.svg
     icons/navigation/lucide/more-settings.svg
+    icons/navigation/lucide/volume-min.svg
+    icons/navigation/lucide/volume-max.svg
     icons/navigation/lucide/microphone.svg
     icons/navigation/lucide/headphones.svg
     icons/navigation/lucide/virtual-device.svg
+    icons/navigation/lucide/keyboard.svg
+    icons/navigation/lucide/mouse.svg
+    icons/navigation/lucide/gamepad.svg
+    icons/navigation/lucide/smartphone.svg
+    icons/navigation/lucide/tablet.svg
+    icons/navigation/lucide/speaker.svg
+    icons/navigation/lucide/printer.svg
+    icons/navigation/lucide/camera.svg
+    icons/navigation/lucide/devices.svg
+    icons/navigation/lucide/usb.svg
+    icons/navigation/lucide/hard-drive.svg
     icons/settings/audio.svg
     icons/settings/apps.svg
     icons/settings/bluetooth.svg
@@ -119,7 +138,7 @@ set(ASTREA_SETTINGS_ASSET_RELATIVE_FILES
 
 # Generated bundled Lucide SVG weight resources.
 set(ASTREA_LUCIDE_WEIGHT_NAMES ultralight thin light regular medium semibold bold heavy black)
-set(ASTREA_LUCIDE_NAV_ICON_KEYS system software-update internet bluetooth audio display components services compositor performance customization appearance visual-effects icons wallpaper dock animations screenshots more-settings microphone headphones virtual-device)
+set(ASTREA_LUCIDE_NAV_ICON_KEYS system software-update internet bluetooth audio display components services compositor performance customization appearance visual-effects icons wallpaper dock animations screenshots more-settings microphone headphones virtual-device keyboard mouse gamepad smartphone tablet speaker printer camera devices usb hard-drive)
 foreach(weight IN LISTS ASTREA_LUCIDE_WEIGHT_NAMES)
     foreach(icon IN LISTS ASTREA_LUCIDE_NAV_ICON_KEYS)
         list(APPEND ASTREA_SETTINGS_ASSET_RELATIVE_FILES "icons/navigation/lucide/weights/${weight}/${icon}.svg")

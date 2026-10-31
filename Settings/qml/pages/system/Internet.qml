@@ -1,10 +1,13 @@
 import QtQuick
 import QtQuick.Controls as QQC2
 import QtQuick.Layouts
+import Qt5Compat.GraphicalEffects as Legacy
 import Astrea.System 1.0
 import "../../components" as Components
 import "../../components/controls" as Controls
+import "../../components/typography" as Typography
 import "../../components/form" as Form
+import "../../components/network" as NetworkComponents
 
 FocusScope {
     id: root
@@ -19,6 +22,26 @@ FocusScope {
     readonly property bool isConnected:
         root.serviceReady && root.network.connected
             && root.network.connectionType !== System.NetworkConnectionType.None
+    // Navigation stays local to Internet Settings; no backend state is changed.
+    property bool detailsOpen: false
+    property string detailsTab: "tcpip" // tcpip, dns, hardware
+
+    onIsConnectedChanged: {
+        if (!root.isConnected && root.detailsTab !== "firewall")
+            root.detailsOpen = false
+    }
+    onDetailsOpenChanged: Qt.callLater(function() {
+        if (internetScroll.contentItem && internetScroll.contentItem.contentY !== undefined)
+            internetScroll.contentItem.contentY = 0
+    })
+
+    function openDetails(tab) {
+        if (tab !== "firewall" && !root.showConnectionDetails)
+            return
+        root.detailsTab = tab || "tcpip"
+        root.detailsOpen = true
+    }
+
     readonly property bool showConnectionDetails: root.serviceReady && root.isConnected
     readonly property bool isWiredConnection: root.showConnectionDetails
         && root.network.connectionType === System.NetworkConnectionType.Wired
@@ -394,260 +417,443 @@ FocusScope {
     }
 
     Form.ScrollPage {
+        id: internetScroll
         anchors.fill: parent
         contentMargins: 32
         maxWidth: 900
 
+        // The overview follows the same typography and card hierarchy as Audio.
         ColumnLayout {
+            visible: !root.detailsOpen
             Layout.fillWidth: true
             Layout.bottomMargin: Components.Theme.spacingXLarge
-            spacing: Components.Theme.spacingTiny
+            spacing: Components.Theme.spacingMicro
 
-            Text {
+            Typography.DisplayLabel {
                 objectName: "internetHeading"
-                Layout.fillWidth: true
                 text: I18n.tr("settings.internet.title", "Internet")
-                color: Components.Theme.textPrimary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeHeader
-                font.weight: Components.Theme.fontWeightBold
+                font.pixelSize: Components.Theme.fontSizeHero
+                font.weight: Components.Theme.fontWeightDemiBold
             }
 
-            Text {
+            Typography.TextLabel {
                 Layout.fillWidth: true
                 text: I18n.tr("settings.internet.subtitle",
-                              "Manage your network connection and nearby Wi-Fi networks.")
-                color: Components.Theme.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSubtitle
+                              "Manage your connection and network preferences.")
+                textColor: Components.Theme.textSecondary
+                font.pixelSize: Components.Theme.fontSizeNormal
                 wrapMode: Text.WordWrap
             }
         }
 
+        Controls.Button {
+            objectName: "internetDetailsBack"
+            visible: root.detailsOpen
+            flat: true
+            label: I18n.tr("settings.internet.action.back", "‹  Internet")
+            Layout.bottomMargin: Components.Theme.spacingLarge
+            onClicked: root.detailsOpen = false
+        }
+
         Form.SectionHeader {
-            text: I18n.tr("settings.internet.section.network_status", "NETWORK STATUS")
-            Layout.bottomMargin: 12
+            objectName: "internetConnectionSection"
+            visible: !root.detailsOpen
+            text: I18n.tr("settings.internet.section.connection", "CONNECTION")
+            Layout.bottomMargin: Components.Theme.spacingMedium
         }
 
         Form.FormCard {
-            Layout.bottomMargin: 24
-            margins: Components.Theme.spacingLarge
+            objectName: "networkOverviewCard"
+            visible: !root.detailsOpen
+            Layout.bottomMargin: Components.Theme.spacingXLarge
+            spacing: 0
 
-            ColumnLayout {
-                width: parent.width
-                spacing: Components.Theme.spacingSmall
+            Form.SettingRow {
+                objectName: "internetActiveConnectionRow"
+                clickable: root.showConnectionDetails
+                controlBlocksRowClick: true
+                labelTextFormat: Text.PlainText
+                sublabelTextFormat: Text.PlainText
+                label: root.isConnected && root.network.connectionName !== ""
+                    ? root.network.connectionName
+                    : root.isConnected
+                        ? I18n.tr("settings.internet.connection.active", "Active connection")
+                        : I18n.tr("settings.internet.connection.no_active", "No active connection")
+                sublabel: root.isConnected
+                    ? root.connectionTypeText()
+                    : I18n.tr("settings.internet.connection.disconnected", "Disconnected")
+                isLast: false
+                onClicked: root.openDetails("tcpip")
+
+                RowLayout {
+                    spacing: Components.Theme.spacingSmall
+
+                    Rectangle {
+                        Layout.alignment: Qt.AlignVCenter
+                        visible: root.isConnected
+                        width: 7
+                        height: 7
+                        radius: 4
+                        color: Components.Theme.successColor
+                    }
+
+                    Text {
+                        objectName: "networkConnectionState"
+                        visible: root.serviceReady
+                        text: root.isConnected
+                            ? I18n.tr("settings.internet.connection.status_connected", "Connected")
+                            : I18n.tr("settings.internet.connection.disconnected", "Disconnected")
+                        color: Components.Theme.textSecondary
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeSmall
+                    }
+
+                    Controls.Button {
+                        objectName: "internetConnectionDetailsButton"
+                        visible: root.showConnectionDetails
+                        flat: true
+                        iconText: "ⓘ"
+                        fontPixelSize: Components.Theme.fontSizeLarge
+                        iconSize: 20
+                        controlWidth: 34
+                        controlHeight: 34
+                        Accessible.name: I18n.tr("settings.internet.action.details", "Connection details")
+                        onClicked: root.openDetails("tcpip")
+                    }
+                }
+            }
+
+            // Read-only service status. This does not claim ruleset enforcement.
+            Form.SettingRow {
+                objectName: "internetFirewallRow"
+                clickable: true
+                controlBlocksRowClick: false
+                onClicked: root.openDetails("firewall")
+                label: I18n.tr("settings.internet.firewall.title", "Firewall")
+                sublabel: SettingsController.firewallManager.loaded
+                    ? I18n.tr("settings.internet.firewall.verified", "Verified UFW state")
+                    : I18n.tr("settings.internet.firewall.service", "UFW service")
+                isLast: !(root.serviceReady && root.network && root.network.wifiAvailable)
+
+                RowLayout {
+                    spacing: Components.Theme.spacingSmall
+
+                    Rectangle {
+                        visible: SettingsController.firewallManager.loaded
+                            || SettingsController.firewall.known
+                        Layout.alignment: Qt.AlignVCenter
+                        width: 7
+                        height: 7
+                        radius: 4
+                        color: (SettingsController.firewallManager.loaded
+                            ? SettingsController.firewallManager.enabled
+                            : SettingsController.firewall.active)
+                            ? Components.Theme.successColor : Components.Theme.textSecondary
+                    }
+
+                    Text {
+                        objectName: "internetFirewallState"
+                        text: SettingsController.firewallManager.loaded
+                            ? (SettingsController.firewallManager.enabled
+                                ? I18n.tr("settings.internet.firewall.active", "Active")
+                                : I18n.tr("settings.internet.firewall.inactive", "Inactive"))
+                            : SettingsController.firewall.known
+                                ? (SettingsController.firewall.active
+                                    ? I18n.tr("settings.internet.firewall.active", "Active")
+                                    : I18n.tr("settings.internet.firewall.inactive", "Inactive"))
+                                : I18n.tr("settings.internet.firewall.unknown", "Unavailable")
+                        color: Components.Theme.textSecondary
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeSmall
+                        textFormat: Text.PlainText
+                    }
+
+                    Text {
+                        text: "›"
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: 22
+                        color: Components.Theme.textSecondary
+                    }
+                }
+            }
+
+            Form.SettingRow {
+                objectName: "internetWifiPowerRow"
+                visible: root.serviceReady && root.network && root.network.wifiAvailable
+                isLast: true
+                label: I18n.tr("settings.internet.wifi.label", "Wi-Fi")
+                sublabel: root.network && root.network.wifiPending
+                    ? I18n.tr("settings.internet.wifi.pending", "Updating Wi-Fi power…")
+                    : root.network && root.network.wifiEnabled
+                        ? I18n.tr("settings.internet.wifi.on", "On")
+                        : I18n.tr("settings.internet.wifi.off", "Off")
+
+                Controls.ToggleSwitch {
+                    objectName: "wifiPowerToggle"
+                    visible: root.serviceReady && root.network && root.network.wifiAvailable
+                    checked: root.network ? root.network.wifiEnabled : false
+                    enabled: root.canSetWifi
+                    accessibleName: I18n.tr("settings.internet.wifi.label", "Wi-Fi")
+                    onToggled: targetChecked => {
+                        if (root.canSetWifi)
+                            root.network.setWifiEnabled(targetChecked)
+                    }
+                }
+            }
+
+            Typography.TextLabel {
+                objectName: "networkServiceStatus"
+                visible: !root.serviceReady
+                Layout.fillWidth: true
+                Layout.margins: Components.Theme.spacingLarge
+                text: root.serviceStatusText()
+                textColor: Components.Theme.textSecondary
+                font.pixelSize: Components.Theme.fontSizeSmall
+                wrapMode: Text.WordWrap
+            }
+
+            Typography.TextLabel {
+                objectName: "networkServiceError"
+                visible: root.network
+                    && (root.serviceState === System.Unavailable
+                        || root.serviceState === System.Degraded)
+                    && root.network.errorString !== ""
+                Layout.fillWidth: true
+                Layout.margins: Components.Theme.spacingLarge
+                text: root.network ? root.network.errorString : ""
+                textColor: Components.Theme.warningColor
+                font.pixelSize: Components.Theme.fontSizeSmall
+                wrapMode: Text.WordWrap
+            }
+
+            // Preserve the connection projections for backend-backed QML consumers.
+            Item {
+                objectName: "connectionDetails"
+                visible: root.isConnected
+                Layout.preferredHeight: 0
+                Layout.fillWidth: true
 
                 Text {
-                    objectName: "networkServiceStatus"
-                    Layout.fillWidth: true
-                    text: root.serviceStatusText()
-                    color: root.serviceReady
-                        ? Components.Theme.textPrimary : Components.Theme.textSecondary
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeLarge
-                    font.weight: Components.Theme.fontWeightMedium
-                    wrapMode: Text.WordWrap
+                    objectName: "connectionName"
+                    visible: false
+                    text: root.isConnected ? root.network.connectionName : ""
+                    textFormat: Text.PlainText
                 }
 
                 Text {
-                    objectName: "networkServiceError"
-                    Layout.fillWidth: true
-                    visible: root.network
-                        && (root.serviceState === System.Unavailable
-                            || root.serviceState === System.Degraded)
-                        && root.network.errorString !== ""
-                    text: root.network ? root.network.errorString : ""
-                    textFormat: Text.PlainText
-                    color: Components.Theme.textSecondary
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeSmall
-                    wrapMode: Text.WordWrap
+                    objectName: "connectionTypeLabel"
+                    visible: false
+                    text: root.connectionTypeText()
+                }
+
+                Text {
+                    objectName: "connectionInterface"
+                    visible: false
+                    text: root.isConnected && root.network.interfaceName !== ""
+                        ? I18n.tr("settings.internet.connection.interface",
+                            "Interface: {name}").replace("{name}", root.network.interfaceName)
+                        : ""
                 }
 
                 Text {
                     objectName: "networkConnectionState"
-                    Layout.fillWidth: true
+                    visible: false
                     text: root.isConnected
-                        ? I18n.tr("settings.internet.connection.connected", "Network connected")
+                        ? I18n.tr("settings.internet.connection.status_connected", "Connected")
                         : I18n.tr("settings.internet.connection.disconnected", "Disconnected")
-                    color: root.isConnected
-                        ? Components.Theme.textPrimary : Components.Theme.textSecondary
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeNormal
-                    font.weight: Components.Theme.fontWeightMedium
                 }
 
-                ColumnLayout {
-                    objectName: "connectionDetails"
-                    Layout.fillWidth: true
-                    visible: root.isConnected
-                    spacing: Components.Theme.spacingMicro
+                Text {
+                    objectName: "downloadRate"
+                    visible: false
+                    text: I18n.tr("settings.internet.connection.download",
+                              "Download: {rate}").replace("{rate}",
+                                  root.network ? root.network.downloadRate : "")
+                }
 
-                    Text {
-                        objectName: "connectionName"
-                        Layout.fillWidth: true
-                        text: root.isConnected ? root.network.connectionName : ""
-                        textFormat: Text.PlainText
-                        color: Components.Theme.textPrimary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeLarge
-                        font.weight: Components.Theme.fontWeightMedium
-                        elide: Text.ElideRight
-                    }
-
-                    Text {
-                        objectName: "connectionTypeLabel"
-                        Layout.fillWidth: true
-                        text: root.connectionTypeText()
-                        color: Components.Theme.textSecondary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
-                    }
-
-                    Text {
-                        objectName: "connectionInterface"
-                        Layout.fillWidth: true
-                        visible: root.isConnected && root.network.interfaceName !== ""
-                        text: visible
-                            ? I18n.tr("settings.internet.connection.interface",
-                                      "Interface: {name}").replace("{name}", root.network.interfaceName)
-                            : ""
-                        textFormat: Text.PlainText
-                        color: Components.Theme.textSecondary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        visible: root.isConnected
-                        spacing: Components.Theme.spacingLarge
-
-                        Text {
-                            objectName: "downloadRate"
-                            text: I18n.tr("settings.internet.connection.download",
-                                          "Download: {rate}").replace("{rate}", root.network.downloadRate)
-                            textFormat: Text.PlainText
-                            color: Components.Theme.textSecondary
-                            font.family: Components.Theme.fontFamily
-                            font.pixelSize: Components.Theme.fontSizeSmall
-                        }
-
-                        Text {
-                            objectName: "uploadRate"
-                            text: I18n.tr("settings.internet.connection.upload",
-                                          "Upload: {rate}").replace("{rate}", root.network.uploadRate)
-                            textFormat: Text.PlainText
-                            color: Components.Theme.textSecondary
-                            font.family: Components.Theme.fontFamily
-                            font.pixelSize: Components.Theme.fontSizeSmall
-                        }
-                    }
+                Text {
+                    objectName: "uploadRate"
+                    visible: false
+                    text: I18n.tr("settings.internet.connection.upload",
+                              "Upload: {rate}").replace("{rate}",
+                                  root.network ? root.network.uploadRate : "")
                 }
             }
         }
 
+        RowLayout {
+            objectName: "internetDetailTabs"
+            visible: root.detailsOpen
+            Layout.fillWidth: true
+            Layout.bottomMargin: Components.Theme.spacingLarge
+            spacing: Components.Theme.spacingSmall
+
+            Controls.Button {
+                objectName: "internetTabTcpip"
+                visible: root.showConnectionDetails
+                label: "TCP/IP"
+                flat: root.detailsTab !== "tcpip"
+                onClicked: root.detailsTab = "tcpip"
+            }
+
+            Controls.Button {
+                objectName: "internetTabDns"
+                visible: root.showConnectionDetails
+                label: "DNS"
+                flat: root.detailsTab !== "dns"
+                onClicked: root.detailsTab = "dns"
+            }
+
+            Controls.Button {
+                objectName: "internetTabHardware"
+                visible: root.showConnectionDetails
+                label: I18n.tr("settings.internet.details.hardware", "Hardware")
+                flat: root.detailsTab !== "hardware"
+                onClicked: root.detailsTab = "hardware"
+            }
+
+            Controls.Button {
+                objectName: "internetTabFirewall"
+                label: I18n.tr("settings.internet.firewall.title", "Firewall")
+                flat: root.detailsTab !== "firewall"
+                onClicked: root.detailsTab = "firewall"
+            }
+
+            Item { Layout.fillWidth: true }
+        }
+
+        NetworkComponents.FirewallPanel {
+            objectName: "internetFirewallPanel"
+            visible: root.detailsOpen && root.detailsTab === "firewall"
+            Layout.fillWidth: true
+            manager: SettingsController.firewallManager
+        }
+
         Form.SectionHeader {
             objectName: "connectionDetailsSection"
-            visible: root.showConnectionDetails
-            text: I18n.tr("settings.internet.section.connection_details", "CONNECTION DETAILS")
+            visible: root.detailsOpen && root.showConnectionDetails
+                && (root.detailsTab === "tcpip" || root.detailsTab === "hardware")
+            text: root.detailsTab === "hardware"
+                ? I18n.tr("settings.internet.section.hardware", "HARDWARE")
+                : I18n.tr("settings.internet.section.tcpip", "TCP/IP")
             Layout.bottomMargin: 12
         }
 
         Form.FormCard {
             objectName: "connectionDetailsCard"
-            visible: root.showConnectionDetails
-            Layout.bottomMargin: 24
+            visible: root.detailsOpen && root.showConnectionDetails
+                && (root.detailsTab === "tcpip" || root.detailsTab === "hardware")
+            Layout.bottomMargin: Components.Theme.spacingXLarge
+            margins: Components.Theme.spacingMedium
 
-            ColumnLayout {
-                width: parent.width
-                spacing: 0
+            GridLayout {
+                width: Math.max(0, parent.width)
+                columns: 1
+                columnSpacing: Components.Theme.spacing
+                rowSpacing: Components.Theme.spacing
 
-                Form.SettingRow {
+                NetworkComponents.NetworkDetailCell {
                     objectName: "connectionIpv4Addresses"
-                    visible: root.network && root.network.ipv4Addresses.length > 0
+                    visible: root.detailsTab === "tcpip" && root.network && root.network.ipv4Addresses.length > 0
                     label: I18n.tr("settings.internet.details.ipv4_address", "IPv4 address")
                     sublabel: visible ? root.network.ipv4Addresses.join("\n") : ""
                     sublabelTextFormat: Text.PlainText
-                    isLast: !root.network || (root.network.ipv4Gateway === ""
-                        && root.network.ipv6Addresses.length === 0
-                        && root.network.ipv6Gateway === ""
-                        && root.network.hardwareAddress === "" && root.network.mtu <= 0
-                        && !root.isWiredConnection)
+                    Layout.columnSpan: 1
                 }
 
-                Form.SettingRow {
+                NetworkComponents.NetworkDetailCell {
                     objectName: "connectionIpv4Gateway"
-                    visible: root.network && root.network.ipv4Gateway !== ""
+                    visible: root.detailsTab === "tcpip" && root.network && root.network.ipv4Gateway !== ""
                     label: I18n.tr("settings.internet.details.ipv4_gateway", "IPv4 gateway")
                     sublabel: visible ? root.network.ipv4Gateway : ""
                     sublabelTextFormat: Text.PlainText
-                    isLast: !root.network || (root.network.ipv6Addresses.length === 0
-                        && root.network.ipv6Gateway === ""
-                        && root.network.hardwareAddress === "" && root.network.mtu <= 0
-                        && !root.isWiredConnection)
+                    Layout.columnSpan: 1
                 }
 
-                Form.SettingRow {
+                NetworkComponents.NetworkDetailCell {
                     objectName: "connectionIpv6Addresses"
-                    visible: root.network && root.network.ipv6Addresses.length > 0
+                    visible: root.detailsTab === "tcpip" && root.network && root.network.ipv6Addresses.length > 0
                     label: I18n.tr("settings.internet.details.ipv6_address", "IPv6 address")
                     sublabel: visible ? root.network.ipv6Addresses.join("\n") : ""
                     sublabelTextFormat: Text.PlainText
-                    isLast: !root.network || (root.network.ipv6Gateway === ""
-                        && root.network.hardwareAddress === "" && root.network.mtu <= 0
-                        && !root.isWiredConnection)
+                    Layout.columnSpan: 1
                 }
 
-                Form.SettingRow {
+                NetworkComponents.NetworkDetailCell {
                     objectName: "connectionIpv6Gateway"
-                    visible: root.network && root.network.ipv6Gateway !== ""
+                    visible: root.detailsTab === "tcpip" && root.network && root.network.ipv6Gateway !== ""
                     label: I18n.tr("settings.internet.details.ipv6_gateway", "IPv6 gateway")
                     sublabel: visible ? root.network.ipv6Gateway : ""
                     sublabelTextFormat: Text.PlainText
-                    isLast: !root.network || (root.network.hardwareAddress === ""
-                        && root.network.mtu <= 0 && !root.isWiredConnection)
+                    Layout.columnSpan: 1
                 }
 
-                Form.SettingRow {
+                NetworkComponents.NetworkDetailCell {
+                    objectName: "connectionHardwareInterface"
+                    visible: root.detailsTab === "hardware" && root.isConnected
+                        && root.network.interfaceName !== ""
+                    label: I18n.tr("settings.internet.details.interface", "Interface")
+                    sublabel: visible ? root.network.interfaceName : ""
+                    sublabelTextFormat: Text.PlainText
+                }
+
+                NetworkComponents.NetworkDetailCell {
                     objectName: "connectionHardwareAddress"
-                    visible: root.network && root.network.hardwareAddress !== ""
+                    visible: root.detailsTab === "hardware" && root.network && root.network.hardwareAddress !== ""
                     label: I18n.tr("settings.internet.details.hardware_address", "MAC address")
                     sublabel: visible ? root.network.hardwareAddress : ""
                     sublabelTextFormat: Text.PlainText
-                    isLast: !root.network || (root.network.mtu <= 0 && !root.isWiredConnection)
+                    Layout.columnSpan: 1
                 }
 
-                Form.SettingRow {
+                NetworkComponents.NetworkDetailCell {
                     objectName: "connectionMtu"
-                    visible: root.network && root.network.mtu > 0
+                    visible: root.detailsTab === "hardware" && root.network && root.network.mtu > 0
                     label: I18n.tr("settings.internet.details.mtu", "MTU")
                     sublabel: visible ? String(root.network.mtu) : ""
                     sublabelTextFormat: Text.PlainText
-                    isLast: !root.isWiredConnection
+                    Layout.columnSpan: 1
                 }
 
-                Form.SettingRow {
+                NetworkComponents.NetworkDetailCell {
                     objectName: "connectionLink"
-                    visible: root.isWiredConnection
+                    visible: root.detailsTab === "hardware" && root.isWiredConnection
                     label: I18n.tr("settings.internet.details.link", "Link")
                     sublabel: visible ? root.linkText() : ""
                     sublabelTextFormat: Text.PlainText
-                    isLast: !root.network || root.network.linkSpeedMbps <= 0
+                    Layout.columnSpan: 1
                 }
 
-                Form.SettingRow {
+                NetworkComponents.NetworkDetailCell {
                     objectName: "connectionLinkSpeed"
-                    visible: root.isWiredConnection && root.network.linkSpeedMbps > 0
+                    visible: root.detailsTab === "hardware" && root.isWiredConnection && root.network.linkSpeedMbps > 0
                     label: I18n.tr("settings.internet.details.link_speed", "Link speed")
                     sublabel: visible ? root.linkSpeedText(root.network.linkSpeedMbps) : ""
                     sublabelTextFormat: Text.PlainText
-                    isLast: true
+                    Layout.columnSpan: 1
+                }
+
+                NetworkComponents.NetworkDetailCell {
+                    objectName: "connectionDownloadRate"
+                    visible: root.detailsTab === "hardware" && root.isConnected
+                    label: I18n.tr("settings.internet.connection.download_label", "Download")
+                    sublabel: root.network ? root.network.downloadRate : ""
+                    sublabelTextFormat: Text.PlainText
+                }
+
+                NetworkComponents.NetworkDetailCell {
+                    objectName: "connectionUploadRate"
+                    visible: root.detailsTab === "hardware" && root.isConnected
+                    label: I18n.tr("settings.internet.connection.upload_label", "Upload")
+                    sublabel: root.network ? root.network.uploadRate : ""
+                    sublabelTextFormat: Text.PlainText
                 }
 
                 Text {
                     objectName: "connectionDetailsEmpty"
-                    visible: root.showConnectionDetails && !root.hasConnectionDetailValue
+                    visible: root.detailsOpen && root.showConnectionDetails
+                        && !root.hasConnectionDetailValue
+                    Layout.columnSpan: 1
                     Layout.fillWidth: true
                     Layout.margins: Components.Theme.spacingLarge
                     text: I18n.tr("settings.internet.details.empty",
@@ -662,85 +868,130 @@ FocusScope {
 
         Form.SectionHeader {
             objectName: "dnsSection"
-            visible: root.showConnectionDetails
+            visible: root.detailsOpen && root.showConnectionDetails && root.detailsTab === "dns"
             text: I18n.tr("settings.internet.section.dns", "DNS")
             Layout.bottomMargin: 12
         }
 
         Form.FormCard {
             objectName: "dnsCard"
-            visible: root.showConnectionDetails
+            visible: root.detailsOpen && root.showConnectionDetails && root.detailsTab === "dns"
             Layout.bottomMargin: 24
 
             ColumnLayout {
                 width: parent.width
                 spacing: 0
 
-                Form.SettingRow {
-                    objectName: "dnsConfiguredMode"
-                    label: I18n.tr("settings.internet.dns.label.mode", "Mode")
-                    sublabel: root.network ? root.dnsModeText(root.network.dnsMode) : "Advanced"
-                    sublabelTextFormat: Text.PlainText
-                }
+                GridLayout {
+                    Layout.fillWidth: true
+                    Layout.margins: Components.Theme.spacingMedium
+                    columns: 1
+                    columnSpacing: Components.Theme.spacing
+                    rowSpacing: Components.Theme.spacing
 
-                Form.SettingRow {
-                    objectName: "dnsProviderValue"
-                    label: I18n.tr("settings.internet.dns.label.provider", "Provider")
-                    sublabel: root.configuredDnsProvider()
-                    sublabelTextFormat: Text.PlainText
-                }
+                    NetworkComponents.NetworkDetailCell {
+                        objectName: "dnsConfiguredMode"
+                        label: I18n.tr("settings.internet.dns.label.mode", "Mode")
+                        sublabel: root.network ? root.dnsModeText(root.network.dnsMode) : "Advanced"
+                        sublabelTextFormat: Text.PlainText
+                    }
 
-                Form.SettingRow {
-                    objectName: "dnsActiveServers"
-                    label: I18n.tr("settings.internet.dns.label.active_servers",
-                                   "DNS servers for this connection")
-                    sublabel: root.network
-                        ? root.network.activeIpv4DnsServers.concat(
-                            root.network.activeIpv6DnsServers).join("\n")
-                        : ""
-                    sublabelTextFormat: Text.PlainText
-                }
+                    NetworkComponents.NetworkDetailCell {
+                        objectName: "dnsProviderValue"
+                        visible: root.network && root.network.dnsMode === System.NetworkDnsMode.Custom
+                        label: I18n.tr("settings.internet.dns.label.provider", "Provider")
+                        sublabel: root.configuredDnsProvider()
+                        sublabelTextFormat: Text.PlainText
+                    }
 
-                Form.SettingRow {
-                    objectName: "dnsModeDraftRow"
-                    label: I18n.tr("settings.internet.dns.label.choose_mode", "Choose DNS mode")
-                    sublabel: I18n.tr("settings.internet.dns.description.mode",
-                                      "Choose how this connection receives DNS servers.")
-                    sublabelTextFormat: Text.PlainText
-                    isLast: root.dnsDraftMode !== System.NetworkDnsMode.Custom
-                    Controls.SelectButton {
-                        objectName: "dnsModeSelector"
-                        Layout.preferredWidth: 190
-                        label: root.dnsModeText(root.dnsDraftMode)
-                        options: [root.dnsModeText(System.NetworkDnsMode.Automatic),
-                                  root.dnsModeText(System.NetworkDnsMode.Custom)]
-                        selectedIndex: root.dnsDraftMode === System.NetworkDnsMode.Automatic ? 0
-                                     : root.dnsDraftMode === System.NetworkDnsMode.Custom ? 1 : -1
-                        enabled: root.network && root.network.dnsEditable
-                            && !root.network.dnsPending && !root.dnsExternalChanged
-                        Accessible.name: I18n.tr("settings.internet.dns.label.choose_mode",
-                                                 "Choose DNS mode")
-                        onSelected: index => root.selectDnsMode(index)
+                    NetworkComponents.NetworkDetailCell {
+                        objectName: "dnsActiveServers"
+                        visible: root.network
+                            && (root.network.activeIpv4DnsServers.length > 0
+                                || root.network.activeIpv6DnsServers.length > 0)
+                        Layout.columnSpan: 1
+                        label: I18n.tr("settings.internet.dns.label.servers", "DNS servers")
+                        sublabel: root.network
+                            ? root.network.activeIpv4DnsServers.concat(
+                                root.network.activeIpv6DnsServers).join("  ·  ")
+                            : ""
+                        sublabelTextFormat: Text.PlainText
                     }
                 }
 
-                Form.SettingRow {
-                    objectName: "dnsPresetDraftRow"
-                    visible: root.dnsDraftMode === System.NetworkDnsMode.Custom
-                    label: I18n.tr("settings.internet.dns.label.preset", "DNS preset")
-                    sublabel: I18n.tr("settings.internet.dns.description.preset",
-                                      "Select a preset or enter server addresses below.")
-                    sublabelTextFormat: Text.PlainText
-                    Controls.SelectButton {
-                        objectName: "dnsPresetSelector"
-                        Layout.preferredWidth: 190
-                        label: root.dnsSelectedPreset
-                        options: root.dnsPresetNames
-                        selectedIndex: Math.max(0, root.dnsPresetNames.indexOf(root.dnsSelectedPreset))
-                        enabled: root.network && root.network.dnsEditable
-                            && !root.network.dnsPending && !root.dnsExternalChanged
-                        Accessible.name: I18n.tr("settings.internet.dns.label.preset", "DNS preset")
-                        onSelected: index => root.selectDnsPreset(index)
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: Components.Theme.cardBorder
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: Components.Theme.spacingLarge
+                    Layout.rightMargin: Components.Theme.spacingLarge
+                    Layout.topMargin: Components.Theme.spacingLarge
+                    Layout.bottomMargin: Components.Theme.spacingMedium
+                    spacing: Components.Theme.spacingMedium
+
+                    ColumnLayout {
+                        id: modeChoice
+                        objectName: "dnsModeDraftRow"
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        spacing: Components.Theme.spacingSmall
+
+                        Text {
+                            text: I18n.tr("settings.internet.dns.label.choose_mode", "DNS mode")
+                            font.family: Components.Theme.fontFamily
+                            font.pixelSize: Components.Theme.fontSizeSmall
+                            font.weight: Components.Theme.fontWeightMedium
+                            color: Components.Theme.textSecondary
+                        }
+
+                        Controls.SelectButton {
+                            objectName: "dnsModeSelector"
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 36
+                            label: root.dnsModeText(root.dnsDraftMode)
+                            options: [root.dnsModeText(System.NetworkDnsMode.Automatic),
+                                      root.dnsModeText(System.NetworkDnsMode.Custom)]
+                            selectedIndex: root.dnsDraftMode === System.NetworkDnsMode.Automatic ? 0
+                                         : root.dnsDraftMode === System.NetworkDnsMode.Custom ? 1 : -1
+                            enabled: root.network && root.network.dnsEditable
+                                && !root.network.dnsPending && !root.dnsExternalChanged
+                            Accessible.name: I18n.tr("settings.internet.dns.label.choose_mode", "Choose DNS mode")
+                            onSelected: index => root.selectDnsMode(index)
+                        }
+                    }
+
+                    ColumnLayout {
+                        id: presetChoice
+                        objectName: "dnsPresetDraftRow"
+                        visible: root.dnsDraftMode === System.NetworkDnsMode.Custom
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        spacing: Components.Theme.spacingSmall
+
+                        Text {
+                            text: I18n.tr("settings.internet.dns.label.preset", "DNS provider")
+                            font.family: Components.Theme.fontFamily
+                            font.pixelSize: Components.Theme.fontSizeSmall
+                            font.weight: Components.Theme.fontWeightMedium
+                            color: Components.Theme.textSecondary
+                        }
+
+                        Controls.SelectButton {
+                            objectName: "dnsPresetSelector"
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 36
+                            label: root.dnsSelectedPreset
+                            options: root.dnsPresetNames
+                            selectedIndex: Math.max(0, root.dnsPresetNames.indexOf(root.dnsSelectedPreset))
+                            enabled: root.network && root.network.dnsEditable
+                                && !root.network.dnsPending && !root.dnsExternalChanged
+                            Accessible.name: I18n.tr("settings.internet.dns.label.preset", "DNS preset")
+                            onSelected: index => root.selectDnsPreset(index)
+                        }
                     }
                 }
 
@@ -766,8 +1017,29 @@ FocusScope {
                         id: dnsCustomInput
                         objectName: "dnsCustomInput"
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 86
+                        Layout.preferredHeight: 104
                         text: root.dnsDraftText
+                        color: Components.Theme.textPrimary
+                        placeholderTextColor: Components.Theme.textTertiary
+                        selectionColor: Components.Theme.accent
+                        selectedTextColor: Components.Theme.accentForeground
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeNormal
+                        leftPadding: Components.Theme.spacingMedium
+                        rightPadding: Components.Theme.spacingMedium
+                        topPadding: Components.Theme.spacing
+                        bottomPadding: Components.Theme.spacing
+                        background: Rectangle {
+                            radius: Components.Theme.controlRadius
+                            color: Components.Theme.isLight
+                                ? Qt.rgba(0, 0, 0, 0.025) : Qt.rgba(1, 1, 1, 0.045)
+                            border.width: 1
+                            border.color: dnsCustomInput.activeFocus
+                                ? Components.Theme.accent : Components.Theme.cardBorder
+                            Behavior on border.color {
+                                ColorAnimation { duration: Components.Theme.animationQuick }
+                            }
+                        }
                         placeholderText: I18n.tr("settings.internet.dns.placeholder.servers",
                             "Enter IP addresses separated by commas, spaces, or new lines")
                         wrapMode: TextEdit.Wrap
@@ -878,77 +1150,13 @@ FocusScope {
             }
         }
 
-        Form.SectionHeader {
-            text: I18n.tr("settings.internet.section.wifi", "WI-FI")
-            Layout.bottomMargin: 12
-        }
-
+        // Optional wireless discovery, hidden entirely for Ethernet-only machines.
         Form.FormCard {
-            Layout.bottomMargin: 24
-
-            Form.SettingRow {
-                label: I18n.tr("settings.internet.wifi.label", "Wi-Fi")
-                sublabel: root.network && root.network.wifiPending
-                    ? I18n.tr("settings.internet.wifi.pending", "Updating Wi-Fi power…")
-                    : I18n.tr("settings.internet.wifi.power_description",
-                              "Turn wireless networking on or off.")
-
-                Controls.ToggleSwitch {
-                    objectName: "wifiPowerToggle"
-                    checked: root.network ? root.network.wifiEnabled : false
-                    enabled: root.canSetWifi
-                    accessibleName: I18n.tr("settings.internet.wifi.label", "Wi-Fi")
-                    onToggled: targetChecked => {
-                        if (root.canSetWifi)
-                            root.network.setWifiEnabled(targetChecked)
-                    }
-                }
-            }
-
-            Text {
-                objectName: "wifiUnavailableMessage"
-                Layout.fillWidth: true
-                Layout.leftMargin: Components.Theme.spacingLarge
-                Layout.rightMargin: Components.Theme.spacingLarge
-                Layout.bottomMargin: Components.Theme.spacingMedium
-                visible: root.serviceReady && root.network && !root.network.wifiAvailable
-                text: I18n.tr("settings.internet.wifi.no_adapter", "No Wi-Fi adapter is available.")
-                color: Components.Theme.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall
-                wrapMode: Text.WordWrap
-            }
-
-            Text {
-                objectName: "wifiHardwareUnavailableMessage"
-                Layout.fillWidth: true
-                Layout.leftMargin: Components.Theme.spacingLarge
-                Layout.rightMargin: Components.Theme.spacingLarge
-                Layout.bottomMargin: Components.Theme.spacingMedium
-                visible: root.serviceReady && root.network && root.network.wifiAvailable
-                    && !root.network.wifiHardwareEnabled
-                text: I18n.tr("settings.internet.wifi.hardware_unavailable",
-                              "Wireless hardware is disabled or unavailable.")
-                color: Components.Theme.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall
-                wrapMode: Text.WordWrap
-            }
-
-            Text {
-                objectName: "wifiSoftwareDisabledMessage"
-                Layout.fillWidth: true
-                Layout.leftMargin: Components.Theme.spacingLarge
-                Layout.rightMargin: Components.Theme.spacingLarge
-                Layout.bottomMargin: Components.Theme.spacingMedium
-                visible: root.serviceReady && root.network && root.network.wifiAvailable
-                    && root.network.wifiHardwareEnabled && !root.network.wifiEnabled
-                text: I18n.tr("settings.internet.wifi.software_disabled", "Wi-Fi is turned off.")
-                color: Components.Theme.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall
-                wrapMode: Text.WordWrap
-            }
+            objectName: "internetWifiScanCard"
+            visible: !root.detailsOpen && root.serviceReady
+                && root.network && root.network.wifiAvailable
+                && root.network.wifiEnabled && root.network.wifiHardwareEnabled
+            Layout.bottomMargin: Components.Theme.spacingLarge
 
             Form.SettingRow {
                 label: I18n.tr("settings.internet.scan.label", "Nearby networks")
@@ -972,13 +1180,42 @@ FocusScope {
             }
         }
 
+        Text {
+            objectName: "wifiSoftwareDisabledMessage"
+            visible: !root.detailsOpen && root.serviceReady && root.network
+                && root.network.wifiAvailable && !root.network.wifiEnabled
+            text: I18n.tr("settings.internet.wifi.software_disabled", "Wi-Fi is turned off.")
+            color: Components.Theme.textSecondary
+            font.family: Components.Theme.fontFamily
+            font.pixelSize: Components.Theme.fontSizeSmall
+            Layout.bottomMargin: Components.Theme.spacingMedium
+        }
+
+        Text {
+            objectName: "wifiHardwareUnavailableMessage"
+            visible: !root.detailsOpen && root.serviceReady && root.network
+                && root.network.wifiAvailable && !root.network.wifiHardwareEnabled
+            text: I18n.tr("settings.internet.wifi.hardware_unavailable",
+                          "Wireless hardware is disabled or unavailable.")
+            color: Components.Theme.textSecondary
+            font.family: Components.Theme.fontFamily
+            font.pixelSize: Components.Theme.fontSizeSmall
+            Layout.bottomMargin: Components.Theme.spacingMedium
+        }
+
         Form.SectionHeader {
-            text: I18n.tr("settings.internet.section.available_networks", "AVAILABLE NETWORKS")
+            objectName: "availableNetworksSection"
+            visible: !root.detailsOpen && root.serviceReady && root.network && root.network.wifiAvailable
+                && root.network.wifiHardwareEnabled && root.network.wifiEnabled
+            text: I18n.tr("settings.internet.section.available_networks", "OTHER NETWORKS")
             Layout.bottomMargin: 12
         }
 
         Form.FormCard {
-            Layout.bottomMargin: 24
+            visible: !root.detailsOpen && root.serviceReady
+                && root.network && root.network.wifiAvailable
+                && root.network.wifiHardwareEnabled && root.network.wifiEnabled
+            Layout.bottomMargin: Components.Theme.spacingXLarge
 
             ColumnLayout {
                 width: parent.width

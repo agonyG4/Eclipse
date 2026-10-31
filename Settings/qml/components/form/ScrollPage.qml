@@ -15,6 +15,7 @@ ScrollView {
 
     // Configurable properties
     property real contentMargins: Components.Theme.pageMargin
+    property real topContentInset: Math.min(16, contentMargins)
     property real maxWidth:       800  // Maximum width for the content area
     property real scrollGap:      14
 
@@ -22,6 +23,9 @@ ScrollView {
     default property alias content: contentColumn.data
 
     contentWidth: availableWidth
+    // The trailing gutter belongs to scrollable contentHeight. Putting a footer
+    // Item in contentColumn.data places it before pages' aliased children.
+    contentHeight: contentColumn.implicitHeight + root.contentMargins + 12
     ScrollBar.vertical: ScrollBar {
         parent: root
         anchors {
@@ -51,11 +55,15 @@ ScrollView {
 
         spacing: 0
 
-        // Add top and bottom margins via padding/spacing
-        Item { Layout.preferredHeight: root.contentMargins }
+        // Top inset is independent of the horizontal content margins.
+        // A trailing spacer must not be placed before aliased page children.
+        Item {
+            Layout.preferredHeight: root.topContentInset
+            Layout.minimumHeight: root.topContentInset
+            Layout.maximumHeight: root.topContentInset
+        }
 
-        // Content items will be added here via contentData
-
-        Item { Layout.preferredHeight: root.contentMargins + 12 } // Extra bottom space
+        // Content items are appended by the page through the content alias.
+        // Do not declare a trailing Item here: it would precede page children.
     }
 }

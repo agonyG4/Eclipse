@@ -1,8 +1,11 @@
 #include "core/SettingsController.hpp"
+#include "icons/AstreaIconProvider.hpp"
 #include "services/i18n/SettingsTranslationController.hpp"
 #include "theme/ThemeController.hpp"
 #include <QDir>
 #include <QFile>
+#include <QFont>
+#include <QImage>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QQmlComponent>
@@ -64,6 +67,7 @@ class Page
                              for (const auto &item : items)
                                  warnings.append(item.toString());
                          });
+        engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
         engine.rootContext()->setContextProperty("SettingsController", &settings);
         engine.rootContext()->setContextProperty("ThemeController", &theme);
         engine.rootContext()->setContextProperty("I18n", &translations);
@@ -157,9 +161,14 @@ class SettingsDesktopQmlTest : public QObject
         QFETCH(int, width);
         QFETCH(int, themeMode);
         DesktopEnvironment env;
+        const auto iconPath = env.file("home/demo-app.png");
+        QImage demoIcon(16, 16, QImage::Format_ARGB32);
+        demoIcon.fill(Qt::cyan);
+        QVERIFY(demoIcon.save(iconPath));
         QVERIFY(env.write("data/applications/org.test.Demo.desktop",
-                          "[Desktop Entry]\nType=Application\nName=Test Demo\nComment=Real "
-                          "fixture\nExec=/bin/true\nCategories=Utility;\n"));
+                          QByteArray("[Desktop Entry]\nType=Application\nName=Test Demo\n"
+                                     "Comment=Real fixture\nExec=/bin/true\nIcon=")
+                              + iconPath.toUtf8() + "\nCategories=Utility;\n"));
         SettingsController settings;
         Page page(settings, "apps/Applications.qml", width);
         page.theme.setThemeMode(themeMode);
@@ -172,12 +181,54 @@ class SettingsDesktopQmlTest : public QObject
             if (entry.toMap()["id"].toString() == "org.test.Demo")
                 found = true;
         QVERIFY(found);
+        auto *catalog = page.find("installedApplicationsList");
+        QVERIFY(catalog);
+        QVERIFY(!page.item->property("categoryFilter").isValid());
+        QVERIFY(page.find("applicationsListScrollbar"));
+        auto *catalogTitle = page.find("applicationsCatalogTitle");
+        auto *searchField = page.find("applicationsSearchField");
+        auto *countLabel = page.find("applicationsCountLabel");
+        QVERIFY(catalogTitle);
+        QVERIFY(searchField);
+        QVERIFY(countLabel);
+        QVERIFY(catalogTitle->property("font").value<QFont>().pixelSize() >= 20);
+        QVERIFY(searchField->property("height").toReal() >= 44);
+        QVERIFY(searchField->property("width").toReal() > 250);
+        QCOMPARE(page.item->property("filteredApps").toList().size(), apps.size());
+        page.item->setProperty("searchText", "unmatched-application-name");
+        QCOMPARE(page.item->property("filteredApps").toList().size(), 0);
+        page.item->setProperty("searchText", "Test Demo");
+        QCOMPARE(page.item->property("filteredApps").toList().size(), 1);
+        page.item->setProperty("searchText", "");
         QVERIFY(page.capture(captureName + "-list"));
-        page.item->setProperty("selectedAppId", "org.test.Demo");
-        settings.applications()->select("org.test.Demo");
+        QQuickItem *appRow = nullptr;
+        QList<QQuickItem *> stack{qobject_cast<QQuickItem *>(catalog)};
+        while (!stack.isEmpty()) {
+            auto *item = stack.takeLast();
+            if (item->objectName() == QStringLiteral("applicationRow_org_test_Demo")) {
+                appRow = item;
+                break;
+            }
+            stack.append(item->childItems());
+        }
+        QVERIFY(appRow);
+        QVERIFY(appRow->height() >= 74);
+        QVERIFY(appRow->activeFocusOnTab());
+        const auto center = appRow->mapToScene(QPointF(appRow->width() / 2, appRow->height() / 2));
+        QTest::mouseClick(&page.window, Qt::LeftButton, Qt::NoModifier, center.toPoint());
+        QTRY_COMPARE(page.item->property("selectedAppId").toString(), QString("org.test.Demo"));
         QTRY_VERIFY_WITH_TIMEOUT(!settings.applications()->busy(), 5000);
         QCOMPARE(settings.applications()->state()["selected"].toMap()["name"].toString(),
                  QString("Test Demo"));
+        auto *detailIcon = page.find("applicationDetailIcon");
+        auto *detailTitle = page.find("applicationDetailTitle");
+        QVERIFY(detailIcon);
+        QVERIFY(detailTitle);
+        QVERIFY(page.find("applicationInformationCard"));
+        QVERIFY(detailIcon->property("iconSize").toInt() >= 72);
+        QVERIFY(detailTitle->property("font").value<QFont>().pixelSize() >= 20);
+        QCOMPARE(detailIcon->property("resolvedIconName").toString(), iconPath);
+        QTRY_VERIFY(detailIcon->property("hasIcon").toBool());
         QVERIFY(page.capture(captureName + "-details"));
         auto *remove = page.find("uninstallApplicationButton");
         QVERIFY(remove);
@@ -208,6 +259,31 @@ class SettingsDesktopQmlTest : public QObject
         QVERIFY(page.item->property("selectedAppId").toString().isEmpty());
         QVERIFY2(page.warnings.isEmpty(), qPrintable(page.warnings.join('\n')));
     }
+    void applicationsUseNativeListScrollbarForLargeCatalog()
+    {
+        DesktopEnvironment env;
+        for (int index = 0; index < 48; ++index) {
+            const auto id = QString("org.test.Scroll%1").arg(index, 2, 10, QLatin1Char('0'));
+            const QByteArray contents =
+                "[Desktop Entry]\nType=Application\nName=Scroll demo "
+                + QByteArray::number(index) + "\nExec=/bin/true\n";
+            QVERIFY(env.write("data/applications/" + id + ".desktop", contents));
+        }
+        SettingsController settings;
+        Page page(settings, "apps/Applications.qml", 528);
+        QVERIFY2(page.item, qPrintable(page.component->errorString()));
+        QTRY_VERIFY_WITH_TIMEOUT(!settings.applications()->busy(), 5000);
+        auto *list = page.find("installedApplicationsList");
+        QVERIFY(list);
+        QVERIFY(page.find("applicationsListScrollbar"));
+        QVERIFY(page.item->property("filteredApps").toList().size() >= 48);
+        QTRY_VERIFY(list->property("contentHeight").toReal() > list->property("height").toReal());
+        QVERIFY(list->property("height").toReal() > 100);
+        QVERIFY(list->setProperty("contentY", 140.0));
+        QTRY_VERIFY(list->property("contentY").toReal() > 100);
+        QVERIFY2(page.warnings.isEmpty(), qPrintable(page.warnings.join('\n')));
+    }
+
     void profileLoadsCurrentAccountWithoutMutation()
     {
         DesktopEnvironment env;

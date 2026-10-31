@@ -1,5 +1,4 @@
 import QtQuick
-import Qt5Compat.GraphicalEffects as Legacy
 import QtQuick.Layouts
 import QtQuick.Controls
 import "../../components" as Components
@@ -38,14 +37,21 @@ Item {
             || String(theme.id || "").toLowerCase().includes(query)
             || String(theme.comment || "").toLowerCase().includes(query))
     }
+    readonly property var systemDefaultCard: ({
+        id: "",
+        name: I18n.tr("apps.settings.pages.icons.system_default", "System Default"),
+        comment: I18n.tr("apps.settings.pages.icons.system_default_comment", "Use the active desktop icon theme"),
+        source: "system",
+        previewUrls: ["image://astrea-icon/folder?revision=" + root.iconThemeRevision]
+    })
+    readonly property var currentTheme: {
+        const selected = String(root.controller.selectedIconTheme || "")
+        if (selected === "")
+            return root.systemDefaultCard
+        return root.controller.iconThemes.find(theme => theme.id === selected) || root.systemDefaultCard
+    }
     readonly property var cards: {
-        const values = [{
-            id: "",
-            name: I18n.tr("apps.settings.pages.icons.system_default", "System Default"),
-            comment: I18n.tr("apps.settings.pages.icons.system_default_comment", "Use the active desktop icon theme"),
-            source: "system",
-            previewUrls: ["image://astrea-icon/folder?revision=" + root.iconThemeRevision]
-        }]
+        const values = [root.systemDefaultCard]
         for (let index = 0; index < root.filteredIconThemes.length; ++index)
             values.push(root.filteredIconThemes[index])
         return values
@@ -66,8 +72,10 @@ Item {
             === String(root.controller.selectedIconTheme || "")
         readonly property bool hovered: cardMouse.containsMouse
 
+        readonly property bool hasPreview: (card.descriptor.previewUrls || []).some(url => url !== "")
+
         activeFocusOnTab: true
-        implicitHeight: 198
+        implicitHeight: 128
         Layout.fillWidth: true
         Layout.minimumWidth: 0
 
@@ -123,16 +131,18 @@ Item {
             spacing: 8
 
             Row {
+                visible: card.hasPreview
                 Layout.alignment: Qt.AlignHCenter
-                spacing: 8
+                Layout.topMargin: 6
+                spacing: 10
                 Repeater {
                     model: card.descriptor.previewUrls || []
                     delegate: Image {
                         required property var modelData
-                        width: 28
-                        height: 28
+                        width: 32
+                        height: 32
                         source: modelData || ""
-                        sourceSize: Qt.size(56, 56)
+                        sourceSize: Qt.size(64, 64)
                         fillMode: Image.PreserveAspectFit
                         smooth: true
                         mipmap: true
@@ -142,6 +152,16 @@ Item {
                 }
             }
 
+            Text {
+                visible: !card.hasPreview
+                Layout.alignment: Qt.AlignHCenter
+                Layout.topMargin: 12
+                text: I18n.tr("apps.settings.pages.icons.no_preview", "No preview available")
+                color: Components.Theme.textTertiary
+                font.family: Components.Theme.fontFamily
+                font.pixelSize: Components.Theme.fontSizeSmall
+            }
+
             Item { Layout.fillHeight: true }
 
             Text {
@@ -149,7 +169,7 @@ Item {
                 text: card.descriptor.name || card.descriptor.id
                 color: Components.Theme.textPrimary
                 font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeLarge
+                font.pixelSize: Components.Theme.fontSizeNormal
                 font.weight: card.selected
                     ? Components.Theme.fontWeightDemiBold : Components.Theme.fontWeightMedium
                 horizontalAlignment: Text.AlignHCenter
@@ -205,14 +225,145 @@ Item {
         contentMargins: 32
         maxWidth: 900
 
-        Text {
-            text: I18n.tr("apps.settings.pages.icons.title", "Icons")
-            color: Components.Theme.textPrimary
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeHeader
-            font.weight: Components.Theme.fontWeightDemiBold
+        Form.PageHeader {
+            title: I18n.tr("apps.settings.pages.icons.title", "Icons")
+            subtitle: I18n.tr("apps.settings.pages.icons.subtitle", "Icons for Settings and for your apps.")
+        }
+
+        Form.SectionHeader {
+            text: I18n.tr("apps.settings.pages.icons.icon_theme", "ICON THEME")
+            Layout.bottomMargin: 12
+        }
+
+        Form.FormCard {
+            objectName: "currentIconThemeCard"
+            Layout.bottomMargin: 16
+
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.margins: Components.Theme.spacingXLarge
+                Layout.topMargin: 18
+                Layout.bottomMargin: 18
+                spacing: Components.Theme.spacingXLarge
+
+                Row {
+                    spacing: 12
+                    Repeater {
+                        model: (root.currentTheme.previewUrls || []).filter(url => url !== "")
+                        delegate: Image {
+                            required property var modelData
+                            width: 44
+                            height: 44
+                            source: modelData
+                            sourceSize: Qt.size(88, 88)
+                            fillMode: Image.PreserveAspectFit
+                            smooth: true
+                            mipmap: true
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    spacing: 4
+                    Text {
+                        objectName: "currentIconThemeName"
+                        Layout.fillWidth: true
+                        text: root.currentTheme.name || root.currentTheme.id
+                        color: Components.Theme.textPrimary
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeLarge
+                        font.weight: Components.Theme.fontWeightDemiBold
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: root.currentTheme.comment || ""
+                        visible: text !== ""
+                        color: Components.Theme.textSecondary
+                        font.family: Components.Theme.fontFamily
+                        font.pixelSize: Components.Theme.fontSizeSmall
+                        elide: Text.ElideRight
+                    }
+                }
+
+                Text {
+                    text: I18n.tr("apps.settings.pages.icons.in_use", "In use")
+                    color: Components.Theme.accent
+                    font.family: Components.Theme.fontFamily
+                    font.pixelSize: Components.Theme.fontSizeSmall
+                    font.weight: Components.Theme.fontWeightMedium
+                }
+            }
+        }
+
+        Controls.SearchField {
             Layout.fillWidth: true
-            Layout.bottomMargin: 18
+            Layout.bottomMargin: 16
+            placeholderText: I18n.tr("apps.settings.pages.icons.search", "Search installed icon themes")
+            onTextEdited: text => root.searchQuery = text
+        }
+
+        Text {
+            visible: root.catalogLoading
+            text: I18n.tr("apps.settings.pages.icons.loading", "Loading installed themes…")
+            color: Components.Theme.textSecondary
+            font.family: Components.Theme.fontFamily
+            font.pixelSize: Components.Theme.fontSizeNormal
+            Layout.fillWidth: true
+            Layout.bottomMargin: 12
+        }
+
+        Text {
+            visible: !root.catalogLoading && root.controller.lastError !== ""
+            text: root.controller.lastError
+            color: Components.Theme.errorColor
+            font.family: Components.Theme.fontFamily
+            font.pixelSize: Components.Theme.fontSizeNormal
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
+            Layout.bottomMargin: 12
+        }
+
+        Text {
+            objectName: "icons-empty-installed-catalog"
+            visible: !root.catalogLoading && root.controller.lastError === ""
+                && root.controller.iconThemes.length === 0 && root.searchQuery.trim() === ""
+            text: I18n.tr("apps.settings.pages.icons.empty_catalog", "No icon themes are installed.")
+            color: Components.Theme.textSecondary
+            font.family: Components.Theme.fontFamily
+            font.pixelSize: Components.Theme.fontSizeNormal
+            Layout.fillWidth: true
+            Layout.bottomMargin: 12
+        }
+
+        Text {
+            objectName: "icons-empty-search-results"
+            visible: !root.catalogLoading && root.controller.lastError === ""
+                && root.filteredIconThemes.length === 0 && root.searchQuery.trim() !== ""
+            text: I18n.tr("apps.settings.pages.icons.empty_search", "No installed themes match your search.")
+            color: Components.Theme.textSecondary
+            font.family: Components.Theme.fontFamily
+            font.pixelSize: Components.Theme.fontSizeNormal
+            Layout.fillWidth: true
+            Layout.bottomMargin: 12
+        }
+
+        GridLayout {
+            Layout.fillWidth: true
+            Layout.bottomMargin: Components.Theme.spacingXLarge
+            columns: width >= 780 ? 3 : width >= 500 ? 2 : 1
+            columnSpacing: 12
+            rowSpacing: 12
+
+            Repeater {
+                model: root.cards
+                delegate: ThemeCard {
+                    required property var modelData
+                    descriptor: modelData
+                }
+            }
         }
 
         Form.SectionHeader {
@@ -274,20 +425,13 @@ Item {
                             Layout.preferredWidth: 42
                             Layout.preferredHeight: 42
 
-                            Image {
+                            Controls.ThemedIcon {
                                 anchors.centerIn: parent
                                 width: 34
                                 height: 34
-                                visible: true
-                                source: SettingsController.iconUrlForWeight("system",
-                                    navigationThemeOption.modelData.id,
-                                    SettingsController.navigationIconWeight)
-                                sourceSize: Qt.size(width, height)
-                                fillMode: Image.PreserveAspectFit
-                                layer.enabled: visible
-                                layer.effect: Legacy.ColorOverlay {
-                                    color: Components.Theme.textPrimary
-                                }
+                                iconKey: "system"
+                                iconTheme: navigationThemeOption.modelData.id
+                                tint: Components.Theme.textPrimary
                             }
                         }
 
@@ -335,21 +479,13 @@ Item {
 
             visible: SettingsController.navigationIconTheme === "lucide"
 
-            Image {
+            Controls.ThemedIcon {
                 id: appleWeightPreview
                 objectName: "appleIconWeightPreview"
                 Layout.preferredWidth: 32
                 Layout.preferredHeight: 32
-                source: SettingsController.iconUrlForWeight("appearance",
-                    SettingsController.navigationIconTheme,
-                    SettingsController.navigationIconWeight)
-                sourceSize: Qt.size(32, 32)
-                fillMode: Image.PreserveAspectFit
-                mipmap: false
-                layer.enabled: visible
-                layer.effect: Legacy.ColorOverlay {
-                    color: Components.Theme.textPrimary
-                }
+                iconKey: "appearance"
+                tint: Components.Theme.textPrimary
             }
 
             Controls.SelectButton {
@@ -377,77 +513,6 @@ Item {
             }
         }
 
-        Form.SectionHeader {
-            text: I18n.tr("apps.settings.pages.icons.icon_theme", "ICON THEME")
-            Layout.bottomMargin: 12
-        }
-
-        Controls.SearchField {
-            Layout.fillWidth: true
-            Layout.bottomMargin: 16
-            placeholderText: I18n.tr("apps.settings.pages.icons.search", "Search installed icon themes")
-            onTextEdited: text => root.searchQuery = text
-        }
-
-        Text {
-            visible: root.catalogLoading
-            text: I18n.tr("apps.settings.pages.icons.loading", "Loading installed themes…")
-            color: Components.Theme.textSecondary
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeNormal
-            Layout.fillWidth: true
-            Layout.bottomMargin: 12
-        }
-
-        Text {
-            visible: !root.catalogLoading && root.controller.lastError !== ""
-            text: root.controller.lastError
-            color: Components.Theme.errorColor
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeNormal
-            wrapMode: Text.WordWrap
-            Layout.fillWidth: true
-            Layout.bottomMargin: 12
-        }
-
-        Text {
-            objectName: "icons-empty-installed-catalog"
-            visible: !root.catalogLoading && root.controller.lastError === ""
-                && root.controller.iconThemes.length === 0 && root.searchQuery.trim() === ""
-            text: I18n.tr("apps.settings.pages.icons.empty_catalog", "No icon themes are installed.")
-            color: Components.Theme.textSecondary
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeNormal
-            Layout.fillWidth: true
-            Layout.bottomMargin: 12
-        }
-
-        Text {
-            objectName: "icons-empty-search-results"
-            visible: !root.catalogLoading && root.controller.lastError === ""
-                && root.filteredIconThemes.length === 0 && root.searchQuery.trim() !== ""
-            text: I18n.tr("apps.settings.pages.icons.empty_search", "No installed themes match your search.")
-            color: Components.Theme.textSecondary
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeNormal
-            Layout.fillWidth: true
-            Layout.bottomMargin: 12
-        }
-
-        GridLayout {
-            Layout.fillWidth: true
-            columns: width >= 660 ? 2 : 1
-            columnSpacing: 12
-            rowSpacing: 12
-
-            Repeater {
-                model: root.cards
-                delegate: ThemeCard {
-                    required property var modelData
-                    descriptor: modelData
-                }
-            }
-        }
     }
 
     Component.onCompleted: root.controller.refresh()

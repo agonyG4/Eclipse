@@ -24,7 +24,6 @@ dependencies = [
  "shlex",
 ]
 
-
 [[package]]
 name = "astrea_settings_backend"
 version = "0.1.0"

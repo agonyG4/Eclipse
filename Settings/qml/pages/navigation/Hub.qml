@@ -1,8 +1,8 @@
 import QtQuick
-import Qt5Compat.GraphicalEffects as Legacy
 import QtQuick.Layouts
 import "../../components" as Components
 import "../../components/form" as Form
+import "../../components/controls" as Controls
 import "../../components/navigation" as Navigation
 
 Item {
@@ -50,7 +50,7 @@ Item {
     Form.ScrollPage {
         anchors.fill: parent
         contentMargins: 32
-        maxWidth: 760
+        maxWidth: 900
 
         Form.FormCard {
             Layout.fillWidth: true
@@ -75,19 +75,12 @@ Item {
                         border.width: 1
                         border.color: Components.Theme.cardBorder
 
-                        Image {
+                        Controls.ThemedIcon {
                             anchors.fill: parent
                             anchors.margins: 16
-                            source: root.heroIconSource
-                            sourceSize: Qt.size(width, height)
-                            fillMode: Image.PreserveAspectFit
-                            smooth: true
-                            mipmap: false
-                            visible: source !== ""
-                            layer.enabled: visible
-                            layer.effect: Legacy.ColorOverlay {
-                                color: Components.Theme.textPrimary
-                            }
+                            iconSource: root.heroIconSource
+                            tint: Components.Theme.textPrimary
+                            visible: root.heroIconSource !== ""
                         }
 
                         Text {

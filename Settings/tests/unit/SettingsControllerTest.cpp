@@ -7,6 +7,8 @@
 #include "system/network/NetworkBackend.hpp"
 #include "system/network/NetworkService.hpp"
 
+#include <QFile>
+#include <QTemporaryDir>
 #include <QSignalSpy>
 #include <QtTest>
 
@@ -97,6 +99,7 @@ private slots:
     void preservesInjectedNetworkServiceWithoutStartingIt();
     void exposesRustBackedVisualEffectsController();
     void ownsRustBackedDisplayController();
+    void tintsMonochromeSvgWithoutOffscreenOverlay();
 };
 
 void SettingsControllerTest::startsWithPreferredCompositorDestination()
@@ -447,6 +450,55 @@ void SettingsControllerTest::ownsRustBackedDisplayController()
     QCOMPARE(controller.display()->property("available").toBool(), false);
     QCOMPARE(controller.display()->property("busy").toBool(), false);
     QCOMPARE(controller.display()->property("outputs").toList().size(), 0);
+}
+
+void SettingsControllerTest::tintsMonochromeSvgWithoutOffscreenOverlay()
+{
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    const QString fileName = temporary.filePath(QStringLiteral("test-symbol.svg"));
+    QFile file(fileName);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    const QByteArray original =
+        "<svg xmlns='http://www.w3.org/2000/svg' width='1em' height='1em' "
+        "viewBox=\"0 0 24 24\">"
+        "<path fill='black' d='M2 2h20v20H2z'/>"
+        "<path stroke=\"#000000\" d='M4 4h16'/>"
+        "<path fill='none' d='M7 7h10'/>"
+        "</svg>";
+    QCOMPARE(file.write(original), original.size());
+    file.close();
+
+    SettingsController controller;
+    const QUrl source = QUrl::fromLocalFile(fileName);
+    const QUrl tinted = controller.tintedSymbolSource(source, QStringLiteral("#42aaff"));
+    QVERIFY(tinted.toString().startsWith(QStringLiteral("data:image/svg+xml;base64,")));
+    const QByteArray svg = QByteArray::fromBase64(
+        tinted.toString().section(QLatin1Char(','), 1).toLatin1());
+    QVERIFY(svg.contains("fill='#42aaff'"));
+    QVERIFY(svg.contains("stroke=\"#42aaff\""));
+    QVERIFY(svg.contains("fill='none'"));
+    QVERIFY(!svg.contains("fill='black'"));
+    QVERIFY(svg.contains("viewBox=\""));
+    QVERIFY(svg.contains("width='") && !svg.contains("width='1em'"));
+    QVERIFY(svg.contains("height='") && !svg.contains("height='1em'"));
+    QCOMPARE(controller.tintedSymbolSource(source, QStringLiteral("#42aaff")), tinted);
+    QVERIFY(controller.tintedSymbolSource(source, QStringLiteral("#ff0000")) != tinted);
+    QVERIFY(controller.tintedSymbolSource(source, QStringLiteral("not-a-color")).isEmpty());
+
+    // The original Apple/custom SVG remains byte-for-byte untouched.
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QCOMPARE(file.readAll(), original);
+    file.close();
+
+    // Multicolor/raster overrides remain on the original image path.
+    const QString otherName = temporary.filePath(QStringLiteral("override.png"));
+    QFile raster(otherName);
+    QVERIFY(raster.open(QIODevice::WriteOnly));
+    QVERIFY(raster.write("raw-raster") > 0);
+    raster.close();
+    const QUrl rasterUrl = QUrl::fromLocalFile(otherName);
+    QCOMPARE(controller.tintedSymbolSource(rasterUrl, QStringLiteral("#ffffff")), rasterUrl);
 }
 
 QTEST_MAIN(SettingsControllerTest)

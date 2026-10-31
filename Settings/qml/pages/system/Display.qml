@@ -82,12 +82,6 @@ FocusScope {
 
     function isQuarterTurn(output) { return DisplayLogic.isQuarterTurn(output) }
 
-    function outputWidth(output) { return DisplayLogic.outputWidth(output) }
-
-    function outputHeight(output) { return DisplayLogic.outputHeight(output) }
-
-    function boundsForOutputs() { return DisplayLogic.boundsForOutputs(root.outputs) }
-
     function reconcileSelection() {
         for (let index = 0; index < root.outputs.length; ++index) {
             if (String(root.outputs[index].id) === root.selectedOutputId)
@@ -299,12 +293,8 @@ FocusScope {
         implicitHeight: 252
         height: 252
 
-        readonly property var bounds: root.boundsForOutputs()
-        readonly property var referenceBounds: DisplayLogic.boundsForOutputs(root.outputs, true)
-        readonly property real previewScale: Math.max(0.001, Math.min(
-            Math.max(1, width - 40) / Math.max(1, referenceBounds.width),
-            Math.max(1, height - 64) / Math.max(1, referenceBounds.height)
-        ))
+        readonly property var layout:
+            DisplayLogic.previewLayout(root.outputs, width, height, 28, 20)
         property bool previewReady: false
 
         Component.onCompleted: preview.previewReady = true
@@ -323,12 +313,11 @@ FocusScope {
                 readonly property bool laptop: DisplayLogic.isBuiltIn(modelData)
                 readonly property bool hasCurrentMode:
                     Boolean(modelData.hasCurrentMode)
-                readonly property real screenWidth:
-                    DisplayLogic.outputWidth(modelData) * preview.previewScale
-                readonly property real screenHeight:
-                    DisplayLogic.outputHeight(modelData) * preview.previewScale
-                readonly property real bezel: laptop ? 12 : 10
-                readonly property real chassisHeight: laptop ? 16 : 38
+                readonly property var slot: preview.layout[index]
+                    || { x: 0, y: 0, screenWidth: 0, screenHeight: 0, bezel: 10, below: 26 }
+                readonly property real screenWidth: slot.screenWidth
+                readonly property real screenHeight: slot.screenHeight
+                readonly property real bezel: slot.bezel
                 // Concentric corners: every inner radius is the outer radius
                 // minus the distance between the two edges.
                 readonly property real cornerRadius: laptop ? 14 : 16
@@ -341,14 +330,9 @@ FocusScope {
                                     Components.Theme.textPrimary.b, 0.22))
 
                 width: screenWidth + bezel * 2
-                height: screenHeight + bezel * 2 + chassisHeight
-                x: (preview.width - preview.bounds.width * preview.previewScale) / 2
-                    + ((Number(modelData.x) - preview.bounds.minX)
-                       * preview.previewScale) - bezel
-                y: (preview.height - preview.bounds.height * preview.previewScale
-                    - chassisHeight) / 2
-                    + ((Number(modelData.y) - preview.bounds.minY)
-                       * preview.previewScale) - bezel
+                height: bezel + screenHeight + slot.below
+                x: slot.x
+                y: slot.y
 
                 Behavior on x {
                     enabled: preview.previewReady

@@ -443,6 +443,10 @@ private slots:
   void showsEmptyOutputState();
   void showsLoadingStateUntilRefreshSettles();
   void builtInDisplaysUseLaptopChassis();
+  void physicalSizeOutranksPixelCount();
+  void sameAspectModeKeepsPhysicalSize();
+  void mixedScaleDisplaysDoNotOverlap();
+  void missingPhysicalSizeFallsBackToPixels();
 };
 
 void SettingsDisplayQmlTest::projectsAuthoritativeReadOnlyOutputSnapshot() {
@@ -1161,6 +1165,97 @@ void SettingsDisplayQmlTest::builtInDisplaysUseLaptopChassis() {
   QVERIFY(!externalStand->property("visible").toBool());
   captureVisual(qobject_cast<QQuickItem *>(preview),
                 QStringLiteral("display-laptop.png"));
+}
+
+void SettingsDisplayQmlTest::physicalSizeOutranksPixelCount() {
+  DisplayPageFixture fixture;
+  QVariantMap large = displayOutput();
+  QVariantMap small = displayOutput(QStringLiteral("DP-2"),
+                                    QStringLiteral("Portable Panel"));
+  small.insert(QStringLiteral("id"), QStringLiteral("output-2"));
+  small.insert(QStringLiteral("x"), 1920);
+  small.insert(QStringLiteral("currentWidth"), 3840);
+  small.insert(QStringLiteral("currentHeight"), 2160);
+  small.insert(QStringLiteral("physicalWidthMm"), 300);
+  small.insert(QStringLiteral("physicalHeightMm"), 170);
+  fixture.display()->setOutputs({large, small});
+  QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.errors()));
+
+  QObject *largeMonitor =
+      fixture.object(QStringLiteral("displayPreviewMonitor_output-1"));
+  QObject *smallMonitor =
+      fixture.object(QStringLiteral("displayPreviewMonitor_output-2"));
+  QVERIFY(largeMonitor != nullptr);
+  QVERIFY(smallMonitor != nullptr);
+  const qreal largeWidth = largeMonitor->property("screenWidth").toReal();
+  const qreal smallWidth = smallMonitor->property("screenWidth").toReal();
+  QVERIFY(smallWidth > 0.0);
+  QVERIFY(qAbs(largeWidth / smallWidth - 2.0) < 0.05);
+  captureVisual(qobject_cast<QQuickItem *>(largeMonitor),
+                QStringLiteral("display-physical-sizes.png"));
+}
+
+void SettingsDisplayQmlTest::sameAspectModeKeepsPhysicalSize() {
+  DisplayPageFixture fixture;
+  QVariantMap output = displayOutput();
+  output.insert(QStringLiteral("modeSelectionSupported"), true);
+  fixture.display()->setOutput(output);
+  QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.errors()));
+  QObject *monitor =
+      fixture.object(QStringLiteral("displayPreviewMonitor_output-1"));
+  QVERIFY(monitor != nullptr);
+  const qreal width = monitor->property("screenWidth").toReal();
+  const qreal height = monitor->property("screenHeight").toReal();
+
+  clickItem(qobject_cast<QQuickItem *>(
+      fixture.object(QStringLiteral("displayResolutionRow_1600x900"))));
+  QTRY_VERIFY(fixture.display()
+                  ->outputs()
+                  .first()
+                  .toMap()
+                  .value(QStringLiteral("draftPresent"))
+                  .toBool());
+  QCOMPARE(monitor->property("screenWidth").toReal(), width);
+  QCOMPARE(monitor->property("screenHeight").toReal(), height);
+}
+
+void SettingsDisplayQmlTest::mixedScaleDisplaysDoNotOverlap() {
+  DisplayPageFixture fixture;
+  QVariantMap hidpi = displayOutput();
+  hidpi.insert(QStringLiteral("scaleMilli"), 2000);
+  QVariantMap neighbour = displayOutput(QStringLiteral("HDMI-1"),
+                                        QStringLiteral("Side Monitor"));
+  neighbour.insert(QStringLiteral("id"), QStringLiteral("output-2"));
+  // Logical position: the 1920 px panel is 960 logical px wide at 200%.
+  neighbour.insert(QStringLiteral("x"), 960);
+  fixture.display()->setOutputs({hidpi, neighbour});
+  QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.errors()));
+
+  auto *left = qobject_cast<QQuickItem *>(
+      fixture.object(QStringLiteral("displayPreviewMonitor_output-1")));
+  auto *right = qobject_cast<QQuickItem *>(
+      fixture.object(QStringLiteral("displayPreviewMonitor_output-2")));
+  QVERIFY(left != nullptr);
+  QVERIFY(right != nullptr);
+  QTRY_VERIFY(right->x() >= left->x() + left->width());
+  QCOMPARE(left->y() + left->height(), right->y() + right->height());
+}
+
+void SettingsDisplayQmlTest::missingPhysicalSizeFallsBackToPixels() {
+  DisplayPageFixture fixture;
+  QVariantMap output = displayOutput();
+  output.insert(QStringLiteral("hasPhysicalSize"), false);
+  output.insert(QStringLiteral("physicalWidthMm"), 0);
+  output.insert(QStringLiteral("physicalHeightMm"), 0);
+  fixture.display()->setOutput(output);
+  QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.errors()));
+  QObject *monitor =
+      fixture.object(QStringLiteral("displayPreviewMonitor_output-1"));
+  QVERIFY(monitor != nullptr);
+  const qreal width = monitor->property("screenWidth").toReal();
+  const qreal height = monitor->property("screenHeight").toReal();
+  QVERIFY(width > 0.0);
+  QVERIFY(qAbs(width / height - 16.0 / 9.0) < 0.01);
 }
 
 void SettingsDisplayQmlTest::showsPreferredModeSemantics() {

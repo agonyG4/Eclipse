@@ -75,9 +75,91 @@ function previewSize(output, reference) {
     return isQuarterTurn(output) ? { width: height, height: width } : { width, height }
 }
 
-function outputWidth(output) { return previewSize(output, false).width }
+const MM_PER_PIXEL_AT_96_DPI = 25.4 / 96
 
-function outputHeight(output) { return previewSize(output, false).height }
+// Device chrome around the glass: bezel width and how far the stand or deck
+// reaches below the panel.
+function previewChrome(output) {
+    return isBuiltIn(output) ? { bezel: 12, foot: 11 } : { bezel: 10, foot: 26 }
+}
+
+// Physical diagonal in millimetres. Displays that report no size fall back to
+// their largest native mode at 96 DPI.
+function previewDiagonalMm(output) {
+    const width = Number(output && output.physicalWidthMm)
+    const height = Number(output && output.physicalHeightMm)
+    if (output && Boolean(output.hasPhysicalSize) && width > 0 && height > 0)
+        return Math.hypot(width, height)
+    const native = previewSize(output, true)
+    return Math.hypot(native.width, native.height) * MM_PER_PIXEL_AT_96_DPI
+}
+
+function sizeForDiagonal(diagonal, aspect) {
+    const length = Math.hypot(aspect.width, aspect.height)
+    return { width: diagonal * aspect.width / length, height: diagonal * aspect.height / length }
+}
+
+// Lays displays out as a row of devices, the way macOS shows them: physical
+// diagonal sets the size, the selected mode and rotation set the shape, and
+// desktop position only sets the order. All devices share one scale and stand
+// on a common baseline. Each slot is sized for both the selected and the
+// native shape so picking a mode does not shuffle the row.
+function previewLayout(outputs, width, height, gap, padding) {
+    const list = outputs || []
+    if (list.length === 0)
+        return []
+    const entries = list.map(output => {
+        const diagonal = previewDiagonalMm(output)
+        const selected = sizeForDiagonal(diagonal, previewSize(output, false))
+        const native = sizeForDiagonal(diagonal, previewSize(output, true))
+        const chrome = previewChrome(output)
+        return {
+            selected,
+            bezel: chrome.bezel,
+            below: Math.max(chrome.bezel, chrome.foot),
+            boxWidth: Math.max(selected.width, native.width),
+            boxHeight: Math.max(selected.height, native.height)
+        }
+    })
+    let chromeWidth = gap * (list.length - 1)
+    let boxWidth = 0
+    for (const entry of entries) {
+        chromeWidth += entry.bezel * 2
+        boxWidth += entry.boxWidth
+    }
+    let scale = (width - padding * 2 - chromeWidth) / Math.max(1, boxWidth)
+    for (const entry of entries)
+        scale = Math.min(scale, (height - padding * 2 - entry.bezel - entry.below)
+            / Math.max(1, entry.boxHeight))
+    scale = Math.max(0.001, scale)
+
+    let rowHeight = 0
+    for (const entry of entries)
+        rowHeight = Math.max(rowHeight, entry.bezel + entry.boxHeight * scale + entry.below)
+    const baseline = (height + rowHeight) / 2
+    const order = list.map((output, index) => index).sort((a, b) => {
+        const dx = (Number(list[a].x) || 0) - (Number(list[b].x) || 0)
+        return dx !== 0 ? dx : (Number(list[a].y) || 0) - (Number(list[b].y) || 0)
+    })
+    const result = new Array(list.length)
+    let cursor = (width - chromeWidth - boxWidth * scale) / 2
+    for (const index of order) {
+        const entry = entries[index]
+        const slotWidth = entry.boxWidth * scale + entry.bezel * 2
+        const screenWidth = entry.selected.width * scale
+        const screenHeight = entry.selected.height * scale
+        result[index] = {
+            x: cursor + (slotWidth - screenWidth - entry.bezel * 2) / 2,
+            y: baseline - entry.below - screenHeight - entry.bezel,
+            screenWidth,
+            screenHeight,
+            bezel: entry.bezel,
+            below: entry.below
+        }
+        cursor += slotWidth + gap
+    }
+    return result
+}
 
 function resolutionKey(group) {
     return String(group.width) + "x" + String(group.height)
@@ -351,25 +433,6 @@ function defaultResolutionSubset(groups) {
         right.width * right.height - left.width * left.height
             || right.width - left.width || right.height - left.height)
     return selected
-}
-
-function boundsForOutputs(outputs, reference) {
-    if (!outputs || outputs.length === 0)
-        return { minX: 0, minY: 0, width: 1920, height: 1080 }
-    let minX = Number(outputs[0].x) || 0
-    let minY = Number(outputs[0].y) || 0
-    let maxX = minX + previewSize(outputs[0], reference).width
-    let maxY = minY + previewSize(outputs[0], reference).height
-    for (let index = 1; index < outputs.length; ++index) {
-        const output = outputs[index]
-        const x = Number(output.x) || 0
-        const y = Number(output.y) || 0
-        minX = Math.min(minX, x)
-        minY = Math.min(minY, y)
-        maxX = Math.max(maxX, x + previewSize(output, reference).width)
-        maxY = Math.max(maxY, y + previewSize(output, reference).height)
-    }
-    return { minX, minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) }
 }
 
 // SVG path for a rectangle with continuous (squircle) corners, the curve Apple

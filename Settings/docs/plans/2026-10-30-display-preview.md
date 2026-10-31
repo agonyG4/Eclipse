@@ -6,8 +6,10 @@ Keep the existing Settings layout and wallpaper preview. Preserve monitor and im
 items across draft/snapshot updates to prevent flashing. Use the selected draft
 mode and transform for preview geometry; changing a selection must never apply a
 hardware mode. Fit the complete monitor, bezel and stand inside the available area.
-Use preferred/current resolution as the reference so smaller resolutions visibly
-shrink instead of being normalized to the same width. Refine the bezel, stand and
+Size each device by its physical diagonal (falling back to its native mode at
+96 DPI when the connector reports no size); the selected mode and rotation only
+set its shape. Lay devices out as a row ordered by desktop position on a shared
+baseline, so mixed scale factors cannot make previews overlap. Refine the bezel, stand and
 connector badge without changing the page's visual language.
 
 Typhon must advertise connector physical millimetres through wl_output geometry,

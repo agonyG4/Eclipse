@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Effects
 import QtQuick.Layouts
+import QtQuick.Shapes
 import QtQuick.Window
 import "DisplayLogic.js" as DisplayLogic
 import "../../components" as Components
@@ -260,6 +261,31 @@ FocusScope {
         }
     }
 
+    // Rectangle with continuous corners; strokes are drawn inside the bounds.
+    component ContinuousRect: Shape {
+        id: continuousRect
+        property real radius: 0
+        property color color: "transparent"
+        property color borderColor: "transparent"
+        property real borderWidth: 0
+
+        preferredRendererType: Shape.CurveRenderer
+
+        ShapePath {
+            fillColor: continuousRect.color
+            strokeColor: continuousRect.borderWidth > 0
+                ? continuousRect.borderColor : "transparent"
+            strokeWidth: continuousRect.borderWidth > 0 ? continuousRect.borderWidth : -1
+            joinStyle: ShapePath.RoundJoin
+
+            PathSvg {
+                path: DisplayLogic.continuousRectPath(
+                    continuousRect.width, continuousRect.height,
+                    continuousRect.radius, continuousRect.borderWidth / 2)
+            }
+        }
+    }
+
     component DisplaySelector: Controls.SelectButton {
         property int controlWidth: 130
         width: controlWidth
@@ -378,15 +404,14 @@ FocusScope {
                     color: Qt.rgba(0, 0, 0, 0.30)
                 }
 
-                Rectangle {
+                ContinuousRect {
                     objectName: "displaySelectionRing_" + String(modelData.id)
                     z: -2
                     anchors.fill: screenFrame
                     anchors.margins: -(monitorItem.ringGap + monitorItem.ringWidth)
                     radius: screenFrame.radius + monitorItem.ringGap + monitorItem.ringWidth
-                    color: "transparent"
-                    border.width: monitorItem.ringWidth
-                    border.color: Components.Theme.accent
+                    borderWidth: monitorItem.ringWidth
+                    borderColor: Components.Theme.accent
                     opacity: monitorItem.active ? 1 : 0
                     scale: monitorItem.active ? 1 : 0.985
                     Behavior on opacity {
@@ -410,7 +435,7 @@ FocusScope {
                     width: monitorItem.screenWidth
                     height: monitorItem.screenHeight
                     radius: monitorItem.cornerRadius
-                    color: "#0a0a0c"
+                    color: "transparent"
 
                     Behavior on width {
                         enabled: preview.previewReady
@@ -421,13 +446,13 @@ FocusScope {
                         NumberAnimation { duration: Components.Theme.animationNormal }
                     }
 
-                    // Hairline rim around the glass.
-                    Rectangle {
+                    // Black glass body with a hairline rim.
+                    ContinuousRect {
                         anchors.fill: parent
                         radius: parent.radius
-                        color: "transparent"
-                        border.width: 1
-                        border.color: Qt.rgba(1, 1, 1, 0.16)
+                        color: "#0a0a0c"
+                        borderWidth: 1
+                        borderColor: Qt.rgba(1, 1, 1, 0.16)
                     }
 
                     Item {
@@ -435,10 +460,12 @@ FocusScope {
                         anchors.fill: screenSurface
                         visible: false
                         layer.enabled: true
+                        layer.samples: 4
 
-                        Rectangle {
+                        ContinuousRect {
                             anchors.fill: parent
                             radius: screenSurface.radius
+                            color: "white"
                         }
                     }
 
@@ -519,12 +546,11 @@ FocusScope {
                             }
                         }
 
-                        Rectangle {
+                        ContinuousRect {
                             anchors.fill: parent
                             radius: screenSurface.radius
-                            color: "transparent"
-                            border.width: 1
-                            border.color: Qt.rgba(0, 0, 0, 0.30)
+                            borderWidth: 1
+                            borderColor: Qt.rgba(0, 0, 0, 0.30)
                         }
 
                         Text {

@@ -371,3 +371,45 @@ function boundsForOutputs(outputs, reference) {
     }
     return { minX, minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) }
 }
+
+// SVG path for a rectangle with continuous (squircle) corners, the curve Apple
+// uses instead of circular arcs. `inset` shrinks the outline so strokes stay inside.
+function continuousRectPath(width, height, radius, inset) {
+    const i = Math.max(0, Number(inset) || 0)
+    const w = Number(width) - i * 2
+    const h = Number(height) - i * 2
+    if (!(w > 0) || !(h > 0))
+        return ""
+    const extent = 1.528665
+    const r = Math.max(0, Math.min(Number(radius) - i, Math.min(w, h) / 2 / extent))
+    // Corner outline in radius units: u runs back along the incoming edge,
+    // v along the outgoing edge.
+    const curve = [
+        ["C", 1.088493, 0, 0.868407, 0, 0.669934, 0.065496],
+        ["L", 0.631494, 0.074911],
+        ["C", 0.372824, 0.169059, 0.169060, 0.372824, 0.074911, 0.631494],
+        ["L", 0.065496, 0.669934],
+        ["C", 0, 0.868407, 0, 1.088493, 0, extent]
+    ]
+    const corners = [
+        { x: i + w, y: i, e1: [-1, 0], e2: [0, 1] },
+        { x: i + w, y: i + h, e1: [0, -1], e2: [-1, 0] },
+        { x: i, y: i + h, e1: [1, 0], e2: [0, -1] },
+        { x: i, y: i, e1: [0, 1], e2: [1, 0] }
+    ]
+    const fmt = function (n) { return Number(n).toFixed(3) }
+    const point = function (c, u, v) {
+        return fmt(c.x + (u * c.e1[0] + v * c.e2[0]) * r) + " "
+            + fmt(c.y + (u * c.e1[1] + v * c.e2[1]) * r)
+    }
+    let path = "M " + point(corners[3], 0, extent)
+    for (const c of corners) {
+        path += " L " + point(c, extent, 0)
+        for (const seg of curve) {
+            path += " " + seg[0]
+            for (let k = 1; k < seg.length; k += 2)
+                path += " " + point(c, seg[k], seg[k + 1])
+        }
+    }
+    return path + " Z"
+}

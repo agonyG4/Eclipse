@@ -337,6 +337,21 @@ void clickItem(QQuickItem *item) {
   QTest::mouseClick(item->window(), Qt::LeftButton, Qt::NoModifier, position);
 }
 
+namespace {
+
+void captureVisual(QQuickItem *item, const QString &name) {
+  const QString captureDirectory =
+      qEnvironmentVariable("ASTREA_SETTINGS_VISUAL_CAPTURE_DIR");
+  if (captureDirectory.isEmpty() || item == nullptr)
+    return;
+  QVERIFY(QDir().mkpath(captureDirectory));
+  QTest::qWait(350);
+  QVERIFY(item->window()->grabWindow().save(
+      QDir(captureDirectory).filePath(name)));
+}
+
+} // namespace
+
 class DisplayPageFixture final {
 public:
   DisplayPageFixture() {
@@ -1059,6 +1074,7 @@ void SettingsDisplayQmlTest::monitorSelectorIsConditionalAndUsesOutputIds() {
                ->property("text")
                .toString(),
            QStringLiteral("Conference Monitor"));
+  captureVisual(secondPreview, QStringLiteral("display-two-monitors.png"));
 }
 
 void SettingsDisplayQmlTest::unavailableBackendCanBeRetried() {
@@ -1143,6 +1159,8 @@ void SettingsDisplayQmlTest::builtInDisplaysUseLaptopChassis() {
   QVERIFY(chassis->property("visible").toBool());
   QVERIFY(externalStand != nullptr);
   QVERIFY(!externalStand->property("visible").toBool());
+  captureVisual(qobject_cast<QQuickItem *>(preview),
+                QStringLiteral("display-laptop.png"));
 }
 
 void SettingsDisplayQmlTest::showsPreferredModeSemantics() {

@@ -540,8 +540,8 @@ void BarQmlSmokeTest::appleIconsFollowThemeSelection()
     QVERIFY(voicedGroup != nullptr);
     QVERIFY(muteSlash != nullptr);
     QTRY_VERIFY_WITH_TIMEOUT(volumeIcon->property("hasIcon").toBool(), 1500);
-    QCOMPARE(volumeIcon->property("mutedOpticalOffsetX").toDouble(), 1.735);
-    QCOMPARE(muteSlash->x(), 1.735);
+    QCOMPARE(volumeIcon->property("mutedOpticalOffsetX").toDouble(), 2.0);
+    QCOMPARE(muteSlash->x(), 2.0);
 
     // All volumes within one icon band share the same settled geometry.
     // Only a change of band triggers the unified animation.
@@ -577,19 +577,19 @@ void BarQmlSmokeTest::appleIconsFollowThemeSelection()
         const double near = qBound(0., frameProgress, 1.);
         const double middle = qBound(0., frameProgress - 1., 1.);
         const double far = qBound(0., frameProgress - 2., 1.);
-        const double opticalScale = 1. + 0.04 * middle + 0.04 * far;
-        const double centroidCorrection = 0.27 + 0.14 * near - 0.46 * middle
-                                          - 0.05 * far - 0.65 * far * far * far;
-        const double centerOffset = (3.5 - near - middle - 1.5 * far)
-                                    * opticalScale + centroidCorrection;
+        const double centerOffset = expectedWaves <= 1 ? 3.0
+                                    : expectedWaves == 2 ? 1.0 : 0.0;
         QVERIFY(closeTo(volumeIcon->property("nearProgress").toDouble(), near));
         QVERIFY(closeTo(volumeIcon->property("middleProgress").toDouble(), middle));
         QVERIFY(closeTo(volumeIcon->property("farProgress").toDouble(), far));
-        QVERIFY(closeTo(volumeIcon->property("voicedOpticalScale").toDouble(),
-                        opticalScale));
+        QCOMPARE(volumeIcon->property("voicedOpticalScale").toDouble(), 1.0);
+        QCOMPARE(voicedGroup->scale(), 1.0);
+        QCOMPARE(nearWave->scale(), 1.0);
+        QCOMPARE(middleWave->scale(), 1.0);
+        QCOMPARE(farWave->scale(), 1.0);
         QVERIFY(closeTo(volumeIcon->property("voicedOpticalOffsetX").toDouble(),
                         centerOffset));
-        QVERIFY(closeTo(voicedGroup->x(), centerOffset));
+        QTRY_VERIFY_WITH_TIMEOUT(closeTo(voicedGroup->x(), centerOffset), 1000);
         QVERIFY(closeTo(nearWave->opacity(), near));
         QVERIFY(closeTo(middleWave->opacity(), middle));
         QVERIFY(closeTo(farWave->opacity(), far));
@@ -616,7 +616,18 @@ void BarQmlSmokeTest::appleIconsFollowThemeSelection()
                         expectedState));
         QVERIFY(closeTo(volumeIcon->property("voicedOpticalOffsetX").toDouble(),
                         initialX));
+        QVERIFY(closeTo(voicedGroup->x(), initialX));
     }
+
+    // One icon-state change must move the group smoothly, rather than
+    // instantaneously snapping the speaker to its new optical center.
+    QVERIFY(volumeIcon->setProperty("volume", 1));
+    QTRY_VERIFY_WITH_TIMEOUT(closeTo(voicedGroup->x(), 3.0), 1000);
+    QVERIFY(volumeIcon->setProperty("volume", 100));
+    QTest::qWait(32);
+    QVERIFY(voicedGroup->x() > 0.0);
+    QVERIFY(voicedGroup->x() < 3.0);
+    QTRY_VERIFY_WITH_TIMEOUT(closeTo(voicedGroup->x(), 0.0), 1000);
 
     // Retarget an active transition. Qt's Behavior must start from its current
     // frame rather than abruptly snapping to an endpoint when volume reverses.

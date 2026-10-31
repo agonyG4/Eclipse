@@ -45,23 +45,14 @@ Item {
     readonly property real middleProgress: stage(animatedWaveProgress - 1)
     readonly property real farProgress: stage(animatedWaveProgress - 2)
 
-    // Optical bounds of the actual 16px local SF layers, compared against
-    // the 30fps iPhone recording. Keep the silhouette centered at x=8
-    // as the icon transitions from one discrete state to another.
-    // The offset and the scale are calculated from the *same* interpolant:
-    // no discontinuity as the second or third wave becomes visible.
-    readonly property real voicedOpticalScale: 1 + 0.04 * middleProgress
-        + 0.04 * farProgress
-    // Calibrated against the alpha centroid of the actual 16px local SVGs.
-    // The cubic correction compensates for the far wave's asymmetric pixel
-    // coverage; all stages settle within roughly 0.1px of x=8.
-    readonly property real opticalCentroidCorrectionX: 0.27 + 0.14 * nearProgress
-        - 0.46 * middleProgress - 0.05 * farProgress
-        - 0.65 * farProgress * farProgress * farProgress
-    readonly property real voicedOpticalOffsetX:
-        (3.5 - nearProgress - middleProgress - 1.5 * farProgress)
-        * voicedOpticalScale + opticalCentroidCorrectionX
-    readonly property real mutedOpticalOffsetX: 1.735
+    // The three settled glyphs use pixel-aligned optical offsets measured
+    // from the local SF Symbols artwork. Animate the entire speaker-and-waves
+    // group only when the icon state changes; no scale or intra-band movement.
+    // Smooth filtering preserves the original anti-aliased 16px SVG edges.
+    readonly property real voicedOpticalScale: 1
+    readonly property real voicedOpticalOffsetX: waveCount <= 1 ? 3
+        : waveCount === 2 ? 1 : 0
+    readonly property real mutedOpticalOffsetX: 2
 
     width: 16
     height: 16
@@ -74,8 +65,7 @@ Item {
         height: root.height
         x: root.voicedOpticalOffsetX
         y: 0
-        transformOrigin: Item.Center
-        scale: root.voicedOpticalScale
+        Behavior on x { NumberAnimation { duration: 165; easing.type: Easing.OutCubic } }
         opacity: root.silent ? 0 : 1
         Behavior on opacity {
             NumberAnimation { duration: 110; easing.type: Easing.OutQuad }
@@ -95,9 +85,7 @@ Item {
             anchors.fill: parent
             iconKey: "volume-wave-near"
             foreground: root.foreground
-            transformOrigin: Item.Left
             opacity: root.nearProgress
-            scale: 0.92 + 0.08 * root.nearProgress
         }
 
         AppleIcon {
@@ -106,9 +94,7 @@ Item {
             anchors.fill: parent
             iconKey: "volume-wave-middle"
             foreground: root.foreground
-            transformOrigin: Item.Left
             opacity: root.middleProgress
-            scale: 0.92 + 0.08 * root.middleProgress
         }
 
         AppleIcon {
@@ -117,9 +103,7 @@ Item {
             anchors.fill: parent
             iconKey: "volume-wave-far"
             foreground: root.foreground
-            transformOrigin: Item.Left
             opacity: root.farProgress
-            scale: 0.92 + 0.08 * root.farProgress
         }
     }
 

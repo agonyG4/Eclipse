@@ -56,18 +56,23 @@ Rectangle {
         if (!enabled)
             return Qt.rgba(1, 1, 1, 0.035)
         if (primary)
-            return pressed ? Qt.darker(accentColor, 1.12) : accentColor
-        return pressed ? Qt.rgba(1, 1, 1, 0.13) : (hovered ? Qt.rgba(1, 1, 1, 0.10) : Components.Theme.cardBg)
+            return accentColor
+        return hovered ? Qt.rgba(1, 1, 1, 0.10) : Components.Theme.cardBg
     }
     border.width: 1
     border.color: primary ? Qt.rgba(accentColor.r, accentColor.g, accentColor.b, 0.55) : Components.Theme.cardBorder
-    scale: enabled && pressed ? 0.97 : 1.0
 
     Behavior on color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
     Behavior on border.color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
-    Behavior on scale { NumberAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
 
     HoverHandler { id: hoverArea; enabled: root.enabled }
+
+    PressTint {
+        anchors.fill: parent
+        radius: root.radius
+        pressed: root.enabled && root.pressed
+        onAccent: root.primary
+    }
 
     Row {
         id: labelRow

@@ -115,9 +115,7 @@ Item {
             font.weight: root.selected ? Components.Theme.fontWeightDemiBold : Components.Theme.fontWeightMedium
             elide:       Text.ElideRight
             Layout.fillWidth: true
-            scale: hma.pressed ? 0.97 : 1.0
             Behavior on color { ColorAnimation { duration: 150 } }
-            Behavior on scale { NumberAnimation { duration: 100 } }
         }
     }
 

@@ -33,7 +33,6 @@ Item {
     readonly property bool isLight: Components.Theme.themeMode === 1
     readonly property color restingBg: sel.cardBg
     readonly property color hoverBg: isLight ? Qt.rgba(0, 0, 0, 0.045) : Qt.rgba(1, 1, 1, 0.09)
-    readonly property color pressedBg: isLight ? Qt.rgba(0, 0, 0, 0.07) : Qt.rgba(1, 1, 1, 0.12)
     readonly property color popupHoverBg: isLight ? Qt.rgba(0, 0, 0, 0.055) : Qt.rgba(1, 1, 1, 0.08)
     readonly property color popupBorder: isLight ? Qt.rgba(0, 0, 0, 0.12) : Qt.rgba(1, 1, 1, 0.10)
     readonly property color popupShadow: isLight ? Qt.rgba(0, 0, 0, 0.22) : Qt.rgba(0, 0, 0, 0.73)
@@ -63,18 +62,19 @@ Item {
         anchors.fill: parent
         radius: Components.Theme.controlRadius
         color: !sel.enabled ? sel.cardBg
-            : (btnArea.pressed ? sel.pressedBg
-                : (btnArea.containsMouse ? sel.hoverBg : sel.restingBg))
+            : (btnArea.containsMouse ? sel.hoverBg : sel.restingBg)
         border.width: 1
         border.color: sel.enabled && (dropdown.visible || btnArea.pressed || sel.activeFocus)
             ? sel.accent : sel.cardBorder
 
-        // Premium Micro-animations
-        scale: sel.enabled && btnArea.pressed ? 0.96
-            : (sel.enabled && dropdown.visible ? 0.98 : 1.0)
-        Behavior on scale { NumberAnimation { duration: Components.Theme.animationFast; easing.type: Easing.OutCubic } }
         Behavior on color { ColorAnimation { duration: Components.Theme.animationNormal } }
         Behavior on border.color { ColorAnimation { duration: Components.Theme.animationNormal } }
+
+        PressTint {
+            anchors.fill: parent
+            radius: parent.radius
+            pressed: sel.enabled && btnArea.pressed
+        }
 
         RowLayout {
             anchors { fill: parent; leftMargin: Components.Theme.spacingMedium; rightMargin: Components.Theme.spacingMedium }
@@ -194,9 +194,7 @@ Item {
                        : (active ? Qt.rgba(sel.accent.r, sel.accent.g, sel.accent.b, 0.15)
                                  : (rowArea.containsMouse ? sel.popupHoverBg : "transparent"))
 
-                scale: rowArea.pressed ? 0.97 : 1.0
-                Behavior on scale { NumberAnimation { duration: Components.Theme.animationMicro } }
-                Behavior on color { ColorAnimation { duration: Components.Theme.animationFast } }
+                // Menu rows highlight instantly, as on macOS.
 
                 RowLayout {
                     anchors { fill: parent; leftMargin: Components.Theme.spacingMedium; rightMargin: Components.Theme.spacingMedium }

@@ -10,6 +10,7 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     components/audio/DeviceRow.qml
     components/controls/Button.qml
     components/controls/ButtonCapsule.qml
+    components/controls/PressTint.qml
     components/controls/HoverTooltip.qml
     components/controls/DeviceSymbol.qml
     components/controls/ThemedIcon.qml

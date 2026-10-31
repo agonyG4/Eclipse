@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import ".." as Components
+import "../controls" as Controls
 
 Item {
     id: sr
@@ -50,6 +51,12 @@ Item {
         radius: Components.Theme.controlRadius
         color: rowArea.containsMouse && sr.clickable ? sr.rowHoverBg : "transparent"
         Behavior on color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
+
+        Controls.PressTint {
+            anchors.fill: parent
+            radius: parent.radius
+            pressed: rowArea.pressed && sr.clickable
+        }
     }
 
     RowLayout {
@@ -94,8 +101,6 @@ Item {
             Layout.preferredHeight: implicitHeight
             Layout.maximumWidth: Math.max(0, sr.width - rowLayout.anchors.leftMargin - rowLayout.anchors.rightMargin)
             Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
-            scale: rowArea.pressed && sr.clickable ? 0.98 : 1.0
-            Behavior on scale { NumberAnimation { duration: Components.Theme.animationFast; easing.type: Easing.OutCubic } }
         }
     }
 

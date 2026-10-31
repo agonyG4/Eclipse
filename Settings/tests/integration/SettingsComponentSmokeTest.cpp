@@ -1,6 +1,7 @@
 #include "services/i18n/SettingsTranslationController.hpp"
 #include "theme/ThemeController.hpp"
 
+#include <memory>
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
 #include <QQmlContext>
@@ -15,6 +16,7 @@ class SettingsComponentSmokeTest final : public QObject {
 
 private slots:
     void loadsRepresentativeRegisteredComponents();
+    void pressTintDarkensInstantlyAndFadesOnRelease();
     void sliderThumbPressAtMinimumDoesNotJump();
     void sliderThumbPressAtMaximumDoesNotJump();
     void sliderWithoutDetentRemainsContinuous();
@@ -251,6 +253,44 @@ Item {
     QVERIFY2(qmlWarnings.isEmpty(),
              qPrintable(qmlWarnings.isEmpty() ? QString() : qmlWarnings.constFirst().toString()));
     delete root;
+}
+
+void SettingsComponentSmokeTest::pressTintDarkensInstantlyAndFadesOnRelease()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    SettingsTranslationController translationController;
+    ThemeController themeController(directory.filePath(QStringLiteral("missing-theme.json")));
+    QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &translationController);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+
+    const QByteArray fixture = R"qml(
+import QtQuick
+import Astrea.Settings 1.0 as Settings
+
+Settings.PressTint {
+    width: 80
+    height: 30
+}
+)qml";
+    QQmlComponent component(&engine);
+    component.setData(fixture, QUrl(QStringLiteral("qrc:/settings-press-tint.qml")));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    std::unique_ptr<QObject> tint(component.create());
+    QVERIFY(tint);
+    QCOMPARE(tint->property("opacity").toReal(), 0.0);
+
+    // Press feedback lands on the same frame, with no fade-in.
+    tint->setProperty("pressed", true);
+    QCOMPARE(tint->property("opacity").toReal(), 1.0);
+
+    // Release eases out rather than snapping.
+    tint->setProperty("pressed", false);
+    QTest::qWait(40);
+    const qreal fading = tint->property("opacity").toReal();
+    QVERIFY2(fading > 0.0 && fading < 1.0, qPrintable(QString::number(fading)));
+    QTRY_COMPARE(tint->property("opacity").toReal(), 0.0);
 }
 
 void SettingsComponentSmokeTest::sliderThumbPressAtMinimumDoesNotJump()

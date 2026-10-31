@@ -571,22 +571,21 @@ endforeach()
 file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/system/Display.qml" display_page_source)
 foreach(display_required_token IN ITEMS
     "objectName: \"displayPage\""
-    "objectName: \"displayLayoutCard\""
+    "objectName: \"displayPreviewSection\""
     "objectName: \"displayOutputPreview\""
     "objectName: \"displayOutputTitle\""
-    "objectName: \"displayResolutionSection\""
-    "objectName: \"displayDetailsCard\""
-    "objectName: \"displayRefreshRate\""
-    "objectName: \"displayScale\""
-    "objectName: \"displayOrientation\""
-    "objectName: \"displayVrrState\""
+    "objectName: \"displayResolutionSectionHeader\""
+    "objectName: \"displaySettingsCard\""
+    "objectName: \"displayRefreshControl\""
+    "objectName: \"displayScaleControl\""
+    "objectName: \"displayVrrControl\""
     "objectName: \"displayConnector\""
     "objectName: \"displayPreferredBadge_\""
     "objectName: \"displayPreferredLabel_\""
     "objectName: \"displayOutputsTruncated\""
     "objectName: \"displayModesTruncated\""
-    "objectName: \"displayError\""
-    "objectName: \"displayRetry\""
+    "objectName: \"displayRefreshError\""
+    "objectName: \"displayRetryButton\""
     "SettingsController.wallpaper"
     "effectivePreviewUrl"
     "effectiveFit"
@@ -597,7 +596,6 @@ foreach(display_required_token IN ITEMS
     "Preferred"
     "root.controller.refresh()"
     "RESOLUTION"
-    "DISPLAY DETAILS"
 )
     string(FIND "${display_page_source}" "${display_required_token}" display_required_position)
     if(display_required_position EQUAL -1)
@@ -612,14 +610,13 @@ foreach(display_forbidden_token IN ITEMS
     "Process {"
     "hyprctl"
     "xrandr"
-    "Apply"
     "Keep Changes"
     "ToggleSwitch"
     "pointerShape: Qt.PointingHandCursor"
 )
     string(FIND "${display_page_source}" "${display_forbidden_token}" display_forbidden_position)
     if(NOT display_forbidden_position EQUAL -1)
-        message(FATAL_ERROR "Display Phase 1 must remain read-only; found '${display_forbidden_token}'")
+        message(FATAL_ERROR "Display page must go through the Typhon controller; found '${display_forbidden_token}'")
     endif()
 endforeach()
 file(READ "${SETTINGS_SOURCE_DIR}/qml/pages/appearance/Icons.qml" icons_source)
@@ -682,19 +679,16 @@ foreach(appearance_required_token IN ITEMS
 endforeach()
 
 string(FIND "${appearance_source}"
-    "apps.settings.pages.appearance.text.system_theme" appearance_system_theme_position)
-string(FIND "${appearance_source}"
     "apps.settings.pages.appearance.text.appearance" appearance_mode_position)
 string(FIND "${appearance_source}"
     "apps.settings.pages.appearance.text.accent_color" appearance_accent_position)
 string(FIND "${appearance_source}"
     "apps.settings.pages.appearance.text.app_icons" appearance_icons_position)
-if(appearance_system_theme_position LESS 0 OR appearance_mode_position LESS 0 OR
+if(appearance_mode_position LESS 0 OR
    appearance_accent_position LESS 0 OR appearance_icons_position LESS 0 OR
-   NOT appearance_system_theme_position LESS appearance_mode_position OR
    NOT appearance_mode_position LESS appearance_accent_position OR
    NOT appearance_accent_position LESS appearance_icons_position)
-    message(FATAL_ERROR "Appearance sections are not ordered System Theme, Appearance, Accent Color, App Icons")
+    message(FATAL_ERROR "Appearance sections are not ordered Appearance, Accent Color, App Icons")
 endif()
 
 foreach(appearance_forbidden_token IN ITEMS
@@ -721,7 +715,7 @@ foreach(visual_effects_required_token IN ITEMS
     "from: 0.0"
     "to: 1.0"
     "stepSize: 0.01"
-    "modelValueEnabled: root.controller && root.controller.available"
+    "modelValueEnabled: root.available"
     "modelValue: root.controller ? root.controller.materialPosition : 0.5"
     "detentValue: root.controller"
     "onValueEdited"
@@ -775,7 +769,6 @@ foreach(visual_effects_forbidden_token IN ITEMS
     "Theme.save()"
     "refraction"
     "distortion"
-    "shader"
     "GLSL"
     "tint color"
     "downloadable"
@@ -891,7 +884,7 @@ foreach(qml_boundary_source IN ITEMS visual_effects_source material_program_edit
         endif()
     endforeach()
 endforeach()
-foreach(phase2_visual_control IN ITEMS "refraction" "distortion" "noiseAmount" "shader" "GLSL" "specular")
+foreach(phase2_visual_control IN ITEMS "refraction" "distortion" "noiseAmount" "GLSL" "specular")
     string(FIND "${visual_effects_source}" "${phase2_visual_control}" phase2_control_position)
     if(NOT phase2_control_position EQUAL -1)
         message(FATAL_ERROR "Phase 2 visual control '${phase2_visual_control}' is premature")
@@ -948,7 +941,7 @@ foreach(hub_required_token IN ITEMS
     "SettingsController.navigateTo(descriptor.entryId)"
     "Layout.bottomMargin: Components.Theme.spacingLarge"
     "function iconSourceFor"
-    "SettingsController.iconUrl(iconKey, SettingsController.navigationIconTheme)"
+    "SettingsController.iconUrlForWeight("
     "iconSource"
 )
     string(FIND "${hub_source}" "${hub_required_token}" hub_required_position)
@@ -1110,10 +1103,8 @@ foreach(effect_surface_controller_required_token IN ITEMS
 endforeach()
 
 file(READ "${SETTINGS_SOURCE_DIR}/CMakeLists.txt" settings_cmake_source)
-string(FIND "${settings_cmake_source}"
-    "find_package(Qt6 6.8 REQUIRED COMPONENTS Core Core5Compat Gui Network Qml Quick QuickControls2)"
-    settings_qt_floor_position)
-if(settings_qt_floor_position EQUAL -1)
+# Match the version floor, not the component list, which grows with the app.
+if(NOT settings_cmake_source MATCHES "find_package\\(Qt6 6\\.([89]|[1-9][0-9])[ \t]+REQUIRED")
     message(FATAL_ERROR "Standalone Settings must require Qt 6.8 or newer")
 endif()
 

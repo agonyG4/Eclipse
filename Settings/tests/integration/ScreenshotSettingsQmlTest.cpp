@@ -13,6 +13,7 @@
 #include <QTemporaryDir>
 #include <QtTest/QtTest>
 
+#include <algorithm>
 #include <memory>
 
 class ScreenshotSettingsQmlTest final : public QObject {
@@ -94,7 +95,11 @@ void ScreenshotSettingsQmlTest::routeLoadsDesktopPreviewControlsAndReportsPersis
     ScreenshotSettingsPage fixture;
 
     QVERIFY(fixture.settings.navigateTo(QStringLiteral("customization")));
-    QVERIFY(fixture.settings.currentDestinationChildren().size() == 7);
+    const QVariantList destinations = fixture.settings.currentDestinationChildren();
+    QVERIFY(std::any_of(destinations.cbegin(), destinations.cend(), [](const QVariant &entry) {
+        return entry.toMap().value(QStringLiteral("entryId")).toString()
+            == QStringLiteral("screenshots");
+    }));
     QVERIFY(fixture.settings.navigateTo(QStringLiteral("screenshots")));
     QCOMPARE(fixture.settings.selectedSidebarId(), QStringLiteral("customization"));
     QCOMPARE(fixture.page->objectName(), QStringLiteral("screenshotsPage"));

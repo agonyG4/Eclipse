@@ -720,6 +720,9 @@ void SettingsQmlSmokeTest::loadsVisualMigrationRoutes()
     ThemeController themeController(configuration.filePath(QStringLiteral("theme.json")));
     themeController.setThemeMode(themeMode);
     QQmlApplicationEngine engine;
+    auto *iconProvider = new AstreaIconProvider;
+    engine.addImageProvider(QStringLiteral("astrea-icon"), iconProvider);
+    engine.rootContext()->setContextProperty(QStringLiteral("AstreaIconProvider"), iconProvider);
     QList<QQmlError> qmlWarnings;
     connect(&engine, &QQmlApplicationEngine::warnings, this,
             [&qmlWarnings](const QList<QQmlError> &warnings) { qmlWarnings.append(warnings); });
@@ -949,7 +952,10 @@ void SettingsQmlSmokeTest::loadsScreenshotsRouteOffscreen()
     QObject *page = qvariant_cast<QObject *>(loader->property("item"));
     QVERIFY(page != nullptr);
     QCOMPARE(page->objectName(), QStringLiteral("screenshotsPage"));
-    QVERIFY(page->findChild<QObject *>(QStringLiteral("screenshotMockVisual")) != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("screenshotAnimationReplay")) != nullptr);
+    QVERIFY(page->findChild<QObject *>(QStringLiteral("screenshotCornerRadiusSlider")) != nullptr);
+    QCOMPARE(page->property("configuration").value<QObject *>(),
+             static_cast<QObject *>(settingsController.screenshots()));
     for (const QQmlError &warning : qmlWarnings) {
         const QString source = warning.url().toString();
         QVERIFY2(!source.contains(QStringLiteral("Screenshots.qml"))

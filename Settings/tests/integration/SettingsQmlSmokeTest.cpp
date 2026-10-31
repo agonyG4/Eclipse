@@ -983,6 +983,10 @@ void SettingsQmlSmokeTest::sidebarProfileHeaderNavigatesWithPointerAndKeyboard()
 
 void SettingsQmlSmokeTest::loadsAnimationsRouteOffscreen()
 {
+    // Keep the live compositor socket out of reach so "unavailable" is deterministic.
+    QTemporaryDir runtime;
+    QVERIFY(runtime.isValid());
+    RuntimeEnvironmentGuard runtimeGuard(runtime.path());
     SettingsController settingsController;
     SettingsTranslationController translationController;
     ThemeController themeController;
@@ -999,7 +1003,8 @@ void SettingsQmlSmokeTest::loadsAnimationsRouteOffscreen()
     QObject *root = engine.rootObjects().constFirst();
     QObject *loader = root->findChild<QObject *>(QStringLiteral("settingsPageLoader"));
     QVERIFY(loader != nullptr);
-    QTRY_VERIFY_WITH_TIMEOUT(loader->property("item").isValid(), 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        qvariant_cast<QObject *>(loader->property("item")) != nullptr, 1000);
     QObject *page = qvariant_cast<QObject *>(loader->property("item"));
     QVERIFY(page != nullptr);
     QCOMPARE(page->objectName(), QStringLiteral("animationsPage"));
@@ -1030,7 +1035,8 @@ void SettingsQmlSmokeTest::loadsScreenshotsRouteOffscreen()
     QObject *root = engine.rootObjects().constFirst();
     QObject *loader = root->findChild<QObject *>(QStringLiteral("settingsPageLoader"));
     QVERIFY(loader != nullptr);
-    QTRY_VERIFY_WITH_TIMEOUT(loader->property("item").isValid(), 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        qvariant_cast<QObject *>(loader->property("item")) != nullptr, 1000);
     QObject *page = qvariant_cast<QObject *>(loader->property("item"));
     QVERIFY(page != nullptr);
     QCOMPARE(page->objectName(), QStringLiteral("screenshotsPage"));
@@ -2186,8 +2192,10 @@ void SettingsQmlSmokeTest::visualEffectsPageUsesTypedMaterialController()
     QCOMPARE(engine.rootObjects().size(), 1);
     QVERIFY(settingsController.navigateTo(QStringLiteral("visual-effects")));
     auto *root = engine.rootObjects().constFirst();
-    auto *page = root->findChild<QObject *>(QStringLiteral("visualEffectsPage"));
-    QTRY_VERIFY_WITH_TIMEOUT(page != nullptr, 1000);
+    QObject *page = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT(
+        (page = root->findChild<QObject *>(QStringLiteral("visualEffectsPage"))) != nullptr,
+        1000);
     QVERIFY(settingsController.visualEffects() != nullptr);
     QCOMPARE(settingsController.visualEffects()->metaObject()->className(),
              QByteArrayLiteral("SettingsVisualEffectsController"));

@@ -134,6 +134,9 @@ ApplicationWindow {
                         }
                     }
 
+                    // Pages build off the UI thread so a click never stalls,
+                    // then fade in. Opacity only: geometry must not move under
+                    // the pointer while the page settles.
                     Loader {
                         id: pageLoader
                         objectName: "settingsPageLoader"
@@ -141,6 +144,23 @@ ApplicationWindow {
                         Layout.fillHeight: true
                         active: window.selectedPageSource.toString() !== ""
                         source: window.selectedPageSource
+                        asynchronous: true
+                        opacity: 0
+
+                        onLoaded: pageEntrance.restart()
+                        onSourceChanged: {
+                            pageEntrance.stop()
+                            opacity = 0
+                        }
+
+                        NumberAnimation {
+                            id: pageEntrance
+                            target: pageLoader
+                            property: "opacity"
+                            to: 1
+                            duration: Theme.animationNormal
+                            easing.type: Theme.easingStandard
+                        }
                     }
                 }
             }

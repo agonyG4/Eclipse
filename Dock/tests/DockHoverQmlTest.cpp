@@ -392,6 +392,8 @@ class DockHoverQmlTest final : public QObject {
 private slots:
     void initTestCase();
     void iconSourceQualityRemainsStableDuringHover();
+    void unreadBadgeFollowsIconWithoutChangingInteractionGeometry();
+    void unreadBadgeStaysInsideDockSurfaceAtMaximumScale();
     void windowDprMatchesScreenDprForDockIcon();
     void surfaceEnvelopeRemainsStableDuringMagnification();
     void backdropRegionTracksMagnifiedChromeInsideStableSurface();
@@ -540,6 +542,109 @@ void DockHoverQmlTest::iconSourceQualityRemainsStableDuringHover()
     verifyStableSource();
 
     delete panel;
+}
+
+void DockHoverQmlTest::unreadBadgeFollowsIconWithoutChangingInteractionGeometry()
+{
+    const QString pin = QStringLiteral("org.example.Mail.desktop");
+    DockController controller;
+    controller.applyConfig(configFor(QStringLiteral("magnification"), {pin}));
+    controller.appModel()->applyUnreadCount(pin, 123, true);
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready,
+             qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    QQuickWindow window;
+    panel->setParentItem(window.contentItem());
+    window.resize(420, 150);
+    QTest::qWait(40);
+
+    QQuickItem *item = delegate(panel, pin);
+    QQuickItem *icon = iconItem(item);
+    QQuickItem *badge = childWithObjectName(item, QStringLiteral("unreadBadge"));
+    QQuickItem *label = childWithObjectName(item, QStringLiteral("unreadCountLabel"));
+    QVERIFY(item && icon && badge && label);
+    QVERIFY(badge->isVisible());
+    QCOMPARE(label->property("text").toString(), QStringLiteral("99+"));
+
+    const QPointF badgeBefore = badge->mapToItem(panel, QPointF(0, 0));
+    QVERIFY(QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
+                                      Q_ARG(QVariant, QVariant(item->x() + item->width() / 2)),
+                                      Q_ARG(QVariant, QVariant(item->y() + item->height() / 2))));
+    QTRY_VERIFY_WITH_TIMEOUT(icon->scale() > 1.1, 1500);
+    const QPointF badgeAfterMagnification = badge->mapToItem(panel, QPointF(0, 0));
+    QVERIFY(badgeAfterMagnification != badgeBefore);
+
+    item->setProperty("visualOffsetX", 14.0);
+    QTRY_VERIFY_WITH_TIMEOUT(badge->mapToItem(panel, QPointF(0, 0)).x()
+                                 > badgeAfterMagnification.x() + 10.0,
+                             1000);
+    QTest::qWait(180);
+    const QRectF interactionWithBadge = item->property("interactionRegion").toRectF();
+    controller.appModel()->applyUnreadCount(pin, 123, false);
+    QTRY_VERIFY_WITH_TIMEOUT(!badge->isVisible(), 1000);
+    QTest::qWait(180);
+    QCOMPARE(item->property("interactionRegion").toRectF(), interactionWithBadge);
+
+    delete panel;
+}
+
+void DockHoverQmlTest::unreadBadgeStaysInsideDockSurfaceAtMaximumScale()
+{
+    const QString pin = QStringLiteral("org.example.Mail.desktop");
+    const QStringList positions{QStringLiteral("bottom"), QStringLiteral("left"),
+                                QStringLiteral("right")};
+    for (const QString &position : positions) {
+        for (const int iconSize : {32, 64}) {
+            DockController controller;
+            DockConfig config = configFor(QStringLiteral("magnification"), {pin});
+            config.position = position;
+            config.iconSize = iconSize;
+            config.magnificationScale = 2.0;
+            config.magnificationRadius = 1.0;
+            controller.applyConfig(config);
+            controller.appModel()->applyUnreadCount(pin, 123, true);
+
+            QQmlEngine engine;
+            engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+            engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+            engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+            QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+            QVERIFY2(component.status() == QQmlComponent::Ready,
+                     qPrintable(component.errorString()));
+            auto *panel = qobject_cast<QQuickItem *>(component.create());
+            QVERIFY2(panel, qPrintable(component.errorString()));
+            QQuickWindow window;
+            panel->setParentItem(window.contentItem());
+            window.resize(700, 700);
+            QTest::qWait(30);
+
+            QQuickItem *item = delegate(panel, pin);
+            QQuickItem *badge = childWithObjectName(item, QStringLiteral("unreadBadge"));
+            QQuickItem *icon = iconItem(item);
+            QVERIFY(item && icon && badge);
+            item->setProperty("magnificationScale", 2.0);
+            QTRY_VERIFY_WITH_TIMEOUT(qAbs(icon->scale() - 2.0) < 0.01, 1000);
+            QTest::qWait(140);
+
+            const QRectF surfaceBounds(0, 0, panel->width(), panel->height());
+            const QRectF badgeBounds = badge->mapRectToItem(
+                panel, QRectF(0, 0, badge->width(), badge->height()));
+            const QString context = QStringLiteral(
+                "%1 dock, %2 px icon: badge at (%3,%4) size %5x%6 is outside %7x%8")
+                .arg(position).arg(iconSize).arg(badgeBounds.x()).arg(badgeBounds.y())
+                .arg(badgeBounds.width()).arg(badgeBounds.height())
+                .arg(surfaceBounds.width()).arg(surfaceBounds.height());
+            QVERIFY2(surfaceBounds.contains(badgeBounds), qPrintable(context));
+            delete panel;
+        }
+    }
 }
 
 void DockHoverQmlTest::windowDprMatchesScreenDprForDockIcon()

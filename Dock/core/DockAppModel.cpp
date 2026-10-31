@@ -36,6 +36,8 @@ QVariant DockAppModel::data(const QModelIndex &index, int role) const
     case RunningRole: return item.running;
     case ActiveRole: return item.active;
     case WindowCountRole: return item.windowCount;
+    case UnreadCountRole: return item.unreadCount;
+    case UnreadCountVisibleRole: return item.unreadCountVisible;
     default: return {};
     }
 }
@@ -60,6 +62,8 @@ QHash<int, QByteArray> DockAppModel::roleNames() const
         {RunningRole, "running"},
         {ActiveRole, "active"},
         {WindowCountRole, "windowCount"},
+        {UnreadCountRole, "unreadCount"},
+        {UnreadCountVisibleRole, "unreadCountVisible"},
     };
 }
 
@@ -318,6 +322,11 @@ DockAppInfo DockAppModel::makeItem(const QString &taskKey, const DockAppInfo *pr
             item.iconPath = enrichment->iconPath;
         item.identityPending = enrichment->iconPending;
     }
+    const auto badge = m_unreadCounts.constFind(item.desktopFileName);
+    if (badge != m_unreadCounts.constEnd()) {
+        item.unreadCount = badge->first;
+        item.unreadCountVisible = badge->second;
+    }
     return item;
 }
 
@@ -351,6 +360,9 @@ QList<int> DockAppModel::changedRoles(const DockAppInfo &before, const DockAppIn
     if (before.running != after.running) roles.append(RunningRole);
     if (before.active != after.active) roles.append(ActiveRole);
     if (before.windowCount != after.windowCount) roles.append(WindowCountRole);
+    if (before.unreadCount != after.unreadCount) roles.append(UnreadCountRole);
+    if (before.unreadCountVisible != after.unreadCountVisible)
+        roles.append(UnreadCountVisibleRole);
     return roles;
 }
 
@@ -403,4 +415,24 @@ bool DockAppModel::applyIdentityEnrichment(const QString &taskKey, const AppIden
     const DockAppInfo next = makeItem(taskKey, &m_items.at(row));
     updateItem(row, next);
     return true;
+}
+
+void DockAppModel::applyUnreadCount(const QString &desktopFileName, int count, bool visible)
+{
+    if (desktopFileName.isEmpty() || count < 0)
+        return;
+    if (count == 0 && !visible)
+        m_unreadCounts.remove(desktopFileName);
+    else
+        m_unreadCounts.insert(desktopFileName, {count, visible});
+    for (int row = 0; row < m_items.size(); ++row) {
+        if (m_items.at(row).desktopFileName != desktopFileName
+            || (m_items.at(row).unreadCount == count
+                && m_items.at(row).unreadCountVisible == visible))
+            continue;
+        DockAppInfo next = m_items.at(row);
+        next.unreadCount = count;
+        next.unreadCountVisible = visible;
+        updateItem(row, next);
+    }
 }

@@ -30,7 +30,9 @@ public:
         RuntimeKnownRole,
         RunningRole,
         ActiveRole,
-        WindowCountRole
+        WindowCountRole,
+        UnreadCountRole,
+        UnreadCountVisibleRole
     };
     Q_ENUM(Role)
 
@@ -57,6 +59,7 @@ public:
         bool authoritative = true);
     void clearRuntimeProjection();
     bool applyIdentityEnrichment(const QString &taskKey, const AppIdentity &identity);
+    void applyUnreadCount(const QString &desktopFileName, int count, bool visible);
 
 private:
     DockAppInfo makeItem(const QString &taskKey, const DockAppInfo *previous = nullptr) const;
@@ -72,6 +75,7 @@ private:
     QHash<QString, Astrea::Dock::DockApplicationRuntimeState> m_runtimeStates;
     QHash<QString, QString> m_runtimeDesktopFileNames;
     QHash<QString, AppIdentity> m_identityEnrichments;
+    QHash<QString, QPair<int, bool>> m_unreadCounts;
     QStringList m_dynamicOrder;
     QStringList m_runtimeEncounterOrder;
     bool m_runtimeAuthoritative = false;

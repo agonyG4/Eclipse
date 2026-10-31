@@ -276,6 +276,35 @@ void StatusNotifierIntegrationTest::realSessionBusRegistrationActionsAndMenuLife
     QCOMPARE(menuIdentityChanges.count(), 0);
     QCOMPARE(service.menuModelForItem(key), model);
     QCOMPARE(qobject_cast<DBusMenuClient *>(model->parent()), menuClient);
+
+    quint64 normalRevision = service.iconStore()->revision(key);
+    QString normalSource = service.iconSourceForItem(key);
+    QVERIFY(control.call(QStringLiteral("SetAttentionColor"), 0x11, 0x22, 0x33).type()
+                != QDBusMessage::ErrorMessage);
+    QTRY_VERIFY_WITH_TIMEOUT(service.iconStore()->revision(key) > normalRevision, 3000);
+    normalRevision = service.iconStore()->revision(key);
+    normalSource = service.iconSourceForItem(key);
+
+    QVERIFY(control.call(QStringLiteral("SetStatus"), QStringLiteral("NeedsAttention")).type()
+                != QDBusMessage::ErrorMessage);
+    QTRY_COMPARE_WITH_TIMEOUT(service.typedItemModel()->item(key).status,
+                              ItemStatus::NeedsAttention, 3000);
+    QTRY_COMPARE_WITH_TIMEOUT(service.iconStore()->image(key).pixel(0, 0),
+                              qRgba(0x11, 0x22, 0x33, 0xff), 3000);
+    QVERIFY(service.iconStore()->revision(key) > normalRevision);
+    QVERIFY(service.iconSourceForItem(key) != normalSource);
+
+    const quint64 attentionRevision = service.iconStore()->revision(key);
+    const QString attentionSource = service.iconSourceForItem(key);
+    QVERIFY(control.call(QStringLiteral("SetStatus"), QStringLiteral("Active")).type()
+                != QDBusMessage::ErrorMessage);
+    QTRY_COMPARE_WITH_TIMEOUT(service.typedItemModel()->item(key).status,
+                              ItemStatus::Active, 3000);
+    QTRY_COMPARE_WITH_TIMEOUT(service.iconStore()->image(key).pixel(0, 0),
+                              qRgba(0xaa, 0xbb, 0xcc, 0xff), 3000);
+    QVERIFY(service.iconStore()->revision(key) > attentionRevision);
+    QVERIFY(service.iconSourceForItem(key) != attentionSource);
+
     QElapsedTimer menuTimer;
     menuTimer.start();
     while (model->rowCount() != 2 && menuTimer.elapsed() < 4000) {

@@ -9,6 +9,8 @@ class DockAppModelTest final : public QObject {
 
 private slots:
     void initialPopulationPreservesConfiguredOrder();
+    void launcherBadgeRolesAreExposedAndDefaultClear();
+    void unreadCountCanPrecedeRowAndSurvivesProjection();
     void duplicatePinsCollapseByFirstOccurrence();
     void unresolvedPinRemainsVisible();
     void catalogResolutionEmitsExactRoles();
@@ -37,6 +39,64 @@ private slots:
     void unpinnedStableRuntimeDisappearsAfterLastWindow();
 };
 
+static Astrea::Dock::DockApplicationRuntimeState runtimeState(
+    const QString &desktopFileName, int windowCount = 1, bool active = false,
+    bool running = true);
+static Astrea::Dock::DockApplicationRuntimeProjection runtimeProjection(
+    std::initializer_list<Astrea::Dock::DockApplicationRuntimeState> states,
+    const QStringList &encounterOrder = {});
+
+void DockAppModelTest::launcherBadgeRolesAreExposedAndDefaultClear()
+{
+    DockAppModel model;
+    model.setPins({QStringLiteral("org.example.Mail.desktop")});
+
+    const auto roles = model.roleNames();
+    int countRole = -1;
+    int countVisibleRole = -1;
+    for (auto it = roles.cbegin(); it != roles.cend(); ++it) {
+        if (it.value() == QByteArrayLiteral("unreadCount"))
+            countRole = it.key();
+        if (it.value() == QByteArrayLiteral("unreadCountVisible"))
+            countVisibleRole = it.key();
+    }
+    QVERIFY(countRole >= 0);
+    QVERIFY(countVisibleRole >= 0);
+    QCOMPARE(model.data(model.index(0, 0), countRole).toInt(), 0);
+    QVERIFY(!model.data(model.index(0, 0), countVisibleRole).toBool());
+
+    model.applyUnreadCount(QStringLiteral("org.example.Mail.desktop"), 42, true);
+    QCOMPARE(model.data(model.index(0, 0), countRole).toInt(), 42);
+    QVERIFY(model.data(model.index(0, 0), countVisibleRole).toBool());
+}
+
+void DockAppModelTest::unreadCountCanPrecedeRowAndSurvivesProjection()
+{
+    const QString desktop = QStringLiteral("org.example.Mail.desktop");
+    DockAppModel model;
+    model.applyUnreadCount(desktop, 4, true);
+    model.setPins({desktop});
+    QCOMPARE(model.data(model.index(0, 0), DockAppModel::UnreadCountRole).toInt(), 4);
+    QVERIFY(model.data(model.index(0, 0), DockAppModel::UnreadCountVisibleRole).toBool());
+
+    auto runtime = runtimeState(desktop, 1, false, true);
+    runtime.appId = QStringLiteral("org.example.mail");
+    model.applyRuntimeProjection(runtimeProjection({runtime}));
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(model.data(model.index(0, 0), DockAppModel::UnreadCountRole).toInt(), 4);
+    QVERIFY(model.data(model.index(0, 0), DockAppModel::UnreadCountVisibleRole).toBool());
+
+    AppIdentity identity;
+    identity.displayName = QStringLiteral("Mail");
+    identity.iconPending = false;
+    QVERIFY(model.applyIdentityEnrichment(runtime.taskKey, identity));
+    QCOMPARE(model.data(model.index(0, 0), DockAppModel::UnreadCountRole).toInt(), 4);
+
+    model.applyUnreadCount(desktop, 0, false);
+    QCOMPARE(model.data(model.index(0, 0), DockAppModel::UnreadCountRole).toInt(), 0);
+    QVERIFY(!model.data(model.index(0, 0), DockAppModel::UnreadCountVisibleRole).toBool());
+}
+
 static std::shared_ptr<DesktopEntrySnapshot> makeSnapshot(const QStringList &names)
 {
     auto snapshot = std::make_shared<DesktopEntrySnapshot>();
@@ -55,8 +115,7 @@ static std::shared_ptr<DesktopEntrySnapshot> makeSnapshot(const QStringList &nam
 }
 
 static Astrea::Dock::DockApplicationRuntimeState runtimeState(
-    const QString &desktopFileName, int windowCount = 1, bool active = false,
-    bool running = true)
+    const QString &desktopFileName, int windowCount, bool active, bool running)
 {
     Astrea::Dock::DockApplicationRuntimeState state;
     state.taskKey = QStringLiteral("desktop:") + desktopFileName;
@@ -69,7 +128,7 @@ static Astrea::Dock::DockApplicationRuntimeState runtimeState(
 
 static Astrea::Dock::DockApplicationRuntimeProjection runtimeProjection(
     std::initializer_list<Astrea::Dock::DockApplicationRuntimeState> states,
-    const QStringList &encounterOrder = {})
+    const QStringList &encounterOrder)
 {
     Astrea::Dock::DockApplicationRuntimeProjection projection;
     for (const auto &state : states) {

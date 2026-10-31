@@ -19,6 +19,8 @@ Item {
     required property bool running
     required property bool active
     required property int windowCount
+    required property int unreadCount
+    required property bool unreadCountVisible
     required property int slotWidth
     required property int slotHeight
     property var dockPanel
@@ -338,6 +340,32 @@ Item {
         radius: DockController.indicatorStyle === "dot" ? width / 2 : Math.min(width, height) / 2
         color: systemPalette.highlight
         visible: root.runtimeKnown && root.running && DockController.indicatorStyle !== "none"
+    }
+
+    Rectangle {
+        id: unreadBadge
+        parent: appIcon
+        objectName: "unreadBadge"
+        x: Math.max(0, appIcon.width - width)
+        y: 0
+        width: unreadCountLabel.implicitWidth + 10
+        height: 18
+        radius: height / 2
+        color: "#d83b48"
+        border.color: "#f6f6f6"
+        border.width: 1
+        z: 10
+        visible: root.unreadCountVisible
+        Text {
+            id: unreadCountLabel
+            objectName: "unreadCountLabel"
+            anchors.centerIn: parent
+            text: root.unreadCount > 99 ? "99+" : String(root.unreadCount)
+            color: "white"
+            font.pixelSize: 11
+            font.weight: Font.DemiBold
+            renderType: Text.NativeRendering
+        }
     }
 
     onIconSizeChanged: scheduleInteractionTargetGeometryUpdate()

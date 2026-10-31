@@ -11,6 +11,7 @@
 #include "Dock/core/DockController.hpp"
 #include "Dock/core/DockSurfaceGeometry.hpp"
 #include "Dock/platform/typhon/TyphonDockRuntimeBackend.hpp"
+#include "Dock/platform/unity/UnityLauncherEntryService.hpp"
 #include "Dock/platform/runtime/DockRuntimePaths.hpp"
 #include "Dock/services/DockConfigWatcher.hpp"
 #include "Dock/services/DockConfigPersistence.hpp"
@@ -88,6 +89,7 @@ void ShellRuntime::resetInitializationState()
     m_spotlightController.reset();
     m_spotlightWeather.reset();
     m_altTabController.reset();
+    m_unityLauncherEntry.reset();
     m_dockController.reset();
 
     m_spotlightLauncherAdapter.reset();
@@ -157,6 +159,8 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
     m_dockPersistence = std::make_unique<DockConfigPersistence>(dockPaths.dockConfigPath());
     m_dockController = std::make_unique<DockController>(m_launcher.get(), m_catalog.get(),
                                                          m_dockPersistence.get());
+    m_unityLauncherEntry = std::make_unique<UnityLauncherEntryService>(
+        m_dockController->appModel());
     m_dockSurfaceGeometry = std::make_unique<DockSurfaceGeometry>();
     m_altTabController = std::make_unique<AltTabController>(m_windowBackend.get(),
                                                               m_identityResolver.get());
@@ -412,6 +416,8 @@ void ShellRuntime::start()
     m_networkService->start();
     m_bluetoothService->start();
     m_statusNotifier->start();
+    if (m_unityLauncherEntry && !m_unityLauncherEntry->start())
+        qWarning() << "Could not start Unity LauncherEntry D-Bus listener";
     emit started();
 }
 
@@ -426,6 +432,8 @@ void ShellRuntime::stop()
         m_bluetoothService->stop();
     if (m_statusNotifier)
         m_statusNotifier->stop();
+    if (m_unityLauncherEntry)
+        m_unityLauncherEntry->stop();
     if (m_networkService)
         m_networkService->stop();
     if (m_spatialAudioEngine)

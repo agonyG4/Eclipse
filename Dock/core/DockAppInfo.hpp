@@ -20,6 +20,8 @@ struct DockAppInfo {
     bool running = false;
     bool active = false;
     int windowCount = 0;
+    int unreadCount = 0;
+    bool unreadCountVisible = false;
 };
 
 inline bool operator==(const DockAppInfo &left, const DockAppInfo &right)
@@ -40,5 +42,7 @@ inline bool operator==(const DockAppInfo &left, const DockAppInfo &right)
         && left.runtimeKnown == right.runtimeKnown
         && left.running == right.running
         && left.active == right.active
-        && left.windowCount == right.windowCount;
+        && left.windowCount == right.windowCount
+        && left.unreadCount == right.unreadCount
+        && left.unreadCountVisible == right.unreadCountVisible;
 }

@@ -23,6 +23,7 @@ class DockConfigWatcher;
 class DockConfigPersistence;
 class DockController;
 class DockSurfaceGeometry;
+class UnityLauncherEntryService;
 class GameModeMonitor;
 class SpotlightConfigWatcher;
 class SpotlightApplicationLauncherAdapter;
@@ -143,6 +144,7 @@ private:
     std::unique_ptr<CompositorBackend> m_windowBackend;
     std::unique_ptr<DockConfigPersistence> m_dockPersistence;
     std::unique_ptr<DockController> m_dockController;
+    std::unique_ptr<UnityLauncherEntryService> m_unityLauncherEntry;
     std::unique_ptr<DockSurfaceGeometry> m_dockSurfaceGeometry;
     std::unique_ptr<AltTabController> m_altTabController;
     std::unique_ptr<RustSpotlightBackend> m_spotlightBackend;

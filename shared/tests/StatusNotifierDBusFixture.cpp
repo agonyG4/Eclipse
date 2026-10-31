@@ -21,6 +21,7 @@ class FixtureItem final : public QObject {
 
 public:
     StatusNotifierPixmapList pixmaps{{1, 1, QByteArray::fromHex("ff3366cc")}};
+    StatusNotifierPixmapList attentionPixmaps{{1, 1, QByteArray::fromHex("ff22dd44")}};
     int activateCalls = 0;
     int secondaryCalls = 0;
     int contextCalls = 0;
@@ -31,11 +32,14 @@ public:
     QString lastOrientation;
     bool itemIsMenuValue = false;
     QString titleValue = QStringLiteral("Integration tray item");
+    QString statusValue = QStringLiteral("Active");
     QString menuPathValue = QStringLiteral("/org/test/MenuA");
 
 signals:
     void refreshRequested();
     void iconRefreshRequested();
+    void attentionRefreshRequested();
+    void statusRefreshRequested();
 };
 
 class FixtureItemAdaptor final : public QDBusAbstractAdaptor {
@@ -69,16 +73,21 @@ public:
     {
         connect(m_item, &FixtureItem::refreshRequested, this, &FixtureItemAdaptor::NewTitle);
         connect(m_item, &FixtureItem::iconRefreshRequested, this, &FixtureItemAdaptor::NewIcon);
+        connect(m_item, &FixtureItem::attentionRefreshRequested,
+                this, &FixtureItemAdaptor::NewAttentionIcon);
+        connect(m_item, &FixtureItem::statusRefreshRequested, this, [this] {
+            emit NewStatus(m_item->statusValue);
+        });
     }
 
     QString category() const { return QStringLiteral("ApplicationStatus"); }
     QString id() const { return QStringLiteral("integration-item"); }
     QString title() const { return m_item->titleValue; }
-    QString status() const { return QStringLiteral("Active"); }
+    QString status() const { return m_item->statusValue; }
     QString iconName() const { return {}; }
     StatusNotifierPixmapList iconPixmap() const { return m_item->pixmaps; }
     QString attentionIconName() const { return {}; }
-    StatusNotifierPixmapList attentionIconPixmap() const { return {}; }
+    StatusNotifierPixmapList attentionIconPixmap() const { return m_item->attentionPixmaps; }
     QString overlayIconName() const { return {}; }
     StatusNotifierPixmapList overlayIconPixmap() const { return {}; }
     StatusNotifierToolTip toolTip() const
@@ -459,6 +468,21 @@ public slots:
         bytes.append(char(blue));
         m_item->pixmaps = {{1, 1, bytes}};
         emit m_item->iconRefreshRequested();
+    }
+    void SetAttentionColor(int red, int green, int blue)
+    {
+        QByteArray bytes;
+        bytes.append(char(0xff));
+        bytes.append(char(red));
+        bytes.append(char(green));
+        bytes.append(char(blue));
+        m_item->attentionPixmaps = {{1, 1, bytes}};
+        emit m_item->attentionRefreshRequested();
+    }
+    void SetStatus(const QString &status)
+    {
+        m_item->statusValue = status;
+        emit m_item->statusRefreshRequested();
     }
     bool ClaimWatcherAlias(const QString &name) { return m_watcher->claim(name); }
     bool ReleaseWatcherAlias(const QString &name) { return m_watcher->release(name); }

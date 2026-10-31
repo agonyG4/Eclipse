@@ -198,6 +198,8 @@ Item {
                     outputKey: root.outputKey
                     outputOriginX: root.outputOriginX
                     outputOriginY: root.outputOriginY
+                    unreadCount: model.unreadCount
+                    unreadCountVisible: model.unreadCountVisible
                     pinned: model.pinned
                     pointerTarget: dockPanel.pointerTargetTaskKey === taskKey
                     onActivated: function(key) { DockController.activateOrLaunchTask(key) }

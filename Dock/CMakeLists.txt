@@ -10,7 +10,7 @@ set(CMAKE_AUTOUIC ON)
 
 option(ASTREA_DOCK_BUILD_TESTS "Build Dock unit tests" ON)
 
-find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Qml Quick Network Core5Compat)
+find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Qml Quick Network Core5Compat DBus)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/DockWarnings.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/DockSanitizers.cmake)
 
@@ -31,6 +31,8 @@ add_library(astrea-dock-runtime STATIC
     core/DockPinStore.hpp
     core/DockController.cpp
     core/DockController.hpp
+    platform/unity/UnityLauncherEntryService.cpp
+    platform/unity/UnityLauncherEntryService.hpp
     core/DockMetrics.hpp
     core/DockSurfaceGeometry.cpp
     core/DockSurfaceGeometry.hpp
@@ -47,6 +49,7 @@ target_include_directories(astrea-dock-runtime PUBLIC
 target_link_libraries(astrea-dock-runtime
     PUBLIC
         Qt6::Core
+        Qt6::DBus
         astrea-shared-core
         astrea-shared-dock
         astrea-shared-appidentity
@@ -119,6 +122,16 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     target_link_libraries(dock-app-model-test PRIVATE astrea-dock-runtime Qt6::Test)
     dock_enable_sanitizers(dock-app-model-test)
     add_test(NAME dock-app-model-test COMMAND dock-app-model-test)
+
+    find_program(ASTREA_DBUS_RUN_SESSION dbus-run-session REQUIRED)
+    add_executable(dock-unity-launcher-entry-test
+        tests/UnityLauncherEntryTest.cpp
+    )
+    target_link_libraries(dock-unity-launcher-entry-test PRIVATE
+        astrea-dock-runtime Qt6::DBus Qt6::Test)
+    dock_enable_sanitizers(dock-unity-launcher-entry-test)
+    add_test(NAME dock-unity-launcher-entry-test
+        COMMAND ${ASTREA_DBUS_RUN_SESSION} -- $<TARGET_FILE:dock-unity-launcher-entry-test>)
 
     add_executable(dock-app-matcher-test
         tests/DockAppMatcherTest.cpp
@@ -241,6 +254,7 @@ if(BUILD_TESTING AND ASTREA_DOCK_BUILD_TESTS AND ASTREA_BUILD_TESTS)
             dock-config-watcher-test dock-runtime-paths-test
             dock-config-persistence-test dock-controller-test dock-typhon-runtime-integration-test
             dock-layer-shell-surface-test dock-input-region-test dock-hover-qml-test
+            dock-unity-launcher-entry-test
             dock-surface-geometry-test
             dock-ipc-test dock-command-line-test
             PROPERTIES ENVIRONMENT

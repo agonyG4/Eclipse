@@ -39,36 +39,44 @@ ScrollView {
         policy: ScrollBar.AsNeeded
     }
 
-    // Mouse wheels arrive in coarse notches; glide each notch into place the
-    // way macOS does, folding rapid notches into one continuous motion.
-    // Touchpads send pixel deltas with their own momentum and keep the native
-    // path. The layer sits above the page but only claims wheel events.
+    // Page scrolling, macOS style. The handler sits on the page's Flickable,
+    // so nested scrollables (Wi-Fi list, device strip) still see wheel events
+    // first; only what reaches the page lands here.
+    // - Mouse wheels (no scroll phase) arrive in coarse notches; each notch
+    //   glides into place, and rapid notches fold into one continuous motion.
+    //   QtWayland also attaches a pixel delta to notches, so notches are read
+    //   from angleDelta only.
+    // - Touchpads (begin/update/end/momentum phases) follow the finger 1:1,
+    //   including any momentum the platform sends.
     property real wheelStep: 100
     property real wheelTarget: 0
-    readonly property Item wheelLayer: Item {
-        objectName: "scrollPageWheelLayer"
-        parent: root
-        anchors.fill: parent
-        z: 1
 
-        WheelHandler {
-            acceptedDevices: PointerDevice.Mouse
-            onWheel: event => {
-                const flick = root.contentItem
-                const notches = event.angleDelta.y / 120
-                if (!flick || notches === 0 || event.pixelDelta.y !== 0) {
-                    event.accepted = false
-                    return
-                }
-                const limit = Math.max(0, flick.contentHeight - flick.height)
+    // Attached once the ScrollView has built its Flickable.
+    Component.onCompleted: pageWheel.parent = root.contentItem
+
+    WheelHandler {
+        id: pageWheel
+        objectName: "scrollPageWheelHandler"
+        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+        orientation: Qt.Vertical
+        onWheel: event => {
+            const flick = root.contentItem
+            const limit = Math.max(0, flick.contentHeight - flick.height)
+            if (event.phase === Qt.NoScrollPhase && event.angleDelta.y !== 0) {
                 if (!wheelGlide.running)
                     root.wheelTarget = flick.contentY
                 root.wheelTarget = Math.max(0, Math.min(limit,
-                    root.wheelTarget - notches * root.wheelStep))
+                    root.wheelTarget - event.angleDelta.y / 120 * root.wheelStep))
                 wheelGlide.to = root.wheelTarget
                 wheelGlide.restart()
-                event.accepted = true
+                return
             }
+            const delta = event.pixelDelta.y !== 0
+                ? event.pixelDelta.y : event.angleDelta.y / 8
+            if (delta === 0)
+                return
+            wheelGlide.stop()
+            flick.contentY = Math.max(0, Math.min(limit, flick.contentY - delta))
         }
     }
 

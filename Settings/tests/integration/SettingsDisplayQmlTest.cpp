@@ -451,6 +451,8 @@ private slots:
   void missingPhysicalSizeFallsBackToPixels();
   void standFollowsThemeWhileGlassStaysBlack();
   void mouseWheelGlidesInsteadOfJumping();
+  void waylandMouseWheelWithPixelDeltaGlides();
+  void touchpadScrollStillScrolls();
 };
 
 void SettingsDisplayQmlTest::projectsAuthoritativeReadOnlyOutputSnapshot() {
@@ -1283,36 +1285,103 @@ void SettingsDisplayQmlTest::standFollowsThemeWhileGlassStaysBlack() {
                 QStringLiteral("display-light-theme.png"));
 }
 
+namespace {
+
+struct ScrollFixture {
+  QQuickItem *layer = nullptr;
+  QQuickItem *flickable = nullptr;
+};
+
+ScrollFixture scrollTargets(QQuickItem *page) {
+  ScrollFixture targets;
+  // A pointer handler is not an item, so search the object tree.
+  QObject *handler =
+      page->findChild<QObject *>(QStringLiteral("scrollPageWheelHandler"));
+  // Flickable redirects children to its moving contentItem, so walk up to
+  // the item that owns contentY.
+  QQuickItem *item =
+      handler ? qvariant_cast<QQuickItem *>(handler->property("parent")) : nullptr;
+  while (item && item->metaObject()->indexOfProperty("contentY") < 0)
+    item = item->parentItem();
+  targets.flickable = item;
+  // Wheel events are aimed at the middle of the visible page.
+  targets.layer = targets.flickable;
+  return targets;
+}
+
+void sendWheel(QQuickItem *over, QPoint pixelDelta, QPoint angleDelta,
+               Qt::ScrollPhase phase, const QPointingDevice *device) {
+  const QPointF scenePoint =
+      over->mapToScene(QPointF(over->width() / 2.0, over->height() / 2.0));
+  QWheelEvent event(scenePoint, scenePoint, pixelDelta, angleDelta,
+                    Qt::NoButton, Qt::NoModifier, phase, false,
+                    Qt::MouseEventNotSynthesized, device);
+  QCoreApplication::sendEvent(over->window(), &event);
+}
+
+const QPointingDevice *touchpadDevice() {
+  static QPointingDevice device(
+      QStringLiteral("test touchpad"), 4242, QInputDevice::DeviceType::TouchPad,
+      QPointingDevice::PointerType::Finger,
+      QInputDevice::Capability::Position | QInputDevice::Capability::Scroll |
+          QInputDevice::Capability::PixelScroll,
+      2, 0);
+  return &device;
+}
+
+void verifyWheelNotchGlides(QQuickItem *page, QPoint pixelDelta) {
+  const ScrollFixture targets = scrollTargets(page);
+  QVERIFY(targets.layer != nullptr);
+  QVERIFY(targets.flickable != nullptr);
+  QTRY_VERIFY(targets.flickable->property("contentHeight").toReal() >
+              targets.flickable->height() + 100.0);
+  QCOMPARE(targets.flickable->property("contentY").toReal(), 0.0);
+
+  sendWheel(targets.layer, pixelDelta, QPoint(0, -120), Qt::NoScrollPhase,
+            QPointingDevice::primaryPointingDevice());
+
+  // One notch must not land instantly...
+  QTest::qWait(40);
+  const qreal midway = targets.flickable->property("contentY").toReal();
+  QVERIFY2(midway < 100.0, qPrintable(QString::number(midway)));
+  // ...and must settle exactly one step down.
+  QTRY_COMPARE(targets.flickable->property("contentY").toReal(), 100.0);
+}
+
+} // namespace
+
 void SettingsDisplayQmlTest::mouseWheelGlidesInsteadOfJumping() {
   DisplayPageFixture fixture;
   QQuickItem *page = fixture.createPage();
   QVERIFY2(page != nullptr, qPrintable(fixture.errors()));
-  auto *layer = qobject_cast<QQuickItem *>(
-      fixture.object(QStringLiteral("scrollPageWheelLayer")));
-  QVERIFY(layer != nullptr);
-  auto *scrollPage = layer->parentItem();
-  QVERIFY(scrollPage != nullptr);
-  auto *flickable =
-      qvariant_cast<QQuickItem *>(scrollPage->property("contentItem"));
-  QVERIFY(flickable != nullptr);
-  QTRY_VERIFY(flickable->property("contentHeight").toReal() >
-              flickable->height() + 100.0);
-  QCOMPARE(flickable->property("contentY").toReal(), 0.0);
+  verifyWheelNotchGlides(page, QPoint());
+}
 
-  const QPointF local(layer->width() / 2.0, layer->height() / 2.0);
-  const QPointF scenePoint = layer->mapToScene(local);
-  QWheelEvent notch(scenePoint, scenePoint, QPoint(), QPoint(0, -120),
-                    Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false,
-                    Qt::MouseEventNotSynthesized,
-                    QPointingDevice::primaryPointingDevice());
-  QCoreApplication::sendEvent(layer->window(), &notch);
+void SettingsDisplayQmlTest::waylandMouseWheelWithPixelDeltaGlides() {
+  // QtWayland reports wheel notches with a pixel delta as well.
+  DisplayPageFixture fixture;
+  QQuickItem *page = fixture.createPage();
+  QVERIFY2(page != nullptr, qPrintable(fixture.errors()));
+  verifyWheelNotchGlides(page, QPoint(0, -15));
+}
 
-  // One notch must not land instantly...
-  QTest::qWait(40);
-  const qreal midway = flickable->property("contentY").toReal();
-  QVERIFY2(midway < 100.0, qPrintable(QString::number(midway)));
-  // ...and must settle exactly one step down.
-  QTRY_COMPARE(flickable->property("contentY").toReal(), 100.0);
+void SettingsDisplayQmlTest::touchpadScrollStillScrolls() {
+  DisplayPageFixture fixture;
+  QQuickItem *page = fixture.createPage();
+  QVERIFY2(page != nullptr, qPrintable(fixture.errors()));
+  const ScrollFixture targets = scrollTargets(page);
+  QVERIFY(targets.layer != nullptr);
+  QVERIFY(targets.flickable != nullptr);
+  QTRY_VERIFY(targets.flickable->property("contentHeight").toReal() >
+              targets.flickable->height() + 100.0);
+
+  sendWheel(targets.layer, QPoint(0, -10), QPoint(0, -80), Qt::ScrollBegin,
+            touchpadDevice());
+  for (int i = 0; i < 5; ++i)
+    sendWheel(targets.layer, QPoint(0, -10), QPoint(0, -80), Qt::ScrollUpdate,
+              touchpadDevice());
+  sendWheel(targets.layer, QPoint(), QPoint(), Qt::ScrollEnd, touchpadDevice());
+  QTRY_VERIFY(targets.flickable->property("contentY").toReal() > 0.0);
 }
 
 void SettingsDisplayQmlTest::showsPreferredModeSemantics() {

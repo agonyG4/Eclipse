@@ -322,11 +322,8 @@ FocusScope {
                 // minus the distance between the two edges.
                 readonly property real cornerRadius: laptop ? 14 : 16
                 readonly property real screenInset: laptop ? 6 : 5
-                // White hardware in the light theme, black glass in the dark one.
+                // The glass stays black in both themes; only the stand follows the theme.
                 readonly property bool lightDevice: Components.Theme.isLight
-                readonly property color bodyColor: lightDevice ? "#f5f5f7" : "#0a0a0c"
-                readonly property color rimColor: lightDevice
-                    ? Qt.rgba(0, 0, 0, 0.14) : Qt.rgba(1, 1, 1, 0.16)
                 // Opaque so the shadows never show through the stand.
                 readonly property color standTint:
                     Qt.tint(Components.Theme.windowBackground,
@@ -414,12 +411,9 @@ FocusScope {
                         objectName: "displayMonitorBody_" + String(modelData.id)
                         anchors.fill: parent
                         radius: parent.radius
-                        color: monitorItem.bodyColor
+                        color: "#0a0a0c"
                         borderWidth: 1
-                        borderColor: monitorItem.rimColor
-                        Behavior on color {
-                            ColorAnimation { duration: Components.Theme.animationNormal }
-                        }
+                        borderColor: Qt.rgba(1, 1, 1, 0.16)
                     }
 
                     Item {
@@ -517,7 +511,7 @@ FocusScope {
                             anchors.fill: parent
                             radius: screenSurface.radius
                             borderWidth: 1
-                            borderColor: Qt.rgba(0, 0, 0, monitorItem.lightDevice ? 0.35 : 0.30)
+                            borderColor: Qt.rgba(0, 0, 0, 0.30)
                         }
 
                         Text {

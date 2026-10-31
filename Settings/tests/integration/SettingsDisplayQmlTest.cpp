@@ -448,7 +448,7 @@ private slots:
   void sameAspectModeKeepsPhysicalSize();
   void mixedScaleDisplaysDoNotOverlap();
   void missingPhysicalSizeFallsBackToPixels();
-  void deviceBodyFollowsThemeMode();
+  void standFollowsThemeWhileGlassStaysBlack();
 };
 
 void SettingsDisplayQmlTest::projectsAuthoritativeReadOnlyOutputSnapshot() {
@@ -1260,17 +1260,22 @@ void SettingsDisplayQmlTest::missingPhysicalSizeFallsBackToPixels() {
   QVERIFY(qAbs(width / height - 16.0 / 9.0) < 0.01);
 }
 
-void SettingsDisplayQmlTest::deviceBodyFollowsThemeMode() {
+void SettingsDisplayQmlTest::standFollowsThemeWhileGlassStaysBlack() {
   DisplayPageFixture fixture;
   fixture.theme()->setThemeMode(0);
   QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.errors()));
   QObject *body =
       fixture.object(QStringLiteral("displayMonitorBody_output-1"));
+  QObject *stand =
+      fixture.object(QStringLiteral("displayMonitorStandBase_output-1"));
   QVERIFY(body != nullptr);
+  QVERIFY(stand != nullptr);
   QVERIFY(body->property("color").value<QColor>().lightnessF() < 0.1);
+  QVERIFY(stand->property("color").value<QColor>().lightnessF() < 0.5);
 
   fixture.theme()->setThemeMode(1);
-  QTRY_VERIFY(body->property("color").value<QColor>().lightnessF() > 0.9);
+  QTRY_VERIFY(stand->property("color").value<QColor>().lightnessF() > 0.6);
+  QVERIFY(body->property("color").value<QColor>().lightnessF() < 0.1);
   captureVisual(qobject_cast<QQuickItem *>(fixture.object(
                     QStringLiteral("displayPreviewMonitor_output-1"))),
                 QStringLiteral("display-light-theme.png"));

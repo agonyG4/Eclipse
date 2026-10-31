@@ -333,9 +333,7 @@ FocusScope {
                 // minus the distance between the two edges.
                 readonly property real cornerRadius: laptop ? 14 : 16
                 readonly property real screenInset: laptop ? 6 : 5
-                readonly property real ringGap: 3
-                readonly property real ringWidth: 2
-                // Opaque so the ring and shadows never show through the stand.
+                // Opaque so the shadows never show through the stand.
                 readonly property color standTint:
                     Qt.tint(Components.Theme.windowBackground,
                             Qt.rgba(Components.Theme.textPrimary.r,
@@ -381,7 +379,7 @@ FocusScope {
                     }
                 }
 
-                // Layering, back to front: shadows, selection ring, stand, body.
+                // Layering, back to front: shadows, stand, body.
                 // The body always sits on top so the stand emerges from behind it.
 
                 // Ambient elevation, the way macOS lifts a window off the desktop.
@@ -402,30 +400,6 @@ FocusScope {
                     offset.y: 1
                     blur: 3
                     color: Qt.rgba(0, 0, 0, 0.30)
-                }
-
-                ContinuousRect {
-                    objectName: "displaySelectionRing_" + String(modelData.id)
-                    z: -2
-                    anchors.fill: screenFrame
-                    anchors.margins: -(monitorItem.ringGap + monitorItem.ringWidth)
-                    radius: screenFrame.radius + monitorItem.ringGap + monitorItem.ringWidth
-                    borderWidth: monitorItem.ringWidth
-                    borderColor: Components.Theme.accent
-                    opacity: monitorItem.active ? 1 : 0
-                    scale: monitorItem.active ? 1 : 0.985
-                    Behavior on opacity {
-                        NumberAnimation {
-                            duration: Components.Theme.animationNormal
-                            easing.type: Easing.OutCubic
-                        }
-                    }
-                    Behavior on scale {
-                        NumberAnimation {
-                            duration: Components.Theme.animationNormal
-                            easing.type: Easing.OutCubic
-                        }
-                    }
                 }
 
                 Rectangle {

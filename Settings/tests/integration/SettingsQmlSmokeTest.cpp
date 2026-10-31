@@ -339,6 +339,15 @@ QByteArray appearanceWallpaperResponse(const QString &previewSource,
         + '\n';
 }
 
+// Pages load asynchronously: the page's root object exists before its
+// children are built, so wait for the loader to finish, not the root to appear.
+bool pageReady(QObject *root, const QString &pageName)
+{
+    QObject *loader = root->findChild<QObject *>(QStringLiteral("settingsPageLoader"));
+    return loader && loader->property("status").toInt() == 1 // Loader.Ready
+        && root->findChild<QObject *>(pageName) != nullptr;
+}
+
 class RuntimeEnvironmentGuard final
 {
 public:
@@ -710,7 +719,7 @@ void SettingsQmlSmokeTest::loadsCustomizationHubOffscreen()
     QCOMPARE(engine.rootObjects().size(), 1);
     QVERIFY(settingsController.navigateTo(QStringLiteral("customization")));
     QObject *root = engine.rootObjects().constFirst();
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("settingsHubPage")) != nullptr, 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("settingsHubPage")), 1000);
     QObject *hub = root->findChild<QObject *>(QStringLiteral("settingsHubPage"));
     QVERIFY(hub != nullptr);
     QQuickItem *hubItem = qobject_cast<QQuickItem *>(hub);
@@ -952,28 +961,28 @@ void SettingsQmlSmokeTest::sidebarProfileHeaderNavigatesWithPointerAndKeyboard()
         QPointF(profileButton->width() / 2.0, profileButton->height() / 2.0));
     QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier,
                       QPoint(qRound(center.x()), qRound(center.y())));
-    QTRY_VERIFY_WITH_TIMEOUT(window->findChild<QObject *>(QStringLiteral("userProfilePage")) != nullptr, 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(window, QStringLiteral("userProfilePage")), 2000);
     QCOMPARE(settingsController.currentDestinationId(), QStringLiteral("user-profile"));
     QCOMPARE(settingsController.selectedSidebarId(), QStringLiteral("more-settings"));
 
     QVERIFY(settingsController.navigateTo(QStringLiteral("compositor")));
-    QTRY_VERIFY_WITH_TIMEOUT(window->findChild<QObject *>(QStringLiteral("compositorPage")) != nullptr, 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(window, QStringLiteral("compositorPage")), 2000);
     profileButton->forceActiveFocus();
     QTRY_VERIFY(profileButton->hasActiveFocus());
     QTest::keyClick(window, Qt::Key_Space);
-    QTRY_VERIFY_WITH_TIMEOUT(window->findChild<QObject *>(QStringLiteral("userProfilePage")) != nullptr, 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(window, QStringLiteral("userProfilePage")), 2000);
     QCOMPARE(settingsController.currentDestinationId(), QStringLiteral("user-profile"));
 
     QVERIFY(settingsController.navigateTo(QStringLiteral("compositor")));
-    QTRY_VERIFY_WITH_TIMEOUT(window->findChild<QObject *>(QStringLiteral("compositorPage")) != nullptr, 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(window, QStringLiteral("compositorPage")), 2000);
     profileButton->forceActiveFocus();
     QTRY_VERIFY(profileButton->hasActiveFocus());
     QTest::keyClick(window, Qt::Key_Return);
-    QTRY_VERIFY_WITH_TIMEOUT(window->findChild<QObject *>(QStringLiteral("userProfilePage")) != nullptr, 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(window, QStringLiteral("userProfilePage")), 2000);
     QCOMPARE(settingsController.currentDestinationId(), QStringLiteral("user-profile"));
 
     QVERIFY(settingsController.navigateTo(QStringLiteral("compositor")));
-    QTRY_VERIFY_WITH_TIMEOUT(window->findChild<QObject *>(QStringLiteral("compositorPage")) != nullptr, 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(window, QStringLiteral("compositorPage")), 2000);
     profileButton->forceActiveFocus();
     QTRY_VERIFY(profileButton->hasActiveFocus());
     QTest::keyClick(window, Qt::Key_Enter);
@@ -1093,7 +1102,7 @@ void SettingsQmlSmokeTest::loadsAppearanceRouteFromHubOffscreen()
     QCOMPARE(engine.rootObjects().size(), 1);
     QVERIFY(settingsController.navigateTo(QStringLiteral("customization")));
     QObject *root = engine.rootObjects().constFirst();
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("settingsHubPage")) != nullptr,
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("settingsHubPage")),
                              1000);
     QObject *hub = root->findChild<QObject *>(QStringLiteral("settingsHubPage"));
     QVERIFY(hub != nullptr);
@@ -1102,7 +1111,7 @@ void SettingsQmlSmokeTest::loadsAppearanceRouteFromHubOffscreen()
     QVERIFY(row != nullptr);
     qmlWarnings.clear();
     QVERIFY(QMetaObject::invokeMethod(row, "clicked"));
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("appearancePage")) != nullptr,
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("appearancePage")),
                              1000);
     QObject *page = root->findChild<QObject *>(QStringLiteral("appearancePage"));
     QVERIFY(page != nullptr);
@@ -1140,7 +1149,7 @@ void SettingsQmlSmokeTest::loadsVisualEffectsRouteFromHubOffscreen()
     QCOMPARE(engine.rootObjects().size(), 1);
     QVERIFY(settingsController.navigateTo(QStringLiteral("visual-effects")));
     QObject *root = engine.rootObjects().constFirst();
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("visualEffectsPage")) != nullptr,
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("visualEffectsPage")),
                              1000);
     auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(
         QStringLiteral("visualEffectsPage")));
@@ -1231,7 +1240,7 @@ void SettingsQmlSmokeTest::loadsIconsRouteOffscreen()
     const QColor lightForeground = artwork->property("resolvedTint").value<QColor>();
     QVERIFY2(lightForeground.red() < 180 && lightForeground.green() < 180
              && lightForeground.blue() < 180, qPrintable(lightForeground.name()));
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("iconsPage")) != nullptr,
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("iconsPage")),
                              1000);
     auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(QStringLiteral("iconsPage")));
     QVERIFY(page != nullptr);
@@ -1313,7 +1322,7 @@ void SettingsQmlSmokeTest::iconsPageShowsInstalledCatalogAndSearchEmptyStates()
     QCOMPARE(engine.rootObjects().size(), 1);
     QVERIFY(settingsController.navigateTo(QStringLiteral("icons")));
     auto *root = engine.rootObjects().constFirst();
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("iconsPage")) != nullptr,
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("iconsPage")),
                              1000);
     auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(QStringLiteral("iconsPage")));
     QVERIFY(page != nullptr);
@@ -1386,7 +1395,7 @@ void SettingsQmlSmokeTest::iconsPageReconcilesExternalPersistedSelectionOnRefres
     QCOMPARE(engine.rootObjects().size(), 1);
     QVERIFY(settingsController.navigateTo(QStringLiteral("icons")));
     auto *root = engine.rootObjects().constFirst();
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("iconsPage")) != nullptr,
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("iconsPage")),
                              1000);
     auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(QStringLiteral("iconsPage")));
     QVERIFY(page != nullptr);
@@ -1460,7 +1469,7 @@ void SettingsQmlSmokeTest::visualEffectsPreviewUsesEffectiveMaterialSnapshot()
     QCOMPARE(engine.rootObjects().size(), 1);
     QVERIFY(settingsController.navigateTo(QStringLiteral("visual-effects")));
     QObject *root = engine.rootObjects().constFirst();
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("visualEffectsPage")) != nullptr,
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("visualEffectsPage")),
                              1000);
     auto *preview = qobject_cast<QQuickItem *>(root->findChild<QObject *>(
         QStringLiteral("visualEffectsMaterialPreview")));
@@ -1651,7 +1660,7 @@ void SettingsQmlSmokeTest::appearanceReusesSnapshotAndUpdatesWithoutRecreation()
     QVERIFY(settingsController.navigateTo(QStringLiteral("appearance")));
     auto *root = engine.rootObjects().constFirst();
     QVERIFY(root != nullptr);
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("appearancePage")) != nullptr,
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("appearancePage")),
                              1000);
     auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(
         QStringLiteral("appearancePage")));
@@ -1719,7 +1728,7 @@ void SettingsQmlSmokeTest::appearanceDoesNotRefreshWhileWallpaperBusy()
     QVERIFY(settingsController.navigateTo(QStringLiteral("appearance")));
     auto *root = engine.rootObjects().constFirst();
     QVERIFY(root != nullptr);
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("appearancePage")) != nullptr,
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("appearancePage")),
                              1000);
     auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(
         QStringLiteral("appearancePage")));
@@ -1756,7 +1765,7 @@ void SettingsQmlSmokeTest::appearancePreviewFallsBackWithoutWallpaperService()
     QVERIFY(settingsController.navigateTo(QStringLiteral("appearance")));
     auto *root = engine.rootObjects().constFirst();
     QVERIFY(root != nullptr);
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("appearancePage")) != nullptr,
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("appearancePage")),
                              1000);
     auto *page = qobject_cast<QQuickItem *>(root->findChild<QObject *>(
         QStringLiteral("appearancePage")));
@@ -1834,7 +1843,7 @@ void SettingsQmlSmokeTest::appearanceChoicesUpdateController()
     QCOMPARE(engine.rootObjects().size(), 1);
     QVERIFY(settingsController.navigateTo(QStringLiteral("appearance")));
     QObject *root = engine.rootObjects().constFirst();
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("appearancePage")) != nullptr,
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("appearancePage")),
                              1000);
     QObject *page = root->findChild<QObject *>(QStringLiteral("appearancePage"));
     QVERIFY(page != nullptr);
@@ -1891,7 +1900,7 @@ void SettingsQmlSmokeTest::appearanceChoicesPreserveExternalControllerPropagatio
     QCOMPARE(engine.rootObjects().size(), 1);
     QVERIFY(settingsController.navigateTo(QStringLiteral("appearance")));
     QObject *root = engine.rootObjects().constFirst();
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("appearancePage")) != nullptr,
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("appearancePage")),
                              1000);
     QObject *page = root->findChild<QObject *>(QStringLiteral("appearancePage"));
     QVERIFY(page != nullptr);
@@ -1956,7 +1965,7 @@ void SettingsQmlSmokeTest::appearanceIconChoicesPreserveControllerPropagation()
     QCOMPARE(engine.rootObjects().size(), 1);
     QVERIFY(settingsController.navigateTo(QStringLiteral("appearance")));
     QObject *root = engine.rootObjects().constFirst();
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("appearancePage")) != nullptr,
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("appearancePage")),
                              1000);
     QObject *page = root->findChild<QObject *>(QStringLiteral("appearancePage"));
     QVERIFY(page != nullptr);
@@ -2063,7 +2072,7 @@ void SettingsQmlSmokeTest::appearanceAccentChoicesUpdateController()
     QCOMPARE(engine.rootObjects().size(), 1);
     QVERIFY(settingsController.navigateTo(QStringLiteral("appearance")));
     QObject *root = engine.rootObjects().constFirst();
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("appearancePage")) != nullptr,
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("appearancePage")),
                              1000);
     QObject *page = root->findChild<QObject *>(QStringLiteral("appearancePage"));
     QVERIFY(page != nullptr);
@@ -2159,7 +2168,7 @@ void SettingsQmlSmokeTest::appearancePersistenceErrorsAreVisibleOnlyWhenPresent(
     QCOMPARE(engine.rootObjects().size(), 1);
     QVERIFY(settingsController.navigateTo(QStringLiteral("appearance")));
     QObject *root = engine.rootObjects().constFirst();
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("appearancePage")) != nullptr,
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("appearancePage")),
                              1000);
     QObject *page = root->findChild<QObject *>(QStringLiteral("appearancePage"));
     QVERIFY(page != nullptr);
@@ -2192,10 +2201,8 @@ void SettingsQmlSmokeTest::visualEffectsPageUsesTypedMaterialController()
     QCOMPARE(engine.rootObjects().size(), 1);
     QVERIFY(settingsController.navigateTo(QStringLiteral("visual-effects")));
     auto *root = engine.rootObjects().constFirst();
-    QObject *page = nullptr;
-    QTRY_VERIFY_WITH_TIMEOUT(
-        (page = root->findChild<QObject *>(QStringLiteral("visualEffectsPage"))) != nullptr,
-        1000);
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("visualEffectsPage")), 1000);
+    QObject *page = root->findChild<QObject *>(QStringLiteral("visualEffectsPage"));
     QVERIFY(settingsController.visualEffects() != nullptr);
     QCOMPARE(settingsController.visualEffects()->metaObject()->className(),
              QByteArrayLiteral("SettingsVisualEffectsController"));
@@ -2301,13 +2308,13 @@ void SettingsQmlSmokeTest::loadsWallpaperRouteFromHubOffscreen()
     QCOMPARE(engine.rootObjects().size(), 1);
     QVERIFY(settingsController.navigateTo(QStringLiteral("customization")));
     QObject *root = engine.rootObjects().constFirst();
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("settingsHubPage")) != nullptr, 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("settingsHubPage")), 1000);
     QObject *hub = root->findChild<QObject *>(QStringLiteral("settingsHubPage"));
     QVERIFY(hub != nullptr);
     QObject *row = findVisualItem(qobject_cast<QQuickItem *>(hub), QStringLiteral("hubNavigationRow-wallpaper"));
     QVERIFY(row != nullptr);
     QVERIFY(QMetaObject::invokeMethod(row, "clicked"));
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("wallpaperPage")) != nullptr, 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("wallpaperPage")), 1000);
     QObject *page = root->findChild<QObject *>(QStringLiteral("wallpaperPage"));
     QVERIFY(page != nullptr);
     QObject *scroll = page->findChild<QObject *>(QStringLiteral("wallpaperScrollPage"));
@@ -2378,13 +2385,13 @@ void SettingsQmlSmokeTest::loadsDockRouteFromHubOffscreen()
     QCOMPARE(engine.rootObjects().size(), 1);
     QVERIFY(settingsController.navigateTo(QStringLiteral("customization")));
     QObject *root = engine.rootObjects().constFirst();
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("settingsHubPage")) != nullptr, 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("settingsHubPage")), 1000);
     QObject *hub = root->findChild<QObject *>(QStringLiteral("settingsHubPage"));
     QVERIFY(hub != nullptr);
     QObject *row = findVisualItem(qobject_cast<QQuickItem *>(hub), QStringLiteral("hubNavigationRow-dock"));
     QVERIFY(row != nullptr);
     QVERIFY(QMetaObject::invokeMethod(row, "clicked"));
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("dockPage")) != nullptr, 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("dockPage")), 1000);
     QObject *page = root->findChild<QObject *>(QStringLiteral("dockPage"));
     QVERIFY(page != nullptr);
     QCOMPARE(settingsController.selectedSidebarId(), QStringLiteral("customization"));
@@ -2449,14 +2456,14 @@ void SettingsQmlSmokeTest::navigatesBackAndForwardFromHub()
     QVERIFY(settingsController.navigateTo(QStringLiteral("customization")));
     QVERIFY(settingsController.navigateTo(QStringLiteral("dock")));
     QObject *root = engine.rootObjects().constFirst();
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("dockPage")) != nullptr, 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("dockPage")), 1000);
 
     settingsController.goBack();
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("settingsHubPage")) != nullptr, 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("settingsHubPage")), 1000);
     QVERIFY(settingsController.canGoForward());
 
     settingsController.goForward();
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("dockPage")) != nullptr, 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("dockPage")), 1000);
     QVERIFY(!settingsController.canGoForward());
 }
 
@@ -2630,7 +2637,7 @@ void SettingsQmlSmokeTest::resolvesHubHeroIconsByMetadataPrecedence()
     QCOMPARE(engine.rootObjects().size(), 1);
     QVERIFY(settingsController.navigateTo(QStringLiteral("customization")));
     QObject *root = engine.rootObjects().constFirst();
-    QTRY_VERIFY_WITH_TIMEOUT(root->findChild<QObject *>(QStringLiteral("settingsHubPage")) != nullptr, 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(root, QStringLiteral("settingsHubPage")), 1000);
     QObject *hub = root->findChild<QObject *>(QStringLiteral("settingsHubPage"));
     QVERIFY(hub != nullptr);
 
@@ -2906,7 +2913,7 @@ void SettingsQmlSmokeTest::wallpaperPreviewAndRemovalUseRealPointerEvents()
     QVERIFY(window != nullptr);
     window->show();
     QVERIFY(settingsController.navigateTo(QStringLiteral("customization")));
-    QTRY_VERIFY_WITH_TIMEOUT(window->findChild<QObject *>(QStringLiteral("settingsHubPage")) != nullptr,
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(window, QStringLiteral("settingsHubPage")),
                              1000);
     auto *hub = qobject_cast<QQuickItem *>(window->findChild<QObject *>(QStringLiteral("settingsHubPage")));
     QVERIFY(hub != nullptr);
@@ -2916,7 +2923,7 @@ void SettingsQmlSmokeTest::wallpaperPreviewAndRemovalUseRealPointerEvents()
         window->contentItem(), QPointF(wallpaperRow->width() / 2, wallpaperRow->height() / 2));
     QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, wallpaperRowPoint.toPoint());
 
-    QTRY_VERIFY_WITH_TIMEOUT(window->findChild<QObject *>(QStringLiteral("wallpaperPage")) != nullptr,
+    QTRY_VERIFY_WITH_TIMEOUT(pageReady(window, QStringLiteral("wallpaperPage")),
                              1000);
     auto *page = qobject_cast<QQuickItem *>(window->findChild<QObject *>(QStringLiteral("wallpaperPage")));
     QVERIFY(page != nullptr);

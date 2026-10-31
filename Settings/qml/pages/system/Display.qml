@@ -299,7 +299,19 @@ FocusScope {
         // Room under every device for its name, as macOS labels them.
         readonly property real nameStrip: 22
 
-        Component.onCompleted: preview.previewReady = true
+        // Geometry animations wait until the first real layout has settled;
+        // otherwise devices fly in from the corner as the page gets its size.
+        onLayoutChanged: {
+            if (!preview.previewReady)
+                previewSettle.restart()
+        }
+
+        Timer {
+            id: previewSettle
+            interval: 150
+            onTriggered: preview.previewReady = preview.width > 0
+                && preview.layout.length > 0
+        }
 
         Repeater {
             model: root.outputs.length

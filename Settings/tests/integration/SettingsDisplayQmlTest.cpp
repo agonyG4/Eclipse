@@ -447,6 +447,7 @@ private slots:
   void showsEmptyOutputState();
   void showsLoadingStateUntilRefreshSettles();
   void builtInDisplaysUseLaptopChassis();
+  void previewAppearsInPlaceOnFirstOpen();
   void physicalSizeOutranksPixelCount();
   void sameAspectModeKeepsPhysicalSize();
   void mixedScaleDisplaysDoNotOverlap();
@@ -1179,6 +1180,22 @@ void SettingsDisplayQmlTest::builtInDisplaysUseLaptopChassis() {
   QVERIFY(!externalStand->property("visible").toBool());
   captureVisual(qobject_cast<QQuickItem *>(preview),
                 QStringLiteral("display-laptop.png"));
+}
+
+void SettingsDisplayQmlTest::previewAppearsInPlaceOnFirstOpen() {
+  DisplayPageFixture fixture;
+  QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.errors()));
+  QQuickItem *monitor = qobject_cast<QQuickItem *>(
+      fixture.object(QStringLiteral("displayPreviewMonitor_output-1")));
+  QVERIFY(monitor != nullptr);
+  QTRY_VERIFY(monitor->width() > 0.0);
+  // The first layout lands at once: no glide in from the corner.
+  const QPointF settled(monitor->x(), monitor->y());
+  const qreal width = monitor->width();
+  QVERIFY(settled.x() > 0.0);
+  QTest::qWait(80);
+  QCOMPARE(QPointF(monitor->x(), monitor->y()), settled);
+  QCOMPARE(monitor->width(), width);
 }
 
 void SettingsDisplayQmlTest::physicalSizeOutranksPixelCount() {

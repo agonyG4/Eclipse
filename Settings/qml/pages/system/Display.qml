@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Effects
 import QtQuick.Layouts
 import QtQuick.Window
 import "DisplayLogic.js" as DisplayLogic
@@ -342,15 +343,55 @@ FocusScope {
                     }
                 }
 
+                // Contact shadow grounding the device on the page.
+                RectangularShadow {
+                    anchors.horizontalCenter: screenFrame.horizontalCenter
+                    y: (monitorItem.laptop ? laptopDeck.y + laptopDeck.height
+                                           : standBase.y + standBase.height) - 3
+                    width: (monitorItem.laptop ? laptopDeck.width : standBase.width) - 6
+                    height: 4
+                    radius: 2
+                    blur: 10
+                    spread: 1
+                    color: Qt.rgba(0, 0, 0, 0.55)
+                }
+
+                RectangularShadow {
+                    anchors.fill: screenFrame
+                    radius: screenFrame.radius
+                    offset.y: 10
+                    blur: 28
+                    spread: -4
+                    color: Qt.rgba(0, 0, 0, 0.50)
+                }
+
+                RectangularShadow {
+                    anchors.fill: screenFrame
+                    radius: screenFrame.radius
+                    blur: 26
+                    spread: 2
+                    color: Qt.rgba(Components.Theme.accent.r,
+                                   Components.Theme.accent.g,
+                                   Components.Theme.accent.b, 0.26)
+                    opacity: monitorItem.active ? 1 : 0
+                    Behavior on opacity {
+                        NumberAnimation { duration: Components.Theme.animationNormal }
+                    }
+                }
+
                 Rectangle {
                     anchors.fill: screenFrame
-                    anchors.margins: -3
-                    radius: screenFrame.radius + 3
+                    anchors.margins: -5
+                    radius: screenFrame.radius + 5
                     color: "transparent"
-                    border.width: monitorItem.active ? 1 : 0
+                    border.width: 1.25
                     border.color: Qt.rgba(Components.Theme.accent.r,
                                           Components.Theme.accent.g,
-                                          Components.Theme.accent.b, 0.55)
+                                          Components.Theme.accent.b, 0.72)
+                    opacity: monitorItem.active ? 1 : 0
+                    Behavior on opacity {
+                        NumberAnimation { duration: Components.Theme.animationNormal }
+                    }
                 }
 
                 Rectangle {
@@ -360,10 +401,12 @@ FocusScope {
                     width: monitorItem.screenWidth
                     height: monitorItem.screenHeight
                     radius: monitorItem.laptop ? 10 : 9
-                    color: "#202027"
+                    gradient: Gradient {
+                        GradientStop { position: 0; color: "#2b2b33" }
+                        GradientStop { position: 1; color: "#141419" }
+                    }
                     border.width: 1
-                    border.color: Qt.rgba(1, 1, 1, 0.22)
-                    clip: true
+                    border.color: Qt.rgba(0, 0, 0, 0.55)
 
                     Behavior on width {
                         enabled: preview.previewReady
@@ -373,8 +416,41 @@ FocusScope {
                         enabled: preview.previewReady
                         NumberAnimation { duration: Components.Theme.animationNormal }
                     }
-                    Behavior on border.color {
-                        ColorAnimation { duration: Components.Theme.animationNormal }
+
+                    // Machined edge: a hairline that catches light along the top.
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: 1
+                        radius: parent.radius - 1
+                        color: "transparent"
+                        border.width: 1
+                        border.color: Qt.rgba(1, 1, 1, 0.07)
+                    }
+
+                    Rectangle {
+                        anchors.top: parent.top
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.topMargin: 1
+                        width: parent.width - parent.radius * 2
+                        height: 1
+                        gradient: Gradient {
+                            orientation: Gradient.Horizontal
+                            GradientStop { position: 0; color: Qt.rgba(1, 1, 1, 0) }
+                            GradientStop { position: 0.5; color: Qt.rgba(1, 1, 1, 0.22) }
+                            GradientStop { position: 1; color: Qt.rgba(1, 1, 1, 0) }
+                        }
+                    }
+
+                    Item {
+                        id: screenMask
+                        anchors.fill: screenSurface
+                        visible: false
+                        layer.enabled: true
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: screenSurface.radius
+                        }
                     }
 
                     Rectangle {
@@ -382,8 +458,15 @@ FocusScope {
                         anchors.fill: parent
                         anchors.margins: monitorItem.laptop ? 6 : 4
                         radius: Math.max(4, screenFrame.radius - 4)
-                        color: Components.Theme.windowBackground
-                        clip: true
+                        color: "#000000"
+                        layer.enabled: true
+                        layer.smooth: true
+                        layer.effect: MultiEffect {
+                            maskEnabled: true
+                            maskSource: screenMask
+                            maskThresholdMin: 0.5
+                            maskSpreadAtMin: 1.0
+                        }
 
                         Rectangle {
                             objectName: "displayWallpaperFallback_" + String(modelData.id)
@@ -438,12 +521,22 @@ FocusScope {
                             sourceSize.height: 1024
                         }
 
+                        // Glass: a soft sheen across the top and a recessed panel edge.
+                        Rectangle {
+                            anchors.fill: parent
+                            gradient: Gradient {
+                                GradientStop { position: 0; color: Qt.rgba(1, 1, 1, 0.09) }
+                                GradientStop { position: 0.45; color: Qt.rgba(1, 1, 1, 0) }
+                                GradientStop { position: 1; color: Qt.rgba(0, 0, 0, 0.16) }
+                            }
+                        }
+
                         Rectangle {
                             anchors.fill: parent
                             radius: screenSurface.radius
-                            color: Qt.rgba(Components.Theme.windowBackground.r,
-                                           Components.Theme.windowBackground.g,
-                                           Components.Theme.windowBackground.b, 0.08)
+                            color: "transparent"
+                            border.width: 1
+                            border.color: Qt.rgba(0, 0, 0, 0.45)
                         }
 
                         Text {
@@ -460,27 +553,46 @@ FocusScope {
                             anchors.left: parent.left
                             anchors.bottom: parent.bottom
                             anchors.margins: 8
-                            width: Math.min(parent.width - 16, connectorLabel.implicitWidth + 16)
+                            width: Math.min(parent.width - 16,
+                                            connectorLabel.implicitWidth + connectorDot.width + 22)
                             height: 20
-                            radius: 5
-                            color: Qt.rgba(Components.Theme.windowBackground.r,
-                                           Components.Theme.windowBackground.g,
-                                           Components.Theme.windowBackground.b, 0.62)
+                            radius: height / 2
+                            color: Qt.rgba(0.04, 0.04, 0.06, 0.55)
+                            border.width: 1
+                            border.color: Qt.rgba(1, 1, 1, 0.14)
+
+                            Rectangle {
+                                id: connectorDot
+                                anchors.left: parent.left
+                                anchors.leftMargin: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 6
+                                height: 6
+                                radius: 3
+                                color: monitorItem.active
+                                    ? Components.Theme.accent
+                                    : Qt.rgba(1, 1, 1, 0.45)
+                                Behavior on color {
+                                    ColorAnimation { duration: Components.Theme.animationNormal }
+                                }
+                            }
+
                             Text {
                                 id: connectorLabel
                                 objectName: "displayConnector"
-                                anchors.left: parent.left
+                                anchors.left: connectorDot.right
                                 anchors.right: parent.right
                                 anchors.verticalCenter: parent.verticalCenter
-                                anchors.leftMargin: Components.Theme.spacingSmall
-                                anchors.rightMargin: Components.Theme.spacingSmall
+                                anchors.leftMargin: 6
+                                anchors.rightMargin: 8
                                 text: DisplayLogic.nonEmpty(modelData.name)
                                     ? String(modelData.name) : "Display"
                                 textFormat: Text.PlainText
                                 color: "#f5f5f7"
                                 font.family: Components.Theme.fontFamily
                                 font.pixelSize: Components.Theme.fontSizeTiny
-                                font.weight: Components.Theme.fontWeightMedium
+                                font.weight: Components.Theme.fontWeightDemiBold
+                                font.letterSpacing: 0.3
                                 elide: Text.ElideRight
                             }
                         }
@@ -498,59 +610,93 @@ FocusScope {
                     objectName: "displayMonitorStand_" + String(modelData.id)
                     visible: !monitorItem.laptop
                     anchors.horizontalCenter: screenFrame.horizontalCenter
-                    y: screenFrame.y + screenFrame.height + 1
+                    y: screenFrame.y + screenFrame.height
                     width: Math.max(13, screenFrame.width * 0.10)
-                    height: 20
-                    radius: 2
+                    height: 21
+                    // Brushed aluminium neck, shaded where it tucks under the panel.
                     gradient: Gradient {
-                        GradientStop {
-                            position: 0
-                            color: Qt.rgba(Components.Theme.textPrimary.r,
-                                           Components.Theme.textPrimary.g,
-                                           Components.Theme.textPrimary.b, 0.35)
-                        }
-                        GradientStop {
-                            position: 1
-                            color: Qt.rgba(Components.Theme.textPrimary.r,
-                                           Components.Theme.textPrimary.g,
-                                           Components.Theme.textPrimary.b, 0.14)
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0; color: "#3c3c45" }
+                        GradientStop { position: 0.35; color: "#8a8a94" }
+                        GradientStop { position: 0.6; color: "#6a6a74" }
+                        GradientStop { position: 1; color: "#34343c" }
+                    }
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        height: 6
+                        gradient: Gradient {
+                            GradientStop { position: 0; color: Qt.rgba(0, 0, 0, 0.55) }
+                            GradientStop { position: 1; color: Qt.rgba(0, 0, 0, 0) }
                         }
                     }
                 }
 
                 Rectangle {
+                    id: standBase
                     objectName: "displayMonitorStandBase_" + String(modelData.id)
                     visible: !monitorItem.laptop
                     anchors.horizontalCenter: screenFrame.horizontalCenter
                     y: screenFrame.y + screenFrame.height + 20
                     width: Math.max(48, screenFrame.width * 0.40)
-                    height: 5
+                    height: 6
                     radius: 3
-                    color: Qt.rgba(Components.Theme.textPrimary.r,
-                                   Components.Theme.textPrimary.g,
-                                   Components.Theme.textPrimary.b, 0.16)
-                }
-
-                Rectangle {
-                    objectName: "displayLaptopChassis_" + String(modelData.id)
-                    visible: monitorItem.laptop
-                    anchors.horizontalCenter: screenFrame.horizontalCenter
-                    y: screenFrame.y + screenFrame.height + 3
-                    width: screenFrame.width + 24
-                    height: 10
-                    radius: 5
-                    color: Qt.rgba(Components.Theme.textPrimary.r,
-                                   Components.Theme.textPrimary.g,
-                                   Components.Theme.textPrimary.b, 0.17)
+                    gradient: Gradient {
+                        GradientStop { position: 0; color: "#7c7c86" }
+                        GradientStop { position: 0.5; color: "#4a4a53" }
+                        GradientStop { position: 1; color: "#2a2a31" }
+                    }
 
                     Rectangle {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        width: Math.max(24, parent.width * 0.18)
+                        y: 0.5
+                        width: parent.width - parent.radius * 2
+                        height: 1
+                        gradient: Gradient {
+                            orientation: Gradient.Horizontal
+                            GradientStop { position: 0; color: Qt.rgba(1, 1, 1, 0) }
+                            GradientStop { position: 0.5; color: Qt.rgba(1, 1, 1, 0.45) }
+                            GradientStop { position: 1; color: Qt.rgba(1, 1, 1, 0) }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    id: laptopDeck
+                    objectName: "displayLaptopChassis_" + String(modelData.id)
+                    visible: monitorItem.laptop
+                    anchors.horizontalCenter: screenFrame.horizontalCenter
+                    y: screenFrame.y + screenFrame.height + 1
+                    width: screenFrame.width + 24
+                    height: 9
+                    radius: 2
+                    bottomLeftRadius: 6
+                    bottomRightRadius: 6
+                    gradient: Gradient {
+                        GradientStop { position: 0; color: "#8a8a94" }
+                        GradientStop { position: 0.3; color: "#5c5c66" }
+                        GradientStop { position: 1; color: "#2c2c33" }
+                    }
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 2
+                        anchors.rightMargin: 2
+                        y: 0.5
+                        height: 1
+                        color: Qt.rgba(1, 1, 1, 0.35)
+                    }
+
+                    // Finger notch for opening the lid.
+                    Rectangle {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: Math.max(24, parent.width * 0.16)
                         height: 3
-                        radius: 2
-                        color: Qt.rgba(Components.Theme.windowBackground.r,
-                                       Components.Theme.windowBackground.g,
-                                       Components.Theme.windowBackground.b, 0.24)
+                        bottomLeftRadius: 3
+                        bottomRightRadius: 3
+                        color: Qt.rgba(0, 0, 0, 0.35)
                     }
                 }
             }

@@ -9,8 +9,12 @@ Item {
     id: root
     property string iconKey: ""
     property url iconSource: ""
-    property string iconTheme: SettingsController.navigationIconTheme
-    property string iconWeight: SettingsController.navigationIconWeight
+    // The app always provides SettingsController; standalone hosts (component
+    // tests, other shells) may not, and then get the untinted source.
+    readonly property var controller:
+        typeof SettingsController !== "undefined" ? SettingsController : null
+    property string iconTheme: controller ? controller.navigationIconTheme : ""
+    property string iconWeight: controller ? controller.navigationIconWeight : ""
     property color tint: Components.Theme.textPrimary
     property bool showFallback: false
     property string fallbackGlyph: "\uf293"
@@ -23,10 +27,14 @@ Item {
         id: symbolImage
         objectName: "themedIconImage"
         anchors.fill: parent
-        source: root.iconSource.toString() !== ""
-            ? SettingsController.tintedSymbolSource(root.iconSource, root.tint.toString())
-            : SettingsController.tintedSymbolUrl(
-                root.iconKey, root.iconTheme, root.iconWeight, root.tint.toString())
+        source: {
+            if (!root.controller)
+                return root.iconSource
+            return root.iconSource.toString() !== ""
+                ? root.controller.tintedSymbolSource(root.iconSource, root.tint.toString())
+                : root.controller.tintedSymbolUrl(
+                    root.iconKey, root.iconTheme, root.iconWeight, root.tint.toString())
+        }
         sourceSize.width: Math.max(1, Math.ceil(root.width * root.physicalDpr))
         sourceSize.height: Math.max(1, Math.ceil(root.height * root.physicalDpr))
         fillMode: Image.PreserveAspectFit

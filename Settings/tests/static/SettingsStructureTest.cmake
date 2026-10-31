@@ -9,8 +9,9 @@ if(NOT DEFINED WAYLAND_EFFECTS_SOURCE_FILES)
 endif()
 
 string(REPLACE "|" ";" registered_qml_files "${SETTINGS_QML_FILES}")
+# The module also registers JavaScript helpers (e.g. pages/system/DisplayLogic.js).
 file(STRINGS "${SETTINGS_SOURCE_DIR}/qml/CMakeLists.txt" authoritative_qml_entries
-    REGEX "^[ \t]+[^ \t()]+\\.qml[ \t]*$")
+    REGEX "^[ \t]+[^ \t()]+\\.(qml|js)[ \t]*$")
 list(LENGTH registered_qml_files registered_qml_count)
 list(LENGTH authoritative_qml_entries authoritative_qml_count)
 if(NOT registered_qml_count EQUAL authoritative_qml_count)

@@ -55,6 +55,9 @@ int SettingsApplication::run()
     m_controller->audio()->start();
     m_controller->network()->start();
     m_controller->profile()->refresh();
+    // Fetched up front so the Display page opens on a ready snapshot.
+    m_controller->display()->refresh();
+    m_controller->wallpaper()->refresh();
     m_translationController = std::make_unique<SettingsTranslationController>();
     m_themeController = std::make_unique<ThemeController>();
     QObject::connect(m_controller->appearance(),

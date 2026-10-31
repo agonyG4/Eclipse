@@ -31,6 +31,14 @@ ApplicationWindow {
     readonly property color textSecondary: Theme.textSecondary
     readonly property url selectedPageSource: SettingsController.selectedPageSource
 
+    // Decodes the wallpaper preview as soon as the app starts and keeps it in
+    // the image cache, so display previews show it the moment they open.
+    WallpaperPreviewImage {
+        objectName: "settingsWallpaperWarmup"
+        visible: false
+        wallpaper: SettingsController.wallpaper
+    }
+
     Rectangle {
         anchors.fill: parent
         anchors.margins: -1

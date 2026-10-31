@@ -478,38 +478,14 @@ FocusScope {
                             }
                         }
 
-                        Image {
+                        Components.WallpaperPreviewImage {
                             id: wallpaperImage
                             objectName: "displayWallpaperPreview"
-                            readonly property bool hasUsableSource:
-                                Boolean(root.wallpaper)
-                                    && DisplayLogic.nonEmpty(root.wallpaper.effectivePreviewUrl)
                             anchors.fill: parent
+                            wallpaper: root.wallpaper
                             visible: Boolean(modelData.enabled)
                                 && monitorItem.hasCurrentMode
                                 && hasUsableSource && status !== Image.Error
-                            source: root.wallpaper
-                                ? root.wallpaper.effectivePreviewUrl : ""
-                            fillMode: {
-                                if (!root.wallpaper
-                                        || root.wallpaper.effectiveFit === "cover")
-                                    return Image.PreserveAspectCrop
-                                if (root.wallpaper.effectiveFit === "contain")
-                                    return Image.PreserveAspectFit
-                                if (root.wallpaper.effectiveFit === "center")
-                                    return Image.Pad
-                                if (root.wallpaper.effectiveFit === "tile")
-                                    return Image.Tile
-                                return Image.Stretch
-                            }
-                            asynchronous: true
-                            cache: true
-                            retainWhileLoading: true
-                            smooth: true
-                            mipmap: true
-                            // A fixed decode bound avoids reloading at every animation frame.
-                            sourceSize.width: 1024
-                            sourceSize.height: 1024
                         }
 
                         // Glass: a soft sheen across the top and a recessed panel edge.

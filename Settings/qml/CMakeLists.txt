@@ -7,6 +7,7 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     components/AvatarImage.qml
     components/BackendNotice.qml
     components/Theme.qml
+    components/WallpaperPreviewImage.qml
     components/audio/DeviceRow.qml
     components/controls/Button.qml
     components/controls/ButtonCapsule.qml

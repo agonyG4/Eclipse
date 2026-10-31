@@ -627,8 +627,7 @@ FocusScope {
                     property: "scale"
                     from: 0.92; to: 1
                     duration: Components.Theme.animationNormal
-                    easing.type: Easing.OutBack
-                    easing.overshoot: 0.65
+                    easing.type: Components.Theme.easingEnter
                 }
             }
         }

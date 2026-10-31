@@ -98,7 +98,7 @@ Item {
 
                 // Add a subtle rotation instead of snapping character
                 rotation: dropdown.visible ? 180 : 0
-                Behavior on rotation { NumberAnimation { duration: Components.Theme.animationNormal; easing.type: Easing.OutBack } }
+                Behavior on rotation { NumberAnimation { duration: Components.Theme.animationNormal; easing.type: Components.Theme.easingMove } }
             }
             Text {
                 visible: sel.isButton && sel.enabled
@@ -160,7 +160,7 @@ Item {
         enter: Transition {
             ParallelAnimation {
                 NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Components.Theme.animationNormal; easing.type: Easing.OutCubic }
-                NumberAnimation { property: "scale"; from: 0.9; to: 1.0; duration: Components.Theme.animationPopover; easing.type: Easing.OutElastic; easing.amplitude: 0.8 }
+                NumberAnimation { property: "scale"; from: 0.97; to: 1.0; duration: Components.Theme.animationNormal; easing.type: Components.Theme.easingEnter }
                 NumberAnimation { property: "y"; from: sel.popupDirection === "up" ? -(sel.listH + 1) : sel.height - 5; to: sel.popupDirection === "up" ? -(sel.listH + 6) : sel.height + 6; duration: Components.Theme.animationSlow; easing.type: Easing.OutCubic }
             }
         }

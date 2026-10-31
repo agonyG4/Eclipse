@@ -100,6 +100,12 @@ Item {
     readonly property int animationSlow: Borealis.Tokens.animationSlow
     readonly property int animationPopover: Borealis.Tokens.animationPopover
 
+    // Motion curves, Apple style: decelerate into place and never overshoot.
+    readonly property int easingEnter: Easing.OutQuart
+    readonly property int easingStandard: Easing.OutCubic
+    readonly property int easingMove: Easing.InOutCubic
+    readonly property int easingExit: Easing.InCubic
+
     readonly property real opacityDisabled: Borealis.Tokens.opacityDisabled
     readonly property real opacitySecondary: Borealis.Tokens.opacitySecondary
     readonly property real opacityMuted: Borealis.Tokens.opacityMuted

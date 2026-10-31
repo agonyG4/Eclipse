@@ -47,7 +47,7 @@ Item {
             radius: 1.5
             color: root.accent
             opacity: root.selected ? 1.0 : 0.0
-            Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutBack } }
+            Behavior on height { NumberAnimation { duration: Components.Theme.animationSlow; easing.type: Components.Theme.easingEnter } }
             Behavior on opacity { NumberAnimation { duration: 200 } }
         }
     }

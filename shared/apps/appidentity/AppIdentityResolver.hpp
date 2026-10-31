@@ -38,7 +38,7 @@ private:
     AppIdentity resolveAliases(const WindowIdentityInput &input);
     AppIdentity resolveSteamAppId(const WindowIdentityInput &input);
     AppIdentity resolveThemeFallback(const WindowIdentityInput &input);
-    AppIdentity resolveDesktopEntry(const WindowIdentityInput &input);
+    AppIdentity resolveDesktopEntry(const WindowIdentityInput &input, int minScore = 5);
 
     IdentityCache m_cache;
     DesktopEntryCatalog *m_desktopIndex = nullptr;

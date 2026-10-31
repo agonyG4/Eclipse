@@ -22,6 +22,7 @@ private slots:
     void testSteamAppDefault();
     void testObsNotObsidian();
     void testObsidianNotObs();
+    void testAliasesMatchWholeTokensOnly();
     void testDeepPendingForExe();
     void testDeepPendingForProton();
     void testAsyncResolution();
@@ -146,6 +147,18 @@ void TestAppIdentityResolver::testObsNotObsidian() {
     obsidianInput.className = QStringLiteral("obsidian");
     AppIdentity obsidianIdentity = resolver.resolveSync(obsidianInput);
     QCOMPARE(obsidianIdentity.iconName, QStringLiteral("obsidian"));
+}
+
+void TestAppIdentityResolver::testAliasesMatchWholeTokensOnly() {
+    AppIdentityResolver resolver;
+    const QStringList notAliased = {QStringLiteral("zenity"), QStringLiteral("xcode"),
+                                    QStringLiteral("codeblocks")};
+    for (const QString &className : notAliased) {
+        WindowIdentityInput input;
+        input.className = className;
+        const AppIdentity identity = resolver.resolveSync(input);
+        QVERIFY2(identity.source != QStringLiteral("alias"), qPrintable(className));
+    }
 }
 
 void TestAppIdentityResolver::testObsidianNotObs() {

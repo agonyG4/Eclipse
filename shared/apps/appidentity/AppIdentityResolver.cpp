@@ -110,6 +110,15 @@ AppIdentity AppIdentityResolver::resolveFast(const WindowIdentityInput &input) {
     result.showFallbackText = true;
     result.source = QStringLiteral("fallback");
 
+    // An exact .desktop identity (StartupWMClass, desktop ID, domain-prefixed
+    // ID) is authoritative; the alias table below only covers apps that have
+    // no usable entry.
+    result = resolveDesktopEntry(input, 8);
+    if (!result.iconName.isEmpty()) {
+        result.source = QStringLiteral("desktop-entry");
+        return result;
+    }
+
     result = resolveAliases(input);
     if (!result.iconName.isEmpty()) {
         result.source = QStringLiteral("alias");
@@ -281,38 +290,47 @@ AppIdentity AppIdentityResolver::resolveAliases(const WindowIdentityInput &input
     const QString cls = input.className.toLower().trimmed();
     const QString initCls = input.initialClass.toLower().trimmed();
 
+    // Whole-token match so "zen" does not claim "zenity" and "code" does not
+    // claim "xcode" or "codeblocks".
+    const auto tokens = [](const QString &value) {
+        return value.split(QRegularExpression(QStringLiteral("[^a-z0-9]+")), Qt::SkipEmptyParts);
+    };
+    const QStringList clsTokens = tokens(cls);
+    const QStringList initTokens = tokens(initCls);
+    const auto hasToken = [&](const QString &token) {
+        return clsTokens.contains(token) || initTokens.contains(token);
+    };
+
     if (cls == QStringLiteral("org.vinegarhq.sober") || initCls == QStringLiteral("org.vinegarhq.sober")) {
         result.iconName = QStringLiteral("org.vinegarhq.Sober");
         return result;
     }
-    if (cls.contains(QStringLiteral("zen")) || initCls.contains(QStringLiteral("zen"))) {
+    if (hasToken(QStringLiteral("zen"))) {
         result.iconName = QStringLiteral("zen-browser");
         return result;
     }
-    if (cls.contains(QStringLiteral("kitty")) || initCls.contains(QStringLiteral("kitty"))) {
+    if (hasToken(QStringLiteral("kitty"))) {
         result.iconName = QStringLiteral("kitty");
         return result;
     }
-    if (cls.contains(QStringLiteral("code")) || cls.contains(QStringLiteral("cursor"))
-        || initCls.contains(QStringLiteral("code")) || initCls.contains(QStringLiteral("cursor"))) {
+    if (hasToken(QStringLiteral("code")) || hasToken(QStringLiteral("cursor"))) {
         result.iconName = QStringLiteral("visual-studio-code");
         return result;
     }
-    if (cls.contains(QStringLiteral("spotify")) || initCls.contains(QStringLiteral("spotify"))) {
+    if (hasToken(QStringLiteral("spotify"))) {
         result.iconName = QStringLiteral("spotify");
         return result;
     }
-    if (cls.contains(QStringLiteral("discord")) || initCls.contains(QStringLiteral("discord"))) {
+    if (hasToken(QStringLiteral("discord"))) {
         result.iconName = QStringLiteral("discord");
         return result;
     }
-    if ((cls.contains(QStringLiteral("obs")) && !cls.contains(QStringLiteral("obsidian")))
-        || cls == QStringLiteral("obsproject") || cls == QStringLiteral("obs-studio")) {
-        result.iconName = QStringLiteral("com.obsproject.Studio");
+    if (hasToken(QStringLiteral("obsidian"))) {
+        result.iconName = QStringLiteral("obsidian");
         return result;
     }
-    if (cls == QStringLiteral("obsidian") || initCls == QStringLiteral("obsidian")) {
-        result.iconName = QStringLiteral("obsidian");
+    if (hasToken(QStringLiteral("obs")) || hasToken(QStringLiteral("obsproject"))) {
+        result.iconName = QStringLiteral("com.obsproject.Studio");
         return result;
     }
     return result;
@@ -342,7 +360,7 @@ AppIdentity AppIdentityResolver::resolveSteamAppId(const WindowIdentityInput &in
     return result;
 }
 
-AppIdentity AppIdentityResolver::resolveDesktopEntry(const WindowIdentityInput &input) {
+AppIdentity AppIdentityResolver::resolveDesktopEntry(const WindowIdentityInput &input, int minScore) {
     AppIdentity result;
     if (!m_desktopIndex)
         return result;
@@ -367,6 +385,11 @@ AppIdentity AppIdentityResolver::resolveDesktopEntry(const WindowIdentityInput &
             score = 10;
         if (cls == entryId || initCls == entryId)
             score = std::max(score, 8);
+        // Qt apps that never set a desktop file name report
+        // "<reversed domain>.<name>" (e.g. "local.astrea-explorer").
+        if (!entryId.isEmpty() && (cls.endsWith(QLatin1Char('.') + entryId)
+                                   || initCls.endsWith(QLatin1Char('.') + entryId)))
+            score = std::max(score, 9);
         if (!entryName.isEmpty() && (cls.contains(entryName) || initCls.contains(entryName)
                                       || (!cls.isEmpty() && entryName.contains(cls))
                                       || (!initCls.isEmpty() && entryName.contains(initCls))))
@@ -381,7 +404,7 @@ AppIdentity AppIdentityResolver::resolveDesktopEntry(const WindowIdentityInput &
         }
     }
 
-    if (bestScore >= 5 && !bestIcon.isEmpty()) {
+    if (bestScore >= minScore && !bestIcon.isEmpty()) {
         result.iconName = bestIcon;
         result.displayName = bestName;
     }

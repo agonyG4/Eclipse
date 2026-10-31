@@ -58,6 +58,8 @@ private slots:
     void caseInsensitiveDesktopId();
     void startupWmClassMatchesCaseInsensitively();
     void normalizedReverseDnsIdMatches();
+    void domainPrefixedAppIdMatchesDesktopId();
+    void executableNameMatches();
     void visibleCandidateWinsAndTiesUseFileName();
     void titleIsNeverUsed();
     void unresolvedResultIsExplicit();
@@ -106,6 +108,38 @@ void DockAppMatcherTest::normalizedReverseDnsIdMatches()
     const auto result = match(catalog, QStringLiteral("org.example_normalized"));
     QCOMPARE(result.desktopFileName, QStringLiteral("org.example_normalized.desktop"));
     QCOMPARE(result.confidence, DockAppMatchConfidence::NormalizedReverseDnsDesktopId);
+}
+
+void DockAppMatcherTest::domainPrefixedAppIdMatchesDesktopId()
+{
+    auto catalog = makeCatalog();
+    DesktopEntryRecord entry;
+    entry.desktopFileName = QStringLiteral("astrea-explorer.desktop");
+    entry.id = QStringLiteral("astrea-explorer");
+    entry.name = QStringLiteral("Astrea Explorer");
+    catalog->byDesktopFileName.insert(entry.desktopFileName, catalog->entries.size());
+    catalog->byDesktopId.insert(entry.id, catalog->entries.size());
+    catalog->entries.append(entry);
+
+    const auto result = match(catalog, QStringLiteral("local.astrea-explorer"));
+    QCOMPARE(result.desktopFileName, QStringLiteral("astrea-explorer.desktop"));
+    QCOMPARE(result.confidence, DockAppMatchConfidence::DomainPrefixedDesktopId);
+}
+
+void DockAppMatcherTest::executableNameMatches()
+{
+    auto catalog = makeCatalog();
+    DesktopEntryRecord entry;
+    entry.desktopFileName = QStringLiteral("org.example.Viewer.desktop");
+    entry.id = QStringLiteral("org.example.Viewer");
+    entry.exec = QStringLiteral("env FOO=1 /usr/bin/imgview %U");
+    catalog->byDesktopFileName.insert(entry.desktopFileName, catalog->entries.size());
+    catalog->byDesktopId.insert(entry.id, catalog->entries.size());
+    catalog->entries.append(entry);
+
+    const auto result = match(catalog, QStringLiteral("imgview"));
+    QCOMPARE(result.desktopFileName, QStringLiteral("org.example.Viewer.desktop"));
+    QCOMPARE(result.confidence, DockAppMatchConfidence::ExecutableName);
 }
 
 void DockAppMatcherTest::visibleCandidateWinsAndTiesUseFileName()

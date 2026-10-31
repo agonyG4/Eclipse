@@ -22,6 +22,21 @@ QString normalizedDesktopId(QString value)
     return value;
 }
 
+// Executable basename of an Exec= line: skips env/KEY=VALUE prefixes and
+// takes the first real token, dropping any path and field codes.
+QString executableName(const QString &exec)
+{
+    const QStringList tokens = exec.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    for (QString token : tokens) {
+        token.remove(QLatin1Char('"'));
+        if (token == QStringLiteral("env") || token.contains(QLatin1Char('='))
+            || token.startsWith(QLatin1Char('%')))
+            continue;
+        return QFileInfo(token).fileName().toLower();
+    }
+    return {};
+}
+
 std::optional<DesktopEntryRecord> choose(const DesktopEntrySnapshot &snapshot,
                                          QVector<int> indices)
 {
@@ -135,6 +150,28 @@ DockAppMatch DockAppMatcher::match(const DockRuntimeWindow &window) const
     if (normalizedId.has_value())
         return makeMatch(normalizedId.value(),
                          DockAppMatchConfidence::NormalizedReverseDnsDesktopId);
+
+    // Qt derives "<reversed organization domain>.<application>" when an app
+    // never sets its desktop file name (e.g. "local.astrea-explorer"). Accept a
+    // desktop ID that is the dotted suffix of the app ID.
+    const auto domainPrefixed = choose(*m_snapshot, matchingEntries(
+        *m_snapshot, [&normalized](const DesktopEntryRecord &entry) {
+            const QString id = normalizedDesktopId(entry.id);
+            return !id.isEmpty() && normalized.endsWith(QLatin1Char('.') + id);
+        }));
+    if (domainPrefixed.has_value())
+        return makeMatch(domainPrefixed.value(), DockAppMatchConfidence::DomainPrefixedDesktopId);
+
+    // Last resort, like KDE's executable lookup: the app ID (or its final
+    // dotted segment) names the launcher's executable.
+    const QString tail = normalized.mid(normalized.lastIndexOf(QLatin1Char('.')) + 1);
+    const auto byExecutable = choose(*m_snapshot, matchingEntries(
+        *m_snapshot, [&normalized, &tail](const DesktopEntryRecord &entry) {
+            const QString exe = executableName(entry.exec);
+            return !exe.isEmpty() && (exe == normalized || exe == tail);
+        }));
+    if (byExecutable.has_value())
+        return makeMatch(byExecutable.value(), DockAppMatchConfidence::ExecutableName);
 
     return {};
 }

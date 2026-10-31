@@ -14,7 +14,9 @@ enum class DockAppMatchConfidence {
     CaseInsensitiveDesktopId,
     ExactStartupWmClass,
     CaseInsensitiveStartupWmClass,
-    NormalizedReverseDnsDesktopId
+    NormalizedReverseDnsDesktopId,
+    DomainPrefixedDesktopId,
+    ExecutableName
 };
 
 struct DockAppMatch {

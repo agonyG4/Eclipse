@@ -104,7 +104,9 @@ function sizeForDiagonal(diagonal, aspect) {
 // desktop position only sets the order. All devices share one scale and stand
 // on a common baseline. Each slot is sized for both the selected and the
 // native shape so picking a mode does not shuffle the row.
-function previewLayout(outputs, width, height, gap, padding) {
+// `label` reserves a common strip under every device for its name.
+function previewLayout(outputs, width, height, gap, padding, label) {
+    const nameStrip = Math.max(0, Number(label) || 0)
     const list = outputs || []
     if (list.length === 0)
         return []
@@ -116,7 +118,7 @@ function previewLayout(outputs, width, height, gap, padding) {
         return {
             selected,
             bezel: chrome.bezel,
-            below: Math.max(chrome.bezel, chrome.foot),
+            below: Math.max(chrome.bezel, chrome.foot) + nameStrip,
             boxWidth: Math.max(selected.width, native.width),
             boxHeight: Math.max(selected.height, native.height)
         }

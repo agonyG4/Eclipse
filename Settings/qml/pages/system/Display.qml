@@ -294,8 +294,10 @@ FocusScope {
         height: 252
 
         readonly property var layout:
-            DisplayLogic.previewLayout(root.outputs, width, height, 28, 20)
+            DisplayLogic.previewLayout(root.outputs, width, height, 28, 20, preview.nameStrip)
         property bool previewReady: false
+        // Room under every device for its name, as macOS labels them.
+        readonly property real nameStrip: 22
 
         Component.onCompleted: preview.previewReady = true
 
@@ -320,14 +322,16 @@ FocusScope {
                 readonly property real bezel: slot.bezel
                 // Concentric corners: every inner radius is the outer radius
                 // minus the distance between the two edges.
-                readonly property real cornerRadius: laptop ? 14 : 16
-                readonly property real screenInset: laptop ? 6 : 5
+                // Tight radii like Apple hardware: the glass corners stay
+                // nearly square while the body only softens them.
+                readonly property real cornerRadius: laptop ? 11 : 10
+                readonly property real screenInset: laptop ? 4 : 5
                 // The glass stays black in both themes; only the stand follows the theme.
                 readonly property bool lightDevice: Components.Theme.isLight
                 // White stand on dark pages; light silver on light pages so it
                 // still reads against the background. Opaque so the shadows
                 // never show through it.
-                readonly property color standTint: lightDevice ? "#d9d9de" : "#f5f5f7"
+                readonly property color standTint: lightDevice ? "#d4d4da" : "#e6e6eb"
 
                 width: screenWidth + bezel * 2
                 height: bezel + screenHeight + slot.below
@@ -521,38 +525,19 @@ FocusScope {
                             font.family: Components.Theme.fontFamily
                             font.pixelSize: Components.Theme.fontSizeSmall
                         }
+                    }
 
-                        Rectangle {
-                            readonly property real inset: Math.max(6, screenSurface.radius - height / 2 + 4)
-                            anchors.left: parent.left
-                            anchors.bottom: parent.bottom
-                            anchors.margins: inset
-                            width: Math.min(parent.width - inset * 2,
-                                            connectorLabel.implicitWidth + 20)
-                            height: 20
-                            radius: height / 2
-                            color: Qt.rgba(0.08, 0.08, 0.10, 0.50)
-                            border.width: 1
-                            border.color: Qt.rgba(1, 1, 1, 0.12)
-
-                            Text {
-                                id: connectorLabel
-                                objectName: "displayConnector"
-                                anchors.fill: parent
-                                anchors.leftMargin: 10
-                                anchors.rightMargin: 10
-                                verticalAlignment: Text.AlignVCenter
-                                horizontalAlignment: Text.AlignHCenter
-                                text: DisplayLogic.nonEmpty(modelData.name)
-                                    ? String(modelData.name) : "Display"
-                                textFormat: Text.PlainText
-                                color: "#f5f5f7"
-                                font.family: Components.Theme.fontFamily
-                                font.pixelSize: Components.Theme.fontSizeTiny
-                                font.weight: Components.Theme.fontWeightMedium
-                                elide: Text.ElideRight
-                            }
-                        }
+                    // MacBook camera housing, cut into the top of the glass.
+                    Rectangle {
+                        objectName: "displayLaptopNotch_" + String(modelData.id)
+                        visible: monitorItem.laptop
+                        anchors.horizontalCenter: screenSurface.horizontalCenter
+                        anchors.top: screenSurface.top
+                        width: Math.max(14, screenSurface.width * 0.13)
+                        height: Math.max(3, Math.round(screenSurface.height * 0.035))
+                        bottomLeftRadius: height * 0.6
+                        bottomRightRadius: height * 0.6
+                        color: "#0a0a0c"
                     }
 
                     MouseArea {
@@ -563,16 +548,41 @@ FocusScope {
                     }
                 }
 
-                // Stand and foot share one tint so they read as a single piece.
+                // Studio Display stand: a broad neck rising from behind the
+                // body onto a thin flat foot. The neck sits a shade darker,
+                // in the body's shadow, so the two read as separate planes.
                 Rectangle {
                     objectName: "displayMonitorStand_" + String(modelData.id)
                     z: -1
                     visible: !monitorItem.laptop
                     anchors.horizontalCenter: screenFrame.horizontalCenter
                     y: screenFrame.y + screenFrame.height - 8
-                    width: Math.max(12, screenFrame.width * 0.09)
-                    height: 28
-                    color: monitorItem.standTint
+                    width: Math.max(18, screenFrame.width * 0.15)
+                    height: 30
+                    color: Qt.darker(monitorItem.standTint, 1.10)
+
+                    // Shadow the body casts onto the neck just below its edge.
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        y: 8
+                        height: 10
+                        gradient: Gradient {
+                            GradientStop { position: 0; color: Qt.rgba(0, 0, 0, 0.32) }
+                            GradientStop { position: 1; color: Qt.rgba(0, 0, 0, 0) }
+                        }
+                    }
+                }
+
+                RectangularShadow {
+                    z: -2
+                    visible: !monitorItem.laptop
+                    anchors.fill: standBase
+                    radius: standBase.radius
+                    offset.y: 2
+                    blur: 8
+                    spread: 1
+                    color: Qt.rgba(0, 0, 0, monitorItem.lightDevice ? 0.22 : 0.55)
                 }
 
                 Rectangle {
@@ -581,38 +591,95 @@ FocusScope {
                     z: -1
                     visible: !monitorItem.laptop
                     anchors.horizontalCenter: screenFrame.horizontalCenter
-                    y: screenFrame.y + screenFrame.height + 20
-                    width: Math.max(48, screenFrame.width * 0.36)
-                    height: 6
-                    radius: height / 2
+                    y: screenFrame.y + screenFrame.height + 21
+                    width: Math.max(52, screenFrame.width * 0.34)
+                    height: 4
+                    radius: 2
                     color: monitorItem.standTint
                 }
 
+                RectangularShadow {
+                    z: -2
+                    visible: monitorItem.laptop
+                    anchors.fill: laptopDeck
+                    radius: laptopDeck.bottomLeftRadius
+                    offset.y: 3
+                    blur: 10
+                    spread: 1
+                    color: Qt.rgba(0, 0, 0, monitorItem.lightDevice ? 0.22 : 0.55)
+                }
+
+                // MacBook base seen from the front: a slim deck a little wider
+                // than the lid, a darker front lip, and the thumb indent.
                 Rectangle {
                     id: laptopDeck
                     objectName: "displayLaptopChassis_" + String(modelData.id)
                     z: -1
                     visible: monitorItem.laptop
                     anchors.horizontalCenter: screenFrame.horizontalCenter
-                    y: screenFrame.y + screenFrame.height + 2
-                    width: screenFrame.width + 24
-                    height: 9
-                    topLeftRadius: 2
-                    topRightRadius: 2
-                    bottomLeftRadius: height / 2 + 2
-                    bottomRightRadius: height / 2 + 2
+                    y: screenFrame.y + screenFrame.height
+                    width: screenFrame.width + Math.max(16, screenFrame.width * 0.08)
+                    height: 8
+                    topLeftRadius: 1
+                    topRightRadius: 1
+                    bottomLeftRadius: 5
+                    bottomRightRadius: 5
                     color: monitorItem.standTint
 
-                    // Lid notch, rounded to match the deck.
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        height: 3
+                        bottomLeftRadius: parent.bottomLeftRadius
+                        bottomRightRadius: parent.bottomRightRadius
+                        color: Qt.darker(monitorItem.standTint, 1.12)
+                    }
+
+                    // The lid's shadow falls across the top of the deck.
                     Rectangle {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        width: Math.max(24, parent.width * 0.14)
+                        width: screenFrame.width
+                        height: 3
+                        gradient: Gradient {
+                            GradientStop { position: 0; color: Qt.rgba(0, 0, 0, 0.30) }
+                            GradientStop { position: 1; color: Qt.rgba(0, 0, 0, 0) }
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: Math.max(22, parent.width * 0.12)
                         height: 3
                         bottomLeftRadius: 3
                         bottomRightRadius: 3
-                        color: Qt.rgba(Components.Theme.windowBackground.r,
-                                       Components.Theme.windowBackground.g,
-                                       Components.Theme.windowBackground.b, 0.35)
+                        color: Qt.darker(monitorItem.standTint, 1.18)
+                    }
+                }
+
+                // Name under the device; the selected one reads at full strength.
+                Text {
+                    id: connectorLabel
+                    objectName: "displayConnector"
+                    anchors.horizontalCenter: screenFrame.horizontalCenter
+                    anchors.bottom: parent.bottom
+                    width: Math.max(screenFrame.width + 24, 72)
+                    height: preview.nameStrip - 6
+                    verticalAlignment: Text.AlignBottom
+                    horizontalAlignment: Text.AlignHCenter
+                    text: DisplayLogic.nonEmpty(modelData.name)
+                        ? String(modelData.name) : "Display"
+                    textFormat: Text.PlainText
+                    color: monitorItem.active || root.outputs.length < 2
+                        ? Components.Theme.textPrimary : Components.Theme.textSecondary
+                    font.family: Components.Theme.fontFamily
+                    font.pixelSize: Components.Theme.fontSizeSmall
+                    font.weight: monitorItem.active
+                        ? Components.Theme.fontWeightMedium : Font.Normal
+                    elide: Text.ElideRight
+
+                    Behavior on color {
+                        ColorAnimation { duration: Components.Theme.animationFast }
                     }
                 }
             }

@@ -50,31 +50,34 @@ function monitorSelectorLabel(output) {
 }
 
 function isQuarterTurn(output) {
-    const transform = output && output.transform !== undefined
-        ? String(output.transform) : "normal"
+    const transform = selectedTransform(output)
     return transform === "90" || transform === "270"
         || transform === "flipped_90" || transform === "flipped_270"
 }
 
-function outputWidth(output) {
-    if (!output || !Boolean(output.hasCurrentMode))
-        return 240
-    const width = Number(output.currentWidth)
-    const height = Number(output.currentHeight)
-    if (width <= 0 || height <= 0)
-        return 240
-    return isQuarterTurn(output) ? height : width
+function previewSize(output, reference) {
+    const mode = selectedMode(output)
+    let width = mode ? Number(mode.width) : Number(output && output.currentWidth)
+    let height = mode ? Number(mode.height) : Number(output && output.currentHeight)
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+        width = 240
+        height = 135
+    }
+    // Keep a stable reference while selecting smaller modes of the same aspect.
+    if (reference && output && output.modes) {
+        for (const candidate of output.modes) {
+            if (candidate.preferred || String(candidate.id) === String(output.currentModeId)) {
+                width = Math.max(width, Number(candidate.width) || 0)
+                height = Math.max(height, Number(candidate.height) || 0)
+            }
+        }
+    }
+    return isQuarterTurn(output) ? { width: height, height: width } : { width, height }
 }
 
-function outputHeight(output) {
-    if (!output || !Boolean(output.hasCurrentMode))
-        return 135
-    const width = Number(output.currentWidth)
-    const height = Number(output.currentHeight)
-    if (width <= 0 || height <= 0)
-        return 135
-    return isQuarterTurn(output) ? width : height
-}
+function outputWidth(output) { return previewSize(output, false).width }
+
+function outputHeight(output) { return previewSize(output, false).height }
 
 function resolutionKey(group) {
     return String(group.width) + "x" + String(group.height)
@@ -350,21 +353,21 @@ function defaultResolutionSubset(groups) {
     return selected
 }
 
-function boundsForOutputs(outputs) {
+function boundsForOutputs(outputs, reference) {
     if (!outputs || outputs.length === 0)
         return { minX: 0, minY: 0, width: 1920, height: 1080 }
     let minX = Number(outputs[0].x) || 0
     let minY = Number(outputs[0].y) || 0
-    let maxX = minX + outputWidth(outputs[0])
-    let maxY = minY + outputHeight(outputs[0])
+    let maxX = minX + previewSize(outputs[0], reference).width
+    let maxY = minY + previewSize(outputs[0], reference).height
     for (let index = 1; index < outputs.length; ++index) {
         const output = outputs[index]
         const x = Number(output.x) || 0
         const y = Number(output.y) || 0
         minX = Math.min(minX, x)
         minY = Math.min(minY, y)
-        maxX = Math.max(maxX, x + outputWidth(output))
-        maxY = Math.max(maxY, y + outputHeight(output))
+        maxX = Math.max(maxX, x + previewSize(output, reference).width)
+        maxY = Math.max(maxY, y + previewSize(output, reference).height)
     }
     return { minX, minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) }
 }

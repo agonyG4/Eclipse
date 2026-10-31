@@ -1,9 +1,16 @@
+#include "theme/ThemeController.hpp"
+
+#include <QColor>
+#include <QDir>
 #include <QGuiApplication>
+#include <QImage>
+#include <QPointer>
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QTemporaryDir>
 #include <QUrl>
 #include <Qt>
 #include <QtTest>
@@ -336,12 +343,15 @@ public:
     m_settings.display()->setOutput(displayOutput());
     m_engine.addImportPath(QStringLiteral("qrc:/"));
     m_engine.rootContext()->setContextProperty(
+        QStringLiteral("ThemeController"), &m_theme);
+    m_engine.rootContext()->setContextProperty(
         QStringLiteral("SettingsController"), &m_settings);
     m_component = std::make_unique<QQmlComponent>(
         &m_engine,
         QUrl(QStringLiteral(
             "qrc:/qt/qml/Astrea/Settings/qml/pages/system/Display.qml")));
     m_window.resize(1000, 760);
+    m_window.setColor(QColor(QStringLiteral("#1c1c28")));
   }
 
   QQuickItem *createPage() {
@@ -376,6 +386,8 @@ public:
 
 private:
   FakeSettingsController m_settings;
+  QTemporaryDir m_directory;
+  ThemeController m_theme{m_directory.filePath(QStringLiteral("theme.json"))};
   QQmlApplicationEngine m_engine;
   std::unique_ptr<QQmlComponent> m_component;
   QQuickWindow m_window;
@@ -394,6 +406,8 @@ private slots:
   void failedWallpaperImageUsesPreviewFallback();
   void restoresHistoricalDisplayHierarchyAndCompactRows();
   void resolutionRowsFollowModeSelectionCapability();
+  void previewPreservesItemsAndFollowsDraftGeometry();
+  void previewFitsNarrowAndPortraitLayouts();
   void resolutionSelectionUpdatesExactDraftWithoutChangingCurrentMode();
   void resolutionSelectionPreservesRefreshAndInterlaceIdentity();
   void refreshSelectorUsesOnlySelectedResolutionModes();
@@ -666,6 +680,68 @@ void SettingsDisplayQmlTest::
   QObject *appliedFeedback =
       fixture.object(QStringLiteral("displayAppliedFeedback"));
   QVERIFY(appliedFeedback == nullptr);
+}
+
+void SettingsDisplayQmlTest::previewPreservesItemsAndFollowsDraftGeometry() {
+  DisplayPageFixture fixture;
+  QVariantMap output = displayOutput();
+  output.insert(QStringLiteral("modeSelectionSupported"), true);
+  fixture.display()->setOutput(output);
+  QVERIFY2(fixture.createPage() != nullptr, qPrintable(fixture.errors()));
+  QPointer<QObject> monitor =
+      fixture.object(QStringLiteral("displayPreviewMonitor_output-1"));
+  QPointer<QObject> wallpaper =
+      fixture.object(QStringLiteral("displayWallpaperPreview"));
+  QVERIFY(monitor);
+  QVERIFY(wallpaper);
+  const qreal originalWidth = monitor->property("screenWidth").toReal();
+  clickItem(qobject_cast<QQuickItem *>(
+      fixture.object(QStringLiteral("displayResolutionRow_1024x768"))));
+  QVERIFY2(monitor, "Selecting a draft must keep the monitor delegate alive");
+  QCOMPARE(fixture.object(QStringLiteral("displayWallpaperPreview")),
+           wallpaper.data());
+  QTRY_VERIFY(monitor->property("screenWidth").toReal() < originalWidth);
+  const qreal width = monitor->property("screenWidth").toReal();
+  const qreal height = monitor->property("screenHeight").toReal();
+  QVERIFY(qAbs(width / height - 4.0 / 3.0) < 0.01);
+  QCOMPARE(fixture.display()->applyDraftCount, 0);
+  QCOMPARE(fixture.display()
+               ->outputs()
+               .first()
+               .toMap()
+               .value(QStringLiteral("currentWidth"))
+               .toInt(),
+           1920);
+  const QString captureDirectory =
+      qEnvironmentVariable("ASTREA_SETTINGS_VISUAL_CAPTURE_DIR");
+  if (!captureDirectory.isEmpty()) {
+    QVERIFY(QDir().mkpath(captureDirectory));
+    QTest::qWait(350);
+    auto *item = qobject_cast<QQuickItem *>(monitor.data());
+    QVERIFY(item->window()->grabWindow().save(
+        QDir(captureDirectory)
+            .filePath(QStringLiteral("display-draft-1024x768.png"))));
+  }
+}
+
+void SettingsDisplayQmlTest::previewFitsNarrowAndPortraitLayouts() {
+  DisplayPageFixture fixture;
+  QVariantMap output = displayOutput();
+  output.insert(QStringLiteral("transform"), QStringLiteral("90"));
+  fixture.display()->setOutput(output);
+  QQuickItem *page = fixture.createPage();
+  QVERIFY2(page, qPrintable(fixture.errors()));
+  page->setWidth(360);
+  auto *preview = qobject_cast<QQuickItem *>(
+      fixture.object(QStringLiteral("displayOutputPreview")));
+  auto *monitor = qobject_cast<QQuickItem *>(
+      fixture.object(QStringLiteral("displayPreviewMonitor_output-1")));
+  QVERIFY(preview);
+  QVERIFY(monitor);
+  QTRY_VERIFY(monitor->height() <= preview->height());
+  QTRY_VERIFY(monitor->width() <= preview->width());
+  QTRY_VERIFY(monitor->y() >= 0);
+  QTRY_VERIFY(monitor->y() + monitor->height() <= preview->height());
 }
 
 void SettingsDisplayQmlTest::resolutionRowsFollowModeSelectionCapability() {

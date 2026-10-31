@@ -273,21 +273,22 @@ FocusScope {
         height: 252
 
         readonly property var bounds: root.boundsForOutputs()
-        readonly property real previewScale: Math.min(
-            width / Math.max(1, bounds.width),
-            height / Math.max(1, bounds.height)
-        ) * 0.78
+        readonly property var referenceBounds: DisplayLogic.boundsForOutputs(root.outputs, true)
+        readonly property real previewScale: Math.max(0.001, Math.min(
+            Math.max(1, width - 40) / Math.max(1, referenceBounds.width),
+            Math.max(1, height - 64) / Math.max(1, referenceBounds.height)
+        ))
         property bool previewReady: false
 
         Component.onCompleted: preview.previewReady = true
 
         Repeater {
-            model: root.outputs
+            model: root.outputs.length
 
             delegate: Item {
                 id: monitorItem
                 required property int index
-                required property var modelData
+                readonly property var modelData: root.outputs[index]
                 objectName: "displayPreviewMonitor_" + String(modelData.id)
 
                 readonly property bool active:
@@ -296,9 +297,9 @@ FocusScope {
                 readonly property bool hasCurrentMode:
                     Boolean(modelData.hasCurrentMode)
                 readonly property real screenWidth:
-                    Math.max(56, DisplayLogic.outputWidth(modelData) * preview.previewScale)
+                    DisplayLogic.outputWidth(modelData) * preview.previewScale
                 readonly property real screenHeight:
-                    Math.max(36, DisplayLogic.outputHeight(modelData) * preview.previewScale)
+                    DisplayLogic.outputHeight(modelData) * preview.previewScale
                 readonly property real bezel: laptop ? 12 : 10
                 readonly property real chassisHeight: laptop ? 16 : 38
 
@@ -307,7 +308,8 @@ FocusScope {
                 x: (preview.width - preview.bounds.width * preview.previewScale) / 2
                     + ((Number(modelData.x) - preview.bounds.minX)
                        * preview.previewScale) - bezel
-                y: (preview.height - preview.bounds.height * preview.previewScale) / 2
+                y: (preview.height - preview.bounds.height * preview.previewScale
+                    - chassisHeight) / 2
                     + ((Number(modelData.y) - preview.bounds.minY)
                        * preview.previewScale) - bezel
 
@@ -348,7 +350,7 @@ FocusScope {
                     border.width: monitorItem.active ? 1 : 0
                     border.color: Qt.rgba(Components.Theme.accent.r,
                                           Components.Theme.accent.g,
-                                          Components.Theme.accent.b, 0.28)
+                                          Components.Theme.accent.b, 0.55)
                 }
 
                 Rectangle {
@@ -358,13 +360,9 @@ FocusScope {
                     width: monitorItem.screenWidth
                     height: monitorItem.screenHeight
                     radius: monitorItem.laptop ? 10 : 9
-                    color: Components.Theme.cardBg
+                    color: "#202027"
                     border.width: 1
-                    border.color: monitorItem.active
-                        ? Qt.rgba(Components.Theme.accent.r,
-                                  Components.Theme.accent.g,
-                                  Components.Theme.accent.b, 0.72)
-                        : Components.Theme.cardBorder
+                    border.color: Qt.rgba(1, 1, 1, 0.22)
                     clip: true
 
                     Behavior on width {
@@ -382,7 +380,7 @@ FocusScope {
                     Rectangle {
                         id: screenSurface
                         anchors.fill: parent
-                        anchors.margins: monitorItem.laptop ? 8 : 7
+                        anchors.margins: monitorItem.laptop ? 6 : 4
                         radius: Math.max(4, screenFrame.radius - 4)
                         color: Components.Theme.windowBackground
                         clip: true
@@ -431,14 +429,13 @@ FocusScope {
                                 return Image.Stretch
                             }
                             asynchronous: true
-                            cache: false
+                            cache: true
                             retainWhileLoading: true
                             smooth: true
                             mipmap: true
-                            sourceSize.width: Math.max(1,
-                                Math.ceil(width * Screen.devicePixelRatio))
-                            sourceSize.height: Math.max(1,
-                                Math.ceil(height * Screen.devicePixelRatio))
+                            // A fixed decode bound avoids reloading at every animation frame.
+                            sourceSize.width: 1024
+                            sourceSize.height: 1024
                         }
 
                         Rectangle {
@@ -461,13 +458,16 @@ FocusScope {
 
                         Rectangle {
                             anchors.left: parent.left
-                            anchors.right: parent.right
                             anchors.bottom: parent.bottom
-                            height: 24
+                            anchors.margins: 8
+                            width: Math.min(parent.width - 16, connectorLabel.implicitWidth + 16)
+                            height: 20
+                            radius: 5
                             color: Qt.rgba(Components.Theme.windowBackground.r,
                                            Components.Theme.windowBackground.g,
                                            Components.Theme.windowBackground.b, 0.62)
                             Text {
+                                id: connectorLabel
                                 objectName: "displayConnector"
                                 anchors.left: parent.left
                                 anchors.right: parent.right
@@ -477,7 +477,7 @@ FocusScope {
                                 text: DisplayLogic.nonEmpty(modelData.name)
                                     ? String(modelData.name) : "Display"
                                 textFormat: Text.PlainText
-                                color: Components.Theme.textPrimary
+                                color: "#f5f5f7"
                                 font.family: Components.Theme.fontFamily
                                 font.pixelSize: Components.Theme.fontSizeTiny
                                 font.weight: Components.Theme.fontWeightMedium
@@ -499,21 +499,21 @@ FocusScope {
                     visible: !monitorItem.laptop
                     anchors.horizontalCenter: screenFrame.horizontalCenter
                     y: screenFrame.y + screenFrame.height + 1
-                    width: Math.max(13, screenFrame.width * 0.075)
-                    height: 22
-                    radius: 4
+                    width: Math.max(13, screenFrame.width * 0.10)
+                    height: 20
+                    radius: 2
                     gradient: Gradient {
                         GradientStop {
                             position: 0
                             color: Qt.rgba(Components.Theme.textPrimary.r,
                                            Components.Theme.textPrimary.g,
-                                           Components.Theme.textPrimary.b, 0.22)
+                                           Components.Theme.textPrimary.b, 0.35)
                         }
                         GradientStop {
                             position: 1
                             color: Qt.rgba(Components.Theme.textPrimary.r,
                                            Components.Theme.textPrimary.g,
-                                           Components.Theme.textPrimary.b, 0.08)
+                                           Components.Theme.textPrimary.b, 0.14)
                         }
                     }
                 }
@@ -522,10 +522,10 @@ FocusScope {
                     objectName: "displayMonitorStandBase_" + String(modelData.id)
                     visible: !monitorItem.laptop
                     anchors.horizontalCenter: screenFrame.horizontalCenter
-                    y: screenFrame.y + screenFrame.height + 23
-                    width: Math.max(64, screenFrame.width * 0.34)
-                    height: 6
-                    radius: 4
+                    y: screenFrame.y + screenFrame.height + 20
+                    width: Math.max(48, screenFrame.width * 0.40)
+                    height: 5
+                    radius: 3
                     color: Qt.rgba(Components.Theme.textPrimary.r,
                                    Components.Theme.textPrimary.g,
                                    Components.Theme.textPrimary.b, 0.16)

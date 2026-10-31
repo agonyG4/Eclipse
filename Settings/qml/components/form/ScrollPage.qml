@@ -48,8 +48,66 @@ ScrollView {
     //   from angleDelta only.
     // - Touchpads (begin/update/end/momentum phases) follow the finger 1:1,
     //   including any momentum the platform sends.
+    // Past either end the page rubber-bands like macOS: it keeps moving with
+    // growing resistance, then springs back once input stops.
     property real wheelStep: 100
     property real wheelTarget: 0
+    property real overscrollLimit: 64
+    // Unresisted distance the finger has travelled past the nearest end.
+    property real touchOverscroll: 0
+
+    // Apple's rubber-band curve: displacement approaches the limit
+    // asymptotically however far the input pushes.
+    function rubberBand(distance) {
+        const stretch = 1 - 1 / (Math.abs(distance) * 0.55 / root.overscrollLimit + 1)
+        return Math.sign(distance) * stretch * root.overscrollLimit
+    }
+
+    function scrollBounds() {
+        const flick = root.contentItem
+        const top = flick.originY
+        return { top, bottom: top + Math.max(0, flick.contentHeight - flick.height) }
+    }
+
+    function nearestBound(y) {
+        const bounds = scrollBounds()
+        return y < bounds.top ? bounds.top : (y > bounds.bottom ? bounds.bottom : y)
+    }
+
+    function scrollWheel(notches) {
+        const flick = root.contentItem
+        const bounds = scrollBounds()
+        springBack.stop()
+        root.touchOverscroll = 0
+        if (!wheelGlide.running && !wheelBounce.running)
+            root.wheelTarget = nearestBound(flick.contentY)
+        const raw = root.wheelTarget - notches * root.wheelStep
+        root.wheelTarget = nearestBound(raw)
+        if (raw === root.wheelTarget) {
+            wheelBounce.stop()
+            wheelGlide.to = raw
+            wheelGlide.restart()
+            return
+        }
+        // Spinning past an end stretches the page a little, then settles.
+        wheelGlide.stop()
+        bounceOut.to = root.wheelTarget + rubberBand(raw - root.wheelTarget)
+        bounceBack.to = root.wheelTarget
+        wheelBounce.restart()
+    }
+
+    function scrollTouch(delta) {
+        const flick = root.contentItem
+        wheelGlide.stop()
+        wheelBounce.stop()
+        springBack.stop()
+        const bound = nearestBound(flick.contentY)
+        const raw = (flick.contentY === bound ? bound : bound + root.touchOverscroll) - delta
+        const target = nearestBound(raw)
+        root.touchOverscroll = raw - target
+        flick.contentY = target + rubberBand(root.touchOverscroll)
+        settleTimer.restart()
+    }
 
     // Attached once the ScrollView has built its Flickable.
     Component.onCompleted: pageWheel.parent = root.contentItem
@@ -60,23 +118,14 @@ ScrollView {
         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
         orientation: Qt.Vertical
         onWheel: event => {
-            const flick = root.contentItem
-            const limit = Math.max(0, flick.contentHeight - flick.height)
             if (event.phase === Qt.NoScrollPhase && event.angleDelta.y !== 0) {
-                if (!wheelGlide.running)
-                    root.wheelTarget = flick.contentY
-                root.wheelTarget = Math.max(0, Math.min(limit,
-                    root.wheelTarget - event.angleDelta.y / 120 * root.wheelStep))
-                wheelGlide.to = root.wheelTarget
-                wheelGlide.restart()
+                root.scrollWheel(event.angleDelta.y / 120)
                 return
             }
             const delta = event.pixelDelta.y !== 0
                 ? event.pixelDelta.y : event.angleDelta.y / 8
-            if (delta === 0)
-                return
-            wheelGlide.stop()
-            flick.contentY = Math.max(0, Math.min(limit, flick.contentY - delta))
+            if (delta !== 0)
+                root.scrollTouch(delta)
         }
     }
 
@@ -86,6 +135,48 @@ ScrollView {
         property: "contentY"
         duration: Components.Theme.animationSlow
         easing.type: Components.Theme.easingStandard
+    }
+
+    SequentialAnimation {
+        id: wheelBounce
+        NumberAnimation {
+            id: bounceOut
+            target: root.contentItem
+            property: "contentY"
+            duration: Components.Theme.animationFast
+            easing.type: Components.Theme.easingStandard
+        }
+        NumberAnimation {
+            id: bounceBack
+            target: root.contentItem
+            property: "contentY"
+            duration: Components.Theme.animationPopover
+            easing.type: Components.Theme.easingEnter
+        }
+    }
+
+    // Touchpads send no "finger lifted" signal we can rely on across
+    // platforms (momentum may follow ScrollEnd), so settle after input stops.
+    Timer {
+        id: settleTimer
+        interval: 120
+        onTriggered: {
+            const flick = root.contentItem
+            const bound = root.nearestBound(flick.contentY)
+            root.touchOverscroll = 0
+            if (flick.contentY !== bound) {
+                springBack.to = bound
+                springBack.restart()
+            }
+        }
+    }
+
+    NumberAnimation {
+        id: springBack
+        target: root.contentItem
+        property: "contentY"
+        duration: Components.Theme.animationPopover
+        easing.type: Components.Theme.easingEnter
     }
 
     ColumnLayout {

@@ -453,6 +453,8 @@ private slots:
   void mouseWheelGlidesInsteadOfJumping();
   void waylandMouseWheelWithPixelDeltaGlides();
   void touchpadScrollStillScrolls();
+  void wheelPastTopBouncesBack();
+  void touchpadOverscrollRubberBandsAndSpringsBack();
 };
 
 void SettingsDisplayQmlTest::projectsAuthoritativeReadOnlyOutputSnapshot() {
@@ -1382,6 +1384,60 @@ void SettingsDisplayQmlTest::touchpadScrollStillScrolls() {
               touchpadDevice());
   sendWheel(targets.layer, QPoint(), QPoint(), Qt::ScrollEnd, touchpadDevice());
   QTRY_VERIFY(targets.flickable->property("contentY").toReal() > 0.0);
+}
+
+namespace {
+
+// Lowest contentY seen while polling, to catch a transient overscroll.
+qreal lowestContentY(QQuickItem *flickable, int milliseconds) {
+  qreal lowest = flickable->property("contentY").toReal();
+  for (int elapsed = 0; elapsed < milliseconds; elapsed += 5) {
+    QTest::qWait(5);
+    lowest = qMin(lowest, flickable->property("contentY").toReal());
+  }
+  return lowest;
+}
+
+} // namespace
+
+void SettingsDisplayQmlTest::wheelPastTopBouncesBack() {
+  DisplayPageFixture fixture;
+  QQuickItem *page = fixture.createPage();
+  QVERIFY2(page != nullptr, qPrintable(fixture.errors()));
+  const ScrollFixture targets = scrollTargets(page);
+  QVERIFY(targets.flickable != nullptr);
+  QCOMPARE(targets.flickable->property("contentY").toReal(), 0.0);
+
+  sendWheel(targets.layer, QPoint(0, 15), QPoint(0, 120), Qt::NoScrollPhase,
+            QPointingDevice::primaryPointingDevice());
+  const qreal lowest = lowestContentY(targets.flickable, 300);
+  QVERIFY2(lowest < -5.0, qPrintable(QString::number(lowest)));
+  QVERIFY2(lowest > -64.0, qPrintable(QString::number(lowest)));
+  QTRY_COMPARE(targets.flickable->property("contentY").toReal(), 0.0);
+}
+
+void SettingsDisplayQmlTest::touchpadOverscrollRubberBandsAndSpringsBack() {
+  DisplayPageFixture fixture;
+  QQuickItem *page = fixture.createPage();
+  QVERIFY2(page != nullptr, qPrintable(fixture.errors()));
+  const ScrollFixture targets = scrollTargets(page);
+  QVERIFY(targets.flickable != nullptr);
+  QCOMPARE(targets.flickable->property("contentY").toReal(), 0.0);
+
+  sendWheel(targets.layer, QPoint(0, 40), QPoint(0, 320), Qt::ScrollBegin,
+            touchpadDevice());
+  const qreal first = targets.flickable->property("contentY").toReal();
+  for (int i = 0; i < 20; ++i)
+    sendWheel(targets.layer, QPoint(0, 40), QPoint(0, 320), Qt::ScrollUpdate,
+              touchpadDevice());
+  const qreal stretched = targets.flickable->property("contentY").toReal();
+  // Resistance: 840 px of finger travel stays inside the elastic limit and
+  // moves far less than the finger.
+  QVERIFY2(first < 0.0 && first > -40.0, qPrintable(QString::number(first)));
+  QVERIFY2(stretched < first && stretched > -64.0,
+           qPrintable(QString::number(stretched)));
+  sendWheel(targets.layer, QPoint(), QPoint(), Qt::ScrollEnd, touchpadDevice());
+  QTRY_COMPARE(targets.flickable->property("contentY").toReal(), 0.0);
 }
 
 void SettingsDisplayQmlTest::showsPreferredModeSemantics() {

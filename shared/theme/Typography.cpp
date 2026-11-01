@@ -115,6 +115,7 @@ QVariantMap resolve(const QVariantMap &theme, const QVariantMap &rawPreferences,
     const QStringList names = roleNames();
     const QList<int> defaults{24,18,14,13,11,13};
     const QStringList legacySizes{"fontSizeHeader", "fontSizeTitle", "fontSizeBody", "fontSizeLarge", "fontSizeCaption", ""};
+    const QStringList legacyFallbacks{"fontSizeHero", "fontSizeSubtitle", "fontSizeNormal", "tooltipFontSize", "fontSizeSmall", ""};
     const QList<int> weights{QFont::DemiBold,QFont::Medium,QFont::Normal,QFont::Medium,QFont::Normal,QFont::Normal};
     QVariantMap roles;
     for (qsizetype i = 0; i < names.size(); ++i) {
@@ -127,7 +128,7 @@ QVariantMap resolve(const QVariantMap &theme, const QVariantMap &rawPreferences,
         if (!userFamily)
             family = themed.value("family", family).toString();
         family = custom.value("family", family).toString();
-        double size = themed.value("pixelSize", theme.value(legacySizes[i], defaults[i])).toDouble();
+        double size = themed.value("pixelSize", theme.value(legacySizes[i], theme.value(legacyFallbacks[i], defaults[i]))).toDouble();
         if (i == 1 && prefs.contains("fontSizeTitle")) size = prefs.value("fontSizeTitle").toDouble();
         if (i == 2 && prefs.contains("fontSizeNormal")) size = prefs.value("fontSizeNormal").toDouble();
         size = custom.value("pixelSize", size).toDouble();
@@ -137,6 +138,22 @@ QVariantMap resolve(const QVariantMap &theme, const QVariantMap &rawPreferences,
             {"lineHeight", custom.value("lineHeight", themed.value("lineHeight", i == 2 ? 1.4 : 1.2))}};
         roles.insert(name, role);
     }
+    const QMap<QString, QStringList> aliases{
+        {"display", {"fontSizeHeader", "fontSizeHero"}}, {"title", {"fontSizeTitle", "fontSizeSubtitle"}},
+        {"body", {"fontSizeBody", "fontSizeNormal"}}, {"label", {"fontSizeLarge", "tooltipFontSize"}},
+        {"caption", {"fontSizeCaption", "fontSizeSmall", "fontSizeExtraSmall"}}};
+    for (auto it = aliases.cbegin(); it != aliases.cend(); ++it) {
+        const auto themed = themeRoles.value(it.key()).toMap();
+        const auto custom = userRoles.value(it.key()).toMap();
+        if (themed.contains("pixelSize") || custom.contains("pixelSize"))
+            for (const auto &key : it.value()) result.insert(key, roles.value(it.key()).toMap().value("pixelSize"));
+    }
+    result.insert("fontFamilyDisplay", roles.value("display").toMap().value("family"));
+    result.insert("fontFamilyText", roles.value("body").toMap().value("family"));
+    result.insert("monoFontFamily", roles.value("mono").toMap().value("family"));
+    result.insert("fontWeightNormal", roles.value("body").toMap().value("weight"));
+    result.insert("fontWeightMedium", roles.value("label").toMap().value("weight"));
+    result.insert("fontWeightDemiBold", roles.value("title").toMap().value("weight"));
     result.insert("typographyRoles", roles);
     return result;
 }

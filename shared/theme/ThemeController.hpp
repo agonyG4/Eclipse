@@ -136,6 +136,7 @@ private:
     QVariantMap m_fontPreferences;
     QVariantMap m_legacyFontPreferences;
     QString m_typographyError;
+    QByteArray m_componentFingerprint;
     QString m_iconAppearance = QStringLiteral("default");
     QString m_accentHex = QStringLiteral("#0a84ff");
     int m_audioOsdStyle = 0;

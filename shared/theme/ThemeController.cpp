@@ -4,6 +4,7 @@
 #include "theme/IconOverrides.hpp"
 
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -250,8 +251,23 @@ void ThemeController::reload()
     }
     reloadTypography();
     reloadNavigationIcons();
-    ++m_themeComponentsRevision;
-    emit themeComponentsRevisionChanged();
+    // Font/config watcher events must update bindings without recreating themed
+    // panels (and losing keyboard focus). Only changed component sources do that.
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    hash.addData(m_visualTheme.toUtf8());
+    hash.addData(qgetenv("ASTREA_ALLOW_THEME_QML"));
+    for (const auto &name : {QStringLiteral("spotlightPanel"), QStringLiteral("altTabPanel")}) {
+        const QString path = Astrea::ThemePacks::configuredComponentPath(m_visualTheme, name);
+        hash.addData(path.toUtf8());
+        QFile source(path);
+        if (!path.isEmpty() && source.open(QIODevice::ReadOnly)) hash.addData(source.readAll());
+    }
+    const QByteArray fingerprint = hash.result();
+    if (m_componentFingerprint != fingerprint) {
+        m_componentFingerprint = fingerprint;
+        ++m_themeComponentsRevision;
+        emit themeComponentsRevisionChanged();
+    }
     updateWatchPaths();
     m_reloading = false;
 }

@@ -64,6 +64,9 @@ private slots:
     void fontPreferencesPersistOverrideAndReset();
     void semanticTypographyResolvesInheritanceAndScale();
     void semanticQmlTextPropagates();
+    void typographyDoesNotRecreateThemedComponents();
+    void typographyMigratesLegacyAndPreservesExtensions();
+    void semanticRolesHonorLegacyThemeSizes();
     void typographyTransactionsPropagateAndPreserveOtherWriters();
     void typographyRejectsMalformedWritesAndKeepsUnavailableFamilies();
     void componentUrlsAreOptedInVersionedAndLiveReloaded();
@@ -190,6 +193,65 @@ void ThemeTokensTest::fontPreferencesPersistOverrideAndReset()
     QFile config(directory.filePath("typography.json"));
     QVERIFY(config.open(QIODevice::ReadOnly));
     QVERIFY(QJsonDocument::fromJson(config.readAll()).object().value("preferences").toObject().isEmpty());
+}
+
+void ThemeTokensTest::semanticRolesHonorLegacyThemeSizes()
+{
+    QTemporaryDir dir;
+    const QString id = "legacy-sizes";
+    QVERIFY(writeJson(dir.filePath("navigation-icons.json"), {{"visual_theme",id}}));
+    QVERIFY(writeJson(packageManifestPath(id), packageManifest(id, {{"typography",QJsonObject{
+        {"fontSizeNormal",16}, {"fontSizeHero",28}, {"fontSizeSmall",12}}}})));
+    ThemeController controller(dir.filePath("theme.json"));
+    QCOMPARE(controller.typography().value("body").toMap().value("pixelSize").toInt(),16);
+    QCOMPARE(controller.typography().value("display").toMap().value("pixelSize").toInt(),28);
+    QCOMPARE(controller.typography().value("caption").toMap().value("pixelSize").toInt(),12);
+}
+
+void ThemeTokensTest::typographyDoesNotRecreateThemedComponents()
+{
+    QTemporaryDir dir;
+    ThemeController controller(dir.filePath("theme.json"));
+    ThemeController reader(dir.filePath("theme.json"));
+    const int revision = reader.themeComponentsRevision();
+    controller.setTextScale(1.25);
+    QTRY_COMPARE_WITH_TIMEOUT(reader.textScale(), 1.25, 3000);
+    QCOMPARE(reader.themeComponentsRevision(), revision);
+}
+
+void ThemeTokensTest::typographyMigratesLegacyAndPreservesExtensions()
+{
+    QTemporaryDir dir;
+    const QString path = dir.filePath("theme.json");
+    const QString family = QFontInfo(QFont("sans-serif")).family();
+    const QJsonObject legacy{{"font_preferences", QJsonObject{{"fontFamily", family}, {"fontSizeTitle", 20}}},
+        {"unknown", QJsonObject{{"keep", true}}}};
+    QVERIFY(writeJson(path, legacy));
+    ThemeController controller(path);
+    QCOMPARE(controller.fontPreferences().value("fontSizeTitle").toInt(), 20);
+    controller.setTextScale(1.5);
+    ThemeController restored(path);
+    QCOMPARE(restored.fontPreferences().value("fontFamily").toString(), family);
+    QCOMPARE(restored.typography().value("title").toMap().value("pixelSize").toInt(), 30);
+    restored.resetFontPreferences();
+    restored.reload();
+    QVERIFY(restored.fontPreferences().isEmpty());
+    QFile original(path);
+    QVERIFY(original.open(QIODevice::ReadOnly));
+    QCOMPARE(QJsonDocument::fromJson(original.readAll()).object(), legacy);
+    const QString typo = dir.filePath("typography.json");
+    QVERIFY(writeJson(typo, {{"schema",1}, {"extension",true}, {"preferences", QJsonObject{
+        {"plugin",42}, {"roles",QJsonObject{{"body",QJsonObject{{"pixelSize",22},{"plugin",true}}}}}}}}));
+    restored.reload();
+    restored.setTypographyPreference("body", "weight", 300);
+    restored.resetFontPreferences();
+    QFile updated(typo);
+    QVERIFY(updated.open(QIODevice::ReadOnly));
+    const auto object = QJsonDocument::fromJson(updated.readAll()).object();
+    QCOMPARE(object.value("extension").toBool(), true);
+    QCOMPARE(object.value("preferences").toObject().value("plugin").toInt(), 42);
+    QCOMPARE(object.value("preferences").toObject().value("roles").toObject()
+        .value("body").toObject(), QJsonObject({{"plugin",true}}));
 }
 
 void ThemeTokensTest::semanticQmlTextPropagates()

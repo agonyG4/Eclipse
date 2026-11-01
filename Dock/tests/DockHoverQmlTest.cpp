@@ -1,6 +1,7 @@
 #include "core/DockController.hpp"
 #include "core/DockPinStore.hpp"
 #include "core/DockSurfaceGeometry.hpp"
+#include "core/runtime/DockRuntimeBackend.hpp"
 #include "platform/wayland/DockInputRegionBridge.hpp"
 #include "platform/wayland/effects/AstreaBackdropEffectRegions.hpp"
 #include "platform/wayland/effects/AstreaBackdropAnalyticCoverage.hpp"
@@ -138,6 +139,76 @@ private:
     bool m_tooltipVisible = false;
 };
 
+class FakeWindowPreviewInputRegion final : public QObject {
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE void update(const QRectF &next)
+    {
+        lastRect = next;
+        ++updateCount;
+    }
+    Q_INVOKABLE void suspend() { ++suspendCount; }
+
+    QRectF lastRect;
+    int updateCount = 0;
+    int suspendCount = 0;
+};
+
+class FakeWindowPreviewRuntimeBackend final : public Astrea::Dock::DockRuntimeBackend {
+    Q_OBJECT
+
+public:
+    bool runtimeReady() const override { return true; }
+    bool actionReady() const override { return true; }
+    Astrea::Dock::DockRuntimeSnapshot snapshot() const override { return currentSnapshot; }
+    quint64 generation() const override { return currentSnapshot.generation; }
+    std::optional<quint64> handleTokenForWindowId(const QString &windowId) const override
+    {
+        for (const auto &window : currentSnapshot.windows) {
+            if (window.id == windowId)
+                return static_cast<quint64>(qHash(windowId));
+        }
+        return std::nullopt;
+    }
+    std::optional<Astrea::Dock::DockRuntimeActionError> requestAction(
+        const QString &windowId, Astrea::Dock::DockRuntimeAction action,
+        quint64 consumerToken) override
+    {
+        Q_UNUSED(consumerToken)
+        actions.append({windowId, action});
+        return std::nullopt;
+    }
+    std::optional<Astrea::Dock::DockRuntimeActionError> setMinimizeAnchor(
+        const QString &windowId, const QRect &rect) override
+    {
+        publishedAnchors.insert(windowId, rect);
+        return std::nullopt;
+    }
+    std::optional<Astrea::Dock::DockRuntimeActionError> clearMinimizeAnchor(
+        const QString &windowId) override
+    {
+        publishedAnchors.remove(windowId);
+        return std::nullopt;
+    }
+    QString diagnosticContext() const override { return QStringLiteral("test backend"); }
+
+    void publishSnapshot(Astrea::Dock::DockRuntimeSnapshot snapshot)
+    {
+        snapshot.authoritative = true;
+        currentSnapshot = std::move(snapshot);
+        emit snapshotChanged(currentSnapshot);
+    }
+
+    struct Action {
+        QString windowId;
+        Astrea::Dock::DockRuntimeAction action;
+    };
+    Astrea::Dock::DockRuntimeSnapshot currentSnapshot;
+    QHash<QString, QRect> publishedAnchors;
+    QList<Action> actions;
+};
+
 class QmlCountingPinStore final : public DockPinStore {
 public:
     bool writePins(const QStringList &pins, QString *errorOut = nullptr) override
@@ -156,6 +227,8 @@ public:
 const QString kDockPanelPath = QString::fromUtf8(
     DOCK_SOURCE_DIR "/qml/components/DockPanel.qml");
 const QString kDockMainPath = QString::fromUtf8(DOCK_SOURCE_DIR "/qml/Main.qml");
+const QString kDockWindowPreviewSurfacePath = QString::fromUtf8(
+    DOCK_SOURCE_DIR "/qml/components/DockWindowPreviewSurface.qml");
 
 QQuickItem *delegate(QQuickItem *panel, const QString &identity)
 {
@@ -396,6 +469,10 @@ private slots:
     void unreadBadgeStaysInsideDockSurfaceAtMaximumScale();
     void windowDprMatchesScreenDprForDockIcon();
     void surfaceEnvelopeRemainsStableDuringMagnification();
+    void windowPreviewSurfaceClampsToOutputOnEveryDockEdge();
+    void minimizeAnchorPredictsGlobalThumbnailOnEveryDockEdge();
+    void previewActivationTargetsWindowAndDismissesSurface();
+    void previewPointerTransferKeepsAutoHideDockRevealed();
     void backdropRegionTracksMagnifiedChromeInsideStableSurface();
     void dockMaterialFollowsShellThemeState();
     void pointerCenterRemainsStableForPracticalMagnificationTargets();
@@ -757,6 +834,275 @@ void DockHoverQmlTest::surfaceEnvelopeRemainsStableDuringMagnification()
     QVERIFY2(qAbs(panel->height() - initialSurfaceHeight) < 0.1,
              "hover exit must not resize the Layer Shell surface height");
 
+    delete panel;
+}
+
+void DockHoverQmlTest::windowPreviewSurfaceClampsToOutputOnEveryDockEdge()
+{
+    DockController controller;
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockWindowPreviewSurfacePath));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    auto *preview = qobject_cast<QQuickWindow *>(component.create());
+    QVERIFY2(preview, qPrintable(component.errorString()));
+    FakeWindowPreviewInputRegion inputRegion;
+    preview->setProperty("inputRegionBridge",
+                         QVariant::fromValue(static_cast<QObject *>(&inputRegion)));
+
+    QVariantList entries;
+    for (int index = 0; index < 3; ++index) {
+        entries.append(QVariantMap{
+            {QStringLiteral("windowId"), QStringLiteral("window-%1").arg(index)},
+            {QStringLiteral("taskKey"), QStringLiteral("desktop:one.desktop")},
+            {QStringLiteral("title"), QStringLiteral("Preview title %1").arg(index)},
+            {QStringLiteral("displayName"), QStringLiteral("One")},
+            {QStringLiteral("iconName"), QStringLiteral("one")},
+            {QStringLiteral("minimized"), index == 1},
+        });
+    }
+
+    preview->setProperty("outputWidth", 1024);
+    preview->setProperty("outputHeight", 768);
+    preview->setProperty("outputOriginX", 2400);
+    preview->setProperty("outputOriginY", -300);
+    preview->setProperty("entries", entries);
+    preview->setProperty("previewVisible", true);
+    for (const QString &position : {QStringLiteral("bottom"), QStringLiteral("left"),
+                                    QStringLiteral("right")}) {
+        preview->setProperty("dockPosition", position);
+        preview->setProperty("anchorRect", position == QStringLiteral("right")
+            ? QRect(970, 700, 48, 48) : QRect(0, 700, 48, 48));
+        preview->show();
+        QCoreApplication::processEvents();
+
+        QCOMPARE(preview->width(), 1024.0);
+        QCOMPARE(preview->height(), 768.0);
+        auto *background = preview->findChild<QQuickItem *>(
+            QStringLiteral("previewSurfaceCardBackground"));
+        QVERIFY(background);
+        const int localX = qRound(background->x());
+        const int localY = qRound(background->y());
+        QVERIFY2(localX >= 12 && localX + background->width() <= 1012,
+                 qPrintable(QStringLiteral("preview x=%1 width=%2 for %3")
+                                .arg(localX).arg(background->width()).arg(position)));
+        QVERIFY2(localY >= 12 && localY + background->height() <= 756,
+                 qPrintable(QStringLiteral("preview y=%1 height=%2 for %3")
+                                .arg(localY).arg(background->height()).arg(position)));
+        QCOMPARE(inputRegion.lastRect,
+                 QRectF(localX, localY, background->width(), background->height()));
+        QVERIFY(childWithObjectName(preview->contentItem(),
+                                    QStringLiteral("window-preview-card-window-1")));
+        QQuickItem *title = childWithObjectName(preview->contentItem(),
+                                                QStringLiteral("window-preview-title-window-1"));
+        QVERIFY(title);
+        QCOMPARE(title->property("text").toString(), QStringLiteral("Preview title 1"));
+    }
+    preview->setProperty("previewVisible", false);
+    QCoreApplication::processEvents();
+    QVERIFY(inputRegion.suspendCount > 0);
+    preview->close();
+    delete preview;
+}
+
+void DockHoverQmlTest::minimizeAnchorPredictsGlobalThumbnailOnEveryDockEdge()
+{
+    const struct Case {
+        QString position;
+        int originX;
+        int originY;
+    } cases[] = {
+        {QStringLiteral("bottom"), 2400, -300},
+        {QStringLiteral("left"), -1280, 500},
+        {QStringLiteral("right"), 900, -760},
+    };
+
+    for (const Case &testCase : cases) {
+        auto catalog = std::make_shared<DesktopEntrySnapshot>();
+        DesktopEntryRecord record;
+        record.desktopFileName = QStringLiteral("one.desktop");
+        record.id = QStringLiteral("one");
+        record.name = QStringLiteral("One");
+        record.icon = QStringLiteral("one");
+        record.exec = QStringLiteral("one");
+        const int catalogIndex = catalog->entries.size();
+        catalog->entries.append(record);
+        catalog->byDesktopFileName.insert(record.desktopFileName, catalogIndex);
+        catalog->byDesktopId.insert(record.id, catalogIndex);
+
+        FakeWindowPreviewRuntimeBackend runtimeBackend;
+        Astrea::Dock::DockRuntimeWindow runtimeWindow;
+        runtimeWindow.id = QStringLiteral("window-one");
+        runtimeWindow.appId = QStringLiteral("one");
+        runtimeWindow.title = QStringLiteral("One window");
+        Astrea::Dock::DockRuntimeSnapshot snapshot;
+        snapshot.authoritative = true;
+        snapshot.generation = 3;
+        snapshot.windows.append(runtimeWindow);
+        snapshot.total = 1;
+        runtimeBackend.currentSnapshot = snapshot;
+
+        DockController controller;
+        controller.setCatalogSnapshot(catalog);
+        DockConfig config = configFor(QStringLiteral("none"), {QStringLiteral("one.desktop")});
+        config.position = testCase.position;
+        controller.applyConfig(config);
+        controller.attachRuntimeBackend(&runtimeBackend);
+
+        DockSurfaceGeometry surfaceGeometry;
+        QQmlEngine engine;
+        engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+        engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+        engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+        QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+        QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+        auto *panel = qobject_cast<QQuickItem *>(component.create());
+        QVERIFY2(panel, qPrintable(component.errorString()));
+        QQuickWindow window;
+        window.resize(1200, 820);
+        panel->setParentItem(window.contentItem());
+        panel->setProperty("dockSurfaceGeometry",
+                           QVariant::fromValue(static_cast<QObject *>(&surfaceGeometry)));
+        panel->setProperty("outputKey", QStringLiteral("output-preview-test"));
+        panel->setProperty("outputWidth", 1200);
+        panel->setProperty("outputHeight", 820);
+        panel->setProperty("outputOriginX", testCase.originX);
+        panel->setProperty("outputOriginY", testCase.originY);
+        window.show();
+
+        QTRY_VERIFY_WITH_TIMEOUT(delegate(panel, QStringLiteral("one.desktop")) != nullptr,
+                                 1000);
+        QTRY_VERIFY_WITH_TIMEOUT(runtimeBackend.publishedAnchors.contains(runtimeWindow.id),
+                                 1000);
+        const QRect anchorBeforeMinimize = runtimeBackend.publishedAnchors.value(runtimeWindow.id);
+
+        runtimeWindow.minimized = true;
+        snapshot.windows[0] = runtimeWindow;
+        runtimeBackend.publishSnapshot(snapshot);
+        QQuickItem *thumbnail = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT(
+            (thumbnail = childWithObjectName(panel,
+                QStringLiteral("minimized-window-card-window-one"))) != nullptr,
+            1000);
+        QTRY_COMPARE_WITH_TIMEOUT(runtimeBackend.publishedAnchors.value(runtimeWindow.id),
+                                  anchorBeforeMinimize, 1000);
+
+        const QRectF thumbnailRect = thumbnail->mapRectToItem(
+            window.contentItem(), QRectF(0, 0, thumbnail->width(), thumbnail->height()));
+        const QRect expectedGlobalAnchor = surfaceGeometry.outputLocalDelegateRect(
+            1200, 820, panel->property("surfaceWidth").toInt(),
+            panel->property("surfaceHeight").toInt(), testCase.position,
+            controller.layerShellEdgeMargin(), thumbnailRect)
+            .translated(testCase.originX, testCase.originY);
+        QCOMPARE(runtimeBackend.publishedAnchors.value(runtimeWindow.id), expectedGlobalAnchor);
+
+        delete panel;
+    }
+}
+
+void DockHoverQmlTest::previewActivationTargetsWindowAndDismissesSurface()
+{
+    auto catalog = std::make_shared<DesktopEntrySnapshot>();
+    DesktopEntryRecord record;
+    record.desktopFileName = QStringLiteral("one.desktop");
+    record.id = QStringLiteral("one");
+    record.name = QStringLiteral("One");
+    record.icon = QStringLiteral("one");
+    record.exec = QStringLiteral("one");
+    catalog->entries.append(record);
+    catalog->byDesktopFileName.insert(record.desktopFileName, 0);
+    catalog->byDesktopId.insert(record.id, 0);
+
+    FakeWindowPreviewRuntimeBackend runtimeBackend;
+    Astrea::Dock::DockRuntimeWindow first;
+    first.id = QStringLiteral("window-one");
+    first.appId = QStringLiteral("one");
+    first.title = QStringLiteral("One window");
+    Astrea::Dock::DockRuntimeWindow second = first;
+    second.id = QStringLiteral("window-two");
+    second.title = QStringLiteral("Two window");
+    Astrea::Dock::DockRuntimeSnapshot snapshot;
+    snapshot.authoritative = true;
+    snapshot.generation = 4;
+    snapshot.windows = {first, second};
+    snapshot.total = 2;
+    runtimeBackend.currentSnapshot = snapshot;
+
+    DockController controller;
+    controller.setCatalogSnapshot(catalog);
+    controller.applyConfig(configFor(QStringLiteral("none"), {QStringLiteral("one.desktop")}));
+    controller.attachRuntimeBackend(&runtimeBackend);
+    const QString taskKey = controller.appModel()->taskKeyAt(0);
+    const QVariantList entries = controller.windowPreviewEntries(taskKey);
+    QCOMPARE(entries.size(), 2);
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockWindowPreviewSurfacePath));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    auto *preview = qobject_cast<QQuickWindow *>(component.create());
+    QVERIFY2(preview, qPrintable(component.errorString()));
+    preview->setProperty("outputWidth", 900);
+    preview->setProperty("outputHeight", 700);
+    preview->setProperty("entries", entries);
+    preview->setProperty("anchorRect", QRect(400, 550, 48, 48));
+    preview->setProperty("previewVisible", true);
+    preview->show();
+
+    QQuickItem *card = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT(
+        (card = childWithObjectName(preview->contentItem(),
+            QStringLiteral("window-preview-card-window-one"))) != nullptr,
+        1000);
+    QVERIFY(QTest::qWaitForWindowExposed(preview));
+    QQuickItem *secondCard = childWithObjectName(preview->contentItem(),
+        QStringLiteral("window-preview-card-window-two"));
+    QVERIFY(secondCard);
+    // Delegates exist before the Grid's first polish places them side by side.
+    QTRY_VERIFY_WITH_TIMEOUT(secondCard->x() > card->x(), 1000);
+    const QPoint clickPosition = card->mapToItem(
+        preview->contentItem(), card->width() / 2.0, card->height() / 2.0).toPoint();
+    const QString clickedWindowId = card->property("modelData").toMap()
+        .value(QStringLiteral("windowId")).toString();
+    QCOMPARE(clickedWindowId, QStringLiteral("window-one"));
+    QTest::mouseClick(preview, Qt::LeftButton, Qt::NoModifier, clickPosition);
+
+    QTRY_VERIFY_WITH_TIMEOUT(!preview->property("previewVisible").toBool(), 1000);
+    QCOMPARE(runtimeBackend.actions.size(), 1);
+    QCOMPARE(runtimeBackend.actions.constFirst().windowId, clickedWindowId);
+    QCOMPARE(static_cast<int>(runtimeBackend.actions.constFirst().action),
+             static_cast<int>(Astrea::Dock::DockRuntimeAction::Activate));
+    preview->close();
+    delete preview;
+}
+
+void DockHoverQmlTest::previewPointerTransferKeepsAutoHideDockRevealed()
+{
+    DockController controller;
+    DockConfig config = configFor(QStringLiteral("none"), {QStringLiteral("one.desktop")});
+    config.autoHide = QStringLiteral("always");
+    controller.applyConfig(config);
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    QQuickWindow window;
+    panel->setParentItem(window.contentItem());
+    window.show();
+
+    controller.setPointerInside(false);
+    QVERIFY(QMetaObject::invokeMethod(panel, "setPreviewHovered", Q_ARG(QVariant, true)));
+    QTest::qWait(240);
+    QVERIFY(controller.revealed());
+
+    QVERIFY(QMetaObject::invokeMethod(panel, "setPreviewHovered", Q_ARG(QVariant, false)));
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.revealed(), 1000);
     delete panel;
 }
 

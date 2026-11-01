@@ -42,6 +42,9 @@ public:
         FakeScreenCaptureCompositor *owner = nullptr;
         wl_resource *resource = nullptr;
         wl_resource *output = nullptr;
+        QString windowId;
+        std::uint32_t maxWidth = 0;
+        std::uint32_t maxHeight = 0;
     };
 
     struct Output {
@@ -49,9 +52,11 @@ public:
         wl_resource *resource = nullptr;
     };
 
-    explicit FakeScreenCaptureCompositor(QObject *parent = nullptr, bool publishOutput = true)
+    explicit FakeScreenCaptureCompositor(QObject *parent = nullptr, bool publishOutput = true,
+                                         std::uint32_t managerVersion = 1)
         : QObject(parent)
     {
+        m_managerVersion = std::min(managerVersion, 2U);
         QVERIFY(m_runtime.isValid());
         m_previousRuntime = qgetenv("XDG_RUNTIME_DIR");
         m_previousDisplay = qgetenv("WAYLAND_DISPLAY");
@@ -80,7 +85,8 @@ public:
                                         this, &bindAuthManager);
         QVERIFY(m_authGlobal);
         m_captureGlobal = wl_global_create(m_display,
-                                           &astrea_screen_capture_manager_v1_interface, 1, this,
+                                           &astrea_screen_capture_manager_v1_interface,
+                                           m_managerVersion, this,
                                            &bindCaptureManager);
         QVERIFY(m_captureGlobal);
         if (publishOutput)
@@ -123,6 +129,9 @@ public:
     bool capturePending() const { return m_lastCapture != nullptr; }
     bool managerDestroyed() const { return m_managerDestroyed; }
     wl_resource *lastOutput() const { return m_lastOutput; }
+    QString lastWindowId() const { return m_lastWindowId; }
+    std::uint32_t lastMaxWidth() const { return m_lastMaxWidth; }
+    std::uint32_t lastMaxHeight() const { return m_lastMaxHeight; }
     wl_resource *outputResource() const { return m_output ? m_output->resource : nullptr; }
 
     void sendReady(const QByteArray &pixels, std::uint32_t width, std::uint32_t height,
@@ -219,7 +228,8 @@ private:
         auto *manager = new CaptureManager;
         manager->owner = self;
         manager->resource = wl_resource_create(
-            client, &astrea_screen_capture_manager_v1_interface, std::min(version, 1u), id);
+            client, &astrea_screen_capture_manager_v1_interface,
+            std::min(version, self->m_managerVersion), id);
         if (!manager->resource) {
             delete manager;
             return;
@@ -258,6 +268,33 @@ private:
                                        &destroyCapture);
         self->m_lastCapture = capture;
         self->m_lastOutput = output;
+        ++self->m_captureRequestCount;
+    }
+
+    static void captureWindowRequest(wl_client *client, wl_resource *managerResource,
+                                     uint32_t id, const char *windowId,
+                                     uint32_t maxWidth, uint32_t maxHeight)
+    {
+        auto *manager = static_cast<CaptureManager *>(wl_resource_get_user_data(managerResource));
+        auto *self = manager ? manager->owner : nullptr;
+        if (!self)
+            return;
+        auto *capture = new Capture;
+        capture->owner = self;
+        capture->windowId = QString::fromUtf8(windowId ? windowId : "");
+        capture->maxWidth = maxWidth;
+        capture->maxHeight = maxHeight;
+        capture->resource = wl_resource_create(client, &astrea_screen_capture_v1_interface, 1, id);
+        if (!capture->resource) {
+            delete capture;
+            return;
+        }
+        wl_resource_set_implementation(capture->resource, &kCaptureImplementation, capture,
+                                       &destroyCapture);
+        self->m_lastCapture = capture;
+        self->m_lastWindowId = capture->windowId;
+        self->m_lastMaxWidth = maxWidth;
+        self->m_lastMaxHeight = maxHeight;
         ++self->m_captureRequestCount;
     }
 
@@ -341,8 +378,12 @@ private:
     Output *m_output = nullptr;
     wl_client *m_authenticatedClient = nullptr;
     wl_resource *m_lastOutput = nullptr;
+    QString m_lastWindowId;
+    std::uint32_t m_lastMaxWidth = 0;
+    std::uint32_t m_lastMaxHeight = 0;
     int m_captureRequestCount = 0;
     bool m_managerDestroyed = false;
+    std::uint32_t m_managerVersion = 1;
     QObject m_readyFileParent;
     std::unique_ptr<QTemporaryFile> m_readyFile;
 };
@@ -357,6 +398,7 @@ const struct astrea_screen_capture_manager_v1_interface
     FakeScreenCaptureCompositor::kCaptureManagerImplementation = {
         &FakeScreenCaptureCompositor::captureOutputRequest,
         &FakeScreenCaptureCompositor::destroyCaptureOutputRequest,
+        &FakeScreenCaptureCompositor::captureWindowRequest,
     };
 
 const struct astrea_screen_capture_v1_interface
@@ -373,6 +415,7 @@ class TyphonScreenCaptureProtocolIntegrationTest final : public QObject {
 
 private slots:
     void captureUsesGeneratedRequestOpcodeAndImportsReadyImage();
+    void windowCaptureUsesExactIdentityAndBoundArguments();
     void failedEventTerminatesRequestAndAllowsAnotherCapture();
     void malformedReadyPreservesReadinessForNextCapture();
     void disconnectTerminatesOldGenerationAndReconnects();
@@ -456,6 +499,51 @@ void TyphonScreenCaptureProtocolIntegrationTest::captureUsesGeneratedRequestOpco
     QCOMPARE(image.format(), QImage::Format_RGBA8888);
     QCOMPARE(image.pixelColor(1, 0), QColor(4, 5, 6, 255));
     compositor.clearReadyFile();
+    connection.stop();
+}
+
+void TyphonScreenCaptureProtocolIntegrationTest::windowCaptureUsesExactIdentityAndBoundArguments()
+{
+    FakeScreenCaptureCompositor compositor(nullptr, false, 2);
+    TyphonSharedConnection connection;
+    TyphonScreenCaptureClient client(&connection);
+    QSignalSpy readySpy(&client, &TyphonScreenCaptureClient::ready);
+    QSignalSpy failedSpy(&client, &TyphonScreenCaptureClient::failed);
+
+    connection.start();
+    client.start();
+    QVERIFY(compositor.pumpUntil([&client] { return client.isReady(); }));
+    QVERIFY(client.supportsWindowCapture());
+
+    QVERIFY(!client.requestWindowCapture(QStringLiteral("window-42"), 1025, 360, 76));
+    QCOMPARE(failedSpy.count(), 1);
+    QCOMPARE(failedSpy.constFirst().at(0).toString(), QStringLiteral("invalid_request"));
+    QVERIFY(client.requestWindowCapture(QStringLiteral("window-42"), 640, 360, 77));
+    QVERIFY(compositor.pumpUntil([&compositor] {
+        return compositor.captureRequestCount() == 1;
+    }));
+    QCOMPARE(compositor.lastWindowId(), QStringLiteral("window-42"));
+    QCOMPARE(compositor.lastMaxWidth(), 640U);
+    QCOMPARE(compositor.lastMaxHeight(), 360U);
+
+    const char pixelData[] = {11, 22, 33, char(255)};
+    compositor.sendReady(QByteArray(pixelData, sizeof(pixelData)), 1, 1, 4);
+    QVERIFY(compositor.pumpUntil([&readySpy] { return readySpy.count() == 1; }));
+    QCOMPARE(readySpy.constFirst().at(2).toULongLong(), 77ULL);
+    const QImage image = qvariant_cast<QImage>(readySpy.constFirst().at(0));
+    QCOMPARE(image.pixelColor(0, 0), QColor(11, 22, 33, 255));
+    compositor.clearReadyFile();
+    QVERIFY(client.requestWindowCapture(QStringLiteral("window-42"), 640, 360, 78));
+    QVERIFY(compositor.pumpUntil([&compositor] {
+        return compositor.captureRequestCount() == 2;
+    }));
+    compositor.sendFailed(QStringLiteral("not_ready"));
+    QVERIFY(compositor.pumpUntil([&failedSpy] { return failedSpy.count() == 2; }));
+    QVERIFY(client.isReady());
+    QVERIFY(client.requestWindowCapture(QStringLiteral("window-42"), 640, 360, 79));
+    QVERIFY(compositor.pumpUntil([&compositor] {
+        return compositor.captureRequestCount() == 3;
+    }));
     connection.stop();
 }
 

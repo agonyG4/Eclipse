@@ -114,6 +114,32 @@ int DockController::launchingCount() const
     return count;
 }
 
+QVariantList DockController::minimizedWindowEntries() const
+{
+    QVariantList entries;
+    if (!m_runtimeKnown || !m_runtimeSnapshot.has_value())
+        return entries;
+    for (const auto &window : m_runtimeSnapshot->windows) {
+        if (!window.minimized)
+            continue;
+        for (auto state = m_runtimeStates.cbegin(); state != m_runtimeStates.cend(); ++state) {
+            if (!state->windowIds.contains(window.id))
+                continue;
+            entries.append(QVariantMap{
+                {QStringLiteral("windowId"), window.id},
+                {QStringLiteral("taskKey"), state.key()},
+                {QStringLiteral("title"), window.title},
+                {QStringLiteral("appId"), window.appId},
+                {QStringLiteral("iconName"), state->iconName},
+                {QStringLiteral("iconPath"), state->iconPath},
+                {QStringLiteral("displayName"), state->displayName},
+            });
+            break;
+        }
+    }
+    return entries;
+}
+
 int DockController::exclusiveZone() const
 {
     if (!m_enabled || !m_requestedVisible || m_model.rowCount() == 0 || autoHideActive())
@@ -283,6 +309,9 @@ void DockController::applyRuntimeSnapshot(const Astrea::Dock::DockRuntimeSnapsho
     }
     const int previousReservation = exclusiveZone();
     const DockSurfacePlacement previousPlacement = surfacePlacement();
+    if (m_runtimeSnapshot.has_value()
+        && m_runtimeSnapshot->generation != snapshot.generation)
+        m_windowMinimizeAnchors.clear();
     m_runtimeSnapshot = snapshot;
     m_runtimeKnown = true;
     updateAutoHidePolicy();
@@ -302,6 +331,7 @@ void DockController::clearRuntimeState()
     m_runtimeKnown = false;
     m_runtimeSnapshot.reset();
     m_runtimeStates.clear();
+    m_windowMinimizeAnchors.clear();
     m_runtimeTaskIdentityTracker.reset();
     m_model.clearRuntimeProjection();
     updateAutoHidePolicy();
@@ -333,6 +363,25 @@ bool DockController::setMinimizeAnchor(const QString &taskKey, const QRect &rect
     return true;
 }
 
+bool DockController::setWindowMinimizeAnchor(const QString &taskKey,
+                                              const QString &windowId,
+                                              const QRect &rect)
+{
+    if (taskKey.isEmpty() || windowId.isEmpty() || rect.width() <= 0 || rect.height() <= 0)
+        return false;
+    const auto state = m_runtimeStates.constFind(taskKey);
+    if (state == m_runtimeStates.constEnd() || !state->windowIds.contains(windowId))
+        return false;
+    const auto existing = m_windowMinimizeAnchors.constFind(windowId);
+    if (existing != m_windowMinimizeAnchors.constEnd() && existing.value() == rect) {
+        publishMinimizeAnchor(taskKey);
+        return true;
+    }
+    m_windowMinimizeAnchors.insert(windowId, rect);
+    publishMinimizeAnchor(taskKey);
+    return true;
+}
+
 void DockController::clearMinimizeAnchor(const QString &taskKey)
 {
     m_minimizeAnchors.remove(taskKey);
@@ -341,6 +390,7 @@ void DockController::clearMinimizeAnchor(const QString &taskKey)
     const auto state = m_runtimeStates.constFind(taskKey);
     if (state != m_runtimeStates.constEnd()) {
         for (const QString &windowId : state->windowIds) {
+            m_windowMinimizeAnchors.remove(windowId);
             if (!m_runtimeBackend)
                 continue;
             const auto error = m_runtimeBackend->clearMinimizeAnchor(windowId);
@@ -458,6 +508,30 @@ QVector<Astrea::Dock::DockRuntimeWindow> DockController::windowsForDesktopFileNa
     const QString taskKey = m_model.runtimeTaskKeyForDesktopFileName(desktopFileName);
     return taskKey.isEmpty() ? QVector<Astrea::Dock::DockRuntimeWindow>{}
                              : windowsForTaskKey(taskKey);
+}
+
+QVariantList DockController::windowPreviewEntries(const QString &taskKey) const
+{
+    QVariantList entries;
+    const auto state = m_runtimeStates.constFind(taskKey);
+    if (state == m_runtimeStates.constEnd())
+        return entries;
+    const auto windows = windowsForTaskKey(taskKey);
+    entries.reserve(windows.size());
+    for (const auto &window : windows) {
+        entries.append(QVariantMap{
+            {QStringLiteral("windowId"), window.id},
+            {QStringLiteral("taskKey"), taskKey},
+            {QStringLiteral("title"), window.title},
+            {QStringLiteral("appId"), window.appId},
+            {QStringLiteral("minimized"), window.minimized},
+            {QStringLiteral("windowIcon"), window.windowIcon},
+            {QStringLiteral("iconName"), state->iconName},
+            {QStringLiteral("iconPath"), state->iconPath},
+            {QStringLiteral("displayName"), state->displayName},
+        });
+    }
+    return entries;
 }
 
 bool DockController::requestExactWindowAction(const QString &taskKey,
@@ -787,6 +861,14 @@ void DockController::projectRuntime()
     const Astrea::Dock::DockApplicationRuntimeProjection projection =
         m_runtimeProjector.project(*m_runtimeSnapshot, m_catalogSnapshot, taskKeysByWindowId);
     m_runtimeStates = projection.states;
+    const QSet<QString> liveIds = liveRuntimeWindowIds();
+    for (auto anchor = m_windowMinimizeAnchors.begin();
+         anchor != m_windowMinimizeAnchors.end();) {
+        if (!liveIds.contains(anchor.key()))
+            anchor = m_windowMinimizeAnchors.erase(anchor);
+        else
+            ++anchor;
+    }
     m_model.applyRuntimeProjection(projection, true);
     publishAllMinimizeAnchors();
     clearPublishedMinimizeAnchors(liveRuntimeWindowIds());
@@ -865,9 +947,15 @@ void DockController::publishMinimizeAnchor(const QString &taskKey)
         return;
     const auto anchor = m_minimizeAnchors.constFind(taskKey);
     const auto state = m_runtimeStates.constFind(taskKey);
-    if (anchor == m_minimizeAnchors.constEnd() || state == m_runtimeStates.constEnd())
+    if (state == m_runtimeStates.constEnd())
         return;
     for (const QString &windowId : state->windowIds) {
+        const auto exactAnchor = m_windowMinimizeAnchors.constFind(windowId);
+        const QRect effectiveAnchor = exactAnchor != m_windowMinimizeAnchors.constEnd()
+            ? exactAnchor.value()
+            : anchor == m_minimizeAnchors.constEnd() ? QRect() : anchor.value();
+        if (effectiveAnchor.isEmpty())
+            continue;
         const auto handleToken = m_runtimeBackend->handleTokenForWindowId(windowId);
         if (!handleToken.has_value()) {
             diagnoseMinimizeAnchor(MinimizeAnchorDiagnosticEvent::MissingHandle,
@@ -878,7 +966,7 @@ void DockController::publishMinimizeAnchor(const QString &taskKey)
         const quint64 generation = m_runtimeBackend->generation();
         const auto published = m_publishedMinimizeAnchors.constFind(windowId);
         if (published != m_publishedMinimizeAnchors.constEnd()
-            && published->taskKey == taskKey && published->rect == anchor.value()
+            && published->taskKey == taskKey && published->rect == effectiveAnchor
             && published->generation == generation
             && published->handleToken == handleToken.value()
             && published->capabilityEpoch == m_minimizeAnchorCapabilityEpoch)
@@ -886,11 +974,10 @@ void DockController::publishMinimizeAnchor(const QString &taskKey)
 
         diagnoseMinimizeAnchor(MinimizeAnchorDiagnosticEvent::PublishAttempted,
                                MinimizeAnchorDiagnosticReason::None, taskKey, windowId);
-        const auto error = m_runtimeBackend->setMinimizeAnchor(windowId, anchor.value());
+        const auto error = m_runtimeBackend->setMinimizeAnchor(windowId, effectiveAnchor);
         if (!error.has_value()) {
             m_publishedMinimizeAnchors.insert(
-                windowId,
-                PublishedMinimizeAnchor{taskKey, anchor.value(), generation,
+                windowId, PublishedMinimizeAnchor{taskKey, effectiveAnchor, generation,
                                         handleToken.value(), m_minimizeAnchorCapabilityEpoch});
             diagnoseMinimizeAnchor(MinimizeAnchorDiagnosticEvent::SendQueued,
                                    MinimizeAnchorDiagnosticReason::TransportQueuedNoRemoteAck,
@@ -921,6 +1008,14 @@ void DockController::publishAllMinimizeAnchors()
 {
     for (auto it = m_minimizeAnchors.cbegin(); it != m_minimizeAnchors.cend(); ++it)
         publishMinimizeAnchor(it.key());
+    for (auto it = m_windowMinimizeAnchors.cbegin(); it != m_windowMinimizeAnchors.cend(); ++it) {
+        for (auto state = m_runtimeStates.cbegin(); state != m_runtimeStates.cend(); ++state) {
+            if (state->windowIds.contains(it.key())) {
+                publishMinimizeAnchor(state.key());
+                break;
+            }
+        }
+    }
 }
 
 void DockController::clearPublishedMinimizeAnchors(const QSet<QString> &liveWindowIds)
@@ -941,11 +1036,15 @@ void DockController::clearPublishedMinimizeAnchors(const QSet<QString> &liveWind
                 break;
             }
         }
+        const auto exactAnchor = m_windowMinimizeAnchors.constFind(it.key());
         const auto currentAnchor = m_minimizeAnchors.constFind(currentTaskKey);
+        const QRect effectiveAnchor = exactAnchor != m_windowMinimizeAnchors.constEnd()
+            ? exactAnchor.value()
+            : currentAnchor == m_minimizeAnchors.constEnd() ? QRect() : currentAnchor.value();
         const auto currentHandle = m_runtimeBackend->handleTokenForWindowId(it.key());
         const bool isCurrentPublication = !currentTaskKey.isEmpty()
-            && currentAnchor != m_minimizeAnchors.constEnd()
-            && currentAnchor.value() == it->rect && currentTaskKey == it->taskKey
+            && !effectiveAnchor.isEmpty()
+            && effectiveAnchor == it->rect && currentTaskKey == it->taskKey
             && currentHandle.has_value() && currentHandle.value() == it->handleToken
             && it->generation == m_runtimeBackend->generation()
             && it->capabilityEpoch == m_minimizeAnchorCapabilityEpoch;

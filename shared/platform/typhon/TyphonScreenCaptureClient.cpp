@@ -24,6 +24,7 @@ namespace {
 
 constexpr std::uint32_t kRgba8888 = 0x34324152U;
 constexpr std::uint64_t kMaxPayload = 256ULL * 1024ULL * 1024ULL;
+constexpr std::uint32_t kMaxWindowCaptureDimension = 1024U;
 
 } // namespace
 
@@ -41,6 +42,7 @@ struct TyphonScreenCaptureClient::Private {
     bool ready = false;
     std::uint64_t generation = 0;
     std::uint64_t activeOperationToken = 0;
+    bool captureIsWindow = false;
 
 #if ASTREA_HAVE_TYPHON_PROTOCOL
     wl_registry *registry = nullptr;
@@ -52,6 +54,7 @@ struct TyphonScreenCaptureClient::Private {
     astrea_screen_capture_manager_v1 *manager = nullptr;
     std::uint32_t managerName = 0;
     bool managerNameValid = false;
+    std::uint32_t managerVersion = 0;
     astrea_screen_capture_v1 *capture = nullptr;
 
     void destroyObjects(bool sendDestroy);
@@ -88,8 +91,10 @@ void TyphonScreenCaptureClient::Private::global(void *data, wl_registry *registr
         return;
     if (!self->manager && qstrcmp(interfaceName, "astrea_screen_capture_manager_v1") == 0
         && version >= 1) {
+        self->managerVersion = std::min(version, 2U);
         self->manager = static_cast<astrea_screen_capture_manager_v1 *>(wl_registry_bind(
-            registry, name, &astrea_screen_capture_manager_v1_interface, 1));
+            registry, name, &astrea_screen_capture_manager_v1_interface,
+            self->managerVersion));
         self->managerName = name;
         self->managerNameValid = self->manager != nullptr;
     } else if (!self->output && qstrcmp(interfaceName, "wl_output") == 0 && version >= 1) {
@@ -105,7 +110,7 @@ void TyphonScreenCaptureClient::Private::refreshReadiness()
 {
     // Globals may arrive after the initial registry sync, or be replaced
     // without reconnecting the shared Wayland transport.
-    if (!started || !registryReady || !manager || !output || ready)
+    if (!started || !registryReady || !manager || (!output && managerVersion < 2) || ready)
         return;
     ready = true;
     owner->stateChanged(QStringLiteral("ready"));
@@ -117,15 +122,15 @@ void TyphonScreenCaptureClient::Private::globalRemove(void *data, wl_registry *,
     if (!self || !self->started)
         return;
     if (self->outputNameValid && self->outputName == name) {
-        if (self->capture)
+        if (self->capture && !self->captureIsWindow)
             self->fail(QStringLiteral("output_gone"));
-        else
-            self->ready = false;
+        self->ready = self->manager && self->managerVersion >= 2;
         if (self->output)
             wl_proxy_destroy(reinterpret_cast<wl_proxy *>(self->output));
         self->output = nullptr;
         self->outputNameValid = false;
         self->owner->stateChanged(QStringLiteral("output_gone"));
+        self->refreshReadiness();
     } else if (self->managerNameValid && self->managerName == name) {
         if (self->capture)
             self->fail(QStringLiteral("unsupported"));
@@ -134,6 +139,7 @@ void TyphonScreenCaptureClient::Private::globalRemove(void *data, wl_registry *,
         if (self->manager)
             wl_proxy_destroy(reinterpret_cast<wl_proxy *>(self->manager));
         self->manager = nullptr;
+        self->managerVersion = 0;
         self->managerNameValid = false;
         self->owner->stateChanged(QStringLiteral("unsupported"));
     }
@@ -148,7 +154,8 @@ void TyphonScreenCaptureClient::Private::synchronized(void *data, wl_callback *c
     self->registrySync = nullptr;
     wl_callback_destroy(callback);
     self->registryReady = true;
-    if (!self->started || !self->manager || !self->output) {
+    if (!self->started || !self->manager
+        || (!self->output && self->managerVersion < 2)) {
         if (self->started)
             self->owner->diagnostic(QStringLiteral("Typhon screen capture output is unavailable"));
         return;
@@ -228,6 +235,7 @@ void TyphonScreenCaptureClient::Private::handleReady(astrea_screen_capture_v1 *s
     astrea_screen_capture_v1_destroy(capture);
     capture = nullptr;
     activeOperationToken = 0;
+    captureIsWindow = false;
     emit owner->ready(image, generation, operationToken);
 }
 
@@ -241,6 +249,7 @@ void TyphonScreenCaptureClient::Private::fail(const QString &reason)
         capture = nullptr;
     }
     activeOperationToken = 0;
+    captureIsWindow = false;
     ready = false;
     emit owner->failed(reason, generation, operationToken);
 }
@@ -255,7 +264,8 @@ void TyphonScreenCaptureClient::Private::failRequest(const QString &reason)
         capture = nullptr;
     }
     activeOperationToken = 0;
-    ready = manager != nullptr && output != nullptr;
+    captureIsWindow = false;
+    ready = manager != nullptr && (output != nullptr || managerVersion >= 2);
     emit owner->failed(reason, generation, operationToken);
 }
 
@@ -298,6 +308,7 @@ void TyphonScreenCaptureClient::Private::destroyObjects(bool sendDestroy)
     }
     registry = nullptr;
     managerNameValid = false;
+    managerVersion = 0;
 }
 
 void TyphonScreenCaptureClient::Private::bindGeneration(std::uint64_t nextGeneration)
@@ -424,12 +435,55 @@ bool TyphonScreenCaptureClient::requestCapture(std::uint64_t operationToken)
         return false;
     }
     m_private->activeOperationToken = operationToken;
+    m_private->captureIsWindow = false;
     m_private->capture = astrea_screen_capture_manager_v1_capture_output(m_private->manager,
                                                                            m_private->output);
     if (!m_private->capture
         || astrea_screen_capture_v1_add_listener(m_private->capture, &Private::captureListener,
                                                  m_private.get())
                != 0) {
+        m_private->failRequest(QStringLiteral("render_failed"));
+        return false;
+    }
+    if (!m_private->sharedConnection->flush()) {
+        m_private->failRequest(QStringLiteral("render_failed"));
+        return false;
+    }
+    return true;
+#endif
+}
+
+bool TyphonScreenCaptureClient::requestWindowCapture(const QString &windowId,
+                                                     std::uint32_t maxWidth,
+                                                     std::uint32_t maxHeight,
+                                                     std::uint64_t operationToken)
+{
+#if !ASTREA_HAVE_TYPHON_PROTOCOL
+    Q_UNUSED(windowId);
+    Q_UNUSED(maxWidth);
+    Q_UNUSED(maxHeight);
+    emit failed(QStringLiteral("unsupported"), m_private->generation, operationToken);
+    return false;
+#else
+    if (windowId.isEmpty() || windowId.size() > 256 || maxWidth == 0 || maxHeight == 0
+        || maxWidth > kMaxWindowCaptureDimension || maxHeight > kMaxWindowCaptureDimension) {
+        emit failed(QStringLiteral("invalid_request"), m_private->generation, operationToken);
+        return false;
+    }
+    if (!m_private->started || !m_private->ready || !m_private->manager
+        || m_private->managerVersion < 2 || m_private->capture) {
+        emit failed(m_private->capture ? QStringLiteral("busy") : QStringLiteral("unsupported"),
+                    m_private->generation, operationToken);
+        return false;
+    }
+    m_private->activeOperationToken = operationToken;
+    m_private->captureIsWindow = true;
+    const QByteArray encodedWindowId = windowId.toUtf8();
+    m_private->capture = astrea_screen_capture_manager_v1_capture_window(
+        m_private->manager, encodedWindowId.constData(), maxWidth, maxHeight);
+    if (!m_private->capture
+        || astrea_screen_capture_v1_add_listener(m_private->capture, &Private::captureListener,
+                                                 m_private.get()) != 0) {
         m_private->failRequest(QStringLiteral("render_failed"));
         return false;
     }
@@ -448,18 +502,30 @@ void TyphonScreenCaptureClient::cancelCapture()
         astrea_screen_capture_v1_destroy(m_private->capture);
         m_private->capture = nullptr;
         m_private->activeOperationToken = 0;
+        m_private->captureIsWindow = false;
         if (m_private->sharedConnection && m_private->sharedConnection->nativeDisplay()
             && !m_private->sharedConnection->flush()) {
             emit diagnostic(QStringLiteral("Failed to flush cancelled screen capture request"));
         }
     }
     m_private->activeOperationToken = 0;
+    m_private->captureIsWindow = false;
 #endif
 }
 
 bool TyphonScreenCaptureClient::isReady() const
 {
     return m_private->ready;
+}
+
+bool TyphonScreenCaptureClient::supportsWindowCapture() const
+{
+#if ASTREA_HAVE_TYPHON_PROTOCOL
+    return m_private->started && m_private->registryReady && m_private->manager
+        && m_private->managerVersion >= 2;
+#else
+    return false;
+#endif
 }
 
 std::uint64_t TyphonScreenCaptureClient::connectionGeneration() const

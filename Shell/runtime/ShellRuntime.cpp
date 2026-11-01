@@ -15,6 +15,7 @@
 #include "Dock/platform/runtime/DockRuntimePaths.hpp"
 #include "Dock/services/DockConfigWatcher.hpp"
 #include "Dock/services/DockConfigPersistence.hpp"
+#include "windowpreview/DockWindowPreviewService.hpp"
 #include "core/ContextMenuController.hpp"
 #include "core/ContextMenuProviders.hpp"
 #include "Spotlight/core/SpotlightController.hpp"
@@ -86,6 +87,7 @@ void ShellRuntime::resetInitializationState()
     m_shortcutDispatcher.reset();
     m_barController.reset();
     m_screenshotController.reset();
+    m_dockWindowPreviewService.reset();
     m_spotlightController.reset();
     m_spotlightWeather.reset();
     m_altTabController.reset();
@@ -116,6 +118,7 @@ void ShellRuntime::resetInitializationState()
     m_workspaceClient.reset();
     m_workspaceModel.reset();
     m_screenCaptureClient.reset();
+    m_dockPreviewCaptureClient.reset();
     m_shortcutClient.reset();
 
     m_windowBackend.reset();
@@ -149,6 +152,9 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
     m_typhonSession = std::make_unique<TyphonSharedConnection>();
     m_shortcutClient = std::make_unique<TyphonShortcutClient>(m_typhonSession.get());
     m_screenCaptureClient = std::make_unique<TyphonScreenCaptureClient>(m_typhonSession.get());
+    m_dockPreviewCaptureClient = std::make_unique<TyphonScreenCaptureClient>(m_typhonSession.get());
+    m_dockWindowPreviewService = std::make_unique<DockWindowPreviewService>(
+        m_dockPreviewCaptureClient.get());
     m_workspaceClient = std::make_unique<TyphonWorkspaceClient>(m_typhonSession.get());
     m_workspaceController = std::make_unique<TyphonWorkspaceController>(m_workspaceClient.get());
 
@@ -409,6 +415,7 @@ void ShellRuntime::start()
         m_windowBackend->start();
     m_shortcutClient->start();
     m_screenCaptureClient->start();
+    m_dockPreviewCaptureClient->start();
     m_gameMode->start();
     m_barClock->start();
     m_audioService->start();
@@ -443,6 +450,7 @@ void ShellRuntime::stop()
     m_gameMode->stop();
     m_shortcutClient->stop();
     m_screenCaptureClient->stop();
+    m_dockPreviewCaptureClient->stop();
     m_workspaceClient->stop();
     if (m_barClock)
         m_barClock->stop();

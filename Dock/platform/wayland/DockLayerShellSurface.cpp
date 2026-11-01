@@ -78,12 +78,28 @@ AstreaLayerShellConfig DockLayerShellSurface::tooltipConfigurationFor(QScreen *s
     return layerConfig;
 }
 
+AstreaLayerShellConfig DockLayerShellSurface::windowPreviewConfigurationFor(QScreen *screen)
+{
+    AstreaLayerShellConfig layerConfig = tooltipConfigurationFor(screen);
+    layerConfig.scope = QStringLiteral("astrea-dock-window-preview");
+    return layerConfig;
+}
+
 bool DockLayerShellSurface::configureTooltip(QQuickWindow *window, QScreen *screen,
                                               QString *errorOut)
 {
     if (!setOutputGeometry(window, screen, errorOut))
         return false;
     return AstreaLayerShellHelper::configure(window, tooltipConfigurationFor(screen), errorOut);
+}
+
+bool DockLayerShellSurface::configureWindowPreview(QQuickWindow *window, QScreen *screen,
+                                                    QString *errorOut)
+{
+    if (!setOutputGeometry(window, screen, errorOut))
+        return false;
+    return AstreaLayerShellHelper::configure(window,
+                                              windowPreviewConfigurationFor(screen), errorOut);
 }
 
 bool DockLayerShellSurface::setOutputGeometry(QQuickWindow *window, QScreen *screen,

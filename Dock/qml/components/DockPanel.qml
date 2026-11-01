@@ -12,7 +12,15 @@ Item {
 
     readonly property bool vertical: DockController.vertical
     readonly property bool growsPositiveCross: DockController.position === "left"
-    readonly property int restingPrimary: (vertical ? appRow.implicitHeight : appRow.implicitWidth)
+    readonly property var minimizedEntries: DockController.minimizedWindowEntries
+    readonly property int minimizedCount: minimizedEntries ? minimizedEntries.length : 0
+    readonly property int previewSectionGap: minimizedCount > 0 ? 20 : 0
+    readonly property int previewPrimaryExtent: minimizedCount *
+        (vertical ? DockController.delegateHeight : DockController.delegateWidth)
+        + Math.max(0, minimizedCount - 1) * DockController.itemSpacing
+        + previewSectionGap
+    readonly property int appPrimaryExtent: vertical ? appRow.implicitHeight : appRow.implicitWidth
+    readonly property int restingPrimary: appPrimaryExtent + previewPrimaryExtent
         + DockController.panelPadding * 2
     readonly property int restingCross: DockController.restingCrossThickness
     readonly property int restingWidth: vertical ? restingCross : restingPrimary
@@ -59,6 +67,8 @@ Item {
     // axis. For Bottom this is the historical centered X coordinate.
     property real pointerX: 0
     property bool pointerInside: false
+    property bool previewHovered: false
+    property string previewTaskKey: ""
     property string pointerTargetTaskKey: ""
     property int tooltipLifecycleEpoch: 0
     property int tooltipRefreshQueuedEpoch: -1
@@ -69,6 +79,8 @@ Item {
     property var contextMenuController: null
     property var dockSurfaceGeometry: null
     property var dockTooltipSurface: null
+    property var dockWindowPreviewSurface: null
+    property var dockWindowPreviewService: null
     property var inputRegionBridge: null
     property string outputKey: ""
     property int outputWidth: 1
@@ -110,6 +122,21 @@ Item {
         interval: 420
         repeat: false
         onTriggered: root.presentTooltipForCurrentTarget()
+    }
+
+    Timer {
+        id: previewDismissDelay
+        objectName: "dockPreviewDismissDelay"
+        interval: 180
+        repeat: false
+        onTriggered: {
+            if (root.pointerInside || root.previewHovered)
+                return
+            if (root.dockWindowPreviewSurface)
+                root.dockWindowPreviewSurface.hidePreview()
+            root.previewTaskKey = ""
+            DockController.setPointerInside(false)
+        }
     }
 
     function animationDuration(base) {
@@ -168,8 +195,10 @@ Item {
             rows: root.vertical ? Math.max(1, appRepeater.count) : 1
             rowSpacing: root.vertical ? DockController.itemSpacing : 0
             columnSpacing: root.vertical ? 0 : DockController.itemSpacing
-            x: (dockChrome.width - implicitWidth) / 2
-            y: root.vertical ? (dockChrome.height - implicitHeight) / 2
+            x: root.vertical ? (dockChrome.width - implicitWidth) / 2
+                             : (dockChrome.width - implicitWidth - root.previewPrimaryExtent) / 2
+            y: root.vertical ? (dockChrome.height - implicitHeight
+                                - root.previewPrimaryExtent) / 2
                              : dockChrome.height - implicitHeight - DockController.chromeBottomMargin
             width: root.vertical ? dockChrome.width : implicitWidth
 
@@ -180,12 +209,14 @@ Item {
                 onItemAdded: {
                     root.updateHoverEffect()
                     root.scheduleMinimizeAnchorPublication()
+                    root.reconcileWindowPreviewCache()
                 }
                 onItemRemoved: function(index, item) {
                     if (item && item.taskKey)
                         DockController.clearMinimizeAnchor(item.taskKey)
                     root.updateHoverEffect()
                     root.scheduleMinimizeAnchorPublication()
+                    root.reconcileWindowPreviewCache()
                 }
 
                 delegate: DockAppDelegate {
@@ -209,6 +240,158 @@ Item {
                     }
                     onDragFinished: function(key) { root.finishReorder(key) }
                     onDragCanceled: function(key) { root.cancelReorder(key) }
+                }
+            }
+        }
+
+        Rectangle {
+            id: minimizedDivider
+            objectName: "minimizedWindowDivider"
+            color: shellMaterial.border
+            width: root.vertical ? 20 : 1
+            height: root.vertical ? 1 : 20
+            x: root.vertical ? (dockChrome.width - width) / 2
+                             : appRow.x + appRow.implicitWidth + 9
+            y: root.vertical ? appRow.y + appRow.implicitHeight + 9
+                             : appRow.y + (appRow.implicitHeight - height) / 2
+            visible: root.minimizedCount > 0
+        }
+
+        Grid {
+            id: minimizedWindowGrid
+            objectName: "minimizedWindowGrid"
+            columns: root.vertical ? 1 : root.minimizedCount
+            rows: root.vertical ? root.minimizedCount : 1
+            rowSpacing: DockController.itemSpacing
+            columnSpacing: DockController.itemSpacing
+            visible: root.minimizedCount > 0
+            width: root.vertical ? DockController.delegateWidth : implicitWidth
+            height: root.vertical ? implicitHeight : DockController.delegateHeight
+            x: root.vertical ? (dockChrome.width - width) / 2
+                             : minimizedDivider.x + minimizedDivider.width + 9
+            y: root.vertical ? minimizedDivider.y + minimizedDivider.height + 9
+                             : appRow.y + (appRow.implicitHeight - height) / 2
+
+            Repeater {
+                model: root.minimizedEntries
+                delegate: Item {
+                    id: minimizedWindowDelegate
+                    required property var modelData
+                    objectName: "minimized-window-" + modelData.windowId
+                    width: DockController.delegateWidth
+                    height: DockController.delegateHeight
+
+                    Rectangle {
+                        id: minimizedWindowCard
+                        objectName: "minimized-window-card-" + minimizedWindowDelegate.modelData.windowId
+                        anchors.centerIn: parent
+                        width: Math.min(68, parent.width - 4)
+                        height: Math.min(46, parent.height - 4)
+                        radius: 7
+                        color: shellMaterial.tooltipSurface
+                        border.color: shellMaterial.tooltipBorder
+                        clip: true
+
+                        Image {
+                            id: minimizedWindowImage
+                            anchors.fill: parent
+                            anchors.margins: 1
+                            fillMode: Image.PreserveAspectCrop
+                            source: root.dockWindowPreviewService
+                                ? root.dockWindowPreviewService.imageUrl(modelData.windowId) : ""
+                            visible: status === Image.Ready
+                            asynchronous: true
+                            cache: false
+                            Connections {
+                                target: root.dockWindowPreviewService
+                                function onImageChanged(windowId) {
+                                    if (windowId === minimizedWindowDelegate.modelData.windowId)
+                                        minimizedWindowImage.source =
+                                            root.dockWindowPreviewService.imageUrl(windowId)
+                                }
+                                function onGenerationChanged() {
+                                    minimizedWindowImage.source =
+                                        root.dockWindowPreviewService.imageUrl(
+                                            minimizedWindowDelegate.modelData.windowId)
+                                    root.dockWindowPreviewService.requestWindowPreview(
+                                        minimizedWindowDelegate.modelData.windowId, false)
+                                }
+                            }
+                        }
+                        Shared.AstreaAppIcon {
+                            anchors.centerIn: parent
+                            width: 24
+                            height: 24
+                            iconName: minimizedWindowDelegate.modelData.iconName
+                            iconPath: minimizedWindowDelegate.modelData.iconPath
+                            appName: minimizedWindowDelegate.modelData.displayName
+                            visible: !minimizedWindowImage.visible
+                        }
+
+                        Rectangle {
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            width: 16
+                            height: 16
+                            radius: 8
+                            color: "#c91b1d25"
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "×"
+                                color: "white"
+                                font.pixelSize: 13
+                            }
+                            TapHandler {
+                                id: closeTap
+                                acceptedButtons: Qt.LeftButton
+                                onTapped: DockController.closeWindow(
+                                    minimizedWindowDelegate.modelData.taskKey,
+                                    minimizedWindowDelegate.modelData.windowId)
+                            }
+                        }
+                    }
+
+                    TapHandler {
+                        acceptedButtons: Qt.LeftButton
+                        onTapped: function(eventPoint) {
+                            const closeRect = Qt.rect(
+                                minimizedWindowCard.x + minimizedWindowCard.width - 16,
+                                minimizedWindowCard.y, 16, 16)
+                            if (closeRect.contains(eventPoint.position))
+                                return
+                            DockController.activateWindow(
+                                minimizedWindowDelegate.modelData.taskKey,
+                                minimizedWindowDelegate.modelData.windowId)
+                        }
+                    }
+                    HoverHandler {
+                        onHoveredChanged: {
+                            if (hovered && root.dockTooltipSurface && root.dockSurfaceGeometry) {
+                                const targetRect = root.windowRect(Qt.rect(
+                                    dockChrome.x + minimizedWindowGrid.x + minimizedWindowDelegate.x,
+                                    dockChrome.y + minimizedWindowGrid.y + minimizedWindowDelegate.y,
+                                    minimizedWindowDelegate.width,
+                                    minimizedWindowDelegate.height))
+                                const outputRect = root.dockSurfaceGeometry.outputLocalDelegateRect(
+                                    root.outputWidth, root.outputHeight, root.surfaceWidth,
+                                    root.surfaceHeight, DockController.position,
+                                    DockController.layerShellEdgeMargin, targetRect)
+                                root.dockTooltipSurface.showTooltip(
+                                    minimizedWindowDelegate.modelData.title ||
+                                        minimizedWindowDelegate.modelData.displayName,
+                                    outputRect, DockController.position)
+                            } else if (!hovered && root.dockTooltipSurface
+                                       && !root.pointerInside) {
+                                root.dockTooltipSurface.hideTooltip()
+                            }
+                        }
+                    }
+                    Component.onCompleted: {
+                        if (root.dockWindowPreviewService)
+                            root.dockWindowPreviewService.requestWindowPreview(
+                                modelData.windowId, false)
+                    }
                 }
             }
         }
@@ -274,6 +457,7 @@ Item {
         function onModelChanged() {
             root.scheduleMinimizeAnchorPublication()
             root.refreshVisibleTooltip()
+            Qt.callLater(root.reconcileWindowPreviewCache)
         }
         function onVisibleChanged() { root.scheduleTooltip() }
         function onRevealedChanged() {
@@ -309,6 +493,60 @@ Item {
         Qt.callLater(root.publishMinimizeAnchors)
     }
 
+    function thumbnailAnchorRectForSlot(slotIndex, thumbnailCount) {
+        const previewExtent = thumbnailCount > 0
+            ? thumbnailCount * (root.vertical ? DockController.delegateHeight
+                                               : DockController.delegateWidth)
+                + Math.max(0, thumbnailCount - 1) * DockController.itemSpacing + 20
+            : 0
+        const primaryExtent = root.appPrimaryExtent + previewExtent
+            + DockController.panelPadding * 2
+        const restingWidth = root.vertical ? root.restingCross : primaryExtent
+        const restingHeight = root.vertical ? primaryExtent : root.restingCross
+        const maximumMagnificationExtra = root.maximumMagnificationExtraPrimary
+        const surfaceWidth = root.vertical
+            ? Math.max(restingWidth + root.surfaceCrossInset,
+                       Math.ceil(restingWidth + root.surfaceHeadroom + root.surfaceCrossInset))
+            : Math.max(restingWidth, Math.ceil(restingWidth + maximumMagnificationExtra))
+        const surfaceHeight = root.vertical
+            ? Math.max(restingHeight, Math.ceil(restingHeight + maximumMagnificationExtra))
+            : Math.max(restingHeight + root.surfaceCrossInset,
+                       Math.ceil(restingHeight + root.surfaceHeadroom + root.surfaceCrossInset))
+
+        const chromeX = root.vertical
+            ? (DockController.position === "left" ? root.surfaceCrossInset
+                : surfaceWidth - restingWidth - root.surfaceCrossInset)
+            : (surfaceWidth - restingWidth) / 2
+        const chromeY = root.vertical
+            ? (surfaceHeight - restingHeight) / 2
+            : surfaceHeight - restingHeight - root.surfaceCrossInset
+        const appRowX = root.vertical
+            ? (restingWidth - DockController.delegateWidth) / 2
+            : (restingWidth - root.appPrimaryExtent - previewExtent) / 2
+        const appRowY = root.vertical
+            ? (restingHeight - root.appPrimaryExtent - previewExtent) / 2
+            : restingHeight - DockController.delegateHeight - DockController.chromeBottomMargin
+        const gridX = root.vertical
+            ? (restingWidth - DockController.delegateWidth) / 2
+            : appRowX + root.appPrimaryExtent + 19
+        const gridY = root.vertical
+            ? appRowY + root.appPrimaryExtent + 19 : appRowY
+        const delegateX = root.vertical ? gridX : gridX + slotIndex * root.slotPitch
+        const delegateY = root.vertical ? gridY + slotIndex * root.slotPitch : gridY
+        const thumbnailWidth = Math.min(68, DockController.delegateWidth - 4)
+        const thumbnailHeight = Math.min(46, DockController.delegateHeight - 4)
+        const thumbnailRect = Qt.rect(
+            chromeX + delegateX + (DockController.delegateWidth - thumbnailWidth) / 2,
+            chromeY + delegateY + (DockController.delegateHeight - thumbnailHeight) / 2,
+            thumbnailWidth, thumbnailHeight)
+        const outputLocal = root.dockSurfaceGeometry.outputLocalDelegateRect(
+            root.outputWidth, root.outputHeight, surfaceWidth, surfaceHeight,
+            DockController.position, DockController.layerShellEdgeMargin, thumbnailRect)
+        return Qt.rect(outputLocal.x + root.outputOriginX,
+                       outputLocal.y + root.outputOriginY,
+                       outputLocal.width, outputLocal.height)
+    }
+
     function publishMinimizeAnchors() {
         if (!root.dockSurfaceGeometry || root.outputKey === "")
             return
@@ -316,13 +554,34 @@ Item {
             const item = appRepeater.itemAt(index)
             if (!item)
                 continue
-            const rect = root.dockSurfaceGeometry.restingIconRectInGlobal(
+            const iconRect = root.dockSurfaceGeometry.restingIconRectInGlobal(
                 root.outputWidth, root.outputHeight, root.surfaceWidth, root.surfaceHeight,
                 root.outputOriginX, root.outputOriginY, DockController.position,
                 DockController.layerShellEdgeMargin, root.surfaceCrossInset, DockController.iconSize,
                 DockController.delegateWidth, DockController.delegateHeight,
                 DockController.itemSpacing, DockController.panelPadding, index, appRepeater.count)
+            const rect = Qt.rect(iconRect.x - (root.vertical ? 0 : root.previewPrimaryExtent / 2),
+                iconRect.y - (root.vertical ? root.previewPrimaryExtent / 2 : 0),
+                iconRect.width, iconRect.height)
             DockController.setMinimizeAnchor(item.taskKey, rect)
+
+            const windows = DockController.windowPreviewEntries(item.taskKey)
+            for (var windowIndex = 0; windowIndex < windows.length; ++windowIndex) {
+                const windowEntry = windows[windowIndex]
+                var slotIndex = root.minimizedCount
+                for (var minimizedIndex = 0; minimizedIndex < root.minimizedCount;
+                     ++minimizedIndex) {
+                    if (root.minimizedEntries[minimizedIndex].windowId === windowEntry.windowId) {
+                        slotIndex = minimizedIndex
+                        break
+                    }
+                }
+                const thumbnailCount = windowEntry.minimized
+                    ? root.minimizedCount : root.minimizedCount + 1
+                DockController.setWindowMinimizeAnchor(
+                    item.taskKey, windowEntry.windowId,
+                    root.thumbnailAnchorRectForSlot(slotIndex, thumbnailCount))
+            }
         }
     }
 
@@ -340,10 +599,30 @@ Item {
 
     function setPointerInside(inside) {
         pointerInside = inside
-        DockController.setPointerInside(inside)
+        DockController.setPointerInside(inside || previewHovered
+            || (dockWindowPreviewSurface && dockWindowPreviewSurface.previewVisible))
         if (!inside)
             pointerX = 0
+        if (inside) {
+            previewDismissDelay.stop()
+        } else if (previewHovered) {
+            previewDismissDelay.stop()
+        } else if (dockWindowPreviewSurface && dockWindowPreviewSurface.previewVisible) {
+            previewDismissDelay.start()
+        }
         updateHoverEffect()
+    }
+
+    function setPreviewHovered(hovered) {
+        previewHovered = hovered
+        DockController.setPointerInside(pointerInside || previewHovered
+            || (dockWindowPreviewSurface && dockWindowPreviewSurface.previewVisible))
+        if (hovered) {
+            previewDismissDelay.stop()
+        } else if (!pointerInside && dockWindowPreviewSurface
+                   && dockWindowPreviewSurface.previewVisible) {
+            previewDismissDelay.start()
+        }
     }
 
     // Keep the one-argument helper as a compatibility surface for tests and
@@ -453,6 +732,13 @@ Item {
         tooltipDelay.stop()
         if (dockTooltipSurface)
             dockTooltipSurface.hideTooltip()
+        if (dockWindowPreviewSurface && dockWindowPreviewSurface.previewVisible) {
+            if (isTooltipEligible())
+                tooltipDelay.start()
+            else if (!previewHovered)
+                previewDismissDelay.start()
+            return
+        }
         if (isTooltipEligible())
             tooltipDelay.start()
     }
@@ -497,6 +783,8 @@ Item {
         if (!isTooltipEligible() || !dockTooltipSurface || !dockSurfaceGeometry) {
             if (dockTooltipSurface)
                 dockTooltipSurface.hideTooltip()
+            if (dockWindowPreviewSurface && !previewHovered)
+                dockWindowPreviewSurface.hidePreview()
             return
         }
 
@@ -525,8 +813,52 @@ Item {
         const outputRegion = dockSurfaceGeometry.outputLocalDelegateRect(
             outputWidth, outputHeight, surfaceWidth, surfaceHeight,
             DockController.position, DockController.layerShellEdgeMargin, windowRegion)
+        const windows = DockController.windowPreviewEntries(targetItem.taskKey)
+        if (windows.length >= 2 && dockWindowPreviewSurface) {
+            previewDismissDelay.stop()
+            previewTaskKey = targetItem.taskKey
+            dockTooltipSurface.hideTooltip()
+            dockWindowPreviewSurface.showPreview(targetItem.taskKey, windows, outputRegion,
+                                                  DockController.position,
+                                                  outputWidth, outputHeight,
+                                                  outputOriginX, outputOriginY)
+            return
+        }
+        if (dockWindowPreviewSurface)
+            dockWindowPreviewSurface.hidePreview()
+        previewTaskKey = ""
         dockTooltipSurface.showTooltip(targetItem.displayName, outputRegion,
                                        DockController.position)
+    }
+
+    function reconcileWindowPreviewCache() {
+        if (!dockWindowPreviewService)
+            return
+        var ids = []
+        for (var row = 0; row < appRepeater.count; ++row) {
+            const item = appRepeater.itemAt(row)
+            if (!item)
+                continue
+            const windows = DockController.windowPreviewEntries(item.taskKey)
+            for (var index = 0; index < windows.length; ++index)
+                ids.push(windows[index].windowId)
+        }
+        dockWindowPreviewService.reconcileLiveWindowIds(ids)
+        var minimizedIds = []
+        for (var minIndex = 0; minIndex < minimizedCount; ++minIndex)
+            minimizedIds.push(minimizedEntries[minIndex].windowId)
+        dockWindowPreviewService.setMinimizedWindowIds(minimizedIds)
+        if (dockWindowPreviewSurface && dockWindowPreviewSurface.previewVisible) {
+            const liveEntries = DockController.windowPreviewEntries(previewTaskKey)
+            if (liveEntries.length < 2) {
+                dockWindowPreviewSurface.hidePreview()
+                previewTaskKey = ""
+            } else {
+                dockWindowPreviewSurface.showPreview(previewTaskKey, liveEntries,
+                    dockWindowPreviewSurface.anchorRect, DockController.position,
+                    outputWidth, outputHeight, outputOriginX, outputOriginY)
+            }
+        }
     }
 
     function delegateRestingCenterInPanel(item) {
@@ -727,6 +1059,7 @@ Item {
     Component.onCompleted: {
         updateHoverEffect()
         scheduleInputRegionUpdate()
+        reconcileWindowPreviewCache()
     }
     onWidthChanged: {
         updateHoverEffect()

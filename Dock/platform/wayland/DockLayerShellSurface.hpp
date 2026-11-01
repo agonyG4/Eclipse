@@ -19,6 +19,7 @@ public:
                                                    int exclusiveZoneHeight,
                                                    QScreen *screen = nullptr);
     static AstreaLayerShellConfig tooltipConfigurationFor(QScreen *screen = nullptr);
+    static AstreaLayerShellConfig windowPreviewConfigurationFor(QScreen *screen = nullptr);
     static bool configure(QQuickWindow *window, const DockConfig &config,
                           int exclusiveZoneHeight,
                           QScreen *screen = nullptr, QString *errorOut = nullptr);
@@ -27,6 +28,8 @@ public:
                           QScreen *screen = nullptr, QString *errorOut = nullptr);
     static bool configureTooltip(QQuickWindow *window, QScreen *screen = nullptr,
                                  QString *errorOut = nullptr);
+    static bool configureWindowPreview(QQuickWindow *window, QScreen *screen = nullptr,
+                                       QString *errorOut = nullptr);
     // Publish the compositor's logical output geometry to the Dock root. The
     // Dock window itself remains content-sized; its context-menu anchor math
     // consumes these output-local dimensions.

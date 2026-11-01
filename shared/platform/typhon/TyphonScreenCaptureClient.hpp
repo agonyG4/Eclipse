@@ -20,8 +20,11 @@ public:
     void stop();
     bool requestCapture();
     bool requestCapture(std::uint64_t operationToken);
+    bool requestWindowCapture(const QString &windowId, std::uint32_t maxWidth,
+                              std::uint32_t maxHeight, std::uint64_t operationToken);
     void cancelCapture();
     bool isReady() const;
+    bool supportsWindowCapture() const;
     std::uint64_t connectionGeneration() const;
 
 signals:

@@ -16,6 +16,7 @@
 #include <QRect>
 #include <QSet>
 #include <QTimer>
+#include <QVariantList>
 
 #include <optional>
 
@@ -29,6 +30,7 @@ class DockController final : public QObject {
     Q_PROPERTY(int pinCount READ pinCount NOTIFY modelChanged)
     Q_PROPERTY(int resolvedPinCount READ resolvedPinCount NOTIFY modelChanged)
     Q_PROPERTY(int launchingCount READ launchingCount NOTIFY modelChanged)
+    Q_PROPERTY(QVariantList minimizedWindowEntries READ minimizedWindowEntries NOTIFY modelChanged)
     Q_PROPERTY(bool runtimeKnown READ runtimeKnown NOTIFY modelChanged)
     Q_PROPERTY(int iconSize READ iconSize NOTIFY configChanged)
     Q_PROPERTY(int edgeMargin READ edgeMargin NOTIFY configChanged)
@@ -75,6 +77,7 @@ public:
     int pinCount() const { return m_config.pins.size(); }
     int resolvedPinCount() const;
     int launchingCount() const;
+    QVariantList minimizedWindowEntries() const;
     bool runtimeKnown() const { return m_runtimeKnown; }
     DesktopEntryCatalog *catalog() const { return m_catalog; }
     ApplicationLauncher *launcher() const { return m_launcher; }
@@ -127,6 +130,7 @@ public:
     QVector<Astrea::Dock::DockRuntimeWindow> windowsForTaskKey(const QString &taskKey) const;
     QVector<Astrea::Dock::DockRuntimeWindow> windowsForDesktopFileName(
         const QString &desktopFileName) const;
+    Q_INVOKABLE QVariantList windowPreviewEntries(const QString &taskKey) const;
     Q_INVOKABLE bool activateWindow(const QString &taskKey, const QString &windowId);
     Q_INVOKABLE bool closeWindow(const QString &taskKey, const QString &windowId);
     Q_INVOKABLE void activateOrLaunchTask(const QString &taskKey);
@@ -135,6 +139,9 @@ public:
     // True means the valid rectangle was accepted into the local task cache.
     // It does not mean the runtime transport queued or acknowledged it.
     Q_INVOKABLE bool setMinimizeAnchor(const QString &taskKey, const QRect &rect);
+    Q_INVOKABLE bool setWindowMinimizeAnchor(const QString &taskKey,
+                                              const QString &windowId,
+                                              const QRect &rect);
     Q_INVOKABLE void clearMinimizeAnchor(const QString &taskKey);
     Q_INVOKABLE void show();
     Q_INVOKABLE void hide();
@@ -224,6 +231,7 @@ private:
     std::optional<Astrea::Dock::DockRuntimeSnapshot> m_runtimeSnapshot;
     QHash<QString, Astrea::Dock::DockApplicationRuntimeState> m_runtimeStates;
     QHash<QString, QRect> m_minimizeAnchors;
+    QHash<QString, QRect> m_windowMinimizeAnchors;
     struct PublishedMinimizeAnchor {
         QString taskKey;
         QRect rect;

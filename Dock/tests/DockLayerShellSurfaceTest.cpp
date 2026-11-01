@@ -21,6 +21,7 @@ private slots:
     void placementSnapshotSelectsItsOwnAnchor();
     void explicitOutputGeometryDoesNotDependOnWindowScreen();
     void tooltipSurfaceIgnoresExclusiveZonesOnFullOutputPassiveTopLayer();
+    void windowPreviewUsesDedicatedInteractiveFullOutputLayer();
 };
 
 void DockLayerShellSurfaceTest::mappedReservationUsesRestingHeightNotVisualHeight()
@@ -193,6 +194,21 @@ void DockLayerShellSurfaceTest::tooltipSurfaceIgnoresExclusiveZonesOnFullOutputP
 {
     const AstreaLayerShellConfig layer = DockLayerShellSurface::tooltipConfigurationFor();
     QCOMPARE(layer.scope, QStringLiteral("astrea-dock-tooltip"));
+    QCOMPARE(layer.layer, AstreaLayerShellConfig::Layer::Top);
+    QCOMPARE(layer.keyboardInteractivity,
+             AstreaLayerShellConfig::KeyboardInteractivity::None);
+    QCOMPARE(layer.exclusiveZone, -1);
+    QVERIFY(layer.anchorTop);
+    QVERIFY(layer.anchorBottom);
+    QVERIFY(layer.anchorLeft);
+    QVERIFY(layer.anchorRight);
+}
+
+void DockLayerShellSurfaceTest::windowPreviewUsesDedicatedInteractiveFullOutputLayer()
+{
+    const AstreaLayerShellConfig layer =
+        DockLayerShellSurface::windowPreviewConfigurationFor();
+    QCOMPARE(layer.scope, QStringLiteral("astrea-dock-window-preview"));
     QCOMPARE(layer.layer, AstreaLayerShellConfig::Layer::Top);
     QCOMPARE(layer.keyboardInteractivity,
              AstreaLayerShellConfig::KeyboardInteractivity::None);

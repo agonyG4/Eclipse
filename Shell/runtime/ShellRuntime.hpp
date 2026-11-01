@@ -35,6 +35,7 @@ class SpotlightWeatherProcessService;
 class ShellIpcServer;
 class ShellShortcutDispatcher;
 class ScreenshotController;
+class DockWindowPreviewService;
 class TyphonShortcutClient;
 class TyphonScreenCaptureClient;
 class TyphonSharedConnection;
@@ -83,6 +84,8 @@ public:
     TyphonShortcutClient *shortcutClient() const { return m_shortcutClient.get(); }
     TyphonScreenCaptureClient *screenCaptureClient() const { return m_screenCaptureClient.get(); }
     ScreenshotController *screenshotController() const { return m_screenshotController.get(); }
+    DockWindowPreviewService *dockWindowPreviewService() const
+    { return m_dockWindowPreviewService.get(); }
     TyphonWorkspaceClient *workspaceClient() const { return m_workspaceClient.get(); }
     TyphonWorkspaceController *workspaceController() const { return m_workspaceController.get(); }
     CompositorBackend *windowBackend() const { return m_windowBackend.get(); }
@@ -139,6 +142,8 @@ private:
     std::unique_ptr<Astrea::Dock::TyphonDockRuntimeBackend> m_typhonDockBackend;
     std::unique_ptr<TyphonShortcutClient> m_shortcutClient;
     std::unique_ptr<TyphonScreenCaptureClient> m_screenCaptureClient;
+    std::unique_ptr<TyphonScreenCaptureClient> m_dockPreviewCaptureClient;
+    std::unique_ptr<DockWindowPreviewService> m_dockWindowPreviewService;
     std::unique_ptr<TyphonWorkspaceClient> m_workspaceClient;
     std::unique_ptr<TyphonWorkspaceController> m_workspaceController;
     std::unique_ptr<CompositorBackend> m_windowBackend;

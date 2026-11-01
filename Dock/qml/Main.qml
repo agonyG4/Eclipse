@@ -14,6 +14,10 @@ Window {
     property int outputHeight: 1
     property int outputOriginX: 0
     property int outputOriginY: 0
+    readonly property var windowPreviewService:
+        typeof DockWindowPreviewService === "undefined" ? null : DockWindowPreviewService
+    readonly property var windowPreviewInputRegion:
+        typeof DockWindowPreviewInputRegion === "undefined" ? null : DockWindowPreviewInputRegion
     visible: false
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint
@@ -27,6 +31,8 @@ Window {
         contextMenuController: ContextMenuController
         dockSurfaceGeometry: DockSurfaceGeometry
         dockTooltipSurface: tooltipSurface
+        dockWindowPreviewSurface: windowPreviewSurface
+        dockWindowPreviewService: window.windowPreviewService
         inputRegionBridge: DockInputRegion
         outputKey: window.outputKey
         outputWidth: window.outputWidth
@@ -45,6 +51,19 @@ Window {
         outputHeight: window.outputHeight
         outputOriginX: window.outputOriginX
         outputOriginY: window.outputOriginY
+    }
+
+    DockWindowPreviewSurface {
+        id: windowPreviewSurface
+        outputKey: window.outputKey
+        outputWidth: window.outputWidth
+        outputHeight: window.outputHeight
+        outputOriginX: window.outputOriginX
+        outputOriginY: window.outputOriginY
+        dockPanel: panel
+        previewService: window.windowPreviewService
+        dockSurfaceGeometry: DockSurfaceGeometry
+        inputRegionBridge: window.windowPreviewInputRegion
     }
 
 }

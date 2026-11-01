@@ -61,6 +61,7 @@ private:
     std::unique_ptr<QQmlApplicationEngine> m_engine;
     std::unique_ptr<DockInputRegionBridge> m_dockInputRegion;
     std::unique_ptr<ScreenshotInputRegionBridge> m_screenshotInputRegion;
+    std::unique_ptr<ScreenshotInputRegionBridge> m_dockWindowPreviewInputRegion;
     std::unique_ptr<ScreenshotWaylandUiBarrier> m_screenshotUiBarrier;
     std::unique_ptr<TransientQmlWindowSlot> m_altTabSlot;
     std::unique_ptr<TransientQmlWindowSlot> m_spotlightSlot;
@@ -69,6 +70,7 @@ private:
     std::unique_ptr<TransientQmlWindowSlot> m_screenshotPreviewSlot;
     QPointer<QQuickWindow> m_dockWindow;
     QPointer<QQuickWindow> m_dockTooltipWindow;
+    QPointer<QQuickWindow> m_dockWindowPreviewWindow;
     QPointer<QScreen> m_dockScreen;
     QMetaObject::Connection m_dockGeometryConnection;
     std::unique_ptr<BarSurfaceManager> m_barSurfaceManager;

@@ -31,6 +31,8 @@
 #include "screenshot/ScreenshotController.hpp"
 #include "screenshot/ScreenshotInputRegionBridge.hpp"
 #include "screenshot/ScreenshotImageProvider.hpp"
+#include "windowpreview/DockWindowPreviewImageProvider.hpp"
+#include "windowpreview/DockWindowPreviewService.hpp"
 #include "theme/ThemeController.hpp"
 #include "system/audio/AudioService.hpp"
 #include "system/audio/spatial/SpatialAudioEngine.hpp"
@@ -205,12 +207,20 @@ bool AstreaShellApplication::initializeQml()
     m_engine->addImageProvider(QStringLiteral("astrea-tray"), trayIconProvider);
     auto *screenshotProvider = new ScreenshotImageProvider(m_runtime->screenshotController());
     m_engine->addImageProvider(QStringLiteral("astrea-screenshot"), screenshotProvider);
+    auto *windowPreviewProvider = new DockWindowPreviewImageProvider(
+        m_runtime->dockWindowPreviewService());
+    m_engine->addImageProvider(QStringLiteral("astrea-window-preview"), windowPreviewProvider);
     context->setContextProperty(QStringLiteral("DockController"), m_runtime->dockController());
+    context->setContextProperty(QStringLiteral("DockWindowPreviewService"),
+                                static_cast<QObject *>(m_runtime->dockWindowPreviewService()));
     context->setContextProperty(QStringLiteral("DockSurfaceGeometry"),
                                 static_cast<QObject *>(m_runtime->dockSurfaceGeometry()));
     m_dockInputRegion = std::make_unique<DockInputRegionBridge>();
     context->setContextProperty(QStringLiteral("DockInputRegion"),
                                 static_cast<QObject *>(m_dockInputRegion.get()));
+    m_dockWindowPreviewInputRegion = std::make_unique<ScreenshotInputRegionBridge>();
+    context->setContextProperty(QStringLiteral("DockWindowPreviewInputRegion"),
+                                static_cast<QObject *>(m_dockWindowPreviewInputRegion.get()));
     context->setContextProperty(QStringLiteral("AltTabController"),
                                 m_runtime->altTabController());
     context->setContextProperty(QStringLiteral("AltTabWindowModel"),
@@ -286,11 +296,14 @@ bool AstreaShellApplication::initializeQml()
     m_dockWindow = window;
     m_dockTooltipWindow = m_dockWindow->findChild<QQuickWindow *>(
         QStringLiteral("dockTooltipSurface"));
-    if (!m_dockTooltipWindow) {
-        qCritical("Astrea shell Dock tooltip surface failed to load");
+    m_dockWindowPreviewWindow = m_dockWindow->findChild<QQuickWindow *>(
+        QStringLiteral("dockWindowPreviewSurface"));
+    if (!m_dockTooltipWindow || !m_dockWindowPreviewWindow) {
+        qCritical("Astrea shell Dock transient surfaces failed to load");
         return false;
     }
     m_dockInputRegion->setWindow(m_dockWindow);
+    m_dockWindowPreviewInputRegion->setWindow(m_dockWindowPreviewWindow);
 
     if (!configureSurfaces())
         return false;
@@ -519,6 +532,13 @@ bool AstreaShellApplication::configureDockSurface()
         m_application.exit(1);
         return false;
     }
+    if (!DockLayerShellSurface::configureWindowPreview(m_dockWindowPreviewWindow,
+                                                       screen, &error)) {
+        qCritical("Astrea shell Dock window preview Layer Shell setup failed: %s",
+                  qPrintable(error));
+        m_application.exit(1);
+        return false;
+    }
     if (m_dockScreen != screen) {
         QObject::disconnect(m_dockGeometryConnection);
         m_dockScreen = screen;
@@ -544,7 +564,7 @@ void AstreaShellApplication::updateDockExclusiveZone()
 
 void AstreaShellApplication::updateDockOutputGeometry()
 {
-    if (!m_dockWindow || !m_dockTooltipWindow || !m_dockScreen)
+    if (!m_dockWindow || !m_dockTooltipWindow || !m_dockWindowPreviewWindow || !m_dockScreen)
         return;
     QString error;
     if (!DockLayerShellSurface::setOutputGeometry(m_dockWindow, m_dockScreen, &error)) {
@@ -554,6 +574,13 @@ void AstreaShellApplication::updateDockOutputGeometry()
     }
     if (!DockLayerShellSurface::setOutputGeometry(m_dockTooltipWindow, m_dockScreen, &error)) {
         qCritical("Astrea shell Dock tooltip output geometry update failed: %s",
+                  qPrintable(error));
+        m_application.exit(1);
+        return;
+    }
+    if (!DockLayerShellSurface::setOutputGeometry(m_dockWindowPreviewWindow,
+                                                  m_dockScreen, &error)) {
+        qCritical("Astrea shell Dock window preview output geometry update failed: %s",
                   qPrintable(error));
         m_application.exit(1);
     }

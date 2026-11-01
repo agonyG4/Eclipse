@@ -164,6 +164,8 @@ private slots:
     void catalogRebuildKeepsModelRowsStable();
     void runningRuntimeSuppressesDuplicateLaunch();
     void runtimeWindowsKeepExactIdentityAndTitles();
+    void minimizedWindowEntriesStaySeparateAndExact();
+    void windowMinimizeAnchorsOverrideOnlyTheirWindow();
     void runtimeBackendActionsAndReadinessRemainSynchronous();
     void firstRuntimeReadySnapshotIsAppliedOnce();
     void newWindowLaunchBypassesRunningActivation();
@@ -511,6 +513,70 @@ void DockControllerTest::runtimeWindowsKeepExactIdentityAndTitles()
     QCOMPARE(windows.at(0).title, QStringLiteral("First title"));
     QCOMPARE(windows.at(1).id, QStringLiteral("window-b"));
     QVERIFY(controller.windowsForDesktopFileName(QStringLiteral("two.desktop")).isEmpty());
+}
+
+void DockControllerTest::minimizedWindowEntriesStaySeparateAndExact()
+{
+    FakeDockRuntimeBackend runtimeBackend;
+    DockController controller;
+    controller.attachRuntimeBackend(&runtimeBackend);
+    controller.setCatalogSnapshot(makeCatalog());
+    controller.applyConfig(configWithPins({QStringLiteral("one.desktop")}));
+
+    Astrea::Dock::DockRuntimeWindow minimized;
+    minimized.id = QStringLiteral("window-minimized");
+    minimized.appId = QStringLiteral("one");
+    minimized.title = QStringLiteral("Minimized window");
+    minimized.minimized = true;
+    Astrea::Dock::DockRuntimeWindow normal;
+    normal.id = QStringLiteral("window-normal");
+    normal.appId = QStringLiteral("one");
+    normal.title = QStringLiteral("Normal window");
+    runtimeBackend.publishSnapshot(runtimeSnapshot(4, {minimized, normal}));
+
+    QCOMPARE(controller.appModel()->rowCount(), 1);
+    QCOMPARE(controller.appModel()->data(controller.appModel()->index(0, 0),
+                                         DockAppModel::WindowCountRole).toInt(), 2);
+    const QVariantList minimizedEntries = controller.minimizedWindowEntries();
+    QCOMPARE(minimizedEntries.size(), 1);
+    const QVariantMap entry = minimizedEntries.constFirst().toMap();
+    QCOMPARE(entry.value(QStringLiteral("windowId")).toString(), minimized.id);
+    QCOMPARE(entry.value(QStringLiteral("title")).toString(), minimized.title);
+
+    const QVariantList previewEntries = controller.windowPreviewEntries(
+        controller.appModel()->taskKeyAt(0));
+    QCOMPARE(previewEntries.size(), 2);
+    QCOMPARE(previewEntries.at(0).toMap().value(QStringLiteral("windowId")).toString(),
+             minimized.id);
+    QVERIFY(previewEntries.at(0).toMap().value(QStringLiteral("minimized")).toBool());
+    QVERIFY(!previewEntries.at(1).toMap().value(QStringLiteral("minimized")).toBool());
+}
+
+void DockControllerTest::windowMinimizeAnchorsOverrideOnlyTheirWindow()
+{
+    FakeDockRuntimeBackend runtimeBackend;
+    DockController controller;
+    controller.attachRuntimeBackend(&runtimeBackend);
+    controller.setCatalogSnapshot(makeCatalog());
+    controller.applyConfig(configWithPins({QStringLiteral("one.desktop")}));
+    Astrea::Dock::DockRuntimeWindow first;
+    first.id = QStringLiteral("window-a");
+    first.appId = QStringLiteral("one");
+    Astrea::Dock::DockRuntimeWindow second = first;
+    second.id = QStringLiteral("window-b");
+    runtimeBackend.publishSnapshot(runtimeSnapshot(5, {first, second}));
+
+    const QString taskKey = controller.appModel()->taskKeyAt(0);
+    const QRect appIconAnchor(10, 20, 48, 48);
+    const QRect minimizedSlotAnchor(200, 20, 64, 48);
+    QVERIFY(controller.setMinimizeAnchor(taskKey, appIconAnchor));
+    QVERIFY(controller.setWindowMinimizeAnchor(taskKey, first.id, minimizedSlotAnchor));
+    QVERIFY(!controller.setWindowMinimizeAnchor(taskKey, QStringLiteral("not-live"),
+                                                minimizedSlotAnchor));
+    runtimeBackend.setActionReady(true);
+
+    QCOMPARE(runtimeBackend.publishedAnchors.value(first.id), minimizedSlotAnchor);
+    QCOMPARE(runtimeBackend.publishedAnchors.value(second.id), appIconAnchor);
 }
 
 void DockControllerTest::runtimeBackendActionsAndReadinessRemainSynchronous()

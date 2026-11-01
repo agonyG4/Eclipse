@@ -20,6 +20,8 @@ struct DockConfig {
     QString autoHide = QStringLiteral("never");
     QString indicatorStyle = QStringLiteral("line");
     int indicatorSize = 3;
+    bool minimizedThumbnailsEnabled = true;
+    bool windowPreviewsEnabled = true;
     bool animationsEnabled = true;
     double animationSpeed = 1.0;
     QStringList pins;

@@ -43,6 +43,8 @@ class DockController final : public QObject {
     Q_PROPERTY(QString autoHide READ autoHide NOTIFY configChanged)
     Q_PROPERTY(QString indicatorStyle READ indicatorStyle NOTIFY configChanged)
     Q_PROPERTY(int indicatorSize READ indicatorSize NOTIFY configChanged)
+    Q_PROPERTY(bool minimizedThumbnailsEnabled READ minimizedThumbnailsEnabled NOTIFY configChanged)
+    Q_PROPERTY(bool windowPreviewsEnabled READ windowPreviewsEnabled NOTIFY configChanged)
     Q_PROPERTY(bool animationsEnabled READ animationsEnabled NOTIFY configChanged)
     Q_PROPERTY(double animationSpeed READ animationSpeed NOTIFY configChanged)
     Q_PROPERTY(int chromeBottomMargin READ chromeBottomMargin CONSTANT)
@@ -94,6 +96,8 @@ public:
     QString autoHide() const { return m_config.autoHide; }
     QString indicatorStyle() const { return m_config.indicatorStyle; }
     int indicatorSize() const { return m_config.indicatorSize; }
+    bool minimizedThumbnailsEnabled() const { return m_config.minimizedThumbnailsEnabled; }
+    bool windowPreviewsEnabled() const { return m_config.windowPreviewsEnabled; }
     bool animationsEnabled() const { return m_config.animationsEnabled; }
     double animationSpeed() const { return m_config.animationSpeed; }
     int chromeBottomMargin() const { return DockMetrics::chromeBottomMargin; }

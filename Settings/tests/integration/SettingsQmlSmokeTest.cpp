@@ -2402,6 +2402,14 @@ void SettingsQmlSmokeTest::loadsDockRouteFromHubOffscreen()
     QVERIFY(customizationRow->property("selected").toBool());
     QVERIFY(findVisualItem(sidebar, QStringLiteral("settingsSidebarRow-dock")) == nullptr);
     QVERIFY(page->findChild<QObject *>(QStringLiteral("dockPreview")) != nullptr);
+    for (const char *name : {"minimizedThumbnailsToggle", "windowPreviewsToggle"}) {
+        QObject *toggle = page->findChild<QObject *>(QString::fromLatin1(name));
+        QVERIFY2(toggle, name);
+        const char *propertyName = qstrcmp(name, "minimizedThumbnailsToggle") == 0
+            ? "minimizedThumbnailsEnabled" : "windowPreviewsEnabled";
+        QCOMPARE(toggle->property("checked").toBool(),
+                 settingsController.dock()->property(propertyName).toBool());
+    }
     const struct SliderExpectation {
         const char *objectName;
         const char *defaultProperty;
@@ -2754,6 +2762,10 @@ void SettingsQmlSmokeTest::wallpaperTranslationKeysExist()
         QStringLiteral("apps.settings.pages.appearance.dock.label.floating"),
         QStringLiteral("apps.settings.pages.appearance.dock.label.edge_margin"),
         QStringLiteral("apps.settings.pages.appearance.dock.label.corner_radius"),
+        QStringLiteral("apps.settings.pages.appearance.dock.label.minimized_thumbnails"),
+        QStringLiteral("apps.settings.pages.appearance.dock.sublabel.minimized_thumbnails"),
+        QStringLiteral("apps.settings.pages.appearance.dock.label.window_previews"),
+        QStringLiteral("apps.settings.pages.appearance.dock.sublabel.window_previews"),
         QStringLiteral("apps.settings.pages.appearance.dock.label.hover_effect"),
         QStringLiteral("apps.settings.pages.appearance.dock.label.magnification_strength"),
         QStringLiteral("apps.settings.pages.appearance.dock.label.magnification_radius"),

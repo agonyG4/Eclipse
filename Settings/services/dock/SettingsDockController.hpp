@@ -21,6 +21,8 @@ class SettingsDockController final : public QObject {
     Q_PROPERTY(QString autoHide READ autoHide WRITE setAutoHide NOTIFY autoHideChanged)
     Q_PROPERTY(QString indicatorStyle READ indicatorStyle WRITE setIndicatorStyle NOTIFY indicatorStyleChanged)
     Q_PROPERTY(int indicatorSize READ indicatorSize WRITE setIndicatorSize NOTIFY indicatorSizeChanged)
+    Q_PROPERTY(bool minimizedThumbnailsEnabled READ minimizedThumbnailsEnabled WRITE setMinimizedThumbnailsEnabled NOTIFY minimizedThumbnailsEnabledChanged)
+    Q_PROPERTY(bool windowPreviewsEnabled READ windowPreviewsEnabled WRITE setWindowPreviewsEnabled NOTIFY windowPreviewsEnabledChanged)
     Q_PROPERTY(bool animationsEnabled READ animationsEnabled WRITE setAnimationsEnabled NOTIFY animationsEnabledChanged)
     Q_PROPERTY(double animationSpeed READ animationSpeed WRITE setAnimationSpeed NOTIFY animationSpeedChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
@@ -56,6 +58,8 @@ public:
     QString autoHide() const { return m_config.autoHide; }
     QString indicatorStyle() const { return m_config.indicatorStyle; }
     int indicatorSize() const { return m_config.indicatorSize; }
+    bool minimizedThumbnailsEnabled() const { return m_config.minimizedThumbnailsEnabled; }
+    bool windowPreviewsEnabled() const { return m_config.windowPreviewsEnabled; }
     bool animationsEnabled() const { return m_config.animationsEnabled; }
     double animationSpeed() const { return m_config.animationSpeed; }
     QString lastError() const { return m_lastError; }
@@ -86,6 +90,8 @@ public slots:
     void setAutoHide(const QString &value);
     void setIndicatorStyle(const QString &value);
     void setIndicatorSize(int value);
+    void setMinimizedThumbnailsEnabled(bool value);
+    void setWindowPreviewsEnabled(bool value);
     void setAnimationsEnabled(bool value);
     void setAnimationSpeed(double value);
     void refresh();
@@ -107,6 +113,8 @@ signals:
     void autoHideChanged();
     void indicatorStyleChanged();
     void indicatorSizeChanged();
+    void minimizedThumbnailsEnabledChanged();
+    void windowPreviewsEnabledChanged();
     void animationsEnabledChanged();
     void animationSpeedChanged();
     void configChanged();

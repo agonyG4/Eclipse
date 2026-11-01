@@ -1,4 +1,8 @@
 {
+    "apps.settings.pages.appearance.dock.label.minimized_thumbnails": "Show minimized windows",
+    "apps.settings.pages.appearance.dock.sublabel.minimized_thumbnails": "Show minimized windows as thumbnails at the end of the Dock",
+    "apps.settings.pages.appearance.dock.label.window_previews": "Window previews on hover",
+    "apps.settings.pages.appearance.dock.sublabel.window_previews": "Show all windows when hovering over an app with multiple windows",
     "about.label.desktop": "Desktop",
     "about.label.gpu": "GPU",
     "about.label.kernel": "Kernel",

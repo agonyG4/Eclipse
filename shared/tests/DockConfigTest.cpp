@@ -17,6 +17,7 @@ class DockConfigTest final : public QObject {
 
 private slots:
     void defaultsMatchThePersonalizationContract();
+    void windowPreviewPreferencesRoundTripIndependently();
     void parsesNewFieldsAndLegacyEdgeMargin();
     void invalidEnumsFallbackIndependently();
     void nonFiniteNumbersFallbackAndFiniteValuesClamp();
@@ -224,3 +225,20 @@ void DockConfigTest::malformedExistingJsonIsRefusedWithoutReplacement()
 
 QTEST_GUILESS_MAIN(DockConfigTest)
 #include "DockConfigTest.moc"
+
+void DockConfigTest::windowPreviewPreferencesRoundTripIndependently()
+{
+    const auto defaults = DockConfigCodec::patchKnownFields({}, DockConfig::defaults(), false);
+    QVERIFY(defaults.value(QStringLiteral("minimizedThumbnailsEnabled")).toBool());
+    QVERIFY(defaults.value(QStringLiteral("windowPreviewsEnabled")).toBool());
+    for (const QString &key : {QStringLiteral("minimizedThumbnailsEnabled"),
+                               QStringLiteral("windowPreviewsEnabled")}) {
+        const auto parsed = DockConfigCodec::parse(QJsonObject{{key, false}});
+        const auto saved = DockConfigCodec::patchKnownFields({}, parsed, false);
+        QCOMPARE(saved.value(key), QJsonValue(false));
+        QStringList errors;
+        const auto invalid = DockConfigCodec::parse(QJsonObject{{key, "false"}}, &errors);
+        QVERIFY(!errors.isEmpty());
+        QVERIFY(DockConfigCodec::patchKnownFields({}, invalid, false).value(key).toBool());
+    }
+}

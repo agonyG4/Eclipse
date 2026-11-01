@@ -312,6 +312,28 @@ Item {
             Layout.bottomMargin: 24
 
             Form.SettingRow {
+                label: I18n.tr("apps.settings.pages.appearance.dock.label.minimized_thumbnails", "Show minimized windows")
+                sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.minimized_thumbnails", "Show minimized windows as thumbnails at the end of the Dock")
+
+                Controls.ToggleSwitch {
+                    objectName: "minimizedThumbnailsToggle"
+                    checked: root.controller.minimizedThumbnailsEnabled
+                    onToggled: targetChecked => { root.controller.setMinimizedThumbnailsEnabled(targetChecked); root.controller.flush() }
+                }
+            }
+
+            Form.SettingRow {
+                label: I18n.tr("apps.settings.pages.appearance.dock.label.window_previews", "Window previews on hover")
+                sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.window_previews", "Show all windows when hovering over an app with multiple windows")
+
+                Controls.ToggleSwitch {
+                    objectName: "windowPreviewsToggle"
+                    checked: root.controller.windowPreviewsEnabled
+                    onToggled: targetChecked => { root.controller.setWindowPreviewsEnabled(targetChecked); root.controller.flush() }
+                }
+            }
+
+            Form.SettingRow {
                 label: I18n.tr("apps.settings.pages.appearance.dock.label.hover_effect", "Hover effect")
                 sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.hover_effect", "Choose how icons respond to pointer movement")
 

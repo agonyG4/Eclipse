@@ -26,6 +26,8 @@ bool sameConfig(const DockConfig &left, const DockConfig &right)
         && left.autoHide == right.autoHide
         && left.indicatorStyle == right.indicatorStyle
         && left.indicatorSize == right.indicatorSize
+        && left.minimizedThumbnailsEnabled == right.minimizedThumbnailsEnabled
+        && left.windowPreviewsEnabled == right.windowPreviewsEnabled
         && left.animationsEnabled == right.animationsEnabled
         && qFuzzyCompare(left.animationSpeed, right.animationSpeed)
         && left.pins == right.pins;
@@ -191,6 +193,10 @@ void DockController::applyConfig(const DockConfig &config)
 
     const bool pinsChanged = m_config.pins != next.pins;
     m_config = next;
+    if (!m_config.minimizedThumbnailsEnabled) {
+        m_windowMinimizeAnchors.clear();
+        publishAllMinimizeAnchors();
+    }
     if (pinsChanged) {
         m_model.setPins(m_config.pins);
         projectRuntime();
@@ -367,7 +373,8 @@ bool DockController::setWindowMinimizeAnchor(const QString &taskKey,
                                               const QString &windowId,
                                               const QRect &rect)
 {
-    if (taskKey.isEmpty() || windowId.isEmpty() || rect.width() <= 0 || rect.height() <= 0)
+    if (!m_config.minimizedThumbnailsEnabled || taskKey.isEmpty() || windowId.isEmpty()
+        || rect.width() <= 0 || rect.height() <= 0)
         return false;
     const auto state = m_runtimeStates.constFind(taskKey);
     if (state == m_runtimeStates.constEnd() || !state->windowIds.contains(windowId))

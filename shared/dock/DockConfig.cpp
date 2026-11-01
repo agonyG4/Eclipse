@@ -128,6 +128,10 @@ DockConfig parse(const QJsonObject &object, QStringList *errors)
                                        result.panelPadding, 8, 32, diagnostics);
     result.itemSpacing = integerField(object, QStringLiteral("itemSpacing"),
                                       result.itemSpacing, 4, 24, diagnostics);
+    result.minimizedThumbnailsEnabled = booleanField(object, QStringLiteral("minimizedThumbnailsEnabled"),
+        result.minimizedThumbnailsEnabled, diagnostics);
+    result.windowPreviewsEnabled = booleanField(object, QStringLiteral("windowPreviewsEnabled"),
+        result.windowPreviewsEnabled, diagnostics);
     result.hoverEffect = stringField(
         object, QStringLiteral("hoverEffect"), result.hoverEffect,
         {QLatin1StringView("none"), QLatin1StringView("lift"),
@@ -283,6 +287,8 @@ QJsonObject patchKnownFields(const QJsonObject &source, const DockConfig &config
     object.insert(QStringLiteral("iconSize"), config.iconSize);
     object.insert(QStringLiteral("panelPadding"), config.panelPadding);
     object.insert(QStringLiteral("itemSpacing"), config.itemSpacing);
+    object.insert(QStringLiteral("minimizedThumbnailsEnabled"), config.minimizedThumbnailsEnabled);
+    object.insert(QStringLiteral("windowPreviewsEnabled"), config.windowPreviewsEnabled);
     object.insert(QStringLiteral("hoverEffect"), config.hoverEffect);
     object.insert(QStringLiteral("magnificationScale"), config.magnificationScale);
     object.insert(QStringLiteral("magnificationRadius"), config.magnificationRadius);

@@ -77,6 +77,8 @@ bool SettingsDockController::samePersonalization(const DockConfig &left,
         && left.floating == right.floating && left.cornerRadius == right.cornerRadius
         && left.autoHide == right.autoHide && left.indicatorStyle == right.indicatorStyle
         && left.indicatorSize == right.indicatorSize
+        && left.minimizedThumbnailsEnabled == right.minimizedThumbnailsEnabled
+        && left.windowPreviewsEnabled == right.windowPreviewsEnabled
         && left.animationsEnabled == right.animationsEnabled
         && equalReal(left.animationSpeed, right.animationSpeed);
 }
@@ -119,6 +121,10 @@ void SettingsDockController::applyLocalConfig(const DockConfig &config)
         emit indicatorStyleChanged();
     if (previous.indicatorSize != m_config.indicatorSize)
         emit indicatorSizeChanged();
+    if (previous.minimizedThumbnailsEnabled != m_config.minimizedThumbnailsEnabled)
+        emit minimizedThumbnailsEnabledChanged();
+    if (previous.windowPreviewsEnabled != m_config.windowPreviewsEnabled)
+        emit windowPreviewsEnabledChanged();
     if (previous.animationsEnabled != m_config.animationsEnabled)
         emit animationsEnabledChanged();
     if (!equalReal(previous.animationSpeed, m_config.animationSpeed))
@@ -405,5 +411,19 @@ void SettingsDockController::setAnimationSpeed(double value)
     next.animationSpeed = DockConfigCodec::parse(
                               QJsonObject{{QStringLiteral("animationSpeed"), value}})
                               .animationSpeed;
+    setFieldConfig(next);
+}
+
+void SettingsDockController::setMinimizedThumbnailsEnabled(bool value)
+{
+    DockConfig next = m_config;
+    next.minimizedThumbnailsEnabled = value;
+    setFieldConfig(next);
+}
+
+void SettingsDockController::setWindowPreviewsEnabled(bool value)
+{
+    DockConfig next = m_config;
+    next.windowPreviewsEnabled = value;
     setFieldConfig(next);
 }

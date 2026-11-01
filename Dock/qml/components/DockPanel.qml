@@ -12,7 +12,8 @@ Item {
 
     readonly property bool vertical: DockController.vertical
     readonly property bool growsPositiveCross: DockController.position === "left"
-    readonly property var minimizedEntries: DockController.minimizedWindowEntries
+    readonly property var minimizedEntries: DockController.minimizedThumbnailsEnabled
+        ? DockController.minimizedWindowEntries : []
     readonly property int minimizedCount: minimizedEntries ? minimizedEntries.length : 0
     readonly property int previewSectionGap: minimizedCount > 0 ? 20 : 0
     readonly property int previewPrimaryExtent: minimizedCount *
@@ -451,6 +452,12 @@ Item {
     Connections {
         target: DockController
         function onConfigChanged() {
+            if (!DockController.windowPreviewsEnabled && root.dockWindowPreviewSurface) {
+                root.dockWindowPreviewSurface.hidePreview()
+                root.previewTaskKey = ""
+            }
+            root.scheduleInputRegionUpdate()
+            Qt.callLater(root.reconcileWindowPreviewCache)
             root.scheduleMinimizeAnchorPublication()
             root.scheduleTooltip()
         }
@@ -565,6 +572,8 @@ Item {
                 iconRect.width, iconRect.height)
             DockController.setMinimizeAnchor(item.taskKey, rect)
 
+            if (!DockController.minimizedThumbnailsEnabled)
+                continue
             const windows = DockController.windowPreviewEntries(item.taskKey)
             for (var windowIndex = 0; windowIndex < windows.length; ++windowIndex) {
                 const windowEntry = windows[windowIndex]
@@ -814,7 +823,7 @@ Item {
             outputWidth, outputHeight, surfaceWidth, surfaceHeight,
             DockController.position, DockController.layerShellEdgeMargin, windowRegion)
         const windows = DockController.windowPreviewEntries(targetItem.taskKey)
-        if (windows.length >= 2 && dockWindowPreviewSurface) {
+        if (DockController.windowPreviewsEnabled && windows.length >= 2 && dockWindowPreviewSurface) {
             previewDismissDelay.stop()
             previewTaskKey = targetItem.taskKey
             dockTooltipSurface.hideTooltip()
@@ -850,7 +859,7 @@ Item {
         dockWindowPreviewService.setMinimizedWindowIds(minimizedIds)
         if (dockWindowPreviewSurface && dockWindowPreviewSurface.previewVisible) {
             const liveEntries = DockController.windowPreviewEntries(previewTaskKey)
-            if (liveEntries.length < 2) {
+            if (!DockController.windowPreviewsEnabled || liveEntries.length < 2) {
                 dockWindowPreviewSurface.hidePreview()
                 previewTaskKey = ""
             } else {

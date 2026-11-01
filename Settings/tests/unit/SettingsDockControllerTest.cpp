@@ -16,6 +16,7 @@ class SettingsDockControllerTest final : public QObject {
 
 private slots:
     void readsDefaultsFromInjectedPath();
+    void windowPreviewPreferencesPersistRestoreAndUndo();
     void defaultPropertiesMatchSharedConfig();
     void isDefaultTracksPersonalizationOnly();
     void typedSettersPersistCanonicalConfig();
@@ -261,7 +262,8 @@ void SettingsDockControllerTest::pendingWriteDefersExternalRefreshUntilFlush()
     controller.setIconSize(60);
     writeObject(path, QJsonObject{{QStringLiteral("iconSize"), 40},
                                   {QStringLiteral("position"), QStringLiteral("right")}});
-    QTest::qWait(130);
+    // Exercise the refresh guard without racing the 180 ms write timer on slow disks.
+    controller.refresh();
 
     QCOMPARE(controller.iconSize(), 60);
     QCOMPARE(controller.position(), QStringLiteral("bottom"));
@@ -456,3 +458,26 @@ void SettingsDockControllerTest::undoRestoreExpiresOnce()
 
 QTEST_GUILESS_MAIN(SettingsDockControllerTest)
 #include "SettingsDockControllerTest.moc"
+
+void SettingsDockControllerTest::windowPreviewPreferencesPersistRestoreAndUndo()
+{
+    QTemporaryDir directory;
+    const QString path = configPath(directory);
+    SettingsDockController controller(path);
+    QVERIFY(controller.property("minimizedThumbnailsEnabled").toBool());
+    QVERIFY(controller.property("windowPreviewsEnabled").toBool());
+    QVERIFY(controller.setProperty("minimizedThumbnailsEnabled", false));
+    QVERIFY(!controller.isDefault());
+    QVERIFY(controller.property("windowPreviewsEnabled").toBool());
+    QVERIFY(controller.setProperty("windowPreviewsEnabled", false));
+    controller.flush();
+    SettingsDockController reloaded(path);
+    QVERIFY(!reloaded.property("minimizedThumbnailsEnabled").toBool());
+    QVERIFY(!reloaded.property("windowPreviewsEnabled").toBool());
+    controller.restoreDefaults();
+    QVERIFY(controller.property("minimizedThumbnailsEnabled").toBool());
+    QVERIFY(controller.property("windowPreviewsEnabled").toBool());
+    controller.undoRestore();
+    QVERIFY(!controller.property("minimizedThumbnailsEnabled").toBool());
+    QVERIFY(!controller.property("windowPreviewsEnabled").toBool());
+}

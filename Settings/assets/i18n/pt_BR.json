@@ -1,4 +1,8 @@
 {
+    "apps.settings.pages.appearance.dock.label.minimized_thumbnails": "Mostrar janelas minimizadas",
+    "apps.settings.pages.appearance.dock.sublabel.minimized_thumbnails": "Mostrar janelas minimizadas como miniaturas no final da Dock",
+    "apps.settings.pages.appearance.dock.label.window_previews": "Prévias de janelas ao passar o mouse",
+    "apps.settings.pages.appearance.dock.sublabel.window_previews": "Mostrar todas as janelas ao passar o mouse sobre um app com várias janelas",
     "about.label.desktop": "Desktop",
     "about.label.gpu": "GPU",
     "about.label.kernel": "Kernel",

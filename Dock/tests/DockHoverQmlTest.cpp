@@ -472,6 +472,7 @@ private slots:
     void windowPreviewSurfaceClampsToOutputOnEveryDockEdge();
     void minimizeAnchorPredictsGlobalThumbnailOnEveryDockEdge();
     void previewActivationTargetsWindowAndDismissesSurface();
+    void disablingWindowPreviewsDismissesPopupAndRestoresTooltip();
     void previewPointerTransferKeepsAutoHideDockRevealed();
     void backdropRegionTracksMagnifiedChromeInsideStableSurface();
     void dockMaterialFollowsShellThemeState();
@@ -996,6 +997,17 @@ void DockHoverQmlTest::minimizeAnchorPredictsGlobalThumbnailOnEveryDockEdge()
             controller.layerShellEdgeMargin(), thumbnailRect)
             .translated(testCase.originX, testCase.originY);
         QCOMPARE(runtimeBackend.publishedAnchors.value(runtimeWindow.id), expectedGlobalAnchor);
+
+        auto disabled = DockConfigCodec::patchKnownFields({}, config, true);
+        disabled.insert(QStringLiteral("minimizedThumbnailsEnabled"), false);
+        controller.applyConfig(DockConfigCodec::parse(disabled));
+        QTRY_COMPARE_WITH_TIMEOUT(panel->property("minimizedCount").toInt(), 0, 1000);
+        QTRY_VERIFY_WITH_TIMEOUT(runtimeBackend.publishedAnchors.value(runtimeWindow.id)
+                                    != expectedGlobalAnchor, 1000);
+        controller.applyConfig(config);
+        QTRY_COMPARE_WITH_TIMEOUT(panel->property("minimizedCount").toInt(), 1, 1000);
+        QTRY_COMPARE_WITH_TIMEOUT(runtimeBackend.publishedAnchors.value(runtimeWindow.id),
+                                  expectedGlobalAnchor, 1000);
 
         delete panel;
     }
@@ -4166,3 +4178,89 @@ int main(int argc, char **argv)
 }
 
 #include "DockHoverQmlTest.moc"
+
+void DockHoverQmlTest::disablingWindowPreviewsDismissesPopupAndRestoresTooltip()
+{
+    auto catalog = std::make_shared<DesktopEntrySnapshot>();
+    DesktopEntryRecord record;
+    record.desktopFileName = QStringLiteral("one.desktop");
+    record.id = QStringLiteral("one");
+    record.name = QStringLiteral("One");
+    record.icon = QStringLiteral("one");
+    record.exec = QStringLiteral("one");
+    catalog->entries.append(record);
+    catalog->byDesktopFileName.insert(record.desktopFileName, 0);
+    catalog->byDesktopId.insert(record.id, 0);
+
+    FakeWindowPreviewRuntimeBackend runtimeBackend;
+    Astrea::Dock::DockRuntimeWindow first;
+    first.id = QStringLiteral("window-one");
+    first.appId = QStringLiteral("one");
+    first.title = QStringLiteral("One window");
+    Astrea::Dock::DockRuntimeWindow second = first;
+    second.id = QStringLiteral("window-two");
+    second.title = QStringLiteral("Two window");
+    Astrea::Dock::DockRuntimeSnapshot snapshot;
+    snapshot.authoritative = true;
+    snapshot.generation = 4;
+    snapshot.windows = {first, second};
+    snapshot.total = 2;
+    runtimeBackend.currentSnapshot = snapshot;
+
+    DockController controller;
+    controller.setCatalogSnapshot(catalog);
+    controller.applyConfig(configFor(QStringLiteral("none"), {QStringLiteral("one.desktop")}));
+    controller.attachRuntimeBackend(&runtimeBackend);
+    const QString taskKey = controller.appModel()->taskKeyAt(0);
+    const QVariantList entries = controller.windowPreviewEntries(taskKey);
+    QCOMPARE(entries.size(), 2);
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+    QQmlComponent panelComponent(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QQmlComponent previewComponent(&engine, QUrl::fromLocalFile(kDockWindowPreviewSurfacePath));
+    QVERIFY2(panelComponent.isReady(), qPrintable(panelComponent.errorString()));
+    QVERIFY2(previewComponent.isReady(), qPrintable(previewComponent.errorString()));
+    std::unique_ptr<QQuickItem> panel(qobject_cast<QQuickItem *>(panelComponent.create()));
+    std::unique_ptr<QQuickWindow> preview(qobject_cast<QQuickWindow *>(previewComponent.create()));
+    QVERIFY(panel && preview);
+    QQuickWindow window;
+    window.resize(900, 220);
+    panel->setParentItem(window.contentItem());
+    FakeTooltipSurface tooltip;
+    DockSurfaceGeometry geometry;
+    panel->setProperty("dockTooltipSurface", QVariant::fromValue(static_cast<QObject *>(&tooltip)));
+    panel->setProperty("dockWindowPreviewSurface", QVariant::fromValue(static_cast<QObject *>(preview.get())));
+    panel->setProperty("dockSurfaceGeometry", QVariant::fromValue(static_cast<QObject *>(&geometry)));
+    panel->setProperty("outputWidth", 900);
+    panel->setProperty("outputHeight", 600);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QQuickItem *target = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((target = delegate(panel.get(), QStringLiteral("one.desktop"))), 1000);
+    const QPointF pointer = target->property("interactionRegion").toRectF().center();
+    QTest::mouseMove(&window, panel->mapToItem(window.contentItem(), pointer).toPoint());
+    const auto hover = [&]() {
+        return QMetaObject::invokeMethod(panel.get(), "updatePointerAtPoint",
+                   Q_ARG(QVariant, QVariant(pointer.x())), Q_ARG(QVariant, QVariant(pointer.y())))
+            && QMetaObject::invokeMethod(panel.get(), "presentTooltipForCurrentTarget");
+    };
+    QVERIFY(hover());
+    QTRY_VERIFY_WITH_TIMEOUT(preview->property("previewVisible").toBool(), 1500);
+    auto config = DockConfigCodec::patchKnownFields({},
+        configFor(QStringLiteral("none"), {QStringLiteral("one.desktop")}), true);
+    config.insert(QStringLiteral("windowPreviewsEnabled"), false);
+    controller.applyConfig(DockConfigCodec::parse(config));
+    QTRY_VERIFY_WITH_TIMEOUT(!preview->property("previewVisible").toBool(), 1000);
+    // Returning from the dismissed popup to the icon uses the normal tooltip.
+    QVERIFY(hover());
+    QVERIFY(tooltip.tooltipVisible());
+    config.insert(QStringLiteral("windowPreviewsEnabled"), true);
+    controller.applyConfig(DockConfigCodec::parse(config));
+    QVERIFY(hover());
+    QTRY_VERIFY_WITH_TIMEOUT(preview->property("previewVisible").toBool(), 1500);
+    QVERIFY(!tooltip.tooltipVisible());
+    panel->setParentItem(nullptr);
+}

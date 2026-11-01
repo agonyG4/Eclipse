@@ -60,6 +60,16 @@ QVariantMap validatedRoles(const QVariantMap &roles)
     return result;
 }
 
+QVariantMap validatedSurfaces(const QVariantMap &surfaces)
+{
+    QVariantMap result;
+    for (const auto &name : {"topbar", "spotlight", "dock", "menu", "settings"}) {
+        const auto roles = validatedRoles(surfaces.value(name).toMap());
+        if (!roles.isEmpty()) result.insert(name, roles);
+    }
+    return result;
+}
+
 QVariantMap validatedPreferences(const QVariantMap &preferences)
 {
     QVariantMap result;
@@ -77,7 +87,7 @@ QVariantMap validatedPreferences(const QVariantMap &preferences)
     return result;
 }
 
-QVariantMap resolve(const QVariantMap &theme, const QVariantMap &rawPreferences,
+static QVariantMap resolveBase(const QVariantMap &theme, const QVariantMap &rawPreferences,
                     const QString &proportional, const QString &monospace)
 {
     const auto prefs = validatedPreferences(rawPreferences);
@@ -155,6 +165,31 @@ QVariantMap resolve(const QVariantMap &theme, const QVariantMap &rawPreferences,
     result.insert("fontWeightMedium", roles.value("label").toMap().value("weight"));
     result.insert("fontWeightDemiBold", roles.value("title").toMap().value("weight"));
     result.insert("typographyRoles", roles);
+    return result;
+}
+
+QVariantMap resolve(const QVariantMap &theme, const QVariantMap &preferences,
+                    const QString &proportional, const QString &monospace)
+{
+    auto result = resolveBase(theme, preferences, proportional, monospace);
+    const auto surfaces = validatedSurfaces(theme.value("typographySurfaces").toMap());
+    QVariantMap resolved;
+    for (auto it = surfaces.cbegin(); it != surfaces.cend(); ++it) {
+        auto roles = theme.value("typographyRoles").toMap();
+        const auto overrides = it.value().toMap();
+        for (auto role = overrides.cbegin(); role != overrides.cend(); ++role) {
+            auto fields = roles.value(role.key()).toMap();
+            const auto refinements = role.value().toMap();
+            for (auto field = refinements.cbegin(); field != refinements.cend(); ++field)
+                fields.insert(field.key(), field.value());
+            roles.insert(role.key(), fields);
+        }
+        auto scopedTheme = theme;
+        scopedTheme.insert("typographyRoles", roles);
+        resolved.insert(it.key(), resolveBase(scopedTheme, preferences, proportional, monospace)
+            .value("typographyRoles"));
+    }
+    result.insert("typographySurfaces", resolved);
     return result;
 }
 

@@ -306,6 +306,8 @@ inline QVariantMap styleTokens(const QString &id)
     copyNumbers(typography, fontSizes, 1, 96, true);
     const auto roles = Astrea::Typography::validatedRoles(typography.value(QStringLiteral("roles")).toObject().toVariantMap());
     if (!roles.isEmpty()) cleaned.insert(QStringLiteral("typographyRoles"), roles);
+    const auto surfaces = Astrea::Typography::validatedSurfaces(typography.value(QStringLiteral("surfaces")).toObject().toVariantMap());
+    if (!surfaces.isEmpty()) cleaned.insert(QStringLiteral("typographySurfaces"), surfaces);
 
     const QJsonValue legacyAnimation = style.value(QStringLiteral("animationFast"));
     if (legacyAnimation.isDouble()) {

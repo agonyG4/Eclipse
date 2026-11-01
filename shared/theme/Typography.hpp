@@ -6,6 +6,7 @@
 namespace Astrea::Typography {
 QStringList roleNames();
 QVariantMap validatedRoles(const QVariantMap &roles);
+QVariantMap validatedSurfaces(const QVariantMap &surfaces);
 QVariantMap validatedPreferences(const QVariantMap &preferences);
 QVariantMap resolve(const QVariantMap &theme, const QVariantMap &preferences,
                     const QString &proportional, const QString &monospace);

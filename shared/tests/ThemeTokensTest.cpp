@@ -63,6 +63,7 @@ private slots:
     void controllerReloadsManifestReplacementAndRecovery();
     void fontPreferencesPersistOverrideAndReset();
     void semanticTypographyResolvesInheritanceAndScale();
+    void themeSurfaceTypographyResolvesBeforeUserPreferences();
     void semanticQmlTextPropagates();
     void typographyDoesNotRecreateThemedComponents();
     void typographyMigratesLegacyAndPreservesExtensions();
@@ -283,6 +284,44 @@ void ThemeTokensTest::semanticQmlTextPropagates()
     QVERIFY(QMetaObject::invokeMethod(&controller, "setTextScale", Q_ARG(double, 2.0)));
     QTRY_COMPARE(body->property("font").value<QFont>().pixelSize(), 28);
     QTRY_COMPARE(title->property("font").value<QFont>().pixelSize(), 36);
+}
+
+void ThemeTokensTest::themeSurfaceTypographyResolvesBeforeUserPreferences()
+{
+    QTemporaryDir dir;
+    const QString id = "surface-fonts";
+    QVERIFY(writeJson(dir.filePath("navigation-icons.json"), {{"visual_theme",id}}));
+    QVERIFY(writeJson(packageManifestPath(id), packageManifest(id, {{"typography",QJsonObject{
+        {"fontFamily","Theme Primary"},
+        {"surfaces",QJsonObject{
+            {"topbar",QJsonObject{{"label",QJsonObject{{"pixelSize",13},{"weight",450},{"letterSpacing",0.25}}},
+                                  {"caption",QJsonObject{{"weight",-1},{"lineHeight",1.5}}}}},
+            {"spotlight",QJsonObject{{"title",QJsonObject{{"pixelSize",22},{"family","Theme Search"},{"weight",300}}}}},
+            {"invented",QJsonObject{{"body",QJsonObject{{"pixelSize",80}}}}}}}}}})));
+    ThemeController controller(dir.filePath("theme.json"));
+    const auto scoped = [&](const char *surface,const char *role) {
+        return controller.styleTokens().value("typographySurfaces").toMap().value(surface).toMap().value(role).toMap();
+    };
+    QCOMPARE(scoped("topbar","label").value("family").toString(),QString("Theme Primary"));
+    QCOMPARE(scoped("topbar","label").value("weight").toInt(),450);
+    QCOMPARE(scoped("topbar","caption").value("weight").toInt(),400);
+    QCOMPARE(scoped("spotlight","title").value("family").toString(),QString("Theme Search"));
+    QCOMPARE(scoped("spotlight","title").value("pixelSize").toInt(),22);
+    QVERIFY(!controller.styleTokens().value("typographySurfaces").toMap().contains("invented"));
+    QCOMPARE(controller.typography().value("title").toMap().value("pixelSize").toInt(),18);
+    const QString primary=QFontInfo(QFont("sans-serif")).family();
+    controller.setFontFamilyPreference("fontFamily",primary);
+    controller.setTypographyPreference("title","weight",600);
+    controller.setTextScale(1.5);
+    QCOMPARE(scoped("spotlight","title").value("family").toString(),primary);
+    QCOMPARE(scoped("spotlight","title").value("weight").toInt(),600);
+    QCOMPARE(scoped("spotlight","title").value("pixelSize").toInt(),33);
+    QCOMPARE(scoped("topbar","label").value("pixelSize").toInt(),20);
+    QCOMPARE(controller.typography().value("title").toMap().value("pixelSize").toInt(),27);
+    controller.setTypographyPreference("title","pixelSize",24);
+    QCOMPARE(scoped("spotlight","title").value("pixelSize").toInt(),36);
+    controller.resetFontPreferences();
+    QCOMPARE(scoped("spotlight","title").value("family").toString(),QString("Theme Search"));
 }
 
 void ThemeTokensTest::semanticTypographyResolvesInheritanceAndScale()
@@ -510,7 +549,7 @@ void ThemeTokensTest::qmlBindingsResolveLiveTokensAndWorkWithoutController()
     QVERIFY(fallbackTheme->property("isTransparent").toBool());
     QCOMPARE(fallbackTheme->property("radiusLarge").toDouble(), 14.0);
     QCOMPARE(fallbackTheme->property("radiusMedium").toDouble(), 8.0);
-    QCOMPARE(fallbackTheme->property("fontFamily").toString(), QStringLiteral("Inter Variable"));
+    QCOMPARE(fallbackTheme->property("fontFamily").toString(), QStringLiteral("Inter"));
     QCOMPARE(fallbackTheme->property("fontSizeCaption").toInt(), 11);
     QCOMPARE(fallbackTheme->property("tooltipFontSize").toInt(), 13);
 }

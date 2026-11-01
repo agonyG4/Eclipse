@@ -34,6 +34,9 @@ Item {
     property color tintColorOverride: "#0a84ff"
     property bool hasTintColorOverride: false
     property bool ready: iconImage.status === Image.Ready
+    // In-memory sources (window captures) can load synchronously so a source
+    // change swaps in place instead of passing through an empty frame.
+    property bool asynchronous: true
 
     readonly property bool hasThemeController:
         typeof ThemeController !== "undefined" && ThemeController !== null
@@ -160,7 +163,7 @@ Item {
         fillMode: Image.PreserveAspectFit
         smooth: true
         mipmap: true
-        asynchronous: true
+        asynchronous: root.asynchronous
         cache: true
         // Keep this Image as the shader's direct texture source. It is hidden
         // only while the shader owns the draw, so rounded mode cannot render

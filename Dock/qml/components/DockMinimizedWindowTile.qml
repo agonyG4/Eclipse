@@ -52,6 +52,8 @@ Item {
         iconRadius: root.cornerRadius
         showFallbackText: false
         appearanceOverride: "default"
+        // In-memory capture: swap synchronously so a refresh never flashes.
+        asynchronous: false
         visible: root.imageReady
         opacity: root.pressed ? 0.72 : 1
         Behavior on opacity { NumberAnimation { duration: 90 } }

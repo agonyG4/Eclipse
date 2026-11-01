@@ -88,12 +88,44 @@ Window {
     onClampedYChanged: updateInputRegion()
     onSurfaceWidthChanged: updateInputRegion()
     onSurfaceHeightChanged: updateInputRegion()
-    onPreviewVisibleChanged: Qt.callLater(updateInputRegion)
+
+    // Cards cascade in only when the popup opens; cards rebuilt while it is
+    // already showing (a title changed) appear in place.
+    property bool cardsSettled: false
+    Timer {
+        id: cardsSettledTimer
+        interval: 450
+        onTriggered: root.cardsSettled = true
+    }
+    onPreviewVisibleChanged: {
+        Qt.callLater(updateInputRegion)
+        cardsSettled = false
+        if (previewVisible)
+            cardsSettledTimer.restart()
+        else
+            cardsSettledTimer.stop()
+    }
+
+    function sameEntries(left, right) {
+        if (left.length !== right.length)
+            return false
+        for (var i = 0; i < left.length; ++i) {
+            if (left[i].windowId !== right[i].windowId || left[i].title !== right[i].title)
+                return false
+        }
+        return true
+    }
 
     function showPreview(key, windowEntries, visualAnchor, position, widthIn, heightIn,
                          originX, originY) {
+        const nextEntries = windowEntries || []
+        // Runtime snapshots re-announce the same windows on every focus or
+        // title change. Keep the cards (and their images) instead of
+        // rebuilding them, which flashed the app icon and replayed the entrance.
+        const unchanged = previewVisible && key === taskKey && sameEntries(entries, nextEntries)
         taskKey = key
-        entries = windowEntries || []
+        if (!unchanged)
+            entries = nextEntries
         anchorRect = visualAnchor
         dockPosition = position
         outputWidth = Math.max(1, widthIn)
@@ -101,6 +133,8 @@ Window {
         outputOriginX = originX || 0
         outputOriginY = originY || 0
         previewVisible = entries.length >= 2
+        if (unchanged)
+            return
         if (previewVisible) {
             if (previewService)
                 previewService.setPopupWindowIds(entries.map(function(entry) {
@@ -313,6 +347,10 @@ Window {
                                 iconRadius: material.radiusMedium
                                 showFallbackText: false
                                 appearanceOverride: "default"
+                                // Captures are already in memory; a synchronous swap
+                                // replaces the image in place instead of flashing the
+                                // app icon while each periodic refresh decodes.
+                                asynchronous: false
                             }
 
                             Rectangle {
@@ -429,7 +467,12 @@ Window {
                     }
 
                     Component.onCompleted: {
-                        cardEntrance.start()
+                        if (root.cardsSettled) {
+                            card.opacity = 1
+                            cardLift.y = 0
+                        } else {
+                            cardEntrance.start()
+                        }
                         refreshImage()
                         if (root.previewService)
                             root.previewService.requestWindowPreview(modelData.windowId, false)

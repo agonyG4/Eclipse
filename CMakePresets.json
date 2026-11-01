@@ -41,7 +41,13 @@
       "name": "release",
       "displayName": "Release",
       "inherits": "base",
-      "binaryDir": "/mnt/Aether/Desktop/GitHub/Eclipse-release-build",
+      "binaryDir": "${sourceDir}/build/release",
+      "environment": {
+        "CARGO_HOME": null,
+        "CARGO_TARGET_DIR": null,
+        "TMPDIR": null,
+        "XDG_CACHE_HOME": null
+      },
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }

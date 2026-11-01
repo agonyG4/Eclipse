@@ -13,8 +13,10 @@ def main():
     args = parser.parse_args()
     output = args.output.resolve()
     source = Path(__file__).resolve().parents[1] / "browser"
-    if output.is_relative_to(source.parents[1]):
-        parser.error("Generated bundles must be outside the source checkout")
+    checkout = source.parents[1]
+    release_output = (checkout / "build" / "release" / "Downloads").resolve()
+    if output.is_relative_to(checkout) and output != release_output:
+        parser.error("Generated bundles must be outside the source checkout or in build/release/Downloads")
     output.mkdir(parents=True, exist_ok=True)
     host = output / "astrea-downloads-native-host"
     shutil.copyfile(source / "native_host.py", host)

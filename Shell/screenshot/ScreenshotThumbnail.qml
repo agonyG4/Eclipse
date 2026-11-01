@@ -41,6 +41,8 @@ Window {
     property point nativeDragHotSpot: Qt.point(0, 0)
     property var nativeDragSnapshot: null
     property var nativeDragPayload: ({})
+    property var nativeDragImage: null
+    property int nativeDragImageToken: 0
 
     readonly property bool entering: lifecycleState === "entering"
     readonly property bool dismissing: lifecycleState === "dismissing"
@@ -296,11 +298,26 @@ Window {
         idleTimer.stop()
         ScreenshotController.setThumbnailDragActive(true)
         nativeDragStartCount += 1
-        if (nativeDragTestMode)
-            return
-
-        card.Drag.active = true
-        card.Drag.startDrag(Qt.CopyAction)
+        // Capture the rendered card before hiding it. The raw screenshot does
+        // not contain the rounded mask, border or shadow used by the thumbnail.
+        const token = ++nativeDragImageToken
+        const started = screenshotVisual.grabToImage(function(result) {
+            if (token !== root.nativeDragImageToken || !root.nativeFileDragging)
+                return
+            if (!root.visible || (!root.nativeDragTestMode && !cardMouseArea.pressed)
+                    || !result || !result.url.toString()) {
+                root.finishNativeFileDrag(Qt.IgnoreAction)
+                return
+            }
+            // Retain the result so its in-memory URL lives through the drag.
+            root.nativeDragImage = result
+            if (root.nativeDragTestMode)
+                return
+            card.Drag.active = true
+            card.Drag.startDrag(Qt.CopyAction)
+        })
+        if (!started)
+            finishNativeFileDrag(Qt.IgnoreAction)
     }
 
     property url nativeDragSource: ""
@@ -309,7 +326,9 @@ Window {
         if (!nativeFileDragging)
             return true
         const refreshForNewCapture = pendingCaptureRefresh
+        ++nativeDragImageToken
         nativeFileDragging = false
+        nativeDragImage = null
         ScreenshotController.setThumbnailDragActive(false)
         nativeDragSnapshot = null
         nativeDragPayload = ({})
@@ -397,7 +416,7 @@ Window {
         x: root.slotPosition.x + root.transitionOffsetX
         y: root.slotPosition.y + root.transitionOffsetY
         scale: root.presentationScale
-        opacity: root.nativeFileDragging ? 0 : root.presentationOpacity
+        opacity: root.nativeFileDragging && root.nativeDragImage ? 0 : root.presentationOpacity
 
         onXChanged: root.updateGeometry()
         onYChanged: root.updateGeometry()
@@ -426,10 +445,9 @@ Window {
         Drag.supportedActions: Qt.CopyAction
         Drag.proposedAction: Qt.CopyAction
         Drag.mimeData: root.nativeDragPayload
-        Drag.imageSource: root.nativeDragSource || ScreenshotController.imageSource
-        Drag.imageSourceSize: Qt.size(Math.max(1, Math.round(width)),
-                                      Math.max(1, Math.round(height)))
-        Drag.hotSpot: root.nativeDragHotSpot
+        Drag.imageSource: root.nativeDragImage ? root.nativeDragImage.url : ""
+        Drag.hotSpot: Qt.point(root.nativeDragHotSpot.x + screenshotVisual.shadowPadding,
+                               root.nativeDragHotSpot.y + screenshotVisual.shadowPadding)
 
         Drag.onDragFinished: function(dropAction) {
             root.finishNativeFileDrag(dropAction)
@@ -467,6 +485,8 @@ Window {
             }
             onReleased: function(mouse) {
                 if (root.nativeDragConsumedPress) {
+                    if (root.nativeFileDragging && !root.nativeDragImage)
+                        root.finishNativeFileDrag(Qt.IgnoreAction)
                     root.nativeDragConsumedPress = false
                     root.resetPressState()
                     return
@@ -483,6 +503,8 @@ Window {
             }
             onCanceled: {
                 if (root.nativeDragConsumedPress) {
+                    if (root.nativeFileDragging && !root.nativeDragImage)
+                        root.finishNativeFileDrag(Qt.IgnoreAction)
                     root.nativeDragConsumedPress = false
                     root.resetPressState()
                     return

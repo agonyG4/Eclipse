@@ -2,6 +2,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
 #include <QQmlContext>
+#include <QQmlExpression>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QTemporaryDir>
@@ -28,6 +29,9 @@ private slots:
     void nativeDragThresholdUsesPlatformSetting();
     void nativeFileDragStartsImmediatelyAndRestoresOnCancel();
     void nativeFileDragExportsCanonicalCopyMetadata();
+    void nativeDragPreservesRenderedAppearance_data();
+    void nativeDragPreservesRenderedAppearance();
+    void canceledDragDiscardsPendingImage();
     void newCaptureInvalidatesDismissalAndDragSnapshotsStayFrozen();
     void previewStartsHiddenOpensExistingResultAndEscapes();
 };
@@ -234,6 +238,7 @@ void ScreenshotThumbnailQmlTest::nativeFileDragStartsImmediatelyAndRestoresOnCan
     QTest::mousePress(window, Qt::LeftButton, Qt::NoModifier, center);
     QTest::mouseMove(window, center + QPoint(movement, 0), 0);
     QTRY_COMPARE(object->property("nativeDragStartCount").toInt(), 1);
+    QTRY_COMPARE(card->opacity(), 0.0);
     QVERIFY(object->property("nativeFileDragging").toBool());
     QVERIFY(object->property("nativeDragConsumedPress").toBool());
     object->setProperty("hovered", false);
@@ -274,6 +279,7 @@ void ScreenshotThumbnailQmlTest::nativeFileDragStartsImmediatelyAndRestoresOnCan
     QTest::mousePress(window, Qt::LeftButton, Qt::NoModifier, center);
     QTest::mouseMove(window, center + QPoint(movement, 0), 0);
     QTRY_COMPARE(object->property("nativeDragStartCount").toInt(), 2);
+    QTRY_COMPARE(card->opacity(), 0.0);
     object->setProperty("hovered", false);
     QVERIFY(!idleTimer->property("running").toBool());
     QTest::mouseRelease(window, Qt::LeftButton, Qt::NoModifier, center + QPoint(20, 0));
@@ -320,6 +326,101 @@ void ScreenshotThumbnailQmlTest::nativeFileDragExportsCanonicalCopyMetadata()
     QCOMPARE(object->property("nativeDragProposedAction").toInt(),
              int(Qt::CopyAction));
     QVERIFY(object->property("nativeDragUsesManualStart").toBool());
+}
+
+void ScreenshotThumbnailQmlTest::nativeDragPreservesRenderedAppearance_data()
+{
+    QTest::addColumn<bool>("shadowEnabled");
+    QTest::newRow("rounded-border") << false;
+    QTest::newRow("rounded-border-shadow") << true;
+}
+
+void ScreenshotThumbnailQmlTest::nativeDragPreservesRenderedAppearance()
+{
+    QFETCH(bool, shadowEnabled);
+    ScreenshotQmlFixture fixture;
+    fixture.controller.m_image = QImage(160, 100, QImage::Format_RGBA8888);
+    fixture.controller.m_image.fill(QColor(20, 180, 60));
+    fixture.controller.m_imageGeneration = 1;
+    fixture.controller.m_resultPath = QStringLiteral("/tmp/astrea-screenshot-test.png");
+    fixture.controller.configuration()->setCornerRadius(24);
+    fixture.controller.configuration()->setBorderWidth(4);
+    fixture.controller.configuration()->setBorderColor(QColor(Qt::red));
+    fixture.controller.configuration()->setShadowEnabled(shadowEnabled);
+    std::unique_ptr<QObject> object(load(fixture.engine, QStringLiteral("ScreenshotThumbnail.qml")));
+    auto *window = qobject_cast<QQuickWindow *>(object.get());
+    QVERIFY(window);
+    fixture.inputRegion.setWindow(window);
+    object->setProperty("nativeDragTestMode", true);
+    fixture.controller.m_thumbnailVisible = true;
+    emit fixture.controller.thumbnailVisibleChanged();
+    QTRY_COMPARE(object->property("lifecycleState").toString(), QStringLiteral("visible"));
+    object->setProperty("nativeDragHotSpot", QPointF(12, 18));
+    object->setProperty("held", true);
+    QVERIFY(QMetaObject::invokeMethod(object.get(), "startNativeFileDrag"));
+
+    QQmlExpression imageExpression(qmlContext(object.get()), object.get(),
+        QStringLiteral("typeof nativeDragImage === 'undefined' || !nativeDragImage"
+                       " ? undefined : nativeDragImage.image"));
+    QTRY_VERIFY_WITH_TIMEOUT(!imageExpression.evaluate().value<QImage>().isNull(), 1000);
+    const QImage image = imageExpression.evaluate().value<QImage>();
+    auto *card = window->findChild<QQuickItem *>(QStringLiteral("thumbnailCard"));
+    auto *visual = window->findChild<QQuickItem *>(QStringLiteral("thumbnailVisual"));
+    QVERIFY(card);
+    QVERIFY(visual);
+    QQmlExpression sourceExpression(qmlContext(card), card, QStringLiteral("Drag.imageSource"));
+    QQmlExpression resultUrlExpression(qmlContext(object.get()), object.get(),
+                                       QStringLiteral("nativeDragImage.url"));
+    const QUrl dragUrl = sourceExpression.evaluate().toUrl();
+    QVERIFY(!dragUrl.isEmpty());
+    QCOMPARE(dragUrl, resultUrlExpression.evaluate().toUrl());
+    QVERIFY(dragUrl != QUrl(fixture.controller.imageSource()));
+    const qreal padding = visual->property("shadowPadding").toReal();
+    QQmlExpression hotSpotExpression(qmlContext(card), card, QStringLiteral("Drag.hotSpot"));
+    QCOMPARE(hotSpotExpression.evaluate().toPointF(), QPointF(12 + padding, 18 + padding));
+    QCOMPARE(card->opacity(), 0.0);
+    QCOMPARE(fixture.controller.image().pixelColor(0, 0), QColor(20, 180, 60));
+
+    if (QGuiApplication::platformName() == QStringLiteral("offscreen"))
+        QSKIP("Qt Quick mask pixels require a rendering QPA backend");
+    QVERIFY(image.pixelColor(0, 0).alpha() < 20);
+    const QColor center = image.pixelColor(image.width() / 2, image.height() / 2);
+    QVERIFY(center.green() > 150 && center.alpha() > 240);
+    const qreal scale = image.width() / visual->width();
+    const QColor border = image.pixelColor(image.width() / 2, qRound((padding + 1) * scale));
+    QVERIFY(border.red() > 200 && border.green() < 50 && border.alpha() > 240);
+    if (shadowEnabled) {
+        const QColor shadow = image.pixelColor(image.width() / 2,
+            qRound((padding + card->height() + 2) * scale));
+        QVERIFY(shadow.alpha() > 0 && shadow.alpha() < 255);
+    }
+}
+
+void ScreenshotThumbnailQmlTest::canceledDragDiscardsPendingImage()
+{
+    ScreenshotQmlFixture fixture;
+    fixture.controller.m_image = QImage(160, 100, QImage::Format_RGBA8888);
+    fixture.controller.m_image.fill(Qt::green);
+    fixture.controller.m_imageGeneration = 1;
+    fixture.controller.m_resultPath = QStringLiteral("/tmp/astrea-screenshot-test.png");
+    std::unique_ptr<QObject> object(load(fixture.engine, QStringLiteral("ScreenshotThumbnail.qml")));
+    object->setProperty("nativeDragTestMode", true);
+    fixture.controller.m_thumbnailVisible = true;
+    emit fixture.controller.thumbnailVisibleChanged();
+    QTRY_COMPARE(object->property("lifecycleState").toString(), QStringLiteral("visible"));
+    object->setProperty("held", true);
+    QVERIFY(QMetaObject::invokeMethod(object.get(), "startNativeFileDrag"));
+    QVERIFY(QMetaObject::invokeMethod(object.get(), "finishNativeFileDrag",
+        Q_ARG(QVariant, QVariant::fromValue(int(Qt::IgnoreAction)))));
+    QTest::qWait(100);
+    QVERIFY(!object->property("nativeFileDragging").toBool());
+    QQmlExpression imageExpression(qmlContext(object.get()), object.get(),
+                                  QStringLiteral("nativeDragImage === null"));
+    QVERIFY(imageExpression.evaluate().toBool());
+    auto *card = object->findChild<QQuickItem *>(QStringLiteral("thumbnailCard"));
+    QVERIFY(card);
+    QCOMPARE(card->opacity(), 1.0);
+    QVERIFY(fixture.controller.thumbnailVisible());
 }
 
 void ScreenshotThumbnailQmlTest::newCaptureInvalidatesDismissalAndDragSnapshotsStayFrozen()

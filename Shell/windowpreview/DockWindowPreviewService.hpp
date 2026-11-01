@@ -20,6 +20,7 @@ public:
 
     Q_INVOKABLE void requestWindowPreview(const QString &windowId, bool refresh = false);
     Q_INVOKABLE QString imageUrl(const QString &windowId) const;
+    Q_INVOKABLE QSize imageSize(const QString &windowId) const;
     Q_INVOKABLE void reconcileLiveWindowIds(const QStringList &windowIds);
     Q_INVOKABLE void setMinimizedWindowIds(const QStringList &windowIds);
     Q_INVOKABLE void setPopupWindowIds(const QStringList &windowIds);

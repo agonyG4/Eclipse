@@ -1009,6 +1009,28 @@ void DockHoverQmlTest::minimizeAnchorPredictsGlobalThumbnailOnEveryDockEdge()
         QTRY_COMPARE_WITH_TIMEOUT(runtimeBackend.publishedAnchors.value(runtimeWindow.id),
                                   expectedGlobalAnchor, 1000);
 
+        // Minimized tiles are ordinary Dock tiles: they join the magnification
+        // wave and become the tooltip target, as on macOS.
+        DockConfig magnified = config;
+        magnified.hoverEffect = QStringLiteral("magnification");
+        magnified.magnificationScale = 2.0;
+        controller.applyConfig(magnified);
+        QQuickItem *tile = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT(
+            (tile = childWithObjectName(panel,
+                QStringLiteral("minimized-window-card-window-one"))) != nullptr,
+            1000);
+        const QPointF tileCenter = tile->mapToItem(panel, tile->width() / 2.0,
+                                                   tile->height() / 2.0);
+        QVERIFY(QMetaObject::invokeMethod(panel, "setPointerInside",
+                                          Q_ARG(QVariant, QVariant(true))));
+        QVERIFY(QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
+                                          Q_ARG(QVariant, QVariant(tileCenter.x())),
+                                          Q_ARG(QVariant, QVariant(tileCenter.y()))));
+        QCOMPARE(panel->property("pointerTargetTaskKey").toString(),
+                 QStringLiteral("minimized:window-one"));
+        QTRY_VERIFY_WITH_TIMEOUT(tile->scale() > 1.5, 1500);
+
         delete panel;
     }
 }

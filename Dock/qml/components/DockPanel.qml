@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Effects
 import Astrea.Effects
 import Astrea.Shared as Shared
 
@@ -46,7 +47,7 @@ Item {
         DockController.iconSize * (Math.max(1, DockController.magnificationScale) - 1))
     readonly property real surfaceHeadroom: Math.max(maxMagnificationHeadroom,
         liftHeadroom, dragHeadroom)
-    readonly property int maximumMagnifiedDelegateCount: Math.min(appRepeater.count,
+    readonly property int maximumMagnifiedDelegateCount: Math.min(appRepeater.count + minimizedCount,
         2 * Math.ceil(Math.max(1, DockController.magnificationRadius)) + 1)
     readonly property real maximumMagnificationExtraWidth:
         maximumMagnifiedDelegateCount * DockController.iconSize
@@ -248,9 +249,17 @@ Item {
         Rectangle {
             id: minimizedDivider
             objectName: "minimizedWindowDivider"
-            color: shellMaterial.border
-            width: root.vertical ? 20 : 1
-            height: root.vertical ? 1 : 20
+            color: shellMaterial.separator
+            width: root.vertical ? Math.round(DockController.iconSize * 0.75) : 1
+            height: root.vertical ? 1 : Math.round(DockController.iconSize * 0.75)
+            property real visualOffset: 0
+            transform: Translate {
+                x: root.vertical ? 0 : minimizedDivider.visualOffset
+                y: root.vertical ? minimizedDivider.visualOffset : 0
+            }
+            Behavior on visualOffset {
+                NumberAnimation { duration: root.animationDuration(110); easing.type: Easing.OutCubic }
+            }
             x: root.vertical ? (dockChrome.width - width) / 2
                              : appRow.x + appRow.implicitWidth + 9
             y: root.vertical ? appRow.y + appRow.implicitHeight + 9
@@ -274,46 +283,67 @@ Item {
                              : appRow.y + (appRow.implicitHeight - height) / 2
 
             Repeater {
+                id: minimizedRepeater
                 model: root.minimizedEntries
+                onItemAdded: root.updateHoverEffect()
+                onItemRemoved: root.updateHoverEffect()
+
+                // A minimized window is a regular Dock tile, like macOS: the
+                // window image fitted into the icon square, badged with its app
+                // icon, magnified with its neighbours, with no frame or controls.
                 delegate: Item {
                     id: minimizedWindowDelegate
                     required property var modelData
                     objectName: "minimized-window-" + modelData.windowId
+                    readonly property string hoverKey: "minimized:" + modelData.windowId
+                    readonly property Item tile: minimizedWindowCard
+                    property real magnificationScale: 1.0
+                    property real visualOffsetX: 0
+                    property real visualOffsetY: 0
                     width: DockController.delegateWidth
                     height: DockController.delegateHeight
+                    z: magnificationScale
 
-                    // The card keeps the fixed slot size because it is the published
-                    // minimize anchor; the visible frame hugs the fitted window image.
+                    transform: Translate {
+                        x: minimizedWindowDelegate.visualOffsetX
+                        y: minimizedWindowDelegate.visualOffsetY
+                    }
+                    Behavior on visualOffsetX {
+                        NumberAnimation { duration: root.animationDuration(110); easing.type: Easing.OutCubic }
+                    }
+                    Behavior on visualOffsetY {
+                        NumberAnimation { duration: root.animationDuration(110); easing.type: Easing.OutCubic }
+                    }
+                    Behavior on magnificationScale {
+                        NumberAnimation { duration: root.animationDuration(110); easing.type: Easing.OutCubic }
+                    }
+                    onMagnificationScaleChanged: root.scheduleInputRegionUpdate()
+                    onVisualOffsetXChanged: root.scheduleInputRegionUpdate()
+                    onVisualOffsetYChanged: root.scheduleInputRegionUpdate()
+
+                    // Same geometry as an app icon; it is also the published
+                    // minimize anchor, so the lamp lands exactly in the tile.
                     Item {
                         id: minimizedWindowCard
                         objectName: "minimized-window-card-" + minimizedWindowDelegate.modelData.windowId
                         anchors.centerIn: parent
-                        width: Math.min(68, parent.width - 4)
-                        height: Math.min(46, parent.height - 4)
-
-                        Rectangle {
-                            id: minimizedWindowFrame
-                            anchors.centerIn: parent
-                            width: minimizedWindowImage.visible
-                                ? Math.ceil(minimizedWindowImage.paintedWidth) + 2 : parent.width
-                            height: minimizedWindowImage.visible
-                                ? Math.ceil(minimizedWindowImage.paintedHeight) + 2 : parent.height
-                            radius: 6
-                            color: shellMaterial.tooltipSurface
-                            border.color: shellMaterial.tooltipBorder
-                        }
+                        width: DockController.iconSize
+                        height: DockController.iconSize
+                        scale: minimizedWindowDelegate.magnificationScale
+                        transformOrigin: !root.vertical ? Item.Bottom
+                                         : DockController.position === "left" ? Item.Left : Item.Right
 
                         Image {
                             id: minimizedWindowImage
                             objectName: "minimized-window-image-" + minimizedWindowDelegate.modelData.windowId
                             anchors.fill: parent
-                            anchors.margins: 1
                             fillMode: Image.PreserveAspectFit
                             smooth: true
                             mipmap: true
                             source: root.dockWindowPreviewService
-                                ? root.dockWindowPreviewService.imageUrl(modelData.windowId) : ""
-                            visible: status === Image.Ready
+                                ? root.dockWindowPreviewService.imageUrl(
+                                      minimizedWindowDelegate.modelData.windowId) : ""
+                            visible: false
                             asynchronous: true
                             // Every capture gets a new revision URL, so caching by URL
                             // only keeps snapshot-driven delegate rebuilds from flashing.
@@ -334,93 +364,61 @@ Item {
                                 }
                             }
                         }
+                        MultiEffect {
+                            objectName: "minimized-window-shadow-" + minimizedWindowDelegate.modelData.windowId
+                            source: minimizedWindowImage
+                            anchors.fill: minimizedWindowImage
+                            visible: minimizedWindowImage.status === Image.Ready
+                            shadowEnabled: true
+                            shadowColor: "#000000"
+                            shadowOpacity: 0.45
+                            shadowBlur: 0.5
+                            shadowVerticalOffset: 1
+                        }
                         Shared.AstreaAppIcon {
                             anchors.centerIn: parent
-                            width: 24
-                            height: 24
+                            width: parent.width * 0.78
+                            height: width
                             iconName: minimizedWindowDelegate.modelData.iconName
                             iconPath: minimizedWindowDelegate.modelData.iconPath
                             appName: minimizedWindowDelegate.modelData.displayName
-                            visible: !minimizedWindowImage.visible
+                            maximumPresentationScale: Math.max(1, DockController.magnificationScale)
+                            iconRadius: 9
+                            fallbackRadius: 9
+                            opacity: 0.85
+                            visible: minimizedWindowImage.status !== Image.Ready
                         }
-
-                        // macOS badges minimized windows with their app icon.
                         Shared.AstreaAppIcon {
                             objectName: "minimized-window-badge-" + minimizedWindowDelegate.modelData.windowId
-                            width: 18
-                            height: 18
-                            x: minimizedWindowFrame.x + minimizedWindowFrame.width - width + 4
-                            y: minimizedWindowFrame.y + minimizedWindowFrame.height - height + 4
+                            width: Math.round(parent.width * 0.4)
+                            height: width
+                            x: parent.width - width
+                            y: parent.height - height
                             iconName: minimizedWindowDelegate.modelData.iconName
                             iconPath: minimizedWindowDelegate.modelData.iconPath
                             appName: minimizedWindowDelegate.modelData.displayName
-                            visible: minimizedWindowImage.visible
+                            maximumPresentationScale: Math.max(1, DockController.magnificationScale)
+                            iconRadius: 5
+                            fallbackRadius: 5
+                            visible: minimizedWindowImage.status === Image.Ready
                         }
 
                         Rectangle {
-                            id: minimizedWindowClose
-                            objectName: "minimized-window-close-" + minimizedWindowDelegate.modelData.windowId
-                            x: minimizedWindowFrame.x + minimizedWindowFrame.width - width
-                            y: minimizedWindowFrame.y
-                            width: 16
-                            height: 16
-                            radius: 8
-                            color: "#c91b1d25"
-                            visible: minimizedWindowHover.hovered
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: "×"
-                                color: "white"
-                                font.pixelSize: 13
-                            }
-                            TapHandler {
-                                id: closeTap
-                                acceptedButtons: Qt.LeftButton
-                                onTapped: DockController.closeWindow(
-                                    minimizedWindowDelegate.modelData.taskKey,
-                                    minimizedWindowDelegate.modelData.windowId)
-                            }
+                            anchors.fill: parent
+                            radius: 10
+                            color: "#18FFFFFF"
+                            visible: minimizedWindowTap.pressed
                         }
-                    }
 
-                    TapHandler {
-                        acceptedButtons: Qt.LeftButton
-                        onTapped: function(eventPoint) {
-                            const closePoint = minimizedWindowClose.mapFromItem(
-                                minimizedWindowDelegate, eventPoint.position.x,
-                                eventPoint.position.y)
-                            if (minimizedWindowClose.visible
-                                && minimizedWindowClose.contains(closePoint))
-                                return
-                            DockController.activateWindow(
+                        TapHandler {
+                            id: minimizedWindowTap
+                            acceptedButtons: Qt.LeftButton
+                            onTapped: DockController.activateWindow(
                                 minimizedWindowDelegate.modelData.taskKey,
                                 minimizedWindowDelegate.modelData.windowId)
                         }
                     }
-                    HoverHandler {
-                        id: minimizedWindowHover
-                        onHoveredChanged: {
-                            if (hovered && root.dockTooltipSurface && root.dockSurfaceGeometry) {
-                                const targetRect = root.windowRect(Qt.rect(
-                                    dockChrome.x + minimizedWindowGrid.x + minimizedWindowDelegate.x,
-                                    dockChrome.y + minimizedWindowGrid.y + minimizedWindowDelegate.y,
-                                    minimizedWindowDelegate.width,
-                                    minimizedWindowDelegate.height))
-                                const outputRect = root.dockSurfaceGeometry.outputLocalDelegateRect(
-                                    root.outputWidth, root.outputHeight, root.surfaceWidth,
-                                    root.surfaceHeight, DockController.position,
-                                    DockController.layerShellEdgeMargin, targetRect)
-                                root.dockTooltipSurface.showTooltip(
-                                    minimizedWindowDelegate.modelData.title ||
-                                        minimizedWindowDelegate.modelData.displayName,
-                                    outputRect, DockController.position)
-                            } else if (!hovered && root.dockTooltipSurface
-                                       && !root.pointerInside) {
-                                root.dockTooltipSurface.hideTooltip()
-                            }
-                        }
-                    }
+
                     Component.onCompleted: {
                         if (root.dockWindowPreviewService)
                             root.dockWindowPreviewService.requestWindowPreview(
@@ -573,8 +571,8 @@ Item {
             ? appRowY + root.appPrimaryExtent + 19 : appRowY
         const delegateX = root.vertical ? gridX : gridX + slotIndex * root.slotPitch
         const delegateY = root.vertical ? gridY + slotIndex * root.slotPitch : gridY
-        const thumbnailWidth = Math.min(68, DockController.delegateWidth - 4)
-        const thumbnailHeight = Math.min(46, DockController.delegateHeight - 4)
+        const thumbnailWidth = DockController.iconSize
+        const thumbnailHeight = DockController.iconSize
         const thumbnailRect = Qt.rect(
             chromeX + delegateX + (DockController.delegateWidth - thumbnailWidth) / 2,
             chromeY + delegateY + (DockController.delegateHeight - thumbnailHeight) / 2,
@@ -764,9 +762,16 @@ Item {
                 && isFinite(region.width) && isFinite(region.height))
                 inputInteractionRects.push(windowRect(region))
         }
+        for (var m = 0; m < minimizedRepeater.count; ++m) {
+            const tileItem = minimizedRepeater.itemAt(m)
+            if (tileItem && tileItem.tile)
+                inputInteractionRects.push(windowRect(tileItem.tile.mapToItem(root, 0, 0,
+                    tileItem.tile.width, tileItem.tile.height)))
+        }
         const chromeRect = windowRect(Qt.rect(dockChrome.x, dockChrome.y,
                                               dockChrome.width, dockChrome.height))
-        inputRegionBridge.update(chromeRect, inputInteractionRects, appRepeater.count)
+        inputRegionBridge.update(chromeRect, inputInteractionRects,
+                                 appRepeater.count + minimizedRepeater.count)
     }
 
     function scheduleTooltip() {
@@ -838,6 +843,10 @@ Item {
                 break
             }
         }
+        if (!targetItem && pointerTargetTaskKey.startsWith("minimized:")) {
+            presentMinimizedWindowTooltip()
+            return
+        }
         if (!targetItem) {
             dockTooltipSurface.hideTooltip()
             return
@@ -871,6 +880,26 @@ Item {
         previewTaskKey = ""
         dockTooltipSurface.showTooltip(targetItem.displayName, outputRegion,
                                        DockController.position)
+    }
+
+    function presentMinimizedWindowTooltip() {
+        if (dockWindowPreviewSurface && !previewHovered)
+            dockWindowPreviewSurface.hidePreview()
+        previewTaskKey = ""
+        for (var index = 0; index < minimizedRepeater.count; ++index) {
+            const item = minimizedRepeater.itemAt(index)
+            if (!item || item.hoverKey !== pointerTargetTaskKey)
+                continue
+            const tileRect = item.tile.mapToItem(root, 0, 0, item.tile.width, item.tile.height)
+            const outputRegion = dockSurfaceGeometry.outputLocalDelegateRect(
+                outputWidth, outputHeight, surfaceWidth, surfaceHeight,
+                DockController.position, DockController.layerShellEdgeMargin,
+                windowRect(tileRect))
+            dockTooltipSurface.showTooltip(item.modelData.title || item.modelData.displayName,
+                                           outputRegion, DockController.position)
+            return
+        }
+        dockTooltipSurface.hideTooltip()
     }
 
     function reconcileWindowPreviewCache() {
@@ -916,8 +945,18 @@ Item {
         return draggedDesktopFileName.length > 0
     }
 
+    // App delegates first, then minimized window tiles: one magnification wave.
+    function hoverItemAt(index) {
+        return index < appRepeater.count ? appRepeater.itemAt(index)
+            : minimizedRepeater.itemAt(index - appRepeater.count)
+    }
+
+    function hoverItemKey(item) {
+        return item ? (item.hoverKey || item.taskKey) : ""
+    }
+
     function updateHoverEffect() {
-        const count = appRepeater.count
+        const count = appRepeater.count + minimizedRepeater.count
         const magnificationActive = pointerInside && configuredHoverEffect === "magnification"
             && !isReordering()
         const liftActive = pointerInside && configuredHoverEffect === "lift" && !isReordering()
@@ -935,7 +974,7 @@ Item {
         const localPointerPrimary = pointerX + primaryExtent() / 2
 
         for (var i = 0; i < count; ++i) {
-            const item = appRepeater.itemAt(i)
+            const item = hoverItemAt(i)
             if (!item)
                 continue
 
@@ -972,11 +1011,11 @@ Item {
 
         magnificationExtraPrimary = magnificationActive ? totalExtra : 0
         const targetIndex = magnificationActive ? closestIndex : hoveredIndex
-        const targetItem = targetIndex >= 0 ? appRepeater.itemAt(targetIndex) : null
-        pointerTargetTaskKey = targetItem ? targetItem.taskKey : ""
-        const liftedItem = liftActive && hoveredIndex >= 0 ? appRepeater.itemAt(hoveredIndex) : null
+        const targetItem = targetIndex >= 0 ? hoverItemAt(targetIndex) : null
+        pointerTargetTaskKey = hoverItemKey(targetItem)
+        const liftedItem = liftActive && hoveredIndex >= 0 ? hoverItemAt(hoveredIndex) : null
         updateDelegateTransforms(totalExtra, slotPitch,
-                                 liftedItem ? liftedItem.objectName : "",
+                                 liftedItem ? (liftedItem.hoverKey || liftedItem.objectName) : "",
                                  computedScales, computedExtras, computedPrefixes)
         scheduleInputRegionUpdate()
         refreshVisibleTooltip()
@@ -1026,6 +1065,23 @@ Item {
                 item.visualOffsetX = item.objectName === liftedKey ? crossOffset(liftOffsetY) : 0
             item.dragScale = dragging && i === draggedSourceIndex ? reorderScale : 1
             item.dragging = i === draggedSourceIndex
+        }
+
+        const appExtra = count > 0 ? (computedPrefixes[count - 1] || 0)
+            + (computedExtras[count - 1] || 0) : 0
+        minimizedDivider.visualOffset = appExtra - totalExtra / 2
+        for (var m = 0; m < minimizedRepeater.count; ++m) {
+            const tile = minimizedRepeater.itemAt(m)
+            if (!tile)
+                continue
+            const index = count + m
+            const tileExtra = computedExtras[index] || 0
+            const tileOffset = (computedPrefixes[index] || 0) + tileExtra / 2 - totalExtra / 2
+            tile.magnificationScale = dragging ? 1 : (computedScales[index] || 1)
+            tile.visualOffsetX = vertical ? (tile.hoverKey === liftedKey ? crossOffset(liftOffsetY) : 0)
+                                          : tileOffset
+            tile.visualOffsetY = vertical ? tileOffset
+                : (!dragging && tile.hoverKey === liftedKey ? crossOffset(liftOffsetY) : 0)
         }
     }
 

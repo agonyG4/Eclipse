@@ -101,6 +101,15 @@ QString DockWindowPreviewService::imageUrl(const QString &windowId) const
         .arg(encoded).arg(m_currentGeneration).arg(revision);
 }
 
+QSize DockWindowPreviewService::imageSize(const QString &windowId) const
+{
+    QMutexLocker lock(&m_mutex);
+    const auto it = m_cache.constFind(windowId);
+    if (it == m_cache.constEnd() || it->generation != m_currentGeneration)
+        return {};
+    return it->image.size();
+}
+
 void DockWindowPreviewService::reconcileLiveWindowIds(const QStringList &windowIds)
 {
     const QSet<QString> live(windowIds.cbegin(), windowIds.cend());

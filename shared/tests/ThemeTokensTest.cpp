@@ -3,6 +3,8 @@
 
 #include <QFile>
 #include <QFileInfo>
+#include <QFont>
+#include <QFontInfo>
 #include <QDir>
 #include <QGuiApplication>
 #include <QHash>
@@ -59,6 +61,11 @@ private slots:
     void catalogValidatesAndFlattensAllowedTokens();
     void catalogKeepsValidPartialValuesAndRejectsUnknownOrInvalidValues();
     void controllerReloadsManifestReplacementAndRecovery();
+    void fontPreferencesPersistOverrideAndReset();
+    void semanticTypographyResolvesInheritanceAndScale();
+    void semanticQmlTextPropagates();
+    void typographyTransactionsPropagateAndPreserveOtherWriters();
+    void typographyRejectsMalformedWritesAndKeepsUnavailableFamilies();
     void componentUrlsAreOptedInVersionedAndLiveReloaded();
     void qmlBindingsResolveLiveTokensAndWorkWithoutController();
     void componentLoaderKeepsFallbackAndSwitchesExternalSources();
@@ -152,6 +159,144 @@ void ThemeTokensTest::catalogKeepsValidPartialValuesAndRejectsUnknownOrInvalidVa
     QCOMPARE(tokens.value(QStringLiteral("animationFast")).toInt(), 700);
 }
 
+void ThemeTokensTest::fontPreferencesPersistOverrideAndReset()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = directory.filePath(QStringLiteral("theme.json"));
+    ThemeController controller(path);
+    QCOMPARE(controller.styleTokens().value(QStringLiteral("fontFamily")).toString(),
+             QFontInfo(QFont(QStringLiteral("sans-serif"))).family());
+
+    const QString installed = QFontInfo(QFont(QStringLiteral("sans-serif"))).family();
+    QVERIFY(controller.availableFontFamilies().contains(installed));
+    controller.setFontFamilyPreference(QStringLiteral("fontFamily"), installed);
+    controller.setFontSizePreference(QStringLiteral("fontSizeNormal"), 15);
+    QCOMPARE(controller.styleTokens().value(QStringLiteral("fontFamily")).toString(), installed);
+    QCOMPARE(controller.styleTokens().value(QStringLiteral("fontSizeNormal")).toInt(), 15);
+    QCOMPARE(controller.fontPreferences().value(QStringLiteral("fontFamily")).toString(), installed);
+    controller.setFontFamilyPreference(QStringLiteral("monoFontFamily"), QStringLiteral("missing/untrusted"));
+    QVERIFY(!controller.fontPreferences().contains(QStringLiteral("monoFontFamily")));
+    controller.setFontSizePreference(QStringLiteral("fontSizeTitle"), 500);
+    QVERIFY(!controller.fontPreferences().contains(QStringLiteral("fontSizeTitle")));
+
+    ThemeController restored(path);
+    QCOMPARE(restored.fontPreferences().value(QStringLiteral("fontFamily")).toString(), installed);
+    QCOMPARE(restored.fontPreferences().value(QStringLiteral("fontSizeNormal")).toInt(), 15);
+    restored.resetFontPreferences();
+    QCOMPARE(restored.styleTokens().value(QStringLiteral("fontFamily")).toString(), installed);
+    QCOMPARE(restored.fontPreferences().size(), 0);
+    QVERIFY(!QFileInfo::exists(path));
+    QFile config(directory.filePath("typography.json"));
+    QVERIFY(config.open(QIODevice::ReadOnly));
+    QVERIFY(QJsonDocument::fromJson(config.readAll()).object().value("preferences").toObject().isEmpty());
+}
+
+void ThemeTokensTest::semanticQmlTextPropagates()
+{
+    QTemporaryDir dir;
+    ThemeController controller(dir.filePath("theme.json"));
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(ASTREA_QML_IMPORT_PATH));
+    engine.rootContext()->setContextProperty("ThemeController", &controller);
+    QQmlComponent component(&engine);
+    component.setData("import QtQuick\nimport Astrea.Shared\nItem { "
+        "BodyText { objectName: 'body'; text: 'Text scales independently' } "
+        "TitleText { objectName: 'title'; text: 'Heading' } "
+        "MonoText { objectName: 'mono'; text: '0123456789' } }", QUrl());
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    std::unique_ptr<QObject> item(component.create());
+    QVERIFY2(item, qPrintable(component.errorString()));
+    QObject *body = item->findChild<QObject *>("body");
+    QObject *title = item->findChild<QObject *>("title");
+    QObject *mono = item->findChild<QObject *>("mono");
+    QVERIFY(body && title && mono);
+    QCOMPARE(body->property("font").value<QFont>().pixelSize(), 14);
+    const QString monoFamily = mono->property("font").value<QFont>().family();
+    const QString primary = QFontInfo(QFont("serif")).family();
+    controller.setFontFamilyPreference("fontFamily", primary);
+    QTRY_COMPARE(body->property("font").value<QFont>().family(), primary);
+    QTRY_COMPARE(title->property("font").value<QFont>().family(), primary);
+    QCOMPARE(mono->property("font").value<QFont>().family(), monoFamily);
+    QVERIFY(QMetaObject::invokeMethod(&controller, "setTextScale", Q_ARG(double, 2.0)));
+    QTRY_COMPARE(body->property("font").value<QFont>().pixelSize(), 28);
+    QTRY_COMPARE(title->property("font").value<QFont>().pixelSize(), 36);
+}
+
+void ThemeTokensTest::semanticTypographyResolvesInheritanceAndScale()
+{
+    QTemporaryDir dir;
+    const QString path = dir.filePath("theme.json");
+    const QString id = "semantic-typography";
+    QVERIFY(writeJson(dir.filePath("navigation-icons.json"), {{"visual_theme", id}}));
+    QVERIFY(writeJson(packageManifestPath(id), packageManifest(id, {{"typography", QJsonObject{
+        {"fontFamily", "Theme Primary"}, {"fontFamilyText", "Theme Body"},
+        {"roles", QJsonObject{{"title", QJsonObject{{"pixelSize", 20}, {"weight", 300},
+            {"letterSpacing", 0.5}, {"lineHeight", 1.4}}}}}}}})));
+    ThemeController controller(path);
+    auto roles = [&] { return controller.property("typography").toMap(); };
+    QCOMPARE(roles().value("body").toMap().value("family").toString(), QString("Theme Body"));
+    QCOMPARE(roles().value("title").toMap().value("pixelSize").toInt(), 20);
+    QCOMPARE(roles().value("title").toMap().value("weight").toInt(), 300);
+    const QString primary = QFontInfo(QFont("sans-serif")).family();
+    controller.setFontFamilyPreference("fontFamily", primary);
+    QCOMPARE(roles().value("body").toMap().value("family").toString(), primary);
+    QCOMPARE(roles().value("display").toMap().value("family").toString(), primary);
+    controller.setFontFamilyPreference("fontFamilyText", "");
+    const int iconSize = controller.styleTokens().value("fontSizeIconLarge", 22).toInt();
+    QVERIFY(QMetaObject::invokeMethod(&controller, "setTextScale", Q_ARG(double, 1.5)));
+    QCOMPARE(roles().value("title").toMap().value("pixelSize").toInt(), 30);
+    QCOMPARE(roles().value("body").toMap().value("pixelSize").toInt(), 21);
+    QCOMPARE(controller.styleTokens().value("fontSizeIconLarge", 22).toInt(), iconSize);
+    QCOMPARE(controller.styleTokens().value("fontSizeNormal").toInt(), 18);
+    QVERIFY(QMetaObject::invokeMethod(&controller, "setTextScale", Q_ARG(double, 9.0)));
+    QCOMPARE(controller.property("textScale").toDouble(), 1.5);
+}
+
+void ThemeTokensTest::typographyTransactionsPropagateAndPreserveOtherWriters()
+{
+    QTemporaryDir dir;
+    const QString path = dir.filePath("theme.json");
+    QVERIFY(writeJson(path, {{"accent", "#123456"}, {"unknown", 42}}));
+    ThemeController first(path), second(path);
+    const QString primary = QFontInfo(QFont("sans-serif")).family();
+    first.setFontFamilyPreference("fontFamily", primary);
+    second.setFontSizePreference("fontSizeTitle", 23);
+    first.reload();
+    QCOMPARE(first.fontPreferences().value("fontFamily").toString(), primary);
+    QCOMPARE(first.fontPreferences().value("fontSizeTitle").toInt(), 23);
+    QVERIFY(QMetaObject::invokeMethod(&second, "setTextScale", Q_ARG(double, 1.25)));
+    QTRY_COMPARE_WITH_TIMEOUT(first.property("textScale").toDouble(), 1.25, 3000);
+    QFile original(path);
+    QVERIFY(original.open(QIODevice::ReadOnly));
+    const auto object = QJsonDocument::fromJson(original.readAll()).object();
+    QCOMPARE(object, QJsonObject({{"accent", "#123456"}, {"unknown", 42}}));
+    second.resetFontPreferences();
+    QTRY_VERIFY_WITH_TIMEOUT(first.fontPreferences().isEmpty(), 3000);
+    QCOMPARE(first.property("textScale").toDouble(), 1.0);
+}
+
+void ThemeTokensTest::typographyRejectsMalformedWritesAndKeepsUnavailableFamilies()
+{
+    QTemporaryDir dir;
+    const QString path = dir.filePath("theme.json");
+    QVERIFY(writeJson(dir.filePath("typography.json"), {{"schema", 1}, {"preferences", QJsonObject{
+        {"fontFamily", "Temporarily Uninstalled Font"}, {"textScale", -1},
+        {"roles", QJsonObject{{"body", QJsonObject{{"pixelSize", -3}, {"weight", 10000}}}}}}}}));
+    ThemeController controller(path);
+    QCOMPARE(controller.fontPreferences().value("fontFamily").toString(), QString("Temporarily Uninstalled Font"));
+    QCOMPARE(controller.property("typography").toMap().value("body").toMap().value("pixelSize").toInt(), 14);
+    QFile broken(dir.filePath("typography.json"));
+    QVERIFY(broken.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    broken.write("{broken");
+    broken.close();
+    controller.setFontSizePreference("fontSizeTitle", 25);
+    QVERIFY(!controller.fontPreferences().contains("fontSizeTitle"));
+    QVERIFY(!controller.property("typographyError").toString().isEmpty());
+    QVERIFY(broken.open(QIODevice::ReadOnly));
+    QCOMPARE(broken.readAll(), QByteArray("{broken"));
+}
+
 void ThemeTokensTest::controllerReloadsManifestReplacementAndRecovery()
 {
     const QString id = QStringLiteral("watch-test");
@@ -165,6 +310,10 @@ void ThemeTokensTest::controllerReloadsManifestReplacementAndRecovery()
     ThemeController controller(configPath(QStringLiteral("theme.json")));
     QCOMPARE(controller.visualTheme(), id);
     QCOMPARE(controller.styleTokens().value(QStringLiteral("accent")).toString(), QStringLiteral("#102030"));
+    QCOMPARE(controller.styleTokens().value(QStringLiteral("fontFamily")).toString(),
+             QFontInfo(QFont(QStringLiteral("sans-serif"))).family());
+    QCOMPARE(controller.styleTokens().value(QStringLiteral("monoFontFamily")).toString(),
+             QFontInfo(QFont(QStringLiteral("monospace"))).family());
 
     for (const QString &color : {QStringLiteral("#203040"), QStringLiteral("#304050")}) {
         QVERIFY(replaceJson(manifestPath, packageManifest(id,

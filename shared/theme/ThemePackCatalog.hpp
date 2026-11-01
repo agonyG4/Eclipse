@@ -1,4 +1,5 @@
 #pragma once
+#include "theme/Typography.hpp"
 
 #include <QColor>
 #include <QDir>
@@ -303,6 +304,8 @@ inline QVariantMap styleTokens(const QString &id)
             cleaned.insert(key, font);
     }
     copyNumbers(typography, fontSizes, 1, 96, true);
+    const auto roles = Astrea::Typography::validatedRoles(typography.value(QStringLiteral("roles")).toObject().toVariantMap());
+    if (!roles.isEmpty()) cleaned.insert(QStringLiteral("typographyRoles"), roles);
 
     const QJsonValue legacyAnimation = style.value(QStringLiteral("animationFast"));
     if (legacyAnimation.isDouble()) {

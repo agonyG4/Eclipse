@@ -24,6 +24,10 @@ class ThemeController final : public QObject {
     Q_PROPERTY(QString visualTheme READ visualTheme NOTIFY visualThemeChanged)
     Q_PROPERTY(int themeComponentsRevision READ themeComponentsRevision NOTIFY themeComponentsRevisionChanged)
     Q_PROPERTY(QVariantMap styleTokens READ styleTokens NOTIFY visualThemeChanged)
+    Q_PROPERTY(QVariantMap typography READ typography NOTIFY visualThemeChanged)
+    Q_PROPERTY(double textScale READ textScale NOTIFY visualThemeChanged)
+    Q_PROPERTY(QString typographyError READ typographyError NOTIFY typographyErrorChanged)
+    Q_PROPERTY(QVariantMap fontPreferences READ fontPreferences NOTIFY fontPreferencesChanged)
     Q_PROPERTY(QString iconAppearance READ iconAppearance NOTIFY iconAppearanceChanged)
     Q_PROPERTY(QString accentHex READ accentHex NOTIFY accentHexChanged)
     Q_PROPERTY(int audioOsdStyle READ audioOsdStyle WRITE setAudioOsdStyle NOTIFY audioOsdStyleChanged)
@@ -52,6 +56,16 @@ public:
     int themeComponentsRevision() const { return m_themeComponentsRevision; }
     Q_INVOKABLE QUrl themedComponent(const QString &name) const;
     QVariantMap styleTokens() const { return m_styleTokens; }
+    QVariantMap typography() const { return m_styleTokens.value(QStringLiteral("typographyRoles")).toMap(); }
+    double textScale() const { return m_styleTokens.value(QStringLiteral("textScale"), 1.0).toDouble(); }
+    QString typographyError() const { return m_typographyError; }
+    Q_INVOKABLE void setTextScale(double scale);
+    Q_INVOKABLE void setTypographyPreference(const QString &role, const QString &field, const QVariant &value);
+    QVariantMap fontPreferences() const { return m_fontPreferences; }
+    Q_INVOKABLE QStringList availableFontFamilies() const;
+    Q_INVOKABLE void setFontFamilyPreference(const QString &key, const QString &family);
+    Q_INVOKABLE void setFontSizePreference(const QString &key, int pixelSize);
+    Q_INVOKABLE void resetFontPreferences();
     Q_INVOKABLE QUrl themedNavigationIcon(const QString &key) const;
     void setIconTheme(const QString &value);
     QString iconAppearance() const;
@@ -77,6 +91,8 @@ signals:
     void navigationIconWeightChanged();
     void navigationIconOverridesChanged();
     void visualThemeChanged();
+    void fontPreferencesChanged();
+    void typographyErrorChanged();
     void themeComponentsRevisionChanged();
     void iconAppearanceChanged();
     void accentHexChanged();
@@ -96,6 +112,9 @@ private:
     void scheduleReload();
     void updateWatchPaths();
     void reloadNavigationIcons();
+    QString typographyPath() const;
+    void reloadTypography();
+    void patchTypography(const QString &field, const QVariant &value, bool reset = false);
 
     QString m_configPath;
     ColorSchemeProvider m_colorSchemeProvider;
@@ -114,6 +133,9 @@ private:
     QString m_visualTheme = QStringLiteral("astrea");
     QString m_requestedVisualTheme = QStringLiteral("astrea");
     QVariantMap m_styleTokens;
+    QVariantMap m_fontPreferences;
+    QVariantMap m_legacyFontPreferences;
+    QString m_typographyError;
     QString m_iconAppearance = QStringLiteral("default");
     QString m_accentHex = QStringLiteral("#0a84ff");
     int m_audioOsdStyle = 0;

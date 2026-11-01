@@ -1,4 +1,5 @@
 #include "theme/ThemeController.hpp"
+#include "theme/Typography.hpp"
 #include "theme/ThemePackCatalog.hpp"
 #include "theme/IconOverrides.hpp"
 
@@ -6,6 +7,9 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QFont>
+#include <QFontDatabase>
+#include <QFontInfo>
 #include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -16,12 +20,22 @@
 #include <QUrlQuery>
 
 #include <cerrno>
+#include <cmath>
 #include <fcntl.h>
 #include <sys/file.h>
 #include <unistd.h>
 #include <utility>
 
 namespace {
+
+// Resolve generic names through Qt's platform font matcher (Fontconfig on Linux),
+// rather than treating the application's default font as a named family.
+QString systemFontFamily(const QString &genericFamily)
+{
+    if (!qobject_cast<QGuiApplication *>(QCoreApplication::instance()))
+        return {};
+    return QFontInfo(QFont(genericFamily)).family();
+}
 
 class ConfigFileLock final {
 public:
@@ -218,6 +232,8 @@ void ThemeController::applyConfig(const QVariantMap &config)
         setAccentHex(value(QStringLiteral("accent")).toString());
     if (value(QStringLiteral("audio_osd_style")).isValid())
         setAudioOsdStyle(value(QStringLiteral("audio_osd_style")).toInt());
+    m_legacyFontPreferences = Astrea::Typography::validatedPreferences(value(QStringLiteral("font_preferences")).toMap());
+
 }
 
 void ThemeController::reload()
@@ -232,6 +248,7 @@ void ThemeController::reload()
         if (error.error == QJsonParseError::NoError && document.isObject())
             applyConfig(document.object().toVariantMap());
     }
+    reloadTypography();
     reloadNavigationIcons();
     ++m_themeComponentsRevision;
     emit themeComponentsRevisionChanged();
@@ -281,6 +298,86 @@ void ThemeController::save()
             return;
     }
     updateWatchPaths();
+}
+
+QStringList ThemeController::availableFontFamilies() const
+{
+    return QFontDatabase::families();
+}
+
+QString ThemeController::typographyPath() const
+{
+    return QFileInfo(m_configPath).absoluteDir().filePath(QStringLiteral("typography.json"));
+}
+
+void ThemeController::reloadTypography()
+{
+    QVariantMap next = m_legacyFontPreferences;
+    QFile file(typographyPath());
+    if (file.exists()) {
+        if (!file.open(QIODevice::ReadOnly)) return;
+        QJsonParseError error;
+        const auto document = QJsonDocument::fromJson(file.readAll(), &error);
+        const auto object = document.object();
+        if (error.error != QJsonParseError::NoError || !document.isObject()
+            || object.value("schema").toInt() != 1 || !object.value("preferences").isObject()) return;
+        next = Astrea::Typography::validatedPreferences(object.value("preferences").toObject().toVariantMap());
+    }
+    if (next != m_fontPreferences) {
+        m_fontPreferences = next;
+        emit fontPreferencesChanged();
+    }
+}
+
+void ThemeController::patchTypography(const QString &field, const QVariant &value, bool reset)
+{
+    QString error;
+    const bool saved = Astrea::Typography::patchPreferences(typographyPath(), m_legacyFontPreferences,
+                                                           field, value, reset, &error);
+    if (m_typographyError != error) {
+        m_typographyError = error;
+        emit typographyErrorChanged();
+    }
+    if (saved) {
+        reloadTypography();
+        reloadNavigationIcons();
+        updateWatchPaths();
+    }
+}
+
+void ThemeController::setFontFamilyPreference(const QString &key, const QString &family)
+{
+    if (!QStringList{"fontFamily", "fontFamilyText", "fontFamilyDisplay", "monoFontFamily"}.contains(key)
+        || (!family.isEmpty() && !QFontDatabase::families().contains(family))) return;
+    patchTypography(key, family.isEmpty() ? QVariant{} : QVariant(family));
+}
+
+void ThemeController::setFontSizePreference(const QString &key, int size)
+{
+    if (key != "fontSizeNormal" && key != "fontSizeTitle") return;
+    if (size != 0 && (size < 9 || size > 96)) return;
+    patchTypography(key, size == 0 ? QVariant{} : QVariant(size));
+}
+
+void ThemeController::setTextScale(double scale)
+{
+    if (!std::isfinite(scale) || scale < 0.75 || scale > 2.0) return;
+    patchTypography("textScale", scale == 1.0 ? QVariant{} : QVariant(scale));
+}
+
+void ThemeController::setTypographyPreference(const QString &role, const QString &field, const QVariant &value)
+{
+    if (!Astrea::Typography::roleNames().contains(role)
+        || !QStringList{"family", "pixelSize", "weight", "letterSpacing", "lineHeight"}.contains(field)) return;
+    const bool clear = !value.isValid() || value.isNull() || (value.metaType().id() == QMetaType::QString && value.toString().isEmpty());
+    if (!clear && !Astrea::Typography::validatedRoles({{role, QVariantMap{{field, value}}}})
+            .value(role).toMap().contains(field)) return;
+    patchTypography(role + "." + field, clear ? QVariant{} : value);
+}
+
+void ThemeController::resetFontPreferences()
+{
+    patchTypography({}, {}, true);
 }
 
 QString ThemeController::normalizedThemePreference(const QString &value)
@@ -442,7 +539,9 @@ void ThemeController::reloadNavigationIcons()
     m_requestedVisualTheme = requestedVisualTheme;
     const QString nextVisualTheme = Astrea::ThemePacks::find(requestedVisualTheme).has_value()
         ? requestedVisualTheme : QStringLiteral("astrea");
-    const QVariantMap nextTokens = Astrea::ThemePacks::styleTokens(nextVisualTheme);
+    QVariantMap nextTokens = Astrea::ThemePacks::styleTokens(nextVisualTheme);
+    nextTokens = Astrea::Typography::resolve(nextTokens, m_fontPreferences,
+        systemFontFamily(QStringLiteral("sans-serif")), systemFontFamily(QStringLiteral("monospace")));
     if (nextVisualTheme != m_visualTheme || nextTokens != m_styleTokens) {
         m_visualTheme = nextVisualTheme;
         m_styleTokens = nextTokens;
@@ -460,6 +559,8 @@ void ThemeController::updateWatchPaths()
     const QFileInfo fileInfo(m_configPath);
     if (fileInfo.exists() && fileInfo.isFile())
         m_watcher.addPath(fileInfo.absoluteFilePath());
+    if (QFileInfo::exists(typographyPath()))
+        m_watcher.addPath(typographyPath());
     const QString iconsPath = fileInfo.absoluteDir()
         .filePath(QStringLiteral("navigation-icons.json"));
     if (QFileInfo::exists(iconsPath))

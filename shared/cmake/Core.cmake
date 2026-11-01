@@ -9,6 +9,8 @@ add_library(astrea-shared-core STATIC
     launch/ApplicationLauncher.hpp
     theme/ThemeController.cpp
     theme/ThemeController.hpp
+    theme/Typography.cpp
+    theme/Typography.hpp
     screenshot/ScreenshotConfiguration.cpp
     screenshot/ScreenshotConfiguration.hpp
     icons/AstreaIconTheme.cpp
@@ -84,6 +86,14 @@ qt_add_qml_module(astrea-shared-core
     QML_FILES
         qml/AstreaAppIcon.qml
         qml/ThemeTokens.qml
+        qml/Typography.qml
+        qml/TypographyText.qml
+        qml/DisplayText.qml
+        qml/TitleText.qml
+        qml/BodyText.qml
+        qml/LabelText.qml
+        qml/CaptionText.qml
+        qml/MonoText.qml
         qml/ThemeComponentLoader.qml
         qml/ShellMaterialTheme.qml
 )

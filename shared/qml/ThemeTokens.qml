@@ -1,6 +1,8 @@
 import QtQuick
 
 QtObject {
+    id: root
+    readonly property Typography typography: Typography { state: root.state }
     property var state: typeof ThemeController === "undefined" ? null : ThemeController
     readonly property var overrides: state && state.styleTokens ? state.styleTokens : ({})
 

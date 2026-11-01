@@ -17,7 +17,7 @@ Rectangle {
     signal hovered()
 
     width: parent ? parent.width : 0
-    height: 36
+    height: Math.max(36, Math.ceil(theme.typography.role("label").pixelSize * theme.typography.role("label").lineHeight) + 16)
     radius: theme.shellRadiusMedium
     color: root.selected && root.enabled ? theme.shellHover
         : mouse.containsMouse && root.enabled ? theme.shellSeparator : "transparent"
@@ -75,7 +75,7 @@ Rectangle {
             color: mouse.containsMouse && root.enabled
                 ? theme.shellTextActive : theme.shellTextSecondary
             elide: Text.ElideRight
-            font { family: theme.fontFamily; pixelSize: theme.fontSizeBody; weight: Font.Medium }
+            font { family: theme.typography.role("label").family; pixelSize: theme.typography.role("label").pixelSize; weight: theme.typography.role("label").weight; letterSpacing: theme.typography.role("label").letterSpacing }
             Behavior on color { ColorAnimation { duration: theme.animationFast } }
         }
     }

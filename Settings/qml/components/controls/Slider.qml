@@ -276,8 +276,11 @@ QQC2.Slider {
             text: root.valueText
             color: Components.Theme.textPrimary
             opacity: root.enabled ? 1 : Components.Theme.opacityMuted
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeNormal
+            font.family: Components.Theme.typography.role("body").family
+            font.pixelSize: Components.Theme.typography.role("body").pixelSize
+            lineHeight: Components.Theme.typography.role("body").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
             font.features: { "tnum": 1 }
             elide: Text.ElideRight
         }
@@ -392,9 +395,12 @@ QQC2.Slider {
                 anchors.centerIn: parent
                 text: root.valueText
                 color: Components.Theme.textPrimary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall
-                font.weight: Components.Theme.fontWeightMedium
+                font.family: Components.Theme.typography.role("caption").family
+                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
+                font.weight: Components.Theme.typography.role("caption").weight
             }
         }
     }

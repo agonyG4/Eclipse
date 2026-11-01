@@ -206,7 +206,7 @@ Item {
                                 Layout.alignment: Qt.AlignCenter
                                 text: I18n.tr("apps.settings.pages.paper.wallpaper.text.preview_fail", "Preview Fail")
                                 font.family: Components.Theme.fontFamily
-                                font.pixelSize: 10
+                                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
                                 font.weight: Font.Medium
                                 color: Components.Theme.textSecondary
                             }
@@ -235,7 +235,7 @@ Item {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: I18n.tr("apps.settings.pages.paper.wallpaper.text.change", "Change")
                                 font.family: Components.Theme.fontFamily
-                                font.pixelSize: 11
+                                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
                                 font.weight: Font.Medium
                                 color: "#ffffff"
                             }
@@ -262,9 +262,12 @@ Item {
                         text: root.controller.currentDisplayName !== ""
                               ? root.controller.currentDisplayName
                               : I18n.tr("apps.settings.pages.paper.wallpaper.text.my_wallpaper", "My Wallpaper")
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeLarge
-                        font.weight: Components.Theme.fontWeightMedium
+                        font.family: Components.Theme.typography.role("label").family
+                        font.pixelSize: Components.Theme.typography.role("label").pixelSize
+                        lineHeight: Components.Theme.typography.role("label").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("label").letterSpacing
+                        font.weight: Components.Theme.typography.role("label").weight
                         color: Components.Theme.textPrimary
                         elide: Text.ElideRight
                     }
@@ -275,8 +278,11 @@ Item {
                         Text {
                             Layout.fillWidth: true
                             text: I18n.tr("apps.settings.pages.paper.wallpaper.text.show_on_all_workspaces", "Show on all workspaces")
-                            font.family: Components.Theme.fontFamily
-                            font.pixelSize: Components.Theme.fontSizeNormal
+                            font.family: Components.Theme.typography.role("body").family
+                            font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                            lineHeight: Components.Theme.typography.role("body").lineHeight
+                            lineHeightMode: Text.ProportionalHeight
+                            font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
                             color: Components.Theme.textPrimary
                         }
                         Controls.ToggleSwitch {
@@ -293,8 +299,11 @@ Item {
                         Text {
                             Layout.fillWidth: true
                             text: I18n.tr("apps.settings.pages.paper.wallpaper.text.use_blurred_wallpaper", "Use blurred wallpaper")
-                            font.family: Components.Theme.fontFamily
-                            font.pixelSize: Components.Theme.fontSizeNormal
+                            font.family: Components.Theme.typography.role("body").family
+                            font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                            lineHeight: Components.Theme.typography.role("body").lineHeight
+                            lineHeightMode: Text.ProportionalHeight
+                            font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
                             color: Components.Theme.textPrimary
                         }
                         Controls.ToggleSwitch {
@@ -416,7 +425,7 @@ Item {
             }
             text: root.controller.errorMessage
             font.family: Components.Theme.fontFamily
-            font.pixelSize: 11
+            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
             color: Components.Theme.textPrimary
             wrapMode: Text.WordWrap
         }
@@ -492,7 +501,7 @@ Item {
                 Layout.fillWidth: true
                 text: I18n.tr("apps.settings.pages.paper.wallpaper.text.name_this_wallpaper", "Name this wallpaper")
                 font.family: Components.Theme.fontFamily
-                font.pixelSize: 15
+                font.pixelSize: Components.Theme.typography.role("title").pixelSize
                 font.weight: Font.Medium
                 color: Components.Theme.textPrimary
             }
@@ -599,7 +608,7 @@ Item {
                 text: I18n.tr("apps.settings.pages.paper.wallpaper.text.remove_named_wallpaper",
                               "Remove “%1”?").replace("%1", root.pendingRemovalName)
                 font.family: Components.Theme.fontFamily
-                font.pixelSize: 15
+                font.pixelSize: Components.Theme.typography.role("title").pixelSize
                 font.weight: Font.Medium
                 color: Components.Theme.textPrimary
                 wrapMode: Text.WordWrap
@@ -610,7 +619,7 @@ Item {
                 text: I18n.tr("apps.settings.pages.paper.wallpaper.text.remove_help",
                               "This removes it from the Astrea managed wallpaper library.")
                 font.family: Components.Theme.fontFamily
-                font.pixelSize: 12
+                font.pixelSize: Components.Theme.typography.role("body").pixelSize
                 color: Components.Theme.textSecondary
                 wrapMode: Text.WordWrap
             }
@@ -620,7 +629,7 @@ Item {
                 text: I18n.tr("apps.settings.pages.paper.wallpaper.text.original_not_affected",
                               "Your original image is not affected.")
                 font.family: Components.Theme.fontFamily
-                font.pixelSize: 12
+                font.pixelSize: Components.Theme.typography.role("body").pixelSize
                 color: Components.Theme.textSecondary
                 wrapMode: Text.WordWrap
             }
@@ -690,7 +699,7 @@ Item {
                 Layout.fillWidth: true
                 text: section.title
                 font.family: Components.Theme.fontFamily
-                font.pixelSize: 13
+                font.pixelSize: Components.Theme.typography.role("label").pixelSize
                 font.weight: Font.Medium
                 color: Components.Theme.textPrimary
             }
@@ -760,7 +769,7 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: I18n.tr("apps.settings.pages.paper.wallpaper.text.no_wallpapers_found", "No wallpapers found")
                 font.family: Components.Theme.fontFamily
-                font.pixelSize: 12
+                font.pixelSize: Components.Theme.typography.role("body").pixelSize
                 color: Components.Theme.textSecondary
                 visible: section.wallpapers.length === 0
             }
@@ -838,7 +847,7 @@ Item {
                                 Layout.fillWidth: true
                                 text: modelData.displayName || I18n.tr("apps.settings.pages.paper.wallpaper.text.my_wallpaper", "My Wallpaper")
                                 font.family: Components.Theme.fontFamily
-                                font.pixelSize: 11
+                                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
                                 font.weight: Font.Medium
                                 color: Components.Theme.textPrimary
                                 elide: Text.ElideRight

@@ -8,7 +8,7 @@ Item {
     property string label: ""
     signal triggered()
     width: parent ? parent.width : 0
-    height: 32
+    height: Math.max(32, actionLabel.implicitHeight + 14)
 
     Rectangle {
         anchors.fill: parent
@@ -19,13 +19,16 @@ Item {
     }
 
     Text {
+        id: actionLabel
         anchors.left: parent.left
         anchors.leftMargin: 10
         anchors.verticalCenter: parent.verticalCenter
         text: root.label
         color: root.enabled ? theme.shellTextMain : theme.shellTextSecondary
         opacity: root.enabled ? 1 : 0.45
-        font.pixelSize: 13
+        font.family: theme.typography.role("label").family
+        font.pixelSize: theme.typography.role("label").pixelSize
+        font.weight: theme.typography.role("label").weight
     }
 
     MouseArea {

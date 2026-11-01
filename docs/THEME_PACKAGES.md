@@ -204,3 +204,91 @@ The running Shell reacts to manual JSON edits. Reopen Settings if the JSON
 was manually edited while its window was open. Settings UI actions preserve
 the entire `overrides` object when changing global theme and weight.
 
+
+
+## Astrea Typography System
+
+Borealis defines six semantic text roles. ThemeController resolves each role once
+and publishes the same effective map to every Eclipse process. Qt's platform font
+matcher (Fontconfig on Linux) handles unavailable families and glyph fallback.
+
+| Role | Default size | Default Qt weight | Line height |
+| --- | ---: | ---: | ---: |
+| display | 24 px | 600 | 1.2× |
+| title | 18 px | 500 | 1.2× |
+| body | 14 px | 400 | 1.4× |
+| label | 13 px | 500 | 1.2× |
+| caption | 11 px | 400 | 1.2× |
+| mono | 13 px | 400 | 1.2× |
+
+A theme may set primary/mono families and override individual roles:
+
+```json
+{
+  "style": {
+    "typography": {
+      "fontFamily": "Inter",
+      "monoFontFamily": "JetBrains Mono",
+      "roles": {
+        "title": { "pixelSize": 18, "weight": 500, "letterSpacing": -0.2, "lineHeight": 1.2 },
+        "body": { "pixelSize": 14, "weight": 400, "lineHeight": 1.4 }
+      }
+    }
+  }
+}
+```
+
+`roles` accepts `display`, `title`, `body`, `label`, `caption` and `mono`.
+Each supports `family` (the same validation as other families), integral
+`pixelSize` 1–96, integral Qt `weight` 1–1000, `letterSpacing` −5–20 px and
+proportional `lineHeight` 1–3. Values must be finite JSON numbers; invalid fields
+are ignored individually. Unspecified fields inherit Borealis. Legacy typography
+tokens remain supported: explicit semantic role sizes take precedence over their
+legacy equivalents; otherwise legacy metrics retain their compatibility defaults.
+Built-in text components choose semantic roles directly.
+
+Settings → Customization → Typography changes only user preferences, stored beside
+`theme.json` in `typography.json`:
+
+```json
+{
+  "schema": 1,
+  "preferences": {
+    "fontFamily": "Inter",
+    "monoFontFamily": "JetBrains Mono",
+    "textScale": 1.25,
+    "roles": { "caption": { "pixelSize": 12 } }
+  }
+}
+```
+
+User overrides win over theme values. Primary font changes are inherited by Body,
+Display and Title, including when the theme specified different families, unless
+the user overrides the corresponding family or individual role. Mono remains
+independent. Scale is 0.75–2.0 and is applied once after resolving base sizes; it
+does not scale icons, borders, radii or spacing. Advanced sizes are base pixels,
+not already-scaled pixels.
+
+Preferences retain unavailable families, letting Qt supply fallback without
+forgetting the user's choice. Per-field locked, atomic writes preserve other
+writers and extension keys. Existing `theme.json.font_preferences` are read until
+the first typography write migrates them. Reset removes known overrides and
+retains an empty preference document so old overrides do not return; neither
+operation changes the theme package or writes `theme.json`. Malformed documents
+are preserved and the Settings page reports persistence errors.
+
+QML consumers import `Astrea.Shared` and use `DisplayText`, `TitleText`, `BodyText`,
+`LabelText`, `CaptionText` or `MonoText`, setting presentation properties such as
+text, color, wrapMode and layout constraints normally. `Typography.role(name)`
+returns family, scaled pixelSize, weight, letterSpacing and lineHeight for custom
+controls. `TypographyText.typographyRole` allows dynamic role selection.
+
+The migration covers Settings text and form/control primitives, Spotlight search
+and results, Shell/Bar text adapters and menus, Dock badges and tooltips. AltTab
+contains icon tiles rather than text labels. Paper's present QML is a wallpaper
+surface; Downloads has no QML typography. This checkout does not contain an
+Explorer application to migrate. Remaining literal text sizes in Settings are
+icon/symbol glyphs and miniature material demonstrations. Dock preview close
+symbols and theme-example search glyphs also intentionally keep icon metrics.
+Theme-supplied replacement QML must adopt the semantic components or tokens to
+participate in the contract.

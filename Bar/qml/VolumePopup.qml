@@ -53,7 +53,7 @@ PopupCard {
                     : root.volume < 34 ? "󰕿"
                     : root.volume < 67 ? "󰖀" : "󰕾"
                 color: root.muted ? theme.shellIconWarning : theme.shellIconMain
-                font { family: theme.iconFontFamily; pixelSize: theme.fontSizeBody }
+                font { family: theme.iconFontFamily; pixelSize: theme.fontSizeIcon }
             }
             VolumeStateIcon {
                 id: appleMute
@@ -89,7 +89,7 @@ PopupCard {
             text: "󰕿"
             visible: !appleVolumeLow.hasIcon
             color: Qt.rgba(1, 1, 1, 0.30)
-            font { family: theme.iconFontFamily; pixelSize: theme.fontSizeTitle }
+            font { family: theme.iconFontFamily; pixelSize: theme.fontSizeIcon }
         }
 
         AppleIcon {
@@ -203,7 +203,7 @@ PopupCard {
             text: "󰕾"
             visible: !appleVolumeHigh.hasIcon
             color: Qt.rgba(1, 1, 1, 0.30)
-            font { family: theme.iconFontFamily; pixelSize: theme.fontSizeTitle }
+            font { family: theme.iconFontFamily; pixelSize: theme.fontSizeIcon }
         }
         AppleIcon {
             id: appleVolumeHigh

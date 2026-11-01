@@ -478,7 +478,7 @@ FocusScope {
         leftPadding: Components.Theme.spacingXLarge
         verticalAlignment: Text.AlignVCenter
         textColor: Components.Theme.textSecondary
-        font.pixelSize: Components.Theme.fontSizeNormal
+        typographyRole: "body"
     }
 
     component DeviceRow: Item {
@@ -561,8 +561,8 @@ FocusScope {
                     text: deviceRow.deviceName
                     textFormat: Text.PlainText
                     textColor: Components.Theme.textPrimary
-                    font.pixelSize: Components.Theme.fontSizeNormal
-                    font.weight: Components.Theme.fontWeightMedium
+                    typographyRole: "body"
+                    font.weight: Components.Theme.typography.role("body").weight
                     elide: Text.ElideRight
                 }
                 Typography.TextLabel {
@@ -570,7 +570,7 @@ FocusScope {
                     text: deviceRow.deviceDetail
                     textFormat: Text.PlainText
                     textColor: Components.Theme.textSecondary
-                    font.pixelSize: Components.Theme.fontSizeSmall
+                    typographyRole: "caption"
                     elide: Text.ElideRight
                 }
                 Rectangle {
@@ -668,13 +668,13 @@ FocusScope {
                     Typography.TextLabel {
                         text: I18n.tr("settings.devices.picker_title", "Choose an icon")
                         textColor: Components.Theme.textPrimary
-                        font.pixelSize: Components.Theme.fontSizeLarge
-                        font.weight: Components.Theme.fontWeightDemiBold
+                        typographyRole: "label"
+                        font.weight: Components.Theme.typography.role("label").weight
                     }
                     Typography.TextLabel {
                         text: root.pickerDeviceName
                         textColor: Components.Theme.textSecondary
-                        font.pixelSize: Components.Theme.fontSizeSmall
+                        typographyRole: "caption"
                         elide: Text.ElideRight
                         Layout.fillWidth: true
                     }
@@ -798,8 +798,11 @@ FocusScope {
                                     text: modelData.title
                                     color: root.pickerCategory === modelData.id
                                         ? Components.Theme.accent : Components.Theme.textSecondary
-                                    font.family: Components.Theme.fontFamily
-                                    font.pixelSize: Components.Theme.fontSizeSmall
+                                    font.family: Components.Theme.typography.role("caption").family
+                                    font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                    lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                    lineHeightMode: Text.ProportionalHeight
+                                    font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                                     font.weight: root.pickerCategory === modelData.id
                                         ? Font.DemiBold : Font.Medium
                                     horizontalAlignment: Text.AlignHCenter
@@ -917,8 +920,11 @@ FocusScope {
                                 height: 28
                                 text: modelData.name
                                 color: chosen ? Components.Theme.textPrimary : Components.Theme.textSecondary
-                                font.family: Components.Theme.fontFamily
-                                font.pixelSize: Components.Theme.fontSizeTiny
+                                font.family: Components.Theme.typography.role("caption").family
+                                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                lineHeightMode: Text.ProportionalHeight
+                                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
                                 wrapMode: Text.WordWrap

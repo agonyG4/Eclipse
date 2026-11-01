@@ -161,9 +161,12 @@ Item {
                 text: root.deviceTitle
                 textFormat: Text.PlainText
                 color: Components.Theme.textPrimary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeNormal
-                font.weight: Components.Theme.fontWeightMedium
+                font.family: Components.Theme.typography.role("body").family
+                font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                lineHeight: Components.Theme.typography.role("body").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
+                font.weight: Components.Theme.typography.role("body").weight
                 elide: Text.ElideRight
             }
 
@@ -174,8 +177,11 @@ Item {
                 text: root.deviceDetail
                 textFormat: Text.PlainText
                 color: Components.Theme.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall
+                font.family: Components.Theme.typography.role("caption").family
+                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                 elide: Text.ElideRight
             }
         }

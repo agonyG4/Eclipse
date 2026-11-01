@@ -80,9 +80,12 @@ Item {
                 visible: root.showSearchIcon
                 text: root.iconText
                 color: field.activeFocus ? root.accent : root.textTertiary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeLarge
-                font.weight: Components.Theme.fontWeightDemiBold
+                font.family: Components.Theme.typography.role("label").family
+                font.pixelSize: Components.Theme.typography.role("label").pixelSize
+                lineHeight: Components.Theme.typography.role("label").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.letterSpacing: Components.Theme.typography.role("label").letterSpacing
+                font.weight: Components.Theme.typography.role("label").weight
                 verticalAlignment: Text.AlignVCenter
                 Layout.alignment: Qt.AlignVCenter
 

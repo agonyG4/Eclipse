@@ -8,7 +8,7 @@ RowLayout {
 
     property var controller: null
     property color textColor: themeTokens.value("shellTextSecondary", "#66FFFFFF")
-    property string fontFamily: "SF Pro Display"
+    property string fontFamily: themeTokens.typography.role("label").family
 
     Layout.maximumWidth: 68
     Layout.alignment: Qt.AlignVCenter
@@ -40,7 +40,7 @@ RowLayout {
         Layout.maximumWidth: 46
         text: root.controller && root.controller.weatherReady ? root.controller.weatherTemp + "\u00B0" : "--\u00B0"
         font.family: root.fontFamily
-        font.pixelSize: themeTokens.value("fontSizeIconLarge", 18)
+        font.pixelSize: themeTokens.typography.role("label").pixelSize
         font.weight: Font.Medium
         color: root.textColor
         elide: Text.ElideRight

@@ -9,11 +9,12 @@ Rectangle {
 
     readonly property color placeholderTextColor: themeTokens.value("shellTextSecondary", "#66FFFFFF")
     readonly property bool hasQuery: searchInput.text.length > 0
-    readonly property string fontFamily: themeTokens.value("fontFamily",
-        SpotlightController ? SpotlightController.fontFamily : "SF Pro Display")
+    readonly property var titleStyle: themeTokens.typography.role("title")
+    readonly property string fontFamily: titleStyle.family
+
 
     width: 600
-    height: hasQuery ? Math.min(contentColumn.implicitHeight + 28, 450) : 58
+    height: hasQuery ? Math.min(contentColumn.implicitHeight + 28, 450) : Math.max(58, titleStyle.pixelSize * titleStyle.lineHeight + 28)
     radius: themeTokens.value("spotlightRadius", 24)
     color: themeTokens.value("shellBackground", "#80343434")
     border.color: themeTokens.value("shellBorder", "#33FFFFFF")
@@ -44,14 +45,14 @@ Rectangle {
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 30
+            Layout.preferredHeight: Math.max(30, root.titleStyle.pixelSize * root.titleStyle.lineHeight)
             spacing: themeTokens.value("spacingMedium", 12)
 
             Text {
                 visible: !appleSearch.visible
                 text: "\u2315"
                 font.family: root.fontFamily
-                font.pixelSize: themeTokens.value("fontSizeHero", 24)
+                font.pixelSize: themeTokens.value("fontSizeIconLarge", 24)
                 color: themeTokens.value("shellTextLight", "#99FFFFFF")
                 Layout.leftMargin: 8
                 Layout.alignment: Qt.AlignVCenter
@@ -89,15 +90,16 @@ Rectangle {
 
             Item {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 30
+                Layout.preferredHeight: Math.max(30, root.titleStyle.pixelSize * root.titleStyle.lineHeight)
                 Layout.alignment: Qt.AlignVCenter
 
                 Text {
                     anchors.fill: parent
                     text: (AstreaI18n && AstreaI18n.messages && AstreaI18n.tr("spotlight.placeholder", "Spotlight Search")) || "Spotlight Search"
                     font.family: root.fontFamily
-                    font.pixelSize: themeTokens.value("fontSizeTitle", 22)
-                    font.weight: Font.Light
+                    font.pixelSize: root.titleStyle.pixelSize
+                    font.weight: root.titleStyle.weight
+                    font.letterSpacing: root.titleStyle.letterSpacing
                     color: root.placeholderTextColor
                     verticalAlignment: Text.AlignVCenter
                     visible: searchInput.text.length === 0
@@ -109,8 +111,9 @@ Rectangle {
                     objectName: "spotlightSearchInput"
                     anchors.fill: parent
                     font.family: root.fontFamily
-                    font.pixelSize: themeTokens.value("fontSizeTitle", 22)
-                    font.weight: Font.Light
+                    font.pixelSize: root.titleStyle.pixelSize
+                    font.weight: root.titleStyle.weight
+                    font.letterSpacing: root.titleStyle.letterSpacing
                     color: "white"
                     selectionColor: themeTokens.value("accent", "#407AFF")
                     selectedTextColor: themeTokens.value("accentForeground", "white")
@@ -155,14 +158,14 @@ Rectangle {
                 id: weatherChip
                 controller: SpotlightController
                 textColor: root.placeholderTextColor
-                fontFamily: root.fontFamily
+                fontFamily: themeTokens.typography.role("label").family
             }
         }
 
         SpotlightResultsList {
             id: resultsList
             queryText: searchInput.text
-            fontFamily: root.fontFamily
+            fontFamily: themeTokens.typography.role("body").family
             onLaunchRequested: function(index) {
                 SpotlightController.launch(index)
             }

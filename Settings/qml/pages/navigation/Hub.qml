@@ -98,9 +98,12 @@ Item {
                         text: root.translatedLabel(root.destination)
                         horizontalAlignment: Text.AlignHCenter
                         color: Components.Theme.textPrimary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeHeader
-                        font.weight: Components.Theme.fontWeightDemiBold
+                        font.family: Components.Theme.typography.role("display").family
+                        font.pixelSize: Components.Theme.typography.role("display").pixelSize
+                        lineHeight: Components.Theme.typography.role("display").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("display").letterSpacing
+                        font.weight: Components.Theme.typography.role("display").weight
                     }
 
                     Text {
@@ -109,8 +112,11 @@ Item {
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
                         color: Components.Theme.textSecondary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSubtitle
+                        font.family: Components.Theme.typography.role("title").family
+                        font.pixelSize: Components.Theme.typography.role("title").pixelSize
+                        lineHeight: Components.Theme.typography.role("title").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("title").letterSpacing
                         opacity: Components.Theme.opacitySecondary
                     }
                 }

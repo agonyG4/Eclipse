@@ -28,8 +28,8 @@ Item {
             Typography.DisplayLabel {
                 Layout.fillWidth: true
                 text: header.title
-                font.pixelSize: Components.Theme.fontSizeHero
-                font.weight: Components.Theme.fontWeightDemiBold
+                font.pixelSize: Components.Theme.typography.role("display").pixelSize
+                font.weight: Components.Theme.typography.role("display").weight
                 elide: Text.ElideRight
                 Accessible.role: Accessible.Heading
                 Accessible.name: text
@@ -39,7 +39,7 @@ Item {
                 visible: header.subtitle !== ""
                 text: header.subtitle
                 textColor: Components.Theme.textSecondary
-                font.pixelSize: Components.Theme.fontSizeNormal
+                font.pixelSize: Components.Theme.typography.role("body").pixelSize
                 wrapMode: Text.WordWrap
             }
         }

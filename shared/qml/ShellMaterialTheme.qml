@@ -4,6 +4,7 @@ QtObject {
     id: root
 
     readonly property ThemeTokens tokens: ThemeTokens {}
+    readonly property var typography: tokens.typography
     readonly property var state: tokens.state
     readonly property bool isLight: !!state && state.themeMode === 1
     readonly property bool isTransparent: !state || state.shellStyle === 0

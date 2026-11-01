@@ -58,6 +58,7 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     pages/gaming/Compatibility.qml
     pages/apps/Applications.qml
     pages/appearance/Appearance.qml
+    pages/appearance/Typography.qml
     pages/appearance/VisualEffects.qml
     pages/appearance/MaterialProgramParameterEditor.qml
     pages/appearance/Icons.qml

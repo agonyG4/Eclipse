@@ -92,7 +92,7 @@ PopupCard {
                 visible: !applePower.hasIcon
                 text: root.powerPending ? "󰑐" : "󰂯"
                 color: root.powered ? theme.shellIconAccent : theme.shellIconMuted
-                font { family: theme.iconFontFamily; pixelSize: theme.fontSizeBody }
+                font { family: theme.iconFontFamily; pixelSize: theme.fontSizeIcon }
                 RotationAnimation on rotation {
                     running: root.powerPending
                     from: 0

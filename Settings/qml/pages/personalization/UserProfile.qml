@@ -84,9 +84,12 @@ Item {
                                 visible: avatarMouse.containsMouse && avatarMouse.enabled
                                 text: "Edit"
                                 color: "#ffffff"
-                                font.family: Components.Theme.fontFamily
-                                font.pixelSize: Components.Theme.fontSizeSmall
-                                font.weight: Components.Theme.fontWeightMedium
+                                font.family: Components.Theme.typography.role("caption").family
+                                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                lineHeightMode: Text.ProportionalHeight
+                                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
+                                font.weight: Components.Theme.typography.role("caption").weight
                             }
                         }
                         MouseArea {
@@ -103,16 +106,22 @@ Item {
                         Layout.alignment: Qt.AlignHCenter
                         text: root.displayName || root.userName
                         color: Components.Theme.textPrimary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeTitle
-                        font.weight: Components.Theme.fontWeightDemiBold
+                        font.family: Components.Theme.typography.role("title").family
+                        font.pixelSize: Components.Theme.typography.role("title").pixelSize
+                        lineHeight: Components.Theme.typography.role("title").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("title").letterSpacing
+                        font.weight: Components.Theme.typography.role("title").weight
                     }
                     Text {
                         Layout.alignment: Qt.AlignHCenter
                         text: (root.snapshot.administrator ? "Administrator · " : "Standard user · ") + root.userName
                         color: Components.Theme.textSecondary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
+                        font.family: Components.Theme.typography.role("caption").family
+                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                     }
                     Controls.ButtonCapsule {
                         objectName: "changeAvatarButton"

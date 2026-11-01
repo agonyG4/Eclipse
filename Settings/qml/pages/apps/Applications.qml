@@ -86,9 +86,12 @@ Item {
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
             color: Components.Theme.textPrimary
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeLarge
-            font.weight: Components.Theme.fontWeightDemiBold
+            font.family: Components.Theme.typography.role("label").family
+            font.pixelSize: Components.Theme.typography.role("label").pixelSize
+            lineHeight: Components.Theme.typography.role("label").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            font.letterSpacing: Components.Theme.typography.role("label").letterSpacing
+            font.weight: Components.Theme.typography.role("label").weight
             leftPadding: 18
             rightPadding: 18
             topPadding: 16
@@ -125,8 +128,11 @@ Item {
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
             color: Components.Theme.textPrimary
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeSmall
+            font.family: Components.Theme.typography.role("caption").family
+            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+            lineHeight: Components.Theme.typography.role("caption").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
         }
         onAccepted: {
             if (root.selectedApp && root.selectedApp.canUninstall)
@@ -164,9 +170,12 @@ Item {
                         textFormat: Text.PlainText
                         elide: Text.ElideRight
                         color: Components.Theme.textPrimary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeHero
-                        font.weight: Components.Theme.fontWeightDemiBold
+                        font.family: Components.Theme.typography.role("display").family
+                        font.pixelSize: Components.Theme.typography.role("display").pixelSize
+                        lineHeight: Components.Theme.typography.role("display").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("display").letterSpacing
+                        font.weight: Components.Theme.typography.role("display").weight
                     }
                     Text {
                         Layout.fillWidth: true
@@ -174,8 +183,11 @@ Item {
                         textFormat: Text.PlainText
                         elide: Text.ElideRight
                         color: Components.Theme.textSecondary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeNormal
+                        font.family: Components.Theme.typography.role("body").family
+                        font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                        lineHeight: Components.Theme.typography.role("body").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
                     }
                 }
                 Rectangle {
@@ -193,9 +205,12 @@ Item {
                             ? root.apps.length + " apps"
                             : root.filteredApps.length + " of " + root.apps.length
                         color: Components.Theme.textSecondary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
-                        font.weight: Components.Theme.fontWeightMedium
+                        font.family: Components.Theme.typography.role("caption").family
+                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
+                        font.weight: Components.Theme.typography.role("caption").weight
                     }
                 }
             }
@@ -314,17 +329,23 @@ Item {
                                         Layout.fillWidth: true
                                         text: appRow.modelData.name || appRow.modelData.id
                                         color: Components.Theme.textPrimary
-                                        font.family: Components.Theme.fontFamily
-                                        font.pixelSize: Components.Theme.fontSizeNormal + 2
-                                        font.weight: Components.Theme.fontWeightMedium
+                                        font.family: Components.Theme.typography.role("body").family
+                                        font.pixelSize: Components.Theme.typography.role("body").pixelSize + 2
+                                        lineHeight: Components.Theme.typography.role("body").lineHeight
+                                        lineHeightMode: Text.ProportionalHeight
+                                        font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
+                                        font.weight: Components.Theme.typography.role("body").weight
                                         elide: Text.ElideRight
                                     }
                                     Text {
                                         Layout.fillWidth: true
                                         text: appRow.modelData.description || appRow.modelData.id
                                         color: Components.Theme.textSecondary
-                                        font.family: Components.Theme.fontFamily
-                                        font.pixelSize: Components.Theme.fontSizeSmall
+                                        font.family: Components.Theme.typography.role("caption").family
+                                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                        lineHeightMode: Text.ProportionalHeight
+                                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                                         elide: Text.ElideRight
                                     }
                                 }
@@ -360,8 +381,11 @@ Item {
                         ? "No applications match your search."
                         : "No installed applications found."
                     color: Components.Theme.textSecondary
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeSmall
+                    font.family: Components.Theme.typography.role("caption").family
+                    font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                    lineHeight: Components.Theme.typography.role("caption").lineHeight
+                    lineHeightMode: Text.ProportionalHeight
+                    font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                 }
             }
             Item { Layout.fillHeight: true }
@@ -388,8 +412,11 @@ Item {
             }
             Text {
                 text: "Applications"
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall
+                font.family: Components.Theme.typography.role("caption").family
+                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                 color: Components.Theme.textTertiary
             }
             Item { Layout.fillWidth: true }
@@ -434,7 +461,7 @@ Item {
                             text: root.displayApp ? root.displayApp.name : "Loading application…"
                             color: Components.Theme.textPrimary
                             font.family: Components.Theme.fontFamily
-                            font.pixelSize: 23
+                            font.pixelSize: Components.Theme.typography.role("display").pixelSize
                             font.weight: Components.Theme.fontWeightDemiBold
                             elide: Text.ElideRight
                         }
@@ -443,8 +470,11 @@ Item {
                             text: root.displayApp
                                 ? (root.displayApp.description || root.displayApp.id) : ""
                             color: Components.Theme.textSecondary
-                            font.family: Components.Theme.fontFamily
-                            font.pixelSize: Components.Theme.fontSizeSmall
+                            font.family: Components.Theme.typography.role("caption").family
+                            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                            lineHeight: Components.Theme.typography.role("caption").lineHeight
+                            lineHeightMode: Text.ProportionalHeight
+                            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                             wrapMode: Text.Wrap
                             maximumLineCount: 2
                             elide: Text.ElideRight
@@ -470,9 +500,12 @@ Item {
                     Text {
                         text: "Information"
                         color: Components.Theme.textPrimary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeTitle
-                        font.weight: Components.Theme.fontWeightDemiBold
+                        font.family: Components.Theme.typography.role("title").family
+                        font.pixelSize: Components.Theme.typography.role("title").pixelSize
+                        lineHeight: Components.Theme.typography.role("title").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("title").letterSpacing
+                        font.weight: Components.Theme.typography.role("title").weight
                     }
 
                     RowLayout {
@@ -491,16 +524,22 @@ Item {
                                 Text {
                                     text: "Type"
                                     color: Components.Theme.textSecondary
-                                    font.family: Components.Theme.fontFamily
-                                    font.pixelSize: Components.Theme.fontSizeTiny
+                                    font.family: Components.Theme.typography.role("caption").family
+                                    font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                    lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                    lineHeightMode: Text.ProportionalHeight
+                                    font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                                 }
                                 Text {
                                     Layout.fillWidth: true
                                     text: root.selectedApp ? root.selectedApp.kind : "Loading…"
                                     color: Components.Theme.textPrimary
-                                    font.family: Components.Theme.fontFamily
-                                    font.pixelSize: Components.Theme.fontSizeNormal
-                                    font.weight: Components.Theme.fontWeightMedium
+                                    font.family: Components.Theme.typography.role("body").family
+                                    font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                                    lineHeight: Components.Theme.typography.role("body").lineHeight
+                                    lineHeightMode: Text.ProportionalHeight
+                                    font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
+                                    font.weight: Components.Theme.typography.role("body").weight
                                     elide: Text.ElideRight
                                 }
                             }
@@ -518,16 +557,22 @@ Item {
                                 Text {
                                     text: "Installed size"
                                     color: Components.Theme.textSecondary
-                                    font.family: Components.Theme.fontFamily
-                                    font.pixelSize: Components.Theme.fontSizeTiny
+                                    font.family: Components.Theme.typography.role("caption").family
+                                    font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                    lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                    lineHeightMode: Text.ProportionalHeight
+                                    font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                                 }
                                 Text {
                                     Layout.fillWidth: true
                                     text: root.selectedApp ? root.selectedApp.size : "Checking…"
                                     color: Components.Theme.textPrimary
-                                    font.family: Components.Theme.fontFamily
-                                    font.pixelSize: Components.Theme.fontSizeNormal
-                                    font.weight: Components.Theme.fontWeightMedium
+                                    font.family: Components.Theme.typography.role("body").family
+                                    font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                                    lineHeight: Components.Theme.typography.role("body").lineHeight
+                                    lineHeightMode: Text.ProportionalHeight
+                                    font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
+                                    font.weight: Components.Theme.typography.role("body").weight
                                     elide: Text.ElideRight
                                 }
                             }
@@ -544,16 +589,22 @@ Item {
                             Text {
                                 text: "ID"
                                 color: Components.Theme.textSecondary
-                                font.family: Components.Theme.fontFamily
-                                font.pixelSize: Components.Theme.fontSizeSmall
+                                font.family: Components.Theme.typography.role("caption").family
+                                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                lineHeightMode: Text.ProportionalHeight
+                                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                                 Layout.preferredWidth: 60
                             }
                             Text {
                                 Layout.fillWidth: true
                                 text: root.displayApp ? root.displayApp.id : ""
                                 color: Components.Theme.textPrimary
-                                font.family: Components.Theme.fontFamily
-                                font.pixelSize: Components.Theme.fontSizeSmall
+                                font.family: Components.Theme.typography.role("caption").family
+                                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                lineHeightMode: Text.ProportionalHeight
+                                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                                 elide: Text.ElideMiddle
                                 textFormat: Text.PlainText
                             }
@@ -569,16 +620,22 @@ Item {
                             Text {
                                 text: "File"
                                 color: Components.Theme.textSecondary
-                                font.family: Components.Theme.fontFamily
-                                font.pixelSize: Components.Theme.fontSizeSmall
+                                font.family: Components.Theme.typography.role("caption").family
+                                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                lineHeightMode: Text.ProportionalHeight
+                                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                                 Layout.preferredWidth: 60
                             }
                             Text {
                                 Layout.fillWidth: true
                                 text: root.selectedApp ? root.selectedApp.file : ""
                                 color: Components.Theme.textPrimary
-                                font.family: Components.Theme.fontFamily
-                                font.pixelSize: Components.Theme.fontSizeSmall
+                                font.family: Components.Theme.typography.role("caption").family
+                                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                lineHeightMode: Text.ProportionalHeight
+                                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                                 elide: Text.ElideMiddle
                                 textFormat: Text.PlainText
                             }
@@ -601,9 +658,12 @@ Item {
                     Text {
                         text: "Privacy & access"
                         color: Components.Theme.textPrimary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeTitle
-                        font.weight: Components.Theme.fontWeightDemiBold
+                        font.family: Components.Theme.typography.role("title").family
+                        font.pixelSize: Components.Theme.typography.role("title").pixelSize
+                        lineHeight: Components.Theme.typography.role("title").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("title").letterSpacing
+                        font.weight: Components.Theme.typography.role("title").weight
                     }
                     Repeater {
                         model: root.selectedApp ? (root.selectedApp.privacyItems || []) : []
@@ -622,17 +682,23 @@ Item {
                                     Layout.fillWidth: true
                                     text: modelData.name
                                     color: Components.Theme.textPrimary
-                                    font.family: Components.Theme.fontFamily
-                                    font.pixelSize: Components.Theme.fontSizeNormal
-                                    font.weight: Components.Theme.fontWeightMedium
+                                    font.family: Components.Theme.typography.role("body").family
+                                    font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                                    lineHeight: Components.Theme.typography.role("body").lineHeight
+                                    lineHeightMode: Text.ProportionalHeight
+                                    font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
+                                    font.weight: Components.Theme.typography.role("body").weight
                                 }
                                 Text {
                                     Layout.fillWidth: true
                                     text: modelData.description
                                     textFormat: Text.PlainText
                                     color: Components.Theme.textSecondary
-                                    font.family: Components.Theme.fontFamily
-                                    font.pixelSize: Components.Theme.fontSizeSmall
+                                    font.family: Components.Theme.typography.role("caption").family
+                                    font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                    lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                    lineHeightMode: Text.ProportionalHeight
+                                    font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                                     wrapMode: Text.Wrap
                                 }
                             }
@@ -644,8 +710,11 @@ Item {
                         text: root.selectedApp ? root.selectedApp.privacyNote
                             : "Checking sandbox permissions…"
                         color: Components.Theme.textSecondary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
+                        font.family: Components.Theme.typography.role("caption").family
+                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                         wrapMode: Text.Wrap
                         textFormat: Text.PlainText
                     }
@@ -666,9 +735,12 @@ Item {
                     Text {
                         text: "Actions"
                         color: Components.Theme.textPrimary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeTitle
-                        font.weight: Components.Theme.fontWeightDemiBold
+                        font.family: Components.Theme.typography.role("title").family
+                        font.pixelSize: Components.Theme.typography.role("title").pixelSize
+                        lineHeight: Components.Theme.typography.role("title").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("title").letterSpacing
+                        font.weight: Components.Theme.typography.role("title").weight
                     }
                     RowLayout {
                         Layout.fillWidth: true
@@ -706,9 +778,12 @@ Item {
                                 text: root.selectedApp && root.selectedApp.method === "launcher"
                                     ? "Remove launcher" : "Uninstall application"
                                 color: Components.Theme.textPrimary
-                                font.family: Components.Theme.fontFamily
-                                font.pixelSize: Components.Theme.fontSizeNormal
-                                font.weight: Components.Theme.fontWeightMedium
+                                font.family: Components.Theme.typography.role("body").family
+                                font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                                lineHeight: Components.Theme.typography.role("body").lineHeight
+                                lineHeightMode: Text.ProportionalHeight
+                                font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
+                                font.weight: Components.Theme.typography.role("body").weight
                                 elide: Text.ElideRight
                             }
                             Text {
@@ -717,8 +792,11 @@ Item {
                                     ? "Only the shortcut entry will be removed."
                                     : "Application files may be removed. Your data is kept."
                                 color: Components.Theme.textSecondary
-                                font.family: Components.Theme.fontFamily
-                                font.pixelSize: Components.Theme.fontSizeSmall
+                                font.family: Components.Theme.typography.role("caption").family
+                                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                lineHeightMode: Text.ProportionalHeight
+                                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                                 wrapMode: Text.Wrap
                             }
                         }

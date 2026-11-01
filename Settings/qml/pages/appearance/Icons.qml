@@ -158,8 +158,11 @@ Item {
                 Layout.topMargin: 12
                 text: I18n.tr("apps.settings.pages.icons.no_preview", "No preview available")
                 color: Components.Theme.textTertiary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall
+                font.family: Components.Theme.typography.role("caption").family
+                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
             }
 
             Item { Layout.fillHeight: true }
@@ -168,8 +171,11 @@ Item {
                 Layout.fillWidth: true
                 text: card.descriptor.name || card.descriptor.id
                 color: Components.Theme.textPrimary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeNormal
+                font.family: Components.Theme.typography.role("body").family
+                font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                lineHeight: Components.Theme.typography.role("body").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
                 font.weight: card.selected
                     ? Components.Theme.fontWeightDemiBold : Components.Theme.fontWeightMedium
                 horizontalAlignment: Text.AlignHCenter
@@ -182,8 +188,11 @@ Item {
                     ? I18n.tr("apps.settings.pages.icons.user_theme", "User theme")
                     : I18n.tr("apps.settings.pages.icons.system_theme", "System theme"))
                 color: Components.Theme.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall
+                font.family: Components.Theme.typography.role("caption").family
+                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideRight
                 opacity: Components.Theme.opacitySecondary
@@ -205,7 +214,7 @@ Item {
                 anchors.centerIn: parent
                 text: "\uf00c"
                 color: Components.Theme.accentForeground
-                font.family: Components.Theme.monoFontFamily
+                font.family: Components.Theme.iconFontFamily
                 font.pixelSize: 10
                 font.weight: Components.Theme.fontWeightBold
             }
@@ -272,9 +281,12 @@ Item {
                         Layout.fillWidth: true
                         text: root.currentTheme.name || root.currentTheme.id
                         color: Components.Theme.textPrimary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeLarge
-                        font.weight: Components.Theme.fontWeightDemiBold
+                        font.family: Components.Theme.typography.role("label").family
+                        font.pixelSize: Components.Theme.typography.role("label").pixelSize
+                        lineHeight: Components.Theme.typography.role("label").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("label").letterSpacing
+                        font.weight: Components.Theme.typography.role("label").weight
                         elide: Text.ElideRight
                     }
                     Text {
@@ -282,8 +294,11 @@ Item {
                         text: root.currentTheme.comment || ""
                         visible: text !== ""
                         color: Components.Theme.textSecondary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
+                        font.family: Components.Theme.typography.role("caption").family
+                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                         elide: Text.ElideRight
                     }
                 }
@@ -291,9 +306,12 @@ Item {
                 Text {
                     text: I18n.tr("apps.settings.pages.icons.in_use", "In use")
                     color: Components.Theme.accent
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeSmall
-                    font.weight: Components.Theme.fontWeightMedium
+                    font.family: Components.Theme.typography.role("caption").family
+                    font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                    lineHeight: Components.Theme.typography.role("caption").lineHeight
+                    lineHeightMode: Text.ProportionalHeight
+                    font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
+                    font.weight: Components.Theme.typography.role("caption").weight
                 }
             }
         }
@@ -309,8 +327,11 @@ Item {
             visible: root.catalogLoading
             text: I18n.tr("apps.settings.pages.icons.loading", "Loading installed themes…")
             color: Components.Theme.textSecondary
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeNormal
+            font.family: Components.Theme.typography.role("body").family
+            font.pixelSize: Components.Theme.typography.role("body").pixelSize
+            lineHeight: Components.Theme.typography.role("body").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
             Layout.fillWidth: true
             Layout.bottomMargin: 12
         }
@@ -319,8 +340,11 @@ Item {
             visible: !root.catalogLoading && root.controller.lastError !== ""
             text: root.controller.lastError
             color: Components.Theme.errorColor
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeNormal
+            font.family: Components.Theme.typography.role("body").family
+            font.pixelSize: Components.Theme.typography.role("body").pixelSize
+            lineHeight: Components.Theme.typography.role("body").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
             Layout.bottomMargin: 12
@@ -332,8 +356,11 @@ Item {
                 && root.controller.iconThemes.length === 0 && root.searchQuery.trim() === ""
             text: I18n.tr("apps.settings.pages.icons.empty_catalog", "No icon themes are installed.")
             color: Components.Theme.textSecondary
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeNormal
+            font.family: Components.Theme.typography.role("body").family
+            font.pixelSize: Components.Theme.typography.role("body").pixelSize
+            lineHeight: Components.Theme.typography.role("body").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
             Layout.fillWidth: true
             Layout.bottomMargin: 12
         }
@@ -344,8 +371,11 @@ Item {
                 && root.filteredIconThemes.length === 0 && root.searchQuery.trim() !== ""
             text: I18n.tr("apps.settings.pages.icons.empty_search", "No installed themes match your search.")
             color: Components.Theme.textSecondary
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeNormal
+            font.family: Components.Theme.typography.role("body").family
+            font.pixelSize: Components.Theme.typography.role("body").pixelSize
+            lineHeight: Components.Theme.typography.role("body").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
             Layout.fillWidth: true
             Layout.bottomMargin: 12
         }
@@ -378,8 +408,11 @@ Item {
                           "Choose the icons used in Settings navigation. This does not change application icons.")
             wrapMode: Text.WordWrap
             color: Components.Theme.textSecondary
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeSmall
+            font.family: Components.Theme.typography.role("caption").family
+            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+            lineHeight: Components.Theme.typography.role("caption").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
         }
 
         GridLayout {
@@ -441,16 +474,22 @@ Item {
 
                             Text {
                                 text: navigationThemeOption.modelData.title
-                                font.family: Components.Theme.fontFamily
-                                font.pixelSize: Components.Theme.fontSizeNormal
-                                font.weight: Components.Theme.fontWeightMedium
+                                font.family: Components.Theme.typography.role("body").family
+                                font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                                lineHeight: Components.Theme.typography.role("body").lineHeight
+                                lineHeightMode: Text.ProportionalHeight
+                                font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
+                                font.weight: Components.Theme.typography.role("body").weight
                                 color: Components.Theme.textPrimary
                             }
 
                             Text {
                                 text: navigationThemeOption.modelData.detail
-                                font.family: Components.Theme.fontFamily
-                                font.pixelSize: Components.Theme.fontSizeSmall
+                                font.family: Components.Theme.typography.role("caption").family
+                                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                lineHeightMode: Text.ProportionalHeight
+                                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                                 color: Components.Theme.textSecondary
                             }
                         }
@@ -507,8 +546,11 @@ Item {
                 text: I18n.tr("settings.icons.weight_help",
                     "Adjusts the stroke weight of the default Lucide icons. AppleOS uses its original SVG geometry.")
                 wrapMode: Text.WordWrap
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall
+                font.family: Components.Theme.typography.role("caption").family
+                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                 color: Components.Theme.textSecondary
             }
         }

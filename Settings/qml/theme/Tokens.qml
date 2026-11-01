@@ -5,11 +5,12 @@ import Astrea.Shared as Shared
 
 QtObject {
     readonly property Shared.ThemeTokens themeTokens: Shared.ThemeTokens { state: Borealis.State }
+    readonly property var typography: themeTokens.typography
     readonly property string fontFamily: themeTokens.value("fontFamily", "Inter")
     readonly property string monoFontFamily: themeTokens.value("monoFontFamily", "JetBrains Mono")
     readonly property string fontFamilyDisplay: themeTokens.value("fontFamilyDisplay", fontFamily)
     readonly property string fontFamilyText: themeTokens.value("fontFamilyText", fontFamily)
-    readonly property string iconFontFamily: themeTokens.value("iconFontFamily", monoFontFamily)
+    readonly property string iconFontFamily: themeTokens.value("iconFontFamily", "JetBrainsMono Nerd Font")
 
     readonly property int fontSizeHero: themeTokens.value("fontSizeHero", 20)
     readonly property int fontSizeHeader: themeTokens.value("fontSizeHeader", 24)
@@ -25,11 +26,11 @@ QtObject {
     readonly property int fontSizeBody: themeTokens.value("fontSizeBody", fontSizeNormal)
     readonly property int fontSizeCaption: themeTokens.value("fontSizeCaption", fontSizeSmall)
 
-    readonly property int fontWeightLight: Font.Light
-    readonly property int fontWeightNormal: Font.Normal
-    readonly property int fontWeightMedium: Font.Medium
-    readonly property int fontWeightDemiBold: Font.Medium
-    readonly property int fontWeightBold: Font.Bold
+    readonly property int fontWeightLight: themeTokens.value("fontWeightLight", Font.Light)
+    readonly property int fontWeightNormal: themeTokens.value("fontWeightNormal", Font.Normal)
+    readonly property int fontWeightMedium: themeTokens.value("fontWeightMedium", Font.Medium)
+    readonly property int fontWeightDemiBold: themeTokens.value("fontWeightDemiBold", Font.Medium)
+    readonly property int fontWeightBold: themeTokens.value("fontWeightBold", Font.Bold)
 
     readonly property real trackingHeader: 0
 

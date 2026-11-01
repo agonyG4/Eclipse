@@ -1,4 +1,5 @@
 import QtQuick
+import ".." as Components
 
 Item {
     id: actionRoot
@@ -58,7 +59,7 @@ Item {
         color: actionRoot.actionEnabled
             ? actionRoot.textColor
             : actionRoot.disabledTextColor
-        font.pixelSize: 13
+        font.pixelSize: Components.Theme.typography.role("label").pixelSize
         elide: Text.ElideRight
         maximumLineCount: 1
     }
@@ -74,7 +75,7 @@ Item {
         color: actionRoot.actionEnabled
             ? actionRoot.textColor
             : actionRoot.disabledTextColor
-        font.pixelSize: 13
+        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
     }
 
     MouseArea {

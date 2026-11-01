@@ -81,8 +81,11 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.controller.busy ? "Reading or applying performance settings…" : root.errorMessage
                 color: root.errorMessage !== "" ? Components.Theme.errorColor : Components.Theme.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall
+                font.family: Components.Theme.typography.role("caption").family
+                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                 wrapMode: Text.Wrap
             }
             Controls.ButtonCapsule {
@@ -128,8 +131,11 @@ Item {
                 Text {
                     text: root.current.active ? (root.current.scheduler_label || root.current.scheduler || "Active") : "Inactive"
                     color: Components.Theme.textSecondary
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeSmall
+                    font.family: Components.Theme.typography.role("caption").family
+                    font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                    lineHeight: Components.Theme.typography.role("caption").lineHeight
+                    lineHeightMode: Text.ProportionalHeight
+                    font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                 }
             }
             Form.SettingRow {
@@ -163,8 +169,11 @@ Item {
                     Text {
                         text: modelData.id === root.selectedScheduler ? "Selected" : (root.supported.indexOf(modelData.id) >= 0 ? "Choose" : "Unavailable")
                         color: modelData.id === root.selectedScheduler ? Components.Theme.accent : Components.Theme.textTertiary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
+                        font.family: Components.Theme.typography.role("caption").family
+                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                     }
                     onClicked: root.setPreference("scx_scheduler", modelData.id)
                 }
@@ -202,8 +211,11 @@ Item {
                     Text {
                         text: modelData.id === root.selectedMode ? "Selected" : "Choose"
                         color: modelData.id === root.selectedMode ? Components.Theme.accent : Components.Theme.textTertiary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
+                        font.family: Components.Theme.typography.role("caption").family
+                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                     }
                     onClicked: root.setPreference("scx_mode", modelData.id)
                 }

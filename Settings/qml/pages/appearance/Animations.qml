@@ -137,15 +137,21 @@ Item {
             Text {
                 text: I18n.tr("apps.settings.pages.animations.speed.slower", "Slower")
                 color: Components.Theme.textTertiary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeTiny
+                font.family: Components.Theme.typography.role("caption").family
+                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
             }
             Item { Layout.fillWidth: true }
             Text {
                 text: I18n.tr("apps.settings.pages.animations.speed.faster", "Faster")
                 color: Components.Theme.textTertiary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeTiny
+                font.family: Components.Theme.typography.role("caption").family
+                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
             }
         }
     }
@@ -189,7 +195,10 @@ Item {
                         anchors.centerIn: parent
                         text: "\u203A"
                         color: Components.Theme.textTertiary
-                        font.pixelSize: Components.Theme.fontSizeLarge
+                        font.pixelSize: Components.Theme.typography.role("label").pixelSize
+                        lineHeight: Components.Theme.typography.role("label").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("label").letterSpacing
                         rotation: slotRow.expanded ? 90 : 0
                         Behavior on rotation { NumberAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
                     }
@@ -232,8 +241,11 @@ Item {
                         topPadding: 6
                         text: I18n.tr("apps.settings.pages.animations.label.slot_speed", "Speed")
                         color: Components.Theme.textSecondary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeNormal
+                        font.family: Components.Theme.typography.role("body").family
+                        font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                        lineHeight: Components.Theme.typography.role("body").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
                     }
                     SpeedControl {
                         Layout.fillWidth: true
@@ -251,8 +263,11 @@ Item {
                         horizontalAlignment: Text.AlignRight
                         text: root.speedText(slotRow.slotData.speed || 1.0)
                         color: Components.Theme.textPrimary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeNormal
+                        font.family: Components.Theme.typography.role("body").family
+                        font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                        lineHeight: Components.Theme.typography.role("body").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
                         font.features: { "tnum": 1 }
                     }
                 }
@@ -271,16 +286,22 @@ Item {
                             Layout.fillWidth: true
                             text: I18n.tr("apps.settings.pages.animations.slide_wallpaper.label", "Slide wallpaper with workspaces")
                             color: Components.Theme.textPrimary
-                            font.family: Components.Theme.fontFamily
-                            font.pixelSize: Components.Theme.fontSizeNormal
+                            font.family: Components.Theme.typography.role("body").family
+                            font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                            lineHeight: Components.Theme.typography.role("body").lineHeight
+                            lineHeightMode: Text.ProportionalHeight
+                            font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
                             elide: Text.ElideRight
                         }
                         Text {
                             Layout.fillWidth: true
                             text: I18n.tr("apps.settings.pages.animations.slide_wallpaper.description", "The wallpaper moves along with each workspace instead of staying still.")
                             color: Components.Theme.textSecondary
-                            font.family: Components.Theme.fontFamily
-                            font.pixelSize: Components.Theme.fontSizeSmall
+                            font.family: Components.Theme.typography.role("caption").family
+                            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                            lineHeight: Components.Theme.typography.role("caption").lineHeight
+                            lineHeightMode: Text.ProportionalHeight
+                            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                             wrapMode: Text.WordWrap
                         }
                     }
@@ -321,8 +342,11 @@ Item {
             visible: root.controller.lastError !== ""
             text: root.controller.lastError
             color: Components.Theme.errorColor
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeSmall
+            font.family: Components.Theme.typography.role("caption").family
+            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+            lineHeight: Components.Theme.typography.role("caption").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
             Layout.bottomMargin: 10
@@ -376,7 +400,7 @@ Item {
                 sublabel: I18n.tr("apps.settings.pages.animations.sublabel.reset", "Restore the preset's effects and speeds")
                 clickable: root.controller.available && !root.controller.busy
                 onClicked: root.controller.resetOverrides()
-                Text { text: I18n.tr("apps.settings.pages.animations.action.reset", "Reset"); color: Components.Theme.accent; font.pixelSize: Components.Theme.fontSizeSmall }
+                Text { text: I18n.tr("apps.settings.pages.animations.action.reset", "Reset"); color: Components.Theme.accent; font.pixelSize: Components.Theme.typography.role("caption").pixelSize }
             }
         }
 

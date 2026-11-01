@@ -68,15 +68,15 @@ FocusScope {
                 Typography.DisplayLabel {
                     objectName: "audioPageTitle"
                     text: I18n.tr("settings.audio.title", "Audio")
-                    font.pixelSize: Components.Theme.fontSizeHero
-                    font.weight: Components.Theme.fontWeightDemiBold
+                    typographyRole: "display"
+                    font.weight: Components.Theme.typography.role("display").weight
                 }
 
                 Typography.TextLabel {
                     text: I18n.tr("settings.audio.subtitle",
                                   "Choose an output device and adjust your sound.")
                     textColor: Components.Theme.textSecondary
-                    font.pixelSize: Components.Theme.fontSizeNormal
+                    typographyRole: "body"
                     wrapMode: Text.WordWrap
                     Layout.fillWidth: true
                 }
@@ -91,7 +91,7 @@ FocusScope {
             visible: text.length > 0
             text: root.statusText()
             textColor: Components.Theme.textSecondary
-            font.pixelSize: Components.Theme.fontSizeSmall
+            typographyRole: "caption"
             wrapMode: Text.WordWrap
         }
 
@@ -105,7 +105,7 @@ FocusScope {
                 && root.audio.errorString !== ""
             text: root.audio ? root.audio.errorString : ""
             textColor: Components.Theme.warningColor
-            font.pixelSize: Components.Theme.fontSizeSmall
+            typographyRole: "caption"
             wrapMode: Text.WordWrap
         }
 
@@ -215,8 +215,8 @@ FocusScope {
                         visible: root.hasDefaultState
                         text: root.audio ? Math.round(root.audio.volume) + "%" : ""
                         textColor: Components.Theme.textPrimary
-                        font.pixelSize: Components.Theme.fontSizeNormal
-                        font.weight: Components.Theme.fontWeightMedium
+                        typographyRole: "body"
+                        font.weight: Components.Theme.typography.role("body").weight
                         Layout.preferredWidth: 43
                         horizontalAlignment: Text.AlignRight
                     }
@@ -227,7 +227,7 @@ FocusScope {
                         text: I18n.tr("apps.settings.pages.system.audio.status.waiting",
                                       "Waiting for current audio state…")
                         textColor: Components.Theme.textSecondary
-                        font.pixelSize: Components.Theme.fontSizeSmall
+                        typographyRole: "caption"
                     }
                 }
             }
@@ -258,7 +258,7 @@ FocusScope {
                         text: I18n.tr("apps.settings.pages.system.audio.status.waiting",
                                       "Waiting for current audio state…")
                         textColor: Components.Theme.textSecondary
-                        font.pixelSize: Components.Theme.fontSizeSmall
+                        typographyRole: "caption"
                     }
                 }
             }
@@ -286,7 +286,7 @@ FocusScope {
                 text: I18n.tr("apps.settings.pages.system.audio.status.no_outputs",
                               "No audio outputs found")
                 textColor: Components.Theme.textSecondary
-                font.pixelSize: Components.Theme.fontSizeNormal
+                typographyRole: "body"
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
             }
@@ -299,7 +299,7 @@ FocusScope {
                 text: I18n.tr("apps.settings.pages.system.audio.status.outputs_unavailable",
                               "Audio outputs are unavailable")
                 textColor: Components.Theme.textSecondary
-                font.pixelSize: Components.Theme.fontSizeNormal
+                typographyRole: "body"
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
             }
@@ -454,7 +454,7 @@ FocusScope {
                 text: root.spatialAudio
                     ? root.spatialAudio.spatialAudioConfigError : ""
                 textColor: Components.Theme.warningColor
-                font.pixelSize: Components.Theme.fontSizeSmall
+                typographyRole: "caption"
                 wrapMode: Text.WordWrap
             }
         }

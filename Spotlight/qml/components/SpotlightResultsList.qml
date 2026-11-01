@@ -7,8 +7,8 @@ ColumnLayout {
     Shared.ThemeTokens { id: themeTokens }
 
     property string queryText: ""
-    property string fontFamily: themeTokens.value("fontFamily", "SF Pro Display")
-    readonly property int resultRowHeight: 50
+    property string fontFamily: themeTokens.typography.role("body").family
+    readonly property int resultRowHeight: Math.max(50, themeTokens.typography.role("body").pixelSize * themeTokens.typography.role("body").lineHeight + 16)
     readonly property int resultIconSize: 40
     readonly property int count: resultList.count
 
@@ -85,7 +85,8 @@ ColumnLayout {
                 Text {
                     text: resultDelegate.name
                     font.family: root.fontFamily
-                    font.pixelSize: themeTokens.value("fontSizeSubtitle", 17)
+                    font.pixelSize: themeTokens.typography.role("body").pixelSize
+                    font.weight: themeTokens.typography.role("body").weight
                     color: themeTokens.value("shellTextMain", "white")
                     Layout.fillWidth: true
                     elide: Text.ElideRight

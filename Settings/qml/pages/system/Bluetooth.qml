@@ -362,9 +362,12 @@ FocusScope {
                     color: root.bluetooth && root.bluetooth.available
                            ? Components.Theme.textPrimary
                            : Components.Theme.textSecondary
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeSmall
-                    font.weight: Components.Theme.fontWeightMedium
+                    font.family: Components.Theme.typography.role("caption").family
+                    font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                    lineHeight: Components.Theme.typography.role("caption").lineHeight
+                    lineHeightMode: Text.ProportionalHeight
+                    font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
+                    font.weight: Components.Theme.typography.role("caption").weight
                     wrapMode: Text.WordWrap
                 }
 
@@ -375,8 +378,11 @@ FocusScope {
                     Layout.fillWidth: true
                     text: root.bluetooth ? root.bluetooth.errorString : ""
                     color: Components.Theme.errorColor
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeSmall
+                    font.family: Components.Theme.typography.role("caption").family
+                    font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                    lineHeight: Components.Theme.typography.role("caption").lineHeight
+                    lineHeightMode: Text.ProportionalHeight
+                    font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                     wrapMode: Text.WordWrap
                 }
 
@@ -386,8 +392,11 @@ FocusScope {
                     Layout.fillWidth: true
                     text: root.bluetooth ? root.bluetooth.pairingError : ""
                     color: Components.Theme.warningColor
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeSmall
+                    font.family: Components.Theme.typography.role("caption").family
+                    font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                    lineHeight: Components.Theme.typography.role("caption").lineHeight
+                    lineHeightMode: Text.ProportionalHeight
+                    font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                     wrapMode: Text.WordWrap
                 }
 
@@ -397,8 +406,11 @@ FocusScope {
                     Layout.fillWidth: true
                     text: root.bluetooth ? root.bluetooth.operationError : ""
                     color: Components.Theme.warningColor
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeSmall
+                    font.family: Components.Theme.typography.role("caption").family
+                    font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                    lineHeight: Components.Theme.typography.role("caption").lineHeight
+                    lineHeightMode: Text.ProportionalHeight
+                    font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                     wrapMode: Text.WordWrap
                 }
 
@@ -414,8 +426,11 @@ FocusScope {
                                 ? root.bluetooth.pairingDeviceName : "", root.bluetooth
                                 ? root.bluetooth.pairingDeviceKind : System.BluetoothDeviceKind.Unknown))
                         color: Components.Theme.textPrimary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeNormal
+                        font.family: Components.Theme.typography.role("body").family
+                        font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                        lineHeight: Components.Theme.typography.role("body").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
                         wrapMode: Text.WordWrap
                     }
 
@@ -582,9 +597,12 @@ FocusScope {
                         textFormat: Text.PlainText
                         text: deviceRow.displayName
                         color: Components.Theme.textPrimary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeNormal
-                        font.weight: Components.Theme.fontWeightMedium
+                        font.family: Components.Theme.typography.role("body").family
+                        font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                        lineHeight: Components.Theme.typography.role("body").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
+                        font.weight: Components.Theme.typography.role("body").weight
                         elide: Text.ElideRight
                         Accessible.name: deviceRow.displayName
                     }
@@ -601,8 +619,11 @@ FocusScope {
                                     : I18n.tr("settings.bluetooth.status.available", "Available to pair")
                         color: deviceRow.activePairingDevice
                             ? Components.Theme.warningColor : Components.Theme.textSecondary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
+                        font.family: Components.Theme.typography.role("caption").family
+                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                     }
 
                     Text {
@@ -622,8 +643,11 @@ FocusScope {
                                 ? battery + " · " + signal : battery + signal
                         }
                         color: Components.Theme.textTertiary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeTiny
+                        font.family: Components.Theme.typography.role("caption").family
+                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                     }
                 }
 
@@ -736,9 +760,12 @@ FocusScope {
                 text: I18n.tr("settings.bluetooth.forget.title", "Forget %1?")
                     .replace("%1", root.pendingForgetName)
                 color: Components.Theme.textPrimary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeLarge
-                font.weight: Components.Theme.fontWeightMedium
+                font.family: Components.Theme.typography.role("label").family
+                font.pixelSize: Components.Theme.typography.role("label").pixelSize
+                lineHeight: Components.Theme.typography.role("label").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.letterSpacing: Components.Theme.typography.role("label").letterSpacing
+                font.weight: Components.Theme.typography.role("label").weight
                 wrapMode: Text.WordWrap
             }
 
@@ -747,8 +774,11 @@ FocusScope {
                 text: I18n.tr("settings.bluetooth.forget.help",
                               "This removes the device from your Bluetooth devices.")
                 color: Components.Theme.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeNormal
+                font.family: Components.Theme.typography.role("body").family
+                font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                lineHeight: Components.Theme.typography.role("body").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
                 wrapMode: Text.WordWrap
             }
         }
@@ -807,9 +837,12 @@ FocusScope {
                 Layout.fillWidth: true
                 text: I18n.tr("settings.bluetooth.agent.title", "Bluetooth request")
                 color: Components.Theme.textPrimary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeLarge
-                font.weight: Components.Theme.fontWeightMedium
+                font.family: Components.Theme.typography.role("label").family
+                font.pixelSize: Components.Theme.typography.role("label").pixelSize
+                lineHeight: Components.Theme.typography.role("label").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.letterSpacing: Components.Theme.typography.role("label").letterSpacing
+                font.weight: Components.Theme.typography.role("label").weight
             }
 
             Text {
@@ -866,8 +899,11 @@ FocusScope {
                     : I18n.tr("settings.bluetooth.agent.display_passkey_help",
                               "Enter this passkey on the other device.")
                 color: Components.Theme.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeNormal
+                font.family: Components.Theme.typography.role("body").family
+                font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                lineHeight: Components.Theme.typography.role("body").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
                 wrapMode: Text.WordWrap
             }
 
@@ -879,8 +915,11 @@ FocusScope {
                 text: I18n.tr("settings.bluetooth.agent.passkey_progress",
                               "%1 of 6 digits entered").replace("%1", String(root.displayedEntered))
                 color: Components.Theme.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall
+                font.family: Components.Theme.typography.role("caption").family
+                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                 horizontalAlignment: Text.AlignHCenter
             }
 

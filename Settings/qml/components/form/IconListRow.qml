@@ -52,7 +52,7 @@ Item {
         Text {
             text: rowRoot.label
             color: Components.Theme.textPrimary
-            font.pixelSize: 14
+            font.pixelSize: Components.Theme.typography.role("body").pixelSize
             Layout.fillWidth: true
             font.family: Components.Theme.fontFamily
         }
@@ -62,7 +62,7 @@ Item {
             visible: rowRoot.sublabel !== ""
             text: rowRoot.sublabel
             color: rowRoot.sublabelColor
-            font.pixelSize: 13
+            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
             opacity: rowRoot.sublabelOpacity
             font.family: Components.Theme.fontFamily
         }

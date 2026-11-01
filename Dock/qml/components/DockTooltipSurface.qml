@@ -30,9 +30,12 @@ Window {
     readonly property int naturalCardWidth:
         Math.ceil(naturalTextWidth) + 2 * horizontalTextPadding
     readonly property int cardWidth: Math.max(effectiveMinimumCardWidth,
-                                               Math.min(naturalCardWidth,
+                                               Math.min(Math.max(naturalCardWidth,
+                                                   Math.ceil(tooltipText.implicitWidth) + 2 * horizontalTextPadding),
                                                         effectiveMaximumCardWidth))
-    readonly property int cardHeight: DockSurfaceGeometry.tooltipBodyHeight
+    readonly property int cardHeight: Math.max(DockSurfaceGeometry.tooltipBodyHeight,
+        Math.ceil(Math.max(tooltipFontMetrics.height,
+            tooltipFontMetrics.font.pixelSize * material.typography.role("label").lineHeight)) + 12)
     readonly property int pointerDepth: DockSurfaceGeometry.tooltipPointerDepth
     readonly property var cardPlacement: DockSurfaceGeometry.tooltipPlacementInOutput(
         Math.max(1, outputWidth), Math.max(1, outputHeight), anchorRect,
@@ -54,9 +57,11 @@ Window {
     FontMetrics {
         id: tooltipFontMetrics
         objectName: "dockTooltipFontMetrics"
-        font.family: material.fontFamily
+        font.family: material.tokens.overrides.typographyRoles
+            ? material.typography.role("label").family : material.fontFamily
         font.pixelSize: material.tooltipFontSize
-        font.weight: Font.Medium
+        font.weight: material.typography.role("label").weight
+        font.letterSpacing: material.typography.role("label").letterSpacing
     }
 
     function showTooltip(text, visualAnchorRect, position) {
@@ -64,6 +69,8 @@ Window {
         anchorRect = visualAnchorRect
         dockPosition = position
         tooltipVisible = text.length > 0
+        // Recompute elision immediately after title/font geometry changes.
+        tooltipText.forceLayout()
     }
 
     function hideTooltip() {

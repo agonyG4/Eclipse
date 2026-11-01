@@ -8,12 +8,12 @@ Rectangle {
     property string text: label
     property string iconSource: ""
     property string iconText: ""
-    property string iconFontFamily: Components.Theme.fontFamily
+    property string iconFontFamily: Components.Theme.iconFontFamily
     property bool primary: false
     property bool danger: false
     property string accessibleName: ""
-    property int fontPixelSize: Components.Theme.fontSizeNormal
-    property int iconSize: Math.round(fontPixelSize + 4)
+    property int fontPixelSize: Components.Theme.typography.role("label").pixelSize
+    property int iconSize: 16
     property int controlWidth: 0
     property int controlHeight: 34
     property int minWidth: 44
@@ -49,7 +49,7 @@ Rectangle {
     }
 
     implicitWidth: controlWidth > 0 ? controlWidth : Math.max(minWidth, labelRow.implicitWidth + horizontalPadding * 2)
-    implicitHeight: controlHeight
+    implicitHeight: Math.max(controlHeight, Math.ceil(fontPixelSize * Components.Theme.typography.role("label").lineHeight) + 16)
     radius: height / 2
     opacity: enabled ? 1 : Components.Theme.opacityDisabled
     color: {
@@ -105,7 +105,8 @@ Rectangle {
             visible: root.text !== ""
             text: root.text
             color: root.enabled ? root.foregroundColor : Components.Theme.textTertiary
-            font.family: Components.Theme.fontFamily
+            font.family: Components.Theme.typography.role("label").family
+            font.letterSpacing: Components.Theme.typography.role("label").letterSpacing
             font.pixelSize: root.fontPixelSize
             font.weight: Components.Theme.fontWeightMedium
             elide: Text.ElideRight

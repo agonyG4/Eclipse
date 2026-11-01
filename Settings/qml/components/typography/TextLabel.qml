@@ -5,7 +5,14 @@ import ".." as Components
 Label {
     property color textColor: Components.Theme.textPrimary
 
-    font.family: Components.Theme.fontFamily
+    property string typographyRole: "body"
+    readonly property var typographyStyle: Components.Theme.typography.role(typographyRole)
+    font.pixelSize: typographyStyle.pixelSize
+    font.weight: typographyStyle.weight
+    font.letterSpacing: typographyStyle.letterSpacing
+    lineHeight: typographyStyle.lineHeight
+    lineHeightMode: Text.ProportionalHeight
+    font.family: typographyStyle.family
     font.hintingPreference: Font.PreferVerticalHinting
     font.kerning: true
     renderType: Text.NativeRendering

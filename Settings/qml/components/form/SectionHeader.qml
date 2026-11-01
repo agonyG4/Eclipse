@@ -19,10 +19,10 @@ Item {
 
         Text {
             text: labelRoot.text
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeSmall
-            font.weight: Components.Theme.fontWeightBold
-            font.letterSpacing: Components.Theme.trackingHeader
+            font.family: Components.Theme.typography.role("caption").family
+            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+            font.weight: Components.Theme.typography.role("caption").weight
+            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
             color: labelRoot.textSecondary
             elide: Text.ElideRight
             Layout.maximumWidth: Math.min(260, Math.max(120, labelRoot.width * 0.45))

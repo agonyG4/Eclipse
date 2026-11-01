@@ -45,9 +45,10 @@ QtObject {
 
     readonly property real shellRadiusLarge: themeTokens.value("shellRadiusLarge", 14)
     readonly property real shellRadiusMedium: themeTokens.value("shellRadiusMedium", 8)
+    readonly property var typography: themeTokens.typography
     readonly property string fontFamily: themeTokens.value("fontFamily", "Inter Variable")
     readonly property string iconFontFamily: themeTokens.value("iconFontFamily", "JetBrainsMonoNL Nerd Font")
-    readonly property int fontSizeBody: themeTokens.value("fontSizeBody", 12)
+    readonly property int fontSizeBody: typography.role("label").pixelSize
     readonly property int fontSizeSmall: themeTokens.value("fontSizeSmall", 12)
     readonly property int fontSizeIcon: themeTokens.value("fontSizeIcon", 16)
     readonly property real spacingLarge: themeTokens.value("spacingLarge", 12)
@@ -58,7 +59,7 @@ QtObject {
     // receive the same policy inputs.
     readonly property int contextMenuMinimumWidth: 168
     readonly property int contextMenuMaximumWidth: 228
-    readonly property int contextMenuNormalRowHeight: 34
+    readonly property int contextMenuNormalRowHeight: Math.max(34, Math.ceil(fontSizeBody * typography.role("label").lineHeight) + 16)
     readonly property int contextMenuSeparatorHeight: 6
     readonly property int contextMenuRowHorizontalMargin: 8
     readonly property int contextMenuIconSlotWidth: 18

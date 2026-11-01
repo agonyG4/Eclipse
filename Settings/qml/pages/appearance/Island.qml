@@ -46,9 +46,11 @@ Item {
                 anchors.topMargin: 14
                 text: "PREVIEW"
                 color: Components.Theme.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall
-                font.weight: Components.Theme.fontWeightBold
+                font.family: Components.Theme.typography.role("caption").family
+                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.weight: Components.Theme.typography.role("caption").weight
                 font.letterSpacing: Components.Theme.trackingHeader
             }
 
@@ -82,15 +84,21 @@ Item {
                         Text {
                             text: root.musicEnabled ? "Now playing" : "Island is ready"
                             color: "#f5f5f7"
-                            font.family: Components.Theme.fontFamily
-                            font.pixelSize: Components.Theme.fontSizeSmall
-                            font.weight: Components.Theme.fontWeightDemiBold
+                            font.family: Components.Theme.typography.role("caption").family
+                            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                            lineHeight: Components.Theme.typography.role("caption").lineHeight
+                            lineHeightMode: Text.ProportionalHeight
+                            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
+                            font.weight: Components.Theme.typography.role("caption").weight
                         }
                         Text {
                             text: root.musicEnabled ? "Aster · Midnight Drive" : "Preview mode"
                             color: Qt.rgba(1, 1, 1, 0.60)
-                            font.family: Components.Theme.fontFamily
-                            font.pixelSize: Components.Theme.fontSizeTiny
+                            font.family: Components.Theme.typography.role("caption").family
+                            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                            lineHeight: Components.Theme.typography.role("caption").lineHeight
+                            lineHeightMode: Text.ProportionalHeight
+                            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                             elide: Text.ElideRight
                             Layout.fillWidth: true
                         }

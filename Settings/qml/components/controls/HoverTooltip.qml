@@ -88,9 +88,12 @@ Popup {
         text: root.label
         width: Math.min(260, implicitWidth)
         color: Components.Theme.textPrimary
-        font.family: Components.Theme.fontFamily
-        font.pixelSize: Components.Theme.fontSizeSmall
-        font.weight: Components.Theme.fontWeightMedium
+        font.family: Components.Theme.typography.role("caption").family
+        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+        lineHeight: Components.Theme.typography.role("caption").lineHeight
+        lineHeightMode: Text.ProportionalHeight
+        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
+        font.weight: Components.Theme.typography.role("caption").weight
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         wrapMode: Text.Wrap

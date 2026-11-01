@@ -50,7 +50,7 @@ public:
     SpotlightResultsModel *resultsModel() { return &m_results; }
     int resultCount() const { return m_results.resultCount(); }
     int selectedIndex() const { return m_selectedIndex; }
-    QString fontFamily() const { return QStringLiteral("SF Pro Display"); }
+    QString fontFamily() const { return QStringLiteral("sans-serif"); }
     bool weatherEnabled() const { return m_weatherEnabled; }
     bool weatherReady() const { return m_weatherReady; }
     bool weatherLoading() const { return m_weatherLoading; }

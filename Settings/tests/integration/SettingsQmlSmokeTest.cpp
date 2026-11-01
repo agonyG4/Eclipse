@@ -211,6 +211,7 @@ private slots:
     void sharedPageHeaderAlignsWithBackToolbar();
     void displaySidebarClickLoadsSelectedPageWithoutTyphon();
     void loadsCustomizationHubOffscreen();
+    void typographyControlsPersistAndPreviewScale();
     void loadsVisualMigrationRoutes_data();
     void loadsVisualMigrationRoutes();
     void localPageStateResetsAfterNavigation();
@@ -725,6 +726,7 @@ void SettingsQmlSmokeTest::loadsCustomizationHubOffscreen()
     QQuickItem *hubItem = qobject_cast<QQuickItem *>(hub);
     QVERIFY(hubItem != nullptr);
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-appearance")) != nullptr);
+    QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-typography")) != nullptr);
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-visual-effects")) != nullptr);
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-icons")) != nullptr);
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-wallpaper")) != nullptr);
@@ -732,10 +734,11 @@ void SettingsQmlSmokeTest::loadsCustomizationHubOffscreen()
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-animations")) != nullptr);
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-screenshots")) != nullptr);
     QVERIFY(findVisualItem(hubItem, QStringLiteral("hubNavigationRow-island")) != nullptr);
-    QCOMPARE(countVisualItems(hubItem, QRegularExpression(QStringLiteral("^hubNavigationRow-"))), 8);
+    QCOMPARE(countVisualItems(hubItem, QRegularExpression(QStringLiteral("^hubNavigationRow-"))), 9);
     const QVariantList children = settingsController.currentDestinationChildren();
-    QCOMPARE(children.size(), 8);
+    QCOMPARE(children.size(), 9);
     const QStringList expectedChildren {QStringLiteral("appearance"),
+                                        QStringLiteral("typography"),
                                         QStringLiteral("visual-effects"),
                                         QStringLiteral("icons"),
                                         QStringLiteral("wallpaper"),
@@ -747,6 +750,46 @@ void SettingsQmlSmokeTest::loadsCustomizationHubOffscreen()
         QCOMPARE(children.at(index).toMap().value(QStringLiteral("entryId")).toString(),
                  expectedChildren.at(index));
     }
+}
+
+void SettingsQmlSmokeTest::typographyControlsPersistAndPreviewScale()
+{
+    QTemporaryDir dir;
+    ThemeController theme(dir.filePath("theme.json"));
+    SettingsTranslationController translation;
+    QQmlEngine engine;
+    engine.rootContext()->setContextProperty("ThemeController", &theme);
+    engine.rootContext()->setContextProperty("I18n", &translation);
+    QQmlComponent component(&engine, QUrl("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Typography.qml"));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    std::unique_ptr<QObject> page(component.create());
+    QVERIFY2(page, qPrintable(component.errorString()));
+    auto *root = qobject_cast<QQuickItem *>(page.get());
+    QVERIFY(root);
+    root->setWidth(850);
+    root->setHeight(900);
+    auto *scale = findVisualItem(root, "typographyScale");
+    auto *preview = findVisualItem(root, "typographyPreviewTitle");
+    auto *advanced = findVisualItem(root, "typographyAdvancedToggle");
+    QVERIFY(scale && preview && advanced);
+    QVERIFY(findVisualItem(root, "typographyPicker-fontFamily"));
+    QVERIFY(findVisualItem(root, "typographyPicker-monoFontFamily"));
+    QVERIFY(!page->property("advancedExpanded").toBool());
+    const int before = preview->property("font").value<QFont>().pixelSize();
+    QVERIFY(QMetaObject::invokeMethod(scale, "valueEdited", Q_ARG(double, 150.0)));
+    QTRY_COMPARE(theme.textScale(), 1.5);
+    QTRY_COMPARE(preview->property("font").value<QFont>().pixelSize(), qRound(before * 1.5));
+    QVERIFY(QMetaObject::invokeMethod(advanced, "selected", Q_ARG(int, 0)));
+    QVERIFY(page->property("advancedExpanded").toBool());
+    auto *bodySize = findVisualItem(root, "typographyRole-body-pixelSize");
+    QVERIFY(bodySize);
+    QVERIFY(QMetaObject::invokeMethod(bodySize, "selected", Q_ARG(int, 6))); // 14 px at base scale
+    QCOMPARE(theme.fontPreferences().value("roles").toMap().value("body").toMap().value("pixelSize").toInt(), 14);
+    auto *reset = findVisualItem(root, "typographyReset");
+    QVERIFY(reset);
+    QVERIFY(QMetaObject::invokeMethod(reset, "selected", Q_ARG(int, 0)));
+    QVERIFY(theme.fontPreferences().isEmpty());
+    QCOMPARE(theme.textScale(), 1.0);
 }
 
 void SettingsQmlSmokeTest::loadsVisualMigrationRoutes_data()
@@ -767,6 +810,7 @@ void SettingsQmlSmokeTest::loadsVisualMigrationRoutes_data()
         {"compatibility", "compatibilityPage", "more-settings"},
         {"language", "languagePage", "more-settings"},
         {"apps", "applicationsPage", "more-settings"},
+        {"typography", "typographyPage", "customization"},
         {"island", "islandPage", "customization"},
         {"user-profile", "userProfilePage", "more-settings"},
     };

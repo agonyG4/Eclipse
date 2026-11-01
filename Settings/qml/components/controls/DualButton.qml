@@ -12,12 +12,12 @@ Rectangle {
     property string rightIconSource: ""
     property string leftIconText: ""
     property string rightIconText: ""
-    property string iconFontFamily: Components.Theme.fontFamily
+    property string iconFontFamily: Components.Theme.iconFontFamily
     property bool leftEnabled: true
     property bool rightEnabled: true
     property int selectedIndex: -1
-    property int fontPixelSize: Components.Theme.fontSizeNormal
-    property int iconSize: Math.round(fontPixelSize + 4)
+    property int fontPixelSize: Components.Theme.typography.role("label").pixelSize
+    property int iconSize: 16
     property int controlWidth: 0
     property int controlHeight: 34
     property int segmentWidth: 96
@@ -69,7 +69,7 @@ Rectangle {
     signal clicked(int index)
 
     implicitWidth: controlWidth > 0 ? controlWidth : segmentWidth * 2
-    implicitHeight: controlHeight
+    implicitHeight: Math.max(controlHeight, Math.ceil(fontPixelSize * Components.Theme.typography.role("label").lineHeight) + 16)
     radius: Math.min(cornerRadius, height / 2)
     color: Components.Theme.cardBg
     border.width: 1
@@ -206,7 +206,8 @@ Rectangle {
                 color: root.leftEnabled
                     ? (root.selectedIndex === 0 ? Components.Theme.accentForeground : Components.Theme.textPrimary)
                     : Components.Theme.textTertiary
-                font.family: Components.Theme.fontFamily
+                font.family: Components.Theme.typography.role("label").family
+            font.letterSpacing: Components.Theme.typography.role("label").letterSpacing
                 font.pixelSize: root.fontPixelSize
                 font.weight: Components.Theme.fontWeightMedium
                 elide: Text.ElideRight
@@ -287,7 +288,8 @@ Rectangle {
                 color: root.rightEnabled
                     ? (root.selectedIndex === 1 ? Components.Theme.accentForeground : Components.Theme.textPrimary)
                     : Components.Theme.textTertiary
-                font.family: Components.Theme.fontFamily
+                font.family: Components.Theme.typography.role("label").family
+            font.letterSpacing: Components.Theme.typography.role("label").letterSpacing
                 font.pixelSize: root.fontPixelSize
                 font.weight: Components.Theme.fontWeightMedium
                 elide: Text.ElideRight

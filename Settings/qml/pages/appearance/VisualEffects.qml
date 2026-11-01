@@ -71,8 +71,11 @@ Item {
         id: link
         signal clicked()
         color: link.enabled ? Components.Theme.accent : Components.Theme.textTertiary
-        font.family: Components.Theme.fontFamily
-        font.pixelSize: Components.Theme.fontSizeSmall
+        font.family: Components.Theme.typography.role("caption").family
+        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+        lineHeight: Components.Theme.typography.role("caption").lineHeight
+        lineHeightMode: Text.ProportionalHeight
+        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
         activeFocusOnTab: link.enabled && link.visible
         Accessible.role: Accessible.Button
         Accessible.name: link.text
@@ -102,8 +105,11 @@ Item {
             Layout.preferredWidth: 88
             text: tuneRow.title
             color: Components.Theme.textSecondary
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeNormal
+            font.family: Components.Theme.typography.role("body").family
+            font.pixelSize: Components.Theme.typography.role("body").pixelSize
+            lineHeight: Components.Theme.typography.role("body").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
             elide: Text.ElideRight
         }
         Controls.Slider {
@@ -125,8 +131,11 @@ Item {
             horizontalAlignment: Text.AlignRight
             text: root.percentText(tuneRow.value)
             color: tuneRow.overridden ? Components.Theme.textPrimary : Components.Theme.textTertiary
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeNormal
+            font.family: Components.Theme.typography.role("body").family
+            font.pixelSize: Components.Theme.typography.role("body").pixelSize
+            lineHeight: Components.Theme.typography.role("body").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
             font.features: { "tnum": 1 }
         }
         // Keeps its width while hidden so the sliders stay aligned across rows.
@@ -167,8 +176,11 @@ Item {
                 ? root.controller.lastError
                 : I18n.tr("apps.settings.pages.visual_effects.unavailable", "Typhon is unavailable. Material settings are read only until the compositor reconnects.")
             color: Components.Theme.errorColor
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeSmall
+            font.family: Components.Theme.typography.role("caption").family
+            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+            lineHeight: Components.Theme.typography.role("caption").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
             wrapMode: Text.WordWrap
             Accessible.role: Accessible.AlertMessage
         }
@@ -226,15 +238,21 @@ Item {
                         Text {
                             text: I18n.tr("apps.settings.pages.visual_effects.glass", "Glass")
                             color: Components.Theme.textTertiary
-                            font.family: Components.Theme.fontFamily
-                            font.pixelSize: Components.Theme.fontSizeTiny
+                            font.family: Components.Theme.typography.role("caption").family
+                            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                            lineHeight: Components.Theme.typography.role("caption").lineHeight
+                            lineHeightMode: Text.ProportionalHeight
+                            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                         }
                         Item { Layout.fillWidth: true }
                         Text {
                             text: I18n.tr("apps.settings.pages.visual_effects.frosted", "Frosted")
                             color: Components.Theme.textTertiary
-                            font.family: Components.Theme.fontFamily
-                            font.pixelSize: Components.Theme.fontSizeTiny
+                            font.family: Components.Theme.typography.role("caption").family
+                            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                            lineHeight: Components.Theme.typography.role("caption").lineHeight
+                            lineHeightMode: Text.ProportionalHeight
+                            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                         }
                     }
                 }
@@ -254,7 +272,10 @@ Item {
                     horizontalAlignment: Text.AlignHCenter
                     text: "›"
                     color: Components.Theme.textTertiary
-                    font.pixelSize: Components.Theme.fontSizeLarge
+                    font.pixelSize: Components.Theme.typography.role("label").pixelSize
+                    lineHeight: Components.Theme.typography.role("label").lineHeight
+                    lineHeightMode: Text.ProportionalHeight
+                    font.letterSpacing: Components.Theme.typography.role("label").letterSpacing
                     rotation: root.advancedExpanded ? 90 : 0
                     Behavior on rotation { NumberAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
                 }
@@ -339,8 +360,11 @@ Item {
             text: I18n.tr("apps.settings.pages.visual_effects.built_in_material_note",
                           "Glass / Frosted, Blur Strength, Saturation, and Noise tune Typhon’s built-in fallback material. They do not change the active trusted Material Program.")
             color: Components.Theme.textTertiary
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeSmall
+            font.family: Components.Theme.typography.role("caption").family
+            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+            lineHeight: Components.Theme.typography.role("caption").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
             wrapMode: Text.WordWrap
         }
 
@@ -411,8 +435,11 @@ Item {
                                 + I18n.tr("apps.settings.pages.visual_effects.program_fallback_label", "fallback") + ")."
                             : ""
                         color: Components.Theme.warningColor
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
+                        font.family: Components.Theme.typography.role("caption").family
+                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                         wrapMode: Text.WordWrap
                         Accessible.role: Accessible.AlertMessage
                     }
@@ -428,8 +455,11 @@ Item {
                                           "Material Program controls are unavailable while Typhon reconnects."))
                             : ""
                         color: Components.Theme.errorColor
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
+                        font.family: Components.Theme.typography.role("caption").family
+                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                         wrapMode: Text.WordWrap
                         Accessible.role: Accessible.AlertMessage
                     }
@@ -444,8 +474,11 @@ Item {
                                       "Typhon rendering is unavailable. Program selection can still be configured.")
                             : ""
                         color: Components.Theme.textSecondary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
+                        font.family: Components.Theme.typography.role("caption").family
+                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                         wrapMode: Text.WordWrap
                     }
                     Text {
@@ -455,8 +488,11 @@ Item {
                         Layout.fillWidth: true
                         text: visible ? root.programError : ""
                         color: Components.Theme.errorColor
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
+                        font.family: Components.Theme.typography.role("caption").family
+                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                         wrapMode: Text.WordWrap
                         Accessible.role: Accessible.AlertMessage
                     }
@@ -498,9 +534,12 @@ Item {
                             Layout.fillWidth: true
                             text: I18n.tr("apps.settings.pages.visual_effects.parameters", "Program Parameters")
                             color: Components.Theme.textPrimary
-                            font.family: Components.Theme.fontFamily
-                            font.pixelSize: Components.Theme.fontSizeNormal
-                            font.weight: Components.Theme.fontWeightMedium
+                            font.family: Components.Theme.typography.role("body").family
+                            font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                            lineHeight: Components.Theme.typography.role("body").lineHeight
+                            lineHeightMode: Text.ProportionalHeight
+                            font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
+                            font.weight: Components.Theme.typography.role("body").weight
                         }
                         LinkButton {
                             objectName: "resetMaterialProgramParameters"

@@ -83,14 +83,15 @@ QtObject {
     readonly property color workspaceInactive: material.tokens.value("workspaceInactive", isLight
         ? Qt.rgba(0.05, 0.06, 0.07, 0.22) : Qt.rgba(1, 1, 1, 0.22))
     readonly property int pillHeight: 36
+    readonly property var typography: material.typography
     readonly property string fontFamily: material.tokens.value("fontFamily", material.fontFamily)
-    readonly property string fontFamilyDisplay: material.tokens.value("fontFamilyDisplay", "Inter Display")
-    readonly property string fontFamilyText: material.tokens.value("fontFamilyText", "Inter Regular")
+    readonly property string fontFamilyDisplay: material.tokens.value("fontFamilyDisplay", fontFamily)
+    readonly property string fontFamilyText: material.tokens.value("fontFamilyText", fontFamily)
     readonly property string iconFontFamily: material.tokens.value("iconFontFamily", "JetBrainsMonoNL Nerd Font")
     readonly property string shellFontFamily: fontFamily
     readonly property int fontSizeLarge: material.tokens.value("fontSizeLarge", 18)
-    readonly property int fontSizeTitle: material.tokens.value("fontSizeTitle", 13)
-    readonly property int fontSizeBody: material.tokens.value("fontSizeBody", 12)
+    readonly property int fontSizeTitle: typography.role("title").pixelSize
+    readonly property int fontSizeBody: typography.role("body").pixelSize
     readonly property int fontSizeSmall: material.tokens.value("fontSizeSmall", 12)
     readonly property int fontSizeCaption: material.fontSizeCaption
     readonly property int fontSizeExtraSmall: material.tokens.value("fontSizeExtraSmall", 10)

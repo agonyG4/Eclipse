@@ -3,6 +3,7 @@ import Astrea.Shared as Shared
 
 Item {
     id: root
+    Shared.Typography { id: typography }
 
     required property int index
     required property var model
@@ -349,7 +350,7 @@ Item {
         x: Math.max(0, appIcon.width - width)
         y: 0
         width: unreadCountLabel.implicitWidth + 10
-        height: 18
+        height: Math.max(18, unreadCountLabel.implicitHeight + 4)
         radius: height / 2
         color: "#d83b48"
         border.color: "#f6f6f6"
@@ -362,8 +363,9 @@ Item {
             anchors.centerIn: parent
             text: root.unreadCount > 99 ? "99+" : String(root.unreadCount)
             color: "white"
-            font.pixelSize: 11
-            font.weight: Font.DemiBold
+            font.family: typography.role("caption").family
+            font.pixelSize: typography.role("caption").pixelSize
+            font.weight: typography.role("caption").weight
             renderType: Text.NativeRendering
         }
     }

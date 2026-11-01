@@ -510,8 +510,11 @@ FocusScope {
                             text: modelData.enabled ? "No current mode" : "Disabled"
                             textFormat: Text.PlainText
                             color: Components.Theme.textSecondary
-                            font.family: Components.Theme.fontFamily
-                            font.pixelSize: Components.Theme.fontSizeSmall
+                            font.family: Components.Theme.typography.role("caption").family
+                            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                            lineHeight: Components.Theme.typography.role("caption").lineHeight
+                            lineHeightMode: Text.ProportionalHeight
+                            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                         }
                     }
 
@@ -660,8 +663,11 @@ FocusScope {
                     textFormat: Text.PlainText
                     color: monitorItem.active || root.outputs.length < 2
                         ? Components.Theme.textPrimary : Components.Theme.textSecondary
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeSmall
+                    font.family: Components.Theme.typography.role("caption").family
+                    font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                    lineHeight: Components.Theme.typography.role("caption").lineHeight
+                    lineHeightMode: Text.ProportionalHeight
+                    font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                     font.weight: monitorItem.active
                         ? Components.Theme.fontWeightMedium : Font.Normal
                     elide: Text.ElideRight
@@ -710,8 +716,11 @@ FocusScope {
                         text: "Loading display information…"
                         textFormat: Text.PlainText
                         color: Components.Theme.textSecondary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeNormal
+                        font.family: Components.Theme.typography.role("body").family
+                        font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                        lineHeight: Components.Theme.typography.role("body").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
                     }
                     Text {
                         objectName: "displayBackendUnavailable"
@@ -720,8 +729,11 @@ FocusScope {
                         text: "Display service is unavailable."
                         textFormat: Text.PlainText
                         color: Components.Theme.warningColor
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeNormal
+                        font.family: Components.Theme.typography.role("body").family
+                        font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                        lineHeight: Components.Theme.typography.role("body").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
                         wrapMode: Text.WordWrap
                     }
                     Text {
@@ -731,8 +743,11 @@ FocusScope {
                         text: root.controller ? String(root.controller.lastError) : ""
                         textFormat: Text.PlainText
                         color: Components.Theme.errorColor
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeNormal
+                        font.family: Components.Theme.typography.role("body").family
+                        font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                        lineHeight: Components.Theme.typography.role("body").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
                         wrapMode: Text.WordWrap
                     }
                     Text {
@@ -742,8 +757,11 @@ FocusScope {
                         text: "No displays are connected."
                         textFormat: Text.PlainText
                         color: Components.Theme.textSecondary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeNormal
+                        font.family: Components.Theme.typography.role("body").family
+                        font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                        lineHeight: Components.Theme.typography.role("body").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
                     }
                     Controls.Button {
                         objectName: "displayRetryButton"
@@ -813,7 +831,7 @@ FocusScope {
                                     textFormat: Text.PlainText
                                     color: Components.Theme.textPrimary
                                     font.family: Components.Theme.fontFamily
-                                    font.pixelSize: 22
+                                    font.pixelSize: Components.Theme.typography.role("display").pixelSize
                                     font.weight: Components.Theme.fontWeightDemiBold
                                     elide: Text.ElideRight
                                 }
@@ -824,8 +842,11 @@ FocusScope {
                                     text: DisplayLogic.subtitleFor(root.selectedOutput)
                                     textFormat: Text.PlainText
                                     color: Components.Theme.textSecondary
-                                    font.family: Components.Theme.fontFamily
-                                    font.pixelSize: Components.Theme.fontSizeSmall
+                                    font.family: Components.Theme.typography.role("caption").family
+                                    font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                    lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                    lineHeightMode: Text.ProportionalHeight
+                                    font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                                     elide: Text.ElideRight
                                 }
                                 Text {
@@ -835,8 +856,11 @@ FocusScope {
                                     text: DisplayLogic.modeSummary(root.selectedOutput)
                                     textFormat: Text.PlainText
                                     color: Components.Theme.textTertiary
-                                    font.family: Components.Theme.fontFamily
-                                    font.pixelSize: Components.Theme.fontSizeSmall
+                                    font.family: Components.Theme.typography.role("caption").family
+                                    font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                    lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                    lineHeightMode: Text.ProportionalHeight
+                                    font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                                 }
                             }
                         }
@@ -851,8 +875,11 @@ FocusScope {
                     text: "Additional displays are not shown."
                     textFormat: Text.PlainText
                     color: Components.Theme.warningColor
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeSmall
+                    font.family: Components.Theme.typography.role("caption").family
+                    font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                    lineHeight: Components.Theme.typography.role("caption").lineHeight
+                    lineHeightMode: Text.ProportionalHeight
+                    font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                     wrapMode: Text.WordWrap
                 }
 
@@ -897,9 +924,12 @@ FocusScope {
                             text: DisplayLogic.monitorSelectorLabel(root.selectedOutput)
                             textFormat: Text.PlainText
                             color: Components.Theme.textPrimary
-                            font.family: Components.Theme.fontFamily
-                            font.pixelSize: Components.Theme.fontSizeNormal
-                            font.weight: Components.Theme.fontWeightMedium
+                            font.family: Components.Theme.typography.role("body").family
+                            font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                            lineHeight: Components.Theme.typography.role("body").lineHeight
+                            lineHeightMode: Text.ProportionalHeight
+                            font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
+                            font.weight: Components.Theme.typography.role("body").weight
                             verticalAlignment: Text.AlignVCenter
                             elide: Text.ElideRight
                         }
@@ -910,7 +940,10 @@ FocusScope {
                             text: monitorSelector.popup.visible ? "⌃" : "⌄"
                             textFormat: Text.PlainText
                             color: Components.Theme.textSecondary
-                            font.pixelSize: Components.Theme.fontSizeNormal
+                            font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                            lineHeight: Components.Theme.typography.role("body").lineHeight
+                            lineHeightMode: Text.ProportionalHeight
+                            font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                         }
@@ -924,8 +957,11 @@ FocusScope {
                                 color: index === root.selectedIndex
                                     ? Components.Theme.accent
                                     : Components.Theme.textPrimary
-                                font.family: Components.Theme.fontFamily
-                                font.pixelSize: Components.Theme.fontSizeNormal
+                                font.family: Components.Theme.typography.role("body").family
+                                font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                                lineHeight: Components.Theme.typography.role("body").lineHeight
+                                lineHeightMode: Text.ProportionalHeight
+                                font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
                                 elide: Text.ElideRight
                                 verticalAlignment: Text.AlignVCenter
                             }
@@ -1009,8 +1045,11 @@ FocusScope {
                                     color: selected
                                         ? Components.Theme.accent
                                         : Components.Theme.textPrimary
-                                    font.family: Components.Theme.fontFamily
-                                    font.pixelSize: Components.Theme.fontSizeNormal
+                                    font.family: Components.Theme.typography.role("body").family
+                                    font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                                    lineHeight: Components.Theme.typography.role("body").lineHeight
+                                    lineHeightMode: Text.ProportionalHeight
+                                    font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
                                     font.weight: selected
                                         ? Components.Theme.fontWeightMedium
                                         : Components.Theme.fontWeightNormal
@@ -1039,9 +1078,12 @@ FocusScope {
                                         color: selected
                                             ? Components.Theme.accent
                                             : Components.Theme.textSecondary
-                                        font.family: Components.Theme.fontFamily
-                                        font.pixelSize: Components.Theme.fontSizeTiny
-                                        font.weight: Components.Theme.fontWeightMedium
+                                        font.family: Components.Theme.typography.role("caption").family
+                                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                        lineHeightMode: Text.ProportionalHeight
+                                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
+                                        font.weight: Components.Theme.typography.role("caption").weight
                                     }
                                 }
 
@@ -1053,8 +1095,11 @@ FocusScope {
                                     text: "✓"
                                     textFormat: Text.PlainText
                                     color: Components.Theme.accent
-                                    font.pixelSize: Components.Theme.fontSizeNormal
-                                    font.weight: Components.Theme.fontWeightBold
+                                    font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                                    lineHeight: Components.Theme.typography.role("body").lineHeight
+                                    lineHeightMode: Text.ProportionalHeight
+                                    font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
+                                    font.weight: Components.Theme.typography.role("body").weight
                                 }
                             }
 
@@ -1083,9 +1128,12 @@ FocusScope {
                             ? "⌃  Show less" : "⌄  Show all resolutions"
                         textFormat: Text.PlainText
                         color: Components.Theme.textSecondary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
-                        font.weight: Components.Theme.fontWeightMedium
+                        font.family: Components.Theme.typography.role("caption").family
+                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
+                        font.weight: Components.Theme.typography.role("caption").weight
 
                         MouseArea {
                             objectName: "displayResolutionListToggle"
@@ -1108,8 +1156,11 @@ FocusScope {
                         text: "Some available modes are not shown."
                         textFormat: Text.PlainText
                         color: Components.Theme.warningColor
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
+                        font.family: Components.Theme.typography.role("caption").family
+                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                         wrapMode: Text.WordWrap
                     }
                 }
@@ -1335,8 +1386,11 @@ FocusScope {
                         textFormat: Text.PlainText
                         color: root.transactionState === "rollback_failed"
                             ? Components.Theme.errorColor : Components.Theme.textPrimary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeNormal
+                        font.family: Components.Theme.typography.role("body").family
+                        font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                        lineHeight: Components.Theme.typography.role("body").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
                         wrapMode: Text.WordWrap
                     }
 

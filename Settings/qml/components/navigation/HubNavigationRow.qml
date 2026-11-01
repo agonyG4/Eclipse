@@ -82,9 +82,12 @@ Item {
                 Layout.fillWidth: true
                 text: root.label
                 color: Components.Theme.textPrimary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeTitle
-                font.weight: Components.Theme.fontWeightMedium
+                font.family: Components.Theme.typography.role("title").family
+                font.pixelSize: Components.Theme.typography.role("title").pixelSize
+                lineHeight: Components.Theme.typography.role("title").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.letterSpacing: Components.Theme.typography.role("title").letterSpacing
+                font.weight: Components.Theme.typography.role("title").weight
                 elide: Text.ElideRight
             }
 
@@ -93,8 +96,11 @@ Item {
                 visible: root.sublabel !== ""
                 text: root.sublabel
                 color: Components.Theme.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall
+                font.family: Components.Theme.typography.role("caption").family
+                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                 opacity: Components.Theme.opacitySecondary
                 elide: Text.ElideRight
             }
@@ -103,8 +109,11 @@ Item {
         Text {
             text: root.chevronGlyph
             color: Components.Theme.textTertiary
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeLarge
+            font.family: Components.Theme.typography.role("label").family
+            font.pixelSize: Components.Theme.typography.role("label").pixelSize
+            lineHeight: Components.Theme.typography.role("label").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            font.letterSpacing: Components.Theme.typography.role("label").letterSpacing
             opacity: root.enabled ? 0.72 : Components.Theme.opacityDisabled
         }
     }

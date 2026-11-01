@@ -101,9 +101,12 @@ Item {
                     Text {
                         Layout.fillWidth: true
                         text: root.userName
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeLarge
-                        font.weight: Components.Theme.fontWeightMedium
+                        font.family: Components.Theme.typography.role("label").family
+                        font.pixelSize: Components.Theme.typography.role("label").pixelSize
+                        lineHeight: Components.Theme.typography.role("label").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("label").letterSpacing
+                        font.weight: Components.Theme.typography.role("label").weight
                         color: Components.Theme.textPrimary
                         elide: Text.ElideRight
                         maximumLineCount: 1
@@ -112,9 +115,12 @@ Item {
                     Text {
                         Layout.fillWidth: true
                         text: "sudo"
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeTiny
-                        font.weight: Components.Theme.fontWeightNormal
+                        font.family: Components.Theme.typography.role("caption").family
+                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
+                        font.weight: Components.Theme.typography.role("caption").weight
                         color: Components.Theme.textTertiary
                         visible: root.isSudo
                     }

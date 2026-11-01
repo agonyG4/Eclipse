@@ -56,9 +56,12 @@ Item {
                         Layout.fillWidth: true
                         text: root.humanize(parameterRow.descriptor.name)
                         color: Components.Theme.textPrimary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeNormal
-                        font.weight: Components.Theme.fontWeightMedium
+                        font.family: Components.Theme.typography.role("body").family
+                        font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                        lineHeight: Components.Theme.typography.role("body").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
+                        font.weight: Components.Theme.typography.role("body").weight
                         elide: Text.ElideRight
                     }
                     Text {
@@ -66,8 +69,11 @@ Item {
                             ? I18n.tr("apps.settings.pages.visual_effects.overridden", "Override")
                             : I18n.tr("apps.settings.pages.visual_effects.automatic", "Automatic")
                         color: Components.Theme.textSecondary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
+                        font.family: Components.Theme.typography.role("caption").family
+                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                     }
                     Text {
                         id: resetParameter
@@ -75,8 +81,11 @@ Item {
                         enabled: root.enabled
                         text: I18n.tr("apps.settings.pages.visual_effects.reset", "Reset")
                         color: enabled ? Components.Theme.accent : Components.Theme.textTertiary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
+                        font.family: Components.Theme.typography.role("caption").family
+                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                         activeFocusOnTab: enabled
                         Accessible.role: Accessible.Button
                         Accessible.name: I18n.tr("apps.settings.pages.visual_effects.reset_parameter", "Reset parameter")
@@ -175,8 +184,11 @@ Item {
                             Layout.preferredWidth: 18
                             text: root.componentName(index)
                             color: Components.Theme.textSecondary
-                            font.family: Components.Theme.fontFamily
-                            font.pixelSize: Components.Theme.fontSizeSmall
+                            font.family: Components.Theme.typography.role("caption").family
+                            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                            lineHeight: Components.Theme.typography.role("caption").lineHeight
+                            lineHeightMode: Text.ProportionalHeight
+                            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                         }
 
                         Controls.Slider {
@@ -241,8 +253,11 @@ Item {
             Layout.fillWidth: true
             text: I18n.tr("apps.settings.pages.visual_effects.no_parameters", "This program has no editable parameters.")
             color: Components.Theme.textSecondary
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeSmall
+            font.family: Components.Theme.typography.role("caption").family
+            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+            lineHeight: Components.Theme.typography.role("caption").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
             wrapMode: Text.WordWrap
         }
     }

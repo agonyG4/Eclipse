@@ -18,7 +18,7 @@ Item {
     default property alias trailingData: trailingContent.data
 
     width: parent ? parent.width : implicitWidth
-    height: 24
+    height: Math.max(24, titleLabel.implicitHeight)
 
     Text {
         id: titleLabel
@@ -30,10 +30,10 @@ Item {
         width: parent.width - trailingSlot.width - control.trailingGap
         elide: Text.ElideRight
         font {
-            family: theme.fontFamily
-            pixelSize: theme.fontSizeBody
-            weight: Font.DemiBold
-            letterSpacing: 0.3
+            family: theme.typography.role("title").family
+            pixelSize: theme.typography.role("title").pixelSize
+            weight: theme.typography.role("title").weight
+            letterSpacing: theme.typography.role("title").letterSpacing
         }
     }
 

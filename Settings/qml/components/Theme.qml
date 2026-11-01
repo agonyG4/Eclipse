@@ -46,6 +46,7 @@ Item {
     }
 
     readonly property var packStyle: Borealis.State.styleTokens
+    readonly property var typography: Borealis.Tokens.typography
     readonly property string fontFamily: Borealis.Tokens.fontFamily
     readonly property string monoFontFamily: Borealis.Tokens.monoFontFamily
     readonly property string fontFamilyDisplay: Borealis.Tokens.fontFamilyDisplay

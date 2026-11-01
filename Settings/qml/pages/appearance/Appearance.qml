@@ -202,7 +202,7 @@ Item {
                     anchors.centerIn: parent
                     text: "\uf00c"
                     color: Components.Theme.accentForeground
-                    font.family: Components.Theme.monoFontFamily
+                    font.family: Components.Theme.iconFontFamily
                     font.pixelSize: 10
                     font.weight: Components.Theme.fontWeightBold
                 }
@@ -300,7 +300,7 @@ Item {
                 anchors.centerIn: parent
                 text: "\uf00c"
                 color: "white"
-                font.family: Components.Theme.monoFontFamily
+                font.family: Components.Theme.iconFontFamily
                 font.pixelSize: 9
                 font.weight: Components.Theme.fontWeightBold
             }
@@ -554,7 +554,7 @@ Item {
                 Text {
                     text: "\uf00c"
                     color: Components.Theme.accent
-                    font.family: Components.Theme.monoFontFamily
+                    font.family: Components.Theme.iconFontFamily
                     font.pixelSize: 14
                     font.weight: Components.Theme.fontWeightBold
                 }

@@ -74,8 +74,11 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.controller.busy ? "Saving compatibility settings…" : root.controller.lastError
                 color: root.controller.lastError !== "" ? Components.Theme.errorColor : Components.Theme.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall
+                font.family: Components.Theme.typography.role("caption").family
+                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                 wrapMode: Text.Wrap
             }
             Controls.ButtonCapsule {

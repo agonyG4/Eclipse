@@ -100,16 +100,19 @@ Rectangle {
         Text {
             text: root.label
             color: Components.Theme.textSecondary
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeSmall
-            font.weight: Components.Theme.fontWeightMedium
+            font.family: Components.Theme.typography.role("caption").family
+            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+            lineHeight: Components.Theme.typography.role("caption").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
+            font.weight: Components.Theme.typography.role("caption").weight
         }
 
         Text {
             text: root.speed
             color: "#ffffff"
             font.family: Components.Theme.fontFamily
-            font.pixelSize: 20
+            font.pixelSize: Components.Theme.typography.role("display").pixelSize
             font.weight: Components.Theme.fontWeightBold
         }
 
@@ -118,7 +121,7 @@ Rectangle {
             color: Components.Theme.textSecondary
             opacity: 0.5
             font.family: Components.Theme.fontFamily
-            font.pixelSize: 11
+            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
             font.weight: Components.Theme.fontWeightLight
         }
 

@@ -54,7 +54,7 @@ Rectangle {
                 text: root.providerLabel
                 color: Components.Theme.textPrimary
                 font.family: Components.Theme.fontFamily
-                font.pixelSize: 15
+                font.pixelSize: Components.Theme.typography.role("title").pixelSize
                 font.weight: Components.Theme.fontWeightMedium
                 Layout.fillWidth: true
             }
@@ -74,9 +74,12 @@ Rectangle {
                         ? I18n.tr("core.components.feedback.dns_status_card.status.auto", "Auto")
                         : I18n.tr("core.components.feedback.dns_status_card.status.manual", "Manual")
                     color: root.badgeColor
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeSmall
-                    font.weight: Components.Theme.fontWeightMedium
+                    font.family: Components.Theme.typography.role("caption").family
+                    font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                    lineHeight: Components.Theme.typography.role("caption").lineHeight
+                    lineHeightMode: Text.ProportionalHeight
+                    font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
+                    font.weight: Components.Theme.typography.role("caption").weight
                 }
             }
         }
@@ -84,9 +87,12 @@ Rectangle {
         Text {
             text: root.detail
             color: Components.Theme.textSecondary
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeSmall
-            font.weight: Components.Theme.fontWeightLight
+            font.family: Components.Theme.typography.role("caption").family
+            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+            lineHeight: Components.Theme.typography.role("caption").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
+            font.weight: Components.Theme.typography.role("caption").weight
             wrapMode: Text.Wrap
             Layout.fillWidth: true
         }

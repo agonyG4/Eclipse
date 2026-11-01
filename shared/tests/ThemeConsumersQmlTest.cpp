@@ -5,6 +5,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QFont>
+#include <QFontInfo>
 #include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -212,12 +214,13 @@ void ThemeConsumersQmlTest::actualConsumersResolveLivePackageTokens()
         {QStringLiteral("shellBackground"), QStringLiteral("#abcdef")}}}};
     QVERIFY(writeJson(themePath(id), manifest(id, partialStyle)));
     QTRY_COMPARE_WITH_TIMEOUT(bar->property("shellBackground").value<QColor>(), QColor("#abcdef"), 3000);
-    QCOMPARE(bar->property("fontSizeTitle").toInt(), 13);
+    QCOMPARE(bar->property("fontSizeTitle").toInt(), 18);
     QCOMPARE(menu->property("contextMenuRadius").toDouble(), 10.0);
     QCOMPARE(dockPanel->property("dockRadius").toDouble(), defaultDockRadius);
     QCOMPARE(settingsTheme->property("textPrimary").value<QColor>(), defaultSettingsText);
     QCOMPARE(settingsTheme->property("radiusSmall").toDouble(), defaultSettingsRadius);
-    QCOMPARE(settingsTheme->property("fontFamily").toString(), QStringLiteral("Inter"));
+    QCOMPARE(settingsTheme->property("fontFamily").toString(),
+             QFontInfo(QFont(QStringLiteral("sans-serif"))).family());
     QCOMPARE(settingsTheme->property("shellIconAccent").value<QColor>(), QColor("#60aaff"));
 
     QVERIFY(writeJson(navigation, {{QStringLiteral("visual_theme"), QStringLiteral("astrea")}}));
@@ -236,6 +239,48 @@ void ThemeConsumersQmlTest::actualConsumersResolveLivePackageTokens()
     QVERIFY(QMetaObject::invokeMethod(dockPanel.get(), "animationDuration",
                                       Q_RETURN_ARG(QVariant, duration), Q_ARG(QVariant, 90)));
     QCOMPARE(duration.toInt(), defaultDuration);
+
+    const QString primary = QFontInfo(QFont("serif")).family();
+    controller.setFontFamilyPreference("fontFamily", primary);
+    controller.setTextScale(2.0);
+    QTRY_COMPARE(settingsTheme->property("fontFamilyText").toString(), primary);
+    QTRY_COMPARE(bar->property("fontFamily").toString(), primary);
+    QTRY_COMPARE(menu->property("fontFamily").toString(), primary);
+    auto *searchInput = spotlightPanel->findChild<QObject *>("spotlightSearchInput");
+    QVERIFY(searchInput);
+    QTRY_COMPARE(searchInput->property("font").value<QFont>().pixelSize(), 36);
+    QTRY_COMPARE(bar->property("fontSizeTitle").toInt(), 36);
+    QTRY_COMPARE(menu->property("fontSizeBody").toInt(), 26);
+    QCOMPARE(dockPanel->property("dockRadius").toDouble(), defaultDockRadius);
+    controller.setTypographyPreference("title", "weight", 300);
+    controller.setTypographyPreference("title", "letterSpacing", 1.5);
+    QTRY_COMPARE(searchInput->property("font").value<QFont>().weight(), QFont::Light);
+    QTRY_COMPARE(searchInput->property("font").value<QFont>().letterSpacing(), 1.5);
+    controller.setTypographyPreference("body", "pixelSize", 16);
+    QTRY_COMPARE(settingsTheme->property("fontSizeNormal").toInt(), 32);
+    controller.resetFontPreferences();
+    QTRY_COMPARE(settingsTheme->property("fontSizeNormal").toInt(), 12);
+
+    QQmlComponent semanticWrappers(&engine);
+    semanticWrappers.setData("import QtQuick\nimport Astrea.Settings 1.0 as Settings\n"
+        "Item { Settings.DisplayLabel { objectName: 'displayWrapper'; text: 'Display' } "
+        "Settings.TextLabel { objectName: 'captionWrapper'; typographyRole: 'caption'; text: 'Caption' } }", QUrl());
+    QVERIFY2(semanticWrappers.isReady(), qPrintable(semanticWrappers.errorString()));
+    std::unique_ptr<QObject> wrappers(semanticWrappers.create());
+    QVERIFY2(wrappers, qPrintable(semanticWrappers.errorString()));
+    auto *displayWrapper = wrappers->findChild<QObject *>("displayWrapper");
+    auto *captionWrapper = wrappers->findChild<QObject *>("captionWrapper");
+    QVERIFY(displayWrapper && captionWrapper);
+    controller.setTypographyPreference("display", "family", primary);
+    controller.setTypographyPreference("caption", "family", primary);
+    controller.setTypographyPreference("caption", "pixelSize", 16);
+    controller.setTypographyPreference("caption", "lineHeight", 1.8);
+    QTRY_COMPARE(displayWrapper->property("font").value<QFont>().family(), primary);
+    QTRY_COMPARE(captionWrapper->property("font").value<QFont>().family(), primary);
+    QTRY_COMPARE(captionWrapper->property("font").value<QFont>().pixelSize(), 16);
+    QTRY_COMPARE(captionWrapper->property("lineHeight").toDouble(), 1.8);
+
+
 }
 
 } // namespace

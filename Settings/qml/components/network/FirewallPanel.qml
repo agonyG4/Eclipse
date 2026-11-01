@@ -37,8 +37,11 @@ ColumnLayout {
         text: "No graphical Polkit authentication agent detected. Install and start an agent such as lxqt-policykit to display the password prompt."
         textFormat: Text.PlainText
         color: Components.Theme.textSecondary
-        font.family: Components.Theme.fontFamily
-        font.pixelSize: Components.Theme.fontSizeSmall
+        font.family: Components.Theme.typography.role("caption").family
+        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+        lineHeight: Components.Theme.typography.role("caption").lineHeight
+        lineHeightMode: Text.ProportionalHeight
+        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
         wrapMode: Text.WordWrap
     }
 
@@ -58,8 +61,11 @@ ColumnLayout {
                     text: !root.manager || !root.manager.loaded ? "Not inspected"
                         : root.manager.enabled ? "Active" : "Inactive"
                     color: Components.Theme.textSecondary
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeSmall
+                    font.family: Components.Theme.typography.role("caption").family
+                    font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                    lineHeight: Components.Theme.typography.role("caption").lineHeight
+                    lineHeightMode: Text.ProportionalHeight
+                    font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                 }
                 Controls.Button {
                     objectName: "firewallAuthorizeButton"
@@ -164,8 +170,11 @@ ColumnLayout {
         text: root.manager ? root.manager.errorText : ""
         textFormat: Text.PlainText
         color: Components.Theme.errorColor
-        font.family: Components.Theme.fontFamily
-        font.pixelSize: Components.Theme.fontSizeSmall
+        font.family: Components.Theme.typography.role("caption").family
+        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+        lineHeight: Components.Theme.typography.role("caption").lineHeight
+        lineHeightMode: Text.ProportionalHeight
+        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
         wrapMode: Text.WordWrap
     }
 
@@ -184,8 +193,11 @@ ColumnLayout {
             Layout.margins: Components.Theme.spacingLarge
             text: "No explicit incoming rules."
             color: Components.Theme.textSecondary
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeSmall
+            font.family: Components.Theme.typography.role("caption").family
+            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+            lineHeight: Components.Theme.typography.role("caption").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
         }
 
         Repeater {
@@ -298,8 +310,11 @@ ColumnLayout {
                     Layout.fillWidth: true
                     text: "Administrator approval required"
                     color: Components.Theme.textSecondary
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeSmall
+                    font.family: Components.Theme.typography.role("caption").family
+                    font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                    lineHeight: Components.Theme.typography.role("caption").lineHeight
+                    lineHeightMode: Text.ProportionalHeight
+                    font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                     wrapMode: Text.WordWrap
                 }
                 Controls.Button {
@@ -323,8 +338,11 @@ ColumnLayout {
         Layout.fillWidth: true
         text: "Changing policies may block remote access. Review existing rules before applying changes."
         color: Components.Theme.textSecondary
-        font.family: Components.Theme.fontFamily
-        font.pixelSize: Components.Theme.fontSizeSmall
+        font.family: Components.Theme.typography.role("caption").family
+        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+        lineHeight: Components.Theme.typography.role("caption").lineHeight
+        lineHeightMode: Text.ProportionalHeight
+        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
         wrapMode: Text.WordWrap
     }
 
@@ -350,8 +368,11 @@ ColumnLayout {
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
                 color: Components.Theme.textPrimary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeLarge
+                font.family: Components.Theme.typography.role("label").family
+                font.pixelSize: Components.Theme.typography.role("label").pixelSize
+                lineHeight: Components.Theme.typography.role("label").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.letterSpacing: Components.Theme.typography.role("label").letterSpacing
             }
             RowLayout {
                 Layout.alignment: Qt.AlignRight

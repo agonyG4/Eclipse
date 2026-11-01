@@ -84,9 +84,11 @@ Item {
                 anchors.topMargin: 16
                 text: I18n.tr("apps.settings.pages.appearance.dock.text.preview", "PREVIEW")
                 color: Components.Theme.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall
-                font.weight: Components.Theme.fontWeightBold
+                font.family: Components.Theme.typography.role("caption").family
+                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.weight: Components.Theme.typography.role("caption").weight
                 font.letterSpacing: Components.Theme.trackingHeader
             }
 
@@ -495,8 +497,11 @@ Item {
             Layout.bottomMargin: 24
             text: root.controller.lastError
             color: Components.Theme.errorColor
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeSmall
+            font.family: Components.Theme.typography.role("caption").family
+            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+            lineHeight: Components.Theme.typography.role("caption").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
             wrapMode: Text.WordWrap
         }
 
@@ -554,8 +559,11 @@ Item {
                     "apps.settings.pages.appearance.dock.status.restored",
                     "Dock settings restored")
                 color: Components.Theme.textPrimary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall
+                font.family: Components.Theme.typography.role("caption").family
+                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                 elide: Text.ElideRight
                 verticalAlignment: Text.AlignVCenter
             }

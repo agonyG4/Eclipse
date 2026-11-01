@@ -24,8 +24,11 @@ Rectangle {
         textFormat: Text.PlainText
         wrapMode: Text.Wrap
         color: Components.Theme.textSecondary
-        font.family: Components.Theme.fontFamily
-        font.pixelSize: Components.Theme.fontSizeSmall
+        font.family: Components.Theme.typography.role("caption").family
+        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+        lineHeight: Components.Theme.typography.role("caption").lineHeight
+        lineHeightMode: Text.ProportionalHeight
+        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
     }
     Controls.ButtonCapsule {
         id: retryButton

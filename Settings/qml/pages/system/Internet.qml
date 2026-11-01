@@ -432,8 +432,8 @@ FocusScope {
             Typography.DisplayLabel {
                 objectName: "internetHeading"
                 text: I18n.tr("settings.internet.title", "Internet")
-                font.pixelSize: Components.Theme.fontSizeHero
-                font.weight: Components.Theme.fontWeightDemiBold
+                typographyRole: "display"
+                font.weight: Components.Theme.typography.role("display").weight
             }
 
             Typography.TextLabel {
@@ -441,7 +441,7 @@ FocusScope {
                 text: I18n.tr("settings.internet.subtitle",
                               "Manage your connection and network preferences.")
                 textColor: Components.Theme.textSecondary
-                font.pixelSize: Components.Theme.fontSizeNormal
+                typographyRole: "body"
                 wrapMode: Text.WordWrap
             }
         }
@@ -504,8 +504,11 @@ FocusScope {
                             ? I18n.tr("settings.internet.connection.status_connected", "Connected")
                             : I18n.tr("settings.internet.connection.disconnected", "Disconnected")
                         color: Components.Theme.textSecondary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
+                        font.family: Components.Theme.typography.role("caption").family
+                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                     }
 
                     Controls.Button {
@@ -563,8 +566,11 @@ FocusScope {
                                     : I18n.tr("settings.internet.firewall.inactive", "Inactive"))
                                 : I18n.tr("settings.internet.firewall.unknown", "Unavailable")
                         color: Components.Theme.textSecondary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
+                        font.family: Components.Theme.typography.role("caption").family
+                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                         textFormat: Text.PlainText
                     }
 
@@ -608,7 +614,7 @@ FocusScope {
                 Layout.margins: Components.Theme.spacingLarge
                 text: root.serviceStatusText()
                 textColor: Components.Theme.textSecondary
-                font.pixelSize: Components.Theme.fontSizeSmall
+                typographyRole: "caption"
                 wrapMode: Text.WordWrap
             }
 
@@ -622,7 +628,7 @@ FocusScope {
                 Layout.margins: Components.Theme.spacingLarge
                 text: root.network ? root.network.errorString : ""
                 textColor: Components.Theme.warningColor
-                font.pixelSize: Components.Theme.fontSizeSmall
+                typographyRole: "caption"
                 wrapMode: Text.WordWrap
             }
 
@@ -859,8 +865,11 @@ FocusScope {
                     text: I18n.tr("settings.internet.details.empty",
                                   "No runtime connection details are available.")
                     color: Components.Theme.textSecondary
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeSmall
+                    font.family: Components.Theme.typography.role("caption").family
+                    font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                    lineHeight: Components.Theme.typography.role("caption").lineHeight
+                    lineHeightMode: Text.ProportionalHeight
+                    font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                     wrapMode: Text.WordWrap
                 }
             }
@@ -942,9 +951,12 @@ FocusScope {
 
                         Text {
                             text: I18n.tr("settings.internet.dns.label.choose_mode", "DNS mode")
-                            font.family: Components.Theme.fontFamily
-                            font.pixelSize: Components.Theme.fontSizeSmall
-                            font.weight: Components.Theme.fontWeightMedium
+                            font.family: Components.Theme.typography.role("caption").family
+                            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                            lineHeight: Components.Theme.typography.role("caption").lineHeight
+                            lineHeightMode: Text.ProportionalHeight
+                            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
+                            font.weight: Components.Theme.typography.role("caption").weight
                             color: Components.Theme.textSecondary
                         }
 
@@ -974,9 +986,12 @@ FocusScope {
 
                         Text {
                             text: I18n.tr("settings.internet.dns.label.preset", "DNS provider")
-                            font.family: Components.Theme.fontFamily
-                            font.pixelSize: Components.Theme.fontSizeSmall
-                            font.weight: Components.Theme.fontWeightMedium
+                            font.family: Components.Theme.typography.role("caption").family
+                            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                            lineHeight: Components.Theme.typography.role("caption").lineHeight
+                            lineHeightMode: Text.ProportionalHeight
+                            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
+                            font.weight: Components.Theme.typography.role("caption").weight
                             color: Components.Theme.textSecondary
                         }
 
@@ -1008,9 +1023,12 @@ FocusScope {
                         Layout.fillWidth: true
                         text: I18n.tr("settings.internet.dns.label.custom_servers", "Custom DNS servers")
                         color: Components.Theme.textPrimary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeNormal
-                        font.weight: Components.Theme.fontWeightMedium
+                        font.family: Components.Theme.typography.role("body").family
+                        font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                        lineHeight: Components.Theme.typography.role("body").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
+                        font.weight: Components.Theme.typography.role("body").weight
                     }
 
                     QQC2.TextArea {
@@ -1063,8 +1081,11 @@ FocusScope {
                         text: visible ? root.dnsDraftValidation.error : ""
                         textFormat: Text.PlainText
                         color: Components.Theme.errorColor
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
+                        font.family: Components.Theme.typography.role("caption").family
+                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                         wrapMode: Text.WordWrap
                     }
                 }
@@ -1085,8 +1106,11 @@ FocusScope {
                                 "This connection changed while you were editing. Reload its settings or explicitly apply your draft to the current connection.")
                         textFormat: Text.PlainText
                         color: Components.Theme.warningColor
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
+                        font.family: Components.Theme.typography.role("caption").family
+                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                         wrapMode: Text.WordWrap
                     }
 
@@ -1134,8 +1158,11 @@ FocusScope {
                         textFormat: Text.PlainText
                         color: root.network && root.network.dnsNeedsReconnect
                             ? Components.Theme.warningColor : Components.Theme.textSecondary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeSmall
+                        font.family: Components.Theme.typography.role("caption").family
+                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                        lineHeightMode: Text.ProportionalHeight
+                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                         wrapMode: Text.WordWrap
                     }
 
@@ -1186,8 +1213,11 @@ FocusScope {
                 && root.network.wifiAvailable && !root.network.wifiEnabled
             text: I18n.tr("settings.internet.wifi.software_disabled", "Wi-Fi is turned off.")
             color: Components.Theme.textSecondary
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeSmall
+            font.family: Components.Theme.typography.role("caption").family
+            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+            lineHeight: Components.Theme.typography.role("caption").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
             Layout.bottomMargin: Components.Theme.spacingMedium
         }
 
@@ -1198,8 +1228,11 @@ FocusScope {
             text: I18n.tr("settings.internet.wifi.hardware_unavailable",
                           "Wireless hardware is disabled or unavailable.")
             color: Components.Theme.textSecondary
-            font.family: Components.Theme.fontFamily
-            font.pixelSize: Components.Theme.fontSizeSmall
+            font.family: Components.Theme.typography.role("caption").family
+            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+            lineHeight: Components.Theme.typography.role("caption").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
             Layout.bottomMargin: Components.Theme.spacingMedium
         }
 
@@ -1263,9 +1296,12 @@ FocusScope {
                                     text: networkRow.ssid
                                     textFormat: Text.PlainText
                                     color: Components.Theme.textPrimary
-                                    font.family: Components.Theme.fontFamily
-                                    font.pixelSize: Components.Theme.fontSizeTitle
-                                    font.weight: Components.Theme.fontWeightMedium
+                                    font.family: Components.Theme.typography.role("title").family
+                                    font.pixelSize: Components.Theme.typography.role("title").pixelSize
+                                    lineHeight: Components.Theme.typography.role("title").lineHeight
+                                    lineHeightMode: Text.ProportionalHeight
+                                    font.letterSpacing: Components.Theme.typography.role("title").letterSpacing
+                                    font.weight: Components.Theme.typography.role("title").weight
                                     elide: Text.ElideRight
                                 }
 
@@ -1279,8 +1315,11 @@ FocusScope {
                                             ? I18n.tr("settings.internet.network.secured", "Secured")
                                             : I18n.tr("settings.internet.network.open", "Open")
                                         color: Components.Theme.textSecondary
-                                        font.family: Components.Theme.fontFamily
-                                        font.pixelSize: Components.Theme.fontSizeSmall
+                                        font.family: Components.Theme.typography.role("caption").family
+                                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                        lineHeightMode: Text.ProportionalHeight
+                                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                                     }
 
                                     Text {
@@ -1288,8 +1327,11 @@ FocusScope {
                                         visible: root.frequencyBandText(networkRow.frequencyMHz) !== ""
                                         text: root.frequencyBandText(networkRow.frequencyMHz)
                                         color: Components.Theme.textSecondary
-                                        font.family: Components.Theme.fontFamily
-                                        font.pixelSize: Components.Theme.fontSizeSmall
+                                        font.family: Components.Theme.typography.role("caption").family
+                                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                        lineHeightMode: Text.ProportionalHeight
+                                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                                     }
 
                                     Text {
@@ -1297,9 +1339,12 @@ FocusScope {
                                         visible: networkRow.active
                                         text: I18n.tr("settings.internet.network.connected", "Connected")
                                         color: Components.Theme.accent
-                                        font.family: Components.Theme.fontFamily
-                                        font.pixelSize: Components.Theme.fontSizeSmall
-                                        font.weight: Components.Theme.fontWeightMedium
+                                        font.family: Components.Theme.typography.role("caption").family
+                                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                        lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                        lineHeightMode: Text.ProportionalHeight
+                                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
+                                        font.weight: Components.Theme.typography.role("caption").weight
                                     }
                                 }
                             }
@@ -1316,8 +1361,11 @@ FocusScope {
                                         .replace("{strength}", String(Math.max(0, Math.min(100,
                                                                                           networkRow.strength))))
                                     color: Components.Theme.textSecondary
-                                    font.family: Components.Theme.fontFamily
-                                    font.pixelSize: Components.Theme.fontSizeSmall
+                                    font.family: Components.Theme.typography.role("caption").family
+                                    font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                    lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                    lineHeightMode: Text.ProportionalHeight
+                                    font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                                 }
 
                                 Rectangle {
@@ -1359,8 +1407,11 @@ FocusScope {
                     text: I18n.tr("settings.internet.networks.empty",
                                   "No named Wi-Fi networks are available.")
                     color: Components.Theme.textSecondary
-                    font.family: Components.Theme.fontFamily
-                    font.pixelSize: Components.Theme.fontSizeSubtitle
+                    font.family: Components.Theme.typography.role("title").family
+                    font.pixelSize: Components.Theme.typography.role("title").pixelSize
+                    lineHeight: Components.Theme.typography.role("title").lineHeight
+                    lineHeightMode: Text.ProportionalHeight
+                    font.letterSpacing: Components.Theme.typography.role("title").letterSpacing
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                     wrapMode: Text.WordWrap

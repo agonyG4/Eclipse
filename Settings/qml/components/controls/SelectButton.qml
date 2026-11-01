@@ -15,6 +15,7 @@ Item {
     signal selected(int index)
     property bool isButton: false
     property bool showChevron: true
+    property bool showButtonIcon: true
 
     // ── Styling (Premium Defaults) ───────────────────────────────
     property color accent: Components.Theme.accent
@@ -24,7 +25,7 @@ Item {
     property color cardBorder: Components.Theme.cardBorder
     property color popupBg: Components.Theme.popupBg
 
-    implicitHeight: 36
+    implicitHeight: Math.max(36, Math.ceil(Components.Theme.typography.role("label").pixelSize * Components.Theme.typography.role("label").lineHeight) + 16)
 
     readonly property int maxVisible: 5
     readonly property int itemH:      36
@@ -83,8 +84,8 @@ Item {
                 Layout.fillWidth: true
                 text: sel.label
                 color: sel.enabled ? sel.textPrimary : sel.textSecondary
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeNormal
+                font.family: Components.Theme.typography.role("label").family
+                font.pixelSize: Components.Theme.typography.role("label").pixelSize
                 font.weight: Components.Theme.fontWeightMedium
                 elide: Text.ElideRight
                 Behavior on color { ColorAnimation { duration: Components.Theme.animationFast } }
@@ -93,7 +94,7 @@ Item {
                 visible: !sel.isButton && sel.showChevron && sel.enabled
                 text: dropdown.visible ? "⌃" : "⌄"
                 color: dropdown.visible ? sel.accent : sel.textSecondary
-                font.pixelSize: Components.Theme.fontSizeNormal
+                font.pixelSize: 13
                 Behavior on color { ColorAnimation { duration: Components.Theme.animationFast } }
 
                 // Add a subtle rotation instead of snapping character
@@ -101,11 +102,11 @@ Item {
                 Behavior on rotation { NumberAnimation { duration: Components.Theme.animationNormal; easing.type: Components.Theme.easingMove } }
             }
             Text {
-                visible: sel.isButton && sel.enabled
+                visible: sel.isButton && sel.showButtonIcon && sel.enabled
                 text: "\uf03e" // Icon font usually
                 font.family: "JetBrainsMono Nerd Font"
                 color: btnArea.containsMouse ? sel.accent : sel.textSecondary
-                font.pixelSize: Components.Theme.fontSizeNormal
+                font.pixelSize: 13
                 Behavior on color { ColorAnimation { duration: Components.Theme.animationFast } }
             }
         }
@@ -202,8 +203,8 @@ Item {
                         Layout.fillWidth: true
                         text: modelData
                         color: active ? sel.accent : sel.textPrimary
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeNormal
+                        font.family: Components.Theme.typography.role("label").family
+                        font.pixelSize: Components.Theme.typography.role("label").pixelSize
                         font.weight: active ? Components.Theme.fontWeightDemiBold : Components.Theme.fontWeightMedium
                         Behavior on color { ColorAnimation { duration: Components.Theme.animationFast } }
                     }
@@ -211,7 +212,7 @@ Item {
                         visible: active
                         text: "✓"
                         color: sel.accent
-                        font.pixelSize: Components.Theme.fontSizeNormal
+                        font.pixelSize: Components.Theme.typography.role("label").pixelSize
                         font.weight: Components.Theme.fontWeightBold
                     }
                 }

@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import ".." as Components
 
 Rectangle {
     id: card
@@ -23,50 +24,53 @@ Rectangle {
     property color errorColor: "#ff8b8b"
 
     width: 320
-    height: 82
+    height: Math.max(82, progressColumn.implicitHeight + 24)
     radius: 8
     color: panelColor
     border.width: 1
     border.color: borderColor
 
     Column {
+        id: progressColumn
         anchors { fill: parent; margins: 12 }
         spacing: 7
 
         RowLayout {
             width: parent.width
-            height: 16
+            height: Math.max(16, Math.ceil(Components.Theme.typography.role("label").pixelSize * Components.Theme.typography.role("label").lineHeight))
             spacing: 8
 
             Text {
                 Layout.fillWidth: true
                 text: card.title
                 color: card.failed ? card.errorColor : card.primaryTextColor
-                font { pixelSize: 12; weight: Font.DemiBold }
+                font { family: Components.Theme.typography.role("label").family; pixelSize: Components.Theme.typography.role("label").pixelSize; weight: Components.Theme.typography.role("label").weight }
                 elide: Text.ElideRight
             }
 
             Text {
                 text: card.indeterminate ? "" : card.percent + "%"
                 color: card.secondaryTextColor
-                font.pixelSize: 11
+                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                font.family: Components.Theme.typography.role("caption").family
                 visible: !card.failed
             }
         }
 
         Text {
             width: parent.width
-            height: 14
+            height: implicitHeight
             text: card.destination !== "" ? card.detail + " -> " + card.destination : card.detail
             color: card.secondaryTextColor
-            font.pixelSize: 11
+            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+            font.family: Components.Theme.typography.role("caption").family
             elide: Text.ElideMiddle
             visible: text !== ""
         }
 
         RowLayout {
             width: parent.width
-            height: 16
+            height: Math.max(16, Math.ceil(Components.Theme.typography.role("label").pixelSize * Components.Theme.typography.role("label").lineHeight))
             spacing: 8
 
             Rectangle {
@@ -109,7 +113,8 @@ Rectangle {
                              ? (card.completedItems + " " + I18n.tr("core.components.feedback.progress_card.status.items", "items"))
                              : I18n.tr("core.components.feedback.progress_card.status.preparing", "Preparing"))))
                 color: card.secondaryTextColor
-                font.pixelSize: 11
+                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                font.family: Components.Theme.typography.role("caption").family
                 elide: Text.ElideRight
                 horizontalAlignment: Text.AlignRight
             }

@@ -73,9 +73,12 @@ Item {
                 text: sr.label;
                 textFormat: sr.labelTextFormat
                 color: sr.textPrimary;
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeLarge;
-                font.weight: Components.Theme.fontWeightMedium
+                font.family: Components.Theme.typography.role("label").family
+                font.pixelSize: Components.Theme.typography.role("label").pixelSize;
+                font.letterSpacing: Components.Theme.typography.role("label").letterSpacing
+                lineHeight: Components.Theme.typography.role("label").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.weight: Components.Theme.typography.role("label").weight
                 Layout.fillWidth: true
                 elide: Text.ElideRight
                 // Subtle scale or translation could theoretically be added here
@@ -85,9 +88,12 @@ Item {
                 text: sr.sublabel
                 textFormat: sr.sublabelTextFormat
                 color: sr.textSecondary;
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.fontSizeSmall;
-                font.weight: Components.Theme.fontWeightNormal
+                font.family: Components.Theme.typography.role("caption").family
+                font.pixelSize: Components.Theme.typography.role("caption").pixelSize;
+                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
+                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                font.weight: Components.Theme.typography.role("caption").weight
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
             }

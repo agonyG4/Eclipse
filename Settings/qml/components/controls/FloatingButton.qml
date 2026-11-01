@@ -8,12 +8,12 @@ Rectangle {
     property string text: label
     property string iconSource: ""
     property string iconText: ""
-    property string iconFontFamily: Components.Theme.fontFamily
+    property string iconFontFamily: Components.Theme.iconFontFamily
     property bool primary: false
     property bool danger: false
     property bool enabled: true
-    property int fontPixelSize: Components.Theme.fontSizeNormal
-    property int iconSize: Math.round(fontPixelSize + 4)
+    property int fontPixelSize: Components.Theme.typography.role("label").pixelSize
+    property int iconSize: 16
     property int controlWidth: 0
     property int controlHeight: 36
     property int minWidth: 36

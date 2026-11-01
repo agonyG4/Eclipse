@@ -222,8 +222,11 @@ void TyphonScreenCaptureClient::Private::handleReady(astrea_screen_capture_v1 *s
         failRequest(QStringLiteral("screenshot image mapping failed"));
         return;
     }
+    // Typhon composites with premultiplied alpha (ONE, ONE_MINUS_SRC_ALPHA), so
+    // translucent window captures must not be read as straight alpha.
     const QImage view(static_cast<const uchar *>(mapped), static_cast<int>(width),
-                      static_cast<int>(height), static_cast<int>(stride), QImage::Format_RGBA8888);
+                      static_cast<int>(height), static_cast<int>(stride),
+                      QImage::Format_RGBA8888_Premultiplied);
     const QImage image = view.copy();
     ::munmap(mapped, static_cast<std::size_t>(payload));
     closeFd();

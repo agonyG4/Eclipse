@@ -216,6 +216,12 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
         std::make_unique<Paper::XdgWallpaperPersistence>(),
         std::move(wallpaperCatalog));
     m_wallpaperService->initialize();
+    const auto syncDockPreviewBackdrop = [this] {
+        m_dockWindowPreviewService->setBackdropSource(m_wallpaperService->effectiveSource());
+    };
+    connect(m_wallpaperService.get(), &Paper::WallpaperService::effectiveWallpaperChanged, this,
+            syncDockPreviewBackdrop);
+    syncDockPreviewBackdrop();
     m_wallpaperControlServer = std::make_unique<Paper::WallpaperControlServer>(
         m_wallpaperService.get());
     QString wallpaperControlError;

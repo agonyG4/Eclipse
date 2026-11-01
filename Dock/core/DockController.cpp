@@ -121,17 +121,22 @@ QVariantList DockController::minimizedWindowEntries() const
     QVariantList entries;
     if (!m_runtimeKnown || !m_runtimeSnapshot.has_value())
         return entries;
-    for (const auto &window : m_runtimeSnapshot->windows) {
-        if (!window.minimized)
+    for (const QString &windowId : m_minimizedOrder) {
+        const auto window = std::find_if(m_runtimeSnapshot->windows.cbegin(),
+                                         m_runtimeSnapshot->windows.cend(),
+                                         [&windowId](const auto &candidate) {
+            return candidate.id == windowId && candidate.minimized;
+        });
+        if (window == m_runtimeSnapshot->windows.cend())
             continue;
         for (auto state = m_runtimeStates.cbegin(); state != m_runtimeStates.cend(); ++state) {
-            if (!state->windowIds.contains(window.id))
+            if (!state->windowIds.contains(window->id))
                 continue;
             entries.append(QVariantMap{
-                {QStringLiteral("windowId"), window.id},
+                {QStringLiteral("windowId"), window->id},
                 {QStringLiteral("taskKey"), state.key()},
-                {QStringLiteral("title"), window.title},
-                {QStringLiteral("appId"), window.appId},
+                {QStringLiteral("title"), window->title},
+                {QStringLiteral("appId"), window->appId},
                 {QStringLiteral("iconName"), state->iconName},
                 {QStringLiteral("iconPath"), state->iconPath},
                 {QStringLiteral("displayName"), state->displayName},
@@ -316,8 +321,23 @@ void DockController::applyRuntimeSnapshot(const Astrea::Dock::DockRuntimeSnapsho
     const int previousReservation = exclusiveZone();
     const DockSurfacePlacement previousPlacement = surfacePlacement();
     if (m_runtimeSnapshot.has_value()
-        && m_runtimeSnapshot->generation != snapshot.generation)
+        && m_runtimeSnapshot->generation != snapshot.generation) {
         m_windowMinimizeAnchors.clear();
+        m_minimizedOrder.clear();
+    }
+    QStringList minimizedOrder;
+    for (const QString &windowId : std::as_const(m_minimizedOrder)) {
+        if (std::any_of(snapshot.windows.cbegin(), snapshot.windows.cend(),
+                        [&windowId](const auto &window) {
+                return window.id == windowId && window.minimized;
+            }))
+            minimizedOrder.append(windowId);
+    }
+    for (const auto &window : snapshot.windows) {
+        if (window.minimized && !minimizedOrder.contains(window.id))
+            minimizedOrder.append(window.id);
+    }
+    m_minimizedOrder = std::move(minimizedOrder);
     m_runtimeSnapshot = snapshot;
     m_runtimeKnown = true;
     updateAutoHidePolicy();
@@ -338,6 +358,7 @@ void DockController::clearRuntimeState()
     m_runtimeSnapshot.reset();
     m_runtimeStates.clear();
     m_windowMinimizeAnchors.clear();
+    m_minimizedOrder.clear();
     m_runtimeTaskIdentityTracker.reset();
     m_model.clearRuntimeProjection();
     updateAutoHidePolicy();

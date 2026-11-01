@@ -236,6 +236,9 @@ private:
     QHash<QString, Astrea::Dock::DockApplicationRuntimeState> m_runtimeStates;
     QHash<QString, QRect> m_minimizeAnchors;
     QHash<QString, QRect> m_windowMinimizeAnchors;
+    // Minimized window ids in the order they were minimized; new ones append
+    // at the trailing end of the dock like macOS.
+    QStringList m_minimizedOrder;
     struct PublishedMinimizeAnchor {
         QString taskKey;
         QRect rect;

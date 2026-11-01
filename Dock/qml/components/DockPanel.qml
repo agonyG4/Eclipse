@@ -282,27 +282,42 @@ Item {
                     width: DockController.delegateWidth
                     height: DockController.delegateHeight
 
-                    Rectangle {
+                    // The card keeps the fixed slot size because it is the published
+                    // minimize anchor; the visible frame hugs the fitted window image.
+                    Item {
                         id: minimizedWindowCard
                         objectName: "minimized-window-card-" + minimizedWindowDelegate.modelData.windowId
                         anchors.centerIn: parent
                         width: Math.min(68, parent.width - 4)
                         height: Math.min(46, parent.height - 4)
-                        radius: 7
-                        color: shellMaterial.tooltipSurface
-                        border.color: shellMaterial.tooltipBorder
-                        clip: true
+
+                        Rectangle {
+                            id: minimizedWindowFrame
+                            anchors.centerIn: parent
+                            width: minimizedWindowImage.visible
+                                ? Math.ceil(minimizedWindowImage.paintedWidth) + 2 : parent.width
+                            height: minimizedWindowImage.visible
+                                ? Math.ceil(minimizedWindowImage.paintedHeight) + 2 : parent.height
+                            radius: 6
+                            color: shellMaterial.tooltipSurface
+                            border.color: shellMaterial.tooltipBorder
+                        }
 
                         Image {
                             id: minimizedWindowImage
+                            objectName: "minimized-window-image-" + minimizedWindowDelegate.modelData.windowId
                             anchors.fill: parent
                             anchors.margins: 1
-                            fillMode: Image.PreserveAspectCrop
+                            fillMode: Image.PreserveAspectFit
+                            smooth: true
+                            mipmap: true
                             source: root.dockWindowPreviewService
                                 ? root.dockWindowPreviewService.imageUrl(modelData.windowId) : ""
                             visible: status === Image.Ready
                             asynchronous: true
-                            cache: false
+                            // Every capture gets a new revision URL, so caching by URL
+                            // only keeps snapshot-driven delegate rebuilds from flashing.
+                            cache: true
                             Connections {
                                 target: root.dockWindowPreviewService
                                 function onImageChanged(windowId) {
@@ -329,13 +344,29 @@ Item {
                             visible: !minimizedWindowImage.visible
                         }
 
+                        // macOS badges minimized windows with their app icon.
+                        Shared.AstreaAppIcon {
+                            objectName: "minimized-window-badge-" + minimizedWindowDelegate.modelData.windowId
+                            width: 18
+                            height: 18
+                            x: minimizedWindowFrame.x + minimizedWindowFrame.width - width + 4
+                            y: minimizedWindowFrame.y + minimizedWindowFrame.height - height + 4
+                            iconName: minimizedWindowDelegate.modelData.iconName
+                            iconPath: minimizedWindowDelegate.modelData.iconPath
+                            appName: minimizedWindowDelegate.modelData.displayName
+                            visible: minimizedWindowImage.visible
+                        }
+
                         Rectangle {
-                            anchors.right: parent.right
-                            anchors.top: parent.top
+                            id: minimizedWindowClose
+                            objectName: "minimized-window-close-" + minimizedWindowDelegate.modelData.windowId
+                            x: minimizedWindowFrame.x + minimizedWindowFrame.width - width
+                            y: minimizedWindowFrame.y
                             width: 16
                             height: 16
                             radius: 8
                             color: "#c91b1d25"
+                            visible: minimizedWindowHover.hovered
 
                             Text {
                                 anchors.centerIn: parent
@@ -356,10 +387,11 @@ Item {
                     TapHandler {
                         acceptedButtons: Qt.LeftButton
                         onTapped: function(eventPoint) {
-                            const closeRect = Qt.rect(
-                                minimizedWindowCard.x + minimizedWindowCard.width - 16,
-                                minimizedWindowCard.y, 16, 16)
-                            if (closeRect.contains(eventPoint.position))
+                            const closePoint = minimizedWindowClose.mapFromItem(
+                                minimizedWindowDelegate, eventPoint.position.x,
+                                eventPoint.position.y)
+                            if (minimizedWindowClose.visible
+                                && minimizedWindowClose.contains(closePoint))
                                 return
                             DockController.activateWindow(
                                 minimizedWindowDelegate.modelData.taskKey,
@@ -367,6 +399,7 @@ Item {
                         }
                     }
                     HoverHandler {
+                        id: minimizedWindowHover
                         onHoveredChanged: {
                             if (hovered && root.dockTooltipSurface && root.dockSurfaceGeometry) {
                                 const targetRect = root.windowRect(Qt.rect(

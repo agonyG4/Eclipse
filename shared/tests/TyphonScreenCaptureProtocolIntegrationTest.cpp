@@ -496,7 +496,7 @@ void TyphonScreenCaptureProtocolIntegrationTest::captureUsesGeneratedRequestOpco
     compositor.sendReady(pixels, 2, 1, 8);
     QVERIFY(compositor.pumpUntil([&readySpy] { return readySpy.count() == 1; }));
     const QImage image = qvariant_cast<QImage>(readySpy.at(0).at(0));
-    QCOMPARE(image.format(), QImage::Format_RGBA8888);
+    QCOMPARE(image.format(), QImage::Format_RGBA8888_Premultiplied);
     QCOMPARE(image.pixelColor(1, 0), QColor(4, 5, 6, 255));
     compositor.clearReadyFile();
     connection.stop();

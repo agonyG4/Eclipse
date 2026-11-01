@@ -2,8 +2,11 @@
 
 #include "platform/typhon/TyphonScreenCaptureClient.hpp"
 
+#include <QImageReader>
 #include <QMutexLocker>
+#include <QPainter>
 #include <QSet>
+#include <QUrl>
 
 #include <algorithm>
 
@@ -12,6 +15,8 @@ namespace {
 constexpr qsizetype kMaximumCacheBytes = 64 * 1024 * 1024;
 constexpr std::uint32_t kCaptureWidth = 512;
 constexpr std::uint32_t kCaptureHeight = 320;
+constexpr int kBackdropWidth = 320;
+constexpr int kBackdropBlurWidth = 20;
 
 } // namespace
 
@@ -86,7 +91,11 @@ QString DockWindowPreviewService::imageUrl(const QString &windowId) const
 {
     QMutexLocker lock(&m_mutex);
     const auto it = m_cache.constFind(windowId);
-    const quint64 revision = it == m_cache.constEnd() ? 0 : it->revision;
+    // No URL until a capture exists: QML shows the app icon instead of asking
+    // the provider for an image it does not have.
+    if (it == m_cache.constEnd() || it->generation != m_currentGeneration)
+        return {};
+    const quint64 revision = it->revision;
     const QString encoded = QString::fromLatin1(windowId.toUtf8().toHex());
     return QStringLiteral("image://astrea-window-preview/%1?g=%2&r=%3")
         .arg(encoded).arg(m_currentGeneration).arg(revision);
@@ -176,6 +185,51 @@ void DockWindowPreviewService::cancelRequestsWithoutVisibleDemand()
     requestNext();
 }
 
+void DockWindowPreviewService::setBackdropSource(const QString &source)
+{
+    const QUrl url(source);
+    const QString path = url.isLocalFile() ? url.toLocalFile() : source;
+    if (path == m_backdropSource)
+        return;
+    m_backdropSource = path;
+    m_backdrop = {};
+    if (path.isEmpty())
+        return;
+    QImageReader reader(path);
+    reader.setAutoTransform(true);
+    const QSize sourceSize = reader.size();
+    if (sourceSize.isValid() && sourceSize.width() > kBackdropWidth)
+        reader.setScaledSize(sourceSize.scaled(kBackdropWidth, kBackdropWidth * 4,
+                                               Qt::KeepAspectRatio));
+    QImage image = reader.read();
+    if (image.isNull())
+        return;
+    // Down- then up-sampling is a cheap, wide blur matching the compositor's
+    // frosted backdrop closely enough at thumbnail size.
+    const QSize full = image.size();
+    image = image.scaledToWidth(kBackdropBlurWidth, Qt::SmoothTransformation)
+                .scaled(full, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    m_backdrop = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+}
+
+QImage DockWindowPreviewService::composeOverBackdrop(const QImage &image) const
+{
+    if (m_backdrop.isNull() || !image.hasAlphaChannel())
+        return image;
+    QImage composed(image.size(), QImage::Format_ARGB32_Premultiplied);
+    composed.fill(Qt::transparent);
+    QPainter painter(&composed);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+    const QSize cover = m_backdrop.size().scaled(image.size(), Qt::KeepAspectRatioByExpanding);
+    painter.drawImage(QRect(QPoint((image.width() - cover.width()) / 2,
+                                   (image.height() - cover.height()) / 2),
+                            cover),
+                      m_backdrop);
+    painter.drawImage(0, 0, image);
+    painter.end();
+    return composed;
+}
+
 QImage DockWindowPreviewService::imageForWindow(const QString &windowId)
 {
     QMutexLocker lock(&m_mutex);
@@ -246,7 +300,7 @@ void DockWindowPreviewService::finishRequest(const QString &reason, QImage image
     if (!completed)
         return;
     if (reason.isEmpty() && !image.isNull() && generation == m_currentGeneration)
-        cacheImage(completedWindow, image, generation);
+        cacheImage(completedWindow, composeOverBackdrop(image), generation);
     requestNext();
 }
 

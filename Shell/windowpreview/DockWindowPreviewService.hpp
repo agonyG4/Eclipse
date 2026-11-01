@@ -23,6 +23,9 @@ public:
     Q_INVOKABLE void reconcileLiveWindowIds(const QStringList &windowIds);
     Q_INVOKABLE void setMinimizedWindowIds(const QStringList &windowIds);
     Q_INVOKABLE void setPopupWindowIds(const QStringList &windowIds);
+    // Translucent windows are previewed over this image, blurred, the way they
+    // read on the desktop instead of over an empty dark card.
+    void setBackdropSource(const QString &source);
     QImage imageForWindow(const QString &windowId);
 
 signals:
@@ -44,6 +47,7 @@ private:
     void cacheImage(const QString &windowId, const QImage &image, quint64 generation);
     void evictToLimit();
     void cancelRequestsWithoutVisibleDemand();
+    QImage composeOverBackdrop(const QImage &image) const;
 
     TyphonScreenCaptureClient *m_client = nullptr;
     mutable QMutex m_mutex;
@@ -52,6 +56,8 @@ private:
     QStringList m_minimizedWindowIds;
     QStringList m_popupWindowIds;
     QQueue<QString> m_queue;
+    QString m_backdropSource;
+    QImage m_backdrop;
     QString m_activeWindowId;
     quint64 m_activeToken = 0;
     quint64 m_nextToken = 0;

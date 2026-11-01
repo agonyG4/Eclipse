@@ -165,6 +165,7 @@ private slots:
     void runningRuntimeSuppressesDuplicateLaunch();
     void runtimeWindowsKeepExactIdentityAndTitles();
     void minimizedWindowEntriesStaySeparateAndExact();
+    void minimizedWindowEntriesAppendInMinimizeOrder();
     void windowMinimizeAnchorsOverrideOnlyTheirWindow();
     void runtimeBackendActionsAndReadinessRemainSynchronous();
     void firstRuntimeReadySnapshotIsAppliedOnce();
@@ -550,6 +551,43 @@ void DockControllerTest::minimizedWindowEntriesStaySeparateAndExact()
              minimized.id);
     QVERIFY(previewEntries.at(0).toMap().value(QStringLiteral("minimized")).toBool());
     QVERIFY(!previewEntries.at(1).toMap().value(QStringLiteral("minimized")).toBool());
+}
+
+void DockControllerTest::minimizedWindowEntriesAppendInMinimizeOrder()
+{
+    FakeDockRuntimeBackend runtimeBackend;
+    DockController controller;
+    controller.attachRuntimeBackend(&runtimeBackend);
+    controller.setCatalogSnapshot(makeCatalog());
+    controller.applyConfig(configWithPins({QStringLiteral("one.desktop")}));
+    Astrea::Dock::DockRuntimeWindow first;
+    first.id = QStringLiteral("window-a");
+    first.appId = QStringLiteral("one");
+    Astrea::Dock::DockRuntimeWindow second = first;
+    second.id = QStringLiteral("window-b");
+
+    const auto minimizedIds = [&controller] {
+        QStringList ids;
+        for (const QVariant &entry : controller.minimizedWindowEntries())
+            ids.append(entry.toMap().value(QStringLiteral("windowId")).toString());
+        return ids;
+    };
+
+    // The later-created window is minimized first, so it takes the first slot.
+    second.minimized = true;
+    runtimeBackend.publishSnapshot(runtimeSnapshot(6, {first, second}));
+    QCOMPARE(minimizedIds(), QStringList({second.id}));
+    first.minimized = true;
+    runtimeBackend.publishSnapshot(runtimeSnapshot(6, {first, second}));
+    QCOMPARE(minimizedIds(), QStringList({second.id, first.id}));
+
+    // Restoring and minimizing again moves a window to the trailing end.
+    second.minimized = false;
+    runtimeBackend.publishSnapshot(runtimeSnapshot(6, {first, second}));
+    QCOMPARE(minimizedIds(), QStringList({first.id}));
+    second.minimized = true;
+    runtimeBackend.publishSnapshot(runtimeSnapshot(6, {first, second}));
+    QCOMPARE(minimizedIds(), QStringList({first.id, second.id}));
 }
 
 void DockControllerTest::windowMinimizeAnchorsOverrideOnlyTheirWindow()

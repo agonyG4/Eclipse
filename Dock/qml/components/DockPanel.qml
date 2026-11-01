@@ -339,6 +339,9 @@ Item {
                             source: root.dockWindowPreviewService
                                 ? root.dockWindowPreviewService.imageUrl(
                                       minimizedWindowDelegate.modelData.windowId) : ""
+                            sourceSize: root.dockWindowPreviewService
+                                ? root.dockWindowPreviewService.imageSize(
+                                      minimizedWindowDelegate.modelData.windowId) : Qt.size(0, 0)
                             iconName: minimizedWindowDelegate.modelData.iconName
                             iconPath: minimizedWindowDelegate.modelData.iconPath
                             appName: minimizedWindowDelegate.modelData.displayName
@@ -358,11 +361,17 @@ Item {
                             Connections {
                                 target: root.dockWindowPreviewService
                                 function onImageChanged(windowId) {
-                                    if (windowId === minimizedWindowDelegate.modelData.windowId)
-                                        minimizedWindowTile.source =
-                                            root.dockWindowPreviewService.imageUrl(windowId)
+                                    if (windowId !== minimizedWindowDelegate.modelData.windowId)
+                                        return
+                                    minimizedWindowTile.sourceSize =
+                                        root.dockWindowPreviewService.imageSize(windowId)
+                                    minimizedWindowTile.source =
+                                        root.dockWindowPreviewService.imageUrl(windowId)
                                 }
                                 function onGenerationChanged() {
+                                    minimizedWindowTile.sourceSize =
+                                        root.dockWindowPreviewService.imageSize(
+                                            minimizedWindowDelegate.modelData.windowId)
                                     minimizedWindowTile.source =
                                         root.dockWindowPreviewService.imageUrl(
                                             minimizedWindowDelegate.modelData.windowId)

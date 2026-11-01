@@ -33,6 +33,8 @@ Window {
 
     readonly property color accent: material.tokens.value("accent", "#007aff")
     readonly property real panelRadius: material.tokens.value("dockPreviewRadius", 22)
+    // Read through root: RectangularShadow's own `material` shadows the id.
+    readonly property real thumbnailRadius: material.radiusMedium
     readonly property int panelPadding: 8
     readonly property int cardSpacing: 4
     readonly property int cardPadding: 8
@@ -242,7 +244,7 @@ Window {
                     readonly property real fitScale: imageSize.width > 0 && imageSize.height > 0
                         ? Math.min(root.thumbnailWidth / imageSize.width,
                                    root.thumbnailHeight / imageSize.height, 1) : 0
-                    readonly property bool imageReady: fitScale > 0 && String(previewImage.source).length > 0
+                    readonly property bool imageReady: fitScale > 0 && previewImage.ready
 
                     function refreshImage() {
                         if (!root.previewService)
@@ -277,6 +279,9 @@ Window {
 
                         // Rounded, bordered thumbnail drawn like Astrea's
                         // screenshot visual: soft shadow, mask, hairline edge.
+                        // Crisp at any scale: the AstreaAppIcon path decodes at the
+                        // presented size and rounds in its shader; the shadow
+                        // is analytic, so the hover lift never resamples.
                         Item {
                             id: previewFrame
                             anchors.centerIn: parent
@@ -287,50 +292,27 @@ Window {
                             Behavior on scale {
                                 NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
                             }
-                            layer.enabled: visible
-                            layer.smooth: true
-                            layer.effect: MultiEffect {
-                                shadowEnabled: true
-                                shadowColor: "#000000"
-                                shadowBlur: 0.55
-                                shadowOpacity: card.hovered ? 0.5 : 0.35
-                                shadowVerticalOffset: card.hovered ? 5 : 3
-                                autoPaddingEnabled: true
-                            }
 
-                            Item {
-                                id: previewMask
+                            RectangularShadow {
                                 anchors.fill: parent
-                                visible: false
-                                layer.enabled: true
-                                layer.smooth: true
-                                Rectangle {
-                                    anchors.fill: parent
-                                    radius: material.radiusMedium
-                                    color: "white"
-                                    antialiasing: true
-                                }
+                                radius: root.thumbnailRadius
+                                blur: card.hovered ? 16 : 10
+                                offset.y: card.hovered ? 5 : 3
+                                color: Qt.rgba(0, 0, 0, card.hovered ? 0.5 : 0.35)
+                                Behavior on blur { NumberAnimation { duration: 160 } }
                             }
 
-                            Image {
+                            Shared.AstreaAppIcon {
                                 id: previewImage
                                 objectName: "window-preview-image-" + card.modelData.windowId
+                                property string source: ""
                                 anchors.fill: parent
-                                fillMode: Image.PreserveAspectFit
-                                smooth: true
-                                mipmap: true
-                                asynchronous: true
-                                cache: true
-                                visible: false
-                            }
-
-                            MultiEffect {
-                                anchors.fill: parent
-                                source: previewImage
-                                maskEnabled: true
-                                maskSource: previewMask
-                                maskThresholdMin: 0.4
-                                maskSpreadAtMin: 0.6
+                                iconUrl: source
+                                iconSize: Math.max(width, height)
+                                maximumPresentationScale: 1.05
+                                iconRadius: material.radiusMedium
+                                showFallbackText: false
+                                appearanceOverride: "default"
                             }
 
                             Rectangle {

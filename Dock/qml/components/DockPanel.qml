@@ -112,6 +112,8 @@ Item {
     property size minimizedGhostWindowSize: Qt.size(1, 1)
     // Keeps a dropped window's tile hidden until the runtime removes it.
     property string minimizedRestoringWindowId: ""
+    // Keeps a tile hidden while its ghost slides back into the slot.
+    property string minimizedReturningWindowId: ""
     readonly property real tearOutThreshold: 30
     readonly property real tearOutGrowDistance: 200
     readonly property real tearOutWindowRadius: 10
@@ -325,6 +327,7 @@ Item {
                     property bool tornOut: false
                     readonly property bool hiddenForWindowGhost: tornOut
                         || root.minimizedRestoringWindowId === modelData.windowId
+                        || root.minimizedReturningWindowId === modelData.windowId
                     opacity: hiddenForWindowGhost ? 0 : 1
                     Behavior on opacity {
                         NumberAnimation { duration: root.animationDuration(120); easing.type: Easing.OutCubic }
@@ -1266,8 +1269,11 @@ Item {
     }
 
     function minimizedIndexForWindow(windowId) {
-        for (var index = 0; index < minimizedCount; ++index) {
-            if (minimizedEntries[index].windowId === windowId)
+        // Read the entries themselves: minimizedCount can still hold the old
+        // length while a change handler runs.
+        const entries = minimizedEntries || []
+        for (var index = 0; index < entries.length; ++index) {
+            if (entries[index] && entries[index].windowId === windowId)
                 return index
         }
         return -1
@@ -1299,15 +1305,24 @@ Item {
         updatePointerFromScene(sceneX, sceneY)
         // Primary axis only: the tile follows the pointer along the dock and its
         // neighbours shift by one slot pitch.
-        minimizedDragCenterRelativeX = minimizedDragOriginCenterRelativeX
+        const unclamped = minimizedDragOriginCenterRelativeX
             + minimizedPrimaryOfPanelPosition() - minimizedDragPointerOriginPrimary
         const firstItem = minimizedRepeater.itemAt(0)
-        if (firstItem) {
+        const lastItem = minimizedRepeater.itemAt(minimizedRepeater.count - 1)
+        if (firstItem && lastItem) {
             const firstCenterRelative = delegateRestingCenterInPanel(firstItem)
                 - primaryExtent() / 2
+            const lastCenterRelative = firstCenterRelative
+                + (minimizedRepeater.count - 1) * root.slotPitch
+            // The tile stays within the minimized windows: it cannot leave the
+            // Dock sideways, and a lone window has no slot to move to.
+            minimizedDragCenterRelativeX = Math.max(firstCenterRelative,
+                                                    Math.min(lastCenterRelative, unclamped))
             minimizedDragTargetIndex = Math.max(0, Math.min(minimizedCount - 1,
                 Math.round((minimizedDragCenterRelativeX - firstCenterRelative)
                            / Math.max(1, root.slotPitch))))
+        } else {
+            minimizedDragCenterRelativeX = minimizedDragOriginCenterRelativeX
         }
         // Cross-axis: pulling away from the Dock tears the window out.
         const away = minimizedAwayDistance()
@@ -1385,6 +1400,7 @@ Item {
             windowSize = Qt.size(fitWidth, fitWidth / aspect)
         }
         minimizedGhostWindowSize = Qt.size(windowSize.width, windowSize.height)
+        minimizedReturningWindowId = ""
         if (dockTooltipSurface)
             dockTooltipSurface.hideTooltip()
         dockWindowPreviewSurface.showGhost(minimizedDragWindowId, thumbnail,
@@ -1394,12 +1410,49 @@ Item {
         return true
     }
 
+    // Pulled back into the Dock: the ghost shrinks into the tile's slot and
+    // the tile reappears once it has landed.
     function endMinimizedTearOut() {
         if (!minimizedTearOut)
             return
         minimizedTearOut = false
-        if (dockWindowPreviewSurface)
-            dockWindowPreviewSurface.hideGhost()
+        retractMinimizedGhost(minimizedDragWindowId)
+    }
+
+    function retractMinimizedGhost(windowId) {
+        const surface = dockWindowPreviewSurface
+        if (!surface || !surface.ghostVisible)
+            return
+        const tileRect = currentMinimizedTileRect(windowId) || minimizedGhostTileRect
+        minimizedReturningWindowId = windowId
+        surface.animateGhost(tileRect.x, tileRect.y, tileRect.width, tileRect.height,
+                             minimizedGhostRadius(0), 0, animationDuration(200), function() {
+            surface.hideGhost()
+            if (root.minimizedReturningWindowId === windowId)
+                root.minimizedReturningWindowId = ""
+        })
+    }
+
+    // The tile image's rect in output coordinates, at rest in its slot.
+    function currentMinimizedTileRect(windowId) {
+        const index = minimizedIndexForWindow(windowId)
+        const item = index >= 0 ? minimizedRepeater.itemAt(index) : null
+        const windowTile = item ? item.windowTile : null
+        if (!windowTile || !dockSurfaceGeometry)
+            return null
+        const paintedWidth = Math.max(1, windowTile.paintedWidth)
+        const paintedHeight = Math.max(1, windowTile.paintedHeight)
+        const left = (windowTile.width - paintedWidth) / 2
+        const top = (windowTile.height - paintedHeight) / 2
+        const topLeft = windowTile.mapToItem(null, left, top)
+        const bottomRight = windowTile.mapToItem(null, left + paintedWidth, top + paintedHeight)
+        // Remove the drag lift and offset: the tile is about to settle.
+        const restX = -item.visualOffsetX
+        const restY = -item.visualOffsetY
+        const offset = windowToOutputOffset()
+        return Qt.rect(topLeft.x + offset.x + restX, topLeft.y + offset.y + restY,
+                       Math.max(1, bottomRight.x - topLeft.x),
+                       Math.max(1, bottomRight.y - topLeft.y))
     }
 
     // The ghost's rect for a growth progress: the grip point stays under the pointer.
@@ -1421,12 +1474,20 @@ Item {
         return tileRadius + (tearOutWindowRadius - tileRadius) * progress
     }
 
+    // How far through the growth distance the pointer is, linearly.
+    function minimizedGhostPull() {
+        return Math.max(0, Math.min(1,
+            (minimizedAwayDistance() - tearOutThreshold) / tearOutGrowDistance))
+    }
+
+    function minimizedGhostProgress() {
+        return 1 - Math.pow(1 - minimizedGhostPull(), 3)
+    }
+
     function updateMinimizedGhost() {
         if (!dockWindowPreviewSurface)
             return
-        const linear = Math.max(0, Math.min(1,
-            (minimizedAwayDistance() - tearOutThreshold) / tearOutGrowDistance))
-        const progress = 1 - Math.pow(1 - linear, 3)
+        const progress = minimizedGhostProgress()
         const rect = minimizedGhostRect(progress)
         dockWindowPreviewSurface.moveGhost(rect.x, rect.y, rect.width, rect.height,
                                            minimizedGhostRadius(progress), progress)
@@ -1438,8 +1499,10 @@ Item {
         const index = minimizedIndexForWindow(windowId)
         const entry = index >= 0 ? minimizedEntries[index] : null
         const surface = dockWindowPreviewSurface
-        if (!entry || !surface) {
-            endMinimizedTearOut()
+        // Let go barely out of the Dock: it slides back instead of opening a
+        // window right on top of the Dock.
+        if (!entry || !surface || minimizedGhostPull() < 0.3) {
+            retractMinimizedGhost(windowId)
             return
         }
         const full = minimizedGhostRect(1)
@@ -1462,13 +1525,9 @@ Item {
     }
 
     function cancelMinimizedTearOut() {
-        const surface = dockWindowPreviewSurface
-        if (!surface || !minimizedTearOut)
+        if (!minimizedTearOut)
             return
-        const tileRect = minimizedGhostTileRect
-        surface.animateGhost(tileRect.x, tileRect.y, tileRect.width, tileRect.height,
-                             minimizedGhostRadius(0), 0, animationDuration(200),
-                             function() { surface.hideGhost() })
+        retractMinimizedGhost(minimizedDragWindowId)
     }
 
     function finishMinimizedReorder(windowId) {

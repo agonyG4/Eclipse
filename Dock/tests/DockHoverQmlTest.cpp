@@ -550,6 +550,37 @@ std::shared_ptr<DesktopEntrySnapshot> oneDesktopCatalog()
     return catalog;
 }
 
+
+// Stands in for the preview surface's ghost API. Animations complete at once,
+// and no extra window is shown: offscreen Qt drops a drag's grab when another
+// top-level window appears, which the Wayland compositor never does.
+const QByteArray kFakeGhostSurfaceQml = R"(
+import QtQuick
+QtObject {
+    property bool previewVisible: false
+    property bool ghostVisible: false
+    property real ghostX: 0
+    property real ghostY: 0
+    property real ghostWidth: 0
+    property real ghostHeight: 0
+    property int retractions: 0
+    function hidePreview() {}
+    function showGhost(windowId, thumbnail, w, h, originX, originY) { ghostVisible = true }
+    function moveGhost(x, y, w, h, radius, lift) {
+        ghostX = x; ghostY = y; ghostWidth = w; ghostHeight = h
+    }
+    function animateGhost(x, y, w, h, radius, lift, duration, finished) {
+        moveGhost(x, y, w, h, radius, lift)
+        if (lift === 0)
+            ++retractions
+        if (finished)
+            finished()
+    }
+    function releaseGhost(delay) { ghostVisible = false }
+    function hideGhost() { ghostVisible = false }
+}
+)";
+
 Astrea::Dock::DockRuntimeWindow minimizedRuntimeWindow(const QString &id)
 {
     Astrea::Dock::DockRuntimeWindow window;
@@ -612,6 +643,8 @@ private slots:
     void minimizedTileReorderFollowsPointerAndCommitsOnRelease();
     void minimizedTileRightClickOpensWindowMenuForItsWindow();
     void minimizedTileTornOutGrowsAndRestoresWhereDropped();
+    void minimizedTileDragStaysInsideTheDockAndReturnsSmoothly();
+    void windowGhostSettlesThenDissolves();
 };
 
 void DockHoverQmlTest::initTestCase()
@@ -4608,16 +4641,15 @@ void DockHoverQmlTest::minimizedTileTornOutGrowsAndRestoresWhereDropped()
                             new FakeWindowCaptureImageProvider);
     engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
     QQmlComponent panelComponent(&engine, QUrl::fromLocalFile(kDockPanelPath));
-    QQmlComponent previewComponent(&engine, QUrl::fromLocalFile(kDockWindowPreviewSurfacePath));
+    QQmlComponent previewComponent(&engine);
+    previewComponent.setData(kFakeGhostSurfaceQml, QUrl());
     QVERIFY2(panelComponent.isReady(), qPrintable(panelComponent.errorString()));
     QVERIFY2(previewComponent.isReady(), qPrintable(previewComponent.errorString()));
     std::unique_ptr<QQuickItem> panel(qobject_cast<QQuickItem *>(panelComponent.create()));
-    std::unique_ptr<QQuickWindow> preview(qobject_cast<QQuickWindow *>(previewComponent.create()));
+    std::unique_ptr<QObject> preview(previewComponent.create());
     QVERIFY(panel && preview);
-    preview->setProperty("previewService",
-                         QVariant::fromValue(static_cast<QObject *>(&previewService)));
     QQuickWindow window;
-    window.resize(600, 600);
+    window.resize(700, 900);
     panel->setParentItem(window.contentItem());
     panel->setProperty("dockWindowPreviewService",
                        QVariant::fromValue(static_cast<QObject *>(&previewService)));
@@ -4627,6 +4659,8 @@ void DockHoverQmlTest::minimizedTileTornOutGrowsAndRestoresWhereDropped()
                        QVariant::fromValue(static_cast<QObject *>(&surfaceGeometry)));
     panel->setProperty("outputWidth", 1200);
     panel->setProperty("outputHeight", 900);
+    // Room above the Dock so the pull stays inside the test window.
+    panel->setY(window.height() - panel->height());
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
 
@@ -4646,8 +4680,7 @@ void DockHoverQmlTest::minimizedTileTornOutGrowsAndRestoresWhereDropped()
     QTest::mouseMove(&window, start + QPoint(0, -60), 30);
     QTRY_VERIFY_WITH_TIMEOUT(panel->property("minimizedTearOut").toBool(), 1000);
     QTRY_VERIFY_WITH_TIMEOUT(preview->property("ghostVisible").toBool(), 1000);
-    QVERIFY(previewService.detailRequests.contains(QStringLiteral("window-a")));
-    // Just past the threshold the ghost is still about tile-sized.
+        // Just past the threshold the ghost is still about tile-sized.
     const qreal earlyWidth = preview->property("ghostWidth").toReal();
     QVERIFY2(earlyWidth < 200, qPrintable(QString::number(earlyWidth)));
     QTRY_COMPARE_WITH_TIMEOUT(propertyReal(card->parentItem(), "opacity"), 0.0, 1000);
@@ -4670,4 +4703,150 @@ void DockHoverQmlTest::minimizedTileTornOutGrowsAndRestoresWhereDropped()
     QTRY_VERIFY_WITH_TIMEOUT(!preview->property("ghostVisible").toBool(), 2000);
     QCOMPARE(propertyReal(card->parentItem(), "opacity"), 0.0);
     panel->setParentItem(nullptr);
+}
+
+void DockHoverQmlTest::minimizedTileDragStaysInsideTheDockAndReturnsSmoothly()
+{
+    for (const int windowCount : {1, 2}) {
+        FakeWindowPreviewRuntimeBackend runtimeBackend;
+        Astrea::Dock::DockRuntimeSnapshot snapshot;
+        snapshot.authoritative = true;
+        snapshot.generation = 8;
+        for (int index = 0; index < windowCount; ++index)
+            snapshot.windows.append(
+                minimizedRuntimeWindow(QStringLiteral("window-") + QChar(u'a' + index)));
+        snapshot.total = snapshot.windows.size();
+        runtimeBackend.currentSnapshot = snapshot;
+
+        DockController controller;
+        controller.setCatalogSnapshot(oneDesktopCatalog());
+        controller.applyConfig(configFor(QStringLiteral("none"), {QStringLiteral("one.desktop")}));
+        controller.attachRuntimeBackend(&runtimeBackend);
+
+        FakeDockWindowPreviewService previewService;
+        DockSurfaceGeometry surfaceGeometry;
+        QQmlEngine engine;
+        engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+        engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+        engine.addImageProvider(QStringLiteral("fake-window-capture"),
+                                new FakeWindowCaptureImageProvider);
+        engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+        QQmlComponent panelComponent(&engine, QUrl::fromLocalFile(kDockPanelPath));
+        QQmlComponent previewComponent(&engine);
+        previewComponent.setData(kFakeGhostSurfaceQml, QUrl());
+        QVERIFY2(panelComponent.isReady(), qPrintable(panelComponent.errorString()));
+        QVERIFY2(previewComponent.isReady(), qPrintable(previewComponent.errorString()));
+        std::unique_ptr<QQuickItem> panel(qobject_cast<QQuickItem *>(panelComponent.create()));
+        std::unique_ptr<QObject> preview(previewComponent.create());
+        QVERIFY(panel && preview);
+        QQuickWindow window;
+        window.resize(700, 900);
+        panel->setParentItem(window.contentItem());
+        panel->setProperty("dockWindowPreviewService",
+                           QVariant::fromValue(static_cast<QObject *>(&previewService)));
+        panel->setProperty("dockWindowPreviewSurface",
+                           QVariant::fromValue(static_cast<QObject *>(preview.get())));
+        panel->setProperty("dockSurfaceGeometry",
+                           QVariant::fromValue(static_cast<QObject *>(&surfaceGeometry)));
+        panel->setProperty("outputWidth", 1200);
+        panel->setProperty("outputHeight", 900);
+        // Room above the Dock so the pull stays inside the test window.
+        panel->setY(window.height() - panel->height());
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+        const QString lastId = QStringLiteral("window-") + QChar(u'a' + windowCount - 1);
+        QQuickItem *card = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT(
+            (card = childWithObjectName(panel.get(),
+                                        QStringLiteral("minimized-window-card-") + lastId)),
+            1000);
+        QQuickItem *tileImage = childWithObjectName(
+            panel.get(), QStringLiteral("minimized-window-tile-") + lastId);
+        QTRY_VERIFY_WITH_TIMEOUT(tileImage->property("imageReady").toBool(), 1000);
+        QQuickItem *slot = card->parentItem();
+
+        // Sideways, the last tile cannot leave the Dock past its own slot, and a
+        // lone tile has nowhere to go at all.
+        const QPoint start = itemCenter(window, card);
+        QTest::mouseMove(&window, start);
+        QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, start);
+        QTest::mouseMove(&window, start + QPoint(12, 0), 30);
+        QTest::mouseMove(&window, start + QPoint(260, 0), 30);
+        QTRY_COMPARE_WITH_TIMEOUT(panel->property("minimizedDragWindowId").toString(), lastId,
+                                  1000);
+        QCOMPARE(propertyReal(slot, "visualOffsetX"), 0.0);
+        QCOMPARE(panel->property("minimizedDragTargetIndex").toInt(), windowCount - 1);
+        if (windowCount == 2) {
+            // Dragged left it still reorders onto the first slot.
+            QTest::mouseMove(&window, start + QPoint(-400, 0), 30);
+            QTRY_COMPARE_WITH_TIMEOUT(panel->property("minimizedDragTargetIndex").toInt(), 0,
+                                      1000);
+            QVERIFY(propertyReal(slot, "visualOffsetX")
+                    >= -panel->property("slotPitch").toReal() - 0.5);
+            QTest::mouseMove(&window, start + QPoint(12, 0), 30);
+        }
+
+        // Pulled out and back in, the ghost slides into the slot and the tile returns.
+        QTest::mouseMove(&window, start + QPoint(0, -120), 30);
+        QTRY_VERIFY_WITH_TIMEOUT(preview->property("ghostVisible").toBool(), 1000);
+        QTRY_COMPARE_WITH_TIMEOUT(propertyReal(slot, "opacity"), 0.0, 1000);
+        QTest::mouseMove(&window, start + QPoint(0, -4), 30);
+        QTRY_VERIFY_WITH_TIMEOUT(!panel->property("minimizedTearOut").toBool(), 1000);
+        QTRY_VERIFY_WITH_TIMEOUT(!preview->property("ghostVisible").toBool(), 1500);
+        QCOMPARE(preview->property("retractions").toInt(), 1);
+        QTRY_COMPARE_WITH_TIMEOUT(propertyReal(slot, "opacity"), 1.0, 1000);
+
+        // Let go barely out of the Dock: it returns instead of opening a window.
+        QTest::mouseMove(&window, start + QPoint(0, -60), 30);
+        QTRY_VERIFY_WITH_TIMEOUT(preview->property("ghostVisible").toBool(), 1000);
+        QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, start + QPoint(0, -60));
+        QTRY_VERIFY_WITH_TIMEOUT(!preview->property("ghostVisible").toBool(), 1500);
+        QTRY_COMPARE_WITH_TIMEOUT(propertyReal(slot, "opacity"), 1.0, 1000);
+        QCOMPARE(preview->property("retractions").toInt(), 2);
+        QCOMPARE(runtimeBackend.restoredAt.size(), 0);
+        QCOMPARE(runtimeBackend.actions.size(), 0);
+        panel->setParentItem(nullptr);
+    }
+}
+
+void DockHoverQmlTest::windowGhostSettlesThenDissolves()
+{
+    FakeDockWindowPreviewService previewService;
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.addImageProvider(QStringLiteral("fake-window-capture"),
+                            new FakeWindowCaptureImageProvider);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockWindowPreviewSurfacePath));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    std::unique_ptr<QQuickWindow> surface(qobject_cast<QQuickWindow *>(component.create()));
+    QVERIFY(surface);
+    surface->setProperty("previewService",
+                         QVariant::fromValue(static_cast<QObject *>(&previewService)));
+
+    QVERIFY(QMetaObject::invokeMethod(surface.get(), "showGhost",
+        Q_ARG(QVariant, QStringLiteral("window-a")),
+        Q_ARG(QVariant, QStringLiteral("image://fake-window-capture/window-a")),
+        Q_ARG(QVariant, 1200), Q_ARG(QVariant, 900), Q_ARG(QVariant, 0), Q_ARG(QVariant, 0)));
+    QVERIFY(surface->property("ghostVisible").toBool());
+    QVERIFY(surface->isVisible());
+    QVERIFY(previewService.detailRequests.contains(QStringLiteral("window-a")));
+    QTRY_COMPARE_WITH_TIMEOUT(surface->property("ghostDetail").toString(),
+                              QStringLiteral("image://fake-window-capture/detail-window-a"), 1000);
+
+    QVERIFY(QMetaObject::invokeMethod(surface.get(), "moveGhost",
+        Q_ARG(QVariant, 100), Q_ARG(QVariant, 200), Q_ARG(QVariant, 60), Q_ARG(QVariant, 40),
+        Q_ARG(QVariant, 5), Q_ARG(QVariant, 0.1)));
+    QCOMPARE(surface->property("ghostWidth").toReal(), 60.0);
+
+    // Settling reaches the window's rect even if frames stall; then it dissolves.
+    QVERIFY(QMetaObject::invokeMethod(surface.get(), "animateGhost",
+        Q_ARG(QVariant, 300), Q_ARG(QVariant, 120), Q_ARG(QVariant, 400), Q_ARG(QVariant, 250),
+        Q_ARG(QVariant, 10), Q_ARG(QVariant, 1), Q_ARG(QVariant, 150), Q_ARG(QVariant, QVariant())));
+    QTRY_COMPARE_WITH_TIMEOUT(surface->property("ghostWidth").toReal(), 400.0, 1000);
+    QCOMPARE(surface->property("ghostX").toReal(), 300.0);
+    QVERIFY(QMetaObject::invokeMethod(surface.get(), "releaseGhost", Q_ARG(QVariant, 50)));
+    QTRY_VERIFY_WITH_TIMEOUT(!surface->property("ghostVisible").toBool(), 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(!surface->isVisible(), 1000);
+    QVERIFY(previewService.detailWindowId.isEmpty());
 }

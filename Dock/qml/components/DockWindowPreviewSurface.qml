@@ -164,6 +164,8 @@ Window {
     }
 
     function showGhost(windowId, thumbnail, widthIn, heightIn, originX, originY) {
+        ghostSettleGuard.stop()
+        ghostHideGuard.stop()
         ghostAnimation.stop()
         ghostFade.stop()
         if (previewVisible)
@@ -207,6 +209,18 @@ Window {
         ghostLiftAnimation.to = lift
         ghostAnimation.duration = duration
         ghostAnimation.restart()
+        // Animations advance with rendered frames; a timer guarantees the
+        // ghost still lands and its follow-up runs if frames stall.
+        ghostSettleGuard.interval = duration + 150
+        ghostSettleGuard.restart()
+    }
+
+    function finishGhostAnimation() {
+        ghostSettleGuard.stop()
+        const finished = ghostFinished
+        ghostFinished = null
+        if (finished)
+            finished()
     }
 
     // The window is now on screen underneath: let the ghost dissolve into it.
@@ -215,9 +229,13 @@ Window {
             return
         ghostFadeDelay.duration = Math.max(0, delay || 0)
         ghostFade.restart()
+        ghostHideGuard.interval = ghostFadeDelay.duration + 150 + 200
+        ghostHideGuard.restart()
     }
 
     function hideGhost() {
+        ghostSettleGuard.stop()
+        ghostHideGuard.stop()
         ghostAnimation.stop()
         ghostFade.stop()
         ghostVisible = false
@@ -574,19 +592,36 @@ Window {
         NumberAnimation { id: ghostHeightAnimation; target: root; property: "ghostHeight"; duration: ghostAnimation.duration; easing.type: Easing.OutCubic }
         NumberAnimation { id: ghostRadiusAnimation; target: root; property: "ghostRadius"; duration: ghostAnimation.duration; easing.type: Easing.OutCubic }
         NumberAnimation { id: ghostLiftAnimation; target: root; property: "ghostLift"; duration: ghostAnimation.duration; easing.type: Easing.OutCubic }
-        onFinished: {
-            const finished = root.ghostFinished
-            root.ghostFinished = null
-            if (finished)
-                finished()
+        onFinished: root.finishGhostAnimation()
+    }
+
+    Timer {
+        id: ghostSettleGuard
+        onTriggered: {
+            if (!root.ghostFinished)
+                return
+            ghostAnimation.stop()
+            root.ghostX = ghostXAnimation.to
+            root.ghostY = ghostYAnimation.to
+            root.ghostWidth = ghostWidthAnimation.to
+            root.ghostHeight = ghostHeightAnimation.to
+            root.ghostRadius = ghostRadiusAnimation.to
+            root.ghostLift = ghostLiftAnimation.to
+            root.finishGhostAnimation()
         }
+    }
+
+    Timer {
+        id: ghostHideGuard
+        onTriggered: root.hideGhost()
     }
 
     SequentialAnimation {
         id: ghostFade
         PauseAnimation { id: ghostFadeDelay; duration: 0 }
         NumberAnimation { target: ghostItem; property: "opacity"; to: 0; duration: 150; easing.type: Easing.OutQuad }
-        ScriptAction { script: root.hideGhost() }
+        // Deferred: hideGhost stops this very animation.
+        ScriptAction { script: Qt.callLater(root.hideGhost) }
     }
 
     Connections {

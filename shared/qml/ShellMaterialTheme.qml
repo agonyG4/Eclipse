@@ -3,7 +3,8 @@ import QtQuick
 QtObject {
     id: root
 
-    readonly property ThemeTokens tokens: ThemeTokens {}
+    property string typographySurface: ""
+    readonly property ThemeTokens tokens: ThemeTokens { typographySurface: root.typographySurface }
     readonly property var typography: tokens.typography
     readonly property var state: tokens.state
     readonly property bool isLight: !!state && state.themeMode === 1
@@ -64,7 +65,7 @@ QtObject {
 
     readonly property real radiusLarge: tokens.value("shellRadiusLarge", 14)
     readonly property real radiusMedium: tokens.value("shellRadiusMedium", 8)
-    readonly property string fontFamily: tokens.value("fontFamily", "Inter Variable")
-    readonly property int fontSizeCaption: tokens.value("fontSizeCaption", 11)
-    readonly property int tooltipFontSize: tokens.value("tooltipFontSize", 13)
+    readonly property string fontFamily: typography.role("label").family
+    readonly property int fontSizeCaption: typography.role("caption").pixelSize
+    readonly property int tooltipFontSize: typography.role("label").pixelSize
 }

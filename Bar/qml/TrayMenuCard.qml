@@ -241,8 +241,10 @@ PopupCard {
         verticalAlignment: Text.AlignVCenter
         horizontalAlignment: Text.AlignHCenter
         color: theme.shellTextSecondary
-        font.family: theme.fontFamily
-        font.pixelSize: theme.fontSizeSmall
+        font: theme.typography.font("caption")
+        lineHeight: theme.typography.role("caption").lineHeight
+        lineHeightMode: Text.ProportionalHeight
+        renderType: Text.NativeRendering
     }
 
     Repeater {

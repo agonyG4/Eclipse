@@ -1231,9 +1231,9 @@ void BarQmlSmokeTest::clockUsesReferenceHorizontalStructure()
     QCOMPARE(date->property("width").toReal() - date->property("implicitWidth").toReal(), 8.0);
     QCOMPARE(time->property("width").toReal() - time->property("implicitWidth").toReal(), 16.0);
     QCOMPARE(QQmlProperty(date, QStringLiteral("font.family")).read().toString(),
-             QStringLiteral("Inter Variable"));
+             QStringLiteral("Inter"));
     QCOMPARE(QQmlProperty(date, QStringLiteral("font.weight")).read().toInt(),
-             static_cast<int>(QFont::Medium));
+             static_cast<int>(QFont::Normal));
     QCOMPARE(QQmlProperty(time, QStringLiteral("font.weight")).read().toInt(),
              static_cast<int>(QFont::Medium));
     QVERIFY(clockObject->property("implicitWidth").toInt()

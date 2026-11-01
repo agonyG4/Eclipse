@@ -7,7 +7,10 @@ import Astrea.Shared as Shared
 Item {
     id: root
 
-    Shared.ShellMaterialTheme { id: shellMaterial }
+    Shared.ShellMaterialTheme {
+        typographySurface: "dock"
+        id: shellMaterial
+    }
     readonly property real dockRadius: shellMaterial.tokens.value("dockRadius", DockController.cornerRadius)
 
     readonly property bool vertical: DockController.vertical

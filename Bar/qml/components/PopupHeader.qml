@@ -29,12 +29,10 @@ Item {
         opacity: theme.opacitySecondary
         width: parent.width - trailingSlot.width - control.trailingGap
         elide: Text.ElideRight
-        font {
-            family: theme.typography.role("title").family
-            pixelSize: theme.typography.role("title").pixelSize
-            weight: theme.typography.role("title").weight
-            letterSpacing: theme.typography.role("title").letterSpacing
-        }
+        font: theme.typography.font("title")
+        lineHeight: theme.typography.role("title").lineHeight
+        lineHeightMode: Text.ProportionalHeight
+        renderType: Text.NativeRendering
     }
 
     Item {

@@ -81,8 +81,10 @@ Window {
             color: theme.shellTextActive
             elide: Text.ElideRight
             horizontalAlignment: Text.AlignHCenter
-            font.family: theme.fontFamily
-            font.pixelSize: theme.fontSizeCaption
+            font: theme.typography.font("caption")
+            lineHeight: theme.typography.role("caption").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            renderType: Text.NativeRendering
             maximumLineCount: 1
         }
     }

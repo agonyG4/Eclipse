@@ -46,12 +46,9 @@ Item {
                     color: theme.shellTextSecondary
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
-                    font {
-                        family: theme.fontFamilyDisplay
-                        pixelSize: theme.fontSizeSmall
-                        weight: Font.Medium
-                        letterSpacing: 0.3
-                    }
+                    font: theme.typography.font("caption")
+                    lineHeight: theme.typography.role("caption").lineHeight
+                    lineHeightMode: Text.ProportionalHeight
                     renderType: Text.NativeRendering
                     Behavior on text {
                         SequentialAnimation {
@@ -82,12 +79,9 @@ Item {
                     color: theme.shellTextActive
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
-                    font {
-                        family: theme.fontFamilyDisplay
-                        pixelSize: theme.fontSizeTitle
-                        weight: Font.Medium
-                        letterSpacing: 0.35
-                    }
+                    font: theme.typography.font("label")
+                    lineHeight: theme.typography.role("label").lineHeight
+                    lineHeightMode: Text.ProportionalHeight
                     renderType: Text.NativeRendering
                     Behavior on text {
                         SequentialAnimation {

@@ -5,7 +5,7 @@ import Astrea.Shared as Shared
 
 Rectangle {
     id: root
-    Shared.ThemeTokens { id: themeTokens }
+    Shared.ThemeTokens { id: themeTokens; typographySurface: "spotlight" }
 
     readonly property color placeholderTextColor: themeTokens.value("shellTextSecondary", "#66FFFFFF")
     readonly property bool hasQuery: searchInput.text.length > 0
@@ -96,10 +96,7 @@ Rectangle {
                 Text {
                     anchors.fill: parent
                     text: (AstreaI18n && AstreaI18n.messages && AstreaI18n.tr("spotlight.placeholder", "Spotlight Search")) || "Spotlight Search"
-                    font.family: root.fontFamily
-                    font.pixelSize: root.titleStyle.pixelSize
-                    font.weight: root.titleStyle.weight
-                    font.letterSpacing: root.titleStyle.letterSpacing
+                    font: themeTokens.typography.font("title")
                     color: root.placeholderTextColor
                     verticalAlignment: Text.AlignVCenter
                     visible: searchInput.text.length === 0
@@ -110,14 +107,12 @@ Rectangle {
                     id: searchInput
                     objectName: "spotlightSearchInput"
                     anchors.fill: parent
-                    font.family: root.fontFamily
-                    font.pixelSize: root.titleStyle.pixelSize
-                    font.weight: root.titleStyle.weight
-                    font.letterSpacing: root.titleStyle.letterSpacing
+                    font: themeTokens.typography.font("title")
                     color: "white"
                     selectionColor: themeTokens.value("accent", "#407AFF")
                     selectedTextColor: themeTokens.value("accentForeground", "white")
                     clip: true
+                    renderType: TextInput.NativeRendering
                     verticalAlignment: TextInput.AlignVCenter
 
                     onTextChanged: {

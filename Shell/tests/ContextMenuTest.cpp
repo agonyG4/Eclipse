@@ -80,6 +80,7 @@ private slots:
     void dockRuntimeOnlyMenuIsCapabilityBased();
     void modelNormalizesSeparatorsAndExposesRoles();
     void modelPresentationMetricsAreExactAndContentAware();
+    void modelMeasuresResolvedFontMetrics();
     void modelRejectsDepthAndNodeBounds();
     void placementFlipsAndClampsInOutputLocalCoordinates();
     void surfacePoliciesKeepInputAndLayerContracts();
@@ -533,6 +534,30 @@ void ContextMenuTest::modelNormalizesSeparatorsAndExposesRoles()
              int(ContextMenuModel::NodeKind::Action));
     QCOMPARE(hiddenSeparatorModel.index(1, 0).data(ContextMenuModel::KindRole).toInt(),
              int(ContextMenuModel::NodeKind::Action));
+}
+
+void ContextMenuTest::modelMeasuresResolvedFontMetrics()
+{
+    ContextMenuModel model;
+    QVERIFY(model.setRootNodes({ContextMenuModel::NodeSpec{.token=QStringLiteral("one"),.label=QStringLiteral("A complete themed menu label")}}));
+    QFont body("monospace");
+    body.setPixelSize(14);
+    body.setWeight(QFont::Normal);
+    QFont shortcut=body;
+    int normal=0, tracked=0;
+    const auto measure=[&](int &result) {
+        return QMetaObject::invokeMethod(&model,"presentationNaturalWidthForFonts",
+            Q_RETURN_ARG(int,result),Q_ARG(QFont,body),Q_ARG(QFont,shortcut),
+            Q_ARG(int,8),Q_ARG(int,18),Q_ARG(int,8),Q_ARG(int,5),Q_ARG(int,1));
+    };
+    QVERIFY(measure(normal));
+    body.setLetterSpacing(QFont::AbsoluteSpacing,3.0);
+    QVERIFY(measure(tracked));
+    QVERIFY(tracked > normal + 50);
+    body.setPixelSize(28);
+    int enlarged=0;
+    QVERIFY(measure(enlarged));
+    QVERIFY(enlarged > tracked);
 }
 
 void ContextMenuTest::modelPresentationMetricsAreExactAndContentAware()

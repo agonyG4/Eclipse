@@ -343,9 +343,10 @@ PopupCard {
             }
             color: theme.shellTextActive
             elide: Text.ElideRight
-            font.family: theme.fontFamily
-            font.pixelSize: theme.fontSizeBody
-            font.weight: Font.DemiBold
+            font: theme.typography.font("body")
+            lineHeight: theme.typography.role("body").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            renderType: Text.NativeRendering
         }
     }
 
@@ -365,8 +366,10 @@ PopupCard {
         verticalAlignment: Text.AlignVCenter
         horizontalAlignment: Text.AlignHCenter
         color: theme.shellTextSecondary
-        font.family: theme.fontFamily
-        font.pixelSize: theme.fontSizeSmall
+        font: theme.typography.font("caption")
+        lineHeight: theme.typography.role("caption").lineHeight
+        lineHeightMode: Text.ProportionalHeight
+        renderType: Text.NativeRendering
     }
 
     Component {

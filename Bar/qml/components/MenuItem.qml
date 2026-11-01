@@ -75,7 +75,10 @@ Rectangle {
             color: mouse.containsMouse && root.enabled
                 ? theme.shellTextActive : theme.shellTextSecondary
             elide: Text.ElideRight
-            font { family: theme.typography.role("label").family; pixelSize: theme.typography.role("label").pixelSize; weight: theme.typography.role("label").weight; letterSpacing: theme.typography.role("label").letterSpacing }
+            font: theme.typography.font("label")
+            lineHeight: theme.typography.role("label").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            renderType: Text.NativeRendering
             Behavior on color { ColorAnimation { duration: theme.animationFast } }
         }
     }

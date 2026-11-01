@@ -21,8 +21,37 @@ Files: shared/theme/Typography.hpp/.cpp, shared/theme/ThemePackCatalog.hpp, shar
 
 ### Task 2: Actual consumer unification
 Files: shared/qml/Typography.qml, ThemeTokens.qml, ShellMaterialTheme.qml; Settings theme adapter; Bar/Spotlight/Dock/Shell QML; shared/tests/ThemeConsumersQmlTest.cpp; Shell/core/ContextMenuModel.hpp/.cpp and tests.
-- [ ] Add failing live tests for topbar clock and Spotlight surface metrics, including primary-family precedence.
-- [ ] Add shared font() factory, surface routing and consistent fallback/rendering. Remove hardcoded text weight/tracking and Display-family use in the clock. Preserve icon metrics.
-- [ ] Measure menus with the same QFont objects rendered by QML, retaining the old measurement API as a compatibility entry point.
-- [ ] Build affected applications, run consumer/Bar/Spotlight/Dock/context menu/Settings suites and inspect typography artifacts.
-- [ ] Document a complete theme example, review diffs and commit logical changes.
+- [x] Add failing live tests for topbar clock and Spotlight surface metrics, including primary-family precedence.
+- [x] Add shared font() factory, surface routing and consistent fallback/rendering. Remove hardcoded text weight/tracking and Display-family use in the clock. Preserve icon metrics.
+- [x] Measure menus with the same QFont objects rendered by QML, retaining the old measurement API as a compatibility entry point.
+- [x] Build affected applications, run consumer/Bar/Spotlight/Dock/context menu/Settings suites and inspect typography artifacts.
+- [x] Document a complete theme example, review diffs and commit logical changes.
+
+
+## Validation and review record
+
+Engine change committed as ffab6ed. The initial token test failed because surface
+styles were absent; the live clock/Spotlight test then reproduced the legacy
+clock size and weight. The new menu test initially failed because no QFont-aware
+measurement API existed. All now pass, including theme-file live reload,
+user-family/role precedence, scale-once, and native font rendering.
+
+Fourteen relevant CTest suites passed in /mnt/Aether/Desktop/GitHub/Eclipse-build
+with zero failures. An additional capture run passed with current test sources;
+inspected tmp/unified-typography/topbar-spotlight.png. The Qt font factory
+quantizes tracking, so rendered-font assertions use subpixel tolerance while
+resolved token values retain the configured number.
+
+Release for use: verified binaryDir is /home/agony/GitHub/Eclipse/build/release,
+then ran exactly cmake --preset release and cmake --build --preset release
+-j"$(nproc)" from the home checkout, with no Aether environment setup or output
+redirection. Configure and full build both succeeded; Cargo artifacts stayed
+local through the Release preset. No live desktop process was restarted. The
+running shell still maps the older deleted executable and must be reopened to
+load compiled changes.
+
+Review was inline under the user's no-subagent rule. Graph generation remains
+2026-10-16T19:37:04Z; checked changed paths/scopes and used current source for
+stale, missing and partial coverage. Reviewed surface whitelist/validation,
+legacy API compatibility, user priority, icon/Mono separation, QML scope routing,
+font/rendering consistency and menu/preview/tooltip geometry.

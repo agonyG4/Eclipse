@@ -2,7 +2,7 @@ import QtQuick
 import Astrea.Shared as Shared
 
 QtObject {
-    readonly property QtObject material: Shared.ShellMaterialTheme {}
+    readonly property QtObject material: Shared.ShellMaterialTheme { typographySurface: "topbar" }
 
     readonly property var state: material.state
     readonly property var packStyle: state && state.styleTokens ? state.styleTokens : ({})
@@ -84,18 +84,18 @@ QtObject {
         ? Qt.rgba(0.05, 0.06, 0.07, 0.22) : Qt.rgba(1, 1, 1, 0.22))
     readonly property int pillHeight: 36
     readonly property var typography: material.typography
-    readonly property string fontFamily: material.tokens.value("fontFamily", material.fontFamily)
-    readonly property string fontFamilyDisplay: material.tokens.value("fontFamilyDisplay", fontFamily)
-    readonly property string fontFamilyText: material.tokens.value("fontFamilyText", fontFamily)
+    readonly property string fontFamily: typography.role("label").family
+    readonly property string fontFamilyDisplay: typography.role("display").family
+    readonly property string fontFamilyText: typography.role("body").family
     readonly property string iconFontFamily: material.tokens.value("iconFontFamily", "JetBrainsMonoNL Nerd Font")
     readonly property string shellFontFamily: fontFamily
-    readonly property int fontSizeLarge: material.tokens.value("fontSizeLarge", 18)
+    readonly property int fontSizeLarge: typography.role("title").pixelSize
     readonly property int fontSizeTitle: typography.role("title").pixelSize
     readonly property int fontSizeBody: typography.role("body").pixelSize
-    readonly property int fontSizeSmall: material.tokens.value("fontSizeSmall", 12)
+    readonly property int fontSizeSmall: typography.role("caption").pixelSize
     readonly property int fontSizeCaption: material.fontSizeCaption
-    readonly property int fontSizeExtraSmall: material.tokens.value("fontSizeExtraSmall", 10)
-    readonly property int fontSizeMicro: material.tokens.value("fontSizeMicro", 9)
+    readonly property int fontSizeExtraSmall: typography.role("caption").pixelSize
+    readonly property int fontSizeMicro: typography.role("caption").pixelSize
     readonly property int fontSizeIcon: material.tokens.value("fontSizeIcon", 16)
     readonly property int fontSizeIconLarge: material.tokens.value("fontSizeIconLarge", 18)
     readonly property real spacingTiny: material.tokens.value("spacingTiny", 3)

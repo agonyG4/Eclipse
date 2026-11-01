@@ -4,7 +4,7 @@ import Astrea.Settings 1.0 as Borealis
 import Astrea.Shared as Shared
 
 QtObject {
-    readonly property Shared.ThemeTokens themeTokens: Shared.ThemeTokens { state: Borealis.State }
+    readonly property Shared.ThemeTokens themeTokens: Shared.ThemeTokens { state: Borealis.State; typographySurface: "settings" }
     readonly property var typography: themeTokens.typography
     readonly property string fontFamily: themeTokens.value("fontFamily", "Inter")
     readonly property string monoFontFamily: themeTokens.value("monoFontFamily", "JetBrains Mono")

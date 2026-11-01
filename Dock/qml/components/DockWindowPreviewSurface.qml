@@ -44,6 +44,7 @@ Window {
     property var ghostFinished: null
 
     Shared.ShellMaterialTheme {
+        typographySurface: "dock"
         id: material
         objectName: "dockWindowPreviewMaterial"
     }
@@ -57,7 +58,8 @@ Window {
     readonly property int cardPadding: 8
     readonly property int thumbnailWidth: 200
     readonly property int thumbnailHeight: 124
-    readonly property int titleHeight: 22
+    readonly property int titleHeight: Math.max(22, Math.ceil(
+        material.typography.role("label").pixelSize * material.typography.role("label").lineHeight) + 4)
     readonly property int cardWidth: thumbnailWidth + 2 * cardPadding
     readonly property int cardHeight: thumbnailHeight + titleHeight + 3 * cardPadding
     readonly property int columns: Math.max(1, Math.floor(
@@ -504,9 +506,10 @@ Window {
                             color: material.textActive
                             elide: Text.ElideRight
                             maximumLineCount: 1
-                            font.family: material.fontFamily
-                            font.pixelSize: material.fontSizeCaption + 1
-                            font.weight: Font.Medium
+                            font: material.typography.font("label")
+                            lineHeight: material.typography.role("label").lineHeight
+                            lineHeightMode: Text.ProportionalHeight
+                            renderType: Text.NativeRendering
                         }
                     }
 

@@ -50,6 +50,7 @@ Window {
     height: Math.max(1, outputHeight)
 
     Shared.ShellMaterialTheme {
+        typographySurface: "dock"
         id: material
         objectName: "dockTooltipMaterial"
     }
@@ -57,11 +58,7 @@ Window {
     FontMetrics {
         id: tooltipFontMetrics
         objectName: "dockTooltipFontMetrics"
-        font.family: material.tokens.overrides.typographyRoles
-            ? material.typography.role("label").family : material.fontFamily
-        font.pixelSize: material.tooltipFontSize
-        font.weight: material.typography.role("label").weight
-        font.letterSpacing: material.typography.role("label").letterSpacing
+        font: material.typography.font("label")
     }
 
     function showTooltip(text, visualAnchorRect, position) {
@@ -137,6 +134,7 @@ Window {
         verticalAlignment: Text.AlignVCenter
         maximumLineCount: 1
         font: tooltipFontMetrics.font
+        renderType: Text.NativeRendering
         visible: window.tooltipVisible && window.title.length > 0
         z: 2
     }

@@ -8,6 +8,7 @@ function(astrea_add_theme_consumer_qml_test)
         "${CMAKE_SOURCE_DIR}/Dock")
     target_compile_definitions(astrea-theme-consumers-qml-test PRIVATE
         ASTREA_QML_IMPORT_PATH="${CMAKE_BINARY_DIR}"
+        ASTREA_BAR_CLOCK_QML="${CMAKE_SOURCE_DIR}/Bar/qml/components/Clock.qml"
         ASTREA_BAR_THEME_QML="${CMAKE_SOURCE_DIR}/Bar/qml/components/ShellBarTheme.qml"
         ASTREA_MENU_THEME_QML="${CMAKE_SOURCE_DIR}/Shell/qml/contextmenu/ShellMenuTheme.qml"
         ASTREA_DOCK_PANEL_QML="${CMAKE_SOURCE_DIR}/Dock/qml/components/DockPanel.qml"

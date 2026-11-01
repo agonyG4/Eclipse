@@ -203,6 +203,14 @@ int ContextMenuModel::presentationNaturalWidth(const QString &fontFamily, int bo
     QFont shortcutFont;
     shortcutFont.setFamily(fontFamily);
     shortcutFont.setPixelSize(qMax(1, smallFontSize));
+    return presentationNaturalWidthForFonts(bodyFont, shortcutFont, rowHorizontalMargin,
+                                           iconSlotWidth, spacing, cardPadding, borderWidth);
+}
+
+int ContextMenuModel::presentationNaturalWidthForFonts(const QFont &bodyFont, const QFont &shortcutFont,
+                                                      int rowHorizontalMargin, int iconSlotWidth,
+                                                      int spacing, int cardPadding, int borderWidth) const
+{
     const QFontMetrics bodyMetrics(bodyFont);
     const QFontMetrics shortcutMetrics(shortcutFont);
     const int horizontalMargin = qMax(0, rowHorizontalMargin);

@@ -117,7 +117,10 @@ Rectangle {
             text: root.label
             color: root.destructive ? theme.shellIconWarning : theme.shellTextActive
             elide: Text.ElideRight
-            font { family: theme.fontFamily; pixelSize: theme.fontSizeBody; weight: Font.Medium }
+            font: theme.labelFont
+            lineHeight: theme.typography.role("label").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            renderType: Text.NativeRendering
         }
 
         Text {
@@ -125,7 +128,10 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             text: root.shortcut
             color: theme.shellTextSecondary
-            font { family: theme.fontFamily; pixelSize: theme.fontSizeSmall }
+            font: theme.captionFont
+            lineHeight: theme.typography.role("caption").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            renderType: Text.NativeRendering
             visible: root.shortcut !== ""
         }
 
@@ -134,7 +140,10 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             text: root.hasChildren ? "›" : ""
             color: theme.shellTextSecondary
-            font { family: theme.fontFamily; pixelSize: theme.fontSizeBody; weight: Font.Medium }
+            font: theme.labelFont
+            lineHeight: theme.typography.role("label").lineHeight
+            lineHeightMode: Text.ProportionalHeight
+            renderType: Text.NativeRendering
             visible: root.hasChildren
         }
     }

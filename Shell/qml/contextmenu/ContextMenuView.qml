@@ -26,10 +26,9 @@ Item {
     readonly property int desiredHeight: exactContentHeight
         + theme.contextMenuCardPadding * 2
     readonly property int naturalWidth: menuModel && modelRevision >= 0
-        ? menuModel.presentationNaturalWidth(
-              theme.fontFamily,
-              theme.fontSizeBody,
-              theme.fontSizeSmall,
+        ? menuModel.presentationNaturalWidthForFonts(
+              theme.labelFont,
+              theme.captionFont,
               theme.contextMenuRowHorizontalMargin,
               theme.contextMenuIconSlotWidth,
               theme.contextMenuRowSpacing,

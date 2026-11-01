@@ -292,3 +292,61 @@ icon/symbol glyphs and miniature material demonstrations. Dock preview close
 symbols and theme-example search glyphs also intentionally keep icon metrics.
 Theme-supplied replacement QML must adopt the semantic components or tokens to
 participate in the contract.
+
+
+### Per-surface fine tuning
+
+Built-in proportional text uses the shared `Typography.font(role)` factory and
+native text rendering. The clock uses Caption for the date and Label for the
+time; Spotlight uses Title for search and Body for results. They inherit the
+primary family unless the theme or user intentionally overrides a role.
+
+Themes may refine metrics for `topbar`, `spotlight`, `dock`, `menu` and `settings`
+without adding fonts to application code. Each surface supports the same six
+roles and the same field validation as global typography:
+
+```json
+{
+  "style": {
+    "typography": {
+      "fontFamily": "SF Pro",
+      "monoFontFamily": "SF Mono",
+      "roles": {
+        "body": { "pixelSize": 14, "weight": 400, "lineHeight": 1.4 },
+        "label": { "pixelSize": 13, "weight": 500 }
+      },
+      "surfaces": {
+        "topbar": {
+          "caption": { "pixelSize": 11, "weight": 400, "letterSpacing": 0.125 },
+          "label": { "pixelSize": 13, "weight": 500, "letterSpacing": 0.25 }
+        },
+        "spotlight": {
+          "title": { "pixelSize": 22, "weight": 400, "letterSpacing": -0.125, "lineHeight": 1.2 },
+          "body": { "pixelSize": 14, "weight": 400, "lineHeight": 1.4 }
+        },
+        "dock": { "label": { "pixelSize": 13, "weight": 500 } },
+        "menu": { "label": { "pixelSize": 13, "weight": 500 } }
+      }
+    }
+  }
+}
+```
+
+Resolution order is Borealis defaults → legacy/global theme tokens → theme
+semantic roles → theme surface refinements → user overrides → text scale.
+Unspecified surface fields inherit global roles; unknown surfaces and invalid
+fields are ignored. All user role overrides also apply to surface styles, and a
+user primary-family override replaces theme surface families unless the user
+explicitly chooses another family for a role. Scaling happens exactly once.
+
+Manifest edits propagate live through ThemeController. Menus measure the exact
+resolved QFont used by their labels and shortcuts, so weight and tracking changes
+participate in width calculation. Dock title and tooltip containers adapt to
+text metrics. Icon fonts and icon dimensions remain separate.
+
+Custom QML uses `ThemeTokens { typographySurface: "topbar" }` or
+`Typography { surface: "spotlight" }`, then reads `typography.role("title")` for
+lineHeight and `typography.font("title")` for a QFont including family, size,
+weight, tracking, kerning and hinting. An optional second argument to `font()`
+preserves an existing explicit component-family override. Text components use
+`Text.NativeRendering` (or `TextInput.NativeRendering`) for consistent rendering.

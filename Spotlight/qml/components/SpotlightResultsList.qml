@@ -4,7 +4,7 @@ import Astrea.Shared as Shared
 
 ColumnLayout {
     id: root
-    Shared.ThemeTokens { id: themeTokens }
+    Shared.ThemeTokens { id: themeTokens; typographySurface: "spotlight" }
 
     property string queryText: ""
     property string fontFamily: themeTokens.typography.role("body").family
@@ -84,9 +84,10 @@ ColumnLayout {
 
                 Text {
                     text: resultDelegate.name
-                    font.family: root.fontFamily
-                    font.pixelSize: themeTokens.typography.role("body").pixelSize
-                    font.weight: themeTokens.typography.role("body").weight
+                    font: themeTokens.typography.font("body", root.fontFamily)
+                    lineHeight: themeTokens.typography.role("body").lineHeight
+                    lineHeightMode: Text.ProportionalHeight
+                    renderType: Text.NativeRendering
                     color: themeTokens.value("shellTextMain", "white")
                     Layout.fillWidth: true
                     elide: Text.ElideRight

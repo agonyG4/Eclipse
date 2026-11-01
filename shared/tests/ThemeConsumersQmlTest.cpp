@@ -8,6 +8,7 @@
 #include <QFont>
 #include <QFontInfo>
 #include <QGuiApplication>
+#include <QImage>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QQmlComponent>
@@ -52,7 +53,112 @@ class ThemeConsumersQmlTest final : public QObject {
     Q_OBJECT
 private slots:
     void actualConsumersResolveLivePackageTokens();
+    void clockAndSpotlightConsumeCompleteSurfaceStyles();
 };
+
+void ThemeConsumersQmlTest::clockAndSpotlightConsumeCompleteSurfaceStyles()
+{
+    QTemporaryDir dir;
+    const QString id = "unified-fonts";
+    QVERIFY(writeJson(dir.filePath("navigation-icons.json"), {{"visual_theme",id}}));
+    QVERIFY(writeJson(themePath(id), manifest(id, {{"typography",QJsonObject{
+        {"fontFamily","Unified Theme Font"},
+        {"surfaces",QJsonObject{
+            {"topbar",QJsonObject{{"label",QJsonObject{{"pixelSize",16},{"weight",350},{"letterSpacing",0.75}}},
+                                  {"caption",QJsonObject{{"pixelSize",12},{"weight",400},{"letterSpacing",0.5}}}}},
+            {"spotlight",QJsonObject{{"title",QJsonObject{{"pixelSize",24},{"weight",300},{"letterSpacing",-0.2}}}}}}}}}})));
+    ThemeController controller(dir.filePath("theme.json"));
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(ASTREA_QML_IMPORT_PATH));
+    engine.rootContext()->setContextProperty("ThemeController", &controller);
+    QQmlPropertyMap spotlightController;
+    spotlightController.insert("open",false);
+    spotlightController.insert("query",QString());
+    spotlightController.insert("selectedIndex",0);
+    spotlightController.insert("resultsModel",QVariantList{});
+    spotlightController.insert("weatherEnabled",false);
+    spotlightController.insert("weatherReady",false);
+    spotlightController.insert("weatherIconSource",QString());
+    engine.rootContext()->setContextProperty("SpotlightController",&spotlightController);
+    QQmlPropertyMap i18n;
+    i18n.insert("messages",false);
+    engine.rootContext()->setContextProperty("AstreaI18n",&i18n);
+    QQmlComponent clockComponent(&engine,QUrl::fromLocalFile(QStringLiteral(ASTREA_BAR_CLOCK_QML)));
+    QVERIFY2(clockComponent.isReady(),qPrintable(clockComponent.errorString()));
+    std::unique_ptr<QObject> clock(clockComponent.create());
+    QVERIFY2(clock,qPrintable(clockComponent.errorString()));
+    QQmlComponent searchComponent(&engine,QUrl::fromLocalFile(QStringLiteral(ASTREA_SPOTLIGHT_PANEL_QML)));
+    QVERIFY2(searchComponent.isReady(),qPrintable(searchComponent.errorString()));
+    std::unique_ptr<QObject> search(searchComponent.create());
+    QVERIFY2(search,qPrintable(searchComponent.errorString()));
+    auto *date=clock->findChild<QObject *>("clockDate");
+    auto *time=clock->findChild<QObject *>("clockTime");
+    auto *input=search->findChild<QObject *>("spotlightSearchInput");
+    QVERIFY(date && time && input);
+    const auto font=[](QObject *object) { return object->property("font").value<QFont>(); };
+    QCOMPARE(font(date).family(),QString("Unified Theme Font"));
+    QCOMPARE(font(time).family(),font(input).family());
+    QCOMPARE(font(time).pixelSize(),16);
+    QCOMPARE(int(font(time).weight()),350);
+    QCOMPARE(font(time).letterSpacing(),0.75);
+    QCOMPARE(font(date).pixelSize(),12);
+    QCOMPARE(font(date).letterSpacing(),0.5);
+    QCOMPARE(font(input).pixelSize(),24);
+    QCOMPARE(int(font(input).weight()),300);
+    QVERIFY(qAbs(font(input).letterSpacing() + 0.2) < 1.0/32); // Qt quantizes font metrics.
+    const QString chosen=QFontInfo(QFont("serif")).family();
+    controller.setFontFamilyPreference("fontFamily",chosen);
+    controller.setTypographyPreference("label","weight",600);
+    controller.setTypographyPreference("title","letterSpacing",1.0);
+    controller.setTextScale(1.5);
+    QTRY_COMPARE(font(date).family(),chosen);
+    QTRY_COMPARE(font(time).family(),chosen);
+    QTRY_COMPARE(font(input).family(),chosen);
+    QTRY_COMPARE(font(time).pixelSize(),24);
+    QTRY_COMPARE(int(font(time).weight()),600);
+    QTRY_COMPARE(font(input).pixelSize(),36);
+    QTRY_COMPARE(font(input).letterSpacing(),1.0);
+    controller.resetFontPreferences();
+    QTRY_COMPARE(font(time).pixelSize(),16);
+    QTRY_COMPARE(font(input).pixelSize(),24);
+    QTRY_VERIFY(qAbs(font(input).letterSpacing() + 0.2) < 1.0/32);
+    QVERIFY(writeJson(themePath(id),manifest(id,{{"typography",QJsonObject{
+        {"fontFamily","Unified Theme Font"}, {"surfaces",QJsonObject{
+            {"topbar",QJsonObject{{"label",QJsonObject{{"pixelSize",14},{"weight",450}}}}},
+            {"spotlight",QJsonObject{{"title",QJsonObject{{"pixelSize",26},{"weight",400}}}}}}}}}})));
+    QTRY_COMPARE(font(time).pixelSize(),14);
+    QTRY_COMPARE(int(font(time).weight()),450);
+    QTRY_COMPARE(font(input).pixelSize(),26);
+    const QString captures=qEnvironmentVariable("ASTREA_TYPOGRAPHY_CAPTURE_DIR");
+    if (!captures.isEmpty()) {
+        QVERIFY(QFileInfo(captures).isAbsolute());
+        QVERIFY(QDir().mkpath(captures));
+        QQuickWindow window;
+        window.setColor(QColor("#202124"));
+        window.resize(760,260);
+        auto *clockItem=qobject_cast<QQuickItem *>(clock.get());
+        auto *searchItem=qobject_cast<QQuickItem *>(search.get());
+        QVERIFY(clockItem && searchItem);
+        QQmlPropertyMap clockService;
+        clockService.insert("dateText",QString("Mon, Nov 1"));
+        clockService.insert("timeText",QString("20:30"));
+        clock->setProperty("clockService",QVariant::fromValue(static_cast<QObject *>(&clockService)));
+        clockItem->setParentItem(window.contentItem());
+        clockItem->setPosition(QPointF(36,20));
+        searchItem->setParentItem(window.contentItem());
+        searchItem->setPosition(QPointF(36,100));
+        spotlightController.insert("open",true);
+        window.show();
+        QTest::qWait(450);
+        const auto capture=window.grabWindow();
+        QVERIFY(!capture.isNull());
+        QVERIFY(capture.save(QDir(captures).filePath("topbar-spotlight.png")));
+        clockItem->setParentItem(nullptr);
+        searchItem->setParentItem(nullptr);
+    }
+
+
+}
 
 void ThemeConsumersQmlTest::actualConsumersResolveLivePackageTokens()
 {

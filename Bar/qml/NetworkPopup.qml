@@ -75,14 +75,20 @@ PopupCard {
                 Text {
                     text: "Download"
                     color: theme.shellTextSecondary
-                    font { family: theme.fontFamily; pixelSize: theme.fontSizeExtraSmall }
+                    font: theme.typography.font("caption")
+                    lineHeight: theme.typography.role("caption").lineHeight
+                    lineHeightMode: Text.ProportionalHeight
+                    renderType: Text.NativeRendering
                 }
                 Text {
                     text: root.networkService && root.networkService.downloadRate
                         ? root.networkService.downloadRate : "0 B/s"
                     color: theme.shellTextActive
                     opacity: theme.opacitySecondary
-                    font { family: theme.fontFamily; pixelSize: theme.fontSizeBody; weight: Font.Medium }
+                    font: theme.typography.font("body")
+                    lineHeight: theme.typography.role("body").lineHeight
+                    lineHeightMode: Text.ProportionalHeight
+                    renderType: Text.NativeRendering
                 }
             }
         }
@@ -106,14 +112,20 @@ PopupCard {
                 Text {
                     text: "Upload"
                     color: theme.shellTextSecondary
-                    font { family: theme.fontFamily; pixelSize: theme.fontSizeExtraSmall }
+                    font: theme.typography.font("caption")
+                    lineHeight: theme.typography.role("caption").lineHeight
+                    lineHeightMode: Text.ProportionalHeight
+                    renderType: Text.NativeRendering
                 }
                 Text {
                     text: root.networkService && root.networkService.uploadRate
                         ? root.networkService.uploadRate : "0 B/s"
                     color: theme.shellTextActive
                     opacity: theme.opacitySecondary
-                    font { family: theme.fontFamily; pixelSize: theme.fontSizeBody; weight: Font.Medium }
+                    font: theme.typography.font("body")
+                    lineHeight: theme.typography.role("body").lineHeight
+                    lineHeightMode: Text.ProportionalHeight
+                    renderType: Text.NativeRendering
                 }
             }
         }

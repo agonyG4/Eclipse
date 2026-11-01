@@ -3,7 +3,7 @@ import Astrea.Shared as Shared
 
 Item {
     id: root
-    Shared.Typography { id: typography }
+    Shared.Typography { id: typography; surface: "dock" }
 
     required property int index
     required property var model

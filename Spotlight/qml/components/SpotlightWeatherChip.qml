@@ -4,7 +4,7 @@ import Astrea.Shared as Shared
 
 RowLayout {
     id: root
-    Shared.ThemeTokens { id: themeTokens }
+    Shared.ThemeTokens { id: themeTokens; typographySurface: "spotlight" }
 
     property var controller: null
     property color textColor: themeTokens.value("shellTextSecondary", "#66FFFFFF")
@@ -39,9 +39,8 @@ RowLayout {
     Text {
         Layout.maximumWidth: 46
         text: root.controller && root.controller.weatherReady ? root.controller.weatherTemp + "\u00B0" : "--\u00B0"
-        font.family: root.fontFamily
-        font.pixelSize: themeTokens.typography.role("label").pixelSize
-        font.weight: Font.Medium
+        font: themeTokens.typography.font("label", root.fontFamily)
+        renderType: Text.NativeRendering
         color: root.textColor
         elide: Text.ElideRight
         verticalAlignment: Text.AlignVCenter

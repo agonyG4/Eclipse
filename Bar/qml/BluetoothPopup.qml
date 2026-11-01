@@ -133,7 +133,10 @@ PopupCard {
         height: 36
         text: !root.available ? "Bluetooth unavailable" : "Bluetooth off"
         color: theme.shellTextSecondary
-        font { family: theme.fontFamily; pixelSize: theme.fontSizeSmall }
+        font: theme.typography.font("caption")
+        lineHeight: theme.typography.role("caption").lineHeight
+        lineHeightMode: Text.ProportionalHeight
+        renderType: Text.NativeRendering
         verticalAlignment: Text.AlignVCenter
         horizontalAlignment: Text.AlignHCenter
     }
@@ -145,7 +148,10 @@ PopupCard {
         width: parent.width
         text: "Paired devices"
         color: theme.shellTextSecondary
-        font { family: theme.fontFamily; pixelSize: theme.fontSizeCaption; weight: Font.DemiBold }
+        font: theme.typography.font("caption")
+        lineHeight: theme.typography.role("caption").lineHeight
+        lineHeightMode: Text.ProportionalHeight
+        renderType: Text.NativeRendering
         bottomPadding: 2
     }
 
@@ -168,7 +174,10 @@ PopupCard {
         height: 36
         text: "No paired devices"
         color: theme.shellTextSecondary
-        font { family: theme.fontFamily; pixelSize: theme.fontSizeSmall }
+        font: theme.typography.font("caption")
+        lineHeight: theme.typography.role("caption").lineHeight
+        lineHeightMode: Text.ProportionalHeight
+        renderType: Text.NativeRendering
         verticalAlignment: Text.AlignVCenter
         horizontalAlignment: Text.AlignHCenter
     }
@@ -234,7 +243,10 @@ PopupCard {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.scanning ? "Searching…" : "Search for devices"
                 color: root.scanning ? theme.shellIconAccent : theme.shellTextDim
-                font { family: theme.fontFamily; pixelSize: theme.fontSizeSmall; weight: Font.Medium }
+                font: theme.typography.font("caption")
+                lineHeight: theme.typography.role("caption").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                renderType: Text.NativeRendering
             }
         }
 
@@ -255,7 +267,10 @@ PopupCard {
         width: parent.width
         text: "Available devices"
         color: theme.shellTextSecondary
-        font { family: theme.fontFamily; pixelSize: theme.fontSizeCaption; weight: Font.DemiBold }
+        font: theme.typography.font("caption")
+        lineHeight: theme.typography.role("caption").lineHeight
+        lineHeightMode: Text.ProportionalHeight
+        renderType: Text.NativeRendering
         bottomPadding: 2
     }
 
@@ -327,11 +342,10 @@ PopupCard {
                     - (deviceStatus.visible
                         ? deviceStatus.implicitWidth + theme.spacingMedium : 0)
                 elide: Text.ElideRight
-                font {
-                    family: theme.fontFamily
-                    pixelSize: theme.fontSizeBody
-                    weight: connected ? Font.DemiBold : Font.Normal
-                }
+                font: theme.typography.font("body")
+                lineHeight: theme.typography.role("body").lineHeight
+                lineHeightMode: Text.ProportionalHeight
+                renderType: Text.NativeRendering
             }
 
             Item {
@@ -348,7 +362,10 @@ PopupCard {
                           + (rssi !== -1 ? " · " + rssi + " dBm" : "")
                         : rssi + " dBm"
                     color: connected ? theme.shellTextLight : theme.shellTextDim
-                    font { family: theme.fontFamily; pixelSize: theme.fontSizeCaption }
+                    font: theme.typography.font("caption")
+                    lineHeight: theme.typography.role("caption").lineHeight
+                    lineHeightMode: Text.ProportionalHeight
+                    renderType: Text.NativeRendering
                 }
             }
         }

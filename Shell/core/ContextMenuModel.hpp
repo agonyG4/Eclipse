@@ -2,6 +2,7 @@
 
 #include <QAbstractItemModel>
 #include <QHash>
+#include <QFont>
 #include <QVector>
 
 #include <memory>
@@ -76,6 +77,9 @@ public:
                                              int smallFontSize, int rowHorizontalMargin,
                                              int iconSlotWidth, int spacing, int cardPadding,
                                              int borderWidth) const;
+    Q_INVOKABLE int presentationNaturalWidthForFonts(const QFont &bodyFont, const QFont &shortcutFont,
+                                                     int rowHorizontalMargin, int iconSlotWidth,
+                                                     int spacing, int cardPadding, int borderWidth) const;
     Q_INVOKABLE QObject *childModelAt(int row) const;
     Q_INVOKABLE int firstNavigable() const;
     Q_INVOKABLE int nextNavigable(int currentRow, int delta) const;

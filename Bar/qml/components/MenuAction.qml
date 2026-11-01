@@ -26,9 +26,10 @@ Item {
         text: root.label
         color: root.enabled ? theme.shellTextMain : theme.shellTextSecondary
         opacity: root.enabled ? 1 : 0.45
-        font.family: theme.typography.role("label").family
-        font.pixelSize: theme.typography.role("label").pixelSize
-        font.weight: theme.typography.role("label").weight
+        font: theme.typography.font("label")
+        lineHeight: theme.typography.role("label").lineHeight
+        lineHeightMode: Text.ProportionalHeight
+        renderType: Text.NativeRendering
     }
 
     MouseArea {

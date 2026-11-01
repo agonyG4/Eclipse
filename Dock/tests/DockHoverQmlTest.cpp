@@ -21,6 +21,7 @@
 #include <QQmlEngine>
 #include <QQmlExtensionPlugin>
 #include <QQmlProperty>
+#include <QQuickImageProvider>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QPointingDevice>
@@ -224,9 +225,65 @@ public:
         QString windowId;
         Astrea::Dock::DockRuntimeAction action;
     };
+    std::optional<Astrea::Dock::DockRuntimeActionError> requestRestoreAt(
+        const QString &windowId, const QPoint &position) override
+    {
+        restoredAt.append({windowId, position});
+        return std::nullopt;
+    }
     Astrea::Dock::DockRuntimeSnapshot currentSnapshot;
     QHash<QString, QRect> publishedAnchors;
     QList<Action> actions;
+    QList<QPair<QString, QPoint>> restoredAt;
+};
+
+// Serves one solid window capture for every id, thumbnail or detail.
+class FakeWindowCaptureImageProvider final : public QQuickImageProvider {
+public:
+    FakeWindowCaptureImageProvider() : QQuickImageProvider(QQuickImageProvider::Image) {}
+    QImage requestImage(const QString &id, QSize *size, const QSize &requestedSize) override
+    {
+        QImage image(id.contains(QStringLiteral("detail")) ? QSize(400, 250) : QSize(160, 100),
+                     QImage::Format_ARGB32_Premultiplied);
+        image.fill(QColor(40, 120, 220));
+        if (size)
+            *size = image.size();
+        return requestedSize.isValid() ? image.scaled(requestedSize, Qt::KeepAspectRatio) : image;
+    }
+};
+
+class FakeDockWindowPreviewService final : public QObject {
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE void requestWindowPreview(const QString &, bool = false) {}
+    Q_INVOKABLE QString imageUrl(const QString &windowId) const
+    { return QStringLiteral("image://fake-window-capture/") + windowId; }
+    Q_INVOKABLE QSize imageSize(const QString &) const { return QSize(160, 100); }
+    Q_INVOKABLE QSize windowSize(const QString &) const { return QSize(400, 250); }
+    Q_INVOKABLE void requestDetailImage(const QString &windowId)
+    {
+        detailRequests.append(windowId);
+        detailWindowId = windowId;
+        emit detailImageChanged(windowId);
+    }
+    Q_INVOKABLE QString detailImageUrl(const QString &windowId) const
+    {
+        return windowId == detailWindowId
+            ? QStringLiteral("image://fake-window-capture/detail-") + windowId : QString();
+    }
+    Q_INVOKABLE void releaseDetailImage() { detailWindowId.clear(); }
+    Q_INVOKABLE void setPopupWindowIds(const QStringList &) {}
+    Q_INVOKABLE void setMinimizedWindowIds(const QStringList &) {}
+    Q_INVOKABLE void reconcileLiveWindowIds(const QStringList &) {}
+
+    QStringList detailRequests;
+    QString detailWindowId;
+
+signals:
+    void imageChanged(QString windowId);
+    void generationChanged(quint64 generation);
+    void detailImageChanged(QString windowId);
 };
 
 class QmlCountingPinStore final : public DockPinStore {
@@ -554,6 +611,7 @@ private slots:
     void floatingAutoHideUsesPhysicalEdgeRevealGeometry();
     void minimizedTileReorderFollowsPointerAndCommitsOnRelease();
     void minimizedTileRightClickOpensWindowMenuForItsWindow();
+    void minimizedTileTornOutGrowsAndRestoresWhereDropped();
 };
 
 void DockHoverQmlTest::initTestCase()
@@ -4523,4 +4581,93 @@ void DockHoverQmlTest::minimizedTileRightClickOpensWindowMenuForItsWindow()
     QCOMPARE(runtimeBackend.actions.size(), 0);
 
     delete panel;
+}
+
+void DockHoverQmlTest::minimizedTileTornOutGrowsAndRestoresWhereDropped()
+{
+    FakeWindowPreviewRuntimeBackend runtimeBackend;
+    Astrea::Dock::DockRuntimeSnapshot snapshot;
+    snapshot.authoritative = true;
+    snapshot.generation = 7;
+    snapshot.windows = {minimizedRuntimeWindow(QStringLiteral("window-a")),
+                        minimizedRuntimeWindow(QStringLiteral("window-b"))};
+    snapshot.total = snapshot.windows.size();
+    runtimeBackend.currentSnapshot = snapshot;
+
+    DockController controller;
+    controller.setCatalogSnapshot(oneDesktopCatalog());
+    controller.applyConfig(configFor(QStringLiteral("none"), {QStringLiteral("one.desktop")}));
+    controller.attachRuntimeBackend(&runtimeBackend);
+
+    FakeDockWindowPreviewService previewService;
+    DockSurfaceGeometry surfaceGeometry;
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+    engine.addImageProvider(QStringLiteral("fake-window-capture"),
+                            new FakeWindowCaptureImageProvider);
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+    QQmlComponent panelComponent(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QQmlComponent previewComponent(&engine, QUrl::fromLocalFile(kDockWindowPreviewSurfacePath));
+    QVERIFY2(panelComponent.isReady(), qPrintable(panelComponent.errorString()));
+    QVERIFY2(previewComponent.isReady(), qPrintable(previewComponent.errorString()));
+    std::unique_ptr<QQuickItem> panel(qobject_cast<QQuickItem *>(panelComponent.create()));
+    std::unique_ptr<QQuickWindow> preview(qobject_cast<QQuickWindow *>(previewComponent.create()));
+    QVERIFY(panel && preview);
+    preview->setProperty("previewService",
+                         QVariant::fromValue(static_cast<QObject *>(&previewService)));
+    QQuickWindow window;
+    window.resize(600, 600);
+    panel->setParentItem(window.contentItem());
+    panel->setProperty("dockWindowPreviewService",
+                       QVariant::fromValue(static_cast<QObject *>(&previewService)));
+    panel->setProperty("dockWindowPreviewSurface",
+                       QVariant::fromValue(static_cast<QObject *>(preview.get())));
+    panel->setProperty("dockSurfaceGeometry",
+                       QVariant::fromValue(static_cast<QObject *>(&surfaceGeometry)));
+    panel->setProperty("outputWidth", 1200);
+    panel->setProperty("outputHeight", 900);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QQuickItem *card = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT(
+        (card = childWithObjectName(panel.get(),
+                                    QStringLiteral("minimized-window-card-window-a"))), 1000);
+    QQuickItem *tileImage = childWithObjectName(
+        panel.get(), QStringLiteral("minimized-window-tile-window-a"));
+    QVERIFY(tileImage);
+    QTRY_VERIFY_WITH_TIMEOUT(tileImage->property("imageReady").toBool(), 1000);
+
+    const QPoint start = itemCenter(window, card);
+    QTest::mouseMove(&window, start);
+    QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, start);
+    QTest::mouseMove(&window, start + QPoint(0, -12), 30);
+    QTest::mouseMove(&window, start + QPoint(0, -60), 30);
+    QTRY_VERIFY_WITH_TIMEOUT(panel->property("minimizedTearOut").toBool(), 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(preview->property("ghostVisible").toBool(), 1000);
+    QVERIFY(previewService.detailRequests.contains(QStringLiteral("window-a")));
+    // Just past the threshold the ghost is still about tile-sized.
+    const qreal earlyWidth = preview->property("ghostWidth").toReal();
+    QVERIFY2(earlyWidth < 200, qPrintable(QString::number(earlyWidth)));
+    QTRY_COMPARE_WITH_TIMEOUT(propertyReal(card->parentItem(), "opacity"), 0.0, 1000);
+
+    // Pulled far out, it reaches the window's real size under the pointer.
+    const QPoint dropPoint = start + QPoint(40, -300);
+    QTest::mouseMove(&window, start + QPoint(20, -180), 30);
+    QTest::mouseMove(&window, dropPoint, 30);
+    QTRY_COMPARE_WITH_TIMEOUT(preview->property("ghostWidth").toReal(), 400.0, 1000);
+    QCOMPARE(preview->property("ghostHeight").toReal(), 250.0);
+
+    QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, dropPoint);
+    QTRY_COMPARE_WITH_TIMEOUT(runtimeBackend.restoredAt.size(), 1, 2000);
+    QCOMPARE(runtimeBackend.restoredAt.constFirst().first, QStringLiteral("window-a"));
+    const QPoint restoredAt = runtimeBackend.restoredAt.constFirst().second;
+    QCOMPARE(restoredAt.x(), qRound(preview->property("ghostX").toReal()));
+    QCOMPARE(restoredAt.y(), qRound(preview->property("ghostY").toReal()));
+    QCOMPARE(runtimeBackend.actions.size(), 0);
+    // The ghost dissolves into the restored window; the tile stays hidden.
+    QTRY_VERIFY_WITH_TIMEOUT(!preview->property("ghostVisible").toBool(), 2000);
+    QCOMPARE(propertyReal(card->parentItem(), "opacity"), 0.0);
+    panel->setParentItem(nullptr);
 }

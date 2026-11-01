@@ -136,6 +136,10 @@ public:
         const QString &desktopFileName) const;
     Q_INVOKABLE QVariantList windowPreviewEntries(const QString &taskKey) const;
     Q_INVOKABLE bool activateWindow(const QString &taskKey, const QString &windowId);
+    // Restores a minimized window dragged out of the Dock with its visible
+    // frame's top left at the global logical point (x, y).
+    Q_INVOKABLE bool restoreMinimizedWindowAt(const QString &taskKey, const QString &windowId,
+                                              int x, int y);
     Q_INVOKABLE bool closeWindow(const QString &taskKey, const QString &windowId);
     Q_INVOKABLE void activateOrLaunchTask(const QString &taskKey);
     Q_INVOKABLE bool setPinned(const QString &desktopFileName, bool pinned);

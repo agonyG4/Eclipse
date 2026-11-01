@@ -15,7 +15,11 @@ QImage DockWindowPreviewImageProvider::requestImage(const QString &id, QSize *si
         return {};
     const QByteArray encodedId = id.section(QLatin1Char('?'), 0, 0).toLatin1();
     const QByteArray windowIdBytes = QByteArray::fromHex(encodedId);
-    const QImage original = m_service->imageForWindow(QString::fromUtf8(windowIdBytes));
+    const QString windowId = QString::fromUtf8(windowIdBytes);
+    const bool detail = id.section(QLatin1Char('?'), 1).split(QLatin1Char('&'))
+                            .contains(QStringLiteral("detail=1"));
+    const QImage original = detail ? m_service->detailImageForWindow(windowId)
+                                   : m_service->imageForWindow(windowId);
     if (size)
         *size = original.size();
     if (requestedSize.isValid() && !original.isNull())

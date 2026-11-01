@@ -191,6 +191,16 @@ std::optional<DockRuntimeActionError> TyphonDockRuntimeBackend::requestAction(
                              : std::nullopt;
 }
 
+std::optional<DockRuntimeActionError> TyphonDockRuntimeBackend::requestRestoreAt(
+    const QString &windowId, const QPoint &position)
+{
+    if (!m_connection)
+        return DockRuntimeActionError::Disconnected;
+    const auto error = m_connection->requestRestoreAt(windowId, position, 0);
+    return error.has_value() ? std::optional<DockRuntimeActionError>(dockError(*error))
+                             : std::nullopt;
+}
+
 std::optional<DockRuntimeActionError> TyphonDockRuntimeBackend::setMinimizeAnchor(
     const QString &windowId, const QRect &rect)
 {

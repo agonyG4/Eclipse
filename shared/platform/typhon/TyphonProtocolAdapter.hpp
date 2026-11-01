@@ -3,6 +3,7 @@
 #include "platform/typhon/TyphonProtocolTypes.hpp"
 
 #include <QObject>
+#include <QPoint>
 #include <QRect>
 
 #include <optional>
@@ -35,6 +36,16 @@ public:
         Q_UNUSED(handleToken);
         Q_UNUSED(token);
         Q_UNUSED(action);
+        return Astrea::Typhon::ToplevelActionError::UnsupportedProtocol;
+    }
+    // Restores a minimized window with its visible frame's top left at a
+    // compositor-global logical position (astrea_toplevel_v1 version 5).
+    virtual std::optional<Astrea::Typhon::ToplevelActionError> requestRestoreAt(
+        quint64 handleToken, Astrea::Typhon::TyphonActionToken token, const QPoint &position)
+    {
+        Q_UNUSED(handleToken);
+        Q_UNUSED(token);
+        Q_UNUSED(position);
         return Astrea::Typhon::ToplevelActionError::UnsupportedProtocol;
     }
     virtual std::optional<Astrea::Typhon::ToplevelActionError> setMinimizeAnchor(

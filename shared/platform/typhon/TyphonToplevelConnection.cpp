@@ -284,6 +284,21 @@ void TyphonToplevelConnection::bindAdapter(quint64 generation)
 std::optional<ToplevelActionError> TyphonToplevelConnection::requestAction(
     const QString &windowId, ToplevelAction action, quint64 consumerToken)
 {
+    return submitAction(windowId, action, consumerToken, std::nullopt);
+}
+
+std::optional<ToplevelActionError> TyphonToplevelConnection::requestRestoreAt(
+    const QString &windowId, const QPoint &position, quint64 consumerToken)
+{
+    if (m_adapter && m_adapter->managerVersion() < 5)
+        return ToplevelActionError::UnsupportedProtocol;
+    return submitAction(windowId, ToplevelAction::Restore, consumerToken, position);
+}
+
+std::optional<ToplevelActionError> TyphonToplevelConnection::submitAction(
+    const QString &windowId, ToplevelAction action, quint64 consumerToken,
+    std::optional<QPoint> position)
+{
     if (!m_started || !m_adapter)
         return ToplevelActionError::Disconnected;
 
@@ -311,7 +326,9 @@ std::optional<ToplevelActionError> TyphonToplevelConnection::requestAction(
     if (admission != TyphonActionAdmission::Accepted)
         return ToplevelActionError::LocalCapacityExceeded;
 
-    const auto localError = m_adapter->requestAction(*handleToken, token, action);
+    const auto localError = position.has_value()
+        ? m_adapter->requestRestoreAt(*handleToken, token, *position)
+        : m_adapter->requestAction(*handleToken, token, action);
     if (localError.has_value()) {
         m_actionState.discard(m_generation, token, action);
         return localError;

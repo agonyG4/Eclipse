@@ -21,6 +21,14 @@ public:
     Q_INVOKABLE void requestWindowPreview(const QString &windowId, bool refresh = false);
     Q_INVOKABLE QString imageUrl(const QString &windowId) const;
     Q_INVOKABLE QSize imageSize(const QString &windowId) const;
+    // The window's logical size, known once a capture from a v3 compositor
+    // has arrived; empty otherwise.
+    Q_INVOKABLE QSize windowSize(const QString &windowId) const;
+    // One window captured at its full size, ahead of the thumbnail queue, for
+    // the window dragged out of the Dock. Only one is kept at a time.
+    Q_INVOKABLE void requestDetailImage(const QString &windowId);
+    Q_INVOKABLE QString detailImageUrl(const QString &windowId) const;
+    Q_INVOKABLE void releaseDetailImage();
     Q_INVOKABLE void reconcileLiveWindowIds(const QStringList &windowIds);
     Q_INVOKABLE void setMinimizedWindowIds(const QStringList &windowIds);
     Q_INVOKABLE void setPopupWindowIds(const QStringList &windowIds);
@@ -28,14 +36,17 @@ public:
     // read on the desktop instead of over an empty dark card.
     void setBackdropSource(const QString &source);
     QImage imageForWindow(const QString &windowId);
+    QImage detailImageForWindow(const QString &windowId);
 
 signals:
     void imageChanged(QString windowId);
+    void detailImageChanged(QString windowId);
     void generationChanged(quint64 generation);
 
 private:
     struct CachedImage {
         QImage image;
+        QSize windowSize;
         quint64 generation = 0;
         quint64 revision = 0;
         quint64 lastUse = 0;
@@ -43,9 +54,10 @@ private:
     };
 
     void requestNext();
-    void finishRequest(const QString &reason, QImage image, quint64 generation,
-                       quint64 token);
-    void cacheImage(const QString &windowId, const QImage &image, quint64 generation);
+    void finishRequest(const QString &reason, QImage image, QSize windowSize,
+                       quint64 generation, quint64 token);
+    void cacheImage(const QString &windowId, const QImage &image, QSize windowSize,
+                    quint64 generation);
     void evictToLimit();
     void cancelRequestsWithoutVisibleDemand();
     QImage composeOverBackdrop(const QImage &image) const;
@@ -60,6 +72,11 @@ private:
     QString m_backdropSource;
     QImage m_backdrop;
     QString m_activeWindowId;
+    bool m_activeIsDetail = false;
+    QString m_detailDemand;
+    QString m_detailWindowId;
+    QImage m_detailImage;
+    quint64 m_detailRevision = 0;
     quint64 m_activeToken = 0;
     quint64 m_nextToken = 0;
     quint64 m_currentGeneration = 0;

@@ -9,6 +9,7 @@
 #include <QUrl>
 
 #include <algorithm>
+#include <utility>
 
 namespace {
 
@@ -29,11 +30,11 @@ DockWindowPreviewService::DockWindowPreviewService(TyphonScreenCaptureClient *cl
         return;
     connect(m_client, &TyphonScreenCaptureClient::ready, this,
             [this](const QImage &image, quint64 generation, quint64 token) {
-                finishRequest({}, image, generation, token);
+                finishRequest({}, image, m_client->readyWindowSize(), generation, token);
             });
     connect(m_client, &TyphonScreenCaptureClient::failed, this,
             [this](const QString &reason, quint64 generation, quint64 token) {
-                finishRequest(reason, {}, generation, token);
+                finishRequest(reason, {}, {}, generation, token);
             });
     connect(m_client, &TyphonScreenCaptureClient::stateChanged, this,
             [this](const QString &state) {
@@ -46,7 +47,10 @@ DockWindowPreviewService::DockWindowPreviewService(TyphonScreenCaptureClient *cl
                     m_currentGeneration = generation;
                     m_requestInFlight = false;
                     m_activeWindowId.clear();
+                    m_activeIsDetail = false;
                     m_queue.clear();
+                    m_detailWindowId.clear();
+                    m_detailImage = {};
                 }
                 if (didGenerationChange) {
                     emit generationChanged(generation);
@@ -108,6 +112,54 @@ QSize DockWindowPreviewService::imageSize(const QString &windowId) const
     if (it == m_cache.constEnd() || it->generation != m_currentGeneration)
         return {};
     return it->image.size();
+}
+
+QSize DockWindowPreviewService::windowSize(const QString &windowId) const
+{
+    QMutexLocker lock(&m_mutex);
+    const auto it = m_cache.constFind(windowId);
+    if (it == m_cache.constEnd() || it->generation != m_currentGeneration)
+        return {};
+    return it->windowSize;
+}
+
+void DockWindowPreviewService::requestDetailImage(const QString &windowId)
+{
+    if (windowId.isEmpty())
+        return;
+    {
+        QMutexLocker lock(&m_mutex);
+        if (m_detailWindowId == windowId && !m_detailImage.isNull())
+            return;
+        if (m_requestInFlight && m_activeIsDetail && m_activeWindowId == windowId)
+            return;
+        m_detailDemand = windowId;
+    }
+    requestNext();
+}
+
+QString DockWindowPreviewService::detailImageUrl(const QString &windowId) const
+{
+    QMutexLocker lock(&m_mutex);
+    if (windowId.isEmpty() || windowId != m_detailWindowId || m_detailImage.isNull())
+        return {};
+    const QString encoded = QString::fromLatin1(windowId.toUtf8().toHex());
+    return QStringLiteral("image://astrea-window-preview/%1?detail=1&g=%2&r=%3")
+        .arg(encoded).arg(m_currentGeneration).arg(m_detailRevision);
+}
+
+void DockWindowPreviewService::releaseDetailImage()
+{
+    QMutexLocker lock(&m_mutex);
+    m_detailDemand.clear();
+    m_detailWindowId.clear();
+    m_detailImage = {};
+}
+
+QImage DockWindowPreviewService::detailImageForWindow(const QString &windowId)
+{
+    QMutexLocker lock(&m_mutex);
+    return windowId == m_detailWindowId ? m_detailImage : QImage();
 }
 
 void DockWindowPreviewService::reconcileLiveWindowIds(const QStringList &windowIds)
@@ -253,17 +305,28 @@ void DockWindowPreviewService::requestNext()
 {
     QString windowId;
     quint64 token = 0;
+    bool detail = false;
     {
         QMutexLocker lock(&m_mutex);
-        if (m_requestInFlight || m_queue.isEmpty() || !m_client)
+        if (m_requestInFlight || (m_queue.isEmpty() && m_detailDemand.isEmpty()) || !m_client)
             return;
-        if (m_hasLiveWindowSet) {
-            while (!m_queue.isEmpty() && !m_liveWindowIds.contains(m_queue.head()))
-                m_queue.dequeue();
+        if (m_hasLiveWindowSet && !m_detailDemand.isEmpty()
+            && !m_liveWindowIds.contains(m_detailDemand))
+            m_detailDemand.clear();
+        if (!m_detailDemand.isEmpty()) {
+            // The dragged window jumps the thumbnail queue.
+            windowId = std::exchange(m_detailDemand, QString());
+            detail = true;
+        } else {
+            if (m_hasLiveWindowSet) {
+                while (!m_queue.isEmpty() && !m_liveWindowIds.contains(m_queue.head()))
+                    m_queue.dequeue();
+            }
+            if (m_queue.isEmpty())
+                return;
+            windowId = m_queue.dequeue();
         }
-        if (m_queue.isEmpty())
-            return;
-        windowId = m_queue.dequeue();
+        m_activeIsDetail = detail;
         m_activeWindowId = windowId;
         m_activeToken = token = ++m_nextToken;
         m_requestInFlight = true;
@@ -273,15 +336,23 @@ void DockWindowPreviewService::requestNext()
         if (m_requestInFlight && m_activeToken == token) {
             m_requestInFlight = false;
             m_activeWindowId.clear();
-            m_queue.prepend(windowId);
+            if (detail)
+                m_detailDemand = windowId;
+            else
+                m_queue.prepend(windowId);
         }
         return;
     }
     if (!m_client->supportsWindowCapture()) {
-        finishRequest(QStringLiteral("unsupported"), {}, m_currentGeneration, token);
+        finishRequest(QStringLiteral("unsupported"), {}, {}, m_currentGeneration, token);
         return;
     }
-    const bool queued = m_client->requestWindowCapture(windowId, kCaptureWidth, kCaptureHeight,
+    // The compositor fits without upscaling, so the largest edge it accepts
+    // yields the window at its own size.
+    const std::uint32_t detailEdge = m_client->maxWindowCaptureDimension();
+    const bool queued = m_client->requestWindowCapture(windowId,
+                                                       detail ? detailEdge : kCaptureWidth,
+                                                       detail ? detailEdge : kCaptureHeight,
                                                        token);
     if (!queued) {
         QMutexLocker lock(&m_mutex);
@@ -293,28 +364,43 @@ void DockWindowPreviewService::requestNext()
 }
 
 void DockWindowPreviewService::finishRequest(const QString &reason, QImage image,
-                                            quint64 generation, quint64 token)
+                                            QSize windowSize, quint64 generation,
+                                            quint64 token)
 {
     QString completedWindow;
-    bool completed = false;
+    bool detail = false;
     {
         QMutexLocker lock(&m_mutex);
         if (!m_requestInFlight || token != m_activeToken)
             return;
         completedWindow = m_activeWindowId;
+        detail = m_activeIsDetail;
         m_requestInFlight = false;
+        m_activeIsDetail = false;
         m_activeWindowId.clear();
-        completed = true;
     }
-    if (!completed)
-        return;
-    if (reason.isEmpty() && !image.isNull() && generation == m_currentGeneration)
-        cacheImage(completedWindow, composeOverBackdrop(image), generation);
+    const bool succeeded = reason.isEmpty() && !image.isNull()
+        && generation == m_currentGeneration;
+    if (succeeded && detail) {
+        {
+            QMutexLocker lock(&m_mutex);
+            m_detailWindowId = completedWindow;
+            // Shown over the real desktop, so translucency stays as it is.
+            m_detailImage = image;
+            ++m_detailRevision;
+            auto cached = m_cache.find(completedWindow);
+            if (cached != m_cache.end() && windowSize.isValid())
+                cached->windowSize = windowSize;
+        }
+        emit detailImageChanged(completedWindow);
+    } else if (succeeded) {
+        cacheImage(completedWindow, composeOverBackdrop(image), windowSize, generation);
+    }
     requestNext();
 }
 
 void DockWindowPreviewService::cacheImage(const QString &windowId, const QImage &image,
-                                          quint64 generation)
+                                          QSize windowSize, quint64 generation)
 {
     if (image.isNull())
         return;
@@ -328,6 +414,7 @@ void DockWindowPreviewService::cacheImage(const QString &windowId, const QImage 
             m_cachedBytes -= old->bytes;
         CachedImage entry;
         entry.image = image;
+        entry.windowSize = windowSize;
         entry.generation = generation;
         entry.revision = ++m_revisionSerial;
         entry.lastUse = ++m_useSerial;

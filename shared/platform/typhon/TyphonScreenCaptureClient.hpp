@@ -2,6 +2,7 @@
 
 #include <QImage>
 #include <QObject>
+#include <QSize>
 
 #include <cstdint>
 #include <memory>
@@ -25,6 +26,11 @@ public:
     void cancelCapture();
     bool isReady() const;
     bool supportsWindowCapture() const;
+    // Largest window capture edge the compositor accepts (4096 since v3).
+    std::uint32_t maxWindowCaptureDimension() const;
+    // The captured window's logical size; valid only while ready() is emitted
+    // for a window capture from a v3 compositor, otherwise empty.
+    QSize readyWindowSize() const;
     std::uint64_t connectionGeneration() const;
 
 signals:

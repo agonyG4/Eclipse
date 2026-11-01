@@ -153,6 +153,29 @@ public:
         return std::nullopt;
     }
 
+    std::optional<ToplevelActionError> requestRestoreAt(quint64 handleToken,
+                                                         TyphonActionToken token,
+                                                         const QPoint &position) override
+    {
+        if (!m_running || !m_manager)
+            return ToplevelActionError::Disconnected;
+        if (m_managerVersion < 5)
+            return ToplevelActionError::UnsupportedProtocol;
+        if (!m_authenticated || m_actionCapability != TyphonActionCapabilityState::ActionReadyV2)
+            return ToplevelActionError::NotAuthenticated;
+        if (!token.isValid())
+            return ToplevelActionError::InvalidRequest;
+        const auto it = m_handles.constFind(handleToken);
+        if (it == m_handles.constEnd() || !it.value() || it.value()->closed || !it.value()->proxy
+            || astrea_toplevel_v1_get_version(it.value()->proxy) < 5)
+            return ToplevelActionError::ToplevelNotLive;
+        astrea_toplevel_v1_restore_at(it.value()->proxy, token.hi, token.lo, position.x(),
+                                      position.y());
+        if (!m_display->flush())
+            return ToplevelActionError::Disconnected;
+        return std::nullopt;
+    }
+
     std::optional<ToplevelActionError> setMinimizeAnchor(quint64 handleToken,
                                                           const QRect &rect) override
     {
@@ -211,7 +234,7 @@ private:
             || qstrcmp(interfaceName, "astrea_toplevel_manager_v1") != 0 || version < 1) {
             return;
         }
-        self->m_managerVersion = qMin(version, 4u);
+        self->m_managerVersion = qMin(version, 5u);
         self->m_manager = static_cast<astrea_toplevel_manager_v1 *>(
             wl_registry_bind(registry, name, &astrea_toplevel_manager_v1_interface,
                              self->m_managerVersion));

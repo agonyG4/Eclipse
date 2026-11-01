@@ -26,6 +26,23 @@ Window {
     property int edgeInset: 12
     property int dockGap: 10
 
+    // A minimized window dragged out of the Dock, drawn over the desktop in
+    // output-local coordinates while the Dock keeps the pointer grab. It grows
+    // from the tile to the window's real size, and on release the compositor
+    // restores the window exactly underneath it before it fades away.
+    property bool ghostVisible: false
+    property string ghostWindowId: ""
+    property string ghostThumbnail: ""
+    property string ghostDetail: ""
+    property real ghostX: 0
+    property real ghostY: 0
+    property real ghostWidth: 1
+    property real ghostHeight: 1
+    property real ghostRadius: 8
+    // 0 at the Dock, 1 fully pulled out: deepens the shadow like a lifted window.
+    property real ghostLift: 0
+    property var ghostFinished: null
+
     Shared.ShellMaterialTheme {
         id: material
         objectName: "dockWindowPreviewMaterial"
@@ -68,7 +85,7 @@ Window {
     readonly property int panelTransformOrigin: dockPosition === "left" ? Item.Left
         : dockPosition === "right" ? Item.Right : Item.Bottom
 
-    visible: previewVisible
+    visible: previewVisible || ghostVisible
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.Tool | Qt.WindowDoesNotAcceptFocus
         | Qt.WindowStaysOnTopHint
@@ -144,6 +161,72 @@ Window {
         } else if (previewService) {
             previewService.setPopupWindowIds([])
         }
+    }
+
+    function showGhost(windowId, thumbnail, widthIn, heightIn, originX, originY) {
+        ghostAnimation.stop()
+        ghostFade.stop()
+        if (previewVisible)
+            hidePreview()
+        outputWidth = Math.max(1, widthIn)
+        outputHeight = Math.max(1, heightIn)
+        outputOriginX = originX || 0
+        outputOriginY = originY || 0
+        ghostWindowId = windowId
+        ghostThumbnail = thumbnail || ""
+        ghostDetail = previewService ? previewService.detailImageUrl(windowId) : ""
+        ghostItem.opacity = 1
+        ghostFinished = null
+        ghostVisible = true
+        if (previewService)
+            previewService.requestDetailImage(windowId)
+        Qt.callLater(updateInputRegion)
+    }
+
+    function moveGhost(x, y, w, h, radius, lift) {
+        if (!ghostVisible || ghostAnimation.running)
+            return
+        ghostX = x
+        ghostY = y
+        ghostWidth = Math.max(1, w)
+        ghostHeight = Math.max(1, h)
+        ghostRadius = radius
+        ghostLift = lift
+    }
+
+    // Animates the ghost to a rect, then runs `finished` (if any).
+    function animateGhost(x, y, w, h, radius, lift, duration, finished) {
+        if (!ghostVisible)
+            return
+        ghostFinished = finished || null
+        ghostXAnimation.to = x
+        ghostYAnimation.to = y
+        ghostWidthAnimation.to = Math.max(1, w)
+        ghostHeightAnimation.to = Math.max(1, h)
+        ghostRadiusAnimation.to = radius
+        ghostLiftAnimation.to = lift
+        ghostAnimation.duration = duration
+        ghostAnimation.restart()
+    }
+
+    // The window is now on screen underneath: let the ghost dissolve into it.
+    function releaseGhost(delay) {
+        if (!ghostVisible)
+            return
+        ghostFadeDelay.duration = Math.max(0, delay || 0)
+        ghostFade.restart()
+    }
+
+    function hideGhost() {
+        ghostAnimation.stop()
+        ghostFade.stop()
+        ghostVisible = false
+        ghostWindowId = ""
+        ghostThumbnail = ""
+        ghostDetail = ""
+        ghostFinished = null
+        if (previewService)
+            previewService.releaseDetailImage()
     }
 
     function hidePreview() {
@@ -479,6 +562,109 @@ Window {
                     }
                 }
             }
+        }
+    }
+
+    ParallelAnimation {
+        id: ghostAnimation
+        property int duration: 200
+        NumberAnimation { id: ghostXAnimation; target: root; property: "ghostX"; duration: ghostAnimation.duration; easing.type: Easing.OutCubic }
+        NumberAnimation { id: ghostYAnimation; target: root; property: "ghostY"; duration: ghostAnimation.duration; easing.type: Easing.OutCubic }
+        NumberAnimation { id: ghostWidthAnimation; target: root; property: "ghostWidth"; duration: ghostAnimation.duration; easing.type: Easing.OutCubic }
+        NumberAnimation { id: ghostHeightAnimation; target: root; property: "ghostHeight"; duration: ghostAnimation.duration; easing.type: Easing.OutCubic }
+        NumberAnimation { id: ghostRadiusAnimation; target: root; property: "ghostRadius"; duration: ghostAnimation.duration; easing.type: Easing.OutCubic }
+        NumberAnimation { id: ghostLiftAnimation; target: root; property: "ghostLift"; duration: ghostAnimation.duration; easing.type: Easing.OutCubic }
+        onFinished: {
+            const finished = root.ghostFinished
+            root.ghostFinished = null
+            if (finished)
+                finished()
+        }
+    }
+
+    SequentialAnimation {
+        id: ghostFade
+        PauseAnimation { id: ghostFadeDelay; duration: 0 }
+        NumberAnimation { target: ghostItem; property: "opacity"; to: 0; duration: 150; easing.type: Easing.OutQuad }
+        ScriptAction { script: root.hideGhost() }
+    }
+
+    Connections {
+        target: root.previewService
+        function onDetailImageChanged(windowId) {
+            if (root.ghostVisible && windowId === root.ghostWindowId)
+                root.ghostDetail = root.previewService.detailImageUrl(windowId)
+        }
+    }
+
+    Item {
+        id: ghostItem
+        objectName: "dockWindowGhost"
+        x: root.ghostX
+        y: root.ghostY
+        width: root.ghostWidth
+        height: root.ghostHeight
+        visible: root.ghostVisible
+
+        RectangularShadow {
+            anchors.fill: parent
+            visible: ghostThumbnailImage.status === Image.Ready
+                || ghostDetailImage.status === Image.Ready
+            radius: root.ghostRadius
+            blur: 6 + 30 * root.ghostLift
+            offset.y: 2 + 14 * root.ghostLift
+            color: Qt.rgba(0, 0, 0, 0.32 + 0.14 * root.ghostLift)
+        }
+
+        // Full-resolution decodes, sampled with mipmaps while the ghost grows;
+        // the rounded-corner shader draws them, so the images stay hidden.
+        Image {
+            id: ghostThumbnailImage
+            anchors.fill: parent
+            source: root.ghostThumbnail
+            asynchronous: false
+            cache: false
+            smooth: true
+            mipmap: true
+            visible: false
+        }
+
+        Image {
+            id: ghostDetailImage
+            anchors.fill: parent
+            source: root.ghostDetail
+            asynchronous: false
+            cache: false
+            smooth: true
+            mipmap: true
+            visible: false
+        }
+
+        ShaderEffect {
+            anchors.fill: parent
+            visible: ghostThumbnailImage.status === Image.Ready
+            property variant source: ghostThumbnailImage
+            property real roundedRadius: root.ghostRadius / Math.max(1, Math.min(width, height))
+            property real presentationMode: 0
+            property color tintColor: "#0a84ff"
+            supportsAtlasTextures: false
+            blending: true
+            fragmentShader: "qrc:/shaders/rounded_icon.frag.qsb"
+        }
+
+        // The sharp capture fades in over the thumbnail as soon as it lands.
+        ShaderEffect {
+            anchors.fill: parent
+            visible: ghostDetailImage.status === Image.Ready
+            opacity: visible ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 120 } }
+            property variant source: ghostDetailImage
+            property real roundedRadius: root.ghostRadius / Math.max(1, Math.min(width, height))
+            property real presentationMode: 0
+            property color tintColor: "#0a84ff"
+            supportsAtlasTextures: false
+            blending: true
+            fragmentShader: "qrc:/shaders/rounded_icon.frag.qsb"
         }
     }
 }

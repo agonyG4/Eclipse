@@ -24,7 +24,8 @@ namespace {
 
 constexpr std::uint32_t kRgba8888 = 0x34324152U;
 constexpr std::uint64_t kMaxPayload = 256ULL * 1024ULL * 1024ULL;
-constexpr std::uint32_t kMaxWindowCaptureDimension = 1024U;
+constexpr std::uint32_t kLegacyMaxWindowCaptureDimension = 1024U;
+constexpr std::uint32_t kMaxWindowCaptureDimension = 4096U;
 
 } // namespace
 
@@ -43,6 +44,9 @@ struct TyphonScreenCaptureClient::Private {
     std::uint64_t generation = 0;
     std::uint64_t activeOperationToken = 0;
     bool captureIsWindow = false;
+    // Logical window size reported by a v3 window capture before ready.
+    QSize pendingWindowSize;
+    QSize readyWindowSize;
 
 #if ASTREA_HAVE_TYPHON_PROTOCOL
     wl_registry *registry = nullptr;
@@ -74,6 +78,8 @@ struct TyphonScreenCaptureClient::Private {
                            std::uint32_t width, std::uint32_t height,
                            std::uint32_t stride, std::uint32_t format);
     static void failedEvent(void *data, astrea_screen_capture_v1 *capture, const char *reason);
+    static void windowSizeEvent(void *data, astrea_screen_capture_v1 *capture,
+                                std::uint32_t width, std::uint32_t height);
 
     static const wl_registry_listener registryListener;
     static const wl_callback_listener registrySyncListener;
@@ -91,7 +97,7 @@ void TyphonScreenCaptureClient::Private::global(void *data, wl_registry *registr
         return;
     if (!self->manager && qstrcmp(interfaceName, "astrea_screen_capture_manager_v1") == 0
         && version >= 1) {
-        self->managerVersion = std::min(version, 2U);
+        self->managerVersion = std::min(version, 3U);
         self->manager = static_cast<astrea_screen_capture_manager_v1 *>(wl_registry_bind(
             registry, name, &astrea_screen_capture_manager_v1_interface,
             self->managerVersion));
@@ -184,6 +190,17 @@ void TyphonScreenCaptureClient::Private::failedEvent(void *data,
         self->failRequest(QString::fromUtf8(reason ? reason : "render_failed"));
 }
 
+void TyphonScreenCaptureClient::Private::windowSizeEvent(void *data,
+                                                         astrea_screen_capture_v1 *capture,
+                                                         std::uint32_t width, std::uint32_t height)
+{
+    auto *self = static_cast<Private *>(data);
+    if (self && self->capture == capture && width > 0 && height > 0
+        && width <= static_cast<std::uint32_t>(std::numeric_limits<int>::max())
+        && height <= static_cast<std::uint32_t>(std::numeric_limits<int>::max()))
+        self->pendingWindowSize = QSize(static_cast<int>(width), static_cast<int>(height));
+}
+
 void TyphonScreenCaptureClient::Private::handleReady(astrea_screen_capture_v1 *source, int fd,
                                                      std::uint32_t width,
                                                      std::uint32_t height, std::uint32_t stride,
@@ -239,7 +256,10 @@ void TyphonScreenCaptureClient::Private::handleReady(astrea_screen_capture_v1 *s
     capture = nullptr;
     activeOperationToken = 0;
     captureIsWindow = false;
+    readyWindowSize = pendingWindowSize;
+    pendingWindowSize = QSize();
     emit owner->ready(image, generation, operationToken);
+    readyWindowSize = QSize();
 }
 
 void TyphonScreenCaptureClient::Private::fail(const QString &reason)
@@ -350,6 +370,7 @@ const wl_callback_listener TyphonScreenCaptureClient::Private::registrySyncListe
 const astrea_screen_capture_v1_listener TyphonScreenCaptureClient::Private::captureListener = {
     &TyphonScreenCaptureClient::Private::readyEvent,
     &TyphonScreenCaptureClient::Private::failedEvent,
+    &TyphonScreenCaptureClient::Private::windowSizeEvent,
 };
 #endif
 
@@ -469,7 +490,7 @@ bool TyphonScreenCaptureClient::requestWindowCapture(const QString &windowId,
     return false;
 #else
     if (windowId.isEmpty() || windowId.size() > 256 || maxWidth == 0 || maxHeight == 0
-        || maxWidth > kMaxWindowCaptureDimension || maxHeight > kMaxWindowCaptureDimension) {
+        || maxWidth > maxWindowCaptureDimension() || maxHeight > maxWindowCaptureDimension()) {
         emit failed(QStringLiteral("invalid_request"), m_private->generation, operationToken);
         return false;
     }
@@ -481,6 +502,7 @@ bool TyphonScreenCaptureClient::requestWindowCapture(const QString &windowId,
     }
     m_private->activeOperationToken = operationToken;
     m_private->captureIsWindow = true;
+    m_private->pendingWindowSize = QSize();
     const QByteArray encodedWindowId = windowId.toUtf8();
     m_private->capture = astrea_screen_capture_manager_v1_capture_window(
         m_private->manager, encodedWindowId.constData(), maxWidth, maxHeight);
@@ -529,6 +551,21 @@ bool TyphonScreenCaptureClient::supportsWindowCapture() const
 #else
     return false;
 #endif
+}
+
+std::uint32_t TyphonScreenCaptureClient::maxWindowCaptureDimension() const
+{
+#if ASTREA_HAVE_TYPHON_PROTOCOL
+    return m_private->managerVersion >= 3 ? kMaxWindowCaptureDimension
+                                          : kLegacyMaxWindowCaptureDimension;
+#else
+    return kLegacyMaxWindowCaptureDimension;
+#endif
+}
+
+QSize TyphonScreenCaptureClient::readyWindowSize() const
+{
+    return m_private->readyWindowSize;
 }
 
 std::uint64_t TyphonScreenCaptureClient::connectionGeneration() const

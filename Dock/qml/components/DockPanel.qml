@@ -102,6 +102,19 @@ Item {
     property real minimizedDragCenterRelativeX: 0
     property point minimizedDragPanelPosition: Qt.point(0, 0)
     property point minimizedDragScenePosition: Qt.point(0, 0)
+    property point minimizedDragPointerOriginScene: Qt.point(0, 0)
+    // Pulling a minimized tile away from the Dock tears it out: the window
+    // grows from the tile to its real size under the pointer, and dropping it
+    // restores the window right there, macOS style.
+    property bool minimizedTearOut: false
+    property point minimizedGhostGrip: Qt.point(0.5, 0.5)
+    property rect minimizedGhostTileRect: Qt.rect(0, 0, 1, 1)
+    property size minimizedGhostWindowSize: Qt.size(1, 1)
+    // Keeps a dropped window's tile hidden until the runtime removes it.
+    property string minimizedRestoringWindowId: ""
+    readonly property real tearOutThreshold: 30
+    readonly property real tearOutGrowDistance: 200
+    readonly property real tearOutWindowRadius: 10
     // Both values are relative to the panel center on the primary axis. This
     // keeps the drag coordinate invariant while the visual chrome changes.
     property real dragOriginCenterRelativeX: 0
@@ -308,6 +321,14 @@ Item {
                     objectName: "minimized-window-" + modelData.windowId
                     readonly property string hoverKey: "minimized:" + modelData.windowId
                     readonly property Item tile: minimizedWindowCard
+                    readonly property Item windowTile: minimizedWindowTile
+                    property bool tornOut: false
+                    readonly property bool hiddenForWindowGhost: tornOut
+                        || root.minimizedRestoringWindowId === modelData.windowId
+                    opacity: hiddenForWindowGhost ? 0 : 1
+                    Behavior on opacity {
+                        NumberAnimation { duration: root.animationDuration(120); easing.type: Easing.OutCubic }
+                    }
                     property real magnificationScale: 1.0
                     property real visualOffsetX: 0
                     property real visualOffsetY: 0
@@ -1156,6 +1177,7 @@ Item {
             tile.visualOffsetY = vertical ? tileOffset : crossOffsetValue
             tile.dragging = lifted
             tile.dragScale = lifted ? reorderScale : 1
+            tile.tornOut = lifted && minimizedTearOut
         }
     }
 
@@ -1262,6 +1284,8 @@ Item {
         minimizedDragSourceIndex = source
         minimizedDragTargetIndex = source
         minimizedDragPointerOriginPrimary = minimizedPrimaryOfPanelPosition()
+        minimizedDragPointerOriginScene = Qt.point(sceneX, sceneY)
+        minimizedGhostGrip = minimizedGripFor(sourceItem.windowTile, sceneX, sceneY)
         minimizedDragOriginCenterRelativeX = delegateRestingCenterInPanel(sourceItem)
             - primaryExtent() / 2
         minimizedDragCenterRelativeX = minimizedDragOriginCenterRelativeX
@@ -1285,15 +1309,175 @@ Item {
                 Math.round((minimizedDragCenterRelativeX - firstCenterRelative)
                            / Math.max(1, root.slotPitch))))
         }
-        // Cross-axis (away from the dock) movement belongs here. The component
-        // is in minimizedDragPanelPosition, and it is deliberately ignored for
-        // reordering. A later "drag to place window" change handles it.
+        // Cross-axis: pulling away from the Dock tears the window out.
+        const away = minimizedAwayDistance()
+        if (!minimizedTearOut && away > tearOutThreshold)
+            beginMinimizedTearOut()
+        else if (minimizedTearOut && away < tearOutThreshold / 2)
+            endMinimizedTearOut()
+        if (minimizedTearOut) {
+            // Torn out, the window no longer belongs to a slot.
+            minimizedDragTargetIndex = minimizedDragSourceIndex
+            updateMinimizedGhost()
+        }
         updateHoverEffect()
+    }
+
+    // How far the pointer has moved from the press toward the desktop.
+    function minimizedAwayDistance() {
+        const dx = minimizedDragScenePosition.x - minimizedDragPointerOriginScene.x
+        const dy = minimizedDragScenePosition.y - minimizedDragPointerOriginScene.y
+        if (DockController.position === "left")
+            return dx
+        if (DockController.position === "right")
+            return -dx
+        return -dy
+    }
+
+    // Where the pointer grips the window image, as fractions of its size.
+    function minimizedGripFor(windowTile, sceneX, sceneY) {
+        if (!windowTile)
+            return Qt.point(0.5, 0.5)
+        const paintedWidth = Math.max(1, windowTile.paintedWidth || windowTile.width)
+        const paintedHeight = Math.max(1, windowTile.paintedHeight || windowTile.height)
+        const local = windowTile.mapFromItem(null, sceneX, sceneY)
+        const gripX = (local.x - (windowTile.width - paintedWidth) / 2) / paintedWidth
+        const gripY = (local.y - (windowTile.height - paintedHeight) / 2) / paintedHeight
+        return Qt.point(isFinite(gripX) ? Math.max(0, Math.min(1, gripX)) : 0.5,
+                        isFinite(gripY) ? Math.max(0, Math.min(1, gripY)) : 0.5)
+    }
+
+    // Dock window coordinates translate into output-local ones by a constant.
+    function windowToOutputOffset() {
+        const mapped = dockSurfaceGeometry.outputLocalDelegateRect(
+            outputWidth, outputHeight, surfaceWidth, surfaceHeight,
+            DockController.position, DockController.layerShellEdgeMargin,
+            Qt.rect(0, 0, 100, 100))
+        return Qt.point(mapped.x, mapped.y)
+    }
+
+    function beginMinimizedTearOut() {
+        const sourceItem = minimizedRepeater.itemAt(minimizedDragSourceIndex)
+        const service = dockWindowPreviewService
+        if (!sourceItem || !service || !dockWindowPreviewSurface || !dockSurfaceGeometry)
+            return false
+        const thumbnail = service.imageUrl(minimizedDragWindowId)
+        const windowTile = sourceItem.windowTile
+        if (thumbnail.length === 0 || !windowTile || !windowTile.imageReady)
+            return false
+        const paintedWidth = Math.max(1, windowTile.paintedWidth)
+        const paintedHeight = Math.max(1, windowTile.paintedHeight)
+        const left = (windowTile.width - paintedWidth) / 2
+        const top = (windowTile.height - paintedHeight) / 2
+        const topLeft = windowTile.mapToItem(null, left, top)
+        const bottomRight = windowTile.mapToItem(null, left + paintedWidth, top + paintedHeight)
+        const offset = windowToOutputOffset()
+        minimizedGhostTileRect = Qt.rect(topLeft.x + offset.x, topLeft.y + offset.y,
+                                         Math.max(1, bottomRight.x - topLeft.x),
+                                         Math.max(1, bottomRight.y - topLeft.y))
+        var windowSize = service.windowSize(minimizedDragWindowId)
+        if (!windowSize || windowSize.width <= 0 || windowSize.height <= 0) {
+            // An older compositor does not report the size: assume a window
+            // filling most of the output with the thumbnail's aspect.
+            const image = service.imageSize(minimizedDragWindowId)
+            const aspect = image.width > 0 && image.height > 0 ? image.width / image.height : 1.6
+            const fitWidth = Math.min(outputWidth * 0.6, outputHeight * 0.6 * aspect)
+            windowSize = Qt.size(fitWidth, fitWidth / aspect)
+        }
+        minimizedGhostWindowSize = Qt.size(windowSize.width, windowSize.height)
+        if (dockTooltipSurface)
+            dockTooltipSurface.hideTooltip()
+        dockWindowPreviewSurface.showGhost(minimizedDragWindowId, thumbnail,
+                                           outputWidth, outputHeight,
+                                           outputOriginX, outputOriginY)
+        minimizedTearOut = true
+        return true
+    }
+
+    function endMinimizedTearOut() {
+        if (!minimizedTearOut)
+            return
+        minimizedTearOut = false
+        if (dockWindowPreviewSurface)
+            dockWindowPreviewSurface.hideGhost()
+    }
+
+    // The ghost's rect for a growth progress: the grip point stays under the pointer.
+    function minimizedGhostRect(progress) {
+        const tileRect = minimizedGhostTileRect
+        const windowSize = minimizedGhostWindowSize
+        const width = tileRect.width + (windowSize.width - tileRect.width) * progress
+        const height = tileRect.height + (windowSize.height - tileRect.height) * progress
+        const offset = windowToOutputOffset()
+        const pointerX = minimizedDragScenePosition.x + offset.x
+        const pointerY = minimizedDragScenePosition.y + offset.y
+        return Qt.rect(pointerX - minimizedGhostGrip.x * width,
+                       pointerY - minimizedGhostGrip.y * height, width, height)
+    }
+
+    function minimizedGhostRadius(progress) {
+        const tileRect = minimizedGhostTileRect
+        const tileRadius = Math.max(3, Math.round(Math.min(tileRect.width, tileRect.height) * 0.08))
+        return tileRadius + (tearOutWindowRadius - tileRadius) * progress
+    }
+
+    function updateMinimizedGhost() {
+        if (!dockWindowPreviewSurface)
+            return
+        const linear = Math.max(0, Math.min(1,
+            (minimizedAwayDistance() - tearOutThreshold) / tearOutGrowDistance))
+        const progress = 1 - Math.pow(1 - linear, 3)
+        const rect = minimizedGhostRect(progress)
+        dockWindowPreviewSurface.moveGhost(rect.x, rect.y, rect.width, rect.height,
+                                           minimizedGhostRadius(progress), progress)
+    }
+
+    // Grows the ghost to the window's size where it was dropped, then has the
+    // compositor restore the window exactly underneath before the ghost fades.
+    function dropMinimizedTearOut(windowId) {
+        const index = minimizedIndexForWindow(windowId)
+        const entry = index >= 0 ? minimizedEntries[index] : null
+        const surface = dockWindowPreviewSurface
+        if (!entry || !surface) {
+            endMinimizedTearOut()
+            return
+        }
+        const full = minimizedGhostRect(1)
+        // Keep the title bar reachable on the output.
+        const x = Math.max(80 - full.width, Math.min(outputWidth - 80, full.x))
+        const y = Math.max(0, Math.min(outputHeight - 48, full.y))
+        const taskKey = entry.taskKey
+        const originX = outputOriginX
+        const originY = outputOriginY
+        minimizedRestoringWindowId = windowId
+        minimizedRestoreTimeout.restart()
+        surface.animateGhost(x, y, full.width, full.height, tearOutWindowRadius, 1,
+                             animationDuration(190), function() {
+            const restored = DockController.restoreMinimizedWindowAt(
+                taskKey, windowId, Math.round(x) + originX, Math.round(y) + originY)
+            surface.releaseGhost(restored ? 90 : 0)
+            if (!restored)
+                root.minimizedRestoringWindowId = ""
+        })
+    }
+
+    function cancelMinimizedTearOut() {
+        const surface = dockWindowPreviewSurface
+        if (!surface || !minimizedTearOut)
+            return
+        const tileRect = minimizedGhostTileRect
+        surface.animateGhost(tileRect.x, tileRect.y, tileRect.width, tileRect.height,
+                             minimizedGhostRadius(0), 0, animationDuration(200),
+                             function() { surface.hideGhost() })
     }
 
     function finishMinimizedReorder(windowId) {
         if (windowId !== minimizedDragWindowId)
             return
+        if (minimizedTearOut) {
+            dropMinimizedTearOut(windowId)
+            minimizedDragTargetIndex = minimizedDragSourceIndex
+        }
         // Commit on the next turn. The move rebuilds the minimized repeater, and
         // the handler reporting this release belongs to one of its delegates.
         Qt.callLater(root.commitMinimizedReorder, windowId)
@@ -1311,6 +1495,7 @@ Item {
     function cancelMinimizedReorder(windowId) {
         if (windowId !== minimizedDragWindowId)
             return
+        cancelMinimizedTearOut()
         clearMinimizedReorder()
     }
 
@@ -1321,7 +1506,22 @@ Item {
         minimizedDragPointerOriginPrimary = 0
         minimizedDragOriginCenterRelativeX = 0
         minimizedDragCenterRelativeX = 0
+        minimizedTearOut = false
         updateHoverEffect()
+    }
+
+    Timer {
+        id: minimizedRestoreTimeout
+        interval: 1500
+        onTriggered: root.minimizedRestoringWindowId = ""
+    }
+
+    onMinimizedEntriesChanged: {
+        if (minimizedRestoringWindowId.length > 0
+                && minimizedIndexForWindow(minimizedRestoringWindowId) < 0) {
+            minimizedRestoringWindowId = ""
+            minimizedRestoreTimeout.stop()
+        }
     }
 
     Component.onCompleted: {

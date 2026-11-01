@@ -21,6 +21,8 @@ public:
 
     std::optional<DockRuntimeActionError> requestAction(
         const QString &windowId, DockRuntimeAction action, quint64 consumerToken) override;
+    std::optional<DockRuntimeActionError> requestRestoreAt(
+        const QString &windowId, const QPoint &position) override;
     std::optional<DockRuntimeActionError> setMinimizeAnchor(
         const QString &windowId, const QRect &rect) override;
     std::optional<DockRuntimeActionError> clearMinimizeAnchor(

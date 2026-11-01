@@ -3,6 +3,7 @@
 #include "core/runtime/DockRuntimeTypes.hpp"
 
 #include <QObject>
+#include <QPoint>
 #include <QRect>
 
 #include <optional>
@@ -24,6 +25,17 @@ public:
 
     virtual std::optional<DockRuntimeActionError> requestAction(
         const QString &windowId, DockRuntimeAction action, quint64 consumerToken) = 0;
+    // Restores a minimized window with its visible frame's top left at a
+    // global logical position, without the restore animation: the Dock has
+    // already shown the window there while it was dragged out. Completion
+    // is not reported; callers fall back to Activate on an error.
+    virtual std::optional<DockRuntimeActionError> requestRestoreAt(
+        const QString &windowId, const QPoint &position)
+    {
+        Q_UNUSED(windowId);
+        Q_UNUSED(position);
+        return DockRuntimeActionError::UnsupportedProtocol;
+    }
     virtual std::optional<DockRuntimeActionError> setMinimizeAnchor(
         const QString &windowId, const QRect &rect) = 0;
     virtual std::optional<DockRuntimeActionError> clearMinimizeAnchor(

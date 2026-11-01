@@ -599,6 +599,22 @@ bool DockController::activateWindow(const QString &taskKey, const QString &windo
                                     Astrea::Dock::DockRuntimeAction::Activate);
 }
 
+bool DockController::restoreMinimizedWindowAt(const QString &taskKey, const QString &windowId,
+                                              int x, int y)
+{
+    const auto windows = windowsForTaskKey(taskKey);
+    const bool minimized = std::any_of(windows.cbegin(), windows.cend(),
+                                       [&windowId](const auto &window) {
+        return window.id == windowId && window.minimized;
+    });
+    if (!minimized || !m_runtimeBackend)
+        return activateWindow(taskKey, windowId);
+    // Without restore_at the window still comes back, animated, where it was.
+    if (m_runtimeBackend->requestRestoreAt(windowId, QPoint(x, y)).has_value())
+        return activateWindow(taskKey, windowId);
+    return true;
+}
+
 bool DockController::closeWindow(const QString &taskKey, const QString &windowId)
 {
     return requestExactWindowAction(taskKey, windowId,

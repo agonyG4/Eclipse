@@ -48,6 +48,10 @@ public:
     { return m_adapter ? m_adapter->managerVersion() : 0; }
     std::optional<Astrea::Typhon::ToplevelActionError> requestAction(
         const QString &windowId, Astrea::Typhon::ToplevelAction action, quint64 consumerToken);
+    // A Restore action that places the window's visible frame at `position`;
+    // completion arrives as an ordinary Restore action.
+    std::optional<Astrea::Typhon::ToplevelActionError> requestRestoreAt(
+        const QString &windowId, const QPoint &position, quint64 consumerToken);
     std::optional<Astrea::Typhon::ToplevelActionError> setMinimizeAnchor(
         const QString &windowId, const QRect &rect);
     std::optional<Astrea::Typhon::ToplevelActionError> clearMinimizeAnchor(
@@ -65,6 +69,9 @@ signals:
 
 private:
     void beginConnection();
+    std::optional<Astrea::Typhon::ToplevelActionError> submitAction(
+        const QString &windowId, Astrea::Typhon::ToplevelAction action, quint64 consumerToken,
+        std::optional<QPoint> position);
     void bindAdapter(quint64 generation);
     void disconnectAdapterSignals();
     void setState(TyphonConnectionState state);

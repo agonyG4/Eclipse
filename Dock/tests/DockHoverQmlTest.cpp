@@ -35,6 +35,7 @@ Q_IMPORT_QML_PLUGIN(Astrea_EffectsPlugin)
 
 #include <algorithm>
 #include <functional>
+#include <limits>
 
 namespace {
 
@@ -57,6 +58,20 @@ public:
         return true;
     }
 
+    Q_INVOKABLE bool presentDockWindow(const QString &taskKey, const QString &windowId,
+                                       int x, int y, int width, int height,
+                                       const QString &outputKey)
+    {
+        ++windowPresentCount;
+        m_hasActivePresentation = true;
+        emit presentationChanged();
+        lastWindowTaskKey = taskKey;
+        lastWindowId = windowId;
+        lastWindowRectangle = QRect(x, y, width, height);
+        lastWindowOutputKey = outputKey;
+        return true;
+    }
+
     Q_INVOKABLE void clearPresentation()
     {
         if (!m_hasActivePresentation)
@@ -69,6 +84,11 @@ public:
     QString lastDesktopFileName;
     QRect lastRectangle;
     QString lastOutputKey;
+    int windowPresentCount = 0;
+    QString lastWindowTaskKey;
+    QString lastWindowId;
+    QRect lastWindowRectangle;
+    QString lastWindowOutputKey;
 
 signals:
     void presentationChanged();
@@ -457,6 +477,32 @@ DockConfig configFor(const QString &hoverEffect, const QStringList &pins)
     return config;
 }
 
+std::shared_ptr<DesktopEntrySnapshot> oneDesktopCatalog()
+{
+    auto catalog = std::make_shared<DesktopEntrySnapshot>();
+    DesktopEntryRecord record;
+    record.desktopFileName = QStringLiteral("one.desktop");
+    record.id = QStringLiteral("one");
+    record.name = QStringLiteral("One");
+    // No icon name: the tiles under test do not need artwork, and an unknown
+    // name only makes the icon provider log misses.
+    record.exec = QStringLiteral("one");
+    catalog->entries.append(record);
+    catalog->byDesktopFileName.insert(record.desktopFileName, 0);
+    catalog->byDesktopId.insert(record.id, 0);
+    return catalog;
+}
+
+Astrea::Dock::DockRuntimeWindow minimizedRuntimeWindow(const QString &id)
+{
+    Astrea::Dock::DockRuntimeWindow window;
+    window.id = id;
+    window.appId = QStringLiteral("one");
+    window.title = QStringLiteral("Window ") + id;
+    window.minimized = true;
+    return window;
+}
+
 } // namespace
 
 class DockHoverQmlTest final : public QObject {
@@ -506,6 +552,8 @@ private slots:
     void verticalContentIsCenteredWithinChrome();
     void verticalDragReorderUsesPrimaryAndCrossAxes();
     void floatingAutoHideUsesPhysicalEdgeRevealGeometry();
+    void minimizedTileReorderFollowsPointerAndCommitsOnRelease();
+    void minimizedTileRightClickOpensWindowMenuForItsWindow();
 };
 
 void DockHoverQmlTest::initTestCase()
@@ -4285,4 +4333,194 @@ void DockHoverQmlTest::disablingWindowPreviewsDismissesPopupAndRestoresTooltip()
     QTRY_VERIFY_WITH_TIMEOUT(preview->property("previewVisible").toBool(), 1500);
     QVERIFY(!tooltip.tooltipVisible());
     panel->setParentItem(nullptr);
+}
+
+void DockHoverQmlTest::minimizedTileReorderFollowsPointerAndCommitsOnRelease()
+{
+    const QStringList initialOrder{QStringLiteral("window-a"), QStringLiteral("window-b"),
+                                   QStringLiteral("window-c")};
+    const QStringList reorderedOrder{QStringLiteral("window-b"), QStringLiteral("window-c"),
+                                     QStringLiteral("window-a")};
+    for (const QString &position : {QStringLiteral("bottom"), QStringLiteral("left")}) {
+        FakeWindowPreviewRuntimeBackend runtimeBackend;
+        Astrea::Dock::DockRuntimeSnapshot snapshot;
+        snapshot.authoritative = true;
+        snapshot.generation = 5;
+        for (const QString &id : initialOrder)
+            snapshot.windows.append(minimizedRuntimeWindow(id));
+        snapshot.total = snapshot.windows.size();
+        runtimeBackend.currentSnapshot = snapshot;
+
+        DockController controller;
+        controller.setCatalogSnapshot(oneDesktopCatalog());
+        DockConfig config = configFor(QStringLiteral("none"), {QStringLiteral("one.desktop")});
+        config.position = position;
+        controller.applyConfig(config);
+        controller.attachRuntimeBackend(&runtimeBackend);
+
+        QQmlEngine engine;
+        engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+        engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+        engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+        QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+        QVERIFY2(component.status() == QQmlComponent::Ready,
+                 qPrintable(component.errorString()));
+        auto *panel = qobject_cast<QQuickItem *>(component.create());
+        QVERIFY2(panel, qPrintable(component.errorString()));
+        QQuickWindow window;
+        window.resize(600, 600);
+        panel->setParentItem(window.contentItem());
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+        const auto cardFor = [panel](const QString &windowId) {
+            return childWithObjectName(panel, QStringLiteral("minimized-window-card-") + windowId);
+        };
+        const auto orderedIds = [&controller] {
+            QStringList ids;
+            for (const QVariant &entry : controller.minimizedWindowEntries())
+                ids.append(entry.toMap().value(QStringLiteral("windowId")).toString());
+            return ids;
+        };
+        QTRY_VERIFY_WITH_TIMEOUT(cardFor(QStringLiteral("window-c")) != nullptr, 1000);
+        QCOMPARE(orderedIds(), initialOrder);
+
+        const bool vertical = panel->property("vertical").toBool();
+        const int pitch = panel->property("slotPitch").toInt();
+        const char *primaryOffset = vertical ? "visualOffsetY" : "visualOffsetX";
+        const char *crossOffsetProperty = vertical ? "visualOffsetX" : "visualOffsetY";
+        const QPoint axis = vertical ? QPoint(0, 1) : QPoint(1, 0);
+        QQuickItem *tile = cardFor(QStringLiteral("window-a"));
+        QVERIFY(tile);
+        const QPoint start = itemCenter(window, tile);
+        const QPoint dragEnd = start + axis * (2 * pitch);
+
+        QTest::mouseMove(&window, start);
+        QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, start);
+        QTest::mouseMove(&window, start + axis * 12, 30);
+        QTest::mouseMove(&window, dragEnd, 30);
+        QCoreApplication::processEvents();
+        QTRY_COMPARE_WITH_TIMEOUT(panel->property("minimizedDragWindowId").toString(),
+                                  QStringLiteral("window-a"), 1000);
+        QTRY_COMPARE_WITH_TIMEOUT(panel->property("minimizedDragTargetIndex").toInt(), 2, 1000);
+
+        // The dragged tile lifts like an app icon while the others make room.
+        QQuickItem *draggedDelegate = tile->parentItem();
+        QVERIFY(draggedDelegate->property("dragging").toBool());
+        QTRY_COMPARE_WITH_TIMEOUT(propertyReal(draggedDelegate, "dragScale"),
+                                  panel->property("reorderScale").toReal(), 1000);
+        QTRY_COMPARE_WITH_TIMEOUT(propertyReal(draggedDelegate, crossOffsetProperty),
+                                  vertical ? 8.0 : -8.0, 1000);
+        QTRY_COMPARE_WITH_TIMEOUT(propertyReal(cardFor(QStringLiteral("window-b"))->parentItem(),
+                                               primaryOffset), -pitch, 1000);
+        QTRY_COMPARE_WITH_TIMEOUT(propertyReal(cardFor(QStringLiteral("window-c"))->parentItem(),
+                                               primaryOffset), -pitch, 1000);
+
+        // Releasing commits the new order and never activates the window.
+        QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, dragEnd);
+        QTRY_COMPARE_WITH_TIMEOUT(orderedIds(), reorderedOrder, 1000);
+        QTRY_COMPARE_WITH_TIMEOUT(panel->property("minimizedDragWindowId").toString(),
+                                  QString(), 1000);
+        QCOMPARE(runtimeBackend.actions.size(), 0);
+
+        // The tiles settle into their new slots: laid out in order along the dock
+        // with no leftover drag offset, lift, or animation.
+        const auto settledInOrder = [&]() {
+            qreal previous = -std::numeric_limits<qreal>::infinity();
+            for (const QString &windowId : reorderedOrder) {
+                QQuickItem *card = cardFor(windowId);
+                if (!card)
+                    return false;
+                const QPointF center = card->mapToItem(window.contentItem(),
+                                                       card->width() / 2.0, card->height() / 2.0);
+                const qreal primary = vertical ? center.y() : center.x();
+                QQuickItem *slot = card->parentItem();
+                if (primary <= previous || propertyReal(slot, primaryOffset) != 0.0
+                    || propertyReal(slot, crossOffsetProperty) != 0.0
+                    || slot->property("dragging").toBool())
+                    return false;
+                previous = primary;
+            }
+            return true;
+        };
+        QTRY_VERIFY_WITH_TIMEOUT(settledInOrder(), 1000);
+
+        // A plain tap on the moved tile still restores its exact window.
+        const QPoint restPoint = itemCenter(window, cardFor(QStringLiteral("window-b")));
+        QTest::mouseMove(&window, restPoint);
+        QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, restPoint);
+        QTRY_COMPARE_WITH_TIMEOUT(runtimeBackend.actions.size(), 1, 1000);
+        QCOMPARE(runtimeBackend.actions.constFirst().windowId, QStringLiteral("window-b"));
+        QCOMPARE(runtimeBackend.actions.constFirst().action,
+                 Astrea::Dock::DockRuntimeAction::Activate);
+
+        delete panel;
+    }
+}
+
+void DockHoverQmlTest::minimizedTileRightClickOpensWindowMenuForItsWindow()
+{
+    FakeWindowPreviewRuntimeBackend runtimeBackend;
+    Astrea::Dock::DockRuntimeSnapshot snapshot;
+    snapshot.authoritative = true;
+    snapshot.generation = 6;
+    snapshot.windows = {minimizedRuntimeWindow(QStringLiteral("window-a")),
+                        minimizedRuntimeWindow(QStringLiteral("window-b"))};
+    snapshot.total = snapshot.windows.size();
+    runtimeBackend.currentSnapshot = snapshot;
+
+    DockController controller;
+    controller.setCatalogSnapshot(oneDesktopCatalog());
+    controller.applyConfig(configFor(QStringLiteral("none"), {QStringLiteral("one.desktop")}));
+    controller.attachRuntimeBackend(&runtimeBackend);
+
+    FakeContextMenuController contextMenuController;
+    DockSurfaceGeometry surfaceGeometry;
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    panel->setProperty("contextMenuController", QVariant::fromValue(
+                                                    static_cast<QObject *>(&contextMenuController)));
+    panel->setProperty("dockSurfaceGeometry", QVariant::fromValue(
+                                                  static_cast<QObject *>(&surfaceGeometry)));
+    panel->setProperty("outputKey", QStringLiteral("output-1"));
+    panel->setProperty("outputWidth", 600);
+    panel->setProperty("outputHeight", 600);
+
+    QQuickWindow window;
+    window.resize(600, 600);
+    panel->setParentItem(window.contentItem());
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QQuickItem *tile = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT(
+        (tile = childWithObjectName(panel, QStringLiteral("minimized-window-card-window-b")))
+            != nullptr,
+        1000);
+    const QPoint center = itemCenter(window, tile);
+    QTest::mouseMove(&window, center);
+    QTest::mouseClick(&window, Qt::RightButton, Qt::NoModifier, center);
+    QTRY_COMPARE_WITH_TIMEOUT(contextMenuController.windowPresentCount, 1, 1000);
+    QCOMPARE(contextMenuController.presentCount, 0);
+    QCOMPARE(contextMenuController.lastWindowId, QStringLiteral("window-b"));
+    QCOMPARE(contextMenuController.lastWindowOutputKey, QStringLiteral("output-1"));
+    QVERIFY(contextMenuController.lastWindowRectangle.width() > 0);
+    QVERIFY(contextMenuController.lastWindowRectangle.height() > 0);
+    QString expectedTaskKey;
+    for (const QVariant &entry : controller.minimizedWindowEntries()) {
+        if (entry.toMap().value(QStringLiteral("windowId")).toString()
+                == QStringLiteral("window-b"))
+            expectedTaskKey = entry.toMap().value(QStringLiteral("taskKey")).toString();
+    }
+    QVERIFY(!expectedTaskKey.isEmpty());
+    QCOMPARE(contextMenuController.lastWindowTaskKey, expectedTaskKey);
+    QCOMPARE(runtimeBackend.actions.size(), 0);
+
+    delete panel;
 }

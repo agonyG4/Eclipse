@@ -242,6 +242,7 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     )
     target_link_libraries(context-menu-qml-smoke-test PRIVATE
         astrea-shell-runtime
+        astrea-shared-coreplugin
         astrea-shared-wayland-effects
         astrea-shared-wayland-effectsplugin
         Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test
@@ -407,6 +408,7 @@ if(BUILD_TESTING AND ASTREA_BUILD_TESTS)
     )
     target_link_libraries(context-menu-surface-manager-test PRIVATE
         astrea-shell-runtime
+        astrea-shared-coreplugin
         astrea-shared-wayland-effects
         astrea-shared-wayland-effectsplugin
         Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test

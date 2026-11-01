@@ -25,8 +25,13 @@ class FakeDockRuntimeBackend final : public Astrea::Dock::DockRuntimeBackend {
 public:
     using DockRuntimeBackend::DockRuntimeBackend;
 
+    struct ActionRequest {
+        QString windowId;
+        Astrea::Dock::DockRuntimeAction action = Astrea::Dock::DockRuntimeAction::Activate;
+    };
+
     bool runtimeReady() const override { return m_snapshot.authoritative; }
-    bool actionReady() const override { return false; }
+    bool actionReady() const override { return m_actionReady; }
     Astrea::Dock::DockRuntimeSnapshot snapshot() const override { return m_snapshot; }
     quint64 generation() const override { return m_snapshot.generation; }
     std::optional<quint64> handleTokenForWindowId(const QString &windowId) const override
@@ -38,8 +43,13 @@ public:
         return std::nullopt;
     }
     std::optional<Astrea::Dock::DockRuntimeActionError> requestAction(
-        const QString &, Astrea::Dock::DockRuntimeAction, quint64) override
-    { return Astrea::Dock::DockRuntimeActionError::NotActionReady; }
+        const QString &windowId, Astrea::Dock::DockRuntimeAction action, quint64) override
+    {
+        if (!m_actionReady)
+            return Astrea::Dock::DockRuntimeActionError::NotActionReady;
+        actionRequests.append({windowId, action});
+        return std::nullopt;
+    }
     std::optional<Astrea::Dock::DockRuntimeActionError> setMinimizeAnchor(
         const QString &, const QRect &) override
     { return Astrea::Dock::DockRuntimeActionError::NotActionReady; }
@@ -49,6 +59,8 @@ public:
     QString diagnosticContext() const override { return QStringLiteral("test-backend"); }
 
     Astrea::Dock::DockRuntimeSnapshot m_snapshot;
+    bool m_actionReady = false;
+    QList<ActionRequest> actionRequests;
 };
 
 class ContextMenuTest final : public QObject {
@@ -62,6 +74,7 @@ private slots:
     void trayAdapterRejectsLazySubmenuActions();
     void controllerClosesWhenTargetValidatorRejects();
     void controllerSettlesWhenOutputIsRemoved();
+    void dockMinimizedWindowMenuActsOnExactWindow();
     void overlayMappingIsOutputScoped();
     void controllerShutdownCleansUpActivePresentation();
     void dockRuntimeOnlyMenuIsCapabilityBased();
@@ -387,6 +400,86 @@ void ContextMenuTest::dockRuntimeOnlyMenuIsCapabilityBased()
     QVERIFY(!tokens.contains(QStringLiteral("dock.pin")));
     QVERIFY(!tokens.contains(QStringLiteral("dock.unpin")));
     QCOMPARE(menu.targetIdentity(), taskKey);
+}
+
+void ContextMenuTest::dockMinimizedWindowMenuActsOnExactWindow()
+{
+    FakeDockRuntimeBackend backend;
+    backend.m_actionReady = true;
+    Astrea::Dock::DockRuntimeSnapshot snapshot;
+    snapshot.authoritative = true;
+    snapshot.generation = 2;
+    snapshot.revision = 2;
+    Astrea::Dock::DockRuntimeWindow minimized;
+    minimized.id = QStringLiteral("9");
+    minimized.appId = QStringLiteral("steam_app_1091500");
+    minimized.title = QStringLiteral("Cyberpunk 2077");
+    minimized.focusSerial = 1;
+    minimized.minimized = true;
+    Astrea::Dock::DockRuntimeWindow sibling = minimized;
+    sibling.id = QStringLiteral("10");
+    sibling.minimized = false;
+    snapshot.windows = {minimized, sibling};
+    snapshot.total = snapshot.windows.size();
+    backend.m_snapshot = snapshot;
+
+    DockController dock;
+    dock.attachRuntimeBackend(&backend);
+    DesktopEntryCatalog catalog;
+    ApplicationLauncher launcher(QStringLiteral("/nonexistent/astrea-launch"));
+    Astrea::Shell::DockContextMenuProvider provider(&dock, &catalog, &launcher);
+    provider.setTranslator([](const QString &key, const QString &fallback) {
+        return key == QStringLiteral("shell.dock.minimized_menu.restore")
+            ? QStringLiteral("Restaurar") : fallback;
+    });
+    ContextMenuController menu;
+    menu.setDockProvider(&provider);
+    const QString taskKey = QStringLiteral("app:steam_app_1091500");
+
+    QVERIFY(menu.presentDockWindow(taskKey, QStringLiteral("9"), 10, 20, 48, 48,
+                                   QStringLiteral("output-1")));
+    QCOMPARE(menu.targetKind(), static_cast<int>(ContextMenuTarget::Kind::DockWindow));
+    QCOMPARE(menu.targetIdentity(), QStringLiteral("9"));
+    QCOMPARE(menu.outputKey(), QStringLiteral("output-1"));
+    QCOMPARE(menu.model()->rowCount(), 2);
+    const QModelIndex restore = menu.model()->index(0, 0);
+    QCOMPARE(restore.data(ContextMenuModel::TokenRole).toString(),
+             QStringLiteral("dock.minimized.restore"));
+    QCOMPARE(restore.data(ContextMenuModel::LabelRole).toString(), QStringLiteral("Restaurar"));
+    const QModelIndex close = menu.model()->index(1, 0);
+    QCOMPARE(close.data(ContextMenuModel::TokenRole).toString(),
+             QStringLiteral("dock.minimized.close"));
+    QCOMPARE(close.data(ContextMenuModel::LabelRole).toString(),
+             QStringLiteral("Close Window"));
+    QVERIFY(close.data(ContextMenuModel::DestructiveRole).toBool());
+    menu.close();
+    menu.completeClose();
+
+    // Restore activates exactly the tile's window through the Dock.
+    QVERIFY(menu.presentDockWindow(taskKey, QStringLiteral("9"), 10, 20, 48, 48,
+                                   QStringLiteral("output-1")));
+    QVERIFY(menu.activate(menu.presentationGeneration(), QStringLiteral("dock.minimized.restore")));
+    QCOMPARE(backend.actionRequests.size(), 1);
+    QCOMPARE(backend.actionRequests.constFirst().windowId, QStringLiteral("9"));
+    QCOMPARE(backend.actionRequests.constFirst().action,
+             Astrea::Dock::DockRuntimeAction::Activate);
+    menu.completeClose();
+
+    QVERIFY(menu.presentDockWindow(taskKey, QStringLiteral("9"), 10, 20, 48, 48,
+                                   QStringLiteral("output-1")));
+    QVERIFY(menu.activate(menu.presentationGeneration(), QStringLiteral("dock.minimized.close")));
+    QCOMPARE(backend.actionRequests.size(), 2);
+    QCOMPARE(backend.actionRequests.constLast().windowId, QStringLiteral("9"));
+    QCOMPARE(backend.actionRequests.constLast().action,
+             Astrea::Dock::DockRuntimeAction::Close);
+    menu.completeClose();
+
+    // Only minimized tiles get a window menu, and only for their own app.
+    QVERIFY(!menu.presentDockWindow(taskKey, QStringLiteral("10"), 10, 20, 48, 48,
+                                    QStringLiteral("output-1")));
+    QVERIFY(!menu.presentDockWindow(QStringLiteral("app:other"), QStringLiteral("9"), 10, 20,
+                                    48, 48, QStringLiteral("output-1")));
+    QVERIFY(!menu.hasActivePresentation());
 }
 
 void ContextMenuTest::modelNormalizesSeparatorsAndExposesRoles()

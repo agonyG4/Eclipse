@@ -44,6 +44,18 @@ ContextMenuAnchor rectangleAnchor(const QRect &rectangle)
 
 } // namespace
 
+QVariantMap dockMinimizedWindowEntry(const DockController *dock, const QString &windowId)
+{
+    if (!dock || windowId.isEmpty())
+        return {};
+    for (const QVariant &value : dock->minimizedWindowEntries()) {
+        const QVariantMap entry = value.toMap();
+        if (entry.value(QStringLiteral("windowId")).toString() == windowId)
+            return entry;
+    }
+    return {};
+}
+
 bool DesktopContextMenuProvider::present(ContextMenuController *controller, const QPoint &point,
                                          const QString &outputKey) const
 {
@@ -219,6 +231,59 @@ bool DockContextMenuProvider::present(ContextMenuController *controller,
             return m_dock->setPinned(desktopFileName, !pinned);
         return false;
     }, validator);
+}
+
+bool DockContextMenuProvider::presentWindow(ContextMenuController *controller,
+                                            const QString &taskKey,
+                                            const QString &windowId,
+                                            const QRect &itemRectangle,
+                                            const QString &outputKey) const
+{
+    if (!controller || !m_dock)
+        return false;
+    const QVariantMap entry = dockMinimizedWindowEntry(m_dock, windowId);
+    if (entry.isEmpty() || entry.value(QStringLiteral("taskKey")).toString() != taskKey)
+        return false;
+
+    QVector<ContextMenuModel::NodeSpec> nodes;
+    nodes.append(ContextMenuModel::NodeSpec{
+        .token = QStringLiteral("dock.minimized.restore"),
+        .label = translate(QStringLiteral("shell.dock.minimized_menu.restore"),
+                           QStringLiteral("Restore")),
+        .icon = entry.value(QStringLiteral("iconName")).toString()
+    });
+    nodes.append(ContextMenuModel::NodeSpec{
+        .token = QStringLiteral("dock.minimized.close"),
+        .label = translate(QStringLiteral("shell.dock.minimized_menu.close_window"),
+                           QStringLiteral("Close Window")),
+        .icon = QStringLiteral("window-close"),
+        .destructive = true
+    });
+
+    const ContextMenuTarget target{ContextMenuTarget::Kind::DockWindow, windowId, outputKey};
+    const auto validator = [this, windowId] {
+        return !dockMinimizedWindowEntry(m_dock, windowId).isEmpty();
+    };
+    return controller->present(target, rectangleAnchor(itemRectangle), nodes,
+                               [this, controller, taskKey, windowId](const QString &token) {
+        if (!m_dock)
+            return false;
+        bool accepted = false;
+        if (token == QStringLiteral("dock.minimized.restore"))
+            accepted = m_dock->activateWindow(taskKey, windowId);
+        else if (token == QStringLiteral("dock.minimized.close"))
+            accepted = m_dock->closeWindow(taskKey, windowId);
+        else
+            return false;
+        if (!accepted)
+            controller->invalidateTarget();
+        return accepted;
+    }, validator);
+}
+
+QString DockContextMenuProvider::translate(const QString &key, const QString &fallback) const
+{
+    return m_translate ? m_translate(key, fallback) : fallback;
 }
 
 bool TrayContextMenuAdapter::present(ContextMenuController *controller, const QString &itemKey,

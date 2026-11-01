@@ -129,6 +129,25 @@ bool ContextMenuController::presentDock(const QString &taskKey, int x, int y,
     return m_dockProvider->present(this, taskKey, QRect(x, y, width, height), outputKey);
 }
 
+bool ContextMenuController::presentDockWindow(const QString &taskKey, const QString &windowId,
+                                              int x, int y, int width, int height,
+                                              const QString &outputKey)
+{
+    logContextMenuDebug(QStringLiteral("dock-window-anchor-input"), {
+        {QStringLiteral("targetIdentity"), windowId},
+        {QStringLiteral("taskKey"), taskKey},
+        {QStringLiteral("outputKey"), outputKey},
+        {QStringLiteral("anchorX"), x},
+        {QStringLiteral("anchorY"), y},
+        {QStringLiteral("anchorWidth"), width},
+        {QStringLiteral("anchorHeight"), height},
+    });
+    if (!m_dockProvider)
+        return false;
+    return m_dockProvider->presentWindow(this, taskKey, windowId, QRect(x, y, width, height),
+                                         outputKey);
+}
+
 bool ContextMenuController::presentTray(const QString &itemKey, int x, int y, int width,
                                         int height, int preferredTop, const QString &outputKey)
 {
@@ -148,9 +167,10 @@ QPoint ContextMenuController::menuPosition(int outputWidth, int outputHeight,
     ContextMenuPlacement::Request request;
     request.output = QRect(0, 0, qMax(1, outputWidth), qMax(1, outputHeight));
     request.menuSize = QSize(menuWidth, menuHeight);
+    const bool dockTarget = m_target.kind == ContextMenuTarget::Kind::DockApplication
+        || m_target.kind == ContextMenuTarget::Kind::DockWindow;
     request.kind = m_anchor.kind == ContextMenuAnchor::Kind::Rectangle
-        ? (m_target.kind == ContextMenuTarget::Kind::DockApplication
-               ? ContextMenuPlacement::Kind::Dock : ContextMenuPlacement::Kind::Rectangle)
+        ? (dockTarget ? ContextMenuPlacement::Kind::Dock : ContextMenuPlacement::Kind::Rectangle)
         : ContextMenuPlacement::Kind::Point;
     request.anchor = m_anchor.point;
     request.sourceRect = m_anchor.rectangle;

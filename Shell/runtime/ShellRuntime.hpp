@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QString>
 
+#include <functional>
 #include <memory>
 
 class AltTabConfigWatcher;
@@ -117,6 +118,9 @@ public:
     { return m_statusNotifier.get(); }
     Astrea::Shell::ContextMenuController *contextMenuController() const
     { return m_contextMenuController.get(); }
+    // Labels for Dock context menus are resolved through the shell catalog.
+    void setDockContextMenuTranslator(
+        std::function<QString(const QString &key, const QString &fallback)> translator);
 
     void reloadCatalog();
     void reloadDockConfig();

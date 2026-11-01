@@ -166,6 +166,7 @@ private slots:
     void runtimeWindowsKeepExactIdentityAndTitles();
     void minimizedWindowEntriesStaySeparateAndExact();
     void minimizedWindowEntriesAppendInMinimizeOrder();
+    void moveMinimizedWindowReordersClampsAndRejectsUnknownIds();
     void windowMinimizeAnchorsOverrideOnlyTheirWindow();
     void runtimeBackendActionsAndReadinessRemainSynchronous();
     void firstRuntimeReadySnapshotIsAppliedOnce();
@@ -588,6 +589,60 @@ void DockControllerTest::minimizedWindowEntriesAppendInMinimizeOrder()
     second.minimized = true;
     runtimeBackend.publishSnapshot(runtimeSnapshot(6, {first, second}));
     QCOMPARE(minimizedIds(), QStringList({first.id, second.id}));
+}
+
+void DockControllerTest::moveMinimizedWindowReordersClampsAndRejectsUnknownIds()
+{
+    FakeDockRuntimeBackend runtimeBackend;
+    DockController controller;
+    controller.attachRuntimeBackend(&runtimeBackend);
+    controller.setCatalogSnapshot(makeCatalog());
+    controller.applyConfig(configWithPins({QStringLiteral("one.desktop")}));
+    Astrea::Dock::DockRuntimeWindow first;
+    first.id = QStringLiteral("window-a");
+    first.appId = QStringLiteral("one");
+    first.minimized = true;
+    Astrea::Dock::DockRuntimeWindow second = first;
+    second.id = QStringLiteral("window-b");
+    Astrea::Dock::DockRuntimeWindow third = first;
+    third.id = QStringLiteral("window-c");
+    runtimeBackend.publishSnapshot(runtimeSnapshot(7, {first, second, third}));
+
+    const auto minimizedIds = [&controller] {
+        QStringList ids;
+        for (const QVariant &entry : controller.minimizedWindowEntries())
+            ids.append(entry.toMap().value(QStringLiteral("windowId")).toString());
+        return ids;
+    };
+    QSignalSpy modelSpy(&controller, &DockController::modelChanged);
+    QCOMPARE(minimizedIds(), QStringList({first.id, second.id, third.id}));
+
+    // Moving toward the front shifts the others back by one slot.
+    QVERIFY(controller.moveMinimizedWindow(third.id, 0));
+    QCOMPARE(minimizedIds(), QStringList({third.id, first.id, second.id}));
+    QCOMPARE(modelSpy.count(), 1);
+
+    // Out-of-range targets clamp to the nearest end instead of failing.
+    QVERIFY(controller.moveMinimizedWindow(third.id, 99));
+    QCOMPARE(minimizedIds(), QStringList({first.id, second.id, third.id}));
+    QVERIFY(controller.moveMinimizedWindow(second.id, -4));
+    QCOMPARE(minimizedIds(), QStringList({second.id, first.id, third.id}));
+    QCOMPARE(modelSpy.count(), 3);
+
+    // No-op moves and unknown ids leave the order and the model untouched.
+    QVERIFY(!controller.moveMinimizedWindow(second.id, 0));
+    QVERIFY(!controller.moveMinimizedWindow(QStringLiteral("missing-window"), 1));
+    QCOMPARE(minimizedIds(), QStringList({second.id, first.id, third.id}));
+    QCOMPARE(modelSpy.count(), 3);
+
+    // A reorder survives later snapshots of the same generation, while the
+    // window that left the minimized set drops out of the order.
+    QVERIFY(controller.moveMinimizedWindow(first.id, 2));
+    QCOMPARE(minimizedIds(), QStringList({second.id, third.id, first.id}));
+    first.minimized = false;
+    runtimeBackend.publishSnapshot(runtimeSnapshot(7, {first, second, third}));
+    QCOMPARE(minimizedIds(), QStringList({second.id, third.id}));
+    QVERIFY(!controller.moveMinimizedWindow(first.id, 0));
 }
 
 void DockControllerTest::windowMinimizeAnchorsOverrideOnlyTheirWindow()

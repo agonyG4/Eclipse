@@ -140,6 +140,9 @@ public:
     Q_INVOKABLE void activateOrLaunchTask(const QString &taskKey);
     Q_INVOKABLE bool setPinned(const QString &desktopFileName, bool pinned);
     Q_INVOKABLE bool movePinned(const QString &desktopFileName, int targetPinIndex);
+    // Moves a minimized window tile to a new slot, clamped to the minimized
+    // range. Returns true only when the order changed.
+    Q_INVOKABLE bool moveMinimizedWindow(const QString &windowId, int toIndex);
     // True means the valid rectangle was accepted into the local task cache.
     // It does not mean the runtime transport queued or acknowledged it.
     Q_INVOKABLE bool setMinimizeAnchor(const QString &taskKey, const QRect &rect);

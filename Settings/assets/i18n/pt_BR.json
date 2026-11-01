@@ -603,6 +603,8 @@
     "shell.clock.month_long.nov": "Novembro",
     "shell.clock.month_long.oct": "Outubro",
     "shell.clock.month_long.sep": "Setembro",
+    "shell.dock.minimized_menu.close_window": "Fechar janela",
+    "shell.dock.minimized_menu.restore": "Restaurar",
     "shell.menu.about": "Sobre este PC",
     "shell.menu.force_quit": "Forçar Encerrar",
     "shell.menu.lockscreen": "Tela de Bloqueio",

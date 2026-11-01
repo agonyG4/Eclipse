@@ -676,6 +676,20 @@ bool DockController::movePinned(const QString &desktopFileName, int targetPinInd
     return true;
 }
 
+bool DockController::moveMinimizedWindow(const QString &windowId, int toIndex)
+{
+    const int sourceIndex = m_minimizedOrder.indexOf(windowId);
+    if (sourceIndex < 0)
+        return false;
+    const int boundedTarget = qBound(0, toIndex, static_cast<int>(m_minimizedOrder.size()) - 1);
+    if (sourceIndex == boundedTarget)
+        return false;
+
+    m_minimizedOrder.move(sourceIndex, boundedTarget);
+    emit modelChanged();
+    return true;
+}
+
 void DockController::launchItem(const DockAppInfo &item, bool activateRunning)
 {
     if (!m_enabled)

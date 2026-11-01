@@ -22,6 +22,9 @@ struct ContextMenuTarget {
         Desktop,
         DockApplication,
         TrayItem,
+        // A single minimized window tile in the Dock. Appended so existing
+        // numeric kinds seen by QML stay stable.
+        DockWindow,
     };
 
     Kind kind = Kind::Desktop;
@@ -102,6 +105,9 @@ public:
     Q_INVOKABLE bool presentDesktop(int x, int y, const QString &outputKey);
     Q_INVOKABLE bool presentDock(const QString &taskKey, int x, int y,
                                  int width, int height, const QString &outputKey);
+    Q_INVOKABLE bool presentDockWindow(const QString &taskKey, const QString &windowId,
+                                       int x, int y, int width, int height,
+                                       const QString &outputKey);
     Q_INVOKABLE bool presentTray(const QString &itemKey, int x, int y,
                                  int width, int height, int preferredTop,
                                  const QString &outputKey);

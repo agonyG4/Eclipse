@@ -91,6 +91,17 @@ Item {
     property string draggedDesktopFileName: ""
     property int draggedSourceIndex: -1
     property int dragTargetIndex: -1
+    // Minimized tile reorder. Only the primary-axis component of the pointer
+    // reorders; the panel-space pointer is kept for the cross-axis drag that
+    // will place a window back on the desktop.
+    property string minimizedDragWindowId: ""
+    property int minimizedDragSourceIndex: -1
+    property int minimizedDragTargetIndex: -1
+    property real minimizedDragPointerOriginPrimary: 0
+    property real minimizedDragOriginCenterRelativeX: 0
+    property real minimizedDragCenterRelativeX: 0
+    property point minimizedDragPanelPosition: Qt.point(0, 0)
+    property point minimizedDragScenePosition: Qt.point(0, 0)
     // Both values are relative to the panel center on the primary axis. This
     // keeps the drag coordinate invariant while the visual chrome changes.
     property real dragOriginCenterRelativeX: 0
@@ -116,6 +127,7 @@ Item {
     onPointerInsideChanged: root.scheduleTooltip()
     onPointerTargetTaskKeyChanged: root.scheduleTooltip()
     onDraggedDesktopFileNameChanged: root.scheduleTooltip()
+    onMinimizedDragWindowIdChanged: root.scheduleTooltip()
 
     Timer {
         id: tooltipDelay
@@ -299,24 +311,34 @@ Item {
                     property real magnificationScale: 1.0
                     property real visualOffsetX: 0
                     property real visualOffsetY: 0
+                    property bool dragging: false
+                    property real dragScale: 1.0
+                    readonly property real visualScale: magnificationScale * dragScale
                     width: DockController.delegateWidth
                     height: DockController.delegateHeight
-                    z: magnificationScale
+                    z: dragging ? 100 : magnificationScale
 
                     transform: Translate {
                         x: minimizedWindowDelegate.visualOffsetX
                         y: minimizedWindowDelegate.visualOffsetY
                     }
+                    // A dragged tile follows the pointer rather than animating to it.
                     Behavior on visualOffsetX {
+                        enabled: !minimizedWindowDelegate.dragging
                         NumberAnimation { duration: root.animationDuration(110); easing.type: Easing.OutCubic }
                     }
                     Behavior on visualOffsetY {
+                        enabled: !minimizedWindowDelegate.dragging
                         NumberAnimation { duration: root.animationDuration(110); easing.type: Easing.OutCubic }
                     }
                     Behavior on magnificationScale {
                         NumberAnimation { duration: root.animationDuration(110); easing.type: Easing.OutCubic }
                     }
+                    Behavior on dragScale {
+                        NumberAnimation { duration: root.animationDuration(110); easing.type: Easing.OutCubic }
+                    }
                     onMagnificationScaleChanged: root.scheduleInputRegionUpdate()
+                    onDragScaleChanged: root.scheduleInputRegionUpdate()
                     onVisualOffsetXChanged: root.scheduleInputRegionUpdate()
                     onVisualOffsetYChanged: root.scheduleInputRegionUpdate()
 
@@ -328,7 +350,7 @@ Item {
                         anchors.centerIn: parent
                         width: DockController.iconSize
                         height: DockController.iconSize
-                        scale: minimizedWindowDelegate.magnificationScale
+                        scale: minimizedWindowDelegate.visualScale
                         transformOrigin: !root.vertical ? Item.Bottom
                                          : DockController.position === "left" ? Item.Left : Item.Right
 
@@ -384,9 +406,63 @@ Item {
                         TapHandler {
                             id: minimizedWindowTap
                             acceptedButtons: Qt.LeftButton
+                            gesturePolicy: TapHandler.DragThreshold
                             onTapped: DockController.activateWindow(
                                 minimizedWindowDelegate.modelData.taskKey,
                                 minimizedWindowDelegate.modelData.windowId)
+                        }
+
+                        // Window menu for this exact tile; geometry matches the app
+                        // icon menu, anchored to the Dock slot.
+                        TapHandler {
+                            id: minimizedWindowContextTap
+                            acceptedButtons: Qt.RightButton
+                            gesturePolicy: TapHandler.ReleaseWithinBounds
+                            onTapped: function(eventPoint) {
+                                if (!root.contextMenuController || !root.dockSurfaceGeometry
+                                        || !root.isMinimizedPointerTargetAt(
+                                            eventPoint, minimizedWindowDelegate.hoverKey))
+                                    return
+                                const topLeft = minimizedWindowDelegate.mapToItem(root, 0, 0)
+                                const outputRect = root.dockSurfaceGeometry.outputLocalDelegateRect(
+                                    root.outputWidth, root.outputHeight,
+                                    Math.round(root.width), Math.round(root.height),
+                                    DockController.position, DockController.layerShellEdgeMargin,
+                                    Qt.rect(topLeft.x, topLeft.y,
+                                            minimizedWindowDelegate.width,
+                                            minimizedWindowDelegate.height))
+                                root.contextMenuController.presentDockWindow(
+                                    minimizedWindowDelegate.modelData.taskKey,
+                                    minimizedWindowDelegate.modelData.windowId,
+                                    outputRect.x, outputRect.y,
+                                    outputRect.width, outputRect.height, root.outputKey)
+                            }
+                        }
+
+                        DragHandler {
+                            // Only one drag at a time: never while an app icon is reordering.
+                            enabled: root.draggedDesktopFileName.length === 0
+                            target: null
+                            acceptedButtons: Qt.LeftButton
+                            dragThreshold: 8
+                            onGrabChanged: function(transition) {
+                                const windowId = minimizedWindowDelegate.modelData.windowId
+                                if (transition === PointerDevice.GrabExclusive) {
+                                    root.beginMinimizedReorder(windowId,
+                                        centroid.scenePosition.x, centroid.scenePosition.y)
+                                } else if (transition === PointerDevice.UngrabExclusive) {
+                                    root.finishMinimizedReorder(windowId)
+                                } else if (transition === PointerDevice.CancelGrabExclusive) {
+                                    root.cancelMinimizedReorder(windowId)
+                                }
+                            }
+                            onTranslationChanged: {
+                                if (active) {
+                                    root.updateMinimizedReorder(
+                                        minimizedWindowDelegate.modelData.windowId,
+                                        centroid.scenePosition.x, centroid.scenePosition.y)
+                                }
+                            }
                         }
                     }
 
@@ -913,7 +989,12 @@ Item {
     }
 
     function isReordering() {
-        return draggedDesktopFileName.length > 0
+        return draggedDesktopFileName.length > 0 || minimizedDragWindowId.length > 0
+    }
+
+    function isMinimizedPointerTargetAt(eventPoint, hoverKey) {
+        updatePointerFromScene(eventPoint.scenePosition.x, eventPoint.scenePosition.y)
+        return pointerTargetTaskKey === hoverKey
     }
 
     // App delegates first, then minimized window tiles: one magnification wave.
@@ -992,16 +1073,21 @@ Item {
         refreshVisibleTooltip()
     }
 
-    function previewIndexFor(originalIndex) {
-        if (originalIndex === draggedSourceIndex)
-            return dragTargetIndex
-        if (draggedSourceIndex < dragTargetIndex
-            && originalIndex > draggedSourceIndex && originalIndex <= dragTargetIndex)
+    // Where a resting slot's item sits while sourceIndex is lifted toward targetIndex.
+    function slotPreviewIndex(originalIndex, sourceIndex, targetIndex) {
+        if (originalIndex === sourceIndex)
+            return targetIndex
+        if (sourceIndex < targetIndex
+            && originalIndex > sourceIndex && originalIndex <= targetIndex)
             return originalIndex - 1
-        if (draggedSourceIndex > dragTargetIndex
-            && originalIndex >= dragTargetIndex && originalIndex < draggedSourceIndex)
+        if (sourceIndex > targetIndex
+            && originalIndex >= targetIndex && originalIndex < sourceIndex)
             return originalIndex + 1
         return originalIndex
+    }
+
+    function previewIndexFor(originalIndex) {
+        return slotPreviewIndex(originalIndex, draggedSourceIndex, dragTargetIndex)
     }
 
     function updateDelegateTransforms(totalExtra, slotPitch, liftedKey,
@@ -1041,18 +1127,35 @@ Item {
         const appExtra = count > 0 ? (computedPrefixes[count - 1] || 0)
             + (computedExtras[count - 1] || 0) : 0
         minimizedDivider.visualOffset = appExtra - totalExtra / 2
+        const minimizedDragging = minimizedDragWindowId.length > 0
         for (var m = 0; m < minimizedRepeater.count; ++m) {
             const tile = minimizedRepeater.itemAt(m)
             if (!tile)
                 continue
             const index = count + m
             const tileExtra = computedExtras[index] || 0
-            const tileOffset = (computedPrefixes[index] || 0) + tileExtra / 2 - totalExtra / 2
+            var tileOffset = (computedPrefixes[index] || 0) + tileExtra / 2 - totalExtra / 2
+            const lifted = minimizedDragging && m === minimizedDragSourceIndex
+            if (minimizedDragging) {
+                if (lifted) {
+                    const currentCenterRelative = delegateRestingCenterInPanel(tile)
+                        - primaryExtent() / 2
+                    tileOffset += minimizedDragCenterRelativeX - currentCenterRelative
+                } else {
+                    tileOffset += (slotPreviewIndex(m, minimizedDragSourceIndex,
+                                                    minimizedDragTargetIndex) - m) * slotPitch
+                }
+            }
             tile.magnificationScale = dragging ? 1 : (computedScales[index] || 1)
-            tile.visualOffsetX = vertical ? (tile.hoverKey === liftedKey ? crossOffset(liftOffsetY) : 0)
-                                          : tileOffset
-            tile.visualOffsetY = vertical ? tileOffset
-                : (!dragging && tile.hoverKey === liftedKey ? crossOffset(liftOffsetY) : 0)
+            const crossOffsetValue = lifted ? crossOffset(reorderOffsetY)
+                : (tile.hoverKey === liftedKey ? crossOffset(liftOffsetY) : 0)
+            // Offsets land while the tile still reads as dragged, so no animation
+            // runs. A repeater can hand a dragged delegate to another window, and
+            // its stale offset must snap back rather than fly to the new slot.
+            tile.visualOffsetX = vertical ? crossOffsetValue : tileOffset
+            tile.visualOffsetY = vertical ? tileOffset : crossOffsetValue
+            tile.dragging = lifted
+            tile.dragScale = lifted ? reorderScale : 1
         }
     }
 
@@ -1122,6 +1225,102 @@ Item {
         dragTargetIndex = -1
         dragOriginCenterRelativeX = 0
         dragCenterRelativeX = 0
+        updateHoverEffect()
+    }
+
+    function recordMinimizedDragPointer(sceneX, sceneY) {
+        if (!isFinite(sceneX) || !isFinite(sceneY))
+            return false
+        const panelPoint = root.mapFromItem(null, sceneX, sceneY)
+        if (!isFinite(panelPoint.x) || !isFinite(panelPoint.y))
+            return false
+        minimizedDragScenePosition = Qt.point(sceneX, sceneY)
+        minimizedDragPanelPosition = Qt.point(panelPoint.x, panelPoint.y)
+        return true
+    }
+
+    function minimizedPrimaryOfPanelPosition() {
+        return vertical ? minimizedDragPanelPosition.y : minimizedDragPanelPosition.x
+    }
+
+    function minimizedIndexForWindow(windowId) {
+        for (var index = 0; index < minimizedCount; ++index) {
+            if (minimizedEntries[index].windowId === windowId)
+                return index
+        }
+        return -1
+    }
+
+    function beginMinimizedReorder(windowId, sceneX, sceneY) {
+        if (isReordering() || !recordMinimizedDragPointer(sceneX, sceneY))
+            return false
+        const source = minimizedIndexForWindow(windowId)
+        const sourceItem = source >= 0 ? minimizedRepeater.itemAt(source) : null
+        if (!sourceItem)
+            return false
+        minimizedDragWindowId = windowId
+        minimizedDragSourceIndex = source
+        minimizedDragTargetIndex = source
+        minimizedDragPointerOriginPrimary = minimizedPrimaryOfPanelPosition()
+        minimizedDragOriginCenterRelativeX = delegateRestingCenterInPanel(sourceItem)
+            - primaryExtent() / 2
+        minimizedDragCenterRelativeX = minimizedDragOriginCenterRelativeX
+        updateHoverEffect()
+        return true
+    }
+
+    function updateMinimizedReorder(windowId, sceneX, sceneY) {
+        if (windowId !== minimizedDragWindowId || !recordMinimizedDragPointer(sceneX, sceneY))
+            return
+        updatePointerFromScene(sceneX, sceneY)
+        // Primary axis only: the tile follows the pointer along the dock and its
+        // neighbours shift by one slot pitch.
+        minimizedDragCenterRelativeX = minimizedDragOriginCenterRelativeX
+            + minimizedPrimaryOfPanelPosition() - minimizedDragPointerOriginPrimary
+        const firstItem = minimizedRepeater.itemAt(0)
+        if (firstItem) {
+            const firstCenterRelative = delegateRestingCenterInPanel(firstItem)
+                - primaryExtent() / 2
+            minimizedDragTargetIndex = Math.max(0, Math.min(minimizedCount - 1,
+                Math.round((minimizedDragCenterRelativeX - firstCenterRelative)
+                           / Math.max(1, root.slotPitch))))
+        }
+        // Cross-axis (away from the dock) movement belongs here. The component
+        // is in minimizedDragPanelPosition, and it is deliberately ignored for
+        // reordering. A later "drag to place window" change handles it.
+        updateHoverEffect()
+    }
+
+    function finishMinimizedReorder(windowId) {
+        if (windowId !== minimizedDragWindowId)
+            return
+        // Commit on the next turn. The move rebuilds the minimized repeater, and
+        // the handler reporting this release belongs to one of its delegates.
+        Qt.callLater(root.commitMinimizedReorder, windowId)
+    }
+
+    function commitMinimizedReorder(windowId) {
+        if (windowId !== minimizedDragWindowId)
+            return
+        const target = minimizedDragTargetIndex
+        if (target >= 0 && target !== minimizedDragSourceIndex)
+            DockController.moveMinimizedWindow(windowId, target)
+        clearMinimizedReorder()
+    }
+
+    function cancelMinimizedReorder(windowId) {
+        if (windowId !== minimizedDragWindowId)
+            return
+        clearMinimizedReorder()
+    }
+
+    function clearMinimizedReorder() {
+        minimizedDragWindowId = ""
+        minimizedDragSourceIndex = -1
+        minimizedDragTargetIndex = -1
+        minimizedDragPointerOriginPrimary = 0
+        minimizedDragOriginCenterRelativeX = 0
+        minimizedDragCenterRelativeX = 0
         updateHoverEffect()
     }
 

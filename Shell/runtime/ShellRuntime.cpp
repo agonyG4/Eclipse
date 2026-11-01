@@ -334,15 +334,25 @@ bool ShellRuntime::createBackend(const QString &backendName, QString *errorOut)
     return false;
 }
 
+void ShellRuntime::setDockContextMenuTranslator(
+    std::function<QString(const QString &key, const QString &fallback)> translator)
+{
+    if (m_dockContextMenuProvider)
+        m_dockContextMenuProvider->setTranslator(std::move(translator));
+}
+
 void ShellRuntime::connectServices()
 {
     connect(m_dockController.get(), &DockController::modelChanged, this, [this] {
-        if (!m_contextMenuController || !m_contextMenuController->hasActivePresentation()
-            || m_contextMenuController->target().kind
-                   != Astrea::Shell::ContextMenuTarget::Kind::DockApplication)
+        if (!m_contextMenuController || !m_contextMenuController->hasActivePresentation())
             return;
-        if (m_dockController->appModel()->rowForTaskKey(
-                m_contextMenuController->target().identity) < 0)
+        const auto &target = m_contextMenuController->target();
+        if (target.kind == Astrea::Shell::ContextMenuTarget::Kind::DockApplication
+            && m_dockController->appModel()->rowForTaskKey(target.identity) < 0)
+            m_contextMenuController->invalidateTarget();
+        else if (target.kind == Astrea::Shell::ContextMenuTarget::Kind::DockWindow
+                 && Astrea::Shell::dockMinimizedWindowEntry(m_dockController.get(),
+                                                            target.identity).isEmpty())
             m_contextMenuController->invalidateTarget();
     });
     connect(m_statusNotifier.get(), &Astrea::StatusNotifier::StatusNotifierService::itemRemoved,

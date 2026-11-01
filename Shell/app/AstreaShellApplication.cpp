@@ -146,6 +146,9 @@ bool AstreaShellApplication::initializeRuntime()
 
     const SpotlightRuntimePaths paths = SpotlightRuntimePaths::fromEnvironment();
     m_i18n = std::make_unique<AstreaI18n>(paths.i18nDir());
+    m_runtime->setDockContextMenuTranslator([this](const QString &key, const QString &fallback) {
+        return m_i18n->tr(key, fallback);
+    });
     m_runtime->barClock()->setLocale(QLocale(m_i18n->language()));
     if (m_i18n->language() != QStringLiteral("en_US")) {
         if (!m_runtime->spotlightController()->setLocale(m_i18n->language(), &error)) {

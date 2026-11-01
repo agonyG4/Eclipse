@@ -774,6 +774,8 @@
     "shell.clock.month_long.nov": "November",
     "shell.clock.month_long.oct": "October",
     "shell.clock.month_long.sep": "September",
+    "shell.dock.minimized_menu.close_window": "Close Window",
+    "shell.dock.minimized_menu.restore": "Restore",
     "shell.menu.about": "About this PC",
     "shell.menu.force_quit": "Force Quit",
     "shell.menu.lockscreen": "Lockscreen",

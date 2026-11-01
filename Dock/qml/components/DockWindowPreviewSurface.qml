@@ -167,14 +167,16 @@ Window {
         height: root.surfaceHeight
         radius: root.panelRadius
         color: material.background
-        border.color: material.border
+        // macOS-style double edge: a dark outer hairline separates the glass
+        // from busy content, a light inner one catches the light.
+        border.color: Qt.rgba(0, 0, 0, material.isLight ? 0.12 : 0.45)
         border.width: 1
         visible: root.previewVisible
         transformOrigin: root.panelTransformOrigin
-        scale: root.previewVisible ? 1 : 0.96
+        scale: root.previewVisible ? 1 : 0.94
         opacity: root.previewVisible ? 1 : 0
         Behavior on scale {
-            NumberAnimation { duration: material.tokens.value("animationSubtle", 130); easing.type: Easing.OutCubic }
+            NumberAnimation { duration: material.tokens.value("animationSubtle", 130) + 60; easing.type: Easing.OutBack; easing.overshoot: 0.9 }
         }
         Behavior on opacity {
             NumberAnimation { duration: material.tokens.value("animationInstant", 90) }
@@ -182,8 +184,11 @@ Window {
 
         Rectangle {
             anchors.fill: parent
-            radius: parent.radius
+            anchors.margins: 1
+            radius: parent.radius - 1
             color: material.surface
+            border.width: 1
+            border.color: material.border
         }
     }
 
@@ -215,10 +220,24 @@ Window {
                 delegate: Item {
                     id: card
                     required property var modelData
+                    required property int index
                     objectName: "window-preview-card-" + modelData.windowId
                     width: root.cardWidth
                     height: root.cardHeight
                     readonly property bool hovered: cardHover.hovered
+                    // Cards cascade in after the panel, left to right.
+                    opacity: 0
+                    transform: Translate { id: cardLift; y: 6 }
+                    ParallelAnimation {
+                        id: cardEntrance
+                        SequentialAnimation {
+                            PauseAnimation { duration: 40 + card.index * 35 }
+                            ParallelAnimation {
+                                NumberAnimation { target: card; property: "opacity"; to: 1; duration: 180; easing.type: Easing.OutCubic }
+                                NumberAnimation { target: cardLift; property: "y"; to: 0; duration: 240; easing.type: Easing.OutCubic }
+                            }
+                        }
+                    }
                     property size imageSize: Qt.size(0, 0)
                     readonly property real fitScale: imageSize.width > 0 && imageSize.height > 0
                         ? Math.min(root.thumbnailWidth / imageSize.width,
@@ -264,19 +283,19 @@ Window {
                             width: Math.max(1, Math.round(card.imageSize.width * card.fitScale))
                             height: Math.max(1, Math.round(card.imageSize.height * card.fitScale))
                             visible: card.imageReady
-
-                            Rectangle {
-                                anchors.fill: parent
-                                radius: material.radiusMedium
-                                color: "black"
-                                layer.enabled: true
-                                layer.effect: MultiEffect {
-                                    shadowEnabled: true
-                                    shadowColor: "#e0000000"
-                                    shadowBlur: 0.4
-                                    shadowOpacity: 0.35
-                                    shadowVerticalOffset: 3
-                                }
+                            scale: card.hovered ? 1.035 : 1
+                            Behavior on scale {
+                                NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+                            }
+                            layer.enabled: visible
+                            layer.smooth: true
+                            layer.effect: MultiEffect {
+                                shadowEnabled: true
+                                shadowColor: "#000000"
+                                shadowBlur: 0.55
+                                shadowOpacity: card.hovered ? 0.5 : 0.35
+                                shadowVerticalOffset: card.hovered ? 5 : 3
+                                autoPaddingEnabled: true
                             }
 
                             Item {
@@ -302,14 +321,16 @@ Window {
                                 mipmap: true
                                 asynchronous: true
                                 cache: true
-                                layer.enabled: true
-                                layer.smooth: true
-                                layer.effect: MultiEffect {
-                                    maskEnabled: true
-                                    maskSource: previewMask
-                                    maskThresholdMin: 0.4
-                                    maskSpreadAtMin: 0.6
-                                }
+                                visible: false
+                            }
+
+                            MultiEffect {
+                                anchors.fill: parent
+                                source: previewImage
+                                maskEnabled: true
+                                maskSource: previewMask
+                                maskThresholdMin: 0.4
+                                maskSpreadAtMin: 0.6
                             }
 
                             Rectangle {
@@ -317,7 +338,7 @@ Window {
                                 radius: material.radiusMedium
                                 color: "transparent"
                                 border.width: 1
-                                border.color: material.border
+                                border.color: Qt.rgba(1, 1, 1, material.isLight ? 0.35 : 0.16)
                                 antialiasing: true
                             }
                         }
@@ -426,6 +447,7 @@ Window {
                     }
 
                     Component.onCompleted: {
+                        cardEntrance.start()
                         refreshImage()
                         if (root.previewService)
                             root.previewService.requestWindowPreview(modelData.windowId, false)

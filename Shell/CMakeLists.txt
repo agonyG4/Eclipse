@@ -122,6 +122,7 @@ set(_shell_qml_files
     "${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/components/DockAppDelegate.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/components/DockTooltipSurface.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/components/DockWindowPreviewSurface.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/components/DockMinimizedWindowTile.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/components/DockTooltipBubble.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/../AltTab/qml/Main.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/../AltTab/qml/components/AltTabPanel.qml"
@@ -155,6 +156,8 @@ set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/components/
     PROPERTIES QT_RESOURCE_ALIAS "Dock/qml/components/DockTooltipSurface.qml")
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/components/DockWindowPreviewSurface.qml"
     PROPERTIES QT_RESOURCE_ALIAS "Dock/qml/components/DockWindowPreviewSurface.qml")
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/components/DockMinimizedWindowTile.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Dock/qml/components/DockMinimizedWindowTile.qml")
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/components/DockTooltipBubble.qml"
     PROPERTIES QT_RESOURCE_ALIAS "Dock/qml/components/DockTooltipBubble.qml")
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../AltTab/qml/Main.qml"

@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Effects
 import Astrea.Effects
 import Astrea.Shared as Shared
 
@@ -333,81 +332,44 @@ Item {
                         transformOrigin: !root.vertical ? Item.Bottom
                                          : DockController.position === "left" ? Item.Left : Item.Right
 
-                        Image {
-                            id: minimizedWindowImage
-                            objectName: "minimized-window-image-" + minimizedWindowDelegate.modelData.windowId
+                        DockMinimizedWindowTile {
+                            id: minimizedWindowTile
+                            objectName: "minimized-window-tile-" + minimizedWindowDelegate.modelData.windowId
                             anchors.fill: parent
-                            fillMode: Image.PreserveAspectFit
-                            smooth: true
-                            mipmap: true
                             source: root.dockWindowPreviewService
                                 ? root.dockWindowPreviewService.imageUrl(
                                       minimizedWindowDelegate.modelData.windowId) : ""
-                            visible: false
-                            asynchronous: true
-                            // Every capture gets a new revision URL, so caching by URL
-                            // only keeps snapshot-driven delegate rebuilds from flashing.
-                            cache: true
+                            iconName: minimizedWindowDelegate.modelData.iconName
+                            iconPath: minimizedWindowDelegate.modelData.iconPath
+                            appName: minimizedWindowDelegate.modelData.displayName
+                            maximumPresentationScale: Math.max(1, DockController.magnificationScale)
+                            presentationScale: minimizedWindowDelegate.magnificationScale
+                            pressed: minimizedWindowTap.pressed
+                            // Settles into the slot once the window image lands.
+                            opacity: imageReady ? 1 : 0.9
+                            scale: imageReady ? 1 : 0.86
+                            Behavior on opacity {
+                                NumberAnimation { duration: root.animationDuration(220); easing.type: Easing.OutCubic }
+                            }
+                            Behavior on scale {
+                                NumberAnimation { duration: root.animationDuration(260); easing.type: Easing.OutBack; easing.overshoot: 1.2 }
+                            }
+
                             Connections {
                                 target: root.dockWindowPreviewService
                                 function onImageChanged(windowId) {
                                     if (windowId === minimizedWindowDelegate.modelData.windowId)
-                                        minimizedWindowImage.source =
+                                        minimizedWindowTile.source =
                                             root.dockWindowPreviewService.imageUrl(windowId)
                                 }
                                 function onGenerationChanged() {
-                                    minimizedWindowImage.source =
+                                    minimizedWindowTile.source =
                                         root.dockWindowPreviewService.imageUrl(
                                             minimizedWindowDelegate.modelData.windowId)
                                     root.dockWindowPreviewService.requestWindowPreview(
                                         minimizedWindowDelegate.modelData.windowId, false)
                                 }
                             }
-                        }
-                        MultiEffect {
-                            objectName: "minimized-window-shadow-" + minimizedWindowDelegate.modelData.windowId
-                            source: minimizedWindowImage
-                            anchors.fill: minimizedWindowImage
-                            visible: minimizedWindowImage.status === Image.Ready
-                            shadowEnabled: true
-                            shadowColor: "#000000"
-                            shadowOpacity: 0.45
-                            shadowBlur: 0.5
-                            shadowVerticalOffset: 1
-                        }
-                        Shared.AstreaAppIcon {
-                            anchors.centerIn: parent
-                            width: parent.width * 0.78
-                            height: width
-                            iconName: minimizedWindowDelegate.modelData.iconName
-                            iconPath: minimizedWindowDelegate.modelData.iconPath
-                            appName: minimizedWindowDelegate.modelData.displayName
-                            maximumPresentationScale: Math.max(1, DockController.magnificationScale)
-                            iconRadius: 9
-                            fallbackRadius: 9
-                            opacity: 0.85
-                            visible: minimizedWindowImage.status !== Image.Ready
-                        }
-                        Shared.AstreaAppIcon {
-                            objectName: "minimized-window-badge-" + minimizedWindowDelegate.modelData.windowId
-                            width: Math.round(parent.width * 0.4)
-                            height: width
-                            x: parent.width - width
-                            y: parent.height - height
-                            iconName: minimizedWindowDelegate.modelData.iconName
-                            iconPath: minimizedWindowDelegate.modelData.iconPath
-                            appName: minimizedWindowDelegate.modelData.displayName
-                            maximumPresentationScale: Math.max(1, DockController.magnificationScale)
-                            iconRadius: 5
-                            fallbackRadius: 5
-                            visible: minimizedWindowImage.status === Image.Ready
-                        }
-
-                        Rectangle {
-                            anchors.fill: parent
-                            radius: 10
-                            color: "#18FFFFFF"
-                            visible: minimizedWindowTap.pressed
                         }
 
                         TapHandler {

@@ -82,12 +82,12 @@ Item {
                 Layout.fillWidth: true
                 text: root.label
                 color: Components.Theme.textPrimary
-                font.family: Components.Theme.typography.role("title").family
-                font.pixelSize: Components.Theme.typography.role("title").pixelSize
-                lineHeight: Components.Theme.typography.role("title").lineHeight
+                font.family: Components.Theme.typography.role("label").family
+                font.pixelSize: Components.Theme.typography.role("label").pixelSize
+                lineHeight: Components.Theme.typography.role("label").lineHeight
                 lineHeightMode: Text.ProportionalHeight
-                font.letterSpacing: Components.Theme.typography.role("title").letterSpacing
-                font.weight: Components.Theme.typography.role("title").weight
+                font.letterSpacing: Components.Theme.typography.role("label").letterSpacing
+                font.weight: Components.Theme.typography.role("label").weight
                 elide: Text.ElideRight
             }
 

@@ -112,11 +112,11 @@ Item {
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
                         color: Components.Theme.textSecondary
-                        font.family: Components.Theme.typography.role("title").family
-                        font.pixelSize: Components.Theme.typography.role("title").pixelSize
-                        lineHeight: Components.Theme.typography.role("title").lineHeight
+                        font.family: Components.Theme.typography.role("body").family
+                        font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                        lineHeight: Components.Theme.typography.role("body").lineHeight
                         lineHeightMode: Text.ProportionalHeight
-                        font.letterSpacing: Components.Theme.typography.role("title").letterSpacing
+                        font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
                         opacity: Components.Theme.opacitySecondary
                     }
                 }

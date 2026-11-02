@@ -8,8 +8,8 @@ ColumnLayout {
 
     property string queryText: ""
     property string fontFamily: themeTokens.typography.role("body").family
-    readonly property int resultRowHeight: Math.max(44, themeTokens.typography.role("body").pixelSize * themeTokens.typography.role("body").lineHeight + 16)
-    readonly property int resultIconSize: 32
+    readonly property int resultRowHeight: Math.max(50, themeTokens.typography.role("body").pixelSize * themeTokens.typography.role("body").lineHeight + 16)
+    readonly property int resultIconSize: 40
     readonly property int count: resultList.count
 
     signal launchRequested(int index)
@@ -70,7 +70,7 @@ ColumnLayout {
                     leftMargin: 12
                     rightMargin: 12
                 }
-                spacing: themeTokens.value("spacingMedium", 12)
+                spacing: themeTokens.value("spacingLarge", 15)
 
                 AstreaAppIcon {
                     Layout.preferredWidth: root.resultIconSize

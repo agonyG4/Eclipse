@@ -161,3 +161,58 @@ package discovery disabled and FetchContent disconnected. The probe build is
 placed under the active CMake binary directory. SDK-only mode requires Qt
 Core, Gui, Qml, Quick, and ShaderTools; Test is required only when focused
 tests are enabled.
+
+## Shared icons (2026-11-02)
+
+`AstreaSDK::Core` now owns the Freedesktop icon catalog and the optional
+file-icon service previously implemented in Orbit. Public headers are
+`AstreaSDK/IconThemeCatalog.hpp`, `AstreaSDK/IconThemeService.hpp` and
+`AstreaSDK/FileIconProvider.hpp`. The catalog is a value object with mutable
+lookup caches: use it on one thread or synchronize access. The file service
+and its provider run on the GUI thread. All caches are per process.
+
+The named `image://astrea-icon/` provider uses the same catalog as the file
+service, with Qt as a platform fallback. It monitors the shared catalog's active theme directories and invalidates Qt's pixmap cache after asset replacement. Its existing theme configuration,
+8 MiB positive cache and bounded negative cache remain compatible. Asset selection now follows the shared catalog, including user-root priority for duplicate content and declaration order for equal directory distances; it no longer inherits those Qt loader quirks. The file
+service preserves ordered candidates, MIME and special-directory identities,
+symbolic assets, emblems, installed light/dark variants and theme-directory
+invalidation. Its rendered-image cache now has an 8 MiB budget instead of a
+fixed image count. File selection prefers `desktop_icon_theme`, then
+`system_icon_theme`; `icon_theme` remains unrelated to desktop file icons.
+Named-provider selection keeps its existing environment/persisted/qt6ct
+precedence. Migration does not collapse these distinct configuration keys.
+
+Initialize ordinary SDK support before constructing optional file services:
+
+```cpp
+// service must outlive engine; declaring its owner first preserves that order.
+std::unique_ptr<AstreaSDK::IconThemeService> icons;
+QQmlEngine engine;
+QString error;
+if (!AstreaSDK::Core::initializeQmlEngine(engine, &error))
+    return reportError(error);
+icons = std::make_unique<AstreaSDK::IconThemeService>();
+if (!AstreaSDK::Core::initializeFileIcons(engine, *icons, &error))
+    return reportError(error);
+```
+
+`initializeFileIcons` explicitly installs `image://astrea-icons/` and the
+`AstreaFileIcons` context property. Repeated initialization with the same
+service is safe; an occupied provider name or a different service is an error.
+It does not transfer service ownership. The provider holds a guarded reference
+and returns an empty image if the service has already been destroyed.
+
+`AstreaIcon` is the shared QML renderer: source URL or theme name, physical
+source size, DPR, optional shader presentation and fallback text.
+`AstreaAppIcon` retains its public identity aliases and initials as a thin
+adapter. `AstreaFileIcon` uses original colors and no rounding by default,
+accepts `thumbnailSource` and optional `emblemSources`, and shows the ordinary
+icon until a thumbnail is Ready. It creates its thumbnail Image only when
+requested. `sourceSize` can explicitly preserve large file-icon decode sizes
+without changing the named-provider request bounds.
+
+Thumbnail generation, disk caches, cancellation and visible-range scheduling
+remain separate services; no thumbnail generator is linked into Core.
+Explorer retains its existing preview upgrade/cover logic and uses the common
+file-icon renderer underneath it. Existing Orbit C++ names and both provider
+URLs remain compatibility adapters, with no duplicate resolution code.

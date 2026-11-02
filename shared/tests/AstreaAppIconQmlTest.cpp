@@ -11,6 +11,7 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QScreen>
+#include <QRegularExpression>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QUrl>
@@ -273,6 +274,7 @@ class AstreaAppIconQmlTest final : public QObject {
     Q_OBJECT
 
 private slots:
+    void fileIconPreservesColorAndFallsBackAfterPreviewError();
     void acceptsInlineWindowIconPixels();
     void computesResolutionAwareSourceTarget();
     void spotlightUsesLogicalExtentAtEachDpr();
@@ -1011,6 +1013,53 @@ void AstreaAppIconQmlTest::presentationPixelsPreservePartialAlphaPremultiplicati
     QVERIFY(monochromeTransparent.blue < 0.01);
     QVERIFY(qAbs(monochromeHalf.red - monochromeOpaque.red * 0.5) < 0.08);
     QVERIFY(qAbs(monochromeQuarter.red - monochromeOpaque.red * 0.25) < 0.08);
+}
+
+void AstreaAppIconQmlTest::fileIconPreservesColorAndFallsBackAfterPreviewError()
+{
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    QImage fixture(32, 32, QImage::Format_ARGB32_Premultiplied);
+    fixture.fill(QColor("#e14265"));
+    const QString iconPath = temporary.filePath("file.png");
+    QVERIFY(fixture.save(iconPath));
+    fixture.fill(QColor("#25b579"));
+    const QString previewPath = temporary.filePath("preview.png");
+    QVERIFY(fixture.save(previewPath));
+    ThemeController controller(temporary.filePath("theme.json"));
+    controller.setIconAppearance(QStringLiteral("tinted"));
+    QQmlEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &controller);
+    QQmlComponent component(&engine);
+    component.setData(R"qml(
+        import QtQuick
+        import Astrea.Shared 1.0
+        AstreaFileIcon { width: 64; height: 64; iconSize: 64; asynchronous: false }
+    )qml", QUrl("file:///file-icon-test.qml"));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    std::unique_ptr<QQuickItem> item(qobject_cast<QQuickItem *>(component.create()));
+    QVERIFY(item);
+    item->setProperty("source", QUrl::fromLocalFile(iconPath).toString());
+    QTRY_VERIFY(item->property("ready").toBool());
+    QQuickWindow window;
+    window.resize(64, 64);
+    window.setColor(Qt::transparent);
+    item->setParentItem(window.contentItem());
+    window.show();
+    auto frame = captureFrame(window, item.get());
+    QVERIFY(!frame.image.isNull());
+    QCOMPARE(frame.image.pixelColor(frame.image.width()/2, frame.image.height()/2), QColor("#e14265"));
+    item->setProperty("thumbnailSource", QUrl::fromLocalFile(previewPath));
+    QTRY_VERIFY(item->property("thumbnailReady").toBool());
+    frame = captureFrame(window, item.get());
+    QCOMPARE(frame.image.pixelColor(frame.image.width()/2, frame.image.height()/2), QColor("#25b579"));
+    // Reusing a delegate for another file must discard the old preview.
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(".*Cannot open: file:.*missing.png"));
+    item->setProperty("thumbnailSource", QUrl::fromLocalFile(temporary.filePath("missing.png")));
+    QTRY_COMPARE(item->property("thumbnailStatus").toInt(), 3);
+    QVERIFY(!item->property("thumbnailReady").toBool());
+    frame = captureFrame(window, item.get());
+    QCOMPARE(frame.image.pixelColor(frame.image.width()/2, frame.image.height()/2), QColor("#e14265"));
 }
 
 int main(int argc, char **argv)

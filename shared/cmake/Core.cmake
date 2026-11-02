@@ -1,4 +1,10 @@
 add_library(astrea-shared-core STATIC
+    icons/IconThemeCatalog.cpp
+    icons/IconThemeService.cpp
+    icons/FileIconProvider.cpp
+    include/AstreaSDK/IconThemeCatalog.hpp
+    include/AstreaSDK/IconThemeService.hpp
+    include/AstreaSDK/FileIconProvider.hpp
     settings/RegionalPreferences.cpp
     settings/RegionalPreferences.hpp
     apps/DesktopEntryParser.cpp
@@ -26,8 +32,10 @@ add_library(astrea-shared-core STATIC
 
 target_include_directories(astrea-shared-core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 set_target_properties(astrea-shared-core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_compile_definitions(astrea-shared-core PRIVATE ASTREA_SDK_CORE_BUILD)
 
 if(NOT MSVC)
     target_compile_options(astrea-shared-core PRIVATE -Wall -Wextra -Wpedantic)
@@ -102,6 +110,8 @@ qt_add_qml_module(astrea-shared-core
     VERSION 1.0
     OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Astrea/Shared"
     QML_FILES
+        qml/AstreaIcon.qml
+        qml/AstreaFileIcon.qml
         qml/AstreaAppIcon.qml
         qml/ThemeTokens.qml
         qml/Typography.qml

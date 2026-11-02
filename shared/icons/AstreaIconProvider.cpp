@@ -2,6 +2,7 @@
 #include "icons/AstreaIconTheme.hpp"
 
 #include <QIcon>
+#include <QPixmapCache>
 #include <QUrl>
 #include <QFileInfo>
 #include <QDir>
@@ -79,6 +80,10 @@ AstreaIconProvider::AstreaIconProvider()
 
 void AstreaIconProvider::clearCache() {
     {
+        QMutexLocker lock(&AstreaIconTheme::qIconMutex());
+        m_catalog.invalidate();
+    }
+    {
         QWriteLocker lock(&m_cacheLock);
         m_cache.clear();
     }
@@ -137,6 +142,12 @@ void AstreaIconProvider::handleWatchedPathChanged(const QString &path)
     if (watchedConfigDirectories().contains(path)
         && currentConfigFingerprints() == m_configFingerprints)
         return;
+    if (m_assetWatchPaths.contains(path)) {
+        // QIcon's file-backed pixmaps otherwise survive an atomic replacement
+        // under the same filename, even after our own cache is cleared.
+        QMutexLocker lock(&AstreaIconTheme::qIconMutex());
+        QPixmapCache::clear();
+    }
     refreshThemeState();
 }
 
@@ -159,6 +170,13 @@ void AstreaIconProvider::refreshThemeState() {
 
     m_configFingerprints = currentConfigFingerprints();
     AstreaIconTheme::apply();
+    {
+        QMutexLocker lock(&AstreaIconTheme::qIconMutex());
+        m_catalog.invalidate();
+        m_assetWatchPaths = m_catalog.watchPaths({QIcon::themeName(), QIcon::fallbackThemeName()});
+    }
+    if (!m_assetWatchPaths.isEmpty())
+        m_themeWatcher.addPaths(m_assetWatchPaths);
     clearCache();
 }
 
@@ -196,12 +214,15 @@ QPixmap AstreaIconProvider::resolveIcon(const QString &iconName,
 
     if (result.isNull()) {
         QMutexLocker lock(&AstreaIconTheme::qIconMutex());
-        QIcon themeIcon = QIcon::fromTheme(iconName);
-        if (themeIcon.isNull()) {
-            const QFileInfo iconInfo(iconName);
-            if (!iconInfo.suffix().isEmpty())
-                themeIcon = QIcon::fromTheme(iconInfo.completeBaseName());
-        }
+        QStringList candidates{iconName};
+        const QFileInfo iconInfo(iconName);
+        if (!iconInfo.suffix().isEmpty())
+            candidates.append(iconInfo.completeBaseName());
+        const auto asset = m_catalog.resolveIconAsset(QIcon::themeName(), candidates,
+            QSize(request.logicalExtent, request.logicalExtent), request.devicePixelRatio);
+        QIcon themeIcon = asset.filePath.isEmpty() ? QIcon::fromTheme(iconName) : QIcon(asset.filePath);
+        if (themeIcon.isNull() && candidates.size() > 1)
+            themeIcon = QIcon::fromTheme(candidates.last());
         result = renderIcon(themeIcon, request);
     }
 

@@ -10,6 +10,7 @@
 #include <atomic>
 
 #include "icons/IconRenderRequest.hpp"
+#include <AstreaSDK/IconThemeCatalog.hpp>
 
 class AstreaIconProvider : public QQuickImageProvider {
     Q_OBJECT
@@ -32,6 +33,7 @@ private:
     QStringList watchedConfigFiles() const;
     QStringList watchedConfigDirectories() const;
 
+    AstreaSDK::IconThemeCatalog m_catalog;
     QCache<QString, QPixmap> m_cache;
     QReadWriteLock m_cacheLock;
     QHash<QString, int> m_negativeCache;
@@ -39,6 +41,7 @@ private:
     std::atomic<int> m_themeRevision{0};
     int m_nextNegSeq = 0;
     QFileSystemWatcher m_themeWatcher;
+    QStringList m_assetWatchPaths;
     QHash<QString, QByteArray> m_configFingerprints;
 
     static constexpr int kCacheMaxCost = 8 * 1024 * 1024;   // 8 MB

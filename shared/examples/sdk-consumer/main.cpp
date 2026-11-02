@@ -1,4 +1,6 @@
 #include <AstreaSDK/Core.hpp>
+#include <AstreaSDK/IconThemeService.hpp>
+#include <AstreaSDK/IconThemeCatalog.hpp>
 
 #include <QColor>
 #include <QCoreApplication>
@@ -52,6 +54,7 @@ bool writeTheme(const QString &dataHome)
     const QByteArray content =
         "[Icon Theme]\n"
         "Name=Astrea SDK fixture\n"
+        "Comment=Deterministic SDK integration fixture\n"
         "Directories=32x32/apps\n"
         "Inherits=hicolor\n\n"
         "[32x32/apps]\n"
@@ -210,12 +213,43 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    std::unique_ptr<AstreaSDK::IconThemeService> fileIcons;
     QPointer<QObject> providerObject;
     {
         QQmlEngine engine;
         QString error;
         if (!AstreaSDK::Core::initializeQmlEngine(engine, &error)) {
             qCritical().noquote() << "SDK initialization failed:" << error;
+            return 1;
+        }
+        fileIcons = std::make_unique<AstreaSDK::IconThemeService>();
+        AstreaSDK::IconThemeCatalog catalog;
+        const auto asset = catalog.resolveIconAsset(QStringLiteral("AstreaSDKFixture"),
+            {QStringLiteral("missing-specific"), QStringLiteral("astrea-sdk-probe")}, QSize(32, 32), 1.0);
+        if (asset.iconName != QStringLiteral("astrea-sdk-probe") || asset.filePath.isEmpty()) {
+            qCritical("Installed resolver failed ordered candidate lookup");
+            return 1;
+        }
+        if (!AstreaSDK::Core::initializeFileIcons(engine, *fileIcons, &error)
+            || !AstreaSDK::Core::initializeFileIcons(engine, *fileIcons, &error)) {
+            qCritical().noquote() << "Optional file icons did not initialize idempotently:" << error;
+            return 1;
+        }
+        AstreaSDK::IconThemeService otherService;
+        auto *originalFileProvider = engine.imageProvider(QStringLiteral("astrea-icons"));
+        if (AstreaSDK::Core::initializeFileIcons(engine, otherService, &error)
+            || error.isEmpty()
+            || engine.imageProvider(QStringLiteral("astrea-icons")) != originalFileProvider) {
+            qCritical("File icons accepted a conflicting service or replaced its provider");
+            return 1;
+        }
+        auto *fileProvider = dynamic_cast<QQuickImageProvider *>(engine.imageProvider("astrea-icons"));
+        QSize fileSize;
+        const QImage fileImage = fileProvider ? fileProvider->requestImage(
+            QStringLiteral("theme/astrea-sdk-probe?size=32&dpr=2"), &fileSize, QSize(64, 64)) : QImage();
+        if (fileImage.size() != QSize(64, 64)
+            || fileImage.pixelColor(32, 32) != QColor("#19c37d")) {
+            qCritical("Installed file provider did not preserve icon pixels and DPR");
             return 1;
         }
         if (!installedSharedTypesWork(engine)) {

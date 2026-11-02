@@ -13,6 +13,8 @@ add_library(astrea-shared-core STATIC
     theme/Typography.hpp
     theme/SystemFontConfig.cpp
     theme/SystemFontConfig.hpp
+    theme/FontconfigDpiSync.cpp
+    theme/FontconfigDpiSync.hpp
     screenshot/ScreenshotConfiguration.cpp
     screenshot/ScreenshotConfiguration.hpp
     icons/AstreaIconTheme.cpp
@@ -60,6 +62,15 @@ function(astrea_shared_add_theme_tokens_test)
     target_link_libraries(astrea-system-fontconfig-test PRIVATE astrea-shared-core Qt6::Test)
     astrea_shared_enable_sanitizers(astrea-system-fontconfig-test)
     add_test(NAME astrea-system-fontconfig-test COMMAND astrea-system-fontconfig-test)
+
+    add_executable(astrea-fontconfig-dpi-sync-test tests/FontconfigDpiSyncTest.cpp)
+    target_link_libraries(astrea-fontconfig-dpi-sync-test PRIVATE astrea-shared-core Qt6::Test)
+    astrea_shared_enable_sanitizers(astrea-fontconfig-dpi-sync-test)
+    add_test(NAME astrea-fontconfig-dpi-sync-test COMMAND astrea-fontconfig-dpi-sync-test)
+    set_tests_properties(astrea-fontconfig-dpi-sync-test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    add_test(NAME astrea-fontconfig-dpi-sync-scaled-test COMMAND astrea-fontconfig-dpi-sync-test)
+    set_tests_properties(astrea-fontconfig-dpi-sync-scaled-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_SCALE_FACTOR=2")
 
     add_executable(astrea-theme-tokens-test tests/ThemeTokensTest.cpp)
     target_include_directories(astrea-theme-tokens-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")

@@ -33,6 +33,7 @@
 #include "screenshot/ScreenshotImageProvider.hpp"
 #include "windowpreview/DockWindowPreviewImageProvider.hpp"
 #include "windowpreview/DockWindowPreviewService.hpp"
+#include "theme/FontconfigDpiSync.hpp"
 #include "theme/ThemeController.hpp"
 #include "system/audio/AudioService.hpp"
 #include "system/audio/spatial/SpatialAudioEngine.hpp"
@@ -128,6 +129,8 @@ int AstreaShellApplication::run()
         return 1;
 
     m_runtime->start();
+    m_fontconfigDpiSync = std::make_unique<Astrea::FontconfigDpiSync>();
+    m_fontconfigDpiSync->start();
     return m_application.exec();
 }
 

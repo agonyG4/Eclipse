@@ -26,6 +26,10 @@ namespace Paper {
 class WallpaperSurfaceManager;
 }
 
+namespace Astrea {
+class FontconfigDpiSync;
+}
+
 class AstreaShellApplication final : public QObject {
     Q_OBJECT
 
@@ -76,6 +80,7 @@ private:
     std::unique_ptr<BarSurfaceManager> m_barSurfaceManager;
     std::unique_ptr<ContextMenuSurfaceManager> m_contextMenuSurfaceManager;
     std::unique_ptr<Paper::WallpaperSurfaceManager> m_wallpaperSurfaceManager;
+    std::unique_ptr<Astrea::FontconfigDpiSync> m_fontconfigDpiSync;
     bool m_layerShellWaylandBackend = false;
     bool m_layerShellProtocolAdvertised = false;
     bool m_dockLayerConfigurationRequested = false;

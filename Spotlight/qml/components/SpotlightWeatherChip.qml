@@ -13,7 +13,8 @@ RowLayout {
     Layout.maximumWidth: 68
     Layout.alignment: Qt.AlignVCenter
     spacing: 1
-    visible: controller !== null && controller.weatherEnabled
+    // Without a reading there is nothing worth showing; no placeholder glyphs.
+    visible: controller !== null && controller.weatherEnabled && controller.weatherReady
 
     Image {
         Layout.preferredWidth: 20
@@ -21,7 +22,6 @@ RowLayout {
         Layout.alignment: Qt.AlignVCenter
         source: root.controller ? root.controller.weatherIconSource : ""
         sourceSize: Qt.size(40, 40)
-        visible: root.controller !== null && root.controller.weatherReady
         fillMode: Image.PreserveAspectFit
         smooth: true
         mipmap: false
@@ -29,16 +29,8 @@ RowLayout {
     }
 
     Text {
-        text: "\u25CB"
-        visible: root.controller === null || !root.controller.weatherReady
-        font.pixelSize: themeTokens.value("fontSizeIconLarge", 18)
-        color: root.textColor
-        Layout.alignment: Qt.AlignVCenter
-    }
-
-    Text {
         Layout.maximumWidth: 46
-        text: root.controller && root.controller.weatherReady ? root.controller.weatherTemp + "\u00B0" : "--\u00B0"
+        text: root.controller ? root.controller.weatherTemp + "\u00B0" : ""
         font: themeTokens.typography.font("label", root.fontFamily)
         renderType: Text.NativeRendering
         color: root.textColor

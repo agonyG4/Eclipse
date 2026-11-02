@@ -2680,7 +2680,7 @@ void DockHoverQmlTest::mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen(
     QCOMPARE(tooltipText->width(), qreal(tooltipRect.width() - 32));
     QCOMPARE(tooltipText->height(), qreal(tooltipRect.height()));
     QCOMPARE(tooltipText->property("font").value<QFont>().pixelSize(), 13);
-    QCOMPARE(tooltipText->property("font").value<QFont>().weight(), QFont::Medium);
+    QCOMPARE(tooltipText->property("font").value<QFont>().weight(), QFont::Normal);
     QCOMPARE(tooltipBubble->property("cardWidth").toReal(), qreal(tooltipRect.width()));
     QCOMPARE(tooltipWindow->property("cardPlacement").toMap()
                  .value(QStringLiteral("pointerEdge")).toString(),

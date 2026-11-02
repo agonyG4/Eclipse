@@ -46,8 +46,8 @@ Item {
                     color: theme.shellTextSecondary
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
-                    font: theme.typography.font("caption")
-                    lineHeight: theme.typography.role("caption").lineHeight
+                    font: theme.typography.font("label")
+                    lineHeight: theme.typography.role("label").lineHeight
                     lineHeightMode: Text.ProportionalHeight
                     renderType: Text.NativeRendering
                     Behavior on text {

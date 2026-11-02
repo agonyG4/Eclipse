@@ -317,7 +317,7 @@ void ThemeTokensTest::semanticQmlTextPropagates()
     QObject *title = item->findChild<QObject *>("title");
     QObject *mono = item->findChild<QObject *>("mono");
     QVERIFY(body && title && mono);
-    QCOMPARE(body->property("font").value<QFont>().pixelSize(), 14);
+    QCOMPARE(body->property("font").value<QFont>().pixelSize(), 13);
     const QString monoFamily = mono->property("font").value<QFont>().family();
     const QString primary = QFontInfo(QFont("serif")).family();
     controller.setFontFamilyPreference("fontFamily", primary);
@@ -325,8 +325,8 @@ void ThemeTokensTest::semanticQmlTextPropagates()
     QTRY_COMPARE(title->property("font").value<QFont>().family(), primary);
     QCOMPARE(mono->property("font").value<QFont>().family(), monoFamily);
     QVERIFY(QMetaObject::invokeMethod(&controller, "setTextScale", Q_ARG(double, 2.0)));
-    QTRY_COMPARE(body->property("font").value<QFont>().pixelSize(), 28);
-    QTRY_COMPARE(title->property("font").value<QFont>().pixelSize(), 36);
+    QTRY_COMPARE(body->property("font").value<QFont>().pixelSize(), 26);
+    QTRY_COMPARE(title->property("font").value<QFont>().pixelSize(), 30);
 }
 
 void ThemeTokensTest::themeSurfaceTypographyResolvesBeforeUserPreferences()
@@ -351,7 +351,7 @@ void ThemeTokensTest::themeSurfaceTypographyResolvesBeforeUserPreferences()
     QCOMPARE(scoped("spotlight","title").value("family").toString(),QString("Theme Search"));
     QCOMPARE(scoped("spotlight","title").value("pixelSize").toInt(),22);
     QVERIFY(!controller.styleTokens().value("typographySurfaces").toMap().contains("invented"));
-    QCOMPARE(controller.typography().value("title").toMap().value("pixelSize").toInt(),18);
+    QCOMPARE(controller.typography().value("title").toMap().value("pixelSize").toInt(),15);
     const QString primary=QFontInfo(QFont("sans-serif")).family();
     controller.setFontFamilyPreference("fontFamily",primary);
     controller.setTypographyPreference("title","weight",600);
@@ -360,7 +360,7 @@ void ThemeTokensTest::themeSurfaceTypographyResolvesBeforeUserPreferences()
     QCOMPARE(scoped("spotlight","title").value("weight").toInt(),600);
     QCOMPARE(scoped("spotlight","title").value("pixelSize").toInt(),33);
     QCOMPARE(scoped("topbar","label").value("pixelSize").toInt(),20);
-    QCOMPARE(controller.typography().value("title").toMap().value("pixelSize").toInt(),27);
+    QCOMPARE(controller.typography().value("title").toMap().value("pixelSize").toInt(),23);
     controller.setTypographyPreference("title","pixelSize",24);
     QCOMPARE(scoped("spotlight","title").value("pixelSize").toInt(),36);
     controller.resetFontPreferences();
@@ -390,7 +390,7 @@ void ThemeTokensTest::semanticTypographyResolvesInheritanceAndScale()
     const int iconSize = controller.styleTokens().value("fontSizeIconLarge", 22).toInt();
     QVERIFY(QMetaObject::invokeMethod(&controller, "setTextScale", Q_ARG(double, 1.5)));
     QCOMPARE(roles().value("title").toMap().value("pixelSize").toInt(), 30);
-    QCOMPARE(roles().value("body").toMap().value("pixelSize").toInt(), 21);
+    QCOMPARE(roles().value("body").toMap().value("pixelSize").toInt(), 20);
     QCOMPARE(controller.styleTokens().value("fontSizeIconLarge", 22).toInt(), iconSize);
     QCOMPARE(controller.styleTokens().value("fontSizeNormal").toInt(), 18);
     QVERIFY(QMetaObject::invokeMethod(&controller, "setTextScale", Q_ARG(double, 9.0)));
@@ -429,7 +429,7 @@ void ThemeTokensTest::typographyRejectsMalformedWritesAndKeepsUnavailableFamilie
         {"roles", QJsonObject{{"body", QJsonObject{{"pixelSize", -3}, {"weight", 10000}}}}}}}}));
     ThemeController controller(path);
     QCOMPARE(controller.fontPreferences().value("fontFamily").toString(), QString("Temporarily Uninstalled Font"));
-    QCOMPARE(controller.property("typography").toMap().value("body").toMap().value("pixelSize").toInt(), 14);
+    QCOMPARE(controller.property("typography").toMap().value("body").toMap().value("pixelSize").toInt(), 13);
     QFile broken(dir.filePath("typography.json"));
     QVERIFY(broken.open(QIODevice::WriteOnly | QIODevice::Truncate));
     broken.write("{broken");

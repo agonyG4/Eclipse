@@ -1235,7 +1235,7 @@ void BarQmlSmokeTest::clockUsesReferenceHorizontalStructure()
     QCOMPARE(QQmlProperty(date, QStringLiteral("font.weight")).read().toInt(),
              static_cast<int>(QFont::Normal));
     QCOMPARE(QQmlProperty(time, QStringLiteral("font.weight")).read().toInt(),
-             static_cast<int>(QFont::Medium));
+             static_cast<int>(QFont::Normal));
     QVERIFY(clockObject->property("implicitWidth").toInt()
             > clockObject->property("implicitHeight").toInt());
     delete status;

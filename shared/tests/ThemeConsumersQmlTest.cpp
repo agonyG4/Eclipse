@@ -101,8 +101,9 @@ void ThemeConsumersQmlTest::clockAndSpotlightConsumeCompleteSurfaceStyles()
     QCOMPARE(font(time).pixelSize(),16);
     QCOMPARE(int(font(time).weight()),350);
     QCOMPARE(font(time).letterSpacing(),0.75);
-    QCOMPARE(font(date).pixelSize(),12);
-    QCOMPARE(font(date).letterSpacing(),0.5);
+    // Like the macOS menu bar, date and time share one label style.
+    QCOMPARE(font(date).pixelSize(),font(time).pixelSize());
+    QCOMPARE(font(date).letterSpacing(),font(time).letterSpacing());
     QCOMPARE(font(input).pixelSize(),24);
     QCOMPARE(int(font(input).weight()),300);
     QVERIFY(qAbs(font(input).letterSpacing() + 0.2) < 1.0/32); // Qt quantizes font metrics.
@@ -320,7 +321,7 @@ void ThemeConsumersQmlTest::actualConsumersResolveLivePackageTokens()
         {QStringLiteral("shellBackground"), QStringLiteral("#abcdef")}}}};
     QVERIFY(writeJson(themePath(id), manifest(id, partialStyle)));
     QTRY_COMPARE_WITH_TIMEOUT(bar->property("shellBackground").value<QColor>(), QColor("#abcdef"), 3000);
-    QCOMPARE(bar->property("fontSizeTitle").toInt(), 18);
+    QCOMPARE(bar->property("fontSizeTitle").toInt(), 15);
     QCOMPARE(menu->property("contextMenuRadius").toDouble(), 10.0);
     QCOMPARE(dockPanel->property("dockRadius").toDouble(), defaultDockRadius);
     QCOMPARE(settingsTheme->property("textPrimary").value<QColor>(), defaultSettingsText);
@@ -354,8 +355,8 @@ void ThemeConsumersQmlTest::actualConsumersResolveLivePackageTokens()
     QTRY_COMPARE(menu->property("fontFamily").toString(), primary);
     auto *searchInput = spotlightPanel->findChild<QObject *>("spotlightSearchInput");
     QVERIFY(searchInput);
-    QTRY_COMPARE(searchInput->property("font").value<QFont>().pixelSize(), 36);
-    QTRY_COMPARE(bar->property("fontSizeTitle").toInt(), 36);
+    QTRY_COMPARE(searchInput->property("font").value<QFont>().pixelSize(), 44);
+    QTRY_COMPARE(bar->property("fontSizeTitle").toInt(), 30);
     QTRY_COMPARE(menu->property("fontSizeBody").toInt(), 26);
     QCOMPARE(dockPanel->property("dockRadius").toDouble(), defaultDockRadius);
     controller.setTypographyPreference("title", "weight", 300);

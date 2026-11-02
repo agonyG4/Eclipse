@@ -36,6 +36,18 @@ bool numberValid(const QVariant &value, double min, double max, bool integral = 
     return std::isfinite(n) && n >= min && n <= max && (!integral || n == std::floor(n));
 }
 const QStringList familyKeys{"fontFamily", "fontFamilyText", "fontFamilyDisplay", "monoFontFamily"};
+
+// SF Pro ships optical cuts with their own tracking: Text below 20 pt, Display
+// from 20 pt (Apple HIG tracking table). Other families keep their native spacing.
+double defaultTracking(const QString &family, int pixelSize)
+{
+    if (!family.startsWith(QStringLiteral("SF Pro")))
+        return 0.0;
+    if (pixelSize >= 20)
+        return 0.36;
+    static const QList<double> text{0.17, 0.12, 0.07, 0.0, -0.08, -0.15, -0.24, -0.32, -0.41, -0.44, -0.45};
+    return text.value(qBound(0, pixelSize - 9, int(text.size()) - 1));
+}
 }
 
 QStringList roleNames() { return {"display", "title", "body", "label", "caption", "mono"}; }
@@ -123,28 +135,33 @@ static QVariantMap resolveBase(const QVariantMap &theme, const QVariantMap &rawP
     const auto themeRoles = validatedRoles(theme.value("typographyRoles").toMap());
     const auto userRoles = prefs.value("roles").toMap();
     const QStringList names = roleNames();
-    const QList<int> defaults{24,18,14,13,11,13};
+    // macOS type scale: Large Title, Title 3 (emphasized), Body, control label,
+    // Subheadline and monospaced code.
+    const QList<int> defaults{26,15,13,13,11,12};
     const QStringList legacySizes{"fontSizeHeader", "fontSizeTitle", "fontSizeBody", "fontSizeLarge", "fontSizeCaption", ""};
     const QStringList legacyFallbacks{"fontSizeHero", "fontSizeSubtitle", "fontSizeNormal", "tooltipFontSize", "fontSizeSmall", ""};
-    const QList<int> weights{QFont::DemiBold,QFont::Medium,QFont::Normal,QFont::Medium,QFont::Normal,QFont::Normal};
+    const QList<int> weights{QFont::Bold,QFont::DemiBold,QFont::Normal,QFont::Normal,QFont::Normal,QFont::Normal};
     QVariantMap roles;
     for (qsizetype i = 0; i < names.size(); ++i) {
         const QString name = names[i];
         const auto themed = themeRoles.value(name).toMap();
         const auto custom = userRoles.value(name).toMap();
-        QString family = i <= 1 ? display : i == 2 ? body : i == 5 ? mono : primary;
-        const bool userFamily = i == 5 ? prefs.contains("monoFontFamily")
-            : prefs.contains("fontFamily") || (i <= 1 ? prefs.contains("fontFamilyDisplay") : i == 2 && prefs.contains("fontFamilyText"));
-        if (!userFamily)
-            family = themed.value("family", family).toString();
-        family = custom.value("family", family).toString();
         double size = themed.value("pixelSize", theme.value(legacySizes[i], theme.value(legacyFallbacks[i], defaults[i]))).toDouble();
         if (i == 1 && prefs.contains("fontSizeTitle")) size = prefs.value("fontSizeTitle").toDouble();
         if (i == 2 && prefs.contains("fontSizeNormal")) size = prefs.value("fontSizeNormal").toDouble();
         size = custom.value("pixelSize", size).toDouble();
-        QVariantMap role{{"family", family}, {"pixelSize", qMax(1,qRound(size * scale))},
+        const int pixelSize = qMax(1, qRound(size * scale));
+        // An optical Display cut is wrong below 20 px; titles there use its Text sibling.
+        const bool displayCut = i == 0 || (i == 1 && (pixelSize >= 20 || !display.endsWith(QStringLiteral(" Display"))));
+        QString family = displayCut ? display : i <= 2 ? body : i == 5 ? mono : primary;
+        const bool userFamily = i == 5 ? prefs.contains("monoFontFamily")
+            : prefs.contains("fontFamily") || (displayCut ? prefs.contains("fontFamilyDisplay") : i <= 2 && prefs.contains("fontFamilyText"));
+        if (!userFamily)
+            family = themed.value("family", family).toString();
+        family = custom.value("family", family).toString();
+        QVariantMap role{{"family", family}, {"pixelSize", pixelSize},
             {"weight", custom.value("weight", themed.value("weight", weights[i]))},
-            {"letterSpacing", custom.value("letterSpacing", themed.value("letterSpacing", 0.0))},
+            {"letterSpacing", custom.value("letterSpacing", themed.value("letterSpacing", defaultTracking(family, pixelSize)))},
             {"lineHeight", custom.value("lineHeight", themed.value("lineHeight", 1.0))}};
         roles.insert(name, role);
     }
@@ -162,7 +179,7 @@ static QVariantMap resolveBase(const QVariantMap &theme, const QVariantMap &rawP
     result.insert("fontFamilyText", roles.value("body").toMap().value("family"));
     result.insert("monoFontFamily", roles.value("mono").toMap().value("family"));
     result.insert("fontWeightNormal", roles.value("body").toMap().value("weight"));
-    result.insert("fontWeightMedium", roles.value("label").toMap().value("weight"));
+    result.insert("fontWeightMedium", qMax(roles.value("label").toMap().value("weight").toInt(), int(QFont::Medium)));
     result.insert("fontWeightDemiBold", roles.value("title").toMap().value("weight"));
     result.insert("typographyRoles", roles);
     return result;
@@ -172,7 +189,13 @@ QVariantMap resolve(const QVariantMap &theme, const QVariantMap &preferences,
                     const QString &proportional, const QString &monospace)
 {
     auto result = resolveBase(theme, preferences, proportional, monospace);
-    const auto surfaces = validatedSurfaces(theme.value("typographySurfaces").toMap());
+    auto themeSurfaces = theme.value("typographySurfaces").toMap();
+    // Spotlight's field is a large regular search line, not an emphasized title.
+    auto spotlight = themeSurfaces.value("spotlight").toMap();
+    if (!spotlight.contains("title"))
+        spotlight.insert("title", QVariantMap{{"pixelSize", 22}, {"weight", int(QFont::Normal)}});
+    themeSurfaces.insert("spotlight", spotlight);
+    const auto surfaces = validatedSurfaces(themeSurfaces);
     QVariantMap resolved;
     for (auto it = surfaces.cbegin(); it != surfaces.cend(); ++it) {
         auto roles = theme.value("typographyRoles").toMap();

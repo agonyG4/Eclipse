@@ -16,13 +16,13 @@ QtObject {
     function role(name) {
         if (roles[name] !== undefined)
             return roles[name]
-        const sizes = { display: 24, title: 18, body: 14, label: 13, caption: 11, mono: 13 }
+        const sizes = { display: 26, title: 15, body: 13, label: 13, caption: 11, mono: 12 }
         const family = name === "mono" ? (tokens.monoFontFamily || "monospace")
             : (name === "display" || name === "title") ? (tokens.fontFamilyDisplay || primaryFamily)
             : name === "body" ? (tokens.fontFamilyText || primaryFamily) : primaryFamily
         return { family: family,
             pixelSize: Math.round((sizes[name] || 14) * textScale),
-            weight: name === "display" ? Font.DemiBold : (name === "title" || name === "label") ? Font.Medium : Font.Normal,
+            weight: name === "display" ? Font.Bold : name === "title" ? Font.DemiBold : Font.Normal,
             letterSpacing: 0, lineHeight: 1 }
     }
 

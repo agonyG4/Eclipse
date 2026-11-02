@@ -1,5 +1,6 @@
 #include "theme/ThemeController.hpp"
 #include "theme/Typography.hpp"
+#include "theme/SystemFontConfig.hpp"
 #include "theme/ThemePackCatalog.hpp"
 #include "theme/IconOverrides.hpp"
 
@@ -359,6 +360,22 @@ void ThemeController::patchTypography(const QString &field, const QVariant &valu
         reloadNavigationIcons();
         updateWatchPaths();
     }
+}
+
+bool ThemeController::applySystemFontConfig(bool restore)
+{
+    const QString path = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+        + QStringLiteral("/fontconfig/fonts.conf");
+    QString error;
+    const bool saved = Astrea::SystemFontConfig::apply(path,
+        restore ? QString{} : m_styleTokens.value("fontFamily").toString(),
+        restore ? QString{} : typography().value("mono").toMap().value("family").toString(), &error);
+    m_systemFontConfigStatus = saved
+        ? (restore ? tr("Previous system font rules restored. Reopen applications to apply.")
+                   : tr("System fonts applied. Reopen applications to apply."))
+        : tr("Could not update Fontconfig: %1").arg(error);
+    emit systemFontConfigStatusChanged();
+    return saved;
 }
 
 void ThemeController::setFontFamilyPreference(const QString &key, const QString &family)

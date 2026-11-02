@@ -11,6 +11,8 @@ add_library(astrea-shared-core STATIC
     theme/ThemeController.hpp
     theme/Typography.cpp
     theme/Typography.hpp
+    theme/SystemFontConfig.cpp
+    theme/SystemFontConfig.hpp
     screenshot/ScreenshotConfiguration.cpp
     screenshot/ScreenshotConfiguration.hpp
     icons/AstreaIconTheme.cpp
@@ -54,6 +56,11 @@ function(astrea_shared_enable_sanitizers target)
 endfunction()
 
 function(astrea_shared_add_theme_tokens_test)
+    add_executable(astrea-system-fontconfig-test tests/SystemFontConfigTest.cpp)
+    target_link_libraries(astrea-system-fontconfig-test PRIVATE astrea-shared-core Qt6::Test)
+    astrea_shared_enable_sanitizers(astrea-system-fontconfig-test)
+    add_test(NAME astrea-system-fontconfig-test COMMAND astrea-system-fontconfig-test)
+
     add_executable(astrea-theme-tokens-test tests/ThemeTokensTest.cpp)
     target_include_directories(astrea-theme-tokens-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
     target_compile_definitions(astrea-theme-tokens-test PRIVATE

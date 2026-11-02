@@ -889,5 +889,11 @@
     "settings.typography.weight": "Peso",
     "settings.typography.tracking": "Espaçamento entre letras",
     "settings.typography.line_height": "Altura da linha",
-    "settings.typography.save_error": "Não foi possível salvar a tipografia. Verifique o arquivo de preferências e tente novamente."
+    "settings.typography.save_error": "Não foi possível salvar a tipografia. Verifique o arquivo de preferências e tente novamente.",
+    "settings.typography.system": "Fontes do sistema (Fontconfig)",
+    "settings.typography.system_help": "Aplique as famílias principal e monoespaçada atuais a outros aplicativos. Aplique novamente após trocar as fontes ou o tema.",
+    "settings.typography.system_apply": "Aplicar ao sistema",
+    "settings.typography.system_restore": "Restaurar",
+    "settings.typography.system_applied": "Fontes do sistema salvas. Reabra os aplicativos para aplicar.",
+    "settings.typography.system_restored": "Regras anteriores restauradas. Reabra os aplicativos para aplicar."
 }

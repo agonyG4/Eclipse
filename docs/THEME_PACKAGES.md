@@ -358,3 +358,25 @@ family or size does not resize navigation labels. Semantic fonts clear inherited
 platform style names such as Regular before resolving numeric weights, so the
 chosen weight selects the corresponding installed face rather than retaining a
 fixed platform face. Settings applies the same policy to its application font.
+
+### Applying typography to user Fontconfig
+
+Typography Settings offers an explicit **Apply to system** action. It exports the
+resolved primary family to `sans`, `sans-serif`, `system-ui`, and `ui-sans-serif`,
+and the resolved Mono family to `monospace` and `ui-monospace`. The current theme
+and user overrides determine those families. Applying is a snapshot; after
+changing fonts or themes, apply again to update other applications.
+
+The focused `SystemFontConfig` service atomically updates an identified Astrea
+block at the end of `$XDG_CONFIG_HOME/fontconfig/fonts.conf` (normally
+`~/.config/fontconfig/fonts.conf`). Existing emoji, rendering, serif, fallback,
+and other user rules remain intact. The first existing file is backed up as
+`fonts.conf.before-astrea`. **Restore** removes only the Astrea block, preserving
+subsequent edits to other rules. Invalid XML and symbolic-link configurations
+are rejected without overwriting the file; errors are shown in Settings.
+
+This does not export semantic role metrics, text scale, or application-specific
+font settings. Applications that request generic families can follow Fontconfig;
+applications with their own explicit font selection retain that selection.
+Reopen applications to load the updated configuration. See the
+[Fontconfig configuration format](https://fontconfig.pages.freedesktop.org/fontconfig/fontconfig-user.html).

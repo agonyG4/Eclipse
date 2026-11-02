@@ -1329,5 +1329,11 @@
     "settings.typography.weight": "Weight",
     "settings.typography.tracking": "Letter spacing",
     "settings.typography.line_height": "Line height",
-    "settings.typography.save_error": "Could not save typography preferences. Check the preferences file and try again."
+    "settings.typography.save_error": "Could not save typography preferences. Check the preferences file and try again.",
+    "settings.typography.system": "System fonts (Fontconfig)",
+    "settings.typography.system_help": "Apply the current primary and monospaced families to other applications. Reapply after changing fonts or themes.",
+    "settings.typography.system_apply": "Apply to system",
+    "settings.typography.system_restore": "Restore",
+    "settings.typography.system_applied": "System fonts applied. Reopen applications to apply.",
+    "settings.typography.system_restored": "Previous system font rules restored. Reopen applications to apply."
 }

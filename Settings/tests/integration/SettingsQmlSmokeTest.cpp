@@ -761,6 +761,12 @@ void SettingsQmlSmokeTest::typographyControlsPersistAndPreviewScale()
     pinnedFont.setStyleName(QStringLiteral("Regular"));
     qGuiApp->setFont(pinnedFont);
     QTemporaryDir dir;
+    const QByteArray oldConfig = qgetenv("XDG_CONFIG_HOME");
+    qputenv("XDG_CONFIG_HOME", dir.path().toUtf8());
+    const auto restoreConfig = qScopeGuard([oldConfig] {
+        if (oldConfig.isNull()) qunsetenv("XDG_CONFIG_HOME");
+        else qputenv("XDG_CONFIG_HOME", oldConfig);
+    });
     ThemeController theme(dir.filePath("theme.json"));
     SettingsTranslationController translation;
     QQmlEngine engine;
@@ -808,6 +814,22 @@ void SettingsQmlSmokeTest::typographyControlsPersistAndPreviewScale()
     weightMatched.setWeight(QFont::DemiBold);
     QTRY_COMPARE(QFontInfo(bodyPreview->property("font").value<QFont>()).styleName(),
                  QFontInfo(weightMatched).styleName());
+
+    auto *systemApply = findVisualItem(root, "typographySystemApply");
+    auto *systemRestore = findVisualItem(root, "typographySystemRestore");
+    QVERIFY(systemApply && systemRestore);
+    const QString systemPath = dir.filePath("fontconfig/fonts.conf");
+    QVERIFY(!QFile::exists(systemPath));
+    QVERIFY(QMetaObject::invokeMethod(systemApply, "selected", Q_ARG(int, 0)));
+    QFile systemFile(systemPath);
+    QVERIFY2(systemFile.open(QIODevice::ReadOnly), qPrintable(theme.systemFontConfigStatus()));
+    QVERIFY(systemFile.readAll().contains("Astrea typography begin"));
+    systemFile.close();
+    QVERIFY(!page->property("systemStatus").toString().isEmpty());
+    QVERIFY(QMetaObject::invokeMethod(systemRestore, "selected", Q_ARG(int, 0)));
+    QVERIFY(systemFile.open(QIODevice::ReadOnly));
+    QVERIFY(!systemFile.readAll().contains("Astrea typography begin"));
+    systemFile.close();
 
     auto *reset = findVisualItem(root, "typographyReset");
     QVERIFY(reset);

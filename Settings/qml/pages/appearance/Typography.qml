@@ -9,6 +9,7 @@ Item {
     id: root
     objectName: "typographyPage"
     property bool advancedExpanded: false
+    property string systemStatus: ""
     readonly property var preferences: ThemeController.fontPreferences
     readonly property var families: ThemeController.availableFontFamilies()
     property string searchText: ""
@@ -25,6 +26,14 @@ Item {
         I18n.tr("settings.typography.role_label", "Label"),
         I18n.tr("settings.typography.role_caption", "Caption"),
         I18n.tr("settings.typography.mono", "Monospaced")]
+
+    function applySystemFonts(restore) {
+        const saved = ThemeController.applySystemFontConfig(restore)
+        systemStatus = saved
+            ? (restore ? I18n.tr("settings.typography.system_restored", "Previous system font rules restored. Reopen applications to apply.")
+                       : I18n.tr("settings.typography.system_applied", "System fonts applied. Reopen applications to apply."))
+            : ThemeController.systemFontConfigStatus
+    }
 
     function overrideValue(role, field) {
         const roles = preferences.roles || ({})
@@ -183,6 +192,39 @@ Item {
                     Accessible.name: I18n.tr("settings.typography.scale", "Text scale")
                     onValueEdited: value => ThemeController.setTextScale(value / 100)
                 }
+            }
+        }
+
+        Form.FormCard {
+            Layout.bottomMargin: 24
+            Form.SettingRow {
+                label: I18n.tr("settings.typography.system", "System fonts (Fontconfig)")
+                sublabel: I18n.tr("settings.typography.system_help", "Apply the current primary and monospaced families to other applications. Reapply after changing fonts or themes.")
+                Row {
+                    spacing: 8
+                    Controls.SelectButton {
+                        objectName: "typographySystemApply"
+                        width: 150
+                        label: I18n.tr("settings.typography.system_apply", "Apply to system")
+                        isButton: true
+                        showButtonIcon: false
+                        onSelected: root.applySystemFonts(false)
+                    }
+                    Controls.SelectButton {
+                        objectName: "typographySystemRestore"
+                        width: 100
+                        label: I18n.tr("settings.typography.system_restore", "Restore")
+                        isButton: true
+                        showButtonIcon: false
+                        onSelected: root.applySystemFonts(true)
+                    }
+                }
+            }
+            Form.SettingRow {
+                visible: root.systemStatus !== ""
+                label: "Fontconfig"
+                sublabel: root.systemStatus
+                isLast: true
             }
         }
 

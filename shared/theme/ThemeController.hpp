@@ -27,6 +27,7 @@ class ThemeController final : public QObject {
     Q_PROPERTY(QVariantMap typography READ typography NOTIFY visualThemeChanged)
     Q_PROPERTY(double textScale READ textScale NOTIFY visualThemeChanged)
     Q_PROPERTY(QString typographyError READ typographyError NOTIFY typographyErrorChanged)
+    Q_PROPERTY(QString systemFontConfigStatus READ systemFontConfigStatus NOTIFY systemFontConfigStatusChanged)
     Q_PROPERTY(QVariantMap fontPreferences READ fontPreferences NOTIFY fontPreferencesChanged)
     Q_PROPERTY(QString iconAppearance READ iconAppearance NOTIFY iconAppearanceChanged)
     Q_PROPERTY(QString accentHex READ accentHex NOTIFY accentHexChanged)
@@ -66,6 +67,8 @@ public:
     Q_INVOKABLE void setFontFamilyPreference(const QString &key, const QString &family);
     Q_INVOKABLE void setFontSizePreference(const QString &key, int pixelSize);
     Q_INVOKABLE void resetFontPreferences();
+    QString systemFontConfigStatus() const { return m_systemFontConfigStatus; }
+    Q_INVOKABLE bool applySystemFontConfig(bool restore = false);
     Q_INVOKABLE QUrl themedNavigationIcon(const QString &key) const;
     void setIconTheme(const QString &value);
     QString iconAppearance() const;
@@ -93,6 +96,7 @@ signals:
     void visualThemeChanged();
     void fontPreferencesChanged();
     void typographyErrorChanged();
+    void systemFontConfigStatusChanged();
     void themeComponentsRevisionChanged();
     void iconAppearanceChanged();
     void accentHexChanged();
@@ -136,6 +140,7 @@ private:
     QVariantMap m_fontPreferences;
     QVariantMap m_legacyFontPreferences;
     QString m_typographyError;
+    QString m_systemFontConfigStatus;
     QByteArray m_componentFingerprint;
     QString m_iconAppearance = QStringLiteral("default");
     QString m_accentHex = QStringLiteral("#0a84ff");

@@ -216,3 +216,13 @@ remain separate services; no thumbnail generator is linked into Core.
 Explorer retains its existing preview upgrade/cover logic and uses the common
 file-icon renderer underneath it. Existing Orbit C++ names and both provider
 URLs remain compatibility adapters, with no duplicate resolution code.
+
+### Exact file-icon physical extent
+
+File-icon targets round `logical extent × DPR` upward, matching Qt Quick's
+requested source size. Asset selection still uses logical size and DPR, while
+the selected asset is rasterized directly at the physical extent. This avoids
+a second QIcon DPR conversion (91 logical pixels at 1.75× now fills 160 physical
+pixels rather than returning 159). Small raster assets retain QIcon's existing
+no-upscale behavior; SVGs can fill the full requested canvas. Rendered cache
+keys and the 8 MiB budget remain unchanged.

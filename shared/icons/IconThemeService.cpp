@@ -14,6 +14,7 @@
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTimer>
+#include <QtMath>
 #include <QUrl>
 
 #include <algorithm>
@@ -71,8 +72,8 @@ QString fileNameForMimeLookup(const QString &path)
 QSize boundedPixelSize(const QSize &logicalSize, qreal devicePixelRatio)
 {
     const qreal dpr = std::clamp(devicePixelRatio, 0.5, 4.0);
-    const int width = std::clamp(qRound(std::max(1, logicalSize.width()) * dpr), 1, kMaxIconSize * 4);
-    const int height = std::clamp(qRound(std::max(1, logicalSize.height()) * dpr), 1, kMaxIconSize * 4);
+    const int width = std::clamp(qCeil(std::max(1, logicalSize.width()) * dpr), 1, kMaxIconSize * 4);
+    const int height = std::clamp(qCeil(std::max(1, logicalSize.height()) * dpr), 1, kMaxIconSize * 4);
     return {width, height};
 }
 
@@ -314,9 +315,11 @@ QImage IconThemeService::renderIcon(
         boundedDpr);
     bool renderedThemeIcon = false;
     if (!icon.isNull()) {
+        // Selection uses logical size and DPR; rasterization uses the exact
+        // physical target, avoiding a second fractional-DPR rounding by QIcon.
         const QPixmap pixmap = icon.pixmap(
-            logicalRenderSize,
-            boundedDpr,
+            pixelSize,
+            1.0,
             QIcon::Normal,
             QIcon::Off);
         if (!pixmap.isNull()) {

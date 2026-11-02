@@ -50,8 +50,9 @@ local through the Release preset. No live desktop process was restarted. The
 running shell still maps the older deleted executable and must be reopened to
 load compiled changes.
 
-Review was inline under the user's no-subagent rule. Graph generation remains
-2026-10-16T19:37:04Z; checked changed paths/scopes and used current source for
-stale, missing and partial coverage. Reviewed surface whitelist/validation,
+Review was inline under the user's no-subagent rule. Initial graph generation was 2026-10-16T19:37:04Z; the final coverage check
+reported a refreshed generation 2026-11-01T23:48:41Z with some changed metadata
+and partial Qt macro coverage. Checked changed paths/scopes and exact partial
+ranges against current source rather than relying on graph completeness. Reviewed surface whitelist/validation,
 legacy API compatibility, user priority, icon/Mono separation, QML scope routing,
 font/rendering consistency and menu/preview/tooltip geometry.

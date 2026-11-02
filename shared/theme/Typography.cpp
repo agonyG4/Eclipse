@@ -190,10 +190,13 @@ QVariantMap resolve(const QVariantMap &theme, const QVariantMap &preferences,
 {
     auto result = resolveBase(theme, preferences, proportional, monospace);
     auto themeSurfaces = theme.value("typographySurfaces").toMap();
-    // Spotlight's field is a large regular search line, not an emphasized title.
+    // Spotlight's field is a large regular search line, not an emphasized title;
+    // result names step down to Title 3 so they balance the field and app icons.
     auto spotlight = themeSurfaces.value("spotlight").toMap();
     if (!spotlight.contains("title"))
         spotlight.insert("title", QVariantMap{{"pixelSize", 22}, {"weight", int(QFont::Normal)}});
+    if (!spotlight.contains("body"))
+        spotlight.insert("body", QVariantMap{{"pixelSize", 15}});
     themeSurfaces.insert("spotlight", spotlight);
     const auto surfaces = validatedSurfaces(themeSurfaces);
     QVariantMap resolved;

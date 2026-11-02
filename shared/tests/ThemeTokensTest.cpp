@@ -65,6 +65,7 @@ private slots:
     void semanticTypographyResolvesInheritanceAndScale();
     void themeSurfaceTypographyResolvesBeforeUserPreferences();
     void semanticQmlTextPropagates();
+    void lineHeightDefaultsInheritOneAndPreserveOverrides();
     void typographyDoesNotRecreateThemedComponents();
     void typographyMigratesLegacyAndPreservesExtensions();
     void semanticRolesHonorLegacyThemeSizes();
@@ -253,6 +254,48 @@ void ThemeTokensTest::typographyMigratesLegacyAndPreservesExtensions()
     QCOMPARE(object.value("preferences").toObject().value("plugin").toInt(), 42);
     QCOMPARE(object.value("preferences").toObject().value("roles").toObject()
         .value("body").toObject(), QJsonObject({{"plugin",true}}));
+}
+
+void ThemeTokensTest::lineHeightDefaultsInheritOneAndPreserveOverrides()
+{
+    QTemporaryDir dir;
+    const QString id = "line-height-defaults";
+    QVERIFY(writeJson(dir.filePath("navigation-icons.json"), {{"visual_theme",id}}));
+    QVERIFY(writeJson(packageManifestPath(id), packageManifest(id, {{"typography",QJsonObject{
+        {"surfaces",QJsonObject{
+            {"topbar",QJsonObject{{"label",QJsonObject{{"weight",450}}}}},
+            {"spotlight",QJsonObject{{"title",QJsonObject{{"lineHeight",1.5}}}}}}}}}})));
+    ThemeController controller(dir.filePath("theme.json"));
+    const auto scoped=[&](const QString &surface,const QString &role) {
+        return controller.styleTokens().value("typographySurfaces").toMap()
+            .value(surface).toMap().value(role).toMap().value("lineHeight").toDouble();
+    };
+    for (const QString &role : {"display","title","body","label","caption","mono"}) {
+        QCOMPARE(controller.typography().value(role).toMap().value("lineHeight").toDouble(),1.0);
+        QCOMPARE(scoped("topbar",role),1.0);
+    }
+    QCOMPARE(scoped("spotlight","title"),1.5);
+    controller.setTypographyPreference("body","lineHeight",1.6);
+    controller.setTextScale(2.0);
+    QCOMPARE(controller.typography().value("body").toMap().value("lineHeight").toDouble(),1.6);
+    QCOMPARE(scoped("topbar","body"),1.6);
+    QCOMPARE(scoped("spotlight","title"),1.5);
+    controller.resetFontPreferences();
+    QCOMPARE(scoped("topbar","body"),1.0);
+    QCOMPARE(scoped("spotlight","title"),1.5);
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(ASTREA_QML_IMPORT_PATH));
+    QQmlComponent component(&engine);
+    component.setData("import QtQuick\nimport Astrea.Shared\nTypography { state: null }",QUrl());
+    QVERIFY2(component.isReady(),qPrintable(component.errorString()));
+    std::unique_ptr<QObject> fallback(component.create());
+    QVERIFY2(fallback,qPrintable(component.errorString()));
+    for (const QString &role : {"display","title","body","label","caption","mono"}) {
+        QVariant value;
+        QVERIFY(QMetaObject::invokeMethod(fallback.get(),"role",Q_RETURN_ARG(QVariant,value),Q_ARG(QVariant,role)));
+        QCOMPARE(value.toMap().value("lineHeight").toDouble(),1.0);
+    }
 }
 
 void ThemeTokensTest::semanticQmlTextPropagates()

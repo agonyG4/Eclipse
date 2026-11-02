@@ -214,12 +214,12 @@ matcher (Fontconfig on Linux) handles unavailable families and glyph fallback.
 
 | Role | Default size | Default Qt weight | Line height |
 | --- | ---: | ---: | ---: |
-| display | 24 px | 600 | 1.2× |
-| title | 18 px | 500 | 1.2× |
-| body | 14 px | 400 | 1.4× |
-| label | 13 px | 500 | 1.2× |
-| caption | 11 px | 400 | 1.2× |
-| mono | 13 px | 400 | 1.2× |
+| display | 24 px | 600 | 1× |
+| title | 18 px | 500 | 1× |
+| body | 14 px | 400 | 1× |
+| label | 13 px | 500 | 1× |
+| caption | 11 px | 400 | 1× |
+| mono | 13 px | 400 | 1× |
 
 A theme may set primary/mono families and override individual roles:
 
@@ -230,8 +230,8 @@ A theme may set primary/mono families and override individual roles:
       "fontFamily": "Inter",
       "monoFontFamily": "JetBrains Mono",
       "roles": {
-        "title": { "pixelSize": 18, "weight": 500, "letterSpacing": -0.2, "lineHeight": 1.2 },
-        "body": { "pixelSize": 14, "weight": 400, "lineHeight": 1.4 }
+        "title": { "pixelSize": 18, "weight": 500, "letterSpacing": -0.2, "lineHeight": 1 },
+        "body": { "pixelSize": 14, "weight": 400, "lineHeight": 1 }
       }
     }
   }
@@ -312,7 +312,7 @@ roles and the same field validation as global typography:
       "fontFamily": "SF Pro",
       "monoFontFamily": "SF Mono",
       "roles": {
-        "body": { "pixelSize": 14, "weight": 400, "lineHeight": 1.4 },
+        "body": { "pixelSize": 14, "weight": 400, "lineHeight": 1 },
         "label": { "pixelSize": 13, "weight": 500 }
       },
       "surfaces": {
@@ -321,8 +321,8 @@ roles and the same field validation as global typography:
           "label": { "pixelSize": 13, "weight": 500, "letterSpacing": 0.25 }
         },
         "spotlight": {
-          "title": { "pixelSize": 22, "weight": 400, "letterSpacing": -0.125, "lineHeight": 1.2 },
-          "body": { "pixelSize": 14, "weight": 400, "lineHeight": 1.4 }
+          "title": { "pixelSize": 22, "weight": 400, "letterSpacing": -0.125, "lineHeight": 1 },
+          "body": { "pixelSize": 14, "weight": 400, "lineHeight": 1 }
         },
         "dock": { "label": { "pixelSize": 13, "weight": 500 } },
         "menu": { "label": { "pixelSize": 13, "weight": 500 } }

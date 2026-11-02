@@ -145,7 +145,7 @@ static QVariantMap resolveBase(const QVariantMap &theme, const QVariantMap &rawP
         QVariantMap role{{"family", family}, {"pixelSize", qMax(1,qRound(size * scale))},
             {"weight", custom.value("weight", themed.value("weight", weights[i]))},
             {"letterSpacing", custom.value("letterSpacing", themed.value("letterSpacing", 0.0))},
-            {"lineHeight", custom.value("lineHeight", themed.value("lineHeight", i == 2 ? 1.4 : 1.2))}};
+            {"lineHeight", custom.value("lineHeight", themed.value("lineHeight", 1.0))}};
         roles.insert(name, role);
     }
     const QMap<QString, QStringList> aliases{

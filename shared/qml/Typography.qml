@@ -23,7 +23,7 @@ QtObject {
         return { family: family,
             pixelSize: Math.round((sizes[name] || 14) * textScale),
             weight: name === "display" ? Font.DemiBold : (name === "title" || name === "label") ? Font.Medium : Font.Normal,
-            letterSpacing: 0, lineHeight: name === "body" ? 1.4 : 1.2 }
+            letterSpacing: 0, lineHeight: 1 }
     }
 
     function font(name, familyOverride) {

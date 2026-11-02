@@ -350,3 +350,11 @@ lineHeight and `typography.font("title")` for a QFont including family, size,
 weight, tracking, kerning and hinting. An optional second argument to `font()`
 preserves an existing explicit component-family override. Text components use
 `Text.NativeRendering` (or `TextInput.NativeRendering`) for consistent rendering.
+
+
+Settings sidebar navigation uses the Label role for all font properties, in both
+selected and unselected states. Body controls paragraph/body text; changing its
+family or size does not resize navigation labels. Semantic fonts clear inherited
+platform style names such as Regular before resolving numeric weights, so the
+chosen weight selects the corresponding installed face rather than retaining a
+fixed platform face. Settings applies the same policy to its application font.

@@ -4,6 +4,7 @@
 #include "icons/AstreaIconProvider.hpp"
 
 #include <QGuiApplication>
+#include <QFontInfo>
 #include <QImage>
 #include <QColor>
 #include <QFile>
@@ -754,6 +755,11 @@ void SettingsQmlSmokeTest::loadsCustomizationHubOffscreen()
 
 void SettingsQmlSmokeTest::typographyControlsPersistAndPreviewScale()
 {
+    const QFont previousFont=qGuiApp->font();
+    const auto restoreFont=qScopeGuard([previousFont] { qGuiApp->setFont(previousFont); });
+    QFont pinnedFont=previousFont;
+    pinnedFont.setStyleName(QStringLiteral("Regular"));
+    qGuiApp->setFont(pinnedFont);
     QTemporaryDir dir;
     ThemeController theme(dir.filePath("theme.json"));
     SettingsTranslationController translation;
@@ -785,6 +791,24 @@ void SettingsQmlSmokeTest::typographyControlsPersistAndPreviewScale()
     QVERIFY(bodySize);
     QVERIFY(QMetaObject::invokeMethod(bodySize, "selected", Q_ARG(int, 6))); // 14 px at base scale
     QCOMPARE(theme.fontPreferences().value("roles").toMap().value("body").toMap().value("pixelSize").toInt(), 14);
+    auto *bodyWeight = findVisualItem(root, "typographyRole-body-weight");
+    auto *bodyPreview = findVisualItem(root, "typographyPreviewBody");
+    QVERIFY(bodyWeight && bodyPreview);
+    QVERIFY(QMetaObject::invokeMethod(bodyWeight, "selected", Q_ARG(int, 9))); // Black (900)
+    QCOMPARE(theme.fontPreferences().value("roles").toMap().value("body").toMap().value("weight").toInt(),900);
+    QTRY_COMPARE(int(bodyPreview->property("font").value<QFont>().weight()),900);
+    const QFont renderedFont=bodyPreview->property("font").value<QFont>();
+    QFont weightMatched(renderedFont.family());
+    weightMatched.setStyleName(QString());
+    weightMatched.setPixelSize(renderedFont.pixelSize());
+    weightMatched.setWeight(QFont::Black);
+    QCOMPARE(QFontInfo(renderedFont).styleName(),QFontInfo(weightMatched).styleName());
+    QVERIFY(QMetaObject::invokeMethod(bodyWeight, "selected", Q_ARG(int, 6))); // Semibold (600)
+    QTRY_COMPARE(int(bodyPreview->property("font").value<QFont>().weight()),600);
+    weightMatched.setWeight(QFont::DemiBold);
+    QTRY_COMPARE(QFontInfo(bodyPreview->property("font").value<QFont>()).styleName(),
+                 QFontInfo(weightMatched).styleName());
+
     auto *reset = findVisualItem(root, "typographyReset");
     QVERIFY(reset);
     QVERIFY(QMetaObject::invokeMethod(reset, "selected", Q_ARG(int, 0)));

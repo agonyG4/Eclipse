@@ -28,7 +28,7 @@ QtObject {
 
     function font(name, familyOverride) {
         const style = role(name)
-        return Qt.font({ family: familyOverride || style.family, pixelSize: style.pixelSize,
+        return Qt.font({ family: familyOverride || style.family, styleName: "", pixelSize: style.pixelSize,
             weight: style.weight, letterSpacing: style.letterSpacing,
             hintingPreference: Font.PreferVerticalHinting, kerning: true })
     }

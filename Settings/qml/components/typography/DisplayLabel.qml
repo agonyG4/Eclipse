@@ -7,6 +7,7 @@ Label {
 
     property string typographyRole: "display"
     readonly property var typographyStyle: Components.Theme.typography.role(typographyRole)
+    font.styleName: ""
     font.pixelSize: typographyStyle.pixelSize
     font.weight: typographyStyle.weight
     font.letterSpacing: typographyStyle.letterSpacing

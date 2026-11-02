@@ -2,6 +2,8 @@
 #include "theme/ThemeController.hpp"
 
 #include <memory>
+#include <QFontInfo>
+#include <QScopeGuard>
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
 #include <QQmlContext>
@@ -16,6 +18,7 @@ class SettingsComponentSmokeTest final : public QObject {
 
 private slots:
     void loadsRepresentativeRegisteredComponents();
+    void navigationTypographyUsesOnlyLabelRole();
     void pressTintDarkensInstantlyAndFadesOnRelease();
     void sliderThumbPressAtMinimumDoesNotJump();
     void sliderThumbPressAtMaximumDoesNotJump();
@@ -166,6 +169,45 @@ Item {
 };
 
 } // namespace
+
+void SettingsComponentSmokeTest::navigationTypographyUsesOnlyLabelRole()
+{
+    const QFont previousFont=qGuiApp->font();
+    const auto restoreFont=qScopeGuard([previousFont] { qGuiApp->setFont(previousFont); });
+    QFont pinnedFont=previousFont;
+    pinnedFont.setStyleName(QStringLiteral("Regular"));
+    qGuiApp->setFont(pinnedFont);
+    QTemporaryDir directory;
+    ThemeController theme(directory.filePath("theme.json"));
+    SettingsTranslationController translation;
+    QQmlEngine engine;
+    engine.rootContext()->setContextProperty("ThemeController",&theme);
+    engine.rootContext()->setContextProperty("I18n",&translation);
+    QQmlComponent component(&engine);
+    component.setData("import QtQuick\nimport Astrea.Settings 1.0 as Settings\n"
+        "Settings.NavItem { width: 240; label: 'Navigation'; selected: false }",QUrl());
+    QVERIFY2(component.isReady(),qPrintable(component.errorString()));
+    std::unique_ptr<QObject> nav(component.create());
+    QVERIFY2(nav,qPrintable(component.errorString()));
+    auto *label=nav->findChild<QObject *>("navigationLabel");
+    QVERIFY(label);
+    theme.setTypographyPreference("label","pixelSize",13);
+    theme.setTypographyPreference("label","weight",500);
+    theme.setTypographyPreference("body","pixelSize",24);
+    theme.setTypographyPreference("body","weight",900);
+    QTRY_COMPARE(label->property("font").value<QFont>().pixelSize(),13);
+    QTRY_COMPARE(int(label->property("font").value<QFont>().weight()),500);
+    theme.setTypographyPreference("label","pixelSize",17);
+    theme.setTypographyPreference("label","weight",600);
+    QTRY_COMPARE(label->property("font").value<QFont>().pixelSize(),17);
+    QTRY_COMPARE(int(label->property("font").value<QFont>().weight()),600);
+    theme.setTypographyPreference("title","weight",200);
+    nav->setProperty("selected",true);
+    QTRY_COMPARE(int(label->property("font").value<QFont>().weight()),600);
+    QFont expected=label->property("font").value<QFont>();
+    expected.setStyleName(QString());
+    QCOMPARE(QFontInfo(label->property("font").value<QFont>()).styleName(),QFontInfo(expected).styleName());
+}
 
 void SettingsComponentSmokeTest::loadsRepresentativeRegisteredComponents()
 {

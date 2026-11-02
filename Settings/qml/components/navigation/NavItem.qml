@@ -108,14 +108,12 @@ Item {
         }
 
         Text {
+            objectName: "navigationLabel"
             text:        root.label
             color:       root.selected ? root.activeForeground : (hma.containsMouse ? root.activeForeground : root.idleForeground)
-            font.family: Components.Theme.typography.role("body").family
-            font.pixelSize: Components.Theme.typography.role("body").pixelSize
-            lineHeight: Components.Theme.typography.role("body").lineHeight
+            font: Components.Theme.typography.font("label")
+            lineHeight: Components.Theme.typography.role("label").lineHeight
             lineHeightMode: Text.ProportionalHeight
-            font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
-            font.weight: root.selected ? Components.Theme.fontWeightDemiBold : Components.Theme.fontWeightMedium
             elide:       Text.ElideRight
             Layout.fillWidth: true
             Behavior on color { ColorAnimation { duration: 150 } }

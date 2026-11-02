@@ -121,6 +121,7 @@ Item {
                     wrapMode: Text.WordWrap
                 }
                 Shared.BodyText {
+                    objectName: "typographyPreviewBody"
                     Layout.fillWidth: true
                     text: I18n.tr("settings.typography.preview_body", "A consistent interface starts with typography.")
                     color: Components.Theme.textPrimary

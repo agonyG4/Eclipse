@@ -1,6 +1,7 @@
 #include "app/SettingsFontPolicy.hpp"
 
 #include <QGuiApplication>
+#include <QScopeGuard>
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QQuickItem>
@@ -19,7 +20,16 @@ private slots:
         const QFont previousFont = app->font();
         const auto previousRenderer = QQuickWindow::textRenderType();
 
+        const auto restore=qScopeGuard([app,previousFont,previousRenderer] {
+            QQuickWindow::setTextRenderType(previousRenderer);
+            app->setFont(previousFont);
+        });
+        QFont pinnedFont=previousFont;
+        pinnedFont.setStyleName(QStringLiteral("Regular"));
+        app->setFont(pinnedFont);
         applySettingsFontPolicy(*app);
+        QVERIFY(app->font().styleName().isEmpty());
+        QCOMPARE(app->font().family(),previousFont.family());
         QCOMPARE(QQuickWindow::textRenderType(), QQuickWindow::NativeTextRendering);
         QCOMPARE(app->font().hintingPreference(), QFont::PreferVerticalHinting);
         QVERIFY(app->font().kerning());
@@ -42,8 +52,6 @@ private slots:
         QCOMPARE(textFont.hintingPreference(), QFont::PreferVerticalHinting);
         QVERIFY(textFont.kerning());
 
-        QQuickWindow::setTextRenderType(previousRenderer);
-        app->setFont(previousFont);
     }
 };
 

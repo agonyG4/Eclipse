@@ -10,6 +10,8 @@
 inline void applySettingsFontPolicy(QGuiApplication &app)
 {
     QFont font = app.font();
+    // Match faces by family/weight rather than a platform-pinned style name.
+    font.setStyleName(QString());
     font.setHintingPreference(QFont::PreferVerticalHinting);
     font.setKerning(true);
     app.setFont(font);

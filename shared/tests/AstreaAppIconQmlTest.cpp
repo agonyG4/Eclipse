@@ -9,6 +9,8 @@
 #include <QQmlEngine>
 #include <QQmlExtensionPlugin>
 #include <QQuickItem>
+#include <QQuickImageProvider>
+#include <QPointer>
 #include <QQuickWindow>
 #include <QScreen>
 #include <QRegularExpression>
@@ -24,6 +26,45 @@
 Q_IMPORT_QML_PLUGIN(Astrea_SharedPlugin)
 
 namespace {
+
+class ControlledIconResponse final : public QQuickImageResponse {
+public:
+    void cancel() override { complete(QColor()); }
+
+    QQuickTextureFactory *textureFactory() const override
+    {
+        return QQuickTextureFactory::textureFactoryForImage(m_image);
+    }
+
+    QString errorString() const override
+    {
+        return m_image.isNull() ? QStringLiteral("Missing test icon") : QString();
+    }
+
+    void complete(const QColor &color)
+    {
+        if (color.isValid()) {
+            m_image = QImage(48, 48, QImage::Format_ARGB32_Premultiplied);
+            m_image.fill(color);
+        }
+        emit finished();
+    }
+
+private:
+    QImage m_image;
+};
+
+class ControlledIconProvider final : public QQuickAsyncImageProvider {
+public:
+    QQuickImageResponse *requestImageResponse(const QString &, const QSize &) override
+    {
+        auto *response = new ControlledIconResponse;
+        responses.append(response);
+        return response;
+    }
+
+    QList<QPointer<ControlledIconResponse>> responses;
+};
 
 bool writeHighFrequencySvg(const QString &path, const bool light = false)
 {
@@ -274,6 +315,8 @@ class AstreaAppIconQmlTest final : public QObject {
     Q_OBJECT
 
 private slots:
+    void retainsIconDuringCacheRefresh_data();
+    void retainsIconDuringCacheRefresh();
     void fileIconPreservesColorAndFallsBackAfterPreviewError();
     void acceptsInlineWindowIconPixels();
     void computesResolutionAwareSourceTarget();
@@ -291,6 +334,74 @@ private slots:
     void presentationPixelsPreserveAlphaContrastAndTint();
     void presentationPixelsPreservePartialAlphaPremultiplication();
 };
+
+void AstreaAppIconQmlTest::retainsIconDuringCacheRefresh_data()
+{
+    QTest::addColumn<int>("radius");
+    QTest::newRow("direct") << 0;
+    QTest::newRow("rounded-dock") << 10;
+}
+
+void AstreaAppIconQmlTest::retainsIconDuringCacheRefresh()
+{
+    QFETCH(int, radius);
+    AstreaIconProvider revisionSource;
+    QQmlEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("AstreaIconProvider"), &revisionSource);
+    auto *provider = new ControlledIconProvider;
+    engine.addImageProvider(QStringLiteral("astrea-icon"), provider);
+    QQmlComponent component(&engine,
+                            QUrl::fromLocalFile(QStringLiteral(ASTREA_SHARED_ICON_QML)));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    std::unique_ptr<QQuickItem> icon(qobject_cast<QQuickItem *>(component.create()));
+    QVERIFY(icon);
+    icon->setSize(QSizeF(48, 48));
+    icon->setProperty("iconRadius", radius);
+    icon->setProperty("retainWhileLoading", true);
+    icon->setProperty("maxRetries", 0);
+    icon->setProperty("iconName", QStringLiteral("refresh-test-%1").arg(radius));
+    QObject *fallback = findObjectByName(icon.get(), QStringLiteral("fallbackSurface"));
+    QVERIFY(fallback);
+    QTRY_COMPARE(provider->responses.size(), 1);
+    QVERIFY(fallback->property("visible").toBool());
+    provider->responses.at(0)->complete(QColor("#d63449"));
+    QTRY_VERIFY(icon->property("ready").toBool());
+
+    QQuickWindow window;
+    window.resize(48, 48);
+    window.setColor(Qt::transparent);
+    icon->setParentItem(window.contentItem());
+    window.show();
+    auto frame = captureFrame(window, icon.get());
+    QVERIFY(!frame.image.isNull());
+    QCOMPARE(frame.image.pixelColor(frame.image.width() / 2, frame.image.height() / 2),
+             QColor("#d63449"));
+
+    revisionSource.clearCache();
+    QTRY_COMPARE(provider->responses.size(), 2);
+    QCOMPARE(icon->property("status").toInt(), 2); // Image.Loading
+    QVERIFY2(!fallback->property("visible").toBool(),
+             "A cache refresh must keep the previous icon instead of flashing the fallback");
+    frame = captureFrame(window, icon.get());
+    QCOMPARE(frame.image.pixelColor(frame.image.width() / 2, frame.image.height() / 2),
+             QColor("#d63449"));
+
+    provider->responses.at(1)->complete(QColor("#25b579"));
+    QTRY_VERIFY(icon->property("ready").toBool());
+    frame = captureFrame(window, icon.get());
+    QCOMPARE(frame.image.pixelColor(frame.image.width() / 2, frame.image.height() / 2),
+             QColor("#25b579"));
+
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(".*Missing test icon.*"));
+    revisionSource.clearCache();
+    QTRY_COMPARE(provider->responses.size(), 3);
+    provider->responses.at(2)->complete(QColor());
+    QTRY_COMPARE(icon->property("status").toInt(), 3); // Image.Error
+    QVERIFY(fallback->property("visible").toBool());
+    icon->setProperty("iconName", QString());
+    QTRY_COMPARE(icon->property("status").toInt(), 0); // Image.Null
+    QVERIFY(fallback->property("visible").toBool());
+}
 
 static std::unique_ptr<QQuickItem> createIcon(QQmlEngine &engine)
 {

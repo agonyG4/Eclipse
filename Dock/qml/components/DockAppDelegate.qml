@@ -142,6 +142,7 @@ Item {
         iconPath: root.iconPath
         iconUrl: root.iconUrl
         appName: root.displayName
+        retainWhileLoading: true
         maximumPresentationScale: Math.max(1, DockController.magnificationScale)
         iconRadius: 10
         fallbackRadius: 10

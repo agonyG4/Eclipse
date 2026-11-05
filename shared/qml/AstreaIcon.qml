@@ -28,6 +28,12 @@ Item {
     property color tintColorOverride: "#0a84ff"
     property bool hasTintColorOverride: false
     property bool ready: iconImage.status === Image.Ready
+    // Image retains its texture during a reload, but its status is Loading.
+    // Keep both the direct image and the rounded shader visible in that state.
+    property bool hasLoadedImage: false
+    readonly property bool hasDisplayableImage: iconImage.status === Image.Ready
+        || (root.retainWhileLoading && root.hasLoadedImage
+            && iconImage.status === Image.Loading)
     // In-memory sources (window captures) can load synchronously so a source
     // change swaps in place instead of passing through an empty frame.
     property bool asynchronous: true
@@ -139,10 +145,14 @@ Item {
         // Keep this Image as the shader's direct texture source. It is hidden
         // only while the shader owns the draw, so rounded mode cannot render
         // the source twice.
-        visible: root.imageVisible && status === Image.Ready && root.iconRadius <= 0
+        visible: root.imageVisible && root.hasDisplayableImage && root.iconRadius <= 0
             && root.effectiveAppearance === "default"
 
         onStatusChanged: {
+            if (status === Image.Ready)
+                root.hasLoadedImage = true
+            else if (status !== Image.Loading || !root.retainWhileLoading)
+                root.hasLoadedImage = false
             if (status === Image.Error && root.retryCount < root.maxRetries)
                 root.retry()
         }
@@ -152,7 +162,7 @@ Item {
         id: roundedEffectLoader
         objectName: "roundedIconEffectLoader"
         anchors.fill: iconImage
-        active: root.imageVisible && iconImage.status === Image.Ready
+        active: root.imageVisible && root.hasDisplayableImage
             && (root.iconRadius > 0 || root.effectiveAppearance !== "default")
         sourceComponent: ShaderEffect {
             objectName: "roundedIconEffect"
@@ -178,7 +188,7 @@ Item {
         color: root.fallbackColor
         border.color: root.fallbackBorderColor
         border.width: root.fallbackBorderWidth
-        visible: root.imageVisible && iconImage.status !== Image.Ready && root.showFallbackText
+        visible: root.imageVisible && !root.hasDisplayableImage && root.showFallbackText
 
         Text {
             anchors.centerIn: parent

@@ -1,7 +1,9 @@
 function(astrea_configure_layer_shell)
     set(ASTREA_LAYER_SHELL_QT_ACTIVATE_ON_SHOW_MIN_VERSION "6.4.90")
+    set(ASTREA_LAYER_SHELL_QT_SET_SCREEN_MIN_VERSION "6.6.0")
     if(NOT ASTREA_ENABLE_LAYER_SHELL)
         set(ASTREA_LAYER_SHELL_HAS_ACTIVATE_ON_SHOW OFF PARENT_SCOPE)
+        set(ASTREA_LAYER_SHELL_HAS_SET_SCREEN OFF PARENT_SCOPE)
         message(STATUS
             "Eclipse Layer Shell: disabled explicitly; this mode is for non-production/test builds")
         return()
@@ -48,5 +50,13 @@ function(astrea_configure_layer_shell)
         message(STATUS
             "Eclipse Layer Shell: setActivateOnShow() API unavailable in LayerShellQt "
             "${LayerShellQt_VERSION}; using controller-owned focus")
+    endif()
+
+    # Window::setScreen pins the layer surface's output independently of
+    # QWindow::screen(), which Qt rewrites from wl_surface.enter.
+    if(LayerShellQt_VERSION VERSION_GREATER_EQUAL ASTREA_LAYER_SHELL_QT_SET_SCREEN_MIN_VERSION)
+        set(ASTREA_LAYER_SHELL_HAS_SET_SCREEN ON PARENT_SCOPE)
+    else()
+        set(ASTREA_LAYER_SHELL_HAS_SET_SCREEN OFF PARENT_SCOPE)
     endif()
 endfunction()

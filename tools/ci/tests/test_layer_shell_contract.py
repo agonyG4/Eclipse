@@ -167,7 +167,13 @@ class LayerShellContractTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("window->setScreen(config.screen)", helper)
-        self.assertNotIn("layerWindow->setScreen", helper)
+        # Window::setScreen is newer than the 6.4.5 minimum, so it must stay
+        # behind its capability macro.
+        gate = "#if defined(ASTREA_LAYER_SHELL_HAS_SET_SCREEN) && ASTREA_LAYER_SHELL_HAS_SET_SCREEN"
+        self.assertIn(gate, helper)
+        gated = helper.split(gate, 1)[1].split("#endif", 1)[0]
+        self.assertIn("layerWindow->setScreen(config.screen)", gated)
+        self.assertEqual(helper.count("layerWindow->setScreen"), 1)
         self.assertIn("ASTREA_LAYER_SHELL_HAS_ACTIVATE_ON_SHOW", helper)
         self.assertIn("layerWindow->setActivateOnShow(false)", helper)
 

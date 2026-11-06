@@ -299,6 +299,13 @@ if(ASTREA_ENABLE_LAYER_SHELL)
         PkgConfig::ASTREA_WAYLAND_CLIENT
     )
     target_compile_definitions(astrea-shared-layer-shell PUBLIC ASTREA_HAVE_LAYER_SHELL_QT=1)
+    if(ASTREA_LAYER_SHELL_HAS_SET_SCREEN)
+        target_compile_definitions(astrea-shared-layer-shell PUBLIC
+            ASTREA_LAYER_SHELL_HAS_SET_SCREEN=1)
+    else()
+        target_compile_definitions(astrea-shared-layer-shell PUBLIC
+            ASTREA_LAYER_SHELL_HAS_SET_SCREEN=0)
+    endif()
     if(ASTREA_LAYER_SHELL_HAS_ACTIVATE_ON_SHOW)
         target_compile_definitions(astrea-shared-layer-shell PUBLIC
             ASTREA_LAYER_SHELL_HAS_ACTIVATE_ON_SHOW=1)
@@ -310,6 +317,8 @@ else()
     target_compile_definitions(astrea-shared-layer-shell PUBLIC ASTREA_HAVE_LAYER_SHELL_QT=0)
     target_compile_definitions(astrea-shared-layer-shell PUBLIC
         ASTREA_LAYER_SHELL_HAS_ACTIVATE_ON_SHOW=0)
+    target_compile_definitions(astrea-shared-layer-shell PUBLIC
+        ASTREA_LAYER_SHELL_HAS_SET_SCREEN=0)
 endif()
 
 astrea_shared_enable_sanitizers(astrea-shared-layer-shell)

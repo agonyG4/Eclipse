@@ -123,8 +123,6 @@ bool AstreaLayerShellHelper::configure(QQuickWindow *window,
     }
 
 #if defined(ASTREA_HAVE_LAYER_SHELL_QT) && ASTREA_HAVE_LAYER_SHELL_QT
-    // LayerShellQt 6.4.5 derives the output from the QWindow when its wrapper
-    // is created; newer Window::setScreen APIs are not part of our minimum.
     if (config.screen)
         window->setScreen(config.screen);
 
@@ -133,6 +131,16 @@ bool AstreaLayerShellHelper::configure(QQuickWindow *window,
         setError(errorOut, QStringLiteral("Failed to create LayerShellQt::Window"));
         return false;
     }
+#if defined(ASTREA_LAYER_SHELL_HAS_SET_SCREEN) && ASTREA_LAYER_SHELL_HAS_SET_SCREEN
+    // Pin the output on the layer window, as plasmashell does. Without it the
+    // output comes from QWindow::screen(), which Qt rewrites whenever the
+    // surface enters another output, so a remap could recreate a per-screen
+    // surface on the wrong output.
+    if (config.screen) {
+        layerWindow->setWantsToBeOnActiveScreen(false);
+        layerWindow->setScreen(config.screen);
+    }
+#endif
 
     LayerShellQt::Window::Anchors anchors;
     if (config.anchorTop) anchors |= LayerShellQt::Window::AnchorTop;

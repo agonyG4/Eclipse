@@ -1,6 +1,23 @@
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_MATERIAL_POSITION: f64 = 0.5;
+/// Typhon's builtin Dual Kawase depth when no override is set.
+pub const DEFAULT_MATERIAL_BLUR_PASSES: u8 = 3;
+pub const MATERIAL_BLUR_PASSES_MIN: u8 = 1;
+pub const MATERIAL_BLUR_PASSES_MAX: u8 = 6;
+
+/// Blur sigma, in pixels, Typhon's builtin material reaches at `blur` with at
+/// most `passes` Kawase levels. Mirrors Typhon's `builtin_material_blur_sigma`:
+/// a log scale from a light two-level blur to the full reach of the depth.
+pub fn material_blur_radius_px(blur: f64, passes: u8) -> f64 {
+    const SIGMA_PER_RADIUS_LEVEL: f64 = 0.71;
+    let max_passes = passes.clamp(MATERIAL_BLUR_PASSES_MIN, MATERIAL_BLUR_PASSES_MAX);
+    let min_passes = max_passes.min(2);
+    let level = |passes: u8| SIGMA_PER_RADIUS_LEVEL * f64::from(1u16 << passes);
+    let lightest = level(min_passes) * 1.5;
+    let heaviest = level(max_passes) * 4.0;
+    lightest * (heaviest / lightest).powf(blur.clamp(0.0, 1.0))
+}
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -36,6 +53,9 @@ impl MaterialConfiguration {
         {
             validate_value(value)?;
         }
+        if let Some(passes) = self.overrides.blur_passes {
+            validate_passes(passes)?;
+        }
         Ok(())
     }
 }
@@ -46,6 +66,8 @@ pub struct MaterialOverrides {
     pub blur: Option<f64>,
     pub saturation: Option<f64>,
     pub noise: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blur_passes: Option<u8>,
 }
 
 impl MaterialOverrides {
@@ -53,10 +75,14 @@ impl MaterialOverrides {
         self.blur = None;
         self.saturation = None;
         self.noise = None;
+        self.blur_passes = None;
     }
 
     pub fn is_empty(&self) -> bool {
-        self.blur.is_none() && self.saturation.is_none() && self.noise.is_none()
+        self.blur.is_none()
+            && self.saturation.is_none()
+            && self.noise.is_none()
+            && self.blur_passes.is_none()
     }
 }
 
@@ -66,6 +92,9 @@ pub struct EffectiveMaterial {
     pub blur: f64,
     pub saturation: f64,
     pub noise: f64,
+    /// Kawase depth; absent from Typhon builds without the passes control.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blur_passes: Option<u8>,
 }
 
 impl Default for EffectiveMaterial {
@@ -74,6 +103,7 @@ impl Default for EffectiveMaterial {
             blur: 0.0,
             saturation: 1.0,
             noise: 0.0,
+            blur_passes: None,
         }
     }
 }
@@ -124,6 +154,9 @@ impl MaterialSnapshot {
             self.effective.noise,
         ] {
             validate_value(value)?;
+        }
+        if let Some(passes) = self.effective.blur_passes {
+            validate_passes(passes)?;
         }
         Ok(())
     }
@@ -211,6 +244,29 @@ impl VisualEffectsState {
         self.configuration.overrides.noise.is_some()
     }
 
+    pub fn blur_passes_overridden(&self) -> bool {
+        self.configuration.overrides.blur_passes.is_some()
+    }
+
+    /// The passes control needs a Typhon that reports its depth and accepts
+    /// blur overrides.
+    pub fn blur_passes_supported(&self) -> bool {
+        self.blur_override_supported()
+            && self
+                .snapshot
+                .as_ref()
+                .is_some_and(|snapshot| snapshot.effective.blur_passes.is_some())
+    }
+
+    /// The depth the UI shows: the pending override, else Typhon's effective depth.
+    pub fn blur_passes(&self) -> u8 {
+        self.configuration
+            .overrides
+            .blur_passes
+            .or(self.effective().blur_passes)
+            .unwrap_or(DEFAULT_MATERIAL_BLUR_PASSES)
+    }
+
     pub fn blur_override_supported(&self) -> bool {
         self.snapshot
             .as_ref()
@@ -247,6 +303,10 @@ impl VisualEffectsState {
         (snapshot.capabilities.blur_override
             || configuration.overrides.blur.is_none()
             || configuration.overrides.blur == snapshot.configuration.overrides.blur)
+            && (snapshot.capabilities.blur_override
+                || configuration.overrides.blur_passes.is_none()
+                || configuration.overrides.blur_passes
+                    == snapshot.configuration.overrides.blur_passes)
             && (snapshot.capabilities.saturation_override
                 || configuration.overrides.saturation.is_none()
                 || configuration.overrides.saturation
@@ -341,6 +401,22 @@ impl VisualEffectsState {
         Ok(())
     }
 
+    pub fn set_blur_passes_override(&mut self, passes: u8) -> Result<(), StateError> {
+        self.ensure_available()?;
+        self.ensure_override_supported(self.blur_passes_supported())?;
+        validate_passes(passes)?;
+        self.configuration.overrides.blur_passes = Some(passes);
+        self.queue_configuration();
+        Ok(())
+    }
+
+    pub fn clear_blur_passes_override(&mut self) -> Result<(), StateError> {
+        self.ensure_available()?;
+        self.configuration.overrides.blur_passes = None;
+        self.queue_configuration();
+        Ok(())
+    }
+
     pub fn set_saturation_override(&mut self, value: f64) -> Result<(), StateError> {
         self.ensure_available()?;
         self.ensure_override_supported(self.saturation_override_supported())?;
@@ -419,6 +495,12 @@ impl VisualEffectsState {
         {
             configuration.overrides.blur = snapshot.configuration.overrides.blur;
         }
+        if !snapshot.capabilities.blur_override
+            && configuration.overrides.blur_passes.is_some()
+            && configuration.overrides.blur_passes != snapshot.configuration.overrides.blur_passes
+        {
+            configuration.overrides.blur_passes = snapshot.configuration.overrides.blur_passes;
+        }
         if !snapshot.capabilities.saturation_override
             && configuration.overrides.saturation.is_some()
             && configuration.overrides.saturation != snapshot.configuration.overrides.saturation
@@ -443,6 +525,14 @@ impl VisualEffectsState {
 
 fn validate_value(value: f64) -> Result<(), StateError> {
     if value.is_finite() && (0.0..=1.0).contains(&value) {
+        Ok(())
+    } else {
+        Err(StateError::InvalidConfiguration)
+    }
+}
+
+fn validate_passes(passes: u8) -> Result<(), StateError> {
+    if (MATERIAL_BLUR_PASSES_MIN..=MATERIAL_BLUR_PASSES_MAX).contains(&passes) {
         Ok(())
     } else {
         Err(StateError::InvalidConfiguration)

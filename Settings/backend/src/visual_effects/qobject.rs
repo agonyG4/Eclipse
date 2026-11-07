@@ -39,6 +39,12 @@ pub mod qobject {
         #[qproperty(bool, saturation_override_supported, cxx_name = "saturationOverrideSupported", READ = saturation_override_supported, NOTIFY = snapshot_changed)]
         #[qproperty(bool, noise_override_supported, cxx_name = "noiseOverrideSupported", READ = noise_override_supported, NOTIFY = snapshot_changed)]
         #[qproperty(bool, blur_overridden, cxx_name = "blurOverridden", READ = blur_overridden, NOTIFY = snapshot_changed)]
+        #[qproperty(i32, blur_passes, cxx_name = "blurPasses", READ = blur_passes, NOTIFY = snapshot_changed)]
+        #[qproperty(i32, default_blur_passes, cxx_name = "defaultBlurPasses", READ = default_blur_passes, NOTIFY = snapshot_changed)]
+        #[qproperty(i32, min_blur_passes, cxx_name = "minBlurPasses", READ = min_blur_passes, NOTIFY = snapshot_changed)]
+        #[qproperty(i32, max_blur_passes, cxx_name = "maxBlurPasses", READ = max_blur_passes, NOTIFY = snapshot_changed)]
+        #[qproperty(bool, blur_passes_supported, cxx_name = "blurPassesSupported", READ = blur_passes_supported, NOTIFY = snapshot_changed)]
+        #[qproperty(bool, blur_passes_overridden, cxx_name = "blurPassesOverridden", READ = blur_passes_overridden, NOTIFY = snapshot_changed)]
         #[qproperty(bool, saturation_overridden, cxx_name = "saturationOverridden", READ = saturation_overridden, NOTIFY = snapshot_changed)]
         #[qproperty(bool, noise_overridden, cxx_name = "noiseOverridden", READ = noise_overridden, NOTIFY = snapshot_changed)]
         #[qproperty(bool, has_overrides, cxx_name = "hasOverrides", READ = has_overrides, NOTIFY = snapshot_changed)]
@@ -90,6 +96,18 @@ pub mod qobject {
         fn blur_overridden(self: &SettingsVisualEffectsController) -> bool;
         #[cxx_name = "saturationOverridden"]
         fn saturation_overridden(self: &SettingsVisualEffectsController) -> bool;
+        #[cxx_name = "blurPasses"]
+        fn blur_passes(self: &SettingsVisualEffectsController) -> i32;
+        #[cxx_name = "defaultBlurPasses"]
+        fn default_blur_passes(self: &SettingsVisualEffectsController) -> i32;
+        #[cxx_name = "minBlurPasses"]
+        fn min_blur_passes(self: &SettingsVisualEffectsController) -> i32;
+        #[cxx_name = "maxBlurPasses"]
+        fn max_blur_passes(self: &SettingsVisualEffectsController) -> i32;
+        #[cxx_name = "blurPassesSupported"]
+        fn blur_passes_supported(self: &SettingsVisualEffectsController) -> bool;
+        #[cxx_name = "blurPassesOverridden"]
+        fn blur_passes_overridden(self: &SettingsVisualEffectsController) -> bool;
         #[cxx_name = "noiseOverridden"]
         fn noise_overridden(self: &SettingsVisualEffectsController) -> bool;
         #[cxx_name = "hasOverrides"]
@@ -155,6 +173,15 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "clearBlurOverride"]
         fn clear_blur_override(self: Pin<&mut SettingsVisualEffectsController>);
+        #[qinvokable]
+        #[cxx_name = "setBlurPassesOverride"]
+        fn set_blur_passes_override(self: Pin<&mut SettingsVisualEffectsController>, passes: i32);
+        #[qinvokable]
+        #[cxx_name = "clearBlurPassesOverride"]
+        fn clear_blur_passes_override(self: Pin<&mut SettingsVisualEffectsController>);
+        #[qinvokable]
+        #[cxx_name = "blurRadiusPx"]
+        fn blur_radius_px(self: &SettingsVisualEffectsController, blur: f64, passes: i32) -> f64;
         #[qinvokable]
         #[cxx_name = "setSaturationOverride"]
         fn set_saturation_override(self: Pin<&mut SettingsVisualEffectsController>, value: f64);
@@ -791,6 +818,35 @@ impl qobject::SettingsVisualEffectsController {
         self.rust().state.saturation_overridden()
     }
 
+    fn blur_passes(&self) -> i32 {
+        i32::from(self.rust().state.blur_passes())
+    }
+
+    fn default_blur_passes(&self) -> i32 {
+        i32::from(super::state::DEFAULT_MATERIAL_BLUR_PASSES)
+    }
+
+    fn min_blur_passes(&self) -> i32 {
+        i32::from(super::state::MATERIAL_BLUR_PASSES_MIN)
+    }
+
+    fn max_blur_passes(&self) -> i32 {
+        i32::from(super::state::MATERIAL_BLUR_PASSES_MAX)
+    }
+
+    fn blur_passes_supported(&self) -> bool {
+        self.rust().state.blur_passes_supported()
+    }
+
+    fn blur_passes_overridden(&self) -> bool {
+        self.rust().state.blur_passes_overridden()
+    }
+
+    fn blur_radius_px(&self, blur: f64, passes: i32) -> f64 {
+        let passes = u8::try_from(passes).unwrap_or(super::state::DEFAULT_MATERIAL_BLUR_PASSES);
+        super::state::material_blur_radius_px(blur, passes)
+    }
+
     fn noise_overridden(&self) -> bool {
         self.rust().state.noise_overridden()
     }
@@ -954,6 +1010,19 @@ impl qobject::SettingsVisualEffectsController {
 
     fn clear_blur_override(mut self: Pin<&mut Self>) {
         self.as_mut().mutate(|state| state.clear_blur_override());
+    }
+
+    fn set_blur_passes_override(mut self: Pin<&mut Self>, passes: i32) {
+        let Ok(passes) = u8::try_from(passes) else {
+            return;
+        };
+        self.as_mut()
+            .mutate(|state| state.set_blur_passes_override(passes));
+    }
+
+    fn clear_blur_passes_override(mut self: Pin<&mut Self>) {
+        self.as_mut()
+            .mutate(|state| state.clear_blur_passes_override());
     }
 
     fn set_saturation_override(mut self: Pin<&mut Self>, value: f64) {

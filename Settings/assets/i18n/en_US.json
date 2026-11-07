@@ -1117,6 +1117,7 @@
     "apps.settings.pages.visual_effects.blur": "Blur Strength",
     "apps.settings.pages.visual_effects.saturation": "Saturation",
     "apps.settings.pages.visual_effects.noise": "Noise",
+    "apps.settings.pages.visual_effects.blur_passes": "Passes",
     "apps.settings.pages.visual_effects.automatic": "Automatic",
     "apps.settings.pages.visual_effects.overridden": "Override",
     "apps.settings.pages.visual_effects.reset": "Reset",

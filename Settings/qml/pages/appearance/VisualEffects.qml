@@ -42,6 +42,13 @@ Item {
     function percentText(value) {
         return Math.round(Number(value) * 100) + "%"
     }
+    // The blur slider spans what the current pass count can reach, so its
+    // label shows the resulting blur size instead of a bare percentage.
+    function blurSizeText(value) {
+        if (!root.controller || !root.controller.blurPassesSupported)
+            return root.percentText(value)
+        return Math.round(root.controller.blurRadiusPx(value, root.controller.blurPasses)) + " px"
+    }
     function programLabel(name) {
         const text = String(name || "")
         const short = text.indexOf("system.") === 0 ? text.slice(7) : text
@@ -51,6 +58,8 @@ Item {
         if (!root.controller || !root.controller.hasOverrides)
             return I18n.tr("apps.settings.pages.visual_effects.fine_tune.automatic", "Automatic — follows the material style")
         const parts = []
+        if (root.controller.blurPassesOverridden)
+            parts.push(I18n.tr("apps.settings.pages.visual_effects.blur_passes", "Passes") + " " + root.controller.blurPasses)
         if (root.controller.blurOverridden)
             parts.push(I18n.tr("apps.settings.pages.visual_effects.blur_short", "Blur") + " " + root.percentText(root.controller.blurValue))
         if (root.controller.saturationOverridden)
@@ -96,6 +105,10 @@ Item {
         property real value: 0
         property bool overridden: false
         property bool controlEnabled: true
+        property real from: 0.0
+        property real to: 1.0
+        property real stepSize: 0.01
+        property string valueText: root.percentText(tuneRow.value)
         signal edited(real value)
         signal reset()
         Layout.fillWidth: true
@@ -115,7 +128,8 @@ Item {
         Controls.Slider {
             objectName: tuneRow.sliderName
             Layout.fillWidth: true
-            from: 0.0; to: 1.0; stepSize: 0.01
+            from: tuneRow.from; to: tuneRow.to; stepSize: tuneRow.stepSize
+            snapMode: QQC2.Slider.SnapAlways
             showEndpointGlyphs: false
             showValueTooltip: false
             enabled: tuneRow.controlEnabled
@@ -127,9 +141,9 @@ Item {
             Keys.onReleased: event => root.flushOnKey(event, () => root.controller.flush())
         }
         Text {
-            Layout.preferredWidth: 44
+            Layout.preferredWidth: 56
             horizontalAlignment: Text.AlignRight
-            text: root.percentText(tuneRow.value)
+            text: tuneRow.valueText
             color: tuneRow.overridden ? Components.Theme.textPrimary : Components.Theme.textTertiary
             font.family: Components.Theme.typography.role("body").family
             font.pixelSize: Components.Theme.typography.role("body").pixelSize
@@ -297,11 +311,31 @@ Item {
                     spacing: Components.Theme.spacingMedium
 
                     TuneRow {
+                        objectName: "materialBlurPassesRow"
+                        visible: !!root.controller && root.controller.blurPassesSupported
+                        title: I18n.tr("apps.settings.pages.visual_effects.blur_passes", "Passes")
+                        sliderName: "materialBlurPassesSlider"
+                        from: root.controller ? root.controller.minBlurPasses : 1
+                        to: root.controller ? root.controller.maxBlurPasses : 6
+                        stepSize: 1
+                        value: root.controller ? root.controller.blurPasses : 3
+                        valueText: String(Math.round(value))
+                        overridden: !!root.controller && root.controller.blurPassesOverridden
+                        controlEnabled: root.available
+                        onEdited: value => {
+                            const passes = Math.round(value)
+                            if (passes !== root.controller.blurPasses)
+                                root.controller.setBlurPassesOverride(passes)
+                        }
+                        onReset: root.controller.clearBlurPassesOverride()
+                    }
+                    TuneRow {
                         objectName: "materialBlurRow"
                         visible: !!root.controller && root.controller.blurOverrideSupported
                         title: I18n.tr("apps.settings.pages.visual_effects.blur_short", "Blur")
                         sliderName: "materialBlurSlider"
                         value: root.controller ? root.controller.blurValue : 0.0
+                        valueText: root.blurSizeText(value)
                         overridden: !!root.controller && root.controller.blurOverridden
                         controlEnabled: root.available
                         onEdited: value => root.controller.setBlurOverride(value)

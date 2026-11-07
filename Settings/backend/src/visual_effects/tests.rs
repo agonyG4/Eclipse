@@ -27,6 +27,7 @@ fn snapshot_with_capabilities(
             blur: configuration.position,
             saturation: 0.8,
             noise: 0.2,
+            blur_passes: None,
         },
         configuration,
         capabilities,
@@ -59,6 +60,7 @@ fn authoritative_snapshot_replaces_configuration_and_effective_projection() {
             blur: Some(0.9),
             saturation: None,
             noise: None,
+            blur_passes: None,
         },
         ..MaterialConfiguration::default()
     };
@@ -140,6 +142,7 @@ fn assert_unsupported_override_preserves_state(
             blur: Some(0.17),
             saturation: Some(0.83),
             noise: Some(0.08),
+            blur_passes: None,
         },
         ..MaterialConfiguration::default()
     };
@@ -192,6 +195,7 @@ fn clearing_and_resetting_existing_overrides_is_safe_when_unsupported() {
                     blur: Some(0.21),
                     saturation: Some(0.67),
                     noise: Some(0.12),
+                    blur_passes: None,
                 },
                 ..MaterialConfiguration::default()
             },
@@ -223,6 +227,7 @@ fn clearing_one_override_and_resetting_overrides_preserve_material_position() {
                     blur: Some(0.2),
                     saturation: Some(0.3),
                     noise: Some(0.4),
+                    blur_passes: None,
                 },
                 ..MaterialConfiguration::default()
             },
@@ -366,6 +371,7 @@ fn capability_downgrade_rebases_only_unsupported_pending_fields() {
                     blur: Some(0.25),
                     saturation: None,
                     noise: None,
+                    blur_passes: None,
                 },
                 ..MaterialConfiguration::default()
             },
@@ -383,6 +389,7 @@ fn capability_downgrade_rebases_only_unsupported_pending_fields() {
             blur: Some(0.25),
             saturation: None,
             noise: Some(0.1),
+            blur_passes: None,
         },
         ..MaterialConfiguration::default()
     };
@@ -410,6 +417,7 @@ fn multiple_capability_downgrades_reconcile_each_override_independently() {
                     blur: Some(0.25),
                     saturation: Some(0.4),
                     noise: None,
+                    blur_passes: None,
                 },
                 ..MaterialConfiguration::default()
             },
@@ -423,6 +431,7 @@ fn multiple_capability_downgrades_reconcile_each_override_independently() {
             blur: Some(0.25),
             saturation: Some(0.4),
             noise: None,
+            blur_passes: None,
         },
         ..MaterialConfiguration::default()
     };
@@ -465,6 +474,7 @@ fn compatibility_allows_clears_and_authoritative_unsupported_values_only() {
             blur: Some(0.25),
             saturation: Some(0.4),
             noise: Some(0.1),
+            blur_passes: None,
         },
         ..MaterialConfiguration::default()
     };
@@ -514,6 +524,7 @@ fn compatibility_allows_any_valid_override_for_supported_capabilities() {
             blur: Some(0.7),
             saturation: Some(0.6),
             noise: Some(0.8),
+            blur_passes: None,
         },
         ..MaterialConfiguration::default()
     };
@@ -533,6 +544,7 @@ fn clear_reset_and_restore_defaults_remain_valid_when_capabilities_are_unsupport
                     blur: Some(0.25),
                     saturation: Some(0.4),
                     noise: Some(0.1),
+                    blur_passes: None,
                 },
                 ..MaterialConfiguration::default()
             },
@@ -583,6 +595,7 @@ fn clearing_each_override_keeps_the_other_dimensions_and_position() {
                     blur: Some(0.2),
                     saturation: Some(0.3),
                     noise: Some(0.4),
+                    blur_passes: None,
                 },
                 ..MaterialConfiguration::default()
             },
@@ -601,4 +614,58 @@ fn clearing_each_override_keeps_the_other_dimensions_and_position() {
     assert_eq!(after_noise.overrides.blur, Some(0.2));
     assert_eq!(after_noise.overrides.saturation, None);
     assert_eq!(after_noise.overrides.noise, None);
+}
+
+#[test]
+fn blur_passes_round_trip_typhon_snapshots_and_queue_an_override() {
+    let mut state = VisualEffectsState::default();
+    let json = r#"{"generation":4,"source":"persisted",
+        "configuration":{"version":1,"position":0.5,"overrides":{"blur":1.0,"saturation":null,"noise":null}},
+        "effective":{"blur":1.0,"saturation":0.86,"noise":0.08,"blurPasses":3},
+        "capabilities":{"blurOverride":true,"saturationOverride":true,"noiseOverride":true}}"#;
+    let parsed: MaterialSnapshot = serde_json::from_str(json).unwrap();
+    state.apply_snapshot(parsed).unwrap();
+    assert!(state.blur_passes_supported());
+    assert!(!state.blur_passes_overridden());
+    assert_eq!(state.blur_passes(), 3);
+
+    state.set_blur_passes_override(4).unwrap();
+    assert_eq!(state.blur_passes(), 4);
+    let pending = state.pending_configuration_for_submission().unwrap();
+    assert_eq!(pending.overrides.blur_passes, Some(4));
+    let wire = serde_json::to_value(&pending).unwrap();
+    assert_eq!(wire["overrides"]["blurPasses"], 4);
+    assert_eq!(
+        state.set_blur_passes_override(7),
+        Err(StateError::InvalidConfiguration)
+    );
+
+    state.clear_blur_passes_override().unwrap();
+    let cleared = serde_json::to_value(state.configuration()).unwrap();
+    assert!(cleared["overrides"].get("blurPasses").is_none());
+}
+
+#[test]
+fn older_typhon_without_blur_passes_hides_the_control() {
+    let mut state = VisualEffectsState::default();
+    state
+        .apply_snapshot(snapshot(1, MaterialConfiguration::default()))
+        .unwrap();
+    assert!(!state.blur_passes_supported());
+    assert_eq!(
+        state.set_blur_passes_override(4),
+        Err(StateError::UnsupportedCapability)
+    );
+}
+
+#[test]
+fn blur_size_mirrors_typhon_kawase_reach() {
+    use super::state::material_blur_radius_px;
+    // Typhon: full blur at three levels is radius 4 → ~22.7 px.
+    assert!((material_blur_radius_px(1.0, 3) - 0.71 * 8.0 * 4.0).abs() < 1e-9);
+    // Every depth shares the light end; more passes extend the heavy end.
+    for passes in 2..=6 {
+        assert!((material_blur_radius_px(0.0, passes) - 0.71 * 4.0 * 1.5).abs() < 1e-9);
+        assert!(material_blur_radius_px(1.0, passes) > material_blur_radius_px(1.0, passes - 1));
+    }
 }

@@ -15,6 +15,7 @@
 //! no smooth backdrop (a picture) keeps its picture, toned for Clear/Tinted.
 
 use crate::fit::{self, Field};
+use crate::look;
 use crate::look::{C, MARGIN, TILE, layers, rim_layer, squircle, tile_rows, DARK_BOT, DARK_HL, DARK_HL_SPAN, DARK_TOP};
 use crate::raster::{Img, Plane, Rgb, alpha_composite, chroma, luma, to_byte};
 
@@ -330,6 +331,14 @@ pub fn restyle(src: &Img, style: Style, dark: bool, tint: Rgb) -> Img {
             let o = glyph.idx(x, y) + 3;
             glyph.p[o] = to_byte(255.0 * w);
         }
+    }
+    if style != Style::Clear {
+        let mut cover = Plane::new(C, C);
+        for i in 0..C * C {
+            cover.p[i] = glyph.p[i * 4 + 3];
+        }
+        let strength = if dark || style == Style::Dark { look::GLYPH_SHADOW_DARK } else { look::GLYPH_SHADOW_LIGHT };
+        alpha_composite(&mut out, &look::glyph_shadow(&cover, strength), 0, 0);
     }
     alpha_composite(&mut out, &glyph, 0, 0);
 

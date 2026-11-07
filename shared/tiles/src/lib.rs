@@ -23,14 +23,14 @@ mod neutral;
 mod raster;
 mod style;
 
-use look::{C, GLYPH_BOX, MARGIN, TILE, Variant, layers};
-use raster::{Img, alpha_composite, blur_rgb, composited, resized};
+use look::{C, GLYPH_BOX, GLYPH_SHADOW_DARK, GLYPH_SHADOW_LIGHT, MARGIN, TILE, Variant, glyph_shadow, layers};
+use raster::{Img, Plane, alpha_composite, blur_rgb, composited, resized};
 
 /// Bumped whenever the look or the classification changes, so disk caches
 /// made by an older build are not reused.
-pub const ALGORITHM_VERSION: u32 = 2;
+pub const ALGORITHM_VERSION: u32 = 3;
 /// Bumped whenever a style's look changes.
-pub const STYLE_VERSION: u32 = 1;
+pub const STYLE_VERSION: u32 = 2;
 pub const MASTER_EXTENT: usize = C;
 
 struct ShapeStats {
@@ -221,6 +221,27 @@ fn round_badge(glyph: &Img) -> Option<Img> {
     Some(disc)
 }
 
+/// `g` placed at (ox, oy) on the theme tiles, over its own soft shadow.
+fn on_theme_tiles(g: &Img, ox: isize, oy: isize) -> [Img; 2] {
+    let mut cover = Plane::new(C, C);
+    for y in 0..g.h {
+        for x in 0..g.w {
+            let (cx, cy) = (x as isize + ox, y as isize + oy);
+            if (0..C as isize).contains(&cx) && (0..C as isize).contains(&cy) {
+                cover.p[cy as usize * C + cx as usize] = g.alpha(x, y);
+            }
+        }
+    }
+    let l = layers();
+    look::VARIANTS.map(|v| {
+        let mut icon = l.base[v as usize].clone();
+        let strength = if v == Variant::Dark { GLYPH_SHADOW_DARK } else { GLYPH_SHADOW_LIGHT };
+        alpha_composite(&mut icon, &glyph_shadow(&cover, strength), 0, 0);
+        alpha_composite(&mut icon, g, ox, oy);
+        icon
+    })
+}
+
 /// Both variants of one app's 512 px tile, [light, dark].
 pub fn render(glyph: Img, keep_dark: bool) -> Option<[Img; 2]> {
     let l = layers();
@@ -239,11 +260,7 @@ pub fn render(glyph: Img, keep_dark: bool) -> Option<[Img; 2]> {
         if st.coverage < ROUND_BADGE {
             if let Some(disc) = round_badge(&glyph) {
                 let o = ((C - DISC) / 2) as isize;
-                return Some(look::VARIANTS.map(|v| {
-                    let mut icon = l.base[v as usize].clone();
-                    alpha_composite(&mut icon, &disc, o, o);
-                    icon
-                }));
+                return Some(on_theme_tiles(&disc, o, o));
             }
         }
         let fitted = if st.coverage < 0.995 { fit_to_squircle(&glyph) } else { None };
@@ -317,11 +334,7 @@ pub fn render(glyph: Img, keep_dark: bool) -> Option<[Img; 2]> {
     let g = resized(&glyph, ((w as f64 * scale).round() as usize).max(1), ((h as f64 * scale).round() as usize).max(1));
     let ox = ((C - g.w) / 2) as isize;
     let oy = ((C - g.h) / 2) as isize;
-    Some(look::VARIANTS.map(|v| {
-        let mut icon = l.base[v as usize].clone();
-        alpha_composite(&mut icon, &g, ox, oy);
-        icon
-    }))
+    Some(on_theme_tiles(&g, ox, oy))
 }
 
 // --- C ABI ----------------------------------------------------------------------

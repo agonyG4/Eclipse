@@ -8,7 +8,10 @@ use crate::raster::{Img, Plane, Rgb, alpha_composite, composited, luma, rounded_
 pub const C: usize = 512; // canvas
 pub const MARGIN: usize = 32;
 pub const TILE: usize = 448;
-pub const RADIUS: f64 = 104.0; // = 4, 56, 13 on MacTahoe's 64 px grid
+/// The tile's outline is a superellipse |x|^n + |y|^n = 1, Apple's continuous
+/// corner: n fitted to MacTahoe's tiles (mean error 0.7 px on a clean one), so
+/// runtime tiles share the theme's curve instead of a rounded rectangle's.
+pub const SQUIRCLE_N: f64 = 4.3;
 pub const GLYPH_BOX: f64 = 328.0; // glyph fits a centred box ~73% of the tile
 
 const fn hex(v: u32) -> Rgb {
@@ -29,6 +32,11 @@ pub const OUTLINE_A: u8 = 22;
 pub const BRAND_HL_LIGHT: f64 = 0.22;
 pub const BRAND_HL_DARK: f64 = 0.12;
 pub const BRAND_RIM: f64 = 0.45;
+// The glyph's own shadow on the tile: depth, as Tahoe's layered icons have it.
+pub const GLYPH_SHADOW_BLUR: f64 = 7.0;
+pub const GLYPH_SHADOW_DROP: f64 = 6.0;
+pub const GLYPH_SHADOW_LIGHT: f64 = 0.20;
+pub const GLYPH_SHADOW_DARK: f64 = 0.42;
 
 pub const DARK_LIFT: f64 = 1.02;
 pub const GLYPH_DARK_L: f64 = 0.11;
@@ -64,10 +72,32 @@ pub struct Layers {
     pub pts128: Vec<(usize, usize)>,
 }
 
+/// The tile's squircle `inset` px in, anti-aliased: coverage from the signed
+/// distance to the outline (first-order, through the gradient).
 pub fn squircle(inset: f64) -> Plane {
-    let m = MARGIN as f64;
-    let t = TILE as f64;
-    rounded_rect(C, C, m + inset, m + inset, m + t - 1.0 - inset, m + t - 1.0 - inset, RADIUS - inset)
+    let n = SQUIRCLE_N;
+    let h = TILE as f64 / 2.0 - inset;
+    let c = C as f64 / 2.0;
+    let mut out = Plane::new(C, C);
+    for y in 0..C {
+        let v = ((y as f64 + 0.5 - c) / h).abs();
+        for x in 0..C {
+            let u = ((x as f64 + 0.5 - c) / h).abs();
+            let s = u.powf(n) + v.powf(n);
+            if s == 0.0 {
+                out.p[y * C + x] = 255;
+                continue;
+            }
+            let f = s.powf(1.0 / n);
+            // |grad f| in pixels: f is homogeneous of degree 1
+            let gx = u.powf(n - 1.0);
+            let gy = v.powf(n - 1.0);
+            let g = gx.hypot(gy) / f.powf(n - 1.0) / h;
+            let d = (f - 1.0) / g.max(1e-9);
+            out.p[y * C + x] = to_byte(255.0 * (0.5 - d).clamp(0.0, 1.0));
+        }
+    }
+    out
 }
 
 fn border(mask: &Plane, alpha: u8) -> Img {
@@ -75,9 +105,10 @@ fn border(mask: &Plane, alpha: u8) -> Img {
     let mut out = Img::new(C, C);
     for y in 0..C {
         for x in 0..C {
-            if mask.at(x, y) != 0 && inner.at(x, y) == 0 {
+            let ring = mask.at(x, y).saturating_sub(inner.at(x, y)) as u32;
+            if ring > 0 {
                 let i = out.idx(x, y);
-                out.p[i + 3] = alpha;
+                out.p[i + 3] = ((ring * alpha as u32 + 127) / 255) as u8;
             }
         }
     }
@@ -101,6 +132,23 @@ fn ramp(x0: f64, y0: f64, x1: f64, y1: f64) -> Plane {
 /// Tahoe's corner rim: a 1 unit band just inside the squircle edge, lit from
 /// the top-left and bottom-right corners.
 pub fn rim_layer(mask: &Plane, opacity: f64) -> Img {
+    let a = rim_alpha(mask);
+    let mut out = Img::new(C, C);
+    for i in 0..C * C {
+        out.p[i * 4..i * 4 + 3].copy_from_slice(&[255, 255, 255]);
+        out.p[i * 4 + 3] = to_byte(a.p[i] as f64 * opacity);
+    }
+    out
+}
+
+/// The rim's coverage for the tile's squircle (cached: every caller passes it).
+fn rim_alpha(mask: &Plane) -> Plane {
+    static RIM: OnceLock<Plane> = OnceLock::new();
+    if mask.p.len() == C * C {
+        if let Some(cached) = RIM.get() {
+            return cached.clone();
+        }
+    }
     let k = C as f64 / 64.0;
     let ring = mask.subtract(&squircle(k));
     let ramps = [[9.82, 10.719, 40.0, 42.755], [57.0, 56.0, 48.0, 46.0]];
@@ -114,12 +162,8 @@ pub fn rim_layer(mask: &Plane, opacity: f64) -> Img {
         }
     }
     let a = a.blurred(0.28 * k);
-    let mut out = Img::new(C, C);
-    for i in 0..C * C {
-        out.p[i * 4..i * 4 + 3].copy_from_slice(&[255, 255, 255]);
-        out.p[i * 4 + 3] = to_byte(a.p[i] as f64 * opacity);
-    }
-    out
+    let _ = RIM.set(a.clone());
+    a
 }
 
 /// The tile's colour on every canvas row (clamped above and below it).
@@ -195,6 +239,24 @@ fn build() -> Layers {
     let mask_inner1 = squircle(2.0);
     Layers { mask, mask_tile, mask_inner1, rim_band_mask, shadow, border_darkline, rim_glow, tile_row, base,
              brand_edge, in128, pts128 }
+}
+
+/// A soft black shadow of `coverage` (a C x C plane), dropped and blurred,
+/// clipped to the tile so it never leaves the squircle.
+pub fn glyph_shadow(coverage: &Plane, strength: f64) -> Img {
+    let drop = GLYPH_SHADOW_DROP.round() as usize;
+    let mut moved = Plane::new(C, C);
+    for y in drop..C {
+        moved.p[y * C..(y + 1) * C].copy_from_slice(&coverage.p[(y - drop) * C..(y - drop + 1) * C]);
+    }
+    let soft = moved.blurred(GLYPH_SHADOW_BLUR);
+    let mask = &layers().mask;
+    let mut out = Img::new(C, C);
+    for i in 0..C * C {
+        let a = soft.p[i] as f64 * strength * mask.p[i] as f64 / 255.0;
+        out.p[i * 4 + 3] = to_byte(a);
+    }
+    out
 }
 
 pub fn layers() -> &'static Layers {

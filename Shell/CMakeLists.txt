@@ -107,6 +107,7 @@ target_link_libraries(astrea-shell PRIVATE
     astrea-bar-wayland
     astrea-spotlight-wayland
     astrea-shared-coreplugin
+    astrea-shared-app-tiles
     astrea-shared-system-qtplugin
     astrea-shared-wayland-effects
     astrea-shared-wayland-effectsplugin

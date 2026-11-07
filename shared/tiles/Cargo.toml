@@ -1,0 +1,15 @@
+[package]
+name = "astrea-app-tiles"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+description = "macOS Tahoe squircle tiles for app icons an Astrea icon theme lacks"
+
+[lib]
+name = "astrea_app_tiles"
+crate-type = ["staticlib", "lib"]
+
+[dependencies]
+
+[profile.release]
+opt-level = 3

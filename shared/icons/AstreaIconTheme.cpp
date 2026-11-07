@@ -107,7 +107,7 @@ static bool themeExistsInHighestPriorityDataHome(const QString &themeName) {
         QStringLiteral("icons/") + themeName + QStringLiteral("/index.theme")));
 }
 
-static QString persistedIconTheme()
+static QJsonObject persistedThemeConfig()
 {
     const QString configPath = QDir::homePath()
         + QStringLiteral("/.config/AstreaOS/ui/theme.json");
@@ -118,7 +118,25 @@ static QString persistedIconTheme()
     const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &error);
     if (error.error != QJsonParseError::NoError || !document.isObject())
         return {};
-    return document.object().value(QStringLiteral("system_icon_theme")).toString().trimmed();
+    return document.object();
+}
+
+// A base name such as "Astrea" or "MacTahoe" selects its -light or -dark
+// variant by the configured appearance, as IconThemeService does.
+static QString persistedIconTheme(const QJsonObject &config)
+{
+    return config.value(QStringLiteral("system_icon_theme")).toString().trimmed();
+}
+
+static QString persistedAppearanceVariant(const QJsonObject &config, const QString &base)
+{
+    if (base.isEmpty() || base.endsWith(QStringLiteral("-light"))
+        || base.endsWith(QStringLiteral("-dark")))
+        return {};
+    const bool light = config.value(QStringLiteral("theme")).toString().trimmed()
+            .compare(QStringLiteral("light"), Qt::CaseInsensitive) == 0
+        || config.value(QStringLiteral("theme_mode")).toInt() == 1;
+    return base + (light ? QStringLiteral("-light") : QStringLiteral("-dark"));
 }
 
 AstreaIconTheme::ResolveResult AstreaIconTheme::resolveWithSource()
@@ -145,7 +163,14 @@ AstreaIconTheme::ResolveResult AstreaIconTheme::resolveWithSourceUnlocked()
         return result;
     }
 
-    const QString persisted = persistedIconTheme();
+    const QJsonObject config = persistedThemeConfig();
+    const QString persisted = persistedIconTheme(config);
+    const QString persistedVariant = persistedAppearanceVariant(config, persisted);
+    if (!persistedVariant.isEmpty() && themeExists(persistedVariant)) {
+        result.theme = persistedVariant;
+        result.source = QStringLiteral("persisted");
+        return result;
+    }
     if (!persisted.isEmpty() && themeExists(persisted)) {
         result.theme = persisted;
         result.source = QStringLiteral("persisted");

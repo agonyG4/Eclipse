@@ -83,6 +83,7 @@ if(ASTREA_WAYLAND_EFFECTS_AVAILABLE AND NOT CMAKE_C_COMPILER_LOADED)
 endif()
 
 include(cmake/Core.cmake)
+include(cmake/AppTiles.cmake)
 
 add_library(astrea-shared-appidentity STATIC
     apps/appidentity/AppIdentityResolver.cpp
@@ -727,6 +728,17 @@ if(BUILD_TESTING AND ASTREA_SHARED_BUILD_TESTS AND ASTREA_BUILD_TESTS)
     )
     astrea_shared_enable_sanitizers(astrea-icon-provider-test)
     add_test(NAME astrea-icon-provider-test COMMAND astrea-icon-provider-test)
+
+    add_executable(astrea-app-tiles-provider-test tests/AppTilesProviderTest.cpp)
+    target_include_directories(astrea-app-tiles-provider-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(astrea-app-tiles-provider-test PRIVATE astrea-shared-app-tiles Qt6::Test)
+    astrea_shared_enable_sanitizers(astrea-app-tiles-provider-test)
+    add_test(NAME astrea-app-tiles-provider-test COMMAND astrea-app-tiles-provider-test)
+    set_tests_properties(astrea-app-tiles-provider-test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    add_test(NAME astrea-app-tiles-rust-test
+        COMMAND ${CMAKE_COMMAND} -E env CARGO_TARGET_DIR=${CMAKE_BINARY_DIR}/cargo-target
+                ${CARGO_EXECUTABLE} test --release --manifest-path "${CMAKE_CURRENT_SOURCE_DIR}/tiles/Cargo.toml")
 
     add_executable(astrea-app-icon-qml-test
         tests/AstreaAppIconQmlTest.cpp

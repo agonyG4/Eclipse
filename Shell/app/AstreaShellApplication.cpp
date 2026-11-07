@@ -25,6 +25,7 @@
 #include "platform/wayland/LayerShellHelper.hpp"
 #include "platform/wayland/TransientQmlWindowSlot.hpp"
 #include "icons/AstreaIconProvider.hpp"
+#include "AstreaAppTiles.hpp"
 #include "icons/AstreaIconTheme.hpp"
 #include "statusnotifier/StatusNotifierIconProvider.hpp"
 #include "statusnotifier/StatusNotifierService.hpp"
@@ -205,6 +206,7 @@ bool AstreaShellApplication::initializeQml()
     });
 
     auto *context = m_engine->rootContext();
+    AstreaTiles::installRustRenderer();
     auto *iconProvider = new AstreaIconProvider;
     context->setContextProperty(QStringLiteral("AstreaIconProvider"), iconProvider);
     m_engine->addImageProvider(QStringLiteral("astrea-icon"), iconProvider);

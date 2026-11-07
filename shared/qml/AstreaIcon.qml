@@ -94,6 +94,10 @@ Item {
         1, Math.min(1024, Math.ceil(effectiveMaximumLogicalSize
                                     * effectiveDevicePixelRatio)))
 
+    // "light" or "dark": app art the active Astrea icon theme lacks is wrapped
+    // in that theme's macOS tile. Empty presents art as it is.
+    property string appTileVariant: ""
+
     property int retryCount: 0
     property int retryNonce: 0
     property int maxRetries: 2
@@ -118,13 +122,22 @@ Item {
         if (!name) return ""
         var revision = (typeof AstreaIconProvider !== "undefined" && AstreaIconProvider)
             ? AstreaIconProvider.themeRevision : 0
-        if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(name)) return name
-        if (name.indexOf("/") >= 0)
-            return name.startsWith("file://") ? name : Qt.resolvedUrl(name)
+        // Local files take the provider only while tiles are on, so they can
+        // be wrapped; otherwise they keep the direct file path.
+        var tiled = root.appTileVariant.length > 0
+            && (name.startsWith("/") || name.startsWith("file://"))
+            && typeof AstreaIconProvider !== "undefined" && AstreaIconProvider
+            && AstreaIconProvider.appTilesActive
+        if (!tiled) {
+            if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(name)) return name
+            if (name.indexOf("/") >= 0)
+                return name.startsWith("file://") ? name : Qt.resolvedUrl(name)
+        }
         return "image://astrea-icon/" + encodeURIComponent(name)
             + "?logicalSize=" + root.effectiveMaximumLogicalSize
             + "&dpr=" + root.effectiveDevicePixelRatio.toFixed(3)
             + "&pixelSize=" + root.effectiveSourcePixelSize
+            + (root.appTileVariant.length > 0 ? "&tile=" + root.appTileVariant : "")
             + "&revision=" + revision + "&retry=" + root.retryNonce
     }
 

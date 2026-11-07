@@ -41,4 +41,5 @@ AstreaIcon {
 
     source: effectiveIconName
     fallbackText: initials
+    appTileVariant: root.hasThemeController && ThemeController.themeMode === 1 ? "light" : "dark"
 }

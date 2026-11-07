@@ -28,6 +28,8 @@ add_library(astrea-shared-core STATIC
     icons/IconRenderRequest.hpp
     icons/AstreaIconProvider.cpp
     icons/AstreaIconProvider.hpp
+    icons/AppTileHook.cpp
+    icons/AppTileHook.hpp
 )
 
 target_include_directories(astrea-shared-core PUBLIC

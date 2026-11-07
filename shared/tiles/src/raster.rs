@@ -84,11 +84,16 @@ impl Img {
 
     /// Crop to the bounding box of non-zero alpha (Pillow's getbbox on RGBA).
     pub fn alpha_bbox_crop(&self) -> Img {
+        self.alpha_crop_above(0)
+    }
+
+    /// Crop to the bounding box of alpha above `t`.
+    pub fn alpha_crop_above(&self, t: u8) -> Img {
         let (mut x0, mut y0, mut x1, mut y1) = (self.w, self.h, 0usize, 0usize);
         let mut any = false;
         for y in 0..self.h {
             for x in 0..self.w {
-                if self.alpha(x, y) != 0 {
+                if self.alpha(x, y) > t {
                     any = true;
                     x0 = x0.min(x);
                     y0 = y0.min(y);

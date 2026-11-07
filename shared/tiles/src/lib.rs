@@ -10,7 +10,10 @@
 //! Three source-art classes:
 //!   1. full-bleed square art -> becomes the squircle itself; on a coloured
 //!      tile of its own, that tile becomes a Tahoe brand tile
-//!   2. solid disc/blob badge -> its own background is bled out to the squircle
+//!   2. solid disc/blob badge -> its own background is bled out to the squircle;
+//!      a round badge with a one-colour rim instead sits on the theme's tile at
+//!      80% as macOS sets Spotify's (Astrea's departure from MacOS-Like, which
+//!      blows the disc up until the logo presses against the tile edge)
 //!   3. shaped / transparent  -> centred on the theme's tile
 
 mod brand;
@@ -24,7 +27,7 @@ use raster::{Img, alpha_composite, blur_rgb, composited, resized};
 
 /// Bumped whenever the look or the classification changes, so disk caches
 /// made by an older build are not reused.
-pub const ALGORITHM_VERSION: u32 = 1;
+pub const ALGORITHM_VERSION: u32 = 2;
 pub const MASTER_EXTENT: usize = C;
 
 struct ShapeStats {
@@ -115,12 +118,20 @@ fn fit_to_squircle(g: &Img) -> Option<Img> {
     Some(overscan(g, hi))
 }
 
+/// A round badge's diameter on the theme tile: macOS sets a round logo such as
+/// Spotify's on its tile at about 80% of the tile.
+const DISC: usize = 360;
+
+/// Below this alpha-bbox coverage, square art that passes the disc test is a
+/// circle (pi/4 = 0.785), not a rounded square: corners that round need a
+/// radius over ~40% of the side.
+const ROUND_BADGE: f64 = 0.85;
+
 /// Extend the badge's own background out to the squircle edge: every pixel
 /// beyond the outline takes the colour the badge has at its outline along the
-/// same angle.
-fn bleed_backdrop(g: &Img) -> Img {
+/// same angle. `src` is TILE x TILE, the badge placed where it will sit.
+fn bleed_backdrop(src: &Img) -> Img {
     const NA: usize = 720;
-    let src = cover_resize(g, TILE);
     let c = TILE as f64 / 2.0;
     let pi = std::f64::consts::PI;
     let bucket = |th: f64| ((th + pi) / (2.0 * pi) * NA as f64) as usize % NA;
@@ -159,6 +170,54 @@ fn bleed_backdrop(g: &Img) -> Img {
     back
 }
 
+/// Spread of the colour just inside a round badge's rim, above which the rim
+/// is a picture (a textured or many-coloured disc) that only reads blown up to
+/// cover the tile, as MacOS-Like does it.
+const RIM_SPREAD: f64 = 14.0;
+
+/// A round badge at DISC size, clipped to a clean circle (no soft shadow or
+/// fringe under it), to set on the theme's tile. None when its rim is not one
+/// colour.
+fn round_badge(glyph: &Img) -> Option<Img> {
+    let mut disc = cover_resize(&glyph.alpha_crop_above(200), DISC);
+    let r = DISC as f64 / 2.0;
+    let (mut sum, mut sq, mut n) = ([0.0f64; 3], [0.0f64; 3], 0usize);
+    for y in 0..DISC {
+        let dy = y as f64 + 0.5 - r;
+        for x in 0..DISC {
+            let d = (x as f64 + 0.5 - r).hypot(dy);
+            if (r - 10.0..r - 4.0).contains(&d) && disc.alpha(x, y) > 200 {
+                let i = disc.idx(x, y);
+                for c in 0..3 {
+                    let v = disc.p[i + c] as f64;
+                    sum[c] += v;
+                    sq[c] += v * v;
+                }
+                n += 1;
+            }
+        }
+    }
+    if n < 100 {
+        return None;
+    }
+    let spread = ((0..3).map(|c| sq[c] / n as f64 - (sum[c] / n as f64).powi(2)).sum::<f64>() / 3.0)
+        .max(0.0)
+        .sqrt();
+    if spread > RIM_SPREAD {
+        return None;
+    }
+    let edge = r - 1.0;
+    for y in 0..DISC {
+        let dy = y as f64 + 0.5 - r;
+        for x in 0..DISC {
+            let cover = (edge - (x as f64 + 0.5 - r).hypot(dy) + 0.5).clamp(0.0, 1.0);
+            let i = disc.idx(x, y) + 3;
+            disc.p[i] = (disc.p[i] as f64 * cover).round() as u8;
+        }
+    }
+    Some(disc)
+}
+
 /// Both variants of one app's 512 px tile, [light, dark].
 pub fn render(glyph: Img, keep_dark: bool) -> Option<[Img; 2]> {
     let l = layers();
@@ -174,14 +233,25 @@ pub fn render(glyph: Img, keep_dark: bool) -> Option<[Img; 2]> {
     if square && (st.coverage >= 0.90 || (st.disc >= 0.98 && st.ring >= 0.98)) {
         let mut layer = Img::new(C, C);
         let m = MARGIN as isize;
+        if st.coverage < ROUND_BADGE {
+            if let Some(disc) = round_badge(&glyph) {
+                let o = ((C - DISC) / 2) as isize;
+                return Some(look::VARIANTS.map(|v| {
+                    let mut icon = l.base[v as usize].clone();
+                    alpha_composite(&mut icon, &disc, o, o);
+                    icon
+                }));
+            }
+        }
         let fitted = if st.coverage < 0.995 { fit_to_squircle(&glyph) } else { None };
         match fitted {
             Some(f) => alpha_composite(&mut layer, &f, m, m),
             None => {
+                let art = cover_resize(&glyph, TILE);
                 if st.coverage < 0.995 {
-                    alpha_composite(&mut layer, &bleed_backdrop(&glyph), m, m);
+                    alpha_composite(&mut layer, &bleed_backdrop(&art), m, m);
                 }
-                alpha_composite(&mut layer, &cover_resize(&glyph, TILE), m, m);
+                alpha_composite(&mut layer, &art, m, m);
             }
         }
         for (i, a) in l.mask.p.iter().enumerate() {
@@ -358,6 +428,43 @@ mod tests {
             let c = img.rgb(256, 300);
             assert!(c[2] > c[0] + 80.0, "brand hue kept {c:?}");
         }
+    }
+
+    /// A solid disc with a soft shadow under it, as spotify-launcher ships.
+    fn shadowed_disc(colour: [u8; 3], size: usize) -> Img {
+        let mut img = Img::new(size, size);
+        let r = size as f64 * 0.45;
+        let c = size as f64 / 2.0;
+        for y in 0..size {
+            for x in 0..size {
+                let d = (x as f64 + 0.5 - c).hypot(y as f64 + 0.5 - c);
+                let shadow = (x as f64 + 0.5 - c).hypot(y as f64 + 0.5 - c - 8.0);
+                let i = img.idx(x, y);
+                if d <= r {
+                    img.p[i..i + 4].copy_from_slice(&[colour[0], colour[1], colour[2], 255]);
+                } else if shadow <= r + 4.0 {
+                    img.p[i..i + 4].copy_from_slice(&[0, 0, 0, 60]);
+                }
+            }
+        }
+        img
+    }
+
+    #[test]
+    fn round_badge_sits_on_theme_tile_at_disc_size() {
+        let [light, dark] = render(shadowed_disc([30, 215, 96], 256), false).unwrap();
+        for img in [&light, &dark] {
+            // the disc keeps its own colour, unrecoloured
+            assert_eq!(img.rgb(256, 256), [30.0, 215.0, 96.0]);
+            // just outside the disc is the theme tile, not the badge bled out
+            let tile = img.rgb(256, 256 - DISC / 2 - 12);
+            assert!(tile[1] < tile[0] + 20.0, "tile shows {tile:?}");
+        }
+        assert!(light.rgb(256, 64)[0] > 230.0);
+        assert!(dark.rgb(256, 64)[0] < 80.0);
+        // no shadow arc under the disc: below it is plain tile
+        let below = dark.rgb(256, 256 + DISC / 2 + 6);
+        assert!(below[1] < 60.0 && (below[0] - below[1]).abs() < 12.0, "below {below:?}");
     }
 
     #[test]

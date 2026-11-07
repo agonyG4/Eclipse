@@ -437,8 +437,10 @@ bool ThemeController::isValidIconAppearance(const QString &value)
 {
     const QString normalized = value.trimmed().toLower();
     return normalized == QStringLiteral("default")
-        || normalized == QStringLiteral("monochrome")
-        || normalized == QStringLiteral("tinted");
+        || normalized == QStringLiteral("dark")
+        || normalized == QStringLiteral("clear")
+        || normalized == QStringLiteral("tinted")
+        || normalized == QStringLiteral("monochrome");
 }
 
 void ThemeController::updateEffectiveThemeMode()

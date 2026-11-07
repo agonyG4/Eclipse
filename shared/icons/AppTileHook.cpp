@@ -5,6 +5,7 @@
 #include <QImageReader>
 #include <QMutex>
 #include <QMutexLocker>
+#include <QPainter>
 
 namespace AstreaTiles {
 namespace {
@@ -66,6 +67,35 @@ QImage loadArtwork(const QString &path, int masterExtent)
     QImageReader reader(path);
     reader.setAutoTransform(true);
     return reader.read().convertToFormat(QImage::Format_RGBA8888);
+}
+
+QImage fitToCanvas(const QImage &artwork, int extent)
+{
+    if (artwork.isNull() || extent <= 0)
+        return {};
+    if (artwork.width() == extent && artwork.height() == extent)
+        return artwork.convertToFormat(QImage::Format_RGBA8888);
+    QImage canvas(extent, extent, QImage::Format_RGBA8888);
+    canvas.fill(Qt::transparent);
+    const QImage scaled = artwork.scaled(extent, extent, Qt::KeepAspectRatio,
+                                         Qt::SmoothTransformation)
+                              .convertToFormat(QImage::Format_RGBA8888);
+    QPainter painter(&canvas);
+    painter.setCompositionMode(QPainter::CompositionMode_Source);
+    painter.drawImage((extent - scaled.width()) / 2, (extent - scaled.height()) / 2, scaled);
+    painter.end();
+    return canvas;
+}
+
+Style styleFromString(const QString &value)
+{
+    if (value == QStringLiteral("dark"))
+        return Style::Dark;
+    if (value == QStringLiteral("clear"))
+        return Style::Clear;
+    if (value == QStringLiteral("tinted"))
+        return Style::Tinted;
+    return Style::Default;
 }
 
 QImage scaleMaster(const QImage &master, int extent)

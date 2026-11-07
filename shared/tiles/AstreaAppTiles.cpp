@@ -28,6 +28,21 @@ Masters renderWithRust(const QImage &artwork, bool keepDark)
     return {light, dark};
 }
 
+QImage styleWithRust(const QImage &icon, Style style, bool dark, QRgb tint)
+{
+    const int extent = int(astrea_app_tiles_master_extent());
+    const QImage source = icon.convertToFormat(QImage::Format_RGBA8888);
+    if (source.width() != extent || source.height() != extent || style == Style::Default)
+        return {};
+    QImage out(extent, extent, QImage::Format_RGBA8888);
+    if (out.bytesPerLine() != extent * 4)
+        return {};
+    const int ok = astrea_app_tiles_style(source.constBits(), uint32_t(extent), uint32_t(extent),
+                                          uint32_t(source.bytesPerLine()), uint32_t(style),
+                                          dark ? 1 : 0, uint32_t(tint & 0xffffff), out.bits());
+    return ok == 1 ? out : QImage();
+}
+
 } // namespace
 
 void installRustRenderer()
@@ -36,6 +51,8 @@ void installRustRenderer()
     renderer.render = renderWithRust;
     renderer.masterExtent = int(astrea_app_tiles_master_extent());
     renderer.version = int(astrea_app_tiles_version());
+    renderer.style = styleWithRust;
+    renderer.styleVersion = int(astrea_app_tiles_style_version());
     setRenderer(renderer);
 }
 

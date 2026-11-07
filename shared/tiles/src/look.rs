@@ -52,6 +52,7 @@ pub const VARIANTS: [Variant; 2] = [Variant::Light, Variant::Dark];
 pub struct Layers {
     pub mask: Plane,
     pub mask_tile: Plane,
+    pub mask_inner1: Plane, // the squircle 2 px in: its difference is the edge line
     pub rim_band_mask: Plane, // 16 px band just inside the squircle edge
     pub shadow: Img,
     pub border_darkline: Img,
@@ -63,7 +64,7 @@ pub struct Layers {
     pub pts128: Vec<(usize, usize)>,
 }
 
-fn squircle(inset: f64) -> Plane {
+pub fn squircle(inset: f64) -> Plane {
     let m = MARGIN as f64;
     let t = TILE as f64;
     rounded_rect(C, C, m + inset, m + inset, m + t - 1.0 - inset, m + t - 1.0 - inset, RADIUS - inset)
@@ -191,7 +192,8 @@ fn build() -> Layers {
         .filter(|&(x, y)| in128.at(x, y) == 255)
         .collect();
 
-    Layers { mask, mask_tile, rim_band_mask, shadow, border_darkline, rim_glow, tile_row, base,
+    let mask_inner1 = squircle(2.0);
+    Layers { mask, mask_tile, mask_inner1, rim_band_mask, shadow, border_darkline, rim_glow, tile_row, base,
              brand_edge, in128, pts128 }
 }
 

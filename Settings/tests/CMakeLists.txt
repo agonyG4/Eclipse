@@ -139,4 +139,5 @@ add_test(NAME settings-structure-test
 # Design-review tool: captures every route from the real app. Not a test.
 add_settings_qml_integration_test(settings-route-gallery tools/SettingsRouteGallery.cpp)
 target_sources(settings-route-gallery PRIVATE ../app/SettingsApplication.cpp)
+target_link_libraries(settings-route-gallery PRIVATE astrea-shared-app-tiles)
 set_tests_properties(settings-route-gallery PROPERTIES DISABLED TRUE)

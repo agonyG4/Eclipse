@@ -3,6 +3,7 @@
 #include "core/SettingsController.hpp"
 #include "core/navigation/SettingsNavigationCatalog.hpp"
 #include "core/navigation/SettingsNavigationModel.hpp"
+#include "AstreaAppTiles.hpp"
 #include "icons/AstreaIconProvider.hpp"
 #include "icons/AstreaIconTheme.hpp"
 #include "platform/linux/AdminGroupDetector.hpp"
@@ -83,6 +84,8 @@ bool SettingsApplication::initializeQml()
          qCritical("Settings QML object creation failed: %s", qPrintable(url.toString()));
     });
 
+    // App icon previews show the macOS styles the shell draws.
+    AstreaTiles::installRustRenderer();
     m_iconProvider = new AstreaIconProvider;
     m_engine->addImportPath(QStringLiteral("qrc:/"));
     m_engine->addImageProvider(QStringLiteral("astrea-icon"), m_iconProvider);

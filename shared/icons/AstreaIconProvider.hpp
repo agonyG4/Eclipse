@@ -22,12 +22,16 @@ class AstreaIconProvider : public QQuickImageProvider {
     Q_PROPERTY(int themeRevision READ themeRevision NOTIFY cacheInvalidated)
     // Whether app art the active theme lacks is wrapped in runtime tiles.
     Q_PROPERTY(bool appTilesActive READ appTilesActive NOTIFY cacheInvalidated)
+    // Whether app icons can take the macOS styles (dark, clear, tinted).
+    Q_PROPERTY(bool appStylesAvailable READ appStylesAvailable CONSTANT)
 public:
     AstreaIconProvider();
     QPixmap requestPixmap(const QString &id, QSize *size, const QSize &requestedSize) override;
     void clearCache();
     int themeRevision() const { return m_themeRevision.load(std::memory_order_acquire); }
     bool appTilesActive() { return AstreaTiles::available() && activeThemeWantsTiles(); }
+    bool appStylesAvailable() const { return AstreaTiles::renderer().style != nullptr; }
+    using StyleRequest = AstreaTiles::StyleRequest;
 
 signals:
     void cacheInvalidated();
@@ -37,11 +41,20 @@ private:
     struct TileShared;
 
     QPixmap resolveIcon(const QString &iconName, const IconRenderRequest &request,
-                        std::optional<AstreaTiles::Variant> tile = std::nullopt);
+                        std::optional<AstreaTiles::Variant> tile = std::nullopt,
+                        StyleRequest style = {});
     QPixmap resolvePlainIcon(const QString &iconName, const IconRenderRequest &request);
     TileOutcome resolveTiledIcon(const QString &iconName, const IconRenderRequest &request,
                                  AstreaTiles::Variant variant, QPixmap *result);
+    TileOutcome resolveStyledIcon(const QString &iconName, const IconRenderRequest &request,
+                                  AstreaTiles::Variant variant, const StyleRequest &style,
+                                  QPixmap *result);
     QString tileSourceFor(const QString &iconName);
+    QString artSourceFor(const QString &iconName);
+    static AstreaTiles::Masters mastersFor(const std::shared_ptr<TileShared> &shared,
+                                           const QString &source, bool keepDark,
+                                           const QString &masterKey,
+                                           const AstreaTiles::Renderer &renderer);
     bool activeThemeWantsTiles();
     void loadTileConfig();
     void scheduleTileRefresh();

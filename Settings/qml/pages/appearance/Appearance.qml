@@ -127,48 +127,31 @@ Item {
                     Row {
                         visible: choiceCard.choiceGroup === "iconAppearance"
                         anchors.centerIn: parent
-                        spacing: 10
+                        spacing: 6
 
-                        Shared.AstreaAppIcon {
-                            objectName: "iconPreview-" + choiceCard.choiceId + "-display"
-                            width: 38
-                            height: 38
-                            iconSize: 38
-                            maximumPresentationLogicalSize: 38
-                            iconUrl: "qrc:/Astrea/Settings/assets/icons/settings/display.svg"
-                            iconRadius: 8
-                            appearanceOverride: choiceCard.choiceId
-                            hasTintColorOverride: true
-                            tintColorOverride: Components.Theme.accent
-                            showFallbackText: false
-                        }
+                        // Real app icons, so each card shows the style the
+                        // shell draws (the provider restyles app icons).
+                        Repeater {
+                            model: [
+                                {asset: "display", icon: "org.gnome.Settings"},
+                                {asset: "network", icon: "firefox"},
+                                {asset: "sound", icon: "org.gnome.Nautilus"}
+                            ]
 
-                        Shared.AstreaAppIcon {
-                            objectName: "iconPreview-" + choiceCard.choiceId + "-network"
-                            width: 38
-                            height: 38
-                            iconSize: 38
-                            maximumPresentationLogicalSize: 38
-                            iconUrl: "qrc:/Astrea/Settings/assets/icons/settings/network.svg"
-                            iconRadius: 8
-                            appearanceOverride: choiceCard.choiceId
-                            hasTintColorOverride: true
-                            tintColorOverride: Components.Theme.accent
-                            showFallbackText: false
-                        }
-
-                        Shared.AstreaAppIcon {
-                            objectName: "iconPreview-" + choiceCard.choiceId + "-sound"
-                            width: 38
-                            height: 38
-                            iconSize: 38
-                            maximumPresentationLogicalSize: 38
-                            iconUrl: "qrc:/Astrea/Settings/assets/icons/settings/sound.svg"
-                            iconRadius: 8
-                            appearanceOverride: choiceCard.choiceId
-                            hasTintColorOverride: true
-                            tintColorOverride: Components.Theme.accent
-                            showFallbackText: false
+                            delegate: Shared.AstreaAppIcon {
+                                required property var modelData
+                                objectName: "iconPreview-" + choiceCard.choiceId + "-" + modelData.asset
+                                width: 32
+                                height: 32
+                                iconSize: 32
+                                maximumPresentationLogicalSize: 32
+                                iconName: modelData.icon
+                                iconRadius: 0
+                                appearanceOverride: choiceCard.choiceId
+                                hasTintColorOverride: true
+                                tintColorOverride: Components.Theme.accent
+                                showFallbackText: false
+                            }
                         }
                     }
                 }
@@ -473,8 +456,8 @@ Item {
 
             GridLayout {
                 Layout.fillWidth: true
-                columns: 3
-                columnSpacing: 10
+                columns: 5
+                columnSpacing: 8
                 rowSpacing: 10
 
                 ChoiceCard {
@@ -485,10 +468,17 @@ Item {
                 }
 
                 ChoiceCard {
-                    objectName: "iconAppearance-monochrome"
+                    objectName: "iconAppearance-dark"
                     choiceGroup: "iconAppearance"
-                    choiceId: "monochrome"
-                    label: I18n.tr("apps.settings.pages.appearance.option.monochrome", "Monochrome")
+                    choiceId: "dark"
+                    label: I18n.tr("apps.settings.pages.appearance.option.dark", "Dark")
+                }
+
+                ChoiceCard {
+                    objectName: "iconAppearance-clear"
+                    choiceGroup: "iconAppearance"
+                    choiceId: "clear"
+                    label: I18n.tr("apps.settings.pages.appearance.option.clear", "Clear")
                 }
 
                 ChoiceCard {
@@ -496,6 +486,13 @@ Item {
                     choiceGroup: "iconAppearance"
                     choiceId: "tinted"
                     label: I18n.tr("apps.settings.pages.appearance.option.tinted", "Tinted")
+                }
+
+                ChoiceCard {
+                    objectName: "iconAppearance-monochrome"
+                    choiceGroup: "iconAppearance"
+                    choiceId: "monochrome"
+                    label: I18n.tr("apps.settings.pages.appearance.option.monochrome", "Monochrome")
                 }
             }
         }

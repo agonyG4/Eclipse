@@ -21,6 +21,7 @@ mod fit;
 mod look;
 mod neutral;
 mod raster;
+mod style;
 
 use look::{C, GLYPH_BOX, MARGIN, TILE, Variant, layers};
 use raster::{Img, alpha_composite, blur_rgb, composited, resized};
@@ -28,6 +29,8 @@ use raster::{Img, alpha_composite, blur_rgb, composited, resized};
 /// Bumped whenever the look or the classification changes, so disk caches
 /// made by an older build are not reused.
 pub const ALGORITHM_VERSION: u32 = 2;
+/// Bumped whenever a style's look changes.
+pub const STYLE_VERSION: u32 = 1;
 pub const MASTER_EXTENT: usize = C;
 
 struct ShapeStats {
@@ -371,6 +374,45 @@ pub unsafe extern "C" fn astrea_app_tiles_render(
         std::ptr::copy_nonoverlapping(dark.p.as_ptr(), dark_out, n);
     }
     1
+}
+
+/// Restyles one finished 512 x 512 app icon (straight RGBA, `stride` bytes per
+/// row) into `out` (512 x 512 straight RGBA, tightly packed). `style`: 1 dark,
+/// 2 clear, 3 tinted; `dark` picks the style's dark-mode form; `tint` is
+/// 0xRRGGBB. Returns 1 on success, 0 on bad input.
+///
+/// # Safety
+/// `rgba` must point to `stride * 512` readable bytes and `out` to
+/// 512 * 512 * 4 writable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn astrea_app_tiles_style(
+    rgba: *const u8,
+    w: u32,
+    h: u32,
+    stride: u32,
+    style: u32,
+    dark: i32,
+    tint: u32,
+    out: *mut u8,
+) -> i32 {
+    let Some(style) = style::Style::from_u32(style) else { return 0 };
+    if rgba.is_null() || out.is_null() || w as usize != C || h as usize != C || (stride as usize) < C * 4 {
+        return 0;
+    }
+    let mut src = Img::new(C, C);
+    for y in 0..C {
+        let row = unsafe { std::slice::from_raw_parts(rgba.add(y * stride as usize), C * 4) };
+        src.p[y * C * 4..(y + 1) * C * 4].copy_from_slice(row);
+    }
+    let rgb = [((tint >> 16) & 0xff) as f64, ((tint >> 8) & 0xff) as f64, (tint & 0xff) as f64];
+    let img = style::restyle(&src, style, dark != 0, rgb);
+    unsafe { std::ptr::copy_nonoverlapping(img.p.as_ptr(), out, C * C * 4) };
+    1
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn astrea_app_tiles_style_version() -> u32 {
+    STYLE_VERSION
 }
 
 #[cfg(test)]

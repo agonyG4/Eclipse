@@ -1,6 +1,7 @@
 #include "icons/AstreaIconProvider.hpp"
 #include "icons/AstreaIconTheme.hpp"
 
+#include <QColor>
 #include <QIcon>
 #include <QPixmapCache>
 #include <QUrl>
@@ -27,6 +28,8 @@ struct AstreaIconProvider::TileShared final {
     QMutex mutex;
     // 512 px masters by tileMasterKey(); 2 MB each, so bounded.
     QCache<QString, AstreaTiles::Masters> masters{64 * 1024 * 1024};
+    // Restyled 512 px icons by style key; 1 MB each.
+    QCache<QString, QImage> styled{96 * 1024 * 1024};
     QSet<QString> pending;
     QSet<QString> failed;
 };
@@ -259,31 +262,12 @@ AstreaIconProvider::TileOutcome AstreaIconProvider::resolveTiledIcon(
     const std::shared_ptr<TileShared> shared = m_tiles;
     const QPointer<QObject> self(this);
     QThreadPool::globalInstance()->start([shared, self, source, keepDark, masterKey, renderer] {
-        const QString dir = tileCacheDirectory();
-        const QString lightPath = dir + QLatin1Char('/') + masterKey + QStringLiteral("-light.png");
-        const QString darkPath = dir + QLatin1Char('/') + masterKey + QStringLiteral("-dark.png");
-        AstreaTiles::Masters masters{QImage(lightPath), QImage(darkPath)};
-        if (masters.isNull()) {
-            const QImage artwork = AstreaTiles::loadArtwork(source, renderer.masterExtent);
-            masters = artwork.isNull() ? AstreaTiles::Masters{} : renderer.render(artwork, keepDark);
-            if (!masters.isNull() && QDir().mkpath(dir)) {
-                for (const auto &[path, image] : {std::pair{lightPath, masters.light},
-                                                  std::pair{darkPath, masters.dark}}) {
-                    QSaveFile file(path);
-                    if (file.open(QIODevice::WriteOnly) && image.save(&file, "PNG"))
-                        file.commit();
-                }
-            }
-        }
+        const AstreaTiles::Masters masters = mastersFor(shared, source, keepDark, masterKey, renderer);
         {
             QMutexLocker lock(&shared->mutex);
             shared->pending.remove(masterKey);
-            if (masters.isNull()) {
+            if (masters.isNull())
                 shared->failed.insert(masterKey);
-            } else {
-                const int cost = int(masters.light.sizeInBytes() + masters.dark.sizeInBytes());
-                shared->masters.insert(masterKey, new AstreaTiles::Masters(masters), cost);
-            }
         }
         if (QCoreApplication *app = QCoreApplication::instance()) {
             QMetaObject::invokeMethod(app, [self] {
@@ -295,6 +279,155 @@ AstreaIconProvider::TileOutcome AstreaIconProvider::resolveTiledIcon(
     return TileOutcome::Pending;
 }
 
+
+// A master pair from memory, the disk cache, or the renderer (then saved and
+// kept). Runs on workers.
+AstreaTiles::Masters AstreaIconProvider::mastersFor(const std::shared_ptr<TileShared> &shared,
+                                                    const QString &source, bool keepDark,
+                                                    const QString &masterKey,
+                                                    const AstreaTiles::Renderer &renderer)
+{
+    {
+        QMutexLocker lock(&shared->mutex);
+        if (const AstreaTiles::Masters *masters = shared->masters.object(masterKey))
+            return *masters;
+    }
+    const QString dir = tileCacheDirectory();
+    const QString lightPath = dir + QLatin1Char('/') + masterKey + QStringLiteral("-light.png");
+    const QString darkPath = dir + QLatin1Char('/') + masterKey + QStringLiteral("-dark.png");
+    AstreaTiles::Masters masters{QImage(lightPath), QImage(darkPath)};
+    if (masters.isNull()) {
+        const QImage artwork = AstreaTiles::loadArtwork(source, renderer.masterExtent);
+        masters = artwork.isNull() ? AstreaTiles::Masters{} : renderer.render(artwork, keepDark);
+        if (!masters.isNull() && QDir().mkpath(dir)) {
+            for (const auto &[path, image] : {std::pair{lightPath, masters.light},
+                                              std::pair{darkPath, masters.dark}}) {
+                QSaveFile file(path);
+                if (file.open(QIODevice::WriteOnly) && image.save(&file, "PNG"))
+                    file.commit();
+            }
+        }
+    }
+    if (!masters.isNull()) {
+        QMutexLocker lock(&shared->mutex);
+        const int cost = int(masters.light.sizeInBytes() + masters.dark.sizeInBytes());
+        shared->masters.insert(masterKey, new AstreaTiles::Masters(masters), cost);
+    }
+    return masters;
+}
+
+// The art an icon name presents as it is: the active theme's own (or a
+// parent's), a local file, or /usr/share/pixmaps.
+QString AstreaIconProvider::artSourceFor(const QString &iconName)
+{
+    if (iconName.startsWith(QLatin1Char('/')))
+        return QFileInfo::exists(iconName) ? iconName : QString();
+    {
+        QMutexLocker lock(&AstreaIconTheme::qIconMutex());
+        const auto asset = m_catalog.resolveIconAsset(
+            QIcon::themeName(), {iconName}, QSize(AstreaTiles::renderer().masterExtent,
+                                                  AstreaTiles::renderer().masterExtent), 1.0);
+        if (!asset.filePath.isEmpty())
+            return asset.filePath;
+    }
+    for (const QString &suffix : {QStringLiteral(".svg"), QStringLiteral(".png"), QStringLiteral(".xpm")}) {
+        const QString path = QStringLiteral("/usr/share/pixmaps/") + iconName + suffix;
+        if (QFileInfo::exists(path))
+            return path;
+    }
+    return {};
+}
+
+// An app icon in a macOS style: our tile when the theme lacks the art, the
+// theme's own art otherwise, restyled on a worker and cached like tiles.
+AstreaIconProvider::TileOutcome AstreaIconProvider::resolveStyledIcon(
+    const QString &iconName, const IconRenderRequest &request,
+    AstreaTiles::Variant variant, const StyleRequest &style, QPixmap *result)
+{
+    const AstreaTiles::Renderer renderer = AstreaTiles::renderer();
+    if (!renderer.style || style.style == AstreaTiles::Style::Default)
+        return TileOutcome::NotApplicable;
+    loadTileConfig();
+    QString tileSource;
+    if (renderer.render && activeThemeWantsTiles())
+        tileSource = tileSourceFor(iconName);
+    const QString artSource = tileSource.isEmpty() ? artSourceFor(iconName) : QString();
+    if (tileSource.isEmpty() && artSource.isEmpty())
+        return TileOutcome::NotApplicable;
+    const bool keepDark = m_keepDark.contains(tileBaseName(iconName));
+    const QString masterKey = tileSource.isEmpty()
+        ? QString() : tileMasterKey(tileSource, keepDark, renderer.version);
+    const bool dark = variant == AstreaTiles::Variant::Dark;
+    const QString base = tileSource.isEmpty()
+        ? tileMasterKey(artSource, false, 0)
+        : masterKey + (dark ? QStringLiteral("-dark") : QStringLiteral("-light"));
+    const QString styleKey = QString::fromLatin1(QCryptographicHash::hash(
+        QStringLiteral("%1|style=%2|dark=%3|tint=%4|v%5|x%6")
+            .arg(base).arg(int(style.style)).arg(dark ? 1 : 0)
+            .arg(style.style == AstreaTiles::Style::Tinted ? style.tint & 0xffffff : 0, 6, 16, QLatin1Char('0'))
+            .arg(renderer.styleVersion).arg(renderer.masterExtent)
+            .toUtf8(),
+        QCryptographicHash::Sha1).toHex());
+
+    {
+        QMutexLocker lock(&m_tiles->mutex);
+        if (const QImage *styled = m_tiles->styled.object(styleKey)) {
+            QPixmap pixmap = QPixmap::fromImage(
+                AstreaTiles::scaleMaster(*styled, request.physicalExtent));
+            pixmap.setDevicePixelRatio(1.0);
+            *result = pixmap;
+            return TileOutcome::Ready;
+        }
+        if (m_tiles->failed.contains(styleKey))
+            return TileOutcome::NotApplicable;
+        if (m_tiles->pending.contains(styleKey))
+            return TileOutcome::Pending;
+        m_tiles->pending.insert(styleKey);
+    }
+
+    const std::shared_ptr<TileShared> shared = m_tiles;
+    const QPointer<QObject> self(this);
+    QThreadPool::globalInstance()->start([shared, self, tileSource, artSource, keepDark, masterKey,
+                                          variant, dark, style, styleKey, renderer] {
+        const QString dir = tileCacheDirectory();
+        const QString path = dir + QStringLiteral("/styled-") + styleKey + QStringLiteral(".png");
+        QImage styled(path);
+        if (styled.isNull()) {
+            QImage icon;
+            if (!masterKey.isEmpty()) {
+                const AstreaTiles::Masters masters =
+                    mastersFor(shared, tileSource, keepDark, masterKey, renderer);
+                if (!masters.isNull())
+                    icon = masters.of(variant);
+            } else {
+                icon = AstreaTiles::fitToCanvas(
+                    AstreaTiles::loadArtwork(artSource, renderer.masterExtent), renderer.masterExtent);
+            }
+            if (!icon.isNull())
+                styled = renderer.style(icon, style.style, dark, style.tint);
+            if (!styled.isNull() && QDir().mkpath(dir)) {
+                QSaveFile file(path);
+                if (file.open(QIODevice::WriteOnly) && styled.save(&file, "PNG"))
+                    file.commit();
+            }
+        }
+        {
+            QMutexLocker lock(&shared->mutex);
+            shared->pending.remove(styleKey);
+            if (styled.isNull())
+                shared->failed.insert(styleKey);
+            else
+                shared->styled.insert(styleKey, new QImage(styled), int(styled.sizeInBytes()));
+        }
+        if (QCoreApplication *app = QCoreApplication::instance()) {
+            QMetaObject::invokeMethod(app, [self] {
+                if (auto *provider = qobject_cast<AstreaIconProvider *>(self.data()))
+                    provider->scheduleTileRefresh();
+            }, Qt::QueuedConnection);
+        }
+    });
+    return TileOutcome::Pending;
+}
 
 AstreaIconProvider::AstreaIconProvider()
     : QQuickImageProvider(QQuickImageProvider::Pixmap), m_cache(kCacheMaxCost)
@@ -489,18 +622,23 @@ QPixmap AstreaIconProvider::resolvePlainIcon(const QString &iconName,
 
 QPixmap AstreaIconProvider::resolveIcon(const QString &iconName,
                                         const IconRenderRequest &request,
-                                        std::optional<AstreaTiles::Variant> tile) {
+                                        std::optional<AstreaTiles::Variant> tile,
+                                        StyleRequest style) {
     const int rev = m_themeRevision.load(std::memory_order_acquire);
     const int dprKey = qRound(request.devicePixelRatio * IconRenderRequest::kDprPrecision);
     const QString tileKey = !tile ? QStringLiteral("none")
         : *tile == AstreaTiles::Variant::Light ? QStringLiteral("light") : QStringLiteral("dark");
-    const QString key = QStringLiteral("%1|logical=%2|dpr=%3|physical=%4|revision=%5|tile=%6")
+    if (!tile)
+        style = {};
+    const QString key = QStringLiteral("%1|logical=%2|dpr=%3|physical=%4|revision=%5|tile=%6|style=%7:%8")
                             .arg(iconName)
                             .arg(request.logicalExtent)
                             .arg(dprKey)
                             .arg(request.physicalExtent)
                             .arg(rev)
-                            .arg(tileKey);
+                            .arg(tileKey)
+                            .arg(int(style.style))
+                            .arg(style.tint & 0xffffff, 6, 16, QLatin1Char('0'));
 
     {
         QReadLocker lock(&m_cacheLock);
@@ -515,7 +653,19 @@ QPixmap AstreaIconProvider::resolveIcon(const QString &iconName,
     }
 
     QPixmap result;
-    if (tile) {
+    TileOutcome styled = TileOutcome::NotApplicable;
+    if (tile && style.style != AstreaTiles::Style::Default)
+        styled = resolveStyledIcon(iconName, request, *tile, style, &result);
+    if (styled == TileOutcome::Pending) {
+        // Being restyled: the default-style icon stands in until the refresh.
+        QPixmap standIn;
+        if (resolveTiledIcon(iconName, request, *tile, &standIn) != TileOutcome::Ready)
+            standIn = resolvePlainIcon(iconName, request);
+        return standIn;
+    }
+    if (styled == TileOutcome::Ready) {
+        // restyled above
+    } else if (tile) {
         switch (resolveTiledIcon(iconName, request, *tile, &result)) {
         case TileOutcome::Ready:
             break;
@@ -591,6 +741,11 @@ QPixmap AstreaIconProvider::requestPixmap(const QString &id, QSize *size, const 
     else if (tileParameter == QStringLiteral("dark"))
         tile = AstreaTiles::Variant::Dark;
 
+    StyleRequest style;
+    style.style = AstreaTiles::styleFromString(parameters.value(QStringLiteral("style")));
+    if (const QColor tint(QLatin1Char('#') + parameters.value(QStringLiteral("tint"))); tint.isValid())
+        style.tint = tint.rgb();
+
     const IconRenderRequest request = IconRenderRequest::fromValues(logicalExtent, dpr)
         .value_or(fallbackRequest(requestedExtent > 0 ? requestedExtent : 80));
 
@@ -602,7 +757,7 @@ QPixmap AstreaIconProvider::requestPixmap(const QString &id, QSize *size, const 
     if (tile && iconName.startsWith(QStringLiteral("file://")))
         iconName = QUrl(iconName).toLocalFile();
     if (tile && iconName.startsWith(QLatin1Char('/'))) {
-        QPixmap pm = resolveIcon(iconName, request, tile);
+        QPixmap pm = resolveIcon(iconName, request, tile, style);
         if (size) *size = pm.isNull()
             ? QSize(request.physicalExtent, request.physicalExtent) : pm.size();
         return pm;
@@ -636,7 +791,7 @@ QPixmap AstreaIconProvider::requestPixmap(const QString &id, QSize *size, const 
         return {};
     }
 
-    QPixmap result = resolveIcon(iconName, request, tile);
+    QPixmap result = resolveIcon(iconName, request, tile, style);
     if (size) *size = result.isNull()
         ? QSize(request.physicalExtent, request.physicalExtent) : result.size();
     return result;

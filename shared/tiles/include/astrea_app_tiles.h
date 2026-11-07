@@ -22,6 +22,17 @@ int32_t astrea_app_tiles_render(const uint8_t *rgba, uint32_t width, uint32_t he
                                 uint32_t stride, int32_t keep_dark,
                                 uint8_t *light_out, uint8_t *dark_out);
 
+/* Bumped whenever a style would look different; key caches with it. */
+uint32_t astrea_app_tiles_style_version(void);
+
+/* Restyles one finished extent x extent app icon (straight RGBA8, `stride`
+ * bytes per row) into `out` (extent * extent * 4 bytes, straight RGBA8).
+ * style: 1 dark, 2 clear, 3 tinted; dark != 0 picks the style's dark-mode
+ * form; tint is 0xRRGGBB. Returns 1 on success. */
+int32_t astrea_app_tiles_style(const uint8_t *rgba, uint32_t width, uint32_t height,
+                               uint32_t stride, uint32_t style, int32_t dark,
+                               uint32_t tint, uint8_t *out);
+
 #ifdef __cplusplus
 }
 #endif

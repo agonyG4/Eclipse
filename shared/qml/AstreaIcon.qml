@@ -41,21 +41,32 @@ Item {
     readonly property bool hasThemeController:
         typeof ThemeController !== "undefined" && ThemeController !== null
 
+    readonly property var knownAppearances: ["default", "dark", "clear", "tinted", "monochrome"]
+
     readonly property string effectiveAppearance: {
         var override = String(root.appearanceOverride).trim().toLowerCase()
-        if (override.length > 0) {
-            if (override === "default" || override === "monochrome" || override === "tinted")
-                return override
-            return "default"
-        }
+        if (override.length > 0)
+            return root.knownAppearances.indexOf(override) >= 0 ? override : "default"
         if (root.hasThemeController) {
             var configured = String(ThemeController.iconAppearance).trim().toLowerCase()
-            if (configured === "default" || configured === "monochrome"
-                    || configured === "tinted")
+            if (root.knownAppearances.indexOf(configured) >= 0)
                 return configured
         }
         return "default"
     }
+
+    readonly property bool hasIconProvider:
+        typeof AstreaIconProvider !== "undefined" && AstreaIconProvider !== null
+
+    // App icons take the macOS styles (Dark, Clear, Tinted) from the icon
+    // provider, which takes each icon apart into tile and glyph. Other icons,
+    // and sources the provider does not serve, fall back to the shader.
+    readonly property bool styledByProvider: root.appTileVariant.length > 0
+        && root.hasIconProvider && AstreaIconProvider.appStylesAvailable
+        && (root.effectiveAppearance === "dark" || root.effectiveAppearance === "clear"
+            || root.effectiveAppearance === "tinted")
+        && !/^(qrc|image|https?|data):/.test(String(root.source))
+        && String(root.source).indexOf(":/") !== 0
 
     readonly property color effectiveTintColor: {
         if (root.hasTintColorOverride)
@@ -66,12 +77,27 @@ Item {
     }
 
     readonly property real presentationMode: {
-        if (root.effectiveAppearance === "monochrome")
+        if (root.styledByProvider)
+            return 0.0
+        if (root.effectiveAppearance === "monochrome" || root.effectiveAppearance === "clear")
             return 1.0
         if (root.effectiveAppearance === "tinted")
             return 2.0
         return 0.0
     }
+
+    function hexByte(v) {
+        var h = Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16)
+        return h.length < 2 ? "0" + h : h
+    }
+
+    readonly property string styleQuery: root.styledByProvider
+        ? "&style=" + root.effectiveAppearance
+            + (root.effectiveAppearance === "tinted"
+               ? "&tint=" + hexByte(root.effectiveTintColor.r) + hexByte(root.effectiveTintColor.g)
+                   + hexByte(root.effectiveTintColor.b)
+               : "")
+        : ""
 
     readonly property real effectiveDevicePixelRatio: {
         var value = devicePixelRatioOverride > 0
@@ -126,8 +152,8 @@ Item {
         // be wrapped; otherwise they keep the direct file path.
         var tiled = root.appTileVariant.length > 0
             && (name.startsWith("/") || name.startsWith("file://"))
-            && typeof AstreaIconProvider !== "undefined" && AstreaIconProvider
-            && AstreaIconProvider.appTilesActive
+            && root.hasIconProvider
+            && (AstreaIconProvider.appTilesActive || root.styledByProvider)
         if (!tiled) {
             if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(name)) return name
             if (name.indexOf("/") >= 0)
@@ -138,6 +164,7 @@ Item {
             + "&dpr=" + root.effectiveDevicePixelRatio.toFixed(3)
             + "&pixelSize=" + root.effectiveSourcePixelSize
             + (root.appTileVariant.length > 0 ? "&tile=" + root.appTileVariant : "")
+            + root.styleQuery
             + "&revision=" + revision + "&retry=" + root.retryNonce
     }
 
@@ -159,7 +186,7 @@ Item {
         // only while the shader owns the draw, so rounded mode cannot render
         // the source twice.
         visible: root.imageVisible && root.hasDisplayableImage && root.iconRadius <= 0
-            && root.effectiveAppearance === "default"
+            && root.presentationMode === 0
 
         onStatusChanged: {
             if (status === Image.Ready)
@@ -176,7 +203,7 @@ Item {
         objectName: "roundedIconEffectLoader"
         anchors.fill: iconImage
         active: root.imageVisible && root.hasDisplayableImage
-            && (root.iconRadius > 0 || root.effectiveAppearance !== "default")
+            && (root.iconRadius > 0 || root.presentationMode !== 0)
         sourceComponent: ShaderEffect {
             objectName: "roundedIconEffect"
             anchors.fill: parent

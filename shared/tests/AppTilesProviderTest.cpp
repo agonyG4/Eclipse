@@ -37,11 +37,13 @@ bool writeRingPng(const QString &path)
     return image.save(path);
 }
 
-QPixmap request(AstreaIconProvider &provider, const QString &name, const char *tile, int size)
+QPixmap request(AstreaIconProvider &provider, const QString &name, const char *tile, int size,
+                const QString &extra = {})
 {
     QSize out;
     return provider.requestPixmap(
-        QStringLiteral("%1?logicalSize=%2&dpr=1&tile=%3").arg(name).arg(size).arg(QLatin1String(tile)),
+        QStringLiteral("%1?logicalSize=%2&dpr=1&tile=%3").arg(name).arg(size).arg(QLatin1String(tile))
+            + extra,
         &out, {});
 }
 
@@ -125,6 +127,42 @@ private slots:
         const QImage own = request(provider, QStringLiteral("own-app"), "dark", 48).toImage();
         QCOMPARE(own.pixelColor(24, 24), QColor(0, 200, 0));
         QCOMPARE(own.pixelColor(0, 0), QColor(0, 200, 0));
+    }
+
+    void stylesRestyleThemeArtAndTiles()
+    {
+        AstreaIconProvider provider;
+        useTestTheme(provider);
+        QVERIFY(provider.appStylesAvailable());
+        QSignalSpy refreshed(&provider, &AstreaIconProvider::cacheInvalidated);
+
+        // The theme's own green tile turns dark in the Dark style.
+        request(provider, QStringLiteral("own-app"), "dark", 64, QStringLiteral("&style=dark"));
+        QTRY_VERIFY_WITH_TIMEOUT(refreshed.count() > 0, 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(
+            request(provider, QStringLiteral("own-app"), "dark", 64, QStringLiteral("&style=dark"))
+                .toImage().pixelColor(32, 48).lightness() < 70, 10000);
+
+        // A tile in the Clear style is glass: see-through, not opaque.
+        refreshed.clear();
+        request(provider, QStringLiteral("foreign-app"), "dark", 64, QStringLiteral("&style=clear"));
+        QTRY_VERIFY_WITH_TIMEOUT(refreshed.count() > 0, 10000);
+        QTRY_VERIFY_WITH_TIMEOUT([&] {
+            const int a = request(provider, QStringLiteral("foreign-app"), "dark", 64,
+                                  QStringLiteral("&style=clear")).toImage().pixelColor(12, 48).alpha();
+            return a > 40 && a < 220;
+        }(), 10000);
+
+        // Tinted takes the tint.
+        refreshed.clear();
+        const QString tinted = QStringLiteral("&style=tinted&tint=0a84ff");
+        request(provider, QStringLiteral("own-app"), "light", 64, tinted);
+        QTRY_VERIFY_WITH_TIMEOUT(refreshed.count() > 0, 10000);
+        QTRY_VERIFY_WITH_TIMEOUT([&] {
+            const QColor c = request(provider, QStringLiteral("own-app"), "light", 64, tinted)
+                                 .toImage().pixelColor(32, 40);
+            return c.blue() > c.red() + 80;
+        }(), 10000);
     }
 
     void untiledRequestsAreUnchanged()

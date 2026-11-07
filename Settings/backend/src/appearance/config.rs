@@ -95,7 +95,7 @@ pub fn normalize_theme_preference(value: &str) -> String {
 pub fn normalize_icon_appearance(value: &str) -> String {
     let normalized = value.trim().to_ascii_lowercase();
     match normalized.as_str() {
-        "default" | "monochrome" | "tinted" => normalized,
+        "default" | "dark" | "clear" | "tinted" | "monochrome" => normalized,
         _ => String::from("default"),
     }
 }
@@ -131,6 +131,8 @@ mod tests {
     fn icon_appearance_normalizes_case_and_whitespace_and_defaults_invalid_values() {
         assert_eq!(normalize_icon_appearance(" MONOCHROME "), "monochrome");
         assert_eq!(normalize_icon_appearance("TiNtEd"), "tinted");
+        assert_eq!(normalize_icon_appearance(" Clear"), "clear");
+        assert_eq!(normalize_icon_appearance("DARK"), "dark");
         assert_eq!(normalize_icon_appearance(" DEFAULT "), "default");
         assert_eq!(normalize_icon_appearance("unsupported"), "default");
     }

@@ -326,8 +326,16 @@ IconThemeCatalog::metadataFor(const QString &themeName) const
         }
 
         settings.beginGroup(QString::fromLatin1(kIconThemeGroup));
-        const QString displayName = settings.value(QStringLiteral("Name")).toString().trimmed();
-        const QString comment = settings.value(QStringLiteral("Comment")).toString().trimmed();
+        // QSettings reads an unquoted value with a comma as a list; Name and
+        // Comment are free text, so join it back rather than lose the theme.
+        const auto text = [&settings](const QString &key) {
+            const QVariant value = settings.value(key);
+            return (value.typeId() == QMetaType::QStringList
+                        ? value.toStringList().join(QStringLiteral(", "))
+                        : value.toString()).trimmed();
+        };
+        const QString displayName = text(QStringLiteral("Name"));
+        const QString comment = text(QStringLiteral("Comment"));
         const QStringList directories = splitList(settings.value(QStringLiteral("Directories")));
         const QStringList scaledDirectories = splitList(
             settings.value(QStringLiteral("ScaledDirectories")));

@@ -65,7 +65,7 @@ private slots:
         // The Astrea theme draws "own-app" itself; "foreign-app" only exists in
         // hicolor, so it gets a tile.
         QVERIFY(writeFile(root + QStringLiteral("/Astrea-test/index.theme"),
-                          "[Icon Theme]\nX-Astrea-AppTiles=true\nName=Astrea-test\nComment=fixture\n"
+                          "[Icon Theme]\nX-Astrea-AppTiles=true\nName=Astrea-test\nComment=fixture, with a comma as in real themes\n"
                           "Inherits=hicolor\nDirectories=apps/48\n\n"
                           "[apps/48]\nSize=48\nType=Fixed\nContext=Applications\n"));
         QImage own(48, 48, QImage::Format_ARGB32);

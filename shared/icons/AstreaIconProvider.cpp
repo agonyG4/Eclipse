@@ -171,6 +171,12 @@ bool AstreaIconProvider::activeThemeWantsTiles()
     QStringList roots;
     {
         QMutexLocker lock(&AstreaIconTheme::qIconMutex());
+        // A theme the catalog cannot read would leave only its parents in the
+        // family, and every app would look foreign: no tiles then.
+        if (!m_catalog.themeExists(theme)) {
+            m_themeTileFlags.insert(theme, false);
+            return false;
+        }
         roots = m_catalog.searchRootPaths();
     }
     for (const QString &root : roots) {

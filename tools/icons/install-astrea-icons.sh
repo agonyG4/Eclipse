@@ -68,7 +68,7 @@ write_index() {
   local dst="$1" name="$2" inherits="$3"
   awk -v name="$name" -v inherits="$inherits" '
     /^Name=/ { print "Name=" name; next }
-    /^Comment=/ { print "Comment=Astrea: MacTahoe via MacOS-Like, app tiles made at runtime"; next }
+    /^Comment=/ { print "Comment=Astrea: MacTahoe via MacOS-Like with app tiles made at runtime"; next }
     /^Inherits=/ { print "Inherits=" inherits; next }
     /^KDE-Extensions=/ { print "KDE-Extensions=.svg,.png"; next }
     /^\[Icon Theme\]/ { print; print "X-Astrea-AppTiles=true"; next }

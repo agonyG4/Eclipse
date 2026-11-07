@@ -19,6 +19,7 @@ constexpr qsizetype kMaxPresenceEntries = 4096;
 
 struct IconMatch final {
     QString path;
+    bool undersized = false;
     qint64 distance = 0;
 };
 
@@ -437,11 +438,19 @@ QString IconThemeCatalog::findIconPath(
 
     // No exact asset exists. Find the closest available directory using
     // scaled physical size; a matching scale has no special priority here.
+    // An asset that covers the request wins over a smaller one: downscaling
+    // stays sharp, upscaling blurs. Fixed-size PNG themes otherwise resolve a
+    // 40 px request to the 32 px asset because it ties with 48 px.
+    const qint64 requestedPhysicalSize = qint64(requestedSize) * iconScale;
     bool found = false;
     IconMatch best;
     for (int directoryIndex = 0; directoryIndex < metadata->directories.size(); ++directoryIndex) {
         const DirectoryMetadata &directory = metadata->directories.at(directoryIndex);
         const qint64 distance = directorySizeDistance(directory, requestedSize, iconScale);
+        const bool undersized = distance > 0
+            && requestedPhysicalSize > qint64(directory.size) * directory.scale
+            && (directory.type != DirectoryType::Scalable
+                || requestedPhysicalSize > qint64(directory.maxSize) * directory.scale);
         for (int rootIndex = 0; rootIndex < metadata->roots.size(); ++rootIndex) {
             const QString prefix = QDir(metadata->roots.at(rootIndex)).filePath(
                 directory.path + QLatin1Char('/') + candidate);
@@ -450,8 +459,9 @@ QString IconThemeCatalog::findIconPath(
                 if (!QFileInfo(path).isFile()) {
                     continue;
                 }
-                if (!found || distance < best.distance) {
-                    best = {path, distance};
+                if (!found || (best.undersized && !undersized)
+                    || (best.undersized == undersized && distance < best.distance)) {
+                    best = {path, undersized, distance};
                     found = true;
                 }
             }

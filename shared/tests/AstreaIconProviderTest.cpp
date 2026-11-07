@@ -398,10 +398,11 @@ void AstreaIconProviderTest::providerUsesDeclaredThresholdAndDirectoryOrder()
         QCOMPARE(actual.size(), providerSize);
         QCOMPARE(actual.toImage().pixelColor(10, 20), color);
     };
-    // 50 matches the declared threshold. 58 ties the two directory distances,
-    // so declaration order wins. Smaller raster art is never upscaled.
+    // 50 matches the declared threshold. 58 ties the two directory distances;
+    // the asset that covers the request wins over declaration order, so the
+    // larger raster is downscaled instead of the smaller one being upscaled.
     verifyResult(50, 48, QColor("#aa0000"));
-    verifyResult(58, 48, QColor("#aa0000"));
+    verifyResult(58, 58, QColor("#0000aa"));
     verifyResult(60, 60, QColor("#0000aa"));
 }
 

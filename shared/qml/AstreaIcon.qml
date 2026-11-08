@@ -76,8 +76,13 @@ Item {
         return "#0a84ff"
     }
 
+    // The software scene graph cannot run ShaderEffect, so the presentation
+    // shader would hide the icon and draw nothing; show the plain image there.
+    readonly property bool shadersAvailable:
+        GraphicsInfo.api !== GraphicsInfo.Software
+
     readonly property real presentationMode: {
-        if (root.styledByProvider)
+        if (root.styledByProvider || !root.shadersAvailable)
             return 0.0
         if (root.effectiveAppearance === "monochrome" || root.effectiveAppearance === "clear")
             return 1.0

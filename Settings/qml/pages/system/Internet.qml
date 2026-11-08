@@ -61,16 +61,16 @@ FocusScope {
     readonly property var dnsPresets: [
         { name: "Cloudflare", servers: ["1.1.1.1", "1.0.0.1",
                                          "2606:4700:4700::1111", "2606:4700:4700::1001"] },
-        { name: "Quad9", servers: ["9.9.9.9", "149.112.112.112",
+        { name: I18n.tr("settings.internet.quad9", "Quad9"), servers: ["9.9.9.9", "149.112.112.112",
                                     "2620:fe::fe", "2620:fe::9"] },
         { name: "Google", servers: ["8.8.8.8", "8.8.4.4",
                                      "2001:4860:4860::8888", "2001:4860:4860::8844"] },
-        { name: "Custom", servers: [] }
+        { name: I18n.tr("settings.internet.custom", "Custom"), servers: [] }
     ]
     readonly property var dnsPresetNames: root.dnsPresets.map(entry => entry.name)
     property int dnsDraftMode: System.NetworkDnsMode.Advanced
     property string dnsDraftText: ""
-    property string dnsSelectedPreset: "Custom"
+    property string dnsSelectedPreset: I18n.tr("settings.internet.custom", "Custom")
     property bool dnsDraftDirty: false
     property bool dnsExternalChanged: false
     property bool dnsAwaitingAuthoritative: false
@@ -89,7 +89,7 @@ FocusScope {
         if (root.dnsDraftMode === System.NetworkDnsMode.Automatic)
             return { valid: true, error: "", ipv4Servers: [], ipv6Servers: [] }
         if (root.dnsDraftMode !== System.NetworkDnsMode.Custom || !root.network)
-            return { valid: false, error: "Choose Automatic or Custom DNS to apply settings",
+            return { valid: false, error: I18n.tr("settings.internet.choose_automatic_or_custom_dns_to_apply_sett", "Choose Automatic or Custom DNS to apply settings"),
                      ipv4Servers: [], ipv6Servers: [] }
         return root.network.validateDnsServers(root.dnsDraftServers)
     }
@@ -151,7 +151,7 @@ FocusScope {
 
     function configuredDnsProvider() {
         if (!root.network)
-            return "Advanced"
+            return I18n.tr("settings.internet.advanced", "Advanced")
         if (root.network.dnsMode === System.NetworkDnsMode.Automatic)
             return I18n.tr("settings.internet.dns.provider.automatic", "Automatic")
         if (root.network.dnsMode === System.NetworkDnsMode.Advanced)
@@ -885,7 +885,7 @@ FocusScope {
                     NetworkComponents.NetworkDetailCell {
                         objectName: "dnsConfiguredMode"
                         label: I18n.tr("settings.internet.dns.label.mode", "Mode")
-                        sublabel: root.network ? root.dnsModeText(root.network.dnsMode) : "Advanced"
+                        sublabel: root.network ? root.dnsModeText(root.network.dnsMode) : I18n.tr("settings.internet.advanced", "Advanced")
                         sublabelTextFormat: Text.PlainText
                     }
 
@@ -1052,7 +1052,7 @@ FocusScope {
                             if (root.dnsLoadingDraft)
                                 return
                             root.dnsDraftText = text
-                            root.dnsSelectedPreset = "Custom"
+                            root.dnsSelectedPreset = I18n.tr("settings.internet.custom", "Custom")
                             root.updateDnsDraft()
                         }
                     }

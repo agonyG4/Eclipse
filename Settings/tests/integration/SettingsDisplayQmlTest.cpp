@@ -20,6 +20,15 @@
 
 namespace {
 
+class FakeI18n final : public QObject {
+  Q_OBJECT
+
+public:
+  Q_INVOKABLE QString tr(const QString &, const QString &fallback) const {
+    return fallback;
+  }
+};
+
 class FakeDisplayController final : public QObject {
   Q_OBJECT
   Q_PROPERTY(bool available READ available NOTIFY statusChanged)
@@ -361,6 +370,8 @@ public:
     m_settings.display()->setOutput(displayOutput());
     m_engine.addImportPath(QStringLiteral("qrc:/"));
     m_engine.rootContext()->setContextProperty(
+        QStringLiteral("I18n"), &m_i18n);
+    m_engine.rootContext()->setContextProperty(
         QStringLiteral("ThemeController"), &m_theme);
     m_engine.rootContext()->setContextProperty(
         QStringLiteral("SettingsController"), &m_settings);
@@ -407,6 +418,7 @@ private:
   FakeSettingsController m_settings;
   QTemporaryDir m_directory;
   ThemeController m_theme{m_directory.filePath(QStringLiteral("theme.json"))};
+  FakeI18n m_i18n;
   QQmlApplicationEngine m_engine;
   std::unique_ptr<QQmlComponent> m_component;
   QQuickWindow m_window;

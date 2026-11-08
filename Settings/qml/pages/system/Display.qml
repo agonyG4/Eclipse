@@ -229,14 +229,14 @@ FocusScope {
     property int transactionSecondsLeft: 0
     readonly property string transactionStatusText: {
         if (root.transactionState === "pending_confirmation")
-            return "Keep these display settings? Reverting in "
-                + root.transactionSecondsLeft + " s."
+            return I18n.tr("settings.display.keep_settings_reverting", "Keep these display settings? Reverting in %1 s.")
+                .replace("%1", root.transactionSecondsLeft)
         if (root.transactionState === "persistence_pending")
-            return "Saving display settings…"
+            return I18n.tr("settings.display.saving_display_settings", "Saving display settings…")
         if (root.transactionState === "rolling_back")
-            return "Reverting display settings…"
+            return I18n.tr("settings.display.reverting_display_settings", "Reverting display settings…")
         if (root.transactionState === "rollback_failed")
-            return "Could not revert the display settings."
+            return I18n.tr("settings.display.could_not_revert_the_display_settings", "Could not revert the display settings.")
         return ""
     }
 
@@ -510,7 +510,7 @@ FocusScope {
                         Text {
                             anchors.centerIn: parent
                             visible: !modelData.enabled || !monitorItem.hasCurrentMode
-                            text: modelData.enabled ? "No current mode" : "Disabled"
+                            text: modelData.enabled ? I18n.tr("settings.display.no_current_mode", "No current mode") : "Disabled"
                             textFormat: Text.PlainText
                             color: Components.Theme.textSecondary
                             font.family: Components.Theme.typography.role("caption").family
@@ -718,7 +718,7 @@ FocusScope {
                         objectName: "displayLoading"
                         visible: root.loading
                         Layout.fillWidth: true
-                        text: "Loading display information…"
+                        text: I18n.tr("settings.display.loading_display_information", "Loading display information…")
                         textFormat: Text.PlainText
                         color: Components.Theme.textSecondary
                         font.family: Components.Theme.typography.role("body").family
@@ -731,7 +731,7 @@ FocusScope {
                         objectName: "displayBackendUnavailable"
                         visible: root.backendUnavailable
                         Layout.fillWidth: true
-                        text: "Display service is unavailable."
+                        text: I18n.tr("settings.display.display_service_is_unavailable", "Display service is unavailable.")
                         textFormat: Text.PlainText
                         color: Components.Theme.warningColor
                         font.family: Components.Theme.typography.role("body").family
@@ -759,7 +759,7 @@ FocusScope {
                         objectName: "displayNoOutputs"
                         visible: root.noOutputs
                         Layout.fillWidth: true
-                        text: "No displays are connected."
+                        text: I18n.tr("settings.display.no_displays_are_connected", "No displays are connected.")
                         textFormat: Text.PlainText
                         color: Components.Theme.textSecondary
                         font.family: Components.Theme.typography.role("body").family
@@ -774,7 +774,7 @@ FocusScope {
                             && (root.backendUnavailable || root.refreshFailed
                                 || root.noOutputs)
                         Layout.alignment: Qt.AlignRight
-                        text: "Retry"
+                        text: I18n.tr("settings.display.retry", "Retry")
                         enabled: Boolean(root.controller)
                         onClicked: {
                             if (root.controller)
@@ -804,7 +804,7 @@ FocusScope {
                     Form.SectionHeader {
                         objectName: "displayPreviewSectionHeader"
                         Layout.fillWidth: true
-                        text: "DISPLAY PREVIEW"
+                        text: I18n.tr("settings.display.display_preview", "DISPLAY PREVIEW")
                     }
 
                     Item {
@@ -877,7 +877,7 @@ FocusScope {
                     visible: Boolean(root.controller && Boolean(root.controller.truncated))
                     Layout.fillWidth: true
                     Layout.bottomMargin: 12
-                    text: "Additional displays are not shown."
+                    text: I18n.tr("settings.display.additional_displays_are_not_shown", "Additional displays are not shown.")
                     textFormat: Text.PlainText
                     color: Components.Theme.warningColor
                     font.family: Components.Theme.typography.role("caption").family
@@ -898,7 +898,7 @@ FocusScope {
                     Form.SectionHeader {
                         objectName: "displayMonitorSectionHeader"
                         Layout.fillWidth: true
-                        text: "MONITOR"
+                        text: I18n.tr("settings.display.monitor", "MONITOR")
                     }
 
                     ComboBox {
@@ -978,14 +978,14 @@ FocusScope {
                     objectName: "displayResolutionSectionHeader"
                     Layout.fillWidth: true
                     Layout.bottomMargin: 8
-                    text: "RESOLUTION"
+                    text: I18n.tr("settings.display.resolution", "RESOLUTION")
                 }
 
                 Form.FormCard {
                     objectName: "displayResolutionList"
                     Layout.fillWidth: true
                     Layout.bottomMargin: 24
-                    margins: 0
+                    margins: 4
                     spacing: 0
 
                     Repeater {
@@ -993,21 +993,30 @@ FocusScope {
 
                         delegate: Rectangle {
                             required property var modelData
-                            required property int index
                             readonly property bool selected: Boolean(modelData.current)
                             readonly property bool interactive:
                                 Boolean(root.selectedOutput)
                                     && root.selectedOutput.modeSelectionSupported === true
                                     && modelData.rates.length > 0
                             readonly property string key: DisplayLogic.resolutionKey(modelData)
-                            readonly property bool lastRow: index === root.visibleResolutionGroups.length - 1
-                                && !resolutionToggleRow.visible
 
                             objectName: "displayResolutionRow_" + key
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 52
-                            implicitHeight: 52
-                            color: "transparent"
+                            Layout.preferredHeight: 36
+                            implicitHeight: 36
+                            radius: Components.Theme.controlRadius
+                            color: selected
+                                ? Qt.rgba(Components.Theme.accent.r,
+                                          Components.Theme.accent.g,
+                                          Components.Theme.accent.b, 0.12)
+                                : (interactive && resolutionActivation.containsMouse
+                                    ? Qt.rgba(Components.Theme.accent.r,
+                                              Components.Theme.accent.g,
+                                              Components.Theme.accent.b, 0.06)
+                                    : "transparent")
+                            border.width: interactive && activeFocus ? 1 : 0
+                            border.color: interactive && activeFocus
+                                ? Components.Theme.accent : "transparent"
                             activeFocusOnTab: interactive
                             Accessible.role: Accessible.Button
                             Accessible.name: DisplayLogic.formatResolution(modelData)
@@ -1021,49 +1030,18 @@ FocusScope {
                                 }
                             }
 
-                            // Same inset highlight as SettingRow.
-                            Rectangle {
-                                anchors {
-                                    fill: parent
-                                    leftMargin: Components.Theme.spacingMicro
-                                    rightMargin: Components.Theme.spacingMicro
-                                    topMargin: Components.Theme.spacingTiny
-                                    bottomMargin: Components.Theme.spacingTiny
-                                }
-                                radius: Components.Theme.controlRadius
-                                color: selected
-                                    ? Qt.rgba(Components.Theme.accent.r,
-                                              Components.Theme.accent.g,
-                                              Components.Theme.accent.b, 0.12)
-                                    : (interactive && resolutionActivation.containsMouse
-                                        ? Components.Theme.rowHoverFill : "transparent")
-                                border.width: interactive && parent.activeFocus ? 1 : 0
-                                border.color: interactive && parent.activeFocus
-                                    ? Components.Theme.accent : "transparent"
-
-                                Behavior on color {
-                                    ColorAnimation { duration: Components.Theme.animationQuick }
-                                }
-                                Behavior on border.color {
-                                    ColorAnimation { duration: Components.Theme.animationQuick }
-                                }
+                            Behavior on color {
+                                ColorAnimation { duration: Components.Theme.animationQuick }
                             }
-
-                            Rectangle {
-                                visible: !lastRow && !selected
-                                anchors {
-                                    bottom: parent.bottom; left: parent.left; right: parent.right
-                                    leftMargin: Components.Theme.spacingXLarge
-                                }
-                                height: 1
-                                color: Components.Theme.cardBorder
+                            Behavior on border.color {
+                                ColorAnimation { duration: Components.Theme.animationQuick }
                             }
 
                             RowLayout {
                                 anchors.fill: parent
-                                anchors.leftMargin: Components.Theme.spacingXLarge
-                                anchors.rightMargin: Components.Theme.spacingXLarge
-                                spacing: Components.Theme.spacingMedium
+                                anchors.leftMargin: 12
+                                anchors.rightMargin: 12
+                                spacing: Components.Theme.spacingSmall
 
                                 Text {
                                     objectName: "displayResolutionLabel_" + key
@@ -1072,12 +1050,14 @@ FocusScope {
                                     color: selected
                                         ? Components.Theme.accent
                                         : Components.Theme.textPrimary
-                                    font.family: Components.Theme.typography.role("label").family
-                                    font.pixelSize: Components.Theme.typography.role("label").pixelSize
-                                    lineHeight: Components.Theme.typography.role("label").lineHeight
+                                    font.family: Components.Theme.typography.role("body").family
+                                    font.pixelSize: Components.Theme.typography.role("body").pixelSize
+                                    lineHeight: Components.Theme.typography.role("body").lineHeight
                                     lineHeightMode: Text.ProportionalHeight
-                                    font.letterSpacing: Components.Theme.typography.role("label").letterSpacing
-                                    font.weight: Components.Theme.typography.role("label").weight
+                                    font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
+                                    font.weight: selected
+                                        ? Components.Theme.fontWeightMedium
+                                        : Components.Theme.fontWeightNormal
                                 }
 
                                 Rectangle {
@@ -1098,7 +1078,7 @@ FocusScope {
                                         id: preferredLabel
                                         objectName: "displayPreferredLabel_" + key
                                         anchors.centerIn: parent
-                                        text: "Preferred"
+                                        text: I18n.tr("settings.display.preferred", "Preferred")
                                         textFormat: Text.PlainText
                                         color: selected
                                             ? Components.Theme.accent
@@ -1147,8 +1127,8 @@ FocusScope {
                         visible: root.allResolutionGroups.length
                             > root.defaultResolutionGroups.length
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 48
-                        implicitHeight: 48
+                        Layout.preferredHeight: 40
+                        implicitHeight: 40
 
                         Rectangle {
                             anchors {
@@ -1210,7 +1190,7 @@ FocusScope {
                         Layout.topMargin: 8
                         Layout.leftMargin: 12
                         Layout.bottomMargin: 4
-                        text: "Some available modes are not shown."
+                        text: I18n.tr("settings.display.some_available_modes_are_not_shown", "Some available modes are not shown.")
                         textFormat: Text.PlainText
                         color: Components.Theme.warningColor
                         font.family: Components.Theme.typography.role("caption").family
@@ -1226,7 +1206,7 @@ FocusScope {
                     objectName: "displaySettingsHeader"
                     Layout.fillWidth: true
                     Layout.bottomMargin: 12
-                    text: "DISPLAY SETTINGS"
+                    text: I18n.tr("settings.display.display_settings", "DISPLAY SETTINGS")
                 }
 
                 Form.FormCard {
@@ -1241,7 +1221,7 @@ FocusScope {
 
                         Form.SettingRow {
                             objectName: "displaySettingRefresh"
-                            label: "Refresh rate"
+                            label: I18n.tr("settings.display.refresh_rate", "Refresh rate")
                             isLast: false
 
                             DisplaySelector {
@@ -1264,7 +1244,7 @@ FocusScope {
 
                         Form.SettingRow {
                             objectName: "displaySettingColorDepth"
-                            label: "Color depth"
+                            label: I18n.tr("settings.display.color_depth", "Color depth")
                             isLast: false
 
                             DisplaySelector {
@@ -1272,7 +1252,7 @@ FocusScope {
                                 controlWidth: 130
                                 label: root.selectedOutput
                                     ? DisplayLogic.colorDepthText(root.selectedOutput.colorDepthBits)
-                                    : "Unavailable"
+                                    : I18n.tr("settings.display.unavailable", "Unavailable")
                                 options: DisplayLogic.colorDepthOptions(root.selectedOutput).map(
                                     bits => DisplayLogic.colorDepthText(bits))
                                 selectedIndex: DisplayLogic.selectedColorDepthIndex(root.selectedOutput)
@@ -1289,8 +1269,8 @@ FocusScope {
 
                         Form.SettingRow {
                             objectName: "displaySettingVrr"
-                            label: "Variable Refresh Rate"
-                            sublabel: "VRR / FreeSync / G-Sync mode when supported by the display"
+                            label: I18n.tr("settings.display.variable_refresh_rate", "Variable Refresh Rate")
+                            sublabel: I18n.tr("settings.display.vrr_freesync_g_sync_mode_when_supported_by_t", "VRR / FreeSync / G-Sync mode when supported by the display")
                             isLast: false
 
                             DisplaySelector {
@@ -1298,7 +1278,7 @@ FocusScope {
                                 controlWidth: 160
                                 label: root.selectedOutput
                                     ? DisplayLogic.vrrText(root.selectedOutput.vrrState)
-                                    : "Unavailable"
+                                    : I18n.tr("settings.display.unavailable", "Unavailable")
                                 enabled: false
                                 showChevron: false
                                 textPrimary: Components.Theme.textTertiary
@@ -1308,7 +1288,7 @@ FocusScope {
 
                         Form.SettingRow {
                             objectName: "displaySettingScale"
-                            label: "Display scale"
+                            label: I18n.tr("settings.display.display_scale", "Display scale")
                             isLast: true
 
                             DisplaySelector {
@@ -1317,7 +1297,7 @@ FocusScope {
                                 label: root.selectedOutput
                                     ? DisplayLogic.formatScale(
                                         DisplayLogic.selectedScaleMilli(root.selectedOutput))
-                                    : "Unavailable"
+                                    : I18n.tr("settings.display.unavailable", "Unavailable")
                                 options: DisplayLogic.scaleLabels(root.selectedOutput)
                                 selectedIndex: DisplayLogic.selectedScaleIndex(root.selectedOutput)
                                 enabled: Boolean(root.selectedOutput
@@ -1335,13 +1315,13 @@ FocusScope {
                     objectName: "displayColorNightShiftHeader"
                     Layout.fillWidth: true
                     Layout.bottomMargin: 12
-                    text: "COLOR & NIGHT SHIFT"
+                    text: I18n.tr("settings.display.color_night_shift", "COLOR & NIGHT SHIFT")
                 }
 
                 Components.BackendNotice {
                     objectName: "displayColorUnavailableNotice"
                     visible: !root.colorControlAvailable
-                    message: "Night Shift and color adjustment are unavailable because the current display backend has no color control."
+                    message: I18n.tr("settings.display.night_shift_and_color_adjustment_are_unavail", "Night Shift and color adjustment are unavailable because the current display backend has no color control.")
                 }
 
                 Form.FormCard {
@@ -1356,13 +1336,13 @@ FocusScope {
                         spacing: 0
 
                         Form.SettingRow {
-                            label: "Night Shift"
-                            sublabel: "Warm screen colors to reduce blue light at night"
+                            label: I18n.tr("settings.display.night_shift", "Night Shift")
+                            sublabel: I18n.tr("settings.display.warm_screen_colors_to_reduce_blue_light_at_n", "Warm screen colors to reduce blue light at night")
                             isLast: false
                             DisplaySelector {
                                 objectName: "displayNightShiftControl"
                                 controlWidth: 130
-                                label: "Unavailable"
+                                label: I18n.tr("settings.display.unavailable", "Unavailable")
                                 enabled: false
                                 showChevron: false
                                 textPrimary: Components.Theme.textTertiary
@@ -1370,13 +1350,13 @@ FocusScope {
                             }
                         }
                         Form.SettingRow {
-                            label: "Night Shift strength"
-                            sublabel: "Unavailable because the current backend has no color adjustment control"
+                            label: I18n.tr("settings.display.night_shift_strength", "Night Shift strength")
+                            sublabel: I18n.tr("settings.display.unavailable_because_the_current_backend_has", "Unavailable because the current backend has no color adjustment control")
                             isLast: false
                             DisplaySelector {
                                 objectName: "displayNightShiftStrengthControl"
                                 controlWidth: 130
-                                label: "Unavailable"
+                                label: I18n.tr("settings.display.unavailable", "Unavailable")
                                 enabled: false
                                 showChevron: false
                                 textPrimary: Components.Theme.textTertiary
@@ -1384,13 +1364,13 @@ FocusScope {
                             }
                         }
                         Form.SettingRow {
-                            label: "Schedule"
-                            sublabel: "Turn Night Shift on and off automatically"
+                            label: I18n.tr("settings.display.schedule", "Schedule")
+                            sublabel: I18n.tr("settings.display.turn_night_shift_on_and_off_automatically", "Turn Night Shift on and off automatically")
                             isLast: false
                             DisplaySelector {
                                 objectName: "displayNightShiftScheduleControl"
                                 controlWidth: 130
-                                label: "Unavailable"
+                                label: I18n.tr("settings.display.unavailable", "Unavailable")
                                 enabled: false
                                 showChevron: false
                                 textPrimary: Components.Theme.textTertiary
@@ -1398,13 +1378,13 @@ FocusScope {
                             }
                         }
                         Form.SettingRow {
-                            label: "Start"
-                            sublabel: "When Night Shift should turn on"
+                            label: I18n.tr("settings.display.start", "Start")
+                            sublabel: I18n.tr("settings.display.when_night_shift_should_turn_on", "When Night Shift should turn on")
                             isLast: false
                             DisplaySelector {
                                 objectName: "displayNightShiftStartControl"
                                 controlWidth: 130
-                                label: "Unavailable"
+                                label: I18n.tr("settings.display.unavailable", "Unavailable")
                                 enabled: false
                                 showChevron: false
                                 textPrimary: Components.Theme.textTertiary
@@ -1412,13 +1392,13 @@ FocusScope {
                             }
                         }
                         Form.SettingRow {
-                            label: "End"
-                            sublabel: "When Night Shift should turn off"
+                            label: I18n.tr("settings.display.end", "End")
+                            sublabel: I18n.tr("settings.display.when_night_shift_should_turn_off", "When Night Shift should turn off")
                             isLast: false
                             DisplaySelector {
                                 objectName: "displayNightShiftEndControl"
                                 controlWidth: 130
-                                label: "Unavailable"
+                                label: I18n.tr("settings.display.unavailable", "Unavailable")
                                 enabled: false
                                 showChevron: false
                                 textPrimary: Components.Theme.textTertiary
@@ -1426,13 +1406,13 @@ FocusScope {
                             }
                         }
                         Form.SettingRow {
-                            label: "Saturation"
-                            sublabel: "Unavailable because saturation adjustment is not supported"
+                            label: I18n.tr("settings.display.saturation", "Saturation")
+                            sublabel: I18n.tr("settings.display.unavailable_because_saturation_adjustment_is", "Unavailable because saturation adjustment is not supported")
                             isLast: true
                             DisplaySelector {
                                 objectName: "displaySaturationControl"
                                 controlWidth: 130
-                                label: "Unavailable"
+                                label: I18n.tr("settings.display.unavailable", "Unavailable")
                                 enabled: false
                                 showChevron: false
                                 textPrimary: Components.Theme.textTertiary
@@ -1461,7 +1441,7 @@ FocusScope {
 
                             Text {
                                 Layout.fillWidth: true
-                                text: "Apply changes"
+                                text: I18n.tr("settings.display.apply_changes", "Apply changes")
                                 textFormat: Text.PlainText
                                 color: Components.Theme.textPrimary
                                 font.family: Components.Theme.typography.role("label").family
@@ -1492,7 +1472,7 @@ FocusScope {
                             Text {
                                 visible: !root.transactionActive
                                 Layout.fillWidth: true
-                                text: "Resolution, refresh rate and scale changes apply to the selected display."
+                                text: I18n.tr("settings.display.resolution_refresh_rate_and_scale_changes_ap", "Resolution, refresh rate and scale changes apply to the selected display.")
                                 textFormat: Text.PlainText
                                 color: Components.Theme.textSecondary
                                 font.family: Components.Theme.typography.role("caption").family
@@ -1507,7 +1487,7 @@ FocusScope {
                         Controls.Button {
                             objectName: "displayRevertButton"
                             visible: root.confirmationPending
-                            text: "Revert"
+                            text: I18n.tr("settings.display.revert", "Revert")
                             enabled: Boolean(root.controller && !root.controller.busy)
                             onClicked: {
                                 if (root.controller)
@@ -1518,7 +1498,7 @@ FocusScope {
                         Controls.Button {
                             objectName: "displayKeepButton"
                             visible: root.confirmationPending
-                            text: "Keep changes"
+                            text: I18n.tr("settings.display.keep_changes", "Keep changes")
                             primary: true
                             enabled: Boolean(root.controller && !root.controller.busy)
                             onClicked: {
@@ -1530,7 +1510,7 @@ FocusScope {
                         Controls.Button {
                             objectName: "displayApplyButton"
                             visible: !root.confirmationPending
-                            text: "Apply"
+                            text: I18n.tr("settings.display.apply", "Apply")
                             primary: true
                             enabled: Boolean(root.selectedOutput
                                 && root.selectedOutput.canApplyDraft === true)

@@ -24,7 +24,7 @@ Item {
     property string countrySearch: ""
     readonly property var filteredCountries: countryEntries.filter(item => root.countrySearch.trim() === "" || (item.name + " " + item.id).toLowerCase().indexOf(root.countrySearch.toLowerCase()) !== -1)
     readonly property var timeFormatIds: ["system", "24h", "12h"]
-    readonly property var timeFormats: ["System default (" + (snapshot.effectiveTimeFormat || "24h") + ")", "24-hour", "12-hour (AM/PM)"]
+    readonly property var timeFormats: [I18n.tr("settings.language.system_default_format", "System default (%1)").replace("%1", snapshot.effectiveTimeFormat || "24h"), I18n.tr("settings.language.24_hour", "24-hour"), I18n.tr("settings.language.12_hour_am_pm", "12-hour (AM/PM)")]
 
     Component.onCompleted: root.controller.refresh()
 
@@ -51,41 +51,41 @@ Item {
             Layout.bottomMargin: 24
             Form.SettingRow {
                 objectName: "languageSelectRow"
-                label: "Language"
-                sublabel: "Sets the preferred locale. Reopen apps to apply translations; unavailable translations use English."
+                label: I18n.tr("settings.language.language", "Language")
+                sublabel: I18n.tr("settings.language.sets_the_preferred_locale_reopen_apps_to_app", "Sets the preferred locale. Reopen apps to apply translations; unavailable translations use English.")
                 Controls.SelectButton {
                     objectName: "languageSelect"
                     width: 190
                     options: root.languages
                     selectedIndex: root.selectedLanguage
-                    label: root.languages[root.selectedLanguage] || "Loading…"
+                    label: root.languages[root.selectedLanguage] || I18n.tr("settings.language.loading", "Loading…")
                     onSelected: index => root.controller.setOption("language", root.languageEntries[index].id)
                 }
             }
             Form.SettingRow {
                 objectName: "countrySearchRow"
-                label: "Search location"
-                sublabel: "Filter the country and region choices below."
+                label: I18n.tr("settings.language.search_location", "Search location")
+                sublabel: I18n.tr("settings.language.filter_the_country_and_region_choices_below", "Filter the country and region choices below.")
                 Controls.SearchField {
                     objectName: "countrySearchField"
                     width: 190
                     controlHeight: 36
-                    placeholderText: "Country or region"
+                    placeholderText: I18n.tr("settings.language.country_or_region", "Country or region")
                     text: root.countrySearch
                     onTextEdited: value => root.countrySearch = value
                 }
             }
             Form.SettingRow {
                 objectName: "countrySelectRow"
-                label: "Country or region"
-                sublabel: root.filteredCountries.length > 0 ? "Sets local conventions for dates and numbers." : "No matching countries. Clear the search to see all choices."
+                label: I18n.tr("settings.language.country_or_region", "Country or region")
+                sublabel: root.filteredCountries.length > 0 ? I18n.tr("settings.language.sets_local_conventions_for_dates_and_numbers", "Sets local conventions for dates and numbers.") : I18n.tr("settings.language.no_matching_countries_clear_the_search_to_se", "No matching countries. Clear the search to see all choices.")
                 Controls.SelectButton {
                     objectName: "countrySelect"
                     width: 190
                     enabled: root.filteredCountries.length > 0
                     options: root.filteredCountries.map(item => item.name)
                     selectedIndex: root.filteredCountries.map(item => item.id).indexOf(root.region.country_code || "BR")
-                    label: root.filteredCountries.length > 0 ? (root.countries[root.selectedCountry] || "Select location") : "No matches"
+                    label: root.filteredCountries.length > 0 ? (root.countries[root.selectedCountry] || I18n.tr("settings.language.select_location", "Select location")) : I18n.tr("settings.language.no_matches", "No matches")
                     onSelected: index => {
                         root.controller.setOption("country_code", root.filteredCountries[index].id)
                     }
@@ -93,8 +93,8 @@ Item {
             }
             Form.SettingRow {
                 objectName: "timeFormatRow"
-                label: "Time format"
-                sublabel: "Controls 24-hour or AM/PM time in apps and the clock."
+                label: I18n.tr("settings.language.time_format", "Time format")
+                sublabel: I18n.tr("settings.language.controls_24_hour_or_am_pm_time_in_apps_and_t", "Controls 24-hour or AM/PM time in apps and the clock.")
                 Controls.SelectButton {
                     objectName: "timeFormatSelect"
                     width: 190
@@ -106,12 +106,12 @@ Item {
             }
             Form.SettingRow {
                 objectName: "automaticLocationRow"
-                label: "Automatic location"
+                label: I18n.tr("settings.language.automatic_location", "Automatic location")
                 sublabel: root.automaticLocation
-                    ? "Allow system geolocation. The selected region still controls regional formatting."
-                    : "System geolocation is blocked; use a manually selected location."
+                    ? I18n.tr("settings.language.allow_system_geolocation_the_selected_region", "Allow system geolocation. The selected region still controls regional formatting.")
+                    : I18n.tr("settings.language.system_geolocation_is_blocked_use_a_manually", "System geolocation is blocked; use a manually selected location.")
                 Controls.ToggleSwitch {
-                    accessibleName: "Automatic location"
+                    accessibleName: I18n.tr("settings.language.automatic_location", "Automatic location")
                     enabled: !!root.snapshot.locationAvailable
                     checked: root.automaticLocation
                     onToggled: checked => root.controller.setOption("automatic_location", checked)

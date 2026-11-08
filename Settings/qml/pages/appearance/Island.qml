@@ -73,7 +73,7 @@ Item {
                             Layout.fillWidth: true
                             spacing: 3
                             Text {
-                                text: root.musicEnabled ? "Now playing" : "Island is ready"
+                                text: root.musicEnabled ? I18n.tr("settings.island.now_playing", "Now playing") : I18n.tr("settings.island.island_is_ready", "Island is ready")
                                 color: "#f5f5f7"
                                 font.family: Components.Theme.typography.role("caption").family
                                 font.pixelSize: Components.Theme.typography.role("caption").pixelSize
@@ -83,7 +83,7 @@ Item {
                                 font.weight: Components.Theme.typography.role("caption").weight
                             }
                             Text {
-                                text: root.musicEnabled ? "Aster · Midnight Drive" : "Preview mode"
+                                text: root.musicEnabled ? "Aster · Midnight Drive" : I18n.tr("settings.island.preview_mode", "Preview mode")
                                 color: Qt.rgba(1, 1, 1, 0.60)
                                 font.family: Components.Theme.typography.role("caption").family
                                 font.pixelSize: Components.Theme.typography.role("caption").pixelSize
@@ -105,26 +105,26 @@ Item {
             }
         }
 
-        Form.SectionHeader { text: "SYSTEM"; Layout.bottomMargin: 12 }
+        Form.SectionHeader { text: I18n.tr("settings.island.system", "SYSTEM"); Layout.bottomMargin: 12 }
         Form.FormCard {
             objectName: "islandSystemCard"
             Layout.bottomMargin: 24
             Form.SettingRow {
                 objectName: "enableIslandRow"
-                label: "Enable Island"
-                sublabel: "Start with the system and display the Island."
+                label: I18n.tr("settings.island.enable_island", "Enable Island")
+                sublabel: I18n.tr("settings.island.start_with_the_system_and_display_the_island", "Start with the system and display the Island.")
                 Controls.ToggleSwitch {
-                    accessibleName: "Enable Island"
+                    accessibleName: I18n.tr("settings.island.enable_island", "Enable Island")
                     checked: root.islandEnabled
                     onToggled: checked => root.islandEnabled = checked
                 }
             }
             Form.SettingRow {
                 objectName: "alwaysOnTopRow"
-                label: "Always on Top"
-                sublabel: "Keep the Island above other windows."
+                label: I18n.tr("settings.island.always_on_top", "Always on Top")
+                sublabel: I18n.tr("settings.island.keep_the_island_above_other_windows", "Keep the Island above other windows.")
                 Controls.ToggleSwitch {
-                    accessibleName: "Always on Top"
+                    accessibleName: I18n.tr("settings.island.always_on_top", "Always on Top")
                     checked: root.alwaysOnTop
                     onToggled: checked => root.alwaysOnTop = checked
                 }
@@ -132,14 +132,14 @@ Item {
             }
         }
 
-        Form.SectionHeader { text: "ISLAND LOOK & FEEL"; Layout.bottomMargin: 12 }
+        Form.SectionHeader { text: I18n.tr("settings.island.island_look_feel", "ISLAND LOOK & FEEL"); Layout.bottomMargin: 12 }
         Form.FormCard {
             objectName: "islandAppearanceCard"
             Layout.bottomMargin: 24
             Form.SettingRow {
                 objectName: "islandStyleRow"
-                label: "Style"
-                sublabel: "Choose the overall shape of the Island."
+                label: I18n.tr("settings.island.style", "Style")
+                sublabel: I18n.tr("settings.island.choose_the_overall_shape_of_the_island", "Choose the overall shape of the Island.")
                 Controls.SelectButton {
                     objectName: "islandStyleSelect"
                     width: 180
@@ -152,25 +152,25 @@ Item {
             }
         }
 
-        Form.SectionHeader { text: "FEATURES"; Layout.bottomMargin: 12 }
+        Form.SectionHeader { text: I18n.tr("settings.island.features", "FEATURES"); Layout.bottomMargin: 12 }
         Form.FormCard {
             objectName: "islandFeaturesCard"
             Form.SettingRow {
                 objectName: "islandMusicRow"
-                label: "Music"
-                sublabel: "Display now playing information."
+                label: I18n.tr("settings.island.music", "Music")
+                sublabel: I18n.tr("settings.island.display_now_playing_information", "Display now playing information.")
                 Controls.ToggleSwitch {
-                    accessibleName: "Music"
+                    accessibleName: I18n.tr("settings.island.music", "Music")
                     checked: root.musicEnabled
                     onToggled: checked => root.musicEnabled = checked
                 }
             }
             Form.SettingRow {
                 objectName: "islandGamemodeRow"
-                label: "Gamemode Notify"
-                sublabel: "Show alerts when entering or leaving game mode."
+                label: I18n.tr("settings.island.gamemode_notify", "Gamemode Notify")
+                sublabel: I18n.tr("settings.island.show_alerts_when_entering_or_leaving_game_mo", "Show alerts when entering or leaving game mode.")
                 Controls.ToggleSwitch {
-                    accessibleName: "Gamemode Notify"
+                    accessibleName: I18n.tr("settings.island.gamemode_notify", "Gamemode Notify")
                     checked: root.gamemodeNotifications
                     onToggled: checked => root.gamemodeNotifications = checked
                 }

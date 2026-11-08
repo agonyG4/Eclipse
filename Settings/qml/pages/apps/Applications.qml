@@ -73,7 +73,7 @@ Item {
         width: Math.min(root.width - 40, 480)
         title: root.selectedApp
             ? root.selectedApp.actionLabel + " — " + root.selectedApp.name
-            : "Remove application"
+            : I18n.tr("settings.apps.remove_application", "Remove application")
         padding: 18
         background: Rectangle {
             color: Components.Theme.popupBg
@@ -106,12 +106,12 @@ Item {
                 Item { Layout.fillWidth: true }
                 Controls.ButtonCapsule {
                     objectName: "cancelApplicationRemovalButton"
-                    label: "Cancel"
+                    label: I18n.tr("settings.apps.cancel", "Cancel")
                     onClicked: removalDialog.reject()
                 }
                 Controls.ButtonCapsule {
                     objectName: "confirmApplicationRemovalButton"
-                    label: root.selectedApp ? root.selectedApp.actionLabel : "Remove"
+                    label: root.selectedApp ? root.selectedApp.actionLabel : I18n.tr("settings.apps.remove", "Remove")
                     danger: true
                     focus: false
                     onClicked: removalDialog.accept()
@@ -120,10 +120,10 @@ Item {
         }
         contentItem: Text {
             text: root.selectedApp
-                ? "Target: " + root.selectedApp.target + "\n"
+                ? I18n.tr("settings.apps.target", "Target: ") + root.selectedApp.target + "\n"
                     + (root.selectedApp.method === "launcher"
-                        ? "Only the launcher is removed. Application files are kept."
-                        : "The application or package will be removed. Application data is kept.")
+                        ? I18n.tr("settings.apps.only_the_launcher_is_removed_application_fil", "Only the launcher is removed. Application files are kept.")
+                        : I18n.tr("settings.apps.the_application_or_package_will_be_removed_a", "The application or package will be removed. Application data is kept."))
                 : ""
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
@@ -157,8 +157,8 @@ Item {
 
             Form.PageHeader {
                 titleObjectName: "applicationsCatalogTitle"
-                title: "Apps"
-                subtitle: "Browse and manage apps on this device."
+                title: I18n.tr("settings.apps.apps", "Apps")
+                subtitle: I18n.tr("settings.apps.browse_and_manage_apps_on_this_device", "Browse and manage apps on this device.")
 
                 Rectangle {
                     implicitHeight: 29
@@ -191,7 +191,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.bottomMargin: Components.Theme.spacingLarge
                 controlHeight: 46
-                placeholderText: "Search applications"
+                placeholderText: I18n.tr("settings.apps.search_applications", "Search applications")
                 iconText: "⌕"
                 text: root.searchText
                 onTextEdited: value => {
@@ -339,8 +339,8 @@ Item {
                     anchors.centerIn: parent
                     visible: !root.controller.busy && root.filteredApps.length === 0
                     text: root.searchText.trim() !== ""
-                        ? "No applications match your search."
-                        : "No installed applications found."
+                        ? I18n.tr("settings.apps.no_applications_match_your_search", "No applications match your search.")
+                        : I18n.tr("settings.apps.no_installed_applications_found", "No installed applications found.")
                     color: Components.Theme.textSecondary
                     font.family: Components.Theme.typography.role("caption").family
                     font.pixelSize: Components.Theme.typography.role("caption").pixelSize
@@ -367,12 +367,12 @@ Item {
             spacing: 12
             Controls.ButtonCapsule {
                 objectName: "closeApplicationDetailsButton"
-                label: "‹  Back"
+                label: I18n.tr("settings.apps.back", "‹  Back")
                 horizontalPadding: 16
                 onClicked: root.closeDetails()
             }
             Text {
-                text: "Applications"
+                text: I18n.tr("settings.apps.applications", "Applications")
                 font.family: Components.Theme.typography.role("caption").family
                 font.pixelSize: Components.Theme.typography.role("caption").pixelSize
                 lineHeight: Components.Theme.typography.role("caption").lineHeight
@@ -419,7 +419,7 @@ Item {
                         Text {
                             objectName: "applicationDetailTitle"
                             Layout.fillWidth: true
-                            text: root.displayApp ? root.displayApp.name : "Loading application…"
+                            text: root.displayApp ? root.displayApp.name : I18n.tr("settings.apps.loading_application", "Loading application…")
                             color: Components.Theme.textPrimary
                             font.family: Components.Theme.fontFamily
                             font.pixelSize: Components.Theme.typography.role("display").pixelSize
@@ -459,7 +459,7 @@ Item {
                     spacing: 14
 
                     Text {
-                        text: "Information"
+                        text: I18n.tr("settings.apps.information", "Information")
                         color: Components.Theme.textPrimary
                         font.family: Components.Theme.typography.role("title").family
                         font.pixelSize: Components.Theme.typography.role("title").pixelSize
@@ -483,7 +483,7 @@ Item {
                                 anchors { fill: parent; margins: 12 }
                                 spacing: 4
                                 Text {
-                                    text: "Type"
+                                    text: I18n.tr("settings.apps.type", "Type")
                                     color: Components.Theme.textSecondary
                                     font.family: Components.Theme.typography.role("caption").family
                                     font.pixelSize: Components.Theme.typography.role("caption").pixelSize
@@ -493,7 +493,7 @@ Item {
                                 }
                                 Text {
                                     Layout.fillWidth: true
-                                    text: root.selectedApp ? root.selectedApp.kind : "Loading…"
+                                    text: root.selectedApp ? root.selectedApp.kind : I18n.tr("settings.apps.loading", "Loading…")
                                     color: Components.Theme.textPrimary
                                     font.family: Components.Theme.typography.role("body").family
                                     font.pixelSize: Components.Theme.typography.role("body").pixelSize
@@ -516,7 +516,7 @@ Item {
                                 anchors { fill: parent; margins: 12 }
                                 spacing: 4
                                 Text {
-                                    text: "Installed size"
+                                    text: I18n.tr("settings.apps.installed_size", "Installed size")
                                     color: Components.Theme.textSecondary
                                     font.family: Components.Theme.typography.role("caption").family
                                     font.pixelSize: Components.Theme.typography.role("caption").pixelSize
@@ -526,7 +526,7 @@ Item {
                                 }
                                 Text {
                                     Layout.fillWidth: true
-                                    text: root.selectedApp ? root.selectedApp.size : "Checking…"
+                                    text: root.selectedApp ? root.selectedApp.size : I18n.tr("settings.apps.checking", "Checking…")
                                     color: Components.Theme.textPrimary
                                     font.family: Components.Theme.typography.role("body").family
                                     font.pixelSize: Components.Theme.typography.role("body").pixelSize
@@ -579,7 +579,7 @@ Item {
                             anchors.fill: parent
                             spacing: 10
                             Text {
-                                text: "File"
+                                text: I18n.tr("settings.apps.file", "File")
                                 color: Components.Theme.textSecondary
                                 font.family: Components.Theme.typography.role("caption").family
                                 font.pixelSize: Components.Theme.typography.role("caption").pixelSize
@@ -617,7 +617,7 @@ Item {
                     anchors { left: parent.left; right: parent.right; top: parent.top; margins: 22 }
                     spacing: 14
                     Text {
-                        text: "Privacy & access"
+                        text: I18n.tr("settings.apps.privacy_access", "Privacy & access")
                         color: Components.Theme.textPrimary
                         font.family: Components.Theme.typography.role("title").family
                         font.pixelSize: Components.Theme.typography.role("title").pixelSize
@@ -669,7 +669,7 @@ Item {
                         id: privacyNote
                         Layout.fillWidth: true
                         text: root.selectedApp ? root.selectedApp.privacyNote
-                            : "Checking sandbox permissions…"
+                            : I18n.tr("settings.apps.checking_sandbox_permissions", "Checking sandbox permissions…")
                         color: Components.Theme.textSecondary
                         font.family: Components.Theme.typography.role("caption").family
                         font.pixelSize: Components.Theme.typography.role("caption").pixelSize
@@ -694,7 +694,7 @@ Item {
                     anchors { left: parent.left; right: parent.right; top: parent.top; margins: 22 }
                     spacing: 15
                     Text {
-                        text: "Actions"
+                        text: I18n.tr("settings.apps.actions", "Actions")
                         color: Components.Theme.textPrimary
                         font.family: Components.Theme.typography.role("title").family
                         font.pixelSize: Components.Theme.typography.role("title").pixelSize
@@ -708,14 +708,14 @@ Item {
                         spacing: 9
                         Controls.Button {
                             objectName: "createApplicationShortcutButton"
-                            label: "Create shortcut"
+                            label: I18n.tr("settings.apps.create_shortcut", "Create shortcut")
                             controlHeight: 36
                             enabled: root.selectedApp !== null && !root.controller.busy
                             onClicked: root.controller.createShortcut(root.selectedAppId)
                         }
                         Controls.Button {
                             objectName: "openApplicationLocationButton"
-                            label: "Open location"
+                            label: I18n.tr("settings.apps.open_location", "Open location")
                             controlHeight: 36
                             enabled: root.selectedApp !== null && !root.controller.busy
                             onClicked: root.controller.openLocation(root.selectedAppId)
@@ -737,7 +737,7 @@ Item {
                             Text {
                                 Layout.fillWidth: true
                                 text: root.selectedApp && root.selectedApp.method === "launcher"
-                                    ? "Remove launcher" : "Uninstall application"
+                                    ? I18n.tr("settings.apps.remove_launcher", "Remove launcher") : I18n.tr("settings.apps.uninstall_application", "Uninstall application")
                                 color: Components.Theme.textPrimary
                                 font.family: Components.Theme.typography.role("body").family
                                 font.pixelSize: Components.Theme.typography.role("body").pixelSize
@@ -750,8 +750,8 @@ Item {
                             Text {
                                 Layout.fillWidth: true
                                 text: root.selectedApp && root.selectedApp.method === "launcher"
-                                    ? "Only the shortcut entry will be removed."
-                                    : "Application files may be removed. Your data is kept."
+                                    ? I18n.tr("settings.apps.only_the_shortcut_entry_will_be_removed", "Only the shortcut entry will be removed.")
+                                    : I18n.tr("settings.apps.application_files_may_be_removed_your_data_i", "Application files may be removed. Your data is kept.")
                                 color: Components.Theme.textSecondary
                                 font.family: Components.Theme.typography.role("caption").family
                                 font.pixelSize: Components.Theme.typography.role("caption").pixelSize
@@ -763,7 +763,7 @@ Item {
                         }
                         Controls.Button {
                             objectName: "uninstallApplicationButton"
-                            label: root.selectedApp ? root.selectedApp.actionLabel : "Uninstall"
+                            label: root.selectedApp ? root.selectedApp.actionLabel : I18n.tr("settings.apps.uninstall", "Uninstall")
                             danger: true
                             controlHeight: 36
                             foregroundColor: Components.Theme.errorColor

@@ -18,7 +18,7 @@ Item {
     readonly property bool automaticLogin: !!snapshot.automaticLogin
     FileDialog {
         id: avatarDialog
-        title: "Choose a profile picture"
+        title: I18n.tr("settings.user_profile.choose_a_profile_picture", "Choose a profile picture")
         nameFilters: ["Images (*.png *.jpg *.jpeg *.webp)"]
         onAccepted: root.controller.setAvatar(selectedFile)
     }
@@ -82,7 +82,7 @@ Item {
                             Text {
                                 anchors.centerIn: parent
                                 visible: avatarMouse.containsMouse && avatarMouse.enabled
-                                text: "Edit"
+                                text: I18n.tr("settings.user_profile.edit", "Edit")
                                 color: "#ffffff"
                                 font.family: Components.Theme.typography.role("caption").family
                                 font.pixelSize: Components.Theme.typography.role("caption").pixelSize
@@ -115,7 +115,7 @@ Item {
                     }
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        text: (root.snapshot.administrator ? "Administrator · " : "Standard user · ") + root.userName
+                        text: (root.snapshot.administrator ? I18n.tr("settings.user_profile.administrator", "Administrator · ") : I18n.tr("settings.user_profile.standard_user", "Standard user · ")) + root.userName
                         color: Components.Theme.textSecondary
                         font.family: Components.Theme.typography.role("caption").family
                         font.pixelSize: Components.Theme.typography.role("caption").pixelSize
@@ -127,8 +127,8 @@ Item {
                         objectName: "changeAvatarButton"
                         Layout.alignment: Qt.AlignHCenter
                         Layout.topMargin: 6
-                        label: "Change Picture…"
-                        accessibleName: "Choose a profile picture"
+                        label: I18n.tr("settings.user_profile.change_picture", "Change Picture…")
+                        accessibleName: I18n.tr("settings.user_profile.choose_a_profile_picture", "Choose a profile picture")
                         enabled: !!root.snapshot.accountsAvailable && !root.controller.busy
                         onClicked: avatarDialog.open()
                     }
@@ -137,7 +137,7 @@ Item {
         }
 
         Form.SectionHeader {
-            text: "ACCOUNT"
+            text: I18n.tr("settings.user_profile.account", "ACCOUNT")
             Layout.bottomMargin: 12
         }
 
@@ -147,8 +147,8 @@ Item {
 
             Form.SettingRow {
                 objectName: "displayNameRow"
-                label: "Display Name"
-                sublabel: "Name shown on the lock screen and in menus."
+                label: I18n.tr("settings.user_profile.display_name", "Display Name")
+                sublabel: I18n.tr("settings.user_profile.name_shown_on_the_lock_screen_and_in_menus", "Name shown on the lock screen and in menus.")
                 RowLayout {
                     spacing: 6
                     Controls.FormTextField {
@@ -160,7 +160,7 @@ Item {
                     }
                     Controls.ButtonCapsule {
                         objectName: "saveDisplayNameButton"
-                        label: "Save"
+                        label: I18n.tr("settings.user_profile.save", "Save")
                         // Only a real change is worth saving.
                         enabled: !!root.snapshot.accountsAvailable && root.pendingDisplayName.trim().length > 0
                             && root.pendingDisplayName.trim() !== root.displayName
@@ -173,11 +173,11 @@ Item {
 
             Form.SettingRow {
                 objectName: "changePasswordRow"
-                label: "Change Password"
-                sublabel: root.snapshot.passwordAvailable ? "Open the system password tool in a terminal." : "Install xdg-terminal-exec to open the system password tool."
+                label: I18n.tr("settings.user_profile.change_password", "Change Password")
+                sublabel: root.snapshot.passwordAvailable ? I18n.tr("settings.user_profile.open_the_system_password_tool_in_a_terminal", "Open the system password tool in a terminal.") : I18n.tr("settings.user_profile.install_xdg_terminal_exec_to_open_the_system", "Install xdg-terminal-exec to open the system password tool.")
                 Controls.ButtonCapsule {
                     objectName: "changePasswordButton"
-                    label: "Change…"
+                    label: I18n.tr("settings.user_profile.change", "Change…")
                     enabled: !!root.snapshot.passwordAvailable
                     onClicked: root.controller.changePassword()
                 }
@@ -186,7 +186,7 @@ Item {
         }
 
         Form.SectionHeader {
-            text: "SIGN-IN"
+            text: I18n.tr("settings.user_profile.sign_in", "SIGN-IN")
             Layout.bottomMargin: 12
         }
 
@@ -196,10 +196,10 @@ Item {
 
             Form.SettingRow {
                 objectName: "automaticLoginRow"
-                label: "Automatic login"
-                sublabel: root.snapshot.autologinAvailable ? "Start the installed session " + root.snapshot.session + " without asking for a password." : "Install the profile helper and an SDDM session to enable this control."
+                label: I18n.tr("settings.user_profile.automatic_login", "Automatic login")
+                sublabel: root.snapshot.autologinAvailable ? I18n.tr("settings.user_profile.autologin_session", "Start the installed session %1 without asking for a password.").replace("%1", root.snapshot.session) : I18n.tr("settings.user_profile.install_the_profile_helper_and_an_sddm_sessi", "Install the profile helper and an SDDM session to enable this control.")
                 Controls.ToggleSwitch {
-                    accessibleName: "Automatic login"
+                    accessibleName: I18n.tr("settings.user_profile.automatic_login", "Automatic login")
                     enabled: !!root.snapshot.autologinAvailable
                     checked: root.automaticLogin
                     onToggled: checked => root.controller.setAutomaticLogin(checked)

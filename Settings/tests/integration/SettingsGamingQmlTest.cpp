@@ -21,6 +21,15 @@
 
 namespace {
 
+class FakeI18n final : public QObject {
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE QString tr(const QString &, const QString &fallback) const {
+        return fallback;
+    }
+};
+
 class GamingTestEnvironment final {
 public:
     GamingTestEnvironment()
@@ -141,6 +150,7 @@ public:
                          });
         m_engine.rootContext()->setContextProperty(QStringLiteral("SettingsController"), &settings);
         m_engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &m_themeController);
+        m_engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &m_i18n);
         m_engine.addImportPath(QStringLiteral("qrc:/"));
         m_component = std::make_unique<QQmlComponent>(&m_engine, url);
         m_page.reset(m_component->create());
@@ -165,6 +175,7 @@ private:
     QTemporaryDir m_themeDirectory;
     ThemeController m_themeController{m_themeDirectory.filePath(QStringLiteral("theme.json"))};
     QStringList m_warnings;
+    FakeI18n m_i18n;
     QQmlEngine m_engine;
     QQuickWindow m_window;
     std::unique_ptr<QQmlComponent> m_component;

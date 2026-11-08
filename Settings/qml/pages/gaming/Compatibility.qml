@@ -34,8 +34,8 @@ Item {
     }
     function runnerLabels() {
         return root.runnerIds.map(id => {
-            const name = id === "proton" ? "Proton" : (id === "wine" ? "Wine" : "Auto")
-            return id !== "auto" && !root.capabilities[id] ? name + " (unavailable)" : name
+            const name = id === "proton" ? "Proton" : (id === "wine" ? "Wine" : I18n.tr("settings.compatibility.auto", "Auto"))
+            return id !== "auto" && !root.capabilities[id] ? name + " " + I18n.tr("settings.compatibility.runner_unavailable", "(unavailable)") : name
         })
     }
     function setOption(key, value) {
@@ -52,8 +52,8 @@ Item {
         maxWidth: 900
 
         Form.PageHeader {
-            title: "Compatibility"
-            subtitle: "How Windows programs open outside Steam."
+            title: I18n.tr("settings.compatibility.compatibility", "Compatibility")
+            subtitle: I18n.tr("settings.compatibility.how_windows_programs_open_outside_steam", "How Windows programs open outside Steam.")
         }
 
         Components.BackendNotice {
@@ -61,20 +61,20 @@ Item {
             retryObjectName: "compatibilityRetryRefreshButton"
             busy: root.controller.busy
             error: root.controller.lastError
-            busyText: "Saving compatibility settings…"
+            busyText: I18n.tr("settings.compatibility.saving_compatibility_settings", "Saving compatibility settings…")
             onRetry: root.controller.refresh()
         }
 
-        Form.SectionHeader { text: "RUNNER"; Layout.bottomMargin: 12 }
+        Form.SectionHeader { text: I18n.tr("settings.compatibility.runner", "RUNNER"); Layout.bottomMargin: 12 }
         Form.FormCard {
             objectName: "compatibilityGeneralCard"
             Layout.bottomMargin: 24
             Form.SettingRow {
                 objectName: "exeRunnerRow"
-                label: "Open .exe with"
+                label: I18n.tr("settings.compatibility.open_exe_with", "Open .exe with")
                 sublabel: root.runnerIds.length > 1
-                    ? "Select an installed compatibility runner."
-                    : "Only automatic runner selection is available on this system."
+                    ? I18n.tr("settings.compatibility.select_an_installed_compatibility_runner", "Select an installed compatibility runner.")
+                    : I18n.tr("settings.compatibility.only_automatic_runner_selection_is_available", "Only automatic runner selection is available on this system.")
                 Controls.SelectButton {
                     objectName: "exeRunnerSelect"
                     width: 190
@@ -87,10 +87,10 @@ Item {
             }
             Form.SettingRow {
                 objectName: "useProtonProfileRow"
-                label: "Use Proton profile"
-                sublabel: "Reuse GameMode, MangoHud, Gamescope and flags from Proton."
+                label: I18n.tr("settings.compatibility.use_proton_profile", "Use Proton profile")
+                sublabel: I18n.tr("settings.compatibility.reuse_gamemode_mangohud_gamescope_and_flags", "Reuse GameMode, MangoHud, Gamescope and flags from Proton.")
                 Controls.ToggleSwitch {
-                    accessibleName: "Use Proton profile"
+                    accessibleName: I18n.tr("settings.compatibility.use_proton_profile", "Use Proton profile")
                     checked: !!root.compatibility.use_proton_profile
                     onToggled: checked => root.setOption("use_proton_profile", checked)
                 }
@@ -98,7 +98,7 @@ Item {
             }
         }
 
-        Form.SectionHeader { text: "RUNTIME"; Layout.bottomMargin: 12 }
+        Form.SectionHeader { text: I18n.tr("settings.compatibility.runtime", "RUNTIME"); Layout.bottomMargin: 12 }
         Form.FormCard {
             objectName: "compatibilityRuntimeCard"
             Layout.bottomMargin: 24
@@ -106,8 +106,8 @@ Item {
                 objectName: "compatibilityGamemodeRow"
                 label: "GameMode"
                 sublabel: root.customOptionsEnabled
-                    ? (root.capabilities.gamemode ? "Add performance hints before starting the runner." : "GameMode is not installed.")
-                    : "Controlled by the Proton profile."
+                    ? (root.capabilities.gamemode ? I18n.tr("settings.compatibility.add_performance_hints_before_starting_the_ru", "Add performance hints before starting the runner.") : I18n.tr("settings.compatibility.gamemode_is_not_installed", "GameMode is not installed."))
+                    : I18n.tr("settings.compatibility.controlled_by_the_proton_profile", "Controlled by the Proton profile.")
                 enabled: root.customOptionsEnabled
                 Controls.ToggleSwitch {
                     accessibleName: "GameMode"
@@ -119,8 +119,8 @@ Item {
             Form.SettingRow {
                 label: "MangoHud"
                 sublabel: root.customOptionsEnabled
-                    ? (root.capabilities.mangohud ? "Show performance telemetry while the game runs." : "MangoHud is not installed.")
-                    : "Controlled by the Proton profile."
+                    ? (root.capabilities.mangohud ? I18n.tr("settings.compatibility.show_performance_telemetry_while_the_game_ru", "Show performance telemetry while the game runs.") : I18n.tr("settings.compatibility.mangohud_is_not_installed", "MangoHud is not installed."))
+                    : I18n.tr("settings.compatibility.controlled_by_the_proton_profile", "Controlled by the Proton profile.")
                 enabled: root.customOptionsEnabled
                 Controls.ToggleSwitch {
                     accessibleName: "MangoHud"
@@ -132,8 +132,8 @@ Item {
             Form.SettingRow {
                 label: "Gamescope"
                 sublabel: root.customOptionsEnabled
-                    ? (root.capabilities.gamescope ? "Use Gamescope tuning from the Proton page." : "Gamescope is not installed.")
-                    : "Controlled by the Proton profile."
+                    ? (root.capabilities.gamescope ? I18n.tr("settings.compatibility.use_gamescope_tuning_from_the_proton_page", "Use Gamescope tuning from the Proton page.") : I18n.tr("settings.compatibility.gamescope_is_not_installed", "Gamescope is not installed."))
+                    : I18n.tr("settings.compatibility.controlled_by_the_proton_profile", "Controlled by the Proton profile.")
                 enabled: root.customOptionsEnabled
                 Controls.ToggleSwitch {
                     accessibleName: "Gamescope"
@@ -145,13 +145,13 @@ Item {
             }
         }
 
-        Form.SectionHeader { text: "ADVANCED"; Layout.bottomMargin: 12 }
+        Form.SectionHeader { text: I18n.tr("settings.compatibility.advanced", "ADVANCED"); Layout.bottomMargin: 12 }
         Form.FormCard {
             objectName: "compatibilityAdvancedCard"
             Layout.bottomMargin: 24
             Form.SettingRow {
-                label: "Custom environment"
-                sublabel: root.customOptionsEnabled ? "Space-separated KEY=VALUE pairs for this runner." : "Turn off Use Proton profile to edit these options."
+                label: I18n.tr("settings.compatibility.custom_environment", "Custom environment")
+                sublabel: root.customOptionsEnabled ? I18n.tr("settings.compatibility.space_separated_key_value_pairs_for_this_run", "Space-separated KEY=VALUE pairs for this runner.") : I18n.tr("settings.compatibility.turn_off_use_proton_profile_to_edit_these_op", "Turn off Use Proton profile to edit these options.")
                 enabled: root.customOptionsEnabled
                 Controls.FormTextField {
                     objectName: "compatibilityEnvironmentField"
@@ -164,15 +164,15 @@ Item {
                 }
             }
             Form.SettingRow {
-                label: "Custom prefix"
-                sublabel: root.customOptionsEnabled ? "Arguments inserted before Wine or Proton launches the game." : "Turn off Use Proton profile to edit these options."
+                label: I18n.tr("settings.compatibility.custom_prefix", "Custom prefix")
+                sublabel: root.customOptionsEnabled ? I18n.tr("settings.compatibility.arguments_inserted_before_wine_or_proton_lau", "Arguments inserted before Wine or Proton launches the game.") : I18n.tr("settings.compatibility.turn_off_use_proton_profile_to_edit_these_op", "Turn off Use Proton profile to edit these options.")
                 enabled: root.customOptionsEnabled
                 Controls.FormTextField {
                     objectName: "compatibilityPrefixField"
                     Accessible.name: "Custom prefix"
                     enabled: root.customOptionsEnabled
                     implicitWidth: 158
-                    placeholderText: "Optional command"
+                    placeholderText: I18n.tr("settings.compatibility.optional_command", "Optional command")
                     text: root.compatibility.extra_prefix || ""
                     onEditingFinished: root.setOption("extra_prefix", text)
                 }
@@ -180,19 +180,19 @@ Item {
             }
         }
 
-        Form.SectionHeader { text: "PATHS"; Layout.bottomMargin: 12 }
+        Form.SectionHeader { text: I18n.tr("settings.compatibility.paths", "PATHS"); Layout.bottomMargin: 12 }
         Form.FormCard {
             objectName: "compatibilityPathsCard"
             Form.SettingRow {
                 objectName: "compatibilityPrefixPathRow"
-                label: "Prefix"
-                sublabel: (root.usesWine ? root.status.wine_prefix_path : root.status.prefix_path) || "Path is not available"
+                label: I18n.tr("settings.compatibility.prefix", "Prefix")
+                sublabel: (root.usesWine ? root.status.wine_prefix_path : root.status.prefix_path) || I18n.tr("settings.compatibility.path_is_not_available", "Path is not available")
                 sublabelTextFormat: Text.PlainText
             }
             Form.SettingRow {
                 objectName: "compatibilityLogsPathRow"
-                label: "Logs"
-                sublabel: root.status.log_path || "Path is not available"
+                label: I18n.tr("settings.compatibility.logs", "Logs")
+                sublabel: root.status.log_path || I18n.tr("settings.compatibility.path_is_not_available", "Path is not available")
                 sublabelTextFormat: Text.PlainText
                 isLast: true
             }

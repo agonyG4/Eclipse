@@ -7,8 +7,9 @@ import "."
 Item {
     id: root
     objectName: "altTabWindowDelegate"
-    Shared.ThemeTokens { id: themeTokens }
-    readonly property color accent: themeTokens.value("accent", "#007aff")
+    Shared.ShellMaterialTheme { id: shellMaterial }
+    readonly property Shared.ThemeTokens themeTokens: shellMaterial.tokens
+    readonly property color accent: themeTokens.value("accent", shellMaterial.iconAccent)
 
     property int windowIndex: 0
     property bool windowSelected: false
@@ -62,7 +63,7 @@ Item {
             maximumPresentationLogicalSize: 84
             iconRadius: windowSelected ? 18 : 15
             fallbackRadius: iconRadius
-            fallbackColor: themeTokens.value("shellSurface", "#22FFFFFF")
+            fallbackColor: shellMaterial.surface
             fallbackFontSize: themeTokens.value("fontSizeIconLarge", 27)
 
             Behavior on width { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }

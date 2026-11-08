@@ -4,7 +4,8 @@ import Astrea.Shared as Shared
 
 ColumnLayout {
     id: root
-    Shared.ThemeTokens { id: themeTokens; typographySurface: "spotlight" }
+    Shared.ShellMaterialTheme { id: shellMaterial; typographySurface: "spotlight" }
+    readonly property Shared.ThemeTokens themeTokens: shellMaterial.tokens
 
     property string queryText: ""
     property string fontFamily: themeTokens.typography.role("body").family
@@ -33,7 +34,7 @@ ColumnLayout {
     Rectangle {
         Layout.fillWidth: true
         height: 1
-        color: themeTokens.value("shellSurface", "#15FFFFFF")
+        color: shellMaterial.surface
         Layout.topMargin: 12
         Layout.bottomMargin: 8
     }
@@ -62,7 +63,7 @@ ColumnLayout {
             // Concentric with the panel corner across the 14 px content inset.
             radius: Math.max(6, themeTokens.value("spotlightRadius", 24) - 14)
             color: resultList.currentIndex === resultDelegate.index
-                ? themeTokens.value("accent", "#007AFF") : "transparent"
+                ? themeTokens.value("accent", shellMaterial.iconAccent) : "transparent"
 
             RowLayout {
                 anchors {
@@ -89,7 +90,7 @@ ColumnLayout {
                     lineHeight: themeTokens.typography.role("body").lineHeight
                     lineHeightMode: Text.ProportionalHeight
                     renderType: Text.NativeRendering
-                    color: themeTokens.value("shellTextMain", "white")
+                    color: shellMaterial.textMain
                     Layout.fillWidth: true
                     elide: Text.ElideRight
                 }

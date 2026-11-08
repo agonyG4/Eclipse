@@ -4,10 +4,11 @@ import Astrea.Shared as Shared
 
 RowLayout {
     id: root
-    Shared.ThemeTokens { id: themeTokens; typographySurface: "spotlight" }
+    Shared.ShellMaterialTheme { id: shellMaterial; typographySurface: "spotlight" }
+    readonly property Shared.ThemeTokens themeTokens: shellMaterial.tokens
 
     property var controller: null
-    property color textColor: themeTokens.value("shellTextSecondary", "#66FFFFFF")
+    property color textColor: shellMaterial.textSecondary
     property string fontFamily: themeTokens.typography.role("label").family
 
     Layout.maximumWidth: 68

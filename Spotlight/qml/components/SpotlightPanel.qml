@@ -3,11 +3,12 @@ import Qt5Compat.GraphicalEffects as Legacy
 import QtQuick.Layouts
 import Astrea.Shared as Shared
 
-Rectangle {
+Shared.ShellCard {
     id: root
-    Shared.ThemeTokens { id: themeTokens; typographySurface: "spotlight" }
+    Shared.ShellMaterialTheme { id: shellMaterial; typographySurface: "spotlight" }
+    readonly property Shared.ThemeTokens themeTokens: shellMaterial.tokens
 
-    readonly property color placeholderTextColor: themeTokens.value("shellTextSecondary", "#66FFFFFF")
+    readonly property color placeholderTextColor: shellMaterial.textSecondary
     readonly property bool hasQuery: searchInput.text.length > 0
     readonly property var titleStyle: themeTokens.typography.role("title")
     readonly property string fontFamily: titleStyle.family
@@ -15,10 +16,8 @@ Rectangle {
 
     width: 600
     height: hasQuery ? Math.min(contentColumn.implicitHeight + 28, 450) : Math.max(58, titleStyle.pixelSize * titleStyle.lineHeight + 28)
-    radius: themeTokens.value("spotlightRadius", 24)
-    color: themeTokens.value("shellBackground", "#80343434")
-    border.color: themeTokens.value("shellBorder", "#33FFFFFF")
-    border.width: 1
+    material: shellMaterial
+    cardRadius: themeTokens.value("spotlightRadius", 24)
     clip: true
 
     scale: SpotlightController.open ? 1.0 : 0.98
@@ -53,7 +52,7 @@ Rectangle {
                 text: "\u2315"
                 font.family: root.fontFamily
                 font.pixelSize: themeTokens.value("fontSizeIconLarge", 24)
-                color: themeTokens.value("shellTextLight", "#99FFFFFF")
+                color: shellMaterial.textLight
                 Layout.leftMargin: 8
                 Layout.alignment: Qt.AlignVCenter
             }
@@ -84,7 +83,7 @@ Rectangle {
                 // these navigation glyphs in the Spotlight foreground.
                 layer.enabled: visible
                 layer.effect: Legacy.ColorOverlay {
-                    color: themeTokens.value("shellTextMain", "#ffffff")
+                    color: shellMaterial.textMain
                 }
             }
 
@@ -108,8 +107,8 @@ Rectangle {
                     objectName: "spotlightSearchInput"
                     anchors.fill: parent
                     font: themeTokens.typography.font("title")
-                    color: "white"
-                    selectionColor: themeTokens.value("accent", "#407AFF")
+                    color: shellMaterial.textMain
+                    selectionColor: themeTokens.value("accent", shellMaterial.iconAccent)
                     selectedTextColor: themeTokens.value("accentForeground", "white")
                     clip: true
                     renderType: TextInput.NativeRendering

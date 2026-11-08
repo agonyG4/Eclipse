@@ -11,7 +11,8 @@ Item {
     property real availableWidth: Screen.width > 0 ? Screen.width : 1920
     readonly property bool open: AltTabController.open
     readonly property Item backdropItem: panel
-    Shared.ThemeTokens { id: themeTokens }
+    Shared.ShellMaterialTheme { id: shellMaterial }
+    readonly property Shared.ThemeTokens themeTokens: shellMaterial.tokens
 
     width: Math.min(Math.max(220, appRow.implicitWidth + 34), availableWidth - 120)
     height: 116
@@ -48,20 +49,18 @@ Item {
             }
         }
 
-        Rectangle {
+        Shared.ShellCard {
             id: panel
             objectName: "altTabPanelBackground"
             anchors.fill: parent
-            radius: themeTokens.value("altTabRadius", 26)
-            color: themeTokens.value("shellBackground", "#80343434")
-            border.color: themeTokens.value("shellBorder", "#33FFFFFF")
-            border.width: 1
+            material: shellMaterial
+            cardRadius: themeTokens.value("altTabRadius", 26)
             clip: true
 
             Rectangle {
                 anchors.fill: parent
                 radius: parent.radius
-                color: themeTokens.value("shellSurface", "#10000000")
+                color: shellMaterial.surface
                 visible: true
             }
 

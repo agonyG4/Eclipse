@@ -1,5 +1,7 @@
 #include <AstreaSDK/IconThemeService.hpp>
 
+#include "IconDirectoryPolicy.h"
+
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -573,51 +575,78 @@ QString IconThemeService::resolveAppearanceVariant(
         return {};
     }
 
-    const bool explicitVariant = normalized.endsWith(QStringLiteral("-dark"))
-        || normalized.endsWith(QStringLiteral("-light"));
-    if (explicitVariant) {
-        return themeIsUsable(normalized) ? normalized : QString();
-    }
-
-    const QString preferredVariant = normalized
-        + (appearanceMode == AppearanceMode::Light
-                ? QStringLiteral("-light")
-                : QStringLiteral("-dark"));
-    if (themeIsUsable(preferredVariant)) {
-        return preferredVariant;
-    }
-    return themeIsUsable(normalized) ? normalized : QString();
+    struct Lookup {
+        const IconThemeService &service;
+        const QString &base;
+        QString chosen;
+    } lookup{*this, normalized, {}};
+    const auto available = [](void *opaque, std::uint8_t variant) {
+        auto &state = *static_cast<Lookup *>(opaque);
+        QString candidate = state.base;
+        if (variant == AstreaIconLight)
+            candidate += QStringLiteral("-light");
+        else if (variant == AstreaIconDark)
+            candidate += QStringLiteral("-dark");
+        if (!state.service.themeIsUsable(candidate))
+            return false;
+        state.chosen = std::move(candidate);
+        return true;
+    };
+    const auto name = normalized.toUtf8();
+    return astrea_icon_choose_variant(name.constData(), std::size_t(name.size()),
+                                     appearanceMode == AppearanceMode::Light, available, &lookup)
+        ? lookup.chosen : QString();
 }
 
 IconThemeService::ThemeSelection IconThemeService::selectTheme() const
 {
-    const QString environmentTheme = qEnvironmentVariable("ASTREA_ICON_THEME").trimmed();
-    if (isValidThemeIdentifier(environmentTheme) && themeIsUsable(environmentTheme)) {
-        return {environmentTheme, QStringLiteral("environment")};
+    struct Lookup {
+        const IconThemeService &service;
+        QString chosen;
+        QString compatibility;
+    } lookup{*this, {}, {}};
+    const auto available = [](void *opaque, std::uint8_t source) {
+        auto &state = *static_cast<Lookup *>(opaque);
+        const auto &service = state.service;
+        switch (source) {
+        case AstreaIconThemeEnvironment: {
+            const auto theme = qEnvironmentVariable("ASTREA_ICON_THEME").trimmed();
+            if (!isValidThemeIdentifier(theme) || !service.themeIsUsable(theme))
+                return false;
+            state.chosen = theme;
+            return true;
+        }
+        case AstreaIconThemeConfig:
+            state.chosen = service.resolveAppearanceVariant(service.configuredBaseTheme(),
+                                                            service.appearance());
+            return !state.chosen.isEmpty();
+        case AstreaIconThemeCompatibility:
+            state.compatibility = service.resolveAppearanceVariant(QStringLiteral("MacTahoe"),
+                                                                   service.appearance());
+            return !state.compatibility.isEmpty();
+        case AstreaIconThemePlatform:
+            if (!service.themeIsUsable(service.m_platformTheme))
+                return false;
+            state.chosen = service.m_platformTheme;
+            return true;
+        default:
+            return false;
+        }
+    };
+    switch (astrea_icon_choose_theme(
+        m_platformTheme.compare(QStringLiteral("hicolor"), Qt::CaseInsensitive) == 0,
+        available, &lookup)) {
+    case AstreaIconThemeEnvironment:
+        return {lookup.chosen, QStringLiteral("environment")};
+    case AstreaIconThemeConfig:
+        return {lookup.chosen, QStringLiteral("config")};
+    case AstreaIconThemeCompatibility:
+        return {lookup.compatibility, QStringLiteral("compatibility-default")};
+    case AstreaIconThemePlatform:
+        return {lookup.chosen, QStringLiteral("platform")};
+    default:
+        return {{}, QStringLiteral("qt-freedesktop-fallback")};
     }
-
-    const QString configuredBase = configuredBaseTheme();
-    if (const QString configuredVariant = resolveAppearanceVariant(configuredBase, appearance());
-        !configuredVariant.isEmpty()) {
-        return {configuredVariant, QStringLiteral("config")};
-    }
-
-    const QString compatibilityVariant = resolveAppearanceVariant(
-        QStringLiteral("MacTahoe"), appearance());
-    if (m_platformTheme.compare(QStringLiteral("hicolor"), Qt::CaseInsensitive) == 0
-        && !compatibilityVariant.isEmpty()) {
-        return {compatibilityVariant, QStringLiteral("compatibility-default")};
-    }
-
-    if (themeIsUsable(m_platformTheme)) {
-        return {m_platformTheme, QStringLiteral("platform")};
-    }
-
-    if (!compatibilityVariant.isEmpty()) {
-        return {compatibilityVariant, QStringLiteral("compatibility-default")};
-    }
-
-    return {{}, QStringLiteral("qt-freedesktop-fallback")};
 }
 
 void IconThemeService::applyTheme(const ThemeSelection &selection)

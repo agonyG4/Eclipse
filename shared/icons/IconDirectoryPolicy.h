@@ -18,3 +18,23 @@ extern "C" bool astrea_icon_choose_directory(
     const AstreaIconDirectory *directories, std::size_t count,
     std::int32_t size, std::int32_t scale,
     bool (*lookup)(void *, std::size_t), void *context);
+
+enum AstreaIconThemeSource : std::uint8_t {
+    AstreaIconThemeFallback,
+    AstreaIconThemeEnvironment,
+    AstreaIconThemeConfig,
+    AstreaIconThemeCompatibility,
+    AstreaIconThemePlatform,
+};
+enum AstreaIconVariant : std::uint8_t {
+    AstreaIconBase = 1,
+    AstreaIconLight,
+    AstreaIconDark,
+};
+using AstreaIconThemeLookup = bool (*)(void *, std::uint8_t);
+
+// The lookup is synchronous and must publish the candidate before returning true.
+extern "C" bool astrea_icon_choose_variant(const char *name, std::size_t length, bool light,
+                                           AstreaIconThemeLookup lookup, void *context);
+extern "C" std::uint8_t astrea_icon_choose_theme(bool platformIsHicolor,
+                                                 AstreaIconThemeLookup lookup, void *context);

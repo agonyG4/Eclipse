@@ -1,4 +1,6 @@
 import QtQuick
+import QtQuick.Effects
+import QtQuick.Window
 import Astrea.Shared as Shared
 
 Item {
@@ -143,20 +145,26 @@ Item {
     // app shows a window (or a few hops pass), finishing the hop in flight.
     property real bounceOffset: 0
     property int bounceHops: 0
+    // Once the app has shown a window during this launch the bounce ends,
+    // even if that window is already gone again.
+    property bool bounceSawRunning: false
     readonly property int maximumBounceHops: 6
     readonly property real bounceHeight: Math.round(root.iconSize * 0.42)
     function startLaunchBounce() {
         if (!root.dockPanel || root.dockPanel.animationDuration(300) <= 0)
             return
         root.bounceHops = 0
+        root.bounceSawRunning = false
         if (!launchBounce.running)
             launchBounce.start()
     }
     function shouldKeepBouncing() {
         return root.bounceHops < root.maximumBounceHops
+            && !root.bounceSawRunning
             && (root.launching || (root.runtimeKnown && !root.running))
     }
     onLaunchingChanged: if (root.launching) root.startLaunchBounce()
+    onRunningChanged: if (root.running && launchBounce.running) root.bounceSawRunning = true
     SequentialAnimation {
         id: launchBounce
         NumberAnimation {
@@ -182,8 +190,16 @@ Item {
         }
     }
 
-    // Press feedback: the icon dips slightly while held.
+    // Press feedback, macOS style: the icon dips and its own pixels darken
+    // while held; a frosted glass plate shows behind it.
     property real pressScale: tapHandler.pressed && !dragHandler.active ? 0.9 : 1.0
+    property real pressAmount: tapHandler.pressed || dragHandler.active ? 1 : 0
+    Behavior on pressAmount {
+        NumberAnimation {
+            duration: root.dockPanel ? root.dockPanel.animationDuration(root.pressAmount > 0 ? 200 : 90) : 120
+            easing.type: Easing.OutCubic
+        }
+    }
     Behavior on pressScale {
         NumberAnimation {
             duration: root.dockPanel ? root.dockPanel.animationDuration(tapHandler.pressed ? 90 : 200) : 120
@@ -210,6 +226,16 @@ Item {
         maximumPresentationScale: Math.max(1, DockController.magnificationScale)
         iconRadius: 10
         fallbackRadius: 10
+
+        // Only layered while pressed, rendered at the on-screen size so a
+        // magnified icon stays sharp.
+        layer.enabled: root.pressAmount > 0.001
+        layer.textureSize: Qt.size(Math.ceil(width * Math.max(1, scale) * Screen.devicePixelRatio),
+                                   Math.ceil(height * Math.max(1, scale) * Screen.devicePixelRatio))
+        layer.smooth: true
+        layer.effect: MultiEffect {
+            brightness: -0.28 * root.pressAmount
+        }
 
         // The bounce lifts away from the Dock's screen edge.
         transform: Translate {
@@ -368,21 +394,23 @@ Item {
      * the exact interaction target so transparent headroom is not clickable.
      */
     Rectangle {
+        objectName: "pressPlate"
         z: -1
-        x: appIcon.x
-        y: appIcon.y
-        width: appIcon.width
-        height: appIcon.height
+        readonly property real inset: Math.round(root.iconSize * 0.08)
+        x: appIcon.x - inset
+        y: appIcon.y - inset
+        width: appIcon.width + inset * 2
+        height: appIcon.height + inset * 2
         scale: appIcon.scale
         transformOrigin: !root.dockPanel || !root.dockPanel.vertical ? Item.Bottom
                          : DockController.position === "left" ? Item.Left : Item.Right
-        radius: appIcon.iconRadius
-        color: "#40000000"
-        opacity: tapHandler.pressed || dragHandler.active ? 1 : 0
-        visible: opacity > 0
-        Behavior on opacity {
-            NumberAnimation { duration: root.dockPanel ? root.dockPanel.animationDuration(140) : 140; easing.type: Easing.OutCubic }
-        }
+        radius: appIcon.iconRadius + inset
+        // Light frosted glass over the Dock's own blur, not a dark square.
+        color: Qt.rgba(1, 1, 1, 0.16)
+        border.width: 1
+        border.color: Qt.rgba(1, 1, 1, 0.22)
+        opacity: root.pressAmount
+        visible: opacity > 0.001
         transform: Translate {
             x: !root.dockPanel || !root.dockPanel.vertical ? 0
                : DockController.position === "left" ? root.bounceOffset : -root.bounceOffset

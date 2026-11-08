@@ -765,13 +765,11 @@ Item {
             Layout.bottomMargin: 14
             implicitHeight: section.wallpapers.length > 0 ? wallpaperGrid.implicitHeight : emptyLabel.implicitHeight
 
-            Text {
+            Feedback.EmptyState {
                 id: emptyLabel
-                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.left: parent.left
+                anchors.right: parent.right
                 text: I18n.tr("apps.settings.pages.paper.wallpaper.text.no_wallpapers_found", "No wallpapers found")
-                font.family: Components.Theme.fontFamily
-                font.pixelSize: Components.Theme.typography.role("body").pixelSize
-                color: Components.Theme.textSecondary
                 visible: section.wallpapers.length === 0
             }
 

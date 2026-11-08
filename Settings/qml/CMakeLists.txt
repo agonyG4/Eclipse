@@ -25,6 +25,7 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     components/feedback/DnsPresetChip.qml
     components/feedback/DnsStatusCard.qml
     components/feedback/SelectionBadge.qml
+    components/feedback/EmptyState.qml
     components/feedback/ProgressCard.qml
     components/feedback/SpeedCard.qml
     components/feedback/StatusDot.qml

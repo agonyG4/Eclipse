@@ -7,6 +7,7 @@ import Astrea.System 1.0
 import "../../components" as Components
 import "../../components/controls" as Controls
 import "../../components/typography" as Typography
+import "../../components/feedback" as Feedback
 import "../../components/form" as Form
 import "../../components/menu" as Menu
 
@@ -458,15 +459,10 @@ FocusScope {
                 model: root.bluetooth ? root.bluetooth.devicesModel : null
                 delegate: BluetoothDeviceRow { pairedSection: true }
             }
-            Typography.TextLabel {
+            Feedback.EmptyState {
                 objectName: "myDevicesEmptyState"
                 visible: root.pairedDeviceCount === 0
-                Layout.fillWidth: true
-                Layout.preferredHeight: visible ? 52 : 0
-                leftPadding: Components.Theme.spacingXLarge
-                verticalAlignment: Text.AlignVCenter
                 text: I18n.tr("settings.bluetooth.empty.my_devices", "No paired devices yet")
-                textColor: Components.Theme.textSecondary
             }
         }
 
@@ -483,15 +479,10 @@ FocusScope {
                 model: root.bluetooth ? root.bluetooth.devicesModel : null
                 delegate: BluetoothDeviceRow { pairedSection: false }
             }
-            Typography.TextLabel {
+            Feedback.EmptyState {
                 objectName: "otherDevicesEmptyState"
                 visible: root.visibleOtherDeviceCount === 0
-                Layout.fillWidth: true
-                Layout.preferredHeight: visible ? 52 : 0
-                leftPadding: Components.Theme.spacingXLarge
-                verticalAlignment: Text.AlignVCenter
                 text: I18n.tr("settings.bluetooth.empty.other_devices", "No other devices found")
-                textColor: Components.Theme.textSecondary
             }
         }
 

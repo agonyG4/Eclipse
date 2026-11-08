@@ -6,6 +6,7 @@ import QtCore as QtCore
 import Astrea.System 1.0
 import "../../components" as Components
 import "../../components/typography" as Typography
+import "../../components/feedback" as Feedback
 import "../../components/form" as Form
 import "../../components/controls" as Controls
 
@@ -472,14 +473,7 @@ FocusScope {
         }
     }
 
-    component EmptyRow: Typography.TextLabel {
-        Layout.fillWidth: true
-        Layout.preferredHeight: visible ? 52 : 0
-        leftPadding: Components.Theme.spacingXLarge
-        verticalAlignment: Text.AlignVCenter
-        textColor: Components.Theme.textSecondary
-        typographyRole: "body"
-    }
+    component EmptyRow: Feedback.EmptyState {}
 
     component DeviceRow: Item {
         id: deviceRow

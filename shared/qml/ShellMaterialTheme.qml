@@ -4,9 +4,11 @@ QtObject {
     id: root
 
     property string typographySurface: ""
-    readonly property ThemeTokens tokens: ThemeTokens { typographySurface: root.typographySurface }
+    // Theme state object (ThemeController or a proxy of it, such as the
+    // Settings State singleton).
+    property var state: typeof ThemeController === "undefined" ? null : ThemeController
+    readonly property ThemeTokens tokens: ThemeTokens { state: root.state; typographySurface: root.typographySurface }
     readonly property var typography: tokens.typography
-    readonly property var state: tokens.state
     readonly property bool isLight: !!state && state.themeMode === 1
     readonly property bool isTransparent: !state || state.shellStyle === 0
     readonly property bool isDefault: !!state && state.shellStyle === 1
@@ -87,6 +89,12 @@ QtObject {
 
     readonly property real radiusLarge: tokens.value("shellRadiusLarge", 14)
     readonly property real radiusMedium: tokens.value("shellRadiusMedium", 8)
+    readonly property real radiusSmall: tokens.value("shellRadiusSmall", 6)
+    readonly property real controlRadius: tokens.value("shellControlRadius", 10)
+    readonly property real tileRadius: tokens.value("shellTileRadius", 12)
+    readonly property real pillRadius: tokens.value("shellPillRadius", 999)
+    readonly property int workspaceDotSize: 10
+    readonly property int workspaceActiveWidth: 32
     readonly property string fontFamily: typography.role("label").family
     readonly property int fontSizeCaption: typography.role("caption").pixelSize
     readonly property int tooltipFontSize: typography.role("label").pixelSize

@@ -73,12 +73,12 @@ QtObject {
 
     readonly property real shellRadiusLarge: material.radiusLarge
     readonly property real shellRadiusMedium: material.radiusMedium
-    readonly property real shellRadiusSmall: material.tokens.value("shellRadiusSmall", 6)
-    readonly property real shellControlRadius: material.tokens.value("shellControlRadius", 10)
-    readonly property real shellTileRadius: material.tokens.value("shellTileRadius", 12)
-    readonly property real shellPillRadius: material.tokens.value("shellPillRadius", 999)
-    readonly property int workspaceDotSize: 10
-    readonly property int workspaceActiveWidth: 32
+    readonly property real shellRadiusSmall: material.radiusSmall
+    readonly property real shellControlRadius: material.controlRadius
+    readonly property real shellTileRadius: material.tileRadius
+    readonly property real shellPillRadius: material.pillRadius
+    readonly property int workspaceDotSize: material.workspaceDotSize
+    readonly property int workspaceActiveWidth: material.workspaceActiveWidth
     readonly property color workspaceActive: material.workspaceActive
     readonly property color workspaceInactive: material.workspaceInactive
     readonly property int pillHeight: 36

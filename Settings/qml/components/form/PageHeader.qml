@@ -10,6 +10,8 @@ Item {
     property string title: ""
     property string subtitle: ""
     default property alias trailing: trailingSlot.data
+    // Optional leading element (e.g. an icon tile) shown left of the title block.
+    property alias leading: leadingSlot.data
 
     Layout.fillWidth: true
     Layout.bottomMargin: Components.Theme.spacingXLarge
@@ -19,6 +21,16 @@ Item {
         id: row
         anchors { left: parent.left; right: parent.right; top: parent.top }
         spacing: Components.Theme.spacingLarge
+
+        Item {
+            id: leadingSlot
+            Layout.alignment: Qt.AlignVCenter
+            visible: children.length > 0
+            implicitWidth: children.length > 0 ? children[0].implicitWidth : 0
+            implicitHeight: children.length > 0 ? children[0].implicitHeight : 0
+            Layout.preferredWidth: implicitWidth
+            Layout.preferredHeight: implicitHeight
+        }
 
         ColumnLayout {
             Layout.fillWidth: true

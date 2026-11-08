@@ -20,9 +20,11 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     components/controls/ToggleSwitch.qml
     components/controls/SelectButton.qml
     components/controls/SearchField.qml
+    components/controls/FormTextField.qml
     components/controls/Slider.qml
     components/feedback/DnsPresetChip.qml
     components/feedback/DnsStatusCard.qml
+    components/feedback/SelectionBadge.qml
     components/feedback/ProgressCard.qml
     components/feedback/SpeedCard.qml
     components/feedback/StatusDot.qml

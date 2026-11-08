@@ -64,6 +64,10 @@ void DockConfigTest::defaultsMatchThePersonalizationContract()
     QCOMPARE(config.autoHide, QStringLiteral("never"));
     QCOMPARE(config.indicatorStyle, QStringLiteral("line"));
     QCOMPARE(config.indicatorSize, 3);
+    QCOMPARE(config.hoverIndicator, QStringLiteral("plate"));
+    QCOMPARE(config.hoverIndicatorStrength, 12);
+    QCOMPARE(config.pressEffect, QStringLiteral("darken"));
+    QCOMPARE(config.pressEffectStrength, 30);
     QVERIFY(config.animationsEnabled);
     QCOMPARE(config.animationSpeed, 1.0);
     QVERIFY(config.pins.isEmpty());
@@ -80,6 +84,10 @@ void DockConfigTest::parsesNewFieldsAndLegacyEdgeMargin()
         {QStringLiteral("autoHide"), QStringLiteral("intelligent")},
         {QStringLiteral("indicatorStyle"), QStringLiteral("dot")},
         {QStringLiteral("indicatorSize"), 6},
+        {QStringLiteral("hoverIndicator"), QStringLiteral("none")},
+        {QStringLiteral("hoverIndicatorStrength"), 20},
+        {QStringLiteral("pressEffect"), QStringLiteral("frosted")},
+        {QStringLiteral("pressEffectStrength"), 45},
         {QStringLiteral("animationsEnabled"), false},
         {QStringLiteral("animationSpeed"), 1.75},
         {QStringLiteral("pins"), QJsonArray{QStringLiteral("one.desktop")}}
@@ -95,6 +103,10 @@ void DockConfigTest::parsesNewFieldsAndLegacyEdgeMargin()
     QCOMPARE(config.autoHide, QStringLiteral("intelligent"));
     QCOMPARE(config.indicatorStyle, QStringLiteral("dot"));
     QCOMPARE(config.indicatorSize, 6);
+    QCOMPARE(config.hoverIndicator, QStringLiteral("none"));
+    QCOMPARE(config.hoverIndicatorStrength, 20);
+    QCOMPARE(config.pressEffect, QStringLiteral("frosted"));
+    QCOMPARE(config.pressEffectStrength, 45);
     QVERIFY(!config.animationsEnabled);
     QCOMPARE(config.animationSpeed, 1.75);
 
@@ -113,14 +125,18 @@ void DockConfigTest::invalidEnumsFallbackIndependently()
             {QStringLiteral("hoverEffect"), QStringLiteral("invalid")},
             {QStringLiteral("position"), QStringLiteral("top")},
             {QStringLiteral("autoHide"), QStringLiteral("sometimes")},
-            {QStringLiteral("indicatorStyle"), QStringLiteral("bar")}},
+            {QStringLiteral("indicatorStyle"), QStringLiteral("bar")},
+            {QStringLiteral("hoverIndicator"), QStringLiteral("glow")},
+            {QStringLiteral("pressEffect"), QStringLiteral("explode")}},
         &errors);
 
     QCOMPARE(config.hoverEffect, QStringLiteral("magnification"));
     QCOMPARE(config.position, QStringLiteral("bottom"));
     QCOMPARE(config.autoHide, QStringLiteral("never"));
     QCOMPARE(config.indicatorStyle, QStringLiteral("line"));
-    QCOMPARE(errors.size(), 4);
+    QCOMPARE(config.hoverIndicator, QStringLiteral("plate"));
+    QCOMPARE(config.pressEffect, QStringLiteral("darken"));
+    QCOMPARE(errors.size(), 6);
 }
 
 void DockConfigTest::nonFiniteNumbersFallbackAndFiniteValuesClamp()

@@ -26,6 +26,10 @@ bool sameConfig(const DockConfig &left, const DockConfig &right)
         && left.autoHide == right.autoHide
         && left.indicatorStyle == right.indicatorStyle
         && left.indicatorSize == right.indicatorSize
+        && left.hoverIndicator == right.hoverIndicator
+        && left.hoverIndicatorStrength == right.hoverIndicatorStrength
+        && left.pressEffect == right.pressEffect
+        && left.pressEffectStrength == right.pressEffectStrength
         && left.minimizedThumbnailsEnabled == right.minimizedThumbnailsEnabled
         && left.windowPreviewsEnabled == right.windowPreviewsEnabled
         && left.animationsEnabled == right.animationsEnabled

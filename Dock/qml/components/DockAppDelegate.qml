@@ -190,13 +190,35 @@ Item {
         }
     }
 
-    // Press feedback, macOS style: the icon dips and its own pixels darken
-    // while held; a frosted glass plate shows behind it.
-    property real pressScale: tapHandler.pressed && !dragHandler.active ? 0.9 : 1.0
-    property real pressAmount: tapHandler.pressed || dragHandler.active ? 1 : 0
+    // Press feedback, chosen by pressEffect: darken (macOS), shrink (Windows),
+    // frosted (dip and darken over a glass plate) or none.
+    readonly property bool iconHeld: tapHandler.pressed && !dragHandler.active
+    readonly property real pressStrength: DockController.pressEffectStrength / 100
+    readonly property bool pressDarkens: DockController.pressEffect === "darken"
+        || DockController.pressEffect === "frosted"
+    readonly property bool pressShrinks: DockController.pressEffect === "shrink"
+        || DockController.pressEffect === "frosted"
+    property real pressScale: root.iconHeld && root.pressShrinks ? 1 - root.pressStrength / 3 : 1.0
+    property real pressAmount: root.iconHeld && root.pressDarkens ? 1 : 0
     Behavior on pressAmount {
         NumberAnimation {
-            duration: root.dockPanel ? root.dockPanel.animationDuration(root.pressAmount > 0 ? 200 : 90) : 120
+            duration: root.dockPanel ? root.dockPanel.animationDuration(root.iconHeld ? 90 : 200) : 120
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    // The plate behind the icon: Windows-style hover indicator, dimming while
+    // held, and the frosted press effect's glass.
+    readonly property real hoverPlateTarget: DockController.hoverIndicator === "plate"
+        && root.pointerTarget && !dragHandler.active
+        ? DockController.hoverIndicatorStrength / 100 * (root.iconHeld ? 0.6 : 1) : 0
+    readonly property real frostedPlateTarget: root.iconHeld
+        && DockController.pressEffect === "frosted" ? 0.16 : 0
+    property real plateAlpha: Math.max(root.hoverPlateTarget, root.frostedPlateTarget)
+    Behavior on plateAlpha {
+        NumberAnimation {
+            duration: root.dockPanel
+                ? root.dockPanel.animationDuration(root.pointerTarget ? 90 : 180) : 120
             easing.type: Easing.OutCubic
         }
     }
@@ -234,7 +256,7 @@ Item {
                                    Math.ceil(height * Math.max(1, scale) * Screen.devicePixelRatio))
         layer.smooth: true
         layer.effect: MultiEffect {
-            brightness: -0.28 * root.pressAmount
+            brightness: -root.pressStrength * root.pressAmount
         }
 
         // The bounce lifts away from the Dock's screen edge.
@@ -394,7 +416,7 @@ Item {
      * the exact interaction target so transparent headroom is not clickable.
      */
     Rectangle {
-        objectName: "pressPlate"
+        objectName: "iconPlate"
         z: -1
         readonly property real inset: Math.round(root.iconSize * 0.08)
         x: appIcon.x - inset
@@ -405,12 +427,12 @@ Item {
         transformOrigin: !root.dockPanel || !root.dockPanel.vertical ? Item.Bottom
                          : DockController.position === "left" ? Item.Left : Item.Right
         radius: appIcon.iconRadius + inset
-        // Light frosted glass over the Dock's own blur, not a dark square.
-        color: Qt.rgba(1, 1, 1, 0.16)
+        // White over a dark Dock, black over a light one, like WinUI's subtle fills.
+        readonly property real shade: root.dockPanel && root.dockPanel.lightMaterial ? 0 : 1
+        color: Qt.rgba(shade, shade, shade, root.plateAlpha)
         border.width: 1
-        border.color: Qt.rgba(1, 1, 1, 0.22)
-        opacity: root.pressAmount
-        visible: opacity > 0.001
+        border.color: Qt.rgba(shade, shade, shade, root.plateAlpha * 0.8)
+        visible: root.plateAlpha > 0.001
         transform: Translate {
             x: !root.dockPanel || !root.dockPanel.vertical ? 0
                : DockController.position === "left" ? root.bounceOffset : -root.bounceOffset

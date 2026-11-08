@@ -623,6 +623,8 @@ private slots:
     void modelMoveRefreshesHoverGeometryAndIdentity();
     void releasePointerRestoresMagnificationTarget();
     void reorderLiftsOnlyTheDraggedDelegate();
+    void iconFeedbackFollowsHoverAndPressOptions();
+    void launchBounceEndsOnceTheAppHasShownAWindow();
     void runtimeOnlyQmlUsesTaskKeyForIdentityAndContextTarget();
     void magnifiedVisualRegionAcceptsContextMenu();
     void mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen();
@@ -2135,6 +2137,119 @@ void DockHoverQmlTest::releasePointerRestoresMagnificationTarget()
                               QStringLiteral("three.desktop"), 1000);
     QVERIFY(panel->property("pointerInside").toBool());
 
+    delete panel;
+}
+
+void DockHoverQmlTest::iconFeedbackFollowsHoverAndPressOptions()
+{
+    DockController controller;
+    const QStringList pins{QStringLiteral("one.desktop"), QStringLiteral("two.desktop")};
+    DockConfig config = configFor(QStringLiteral("none"), pins);
+    controller.applyConfig(config);
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    QQuickWindow window;
+    panel->setParentItem(window.contentItem());
+    window.resize(400, 120);
+    window.show();
+    QTest::qWait(20);
+
+    QQuickItem *first = delegate(panel, QStringLiteral("one.desktop"));
+    QVERIFY(first);
+    const auto plate = [&] { return propertyReal(first, "plateAlpha"); };
+
+    QQuickItem *second = delegate(panel, QStringLiteral("two.desktop"));
+    QVERIFY(second);
+    const QPoint center = itemCenter(window, first);
+
+    // Hover: the plate fades in at the configured strength and leaves with the pointer.
+    QTest::mouseMove(&window, center);
+    QTRY_VERIFY_WITH_TIMEOUT(first->property("pointerTarget").toBool(), 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(plate() - 0.12) < 0.001, 1000);
+    config.hoverIndicatorStrength = 30;
+    controller.applyConfig(config);
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(plate() - 0.30) < 0.001, 1000);
+    config.hoverIndicatorStrength = 12;
+    controller.applyConfig(config);
+    QTest::mouseMove(&window, itemCenter(window, second));
+    QTRY_VERIFY_WITH_TIMEOUT(plate() < 0.001, 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(propertyReal(second, "plateAlpha") - 0.12) < 0.001, 1000);
+    config.hoverIndicator = QStringLiteral("none");
+    controller.applyConfig(config);
+    QTRY_VERIFY_WITH_TIMEOUT(propertyReal(second, "plateAlpha") < 0.001, 1000);
+    config.hoverIndicator = QStringLiteral("plate");
+    controller.applyConfig(config);
+    QTest::mouseMove(&window, center);
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(plate() - 0.12) < 0.001, 1000);
+
+    // Press: each effect drives only its own channels; the hover plate dims.
+    struct Case { const char *effect; bool darkens; qreal scale; qreal plateAlpha; };
+    const Case cases[] = {
+        {"darken", true, 1.0, 0.072},
+        {"shrink", false, 0.9, 0.072},
+        {"frosted", true, 0.9, 0.16},
+        {"none", false, 1.0, 0.072},
+    };
+    for (const Case &testCase : cases) {
+        config.pressEffect = QString::fromLatin1(testCase.effect);
+        controller.applyConfig(config);
+        QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, center);
+        QTRY_VERIFY2_WITH_TIMEOUT(
+            qAbs(propertyReal(first, "pressAmount") - (testCase.darkens ? 1.0 : 0.0)) < 0.001
+                && qAbs(propertyReal(first, "pressScale") - testCase.scale) < 0.001
+                && qAbs(plate() - testCase.plateAlpha) < 0.001,
+            testCase.effect, 1000);
+        QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, center);
+        QTRY_VERIFY2_WITH_TIMEOUT(propertyReal(first, "pressAmount") < 0.001
+                                      && qAbs(propertyReal(first, "pressScale") - 1.0) < 0.001
+                                      && qAbs(plate() - 0.12) < 0.001,
+                                  testCase.effect, 1000);
+    }
+    delete panel;
+}
+
+void DockHoverQmlTest::launchBounceEndsOnceTheAppHasShownAWindow()
+{
+    DockController controller;
+    controller.applyConfig(configFor(QStringLiteral("none"), {QStringLiteral("one.desktop"),
+                                                              QStringLiteral("two.desktop")}));
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    QCoreApplication::processEvents();
+
+    // A launch whose window never shows keeps hopping once the helper exits.
+    QQuickItem *waiting = delegate(panel, QStringLiteral("two.desktop"));
+    QVERIFY(waiting);
+    waiting->setProperty("runtimeKnown", true);
+    waiting->setProperty("running", false);
+    waiting->setProperty("launching", true);
+    waiting->setProperty("launching", false);
+    QTRY_VERIFY_WITH_TIMEOUT(propertyReal(waiting, "bounceHops") >= 2, 3000);
+
+    // Opening and closing the window at once ends the bounce on the hop in flight.
+    QQuickItem *closed = delegate(panel, QStringLiteral("one.desktop"));
+    QVERIFY(closed);
+    closed->setProperty("runtimeKnown", true);
+    closed->setProperty("running", false);
+    closed->setProperty("launching", true);
+    closed->setProperty("launching", false);
+    closed->setProperty("running", true);
+    closed->setProperty("running", false);
+    QTRY_COMPARE_WITH_TIMEOUT(propertyReal(closed, "bounceHops"), 1.0, 2000);
+    QTest::qWait(900);
+    QCOMPARE(propertyReal(closed, "bounceHops"), 1.0);
+    QCOMPARE(propertyReal(closed, "bounceOffset"), 0.0);
     delete panel;
 }
 

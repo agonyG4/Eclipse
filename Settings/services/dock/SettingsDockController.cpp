@@ -77,6 +77,10 @@ bool SettingsDockController::samePersonalization(const DockConfig &left,
         && left.floating == right.floating && left.cornerRadius == right.cornerRadius
         && left.autoHide == right.autoHide && left.indicatorStyle == right.indicatorStyle
         && left.indicatorSize == right.indicatorSize
+        && left.hoverIndicator == right.hoverIndicator
+        && left.hoverIndicatorStrength == right.hoverIndicatorStrength
+        && left.pressEffect == right.pressEffect
+        && left.pressEffectStrength == right.pressEffectStrength
         && left.minimizedThumbnailsEnabled == right.minimizedThumbnailsEnabled
         && left.windowPreviewsEnabled == right.windowPreviewsEnabled
         && left.animationsEnabled == right.animationsEnabled
@@ -121,6 +125,14 @@ void SettingsDockController::applyLocalConfig(const DockConfig &config)
         emit indicatorStyleChanged();
     if (previous.indicatorSize != m_config.indicatorSize)
         emit indicatorSizeChanged();
+    if (previous.hoverIndicator != m_config.hoverIndicator)
+        emit hoverIndicatorChanged();
+    if (previous.hoverIndicatorStrength != m_config.hoverIndicatorStrength)
+        emit hoverIndicatorStrengthChanged();
+    if (previous.pressEffect != m_config.pressEffect)
+        emit pressEffectChanged();
+    if (previous.pressEffectStrength != m_config.pressEffectStrength)
+        emit pressEffectStrengthChanged();
     if (previous.minimizedThumbnailsEnabled != m_config.minimizedThumbnailsEnabled)
         emit minimizedThumbnailsEnabledChanged();
     if (previous.windowPreviewsEnabled != m_config.windowPreviewsEnabled)
@@ -375,6 +387,42 @@ void SettingsDockController::setAutoHide(const QString &value)
     DockConfig next = m_config;
     next.autoHide = DockConfigCodec::parse(QJsonObject{{QStringLiteral("autoHide"), value}})
                         .autoHide;
+    setFieldConfig(next);
+}
+
+void SettingsDockController::setHoverIndicator(const QString &value)
+{
+    DockConfig next = m_config;
+    next.hoverIndicator = DockConfigCodec::parse(
+                   QJsonObject{{QStringLiteral("hoverIndicator"), value}})
+                   .hoverIndicator;
+    setFieldConfig(next);
+}
+
+void SettingsDockController::setHoverIndicatorStrength(int value)
+{
+    DockConfig next = m_config;
+    next.hoverIndicatorStrength = DockConfigCodec::parse(
+                   QJsonObject{{QStringLiteral("hoverIndicatorStrength"), value}})
+                   .hoverIndicatorStrength;
+    setFieldConfig(next);
+}
+
+void SettingsDockController::setPressEffect(const QString &value)
+{
+    DockConfig next = m_config;
+    next.pressEffect = DockConfigCodec::parse(
+                   QJsonObject{{QStringLiteral("pressEffect"), value}})
+                   .pressEffect;
+    setFieldConfig(next);
+}
+
+void SettingsDockController::setPressEffectStrength(int value)
+{
+    DockConfig next = m_config;
+    next.pressEffectStrength = DockConfigCodec::parse(
+                   QJsonObject{{QStringLiteral("pressEffectStrength"), value}})
+                   .pressEffectStrength;
     setFieldConfig(next);
 }
 

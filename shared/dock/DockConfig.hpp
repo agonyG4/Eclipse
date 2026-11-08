@@ -20,6 +20,10 @@ struct DockConfig {
     QString autoHide = QStringLiteral("never");
     QString indicatorStyle = QStringLiteral("line");
     int indicatorSize = 3;
+    QString hoverIndicator = QStringLiteral("plate");
+    int hoverIndicatorStrength = 12;
+    QString pressEffect = QStringLiteral("darken");
+    int pressEffectStrength = 30;
     bool minimizedThumbnailsEnabled = true;
     bool windowPreviewsEnabled = true;
     bool animationsEnabled = true;

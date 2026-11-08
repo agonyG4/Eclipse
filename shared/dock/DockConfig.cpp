@@ -169,6 +169,17 @@ DockConfig parse(const QJsonObject &object, QStringList *errors)
         diagnostics);
     result.indicatorSize = integerField(object, QStringLiteral("indicatorSize"),
                                          result.indicatorSize, 1, 12, diagnostics);
+    result.hoverIndicator = stringField(
+        object, QStringLiteral("hoverIndicator"), result.hoverIndicator,
+        {QLatin1StringView("plate"), QLatin1StringView("none")}, diagnostics);
+    result.hoverIndicatorStrength = integerField(object, QStringLiteral("hoverIndicatorStrength"),
+                                                 result.hoverIndicatorStrength, 4, 40, diagnostics);
+    result.pressEffect = stringField(
+        object, QStringLiteral("pressEffect"), result.pressEffect,
+        {QLatin1StringView("darken"), QLatin1StringView("shrink"), QLatin1StringView("frosted"),
+         QLatin1StringView("none")}, diagnostics);
+    result.pressEffectStrength = integerField(object, QStringLiteral("pressEffectStrength"),
+                                              result.pressEffectStrength, 10, 60, diagnostics);
     result.animationsEnabled = booleanField(object, QStringLiteral("animationsEnabled"),
                                              result.animationsEnabled, diagnostics);
     result.animationSpeed = doubleField(object, QStringLiteral("animationSpeed"),
@@ -274,6 +285,15 @@ bool validateConfig(const DockConfig &config, QString *errorOut)
         return fail(QStringLiteral("indicatorStyle is unsupported"));
     if (config.indicatorSize < 1 || config.indicatorSize > 12)
         return fail(QStringLiteral("indicatorSize is outside 1..12"));
+    if (!stringIn(config.hoverIndicator, {QLatin1StringView("plate"), QLatin1StringView("none")}))
+        return fail(QStringLiteral("hoverIndicator is unsupported"));
+    if (config.hoverIndicatorStrength < 4 || config.hoverIndicatorStrength > 40)
+        return fail(QStringLiteral("hoverIndicatorStrength is outside 4..40"));
+    if (!stringIn(config.pressEffect, {QLatin1StringView("darken"), QLatin1StringView("shrink"),
+                                       QLatin1StringView("frosted"), QLatin1StringView("none")}))
+        return fail(QStringLiteral("pressEffect is unsupported"));
+    if (config.pressEffectStrength < 10 || config.pressEffectStrength > 60)
+        return fail(QStringLiteral("pressEffectStrength is outside 10..60"));
     if (!qIsFinite(config.animationSpeed) || config.animationSpeed < 0.25
         || config.animationSpeed > 4.0)
         return fail(QStringLiteral("animationSpeed is outside 0.25..4.0"));
@@ -300,6 +320,10 @@ QJsonObject patchKnownFields(const QJsonObject &source, const DockConfig &config
     object.insert(QStringLiteral("autoHide"), config.autoHide);
     object.insert(QStringLiteral("indicatorStyle"), config.indicatorStyle);
     object.insert(QStringLiteral("indicatorSize"), config.indicatorSize);
+    object.insert(QStringLiteral("hoverIndicator"), config.hoverIndicator);
+    object.insert(QStringLiteral("hoverIndicatorStrength"), config.hoverIndicatorStrength);
+    object.insert(QStringLiteral("pressEffect"), config.pressEffect);
+    object.insert(QStringLiteral("pressEffectStrength"), config.pressEffectStrength);
     object.insert(QStringLiteral("animationsEnabled"), config.animationsEnabled);
     object.insert(QStringLiteral("animationSpeed"), config.animationSpeed);
     if (includePins) {

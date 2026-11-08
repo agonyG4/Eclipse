@@ -18,6 +18,10 @@ from `~/.config/AstreaOS/ui/components.json`:
   "autoHide": "never",
   "indicatorStyle": "line",
   "indicatorSize": 3,
+  "hoverIndicator": "plate",
+  "hoverIndicatorStrength": 12,
+  "pressEffect": "darken",
+  "pressEffectStrength": 30,
   "animationsEnabled": true,
   "animationSpeed": 1.0,
   "pins": [
@@ -130,6 +134,14 @@ collapses after a 180 ms leave delay, and retains a bounded edge reveal target.
 an active maximized or fullscreen toplevel, in which case it behaves as Always.
 This v1 obstruction heuristic does not inspect arbitrary overlap geometry;
 future Typhon output/geometry publication can replace it.
+
+`hoverIndicator=plate` fades a rounded translucent plate behind the icon under
+the pointer, Windows taskbar style; `none` disables it.
+`hoverIndicatorStrength` is the plate's opacity in percent, clamped to `4..40`.
+`pressEffect` is what a held icon does: `darken` darkens its pixels (macOS),
+`shrink` shrinks it (Windows), `frosted` dips and darkens it over a light frosted
+plate, and `none` does nothing. `pressEffectStrength` is clamped to `10..60`: the
+percentage of darkening, with a shrink of one third of that value.
 
 `indicatorStyle=line` retains the current line indicator, `dot` uses a compact
 circle, and `none` hides the indicator. `indicatorSize` is applied to the

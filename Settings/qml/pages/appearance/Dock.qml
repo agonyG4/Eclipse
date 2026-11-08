@@ -10,6 +10,18 @@ Item {
     objectName: "dockPage"
 
     readonly property var controller: SettingsController.dock
+    readonly property var hoverIndicatorValues: ["plate", "none"]
+    readonly property var hoverIndicatorOptions: [
+        I18n.tr("apps.settings.pages.appearance.dock.option.hover_plate", "Plate (Windows)"),
+        I18n.tr("apps.settings.pages.appearance.dock.option.none", "None")
+    ]
+    readonly property var pressEffectValues: ["darken", "shrink", "frosted", "none"]
+    readonly property var pressEffectOptions: [
+        I18n.tr("apps.settings.pages.appearance.dock.option.press_darken", "Darken (macOS)"),
+        I18n.tr("apps.settings.pages.appearance.dock.option.press_shrink", "Shrink (Windows)"),
+        I18n.tr("apps.settings.pages.appearance.dock.option.press_frosted", "Frosted glass"),
+        I18n.tr("apps.settings.pages.appearance.dock.option.none", "None")
+    ]
     readonly property var popupStyleValues: ["floating", "attached"]
     readonly property var popupStyleOptions: [
         I18n.tr("apps.settings.pages.appearance.dock.option.floating", "Floating"),
@@ -474,6 +486,91 @@ Item {
                     detentValue: root.controller.defaultIndicatorSize
                     valueText: root.unit(displayedValue)
                     onValueEdited: editedValue => root.controller.setIndicatorSize(Math.round(editedValue))
+                    onPressedChanged: if (!pressed) root.controller.flush()
+                }
+            }
+        }
+
+        Form.SectionHeader {
+            text: I18n.tr("apps.settings.pages.appearance.dock.text.icon_feedback", "ICON FEEDBACK")
+            Layout.bottomMargin: 12
+        }
+
+        Form.FormCard {
+            objectName: "iconFeedbackCard"
+            Layout.bottomMargin: 24
+
+            Form.SettingRow {
+                label: I18n.tr("apps.settings.pages.appearance.dock.label.hover_indicator", "Hover indicator")
+                sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.hover_indicator", "Show a plate behind the icon under the pointer")
+
+                Controls.SelectButton {
+                    objectName: "hoverIndicatorSelect"
+                    width: 180
+                    label: root.hoverIndicatorOptions[root.indexOf(root.hoverIndicatorValues, root.controller.hoverIndicator)]
+                    options: root.hoverIndicatorOptions
+                    selectedIndex: root.indexOf(root.hoverIndicatorValues, root.controller.hoverIndicator)
+                    onSelected: index => root.controller.setHoverIndicator(root.hoverIndicatorValues[index])
+                }
+            }
+
+            Form.SettingRow {
+                label: I18n.tr("apps.settings.pages.appearance.dock.label.hover_strength", "Hover strength")
+                sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.hover_strength", "Set how visible the plate is")
+
+                Controls.Slider {
+                    showEndpointGlyphs: false
+                    showValueLabel: true
+                    showValueTooltip: false
+                    objectName: "hoverStrengthSlider"
+                    enabled: root.controller.hoverIndicator !== "none"
+                    from: 4
+                    to: 40
+                    stepSize: 1
+                    modelValueEnabled: true
+                    modelValue: root.controller.hoverIndicatorStrength
+                    detentEnabled: true
+                    detentValue: root.controller.defaultHoverIndicatorStrength
+                    valueText: Math.round(displayedValue) + "%"
+                    onValueEdited: editedValue => root.controller.setHoverIndicatorStrength(Math.round(editedValue))
+                    onPressedChanged: if (!pressed) root.controller.flush()
+                }
+            }
+
+            Form.SettingRow {
+                label: I18n.tr("apps.settings.pages.appearance.dock.label.press_effect", "Press effect")
+                sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.press_effect", "Choose what an icon does while you hold it")
+
+                Controls.SelectButton {
+                    objectName: "pressEffectSelect"
+                    width: 180
+                    label: root.pressEffectOptions[root.indexOf(root.pressEffectValues, root.controller.pressEffect)]
+                    options: root.pressEffectOptions
+                    selectedIndex: root.indexOf(root.pressEffectValues, root.controller.pressEffect)
+                    onSelected: index => root.controller.setPressEffect(root.pressEffectValues[index])
+                }
+            }
+
+            Form.SettingRow {
+                label: I18n.tr("apps.settings.pages.appearance.dock.label.press_strength", "Press strength")
+                sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.press_strength", "Set how far the icon darkens or shrinks")
+                isLast: true
+
+                Controls.Slider {
+                    showEndpointGlyphs: false
+                    showValueLabel: true
+                    showValueTooltip: false
+                    objectName: "pressStrengthSlider"
+                    enabled: root.controller.pressEffect !== "none"
+                    from: 10
+                    to: 60
+                    stepSize: 1
+                    modelValueEnabled: true
+                    modelValue: root.controller.pressEffectStrength
+                    detentEnabled: true
+                    detentValue: root.controller.defaultPressEffectStrength
+                    valueText: Math.round(displayedValue) + "%"
+                    onValueEdited: editedValue => root.controller.setPressEffectStrength(Math.round(editedValue))
                     onPressedChanged: if (!pressed) root.controller.flush()
                 }
             }

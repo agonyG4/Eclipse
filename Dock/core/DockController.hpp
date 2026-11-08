@@ -43,6 +43,10 @@ class DockController final : public QObject {
     Q_PROPERTY(QString autoHide READ autoHide NOTIFY configChanged)
     Q_PROPERTY(QString indicatorStyle READ indicatorStyle NOTIFY configChanged)
     Q_PROPERTY(int indicatorSize READ indicatorSize NOTIFY configChanged)
+    Q_PROPERTY(QString hoverIndicator READ hoverIndicator NOTIFY configChanged)
+    Q_PROPERTY(int hoverIndicatorStrength READ hoverIndicatorStrength NOTIFY configChanged)
+    Q_PROPERTY(QString pressEffect READ pressEffect NOTIFY configChanged)
+    Q_PROPERTY(int pressEffectStrength READ pressEffectStrength NOTIFY configChanged)
     Q_PROPERTY(bool minimizedThumbnailsEnabled READ minimizedThumbnailsEnabled NOTIFY configChanged)
     Q_PROPERTY(bool windowPreviewsEnabled READ windowPreviewsEnabled NOTIFY configChanged)
     Q_PROPERTY(bool animationsEnabled READ animationsEnabled NOTIFY configChanged)
@@ -96,6 +100,10 @@ public:
     QString autoHide() const { return m_config.autoHide; }
     QString indicatorStyle() const { return m_config.indicatorStyle; }
     int indicatorSize() const { return m_config.indicatorSize; }
+    QString hoverIndicator() const { return m_config.hoverIndicator; }
+    int hoverIndicatorStrength() const { return m_config.hoverIndicatorStrength; }
+    QString pressEffect() const { return m_config.pressEffect; }
+    int pressEffectStrength() const { return m_config.pressEffectStrength; }
     bool minimizedThumbnailsEnabled() const { return m_config.minimizedThumbnailsEnabled; }
     bool windowPreviewsEnabled() const { return m_config.windowPreviewsEnabled; }
     bool animationsEnabled() const { return m_config.animationsEnabled; }

@@ -21,6 +21,10 @@ class SettingsDockController final : public QObject {
     Q_PROPERTY(QString autoHide READ autoHide WRITE setAutoHide NOTIFY autoHideChanged)
     Q_PROPERTY(QString indicatorStyle READ indicatorStyle WRITE setIndicatorStyle NOTIFY indicatorStyleChanged)
     Q_PROPERTY(int indicatorSize READ indicatorSize WRITE setIndicatorSize NOTIFY indicatorSizeChanged)
+    Q_PROPERTY(QString hoverIndicator READ hoverIndicator WRITE setHoverIndicator NOTIFY hoverIndicatorChanged)
+    Q_PROPERTY(int hoverIndicatorStrength READ hoverIndicatorStrength WRITE setHoverIndicatorStrength NOTIFY hoverIndicatorStrengthChanged)
+    Q_PROPERTY(QString pressEffect READ pressEffect WRITE setPressEffect NOTIFY pressEffectChanged)
+    Q_PROPERTY(int pressEffectStrength READ pressEffectStrength WRITE setPressEffectStrength NOTIFY pressEffectStrengthChanged)
     Q_PROPERTY(bool minimizedThumbnailsEnabled READ minimizedThumbnailsEnabled WRITE setMinimizedThumbnailsEnabled NOTIFY minimizedThumbnailsEnabledChanged)
     Q_PROPERTY(bool windowPreviewsEnabled READ windowPreviewsEnabled WRITE setWindowPreviewsEnabled NOTIFY windowPreviewsEnabledChanged)
     Q_PROPERTY(bool animationsEnabled READ animationsEnabled WRITE setAnimationsEnabled NOTIFY animationsEnabledChanged)
@@ -36,6 +40,8 @@ class SettingsDockController final : public QObject {
     Q_PROPERTY(int defaultEdgeMargin READ defaultEdgeMargin CONSTANT)
     Q_PROPERTY(int defaultCornerRadius READ defaultCornerRadius CONSTANT)
     Q_PROPERTY(int defaultIndicatorSize READ defaultIndicatorSize CONSTANT)
+    Q_PROPERTY(int defaultHoverIndicatorStrength READ defaultHoverIndicatorStrength CONSTANT)
+    Q_PROPERTY(int defaultPressEffectStrength READ defaultPressEffectStrength CONSTANT)
     Q_PROPERTY(double defaultAnimationSpeed READ defaultAnimationSpeed CONSTANT)
     Q_PROPERTY(bool canUndoRestore READ canUndoRestore NOTIFY canUndoRestoreChanged)
 
@@ -58,6 +64,10 @@ public:
     QString autoHide() const { return m_config.autoHide; }
     QString indicatorStyle() const { return m_config.indicatorStyle; }
     int indicatorSize() const { return m_config.indicatorSize; }
+    QString hoverIndicator() const { return m_config.hoverIndicator; }
+    int hoverIndicatorStrength() const { return m_config.hoverIndicatorStrength; }
+    QString pressEffect() const { return m_config.pressEffect; }
+    int pressEffectStrength() const { return m_config.pressEffectStrength; }
     bool minimizedThumbnailsEnabled() const { return m_config.minimizedThumbnailsEnabled; }
     bool windowPreviewsEnabled() const { return m_config.windowPreviewsEnabled; }
     bool animationsEnabled() const { return m_config.animationsEnabled; }
@@ -73,6 +83,8 @@ public:
     int defaultEdgeMargin() const { return DockConfig::defaults().edgeMargin; }
     int defaultCornerRadius() const { return DockConfig::defaults().cornerRadius; }
     int defaultIndicatorSize() const { return DockConfig::defaults().indicatorSize; }
+    int defaultHoverIndicatorStrength() const { return DockConfig::defaults().hoverIndicatorStrength; }
+    int defaultPressEffectStrength() const { return DockConfig::defaults().pressEffectStrength; }
     double defaultAnimationSpeed() const { return DockConfig::defaults().animationSpeed; }
     bool canUndoRestore() const { return m_canUndoRestore; }
 
@@ -90,6 +102,10 @@ public slots:
     void setAutoHide(const QString &value);
     void setIndicatorStyle(const QString &value);
     void setIndicatorSize(int value);
+    void setHoverIndicator(const QString &value);
+    void setHoverIndicatorStrength(int value);
+    void setPressEffect(const QString &value);
+    void setPressEffectStrength(int value);
     void setMinimizedThumbnailsEnabled(bool value);
     void setWindowPreviewsEnabled(bool value);
     void setAnimationsEnabled(bool value);
@@ -113,6 +129,10 @@ signals:
     void autoHideChanged();
     void indicatorStyleChanged();
     void indicatorSizeChanged();
+    void hoverIndicatorChanged();
+    void hoverIndicatorStrengthChanged();
+    void pressEffectChanged();
+    void pressEffectStrengthChanged();
     void minimizedThumbnailsEnabledChanged();
     void windowPreviewsEnabledChanged();
     void animationsEnabledChanged();

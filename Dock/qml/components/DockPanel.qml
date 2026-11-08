@@ -12,6 +12,7 @@ Item {
         id: shellMaterial
     }
     readonly property real dockRadius: shellMaterial.tokens.value("dockRadius", DockController.cornerRadius)
+    readonly property bool lightMaterial: shellMaterial.isLight
 
     readonly property bool vertical: DockController.vertical
     readonly property bool growsPositiveCross: DockController.position === "left"

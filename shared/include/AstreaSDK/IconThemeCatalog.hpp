@@ -60,14 +60,6 @@ private:
     static bool isValidThemeIdentifier(const QString &themeName);
     static bool isSafeRelativePath(const QString &path);
     static bool isFilesystemPath(const QString &path);
-    static bool directoryMatchesSize(
-        const DirectoryMetadata &directory,
-        int requestedSize,
-        int requestedScale);
-    static qint64 directorySizeDistance(
-        const DirectoryMetadata &directory,
-        int requestedSize,
-        int requestedScale);
     static QStringList splitList(const QVariant &value);
     static void appendUnique(QStringList &values, const QString &value);
 

@@ -1,5 +1,7 @@
 #include <AstreaSDK/IconThemeCatalog.hpp>
 
+#include "IconDirectoryPolicy.h"
+
 #include <QDir>
 #include <QFileInfo>
 #include <QIcon>
@@ -16,12 +18,6 @@ namespace {
 constexpr auto kHicolorTheme = "hicolor";
 constexpr auto kIconThemeGroup = "Icon Theme";
 constexpr qsizetype kMaxPresenceEntries = 4096;
-
-struct IconMatch final {
-    QString path;
-    bool undersized = false;
-    qint64 distance = 0;
-};
 
 const QStringList &iconExtensions()
 {
@@ -191,60 +187,6 @@ bool IconThemeCatalog::isFilesystemPath(const QString &path)
 {
     return !path.startsWith(QStringLiteral(":/"))
         && !path.startsWith(QStringLiteral("qrc:/"));
-}
-
-bool IconThemeCatalog::directoryMatchesSize(
-    const DirectoryMetadata &directory,
-    int requestedSize,
-    int requestedScale)
-{
-    if (directory.scale != requestedScale) {
-        return false;
-    }
-
-    switch (directory.type) {
-    case DirectoryType::Fixed:
-        return directory.size == requestedSize;
-    case DirectoryType::Scalable:
-        return directory.minSize <= requestedSize && requestedSize <= directory.maxSize;
-    case DirectoryType::Threshold: {
-        const qint64 lower = qint64(directory.size) - directory.threshold;
-        const qint64 upper = qint64(directory.size) + directory.threshold;
-        return lower <= requestedSize && requestedSize <= upper;
-    }
-    }
-    return false;
-}
-
-qint64 IconThemeCatalog::directorySizeDistance(
-    const DirectoryMetadata &directory,
-    int requestedSize,
-    int requestedScale)
-{
-    const qint64 requestedPhysicalSize = qint64(requestedSize) * requestedScale;
-    qint64 lower = qint64(directory.size) * directory.scale;
-    qint64 upper = lower;
-    switch (directory.type) {
-    case DirectoryType::Fixed:
-        break;
-    case DirectoryType::Scalable:
-        lower = qint64(directory.minSize) * directory.scale;
-        upper = qint64(directory.maxSize) * directory.scale;
-        break;
-    case DirectoryType::Threshold:
-        lower = qMax<qint64>(1, qint64(directory.size) - directory.threshold)
-            * directory.scale;
-        upper = (qint64(directory.size) + directory.threshold) * directory.scale;
-        break;
-    }
-
-    if (requestedPhysicalSize < lower) {
-        return lower - requestedPhysicalSize;
-    }
-    if (requestedPhysicalSize > upper) {
-        return requestedPhysicalSize - upper;
-    }
-    return 0;
 }
 
 QStringList IconThemeCatalog::splitList(const QVariant &value)
@@ -425,57 +367,37 @@ QString IconThemeCatalog::findIconPath(
     const int iconScale = requestedScale(devicePixelRatio);
     const QStringList &extensions = supportedIconExtensions();
 
-    // LookupIcon first searches declared subdirectories for an exact size and
-    // scale match. Root and extension order only break ties within a directory.
-    for (int directoryIndex = 0; directoryIndex < metadata->directories.size(); ++directoryIndex) {
-        const DirectoryMetadata &directory = metadata->directories.at(directoryIndex);
-        if (!directoryMatchesSize(directory, requestedSize, iconScale)) {
-            continue;
-        }
-        for (int rootIndex = 0; rootIndex < metadata->roots.size(); ++rootIndex) {
-            const QString prefix = QDir(metadata->roots.at(rootIndex)).filePath(
-                directory.path + QLatin1Char('/') + candidate);
-            for (const QString &extension : extensions) {
-                const QString path = prefix + extension;
-                if (QFileInfo(path).isFile()) {
-                    return path;
-                }
-            }
-        }
+    QList<AstreaIconDirectory> directories;
+    directories.reserve(metadata->directories.size());
+    for (const auto &directory : metadata->directories) {
+        directories.append({directory.size, directory.scale, directory.minSize, directory.maxSize,
+                            directory.threshold, static_cast<std::uint8_t>(directory.type)});
     }
 
-    // No exact asset exists. Find the closest available directory using
-    // scaled physical size; a matching scale has no special priority here.
-    // An asset that covers the request wins over a smaller one: downscaling
-    // stays sharp, upscaling blurs. Fixed-size PNG themes otherwise resolve a
-    // 40 px request to the 32 px asset because it ties with 48 px.
-    const qint64 requestedPhysicalSize = qint64(requestedSize) * iconScale;
-    bool found = false;
-    IconMatch best;
-    for (int directoryIndex = 0; directoryIndex < metadata->directories.size(); ++directoryIndex) {
-        const DirectoryMetadata &directory = metadata->directories.at(directoryIndex);
-        const qint64 distance = directorySizeDistance(directory, requestedSize, iconScale);
-        const bool undersized = distance > 0
-            && requestedPhysicalSize > qint64(directory.size) * directory.scale
-            && (directory.type != DirectoryType::Scalable
-                || requestedPhysicalSize > qint64(directory.maxSize) * directory.scale);
-        for (int rootIndex = 0; rootIndex < metadata->roots.size(); ++rootIndex) {
-            const QString prefix = QDir(metadata->roots.at(rootIndex)).filePath(
-                directory.path + QLatin1Char('/') + candidate);
-            for (const QString &extension : extensions) {
+    struct Lookup {
+        const ThemeMetadata &metadata;
+        const QString &candidate;
+        const QStringList &extensions;
+        QString path;
+    } lookup{*metadata, candidate, extensions, {}};
+    const auto lookupDirectory = [](void *context, std::size_t index) {
+        auto &state = *static_cast<Lookup *>(context);
+        const auto &directory = state.metadata.directories.at(qsizetype(index));
+        for (const auto &root : state.metadata.roots) {
+            const QString prefix = QDir(root).filePath(directory.path + QLatin1Char('/') + state.candidate);
+            for (const auto &extension : state.extensions) {
                 const QString path = prefix + extension;
-                if (!QFileInfo(path).isFile()) {
-                    continue;
-                }
-                if (!found || (best.undersized && !undersized)
-                    || (best.undersized == undersized && distance < best.distance)) {
-                    best = {path, undersized, distance};
-                    found = true;
+                if (QFileInfo(path).isFile()) {
+                    state.path = path;
+                    return true;
                 }
             }
         }
-    }
-    return found ? best.path : QString();
+        return false;
+    };
+    return astrea_icon_choose_directory(directories.constData(), std::size_t(directories.size()),
+                                        requestedSize, iconScale, lookupDirectory, &lookup)
+        ? lookup.path : QString();
 }
 
 bool IconThemeCatalog::hasIcon(

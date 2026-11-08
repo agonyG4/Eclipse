@@ -1,4 +1,20 @@
+find_program(ASTREA_ICON_RUSTC rustc REQUIRED)
+set(astrea_icon_policy_source "${CMAKE_CURRENT_SOURCE_DIR}/icons/icon_directory_policy.rs")
+set(astrea_icon_policy_object "${CMAKE_CURRENT_BINARY_DIR}/astrea_icon_directory_policy.o")
+add_custom_command(
+    OUTPUT "${astrea_icon_policy_object}"
+    COMMAND "${ASTREA_ICON_RUSTC}" --edition=2024 --crate-type=lib --emit=obj
+            -C panic=abort -C relocation-model=pic -O
+            -o "${astrea_icon_policy_object}" "${astrea_icon_policy_source}"
+    DEPENDS "${astrea_icon_policy_source}"
+    COMMENT "Compiling Rust icon directory policy"
+    VERBATIM
+)
+set_source_files_properties("${astrea_icon_policy_object}" PROPERTIES GENERATED TRUE EXTERNAL_OBJECT TRUE)
+
 add_library(astrea-shared-core STATIC
+    "${astrea_icon_policy_object}"
+    icons/IconDirectoryPolicy.h
     icons/IconThemeCatalog.cpp
     icons/IconThemeService.cpp
     icons/FileIconProvider.cpp

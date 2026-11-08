@@ -127,6 +127,17 @@ Item {
     readonly property color successColor: Borealis.Apps.successColor
 
     readonly property bool isLight: Borealis.Shell.isLight
+
+    // Interaction fills shared by every control, so hover and press read the
+    // same everywhere. Rows and list items wash lightly; buttons a bit more.
+    readonly property color rowHoverFill: isLight ? Qt.rgba(0, 0, 0, 0.045) : Qt.rgba(1, 1, 1, 0.055)
+    readonly property color controlSubtleFill: isLight ? Qt.rgba(0, 0, 0, 0.035) : Qt.rgba(1, 1, 1, 0.035)
+    readonly property color controlHoverFill: isLight ? Qt.rgba(0, 0, 0, 0.055) : Qt.rgba(1, 1, 1, 0.09)
+    readonly property color controlPressedFill: isLight ? Qt.rgba(0, 0, 0, 0.08) : Qt.rgba(1, 1, 1, 0.12)
+    readonly property color hairline: isLight ? Qt.rgba(0, 0, 0, 0.06) : Qt.rgba(1, 1, 1, 0.05)
+    readonly property color selectedFill: Qt.rgba(accent.r, accent.g, accent.b, 0.12)
+    readonly property color selectedBorder: Qt.rgba(accent.r, accent.g, accent.b, 0.25)
+
     readonly property bool isTransparent: Borealis.Shell.isTransparent
     readonly property bool isDefault: Borealis.Shell.isDefault
     readonly property bool isFrosted: Borealis.Shell.isFrosted

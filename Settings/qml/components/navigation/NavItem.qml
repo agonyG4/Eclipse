@@ -16,6 +16,10 @@ Item {
     // navigation supplies the resolved source instead.
     property string iconKey: ""
     required property bool   selected
+    // The sidebar draws one shared selection pill that slides between rows;
+    // standalone items keep drawing their own.
+    property bool drawsSelection: true
+    readonly property bool showsSelection: selected && drawsSelection
     signal clicked()
 
     FontLoader { id: tablerIcons; source: "qrc:/Astrea/Settings/assets/fonts/tabler-icons-300.ttf" }
@@ -30,25 +34,25 @@ Item {
         id: bgRect
         anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
         radius: 8
-        color: root.selected
-            ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.12)
-            : hma.containsMouse ? (root.isLight ? Qt.rgba(0, 0, 0, 0.045) : Qt.rgba(1, 1, 1, 0.05)) : "transparent"
-        border.width: root.selected ? 1 : (hma.containsMouse ? 1 : 0)
-        border.color: root.selected ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.25) : (root.isLight ? Qt.rgba(0, 0, 0, 0.06) : Qt.rgba(1, 1, 1, 0.05))
+        color: root.showsSelection
+            ? Components.Theme.selectedFill
+            : hma.containsMouse && !root.selected ? Components.Theme.rowHoverFill : "transparent"
+        border.width: root.showsSelection || (hma.containsMouse && !root.selected) ? 1 : 0
+        border.color: root.showsSelection ? Components.Theme.selectedBorder : Components.Theme.hairline
 
-        Behavior on color { ColorAnimation { duration: 150; easing.type: Easing.OutCubic } }
-        Behavior on border.color { ColorAnimation { duration: 150; easing.type: Easing.OutCubic } }
+        Behavior on color { ColorAnimation { duration: Components.Theme.animationFast; easing.type: Components.Theme.easingStandard } }
+        Behavior on border.color { ColorAnimation { duration: Components.Theme.animationFast; easing.type: Components.Theme.easingStandard } }
 
         // Subtle left indicator for selected state
         Rectangle {
             anchors { left: parent.left; verticalCenter: parent.verticalCenter }
             width: 3
-            height: root.selected ? parent.height * 0.5 : 0
+            height: root.showsSelection ? parent.height * 0.5 : 0
             radius: 1.5
             color: root.accent
-            opacity: root.selected ? 1.0 : 0.0
+            opacity: root.showsSelection ? 1.0 : 0.0
             Behavior on height { NumberAnimation { duration: Components.Theme.animationSlow; easing.type: Components.Theme.easingEnter } }
-            Behavior on opacity { NumberAnimation { duration: 200 } }
+            Behavior on opacity { NumberAnimation { duration: Components.Theme.animationNormal } }
         }
     }
 
@@ -62,7 +66,7 @@ Item {
             height: 28
             radius: 8
             color: root.selected ? root.accent : (hma.containsMouse ? (root.isLight ? Qt.rgba(0, 0, 0, 0.07) : Qt.rgba(1, 1, 1, 0.1)) : (root.isLight ? Qt.rgba(0, 0, 0, 0.04) : Qt.rgba(1, 1, 1, 0.05)))
-            Behavior on color { ColorAnimation { duration: 200; easing.type: Easing.OutCubic } }
+            Behavior on color { ColorAnimation { duration: Components.Theme.animationNormal; easing.type: Components.Theme.easingStandard } }
 
             // Adds a gentle inner shadow / highlight effect overlay
             Rectangle {
@@ -80,7 +84,7 @@ Item {
                 font.pixelSize: 18
                 font.family: tablerIcons.name
                 visible:        root.iconSource === ""
-                Behavior on color { ColorAnimation { duration: 150 } }
+                Behavior on color { ColorAnimation { duration: Components.Theme.animationFast } }
 
                 // Active glow for the icon
                 layer.enabled: root.selected && visible
@@ -116,7 +120,7 @@ Item {
             lineHeightMode: Text.ProportionalHeight
             elide:       Text.ElideRight
             Layout.fillWidth: true
-            Behavior on color { ColorAnimation { duration: 150 } }
+            Behavior on color { ColorAnimation { duration: Components.Theme.animationFast } }
         }
     }
 

@@ -43,21 +43,24 @@ Item {
         anchors.centerIn: parent
         color: toggle.checked ? Components.Theme.accent
             : (Components.Theme.isLight ? Qt.rgba(0, 0, 0, 0.18) : Qt.rgba(1, 1, 1, 0.18))
-        Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
+        Behavior on color { ColorAnimation { duration: Components.Theme.animationFast; easing.type: Components.Theme.easingStandard } }
     }
 
     Rectangle {
         id: knob
-        width: 14
+        // The knob stretches toward its travel while pressed, like macOS.
+        width: toggleArea.pressed ? 18 : 14
         height: 14
         radius: height / 2
         color: "#ffffff"
         anchors.verticalCenter: track.verticalCenter
         x: track.x + (toggle.checked ? track.width - width - 3 : 3)
-        Behavior on x { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+        Behavior on x { NumberAnimation { duration: Components.Theme.animationFast; easing.type: Components.Theme.easingStandard } }
+        Behavior on width { NumberAnimation { duration: Components.Theme.animationQuick; easing.type: Components.Theme.easingStandard } }
     }
 
     MouseArea {
+        id: toggleArea
         anchors.fill: parent
         enabled: toggle.enabled
         cursorShape: Qt.PointingHandCursor

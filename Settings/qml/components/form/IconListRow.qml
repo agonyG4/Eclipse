@@ -26,7 +26,7 @@ Item {
     // Hover background
     Rectangle {
         anchors.fill: parent
-        color: rowArea.containsMouse && rowRoot.interactive ? Qt.rgba(1, 1, 1, 0.04) : "transparent"
+        color: rowArea.containsMouse && rowRoot.interactive ? Components.Theme.rowHoverFill : "transparent"
         Behavior on color { ColorAnimation { duration: Components.Theme.animationFast } }
         radius: Components.Theme.cornerRadiusSmall
         anchors.margins: Components.Theme.spacingTiny

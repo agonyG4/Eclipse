@@ -49,8 +49,8 @@ Rectangle {
         if (root.leftIconOutline)
             return "transparent"
         if (leftArea.pressed)
-            return Qt.rgba(1, 1, 1, 0.12)
-        return leftHover.hovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
+            return Components.Theme.controlPressedFill
+        return leftHover.hovered ? Components.Theme.controlHoverFill : "transparent"
     }
     property color rightFillColor: {
         if (!root.rightEnabled)
@@ -60,8 +60,8 @@ Rectangle {
         if (root.rightIconOutline)
             return "transparent"
         if (rightArea.pressed)
-            return Qt.rgba(1, 1, 1, 0.12)
-        return rightHover.hovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
+            return Components.Theme.controlPressedFill
+        return rightHover.hovered ? Components.Theme.controlHoverFill : "transparent"
     }
 
     signal leftClicked()
@@ -76,10 +76,10 @@ Rectangle {
     border.color: Components.Theme.cardBorder
     clip: true
 
-    Behavior on color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
-    Behavior on border.color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
-    Behavior on leftFillColor { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
-    Behavior on rightFillColor { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
+    Behavior on color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Components.Theme.easingStandard } }
+    Behavior on border.color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Components.Theme.easingStandard } }
+    Behavior on leftFillColor { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Components.Theme.easingStandard } }
+    Behavior on rightFillColor { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Components.Theme.easingStandard } }
 
     onLeftFillColorChanged: segmentFill.requestPaint()
     onRightFillColorChanged: segmentFill.requestPaint()
@@ -169,8 +169,8 @@ Rectangle {
                 ? root.iconOutlinePressedBorderColor
                 : root.iconOutlineBorderColor
 
-            Behavior on color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
-            Behavior on border.color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
+            Behavior on color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Components.Theme.easingStandard } }
+            Behavior on border.color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Components.Theme.easingStandard } }
         }
 
         Row {
@@ -251,8 +251,8 @@ Rectangle {
                 ? root.iconOutlinePressedBorderColor
                 : root.iconOutlineBorderColor
 
-            Behavior on color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
-            Behavior on border.color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
+            Behavior on color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Components.Theme.easingStandard } }
+            Behavior on border.color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Components.Theme.easingStandard } }
         }
 
         Row {

@@ -54,16 +54,16 @@ Rectangle {
     opacity: enabled ? 1 : Components.Theme.opacityDisabled
     color: {
         if (!enabled)
-            return Qt.rgba(1, 1, 1, 0.035)
+            return Components.Theme.controlSubtleFill
         if (primary)
             return accentColor
-        return hovered ? Qt.rgba(1, 1, 1, 0.10) : Components.Theme.cardBg
+        return hovered ? Components.Theme.controlHoverFill : Components.Theme.cardBg
     }
     border.width: 1
     border.color: primary ? Qt.rgba(accentColor.r, accentColor.g, accentColor.b, 0.55) : Components.Theme.cardBorder
 
-    Behavior on color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
-    Behavior on border.color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
+    Behavior on color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Components.Theme.easingStandard } }
+    Behavior on border.color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Components.Theme.easingStandard } }
 
     HoverHandler { id: hoverArea; enabled: root.enabled }
 

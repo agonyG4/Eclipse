@@ -17,8 +17,7 @@ Item {
     property color textPrimary: Components.Theme.textPrimary
     property color textSecondary: Components.Theme.textSecondary
     property color cardBorder: Components.Theme.cardBorder
-    property color rowHoverBg: Components.Theme.isLight
-        ? Qt.rgba(0, 0, 0, 0.045) : Qt.rgba(1, 1, 1, 0.055)
+    property color rowHoverBg: Components.Theme.rowHoverFill
 
     default property alias control: slot.data
 
@@ -50,7 +49,7 @@ Item {
         anchors { fill: parent; leftMargin: Components.Theme.spacingMicro; rightMargin: Components.Theme.spacingMicro; topMargin: Components.Theme.spacingTiny; bottomMargin: Components.Theme.spacingTiny }
         radius: Components.Theme.controlRadius
         color: rowArea.containsMouse && sr.clickable ? sr.rowHoverBg : "transparent"
-        Behavior on color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
+        Behavior on color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Components.Theme.easingStandard } }
 
         Controls.PressTint {
             anchors.fill: parent

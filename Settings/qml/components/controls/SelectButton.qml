@@ -33,7 +33,7 @@ Item {
     readonly property int listH: Math.min(sel.options.length, sel.maxVisible) * sel.itemH + popupPad * 2
     readonly property bool isLight: Components.Theme.themeMode === 1
     readonly property color restingBg: sel.cardBg
-    readonly property color hoverBg: isLight ? Qt.rgba(0, 0, 0, 0.045) : Qt.rgba(1, 1, 1, 0.09)
+    readonly property color hoverBg: Components.Theme.controlHoverFill
     readonly property color popupHoverBg: isLight ? Qt.rgba(0, 0, 0, 0.055) : Qt.rgba(1, 1, 1, 0.08)
     readonly property color popupBorder: isLight ? Qt.rgba(0, 0, 0, 0.12) : Qt.rgba(1, 1, 1, 0.10)
     readonly property color popupShadow: isLight ? Qt.rgba(0, 0, 0, 0.22) : Qt.rgba(0, 0, 0, 0.73)
@@ -160,16 +160,16 @@ Item {
         // Extremely snappy/premium enter transition
         enter: Transition {
             ParallelAnimation {
-                NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Components.Theme.animationNormal; easing.type: Easing.OutCubic }
+                NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Components.Theme.animationNormal; easing.type: Components.Theme.easingStandard }
                 NumberAnimation { property: "scale"; from: 0.97; to: 1.0; duration: Components.Theme.animationNormal; easing.type: Components.Theme.easingEnter }
-                NumberAnimation { property: "y"; from: sel.popupDirection === "up" ? -(sel.listH + 1) : sel.height - 5; to: sel.popupDirection === "up" ? -(sel.listH + 6) : sel.height + 6; duration: Components.Theme.animationSlow; easing.type: Easing.OutCubic }
+                NumberAnimation { property: "y"; from: sel.popupDirection === "up" ? -(sel.listH + 1) : sel.height - 5; to: sel.popupDirection === "up" ? -(sel.listH + 6) : sel.height + 6; duration: Components.Theme.animationSlow; easing.type: Components.Theme.easingStandard }
             }
         }
         exit: Transition {
             ParallelAnimation {
-                NumberAnimation { property: "opacity"; from: 1; to: 0; duration: Components.Theme.animationFast; easing.type: Easing.InCubic }
-                NumberAnimation { property: "scale"; from: 1.0; to: 0.95; duration: Components.Theme.animationFast; easing.type: Easing.InCubic }
-                NumberAnimation { property: "y"; from: sel.popupDirection === "up" ? -(sel.listH + 6) : sel.height + 6; to: sel.popupDirection === "up" ? -(sel.listH + 2) : sel.height + 2; duration: Components.Theme.animationFast; easing.type: Easing.InCubic }
+                NumberAnimation { property: "opacity"; from: 1; to: 0; duration: Components.Theme.animationFast; easing.type: Components.Theme.easingExit }
+                NumberAnimation { property: "scale"; from: 1.0; to: 0.95; duration: Components.Theme.animationFast; easing.type: Components.Theme.easingExit }
+                NumberAnimation { property: "y"; from: sel.popupDirection === "up" ? -(sel.listH + 6) : sel.height + 6; to: sel.popupDirection === "up" ? -(sel.listH + 2) : sel.height + 2; duration: Components.Theme.animationFast; easing.type: Components.Theme.easingExit }
             }
         }
 

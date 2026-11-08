@@ -197,7 +197,7 @@ QQC2.Slider {
             property: "pulseScale"
             to: 1.06
             duration: 50
-            easing.type: Easing.OutCubic
+            easing.type: Components.Theme.easingStandard
         }
         NumberAnimation {
             target: root
@@ -319,7 +319,7 @@ QQC2.Slider {
                 Behavior on opacity {
                     NumberAnimation {
                         duration: Components.Theme.animationMicro
-                        easing.type: Easing.OutCubic
+                        easing.type: Components.Theme.easingStandard
                     }
                 }
             }
@@ -359,7 +359,7 @@ QQC2.Slider {
         Behavior on scale {
             NumberAnimation {
                 duration: Components.Theme.animationMicro
-                easing.type: Easing.OutCubic
+                easing.type: Components.Theme.easingStandard
             }
         }
         Behavior on opacity {

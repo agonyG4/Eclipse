@@ -21,6 +21,6 @@ Label {
     color: textColor
 
     Behavior on color {
-        ColorAnimation { duration: Components.Theme.animationFast; easing.type: Easing.OutCubic }
+        ColorAnimation { duration: Components.Theme.animationFast; easing.type: Components.Theme.easingStandard }
     }
 }

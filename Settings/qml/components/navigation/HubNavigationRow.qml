@@ -26,12 +26,10 @@ Item {
         anchors.margins: Components.Theme.spacingTiny
         radius: Components.Theme.cornerRadiusSmall
         color: rowMouse.containsMouse
-            ? (Components.Theme.isLight ? Qt.rgba(0, 0, 0, 0.045) : Qt.rgba(1, 1, 1, 0.05))
+            ? Components.Theme.rowHoverFill
             : "transparent"
         border.width: rowMouse.containsMouse ? 1 : 0
-        border.color: Components.Theme.isLight
-            ? Qt.rgba(0, 0, 0, 0.06)
-            : Qt.rgba(1, 1, 1, 0.05)
+        border.color: Components.Theme.hairline
 
         Behavior on color { ColorAnimation { duration: Components.Theme.animationFast } }
         Behavior on border.color { ColorAnimation { duration: Components.Theme.animationFast } }
@@ -49,8 +47,8 @@ Item {
             height: 32
             radius: Components.Theme.radiusSmall
             color: rowMouse.containsMouse
-                ? Qt.rgba(1, 1, 1, 0.10)
-                : Qt.rgba(1, 1, 1, 0.055)
+                ? Components.Theme.controlHoverFill
+                : Components.Theme.controlSubtleFill
 
             Controls.ThemedIcon {
                 anchors.centerIn: parent

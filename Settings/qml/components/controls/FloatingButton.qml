@@ -26,9 +26,9 @@ Rectangle {
     readonly property bool hovered: hoverArea.hovered
     readonly property bool pressed: pressArea.pressed
     readonly property bool isLight: Components.Theme.themeMode === 1
-    readonly property color subtleBg: isLight ? Qt.rgba(0, 0, 0, 0.035) : Qt.rgba(1, 1, 1, 0.035)
-    readonly property color hoverBg: isLight ? Qt.rgba(0, 0, 0, 0.055) : Qt.rgba(1, 1, 1, 0.10)
-    readonly property color pressedBg: isLight ? Qt.rgba(0, 0, 0, 0.08) : Qt.rgba(1, 1, 1, 0.13)
+    readonly property color subtleBg: Components.Theme.controlSubtleFill
+    readonly property color hoverBg: Components.Theme.controlHoverFill
+    readonly property color pressedBg: Components.Theme.controlPressedFill
 
     signal clicked()
 
@@ -47,9 +47,9 @@ Rectangle {
     border.color: primary ? Qt.rgba(accentColor.r, accentColor.g, accentColor.b, 0.55) : Components.Theme.cardBorder
     scale: enabled && pressed ? 0.97 : 1.0
 
-    Behavior on color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
-    Behavior on border.color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
-    Behavior on scale { NumberAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
+    Behavior on color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Components.Theme.easingStandard } }
+    Behavior on border.color { ColorAnimation { duration: Components.Theme.animationQuick; easing.type: Components.Theme.easingStandard } }
+    Behavior on scale { NumberAnimation { duration: Components.Theme.animationQuick; easing.type: Components.Theme.easingStandard } }
 
     HoverHandler { id: hoverArea; enabled: root.enabled }
 

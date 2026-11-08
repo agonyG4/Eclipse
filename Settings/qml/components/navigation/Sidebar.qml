@@ -138,12 +138,56 @@ Item {
         Item { width: 1; height: 4 }
 
         ListView {
+            id: navList
+            objectName: "settingsSidebarList"
             width: parent.width
             height: contentHeight
             implicitHeight: contentHeight
             interactive: false
             clip: false
             spacing: 0
+            currentIndex: -1
+            // Placed on the first layout without motion; slides afterwards.
+            property bool highlightReady: false
+            Component.onCompleted: Qt.callLater(() => navList.highlightReady = true)
+
+            // One selection pill shared by every row, gliding to the selected
+            // row instead of each row fading its own in and out.
+            highlightFollowsCurrentItem: false
+            highlight: Item {
+                objectName: "settingsSidebarSelection"
+                readonly property Item target: navList.currentItem
+                readonly property bool shown: !!target && target.selected
+                width: navList.width
+                height: target ? target.height : 40
+                y: target ? target.y : 0
+                opacity: shown ? 1 : 0
+                z: 0
+
+                Behavior on y {
+                    enabled: navList.highlightReady
+                    NumberAnimation { duration: Components.Theme.animationSlow; easing.type: Components.Theme.easingMove }
+                }
+                Behavior on opacity {
+                    NumberAnimation { duration: Components.Theme.animationFast; easing.type: Components.Theme.easingStandard }
+                }
+
+                Rectangle {
+                    anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
+                    radius: 8
+                    color: Components.Theme.selectedFill
+                    border.width: 1
+                    border.color: Components.Theme.selectedBorder
+
+                    Rectangle {
+                        anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+                        width: 3
+                        height: parent.height * 0.5
+                        radius: 1.5
+                        color: Components.Theme.accent
+                    }
+                }
+            }
 
             model: root.model
             delegate: Item {
@@ -158,6 +202,17 @@ Item {
                 width: parent.width
                 height: itemKind === "spacer" ? 12 : 40
                 visible: true
+                z: 1
+
+                // Never reset to -1 on deselect: the old row may report before
+                // the new one, which would snap the pill to the top first. The
+                // pill hides itself when its row is no longer selected.
+                function claimHighlight() {
+                    if (navDelegate.selected)
+                        navList.currentIndex = index
+                }
+                onSelectedChanged: claimHighlight()
+                Component.onCompleted: claimHighlight()
 
                 Components.NavItem {
                     anchors.fill: parent
@@ -172,6 +227,7 @@ Item {
                     iconKey: ""
                     enabled: model.entryEnabled === true
                     selected: navDelegate.selected
+                    drawsSelection: false
                     onClicked: root.selectId(model.entryId)
                 }
             }

@@ -185,6 +185,10 @@ void AstreaBackdropEffectRegions::appendRegion(QQmlListProperty<AstreaBackdropRe
     if (self->m_regions.contains(region))
         return;
     self->m_regions.append(region);
+    connect(region, &QObject::destroyed, self, [self, region] {
+        self->m_regions.removeAll(region);
+        self->refreshConnections();
+    });
     self->connectRegion(region);
     self->scheduleSync();
 }

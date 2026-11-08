@@ -77,9 +77,13 @@ FocusScope {
 
     function titleFor(output) { return DisplayLogic.titleFor(output) }
 
-    function kindFor(output) { return DisplayLogic.kindFor(output) }
+    // DisplayLogic stays locale-free; translate its English labels here.
+    function trLogic(text) {
+        return I18n.tr("settings.display.logic." + String(text).toLowerCase().replace(/[^a-z0-9]+/g, "_"), text)
+    }
+    function kindFor(output) { return trLogic(DisplayLogic.kindFor(output)) }
 
-    function subtitleFor(output) { return DisplayLogic.subtitleFor(output) }
+    function subtitleFor(output) { return DisplayLogic.subtitleFor(output, root.trLogic) }
 
     function monitorSelectorLabel(output) { return DisplayLogic.monitorSelectorLabel(output) }
 
@@ -126,7 +130,7 @@ FocusScope {
 
     function modeSummary(output) { return DisplayLogic.modeSummary(output) }
 
-    function vrrText(state) { return DisplayLogic.vrrText(state) }
+    function vrrText(state) { return trLogic(DisplayLogic.vrrText(state)) }
 
     function resolutionGroups(output) { return DisplayLogic.resolutionGroups(output) }
 
@@ -844,7 +848,7 @@ FocusScope {
                                     objectName: "displayOutputSubtitle"
                                     width: parent.width
                                     horizontalAlignment: Text.AlignHCenter
-                                    text: DisplayLogic.subtitleFor(root.selectedOutput)
+                                    text: root.subtitleFor(root.selectedOutput)
                                     textFormat: Text.PlainText
                                     color: Components.Theme.textSecondary
                                     font.family: Components.Theme.typography.role("caption").family
@@ -1161,7 +1165,8 @@ FocusScope {
                             anchors.leftMargin: Components.Theme.spacingXLarge
                             anchors.verticalCenter: parent.verticalCenter
                             text: root.showAllResolutions
-                                ? "⌃  Show less" : "⌄  Show all resolutions"
+                                ? "⌃  " + I18n.tr("settings.display.show_less", "Show less")
+                                : "⌄  " + I18n.tr("settings.display.show_all_resolutions", "Show all resolutions")
                             textFormat: Text.PlainText
                             color: Components.Theme.accent
                             font.family: Components.Theme.typography.role("label").family
@@ -1277,7 +1282,7 @@ FocusScope {
                                 objectName: "displayVrrControl"
                                 controlWidth: 160
                                 label: root.selectedOutput
-                                    ? DisplayLogic.vrrText(root.selectedOutput.vrrState)
+                                    ? root.vrrText(root.selectedOutput.vrrState)
                                     : I18n.tr("settings.display.unavailable", "Unavailable")
                                 enabled: false
                                 showChevron: false

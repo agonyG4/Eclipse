@@ -28,10 +28,11 @@ function kindFor(output) {
     return isBuiltIn(output) ? "Built-in display" : "External display"
 }
 
-function subtitleFor(output) {
+// translate (optional) localizes the display-kind label.
+function subtitleFor(output, translate) {
     if (!output)
         return ""
-    const pieces = [kindFor(output)]
+    const pieces = [translate ? translate(kindFor(output)) : kindFor(output)]
     const make = nonEmpty(output.make) ? String(output.make).trim() : ""
     if (make !== "" && make !== titleFor(output))
         pieces.push(make)

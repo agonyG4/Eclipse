@@ -246,7 +246,7 @@
     "apps.settings.pages.paper.wallpaper.text.no_wallpapers_found": "Nenhum wallpaper encontrado",
     "apps.settings.pages.paper.wallpaper.text.preview_fail": "Falha no Preview",
     "apps.settings.pages.paper.wallpaper.text.show_on_all_workspaces": "Mostrar em todos os workspaces",
-    "apps.settings.pages.paper.wallpaper.text.use_blurred_wallpaper": "Use blurred wallpaper",
+    "apps.settings.pages.paper.wallpaper.text.use_blurred_wallpaper": "Usar papel de parede desfocado",
     "apps.settings.pages.paper.wallpaper.text.user_wallpapers": "Wallpapers do Usuário",
     "apps.settings.pages.paper.wallpaper.text.wallpaper_library": "BIBLIOTECA DE WALLPAPERS",
     "apps.settings.pages.personalization.personalization.label.accent_color": "Cor de destaque",
@@ -1777,5 +1777,13 @@
     "settings.user_profile.save": "Salvar",
     "settings.user_profile.sign_in": "LOGIN",
     "settings.user_profile.standard_user": "Usuário padrão · ",
-    "settings.compatibility.runner_unavailable": "(indisponível)"
+    "settings.compatibility.runner_unavailable": "(indisponível)",
+    "settings.display.logic.built_in_display": "Tela integrada",
+    "settings.display.logic.external_display": "Tela externa",
+    "settings.display.logic.active": "Ativo",
+    "settings.display.logic.supported": "Compatível",
+    "settings.display.logic.not_supported": "Não compatível",
+    "settings.display.logic.unavailable": "Indisponível",
+    "settings.display.show_less": "Mostrar menos",
+    "settings.display.show_all_resolutions": "Mostrar todas as resoluções"
 }

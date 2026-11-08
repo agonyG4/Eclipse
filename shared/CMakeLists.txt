@@ -221,6 +221,7 @@ add_library(astrea-shared-system-qt STATIC
     system/bluetooth/BluetoothService.hpp
     system/bluetooth/RustBluetoothBackend.cpp
     system/bluetooth/RustBluetoothBackend.hpp
+    system/ui/TopbarPreferences.cpp
 )
 add_dependencies(astrea-shared-system-qt astrea_system_backend_cxxqt_headers)
 
@@ -229,6 +230,7 @@ target_include_directories(astrea-shared-system-qt PUBLIC
 )
 target_include_directories(astrea-shared-system-qt PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/system"
+    "${CMAKE_CURRENT_SOURCE_DIR}/system/ui"
     "${CMAKE_CURRENT_BINARY_DIR}/cxxqt/crates/astrea_system_backend/include"
 )
 
@@ -249,7 +251,9 @@ qt_add_qml_module(astrea-shared-system-qt
     URI Astrea.System
     VERSION 1.0
     OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Astrea/System"
-    SOURCES system/SystemServiceState.hpp
+    SOURCES
+        system/SystemServiceState.hpp
+        system/ui/TopbarPreferences.hpp
 )
 
 # Shell consumers use the standalone shared provider. Settings links its own

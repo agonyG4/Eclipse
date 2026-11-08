@@ -12,6 +12,8 @@ Shared.ShellCard {
     property int contentSpacing: 14
     property color backgroundColor: theme.background
     property color borderColor: theme.border
+    // Attached popups hang from the bar edge, so their top corners are square.
+    property bool attachedTop: false
     implicitHeight: content.implicitHeight + cardPadding * 2
     width: implicitWidth
     height: implicitHeight
@@ -19,6 +21,8 @@ Shared.ShellCard {
     cardRadius: theme.shellRadiusLarge
     color: backgroundColor
     border.color: borderColor
+    topLeftRadius: attachedTop ? 0 : radius
+    topRightRadius: attachedTop ? 0 : radius
 
     Column {
         id: content

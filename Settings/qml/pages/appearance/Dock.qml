@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import Astrea.System
 import "../../components" as Components
 import "../../components/controls" as Controls
 import "../../components/form" as Form
@@ -9,6 +10,13 @@ Item {
     objectName: "dockPage"
 
     readonly property var controller: SettingsController.dock
+    readonly property var popupStyleValues: ["floating", "attached"]
+    readonly property var popupStyleOptions: [
+        I18n.tr("apps.settings.pages.appearance.dock.option.floating", "Floating"),
+        I18n.tr("apps.settings.pages.appearance.dock.option.attached", "Attached to bar")
+    ]
+
+    TopbarPreferences { id: topbarPreferences }
     readonly property bool magnificationSelected: controller.hoverEffect === "magnification"
     readonly property var positionOptions: [
         I18n.tr("apps.settings.pages.appearance.dock.option.bottom", "Bottom"),
@@ -467,6 +475,32 @@ Item {
                     valueText: root.unit(displayedValue)
                     onValueEdited: editedValue => root.controller.setIndicatorSize(Math.round(editedValue))
                     onPressedChanged: if (!pressed) root.controller.flush()
+                }
+            }
+        }
+
+        Form.SectionHeader {
+            text: I18n.tr("apps.settings.pages.appearance.dock.text.menu_bar", "MENU BAR")
+            Layout.bottomMargin: 12
+        }
+
+        Form.FormCard {
+            objectName: "menuBarCard"
+            Layout.bottomMargin: 24
+
+            Form.SettingRow {
+                label: I18n.tr("apps.settings.pages.appearance.dock.label.popup_style", "Popover style")
+                sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.popup_style",
+                                  "Float menus below the bar, or slide them out from under it")
+                isLast: true
+
+                Controls.SelectButton {
+                    objectName: "popupStyleSelect"
+                    width: 180
+                    label: root.popupStyleOptions[root.indexOf(root.popupStyleValues, topbarPreferences.popupStyle)]
+                    options: root.popupStyleOptions
+                    selectedIndex: root.indexOf(root.popupStyleValues, topbarPreferences.popupStyle)
+                    onSelected: index => topbarPreferences.popupStyle = root.popupStyleValues[index]
                 }
             }
         }

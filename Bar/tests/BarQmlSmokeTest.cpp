@@ -9,6 +9,7 @@
 #include "statusnotifier/StatusNotifierTypes.hpp"
 #include "platform/wayland/effects/AstreaBackdropRegion.hpp"
 #include "shared/system/SystemServiceState.hpp"
+#include "shared/system/ui/TopbarPreferences.hpp"
 
 #include <QAbstractListModel>
 #include <QGuiApplication>
@@ -308,6 +309,9 @@ private slots:
     void popupEntersAndCompletesAnimation();
     void popupReopenCancelsExitAnimation();
     void popupKindSwitchCancelsPreviousExit();
+    void floatingPopupBlurShrinksWithTheExit();
+    void attachedPopupSlidesOutFromUnderTheBar();
+    void topbarPreferencesPersistAndFollowExternalEdits();
     void clockUsesReferenceHorizontalStructure();
     void barPaletteFollowsSharedThemeState();
     void appleIconsFollowThemeSelection();
@@ -1064,15 +1068,16 @@ void BarQmlSmokeTest::popupSurfaceUsesProductionClampAndClosingLifecycle()
     QObject *overlay = component.createWithInitialProperties({
         {QStringLiteral("barGeometry"), QVariant::fromValue(&metrics)},
         {QStringLiteral("popupController"), QVariant::fromValue(&popup)},
+        {QStringLiteral("popupStyle"), QStringLiteral("floating")},
         {QStringLiteral("outputWidth"), 100},
         {QStringLiteral("outputHeight"), 300},
     });
     QVERIFY(overlay != nullptr);
     QObject *menu = overlay->findChild<QObject *>(QStringLiteral("astreaMenu"));
     QVERIFY(menu != nullptr);
-    QCOMPARE(overlay->property("hiddenScale").toReal(), 0.97);
-    QCOMPARE(overlay->property("fadeDuration").toInt(), 180);
-    QCOMPARE(overlay->property("scaleDuration").toInt(), 220);
+    QCOMPARE(overlay->property("hiddenScale").toReal(), 0.94);
+    QCOMPARE(overlay->property("enterDuration").toInt(), 280);
+    QCOMPARE(overlay->property("exitDuration").toInt(), 220);
     QCOMPARE(menu->property("cardPadding").toInt(), 12);
     QCOMPARE(menu->property("contentSpacing").toInt(), 4);
     QCOMPARE(menu->property("radius").toReal(), 14.0);
@@ -1080,18 +1085,12 @@ void BarQmlSmokeTest::popupSurfaceUsesProductionClampAndClosingLifecycle()
              QColor::fromRgbF(0, 0, 0, 0.06));
     QCOMPARE(menu->property("borderColor").value<QColor>(),
              QColor::fromRgbF(1, 1, 1, 0.14));
-    QObject *enterFade = overlay->findChild<QObject *>(QStringLiteral("popupEnterFade"));
-    QObject *enterScale = overlay->findChild<QObject *>(QStringLiteral("popupEnterScale"));
-    QObject *exitFade = overlay->findChild<QObject *>(QStringLiteral("popupExitFade"));
-    QObject *exitScale = overlay->findChild<QObject *>(QStringLiteral("popupExitScale"));
-    QVERIFY(enterFade != nullptr);
-    QVERIFY(enterScale != nullptr);
-    QVERIFY(exitFade != nullptr);
-    QVERIFY(exitScale != nullptr);
-    QCOMPARE(enterFade->property("duration").toInt(), 180);
-    QCOMPARE(enterScale->property("duration").toInt(), 220);
-    QCOMPARE(exitFade->property("duration").toInt(), 180);
-    QCOMPARE(exitScale->property("duration").toInt(), 220);
+    QObject *enter = overlay->findChild<QObject *>(QStringLiteral("popupEnter"));
+    QObject *exit = overlay->findChild<QObject *>(QStringLiteral("popupExit"));
+    QVERIFY(enter != nullptr);
+    QVERIFY(exit != nullptr);
+    QCOMPARE(enter->property("duration").toInt(), 280);
+    QCOMPARE(exit->property("duration").toInt(), 220);
 
     popup.open(BarPopupController::PopupKind::AstreaMenu, 96);
     QCoreApplication::processEvents();
@@ -1120,6 +1119,7 @@ void BarQmlSmokeTest::popupEntersAndCompletesAnimation()
     QObject *overlay = component.createWithInitialProperties({
         {QStringLiteral("barGeometry"), QVariant::fromValue(&metrics)},
         {QStringLiteral("popupController"), QVariant::fromValue(&popup)},
+        {QStringLiteral("popupStyle"), QStringLiteral("floating")},
         {QStringLiteral("outputWidth"), 1200},
         {QStringLiteral("outputHeight"), 700},
     });
@@ -1150,6 +1150,7 @@ void BarQmlSmokeTest::popupReopenCancelsExitAnimation()
     QObject *overlay = component.createWithInitialProperties({
         {QStringLiteral("barGeometry"), QVariant::fromValue(&metrics)},
         {QStringLiteral("popupController"), QVariant::fromValue(&popup)},
+        {QStringLiteral("popupStyle"), QStringLiteral("floating")},
     });
     QVERIFY(overlay != nullptr);
     popup.open(BarPopupController::PopupKind::AstreaMenu, 500);
@@ -1179,6 +1180,7 @@ void BarQmlSmokeTest::popupKindSwitchCancelsPreviousExit()
     QObject *overlay = component.createWithInitialProperties({
         {QStringLiteral("barGeometry"), QVariant::fromValue(&metrics)},
         {QStringLiteral("popupController"), QVariant::fromValue(&popup)},
+        {QStringLiteral("popupStyle"), QStringLiteral("floating")},
     });
     QVERIFY(overlay != nullptr);
     popup.open(BarPopupController::PopupKind::AstreaMenu, 500);
@@ -1193,6 +1195,131 @@ void BarQmlSmokeTest::popupKindSwitchCancelsPreviousExit()
     QCOMPARE(popup.kind(), BarPopupController::PopupKind::AstreaMenu);
     QCOMPARE(popup.anchorX(), 120);
     delete overlay;
+}
+
+void BarQmlSmokeTest::floatingPopupBlurShrinksWithTheExit()
+{
+    QQmlEngine engine;
+    BarLayoutMetrics metrics;
+    BarPopupController popup;
+    QQmlComponent component(&engine,
+                            QUrl(QStringLiteral(
+                                "qrc:/qt/qml/Astrea/Shell/Bar/qml/PopupOverlaySurface.qml")));
+    QObject *overlay = component.createWithInitialProperties({
+        {QStringLiteral("barGeometry"), QVariant::fromValue(&metrics)},
+        {QStringLiteral("popupController"), QVariant::fromValue(&popup)},
+        {QStringLiteral("popupStyle"), QStringLiteral("floating")},
+        {QStringLiteral("outputWidth"), 1200},
+        {QStringLiteral("outputHeight"), 700},
+    });
+    QVERIFY(overlay != nullptr);
+    auto *menu = overlay->findChild<QQuickItem *>(QStringLiteral("astreaMenu"));
+    auto *proxy = overlay->findChild<QQuickItem *>(QStringLiteral("popupBlurProxy"));
+    QVERIFY(menu && proxy);
+
+    popup.open(BarPopupController::PopupKind::AstreaMenu, 600);
+    QTRY_VERIFY_WITH_TIMEOUT(overlay->property("presentation").toReal() > 0.999
+                                 && !overlay->findChild<QObject *>(QStringLiteral("popupEnter"))
+                                         ->property("running").toBool(), 1000);
+    QCOMPARE(menu->y(), qreal(metrics.popupTop()));
+    QVERIFY(qAbs(proxy->height() - menu->height()) < 0.5);
+
+    popup.close();
+    QTest::qWait(overlay->property("exitDuration").toInt() / 2);
+    QVERIFY(popup.closing());
+    // Mid-exit the blur covers only part of the card instead of staying whole.
+    QVERIFY(proxy->height() < menu->height() * 0.9);
+    QVERIFY(proxy->height() > 0);
+    QVERIFY(menu->opacity() < 0.9);
+    QTRY_VERIFY_WITH_TIMEOUT(!popup.surfaceRequired(), 1000);
+    delete overlay;
+}
+
+void BarQmlSmokeTest::attachedPopupSlidesOutFromUnderTheBar()
+{
+    QQmlEngine engine;
+    BarLayoutMetrics metrics;
+    BarPopupController popup;
+    QQmlComponent component(&engine,
+                            QUrl(QStringLiteral(
+                                "qrc:/qt/qml/Astrea/Shell/Bar/qml/PopupOverlaySurface.qml")));
+    QObject *overlay = component.createWithInitialProperties({
+        {QStringLiteral("barGeometry"), QVariant::fromValue(&metrics)},
+        {QStringLiteral("popupController"), QVariant::fromValue(&popup)},
+        {QStringLiteral("popupStyle"), QStringLiteral("attached")},
+        {QStringLiteral("outputWidth"), 1200},
+        {QStringLiteral("outputHeight"), 700},
+    });
+    QVERIFY(overlay != nullptr);
+    auto *menu = overlay->findChild<QQuickItem *>(QStringLiteral("astreaMenu"));
+    auto *frame = overlay->findChild<QQuickItem *>(QStringLiteral("astreaMenuFrame"));
+    auto *proxy = overlay->findChild<QQuickItem *>(QStringLiteral("popupBlurProxy"));
+    auto *strip = overlay->findChild<QQuickItem *>(QStringLiteral("popupBlurTopStrip"));
+    QVERIFY(menu && frame && proxy && strip);
+    const int barBottom = metrics.topMargin() + metrics.pillHeight();
+    QCOMPARE(frame->y(), qreal(barBottom));
+    QVERIFY(frame->clip());
+    QCOMPARE(menu->property("topLeftRadius").toReal(), 0.0);
+    QCOMPARE(menu->property("bottomLeftRadius").toReal(), menu->property("radius").toReal());
+
+    popup.open(BarPopupController::PopupKind::AstreaMenu, 600);
+    QCoreApplication::processEvents();
+    QVERIFY(menu->y() < 0);
+    QCOMPARE(menu->scale(), 1.0);
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(menu->y()) < 0.01
+                                 && overlay->property("presentation").toReal() > 0.999, 1000);
+    QCOMPARE(proxy->y(), qreal(barBottom));
+    QVERIFY(qAbs(proxy->height() - menu->height()) < 0.5);
+    QVERIFY(strip->isVisible());
+
+    popup.close();
+    QTest::qWait(overlay->property("exitDuration").toInt() / 2);
+    QVERIFY(popup.closing());
+    QVERIFY(menu->y() < -1);
+    QVERIFY(proxy->height() < menu->height());
+    QTRY_VERIFY_WITH_TIMEOUT(!popup.surfaceRequired(), 1000);
+
+    // The preference toggles the presentation without reopening the surface.
+    overlay->setProperty("popupStyle", QStringLiteral("floating"));
+    QCOMPARE(frame->y(), 0.0);
+    QVERIFY(!frame->clip());
+    QVERIFY(menu->property("topLeftRadius").toReal() > 0.0);
+    delete overlay;
+}
+
+void BarQmlSmokeTest::topbarPreferencesPersistAndFollowExternalEdits()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("AstreaOS/topbar.json"));
+
+    TopbarPreferences writer;
+    writer.setConfigPath(path);
+    QCOMPARE(writer.popupStyle(), QStringLiteral("floating"));
+    QVERIFY(!writer.attached());
+    writer.setPopupStyle(QStringLiteral("attached"));
+    QVERIFY(writer.attached());
+    QVERIFY(QFileInfo::exists(path));
+
+    TopbarPreferences reader;
+    QSignalSpy spy(&reader, &TopbarPreferences::popupStyleChanged);
+    reader.setConfigPath(path);
+    QCOMPARE(reader.popupStyle(), QStringLiteral("attached"));
+
+    writer.setPopupStyle(QStringLiteral("floating"));
+    QTRY_COMPARE_WITH_TIMEOUT(reader.popupStyle(), QStringLiteral("floating"), 2000);
+
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write(R"({"popupStyle": "Attached", "other": 1})");
+    file.close();
+    QTRY_COMPARE_WITH_TIMEOUT(reader.popupStyle(), QStringLiteral("attached"), 2000);
+
+    writer.reload();
+    writer.setPopupStyle(QStringLiteral("bogus"));
+    QCOMPARE(writer.popupStyle(), QStringLiteral("floating"));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QVERIFY(file.readAll().contains("\"other\""));
 }
 
 void BarQmlSmokeTest::clockUsesReferenceHorizontalStructure()
@@ -1912,6 +2039,7 @@ void BarQmlSmokeTest::popupOverlayRejectsUnsupportedKinds()
     QObject *overlay = component.createWithInitialProperties({
         {QStringLiteral("barGeometry"), QVariant::fromValue(&metrics)},
         {QStringLiteral("popupController"), QVariant::fromValue(&popup)},
+        {QStringLiteral("popupStyle"), QStringLiteral("floating")},
     });
     QVERIFY(overlay != nullptr);
     QObject *shield = overlay->findChild<QObject *>(QStringLiteral("popupClickShield"));
@@ -2170,6 +2298,7 @@ void BarQmlSmokeTest::popupVisualsUseNativeServiceInputs()
     QObject *overlay = component.createWithInitialProperties({
         {QStringLiteral("barGeometry"), QVariant::fromValue(&metrics)},
         {QStringLiteral("popupController"), QVariant::fromValue(&popup)},
+        {QStringLiteral("popupStyle"), QStringLiteral("floating")},
         {QStringLiteral("audioService"), QVariant::fromValue(&audio)},
         {QStringLiteral("networkService"), QVariant::fromValue(&network)},
         {QStringLiteral("bluetoothService"), QVariant::fromValue(&bluetooth)},

@@ -207,6 +207,26 @@ Item {
         }
     }
 
+    // The frosted plate blurs what is behind it, which shows wherever a magnified
+    // icon rises past the Dock chrome. Compositor blur is all-or-nothing per
+    // region, so the blurred area grows and shrinks instead of fading.
+    property real frostedAmount: root.iconHeld && DockController.pressEffect === "frosted" ? 1 : 0
+    Behavior on frostedAmount {
+        NumberAnimation {
+            duration: root.dockPanel ? root.dockPanel.animationDuration(root.iconHeld ? 90 : 180) : 120
+            easing.type: Easing.OutCubic
+        }
+    }
+    readonly property bool frostedBlurActive: root.frostedAmount > 0.01
+    onFrostedBlurActiveChanged: {
+        if (root.dockPanel)
+            root.dockPanel.setFrostedPlateBlur(frostedBlurArea, root.frostedBlurActive)
+    }
+    Component.onDestruction: {
+        if (root.dockPanel)
+            root.dockPanel.setFrostedPlateBlur(frostedBlurArea, false)
+    }
+
     // The plate behind the icon: Windows-style hover indicator, dimming while
     // held, and the frosted press effect's glass.
     readonly property real hoverPlateTarget: DockController.hoverIndicator === "plate"
@@ -433,6 +453,16 @@ Item {
         border.width: 1
         border.color: Qt.rgba(shade, shade, shade, root.plateAlpha * 0.8)
         visible: root.plateAlpha > 0.001
+
+        Item {
+            id: frostedBlurArea
+            objectName: "frostedBlurArea"
+            anchors.centerIn: parent
+            width: parent.width * root.frostedAmount
+            height: parent.height * root.frostedAmount
+            readonly property real blurRadius: Math.min(parent.radius * root.frostedAmount,
+                                                        width / 2, height / 2)
+        }
         transform: Translate {
             x: !root.dockPanel || !root.dockPanel.vertical ? 0
                : DockController.position === "left" ? root.bounceOffset : -root.bounceOffset

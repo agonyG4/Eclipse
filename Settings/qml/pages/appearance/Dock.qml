@@ -12,13 +12,13 @@ Item {
     readonly property var controller: SettingsController.dock
     readonly property var hoverIndicatorValues: ["plate", "none"]
     readonly property var hoverIndicatorOptions: [
-        I18n.tr("apps.settings.pages.appearance.dock.option.hover_plate", "Plate (Windows)"),
+        I18n.tr("apps.settings.pages.appearance.dock.option.hover_plate", "Plate"),
         I18n.tr("apps.settings.pages.appearance.dock.option.none", "None")
     ]
     readonly property var pressEffectValues: ["darken", "shrink", "frosted", "none"]
     readonly property var pressEffectOptions: [
-        I18n.tr("apps.settings.pages.appearance.dock.option.press_darken", "Darken (macOS)"),
-        I18n.tr("apps.settings.pages.appearance.dock.option.press_shrink", "Shrink (Windows)"),
+        I18n.tr("apps.settings.pages.appearance.dock.option.press_darken", "Darken"),
+        I18n.tr("apps.settings.pages.appearance.dock.option.press_shrink", "Shrink"),
         I18n.tr("apps.settings.pages.appearance.dock.option.press_frosted", "Frosted glass"),
         I18n.tr("apps.settings.pages.appearance.dock.option.none", "None")
     ]

@@ -13,6 +13,13 @@ Item {
     }
     readonly property real dockRadius: shellMaterial.tokens.value("dockRadius", DockController.cornerRadius)
     readonly property bool lightMaterial: shellMaterial.isLight
+    property Item frostedPlateBlurItem: null
+    function setFrostedPlateBlur(item, active) {
+        if (active)
+            root.frostedPlateBlurItem = item
+        else if (root.frostedPlateBlurItem === item)
+            root.frostedPlateBlurItem = null
+    }
 
     readonly property bool vertical: DockController.vertical
     readonly property bool growsPositiveCross: DockController.position === "left"
@@ -563,6 +570,11 @@ Item {
             item: dockChrome
             enabled: dockChrome.visible
             radius: dockChrome.radius
+        }
+        BackdropRegion {
+            item: root.frostedPlateBlurItem
+            enabled: root.frostedPlateBlurItem !== null
+            radius: root.frostedPlateBlurItem ? root.frostedPlateBlurItem.blurRadius : 0
         }
     }
 

@@ -625,6 +625,7 @@ private slots:
     void reorderLiftsOnlyTheDraggedDelegate();
     void iconFeedbackFollowsHoverAndPressOptions();
     void launchBounceEndsOnceTheAppHasShownAWindow();
+    void frostedPressBlursThePlateAboveTheChrome();
     void runtimeOnlyQmlUsesTaskKeyForIdentityAndContextTarget();
     void magnifiedVisualRegionAcceptsContextMenu();
     void mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen();
@@ -2211,6 +2212,71 @@ void DockHoverQmlTest::iconFeedbackFollowsHoverAndPressOptions()
                                       && qAbs(plate() - 0.12) < 0.001,
                                   testCase.effect, 1000);
     }
+    delete panel;
+}
+
+void DockHoverQmlTest::frostedPressBlursThePlateAboveTheChrome()
+{
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    ThemeController theme(temporary.filePath(QStringLiteral("missing-theme.json")));
+    theme.setShellStyle(2);
+
+    DockController controller;
+    const QStringList pins{QStringLiteral("one.desktop"), QStringLiteral("two.desktop"),
+                           QStringLiteral("three.desktop")};
+    DockConfig config = configFor(QStringLiteral("magnification"), pins);
+    config.pressEffect = QStringLiteral("frosted");
+    controller.applyConfig(config);
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &theme);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    QQuickWindow window;
+    panel->setParentItem(window.contentItem());
+    window.resize(900, 220);
+    panel->setX((window.width() - panel->width()) / 2.0);
+    window.show();
+    QTest::qWait(60);
+
+    auto *descriptors = panel->findChildren<AstreaBackdropEffectRegions *>().constFirst();
+    auto *chrome = childWithObjectName(panel, QStringLiteral("dockChrome"));
+    QQuickItem *target = delegate(panel, QStringLiteral("two.desktop"));
+    QVERIFY(chrome && target);
+    auto *blurArea = childWithObjectName(target, QStringLiteral("frostedBlurArea"));
+    QVERIFY(blurArea);
+
+    const QPoint center = itemCenter(window, target);
+    QTest::mouseMove(&window, center);
+    QTRY_VERIFY_WITH_TIMEOUT(propertyReal(target, "magnificationScale") > 1.2, 1500);
+    QTest::qWait(150);
+
+    const auto chromeTop = [&] {
+        return chrome->mapToItem(window.contentItem(), QPointF(0, 0)).y();
+    };
+    const auto pointAbove = [&] {
+        const QRectF plate = blurArea->mapRectToItem(
+            window.contentItem(), QRectF(0, 0, blurArea->width(), blurArea->height()));
+        return QPoint(qRound(plate.center().x()), qRound(plate.top()) + 4);
+    };
+    QCOMPARE(propertyReal(target, "frostedAmount"), 0.0);
+
+    QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, center);
+    QTRY_VERIFY_WITH_TIMEOUT(propertyReal(target, "frostedAmount") > 0.999, 1000);
+    QVERIFY(pointAbove().y() < chromeTop());
+    QTRY_VERIFY_WITH_TIMEOUT(backdropContains(descriptors->resolvedRegion(), pointAbove()), 1000);
+
+    // Releasing shrinks the blur away with the plate instead of leaving it behind.
+    const QPoint held = pointAbove();
+    QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, center);
+    QTRY_VERIFY_WITH_TIMEOUT(panel->property("frostedPlateBlurItem").value<QObject *>() == nullptr,
+                             1000);
+    QTRY_VERIFY_WITH_TIMEOUT(!backdropContains(descriptors->resolvedRegion(), held), 1000);
     delete panel;
 }
 

@@ -1,23 +1,29 @@
 import QtQuick
-import QtQuick.Effects
 import QtQuick.Window
 import Astrea.Effects
 import Astrea.Shared as Shared
 
-// The frosted press plate with a blur of its own. The held icon moves into this
-// layer as well, since the glass would otherwise blur it along with the backdrop.
+// The frosted plate under the hovered or held icon, with a blur of its own. That
+// icon moves into this layer as well, since the glass would otherwise blur it along
+// with the backdrop.
 GlassLayer {
     id: root
     objectName: "dockFrostedGlass"
 
-    // The DockAppDelegate currently pressed, or null.
+    // The DockAppDelegate that owns the plate, or null.
     property Item source: null
     property bool lightMaterial: false
-    readonly property real amount: source ? source.frostedAmount : 0
+    readonly property real amount: Math.max(source ? source.frostedAmount : 0,
+                                            handoffAmount * glide)
     // True once the copy is on screen, so the delegate can hide its own icon
     // without leaving a frame with no icon at all.
     readonly property bool iconPresented: source !== null && presentedFrames >= 2
     property int presentedFrames: 0
+
+    // Moving between icons glides the plate instead of collapsing it.
+    property real glide: 0
+    property real handoffAmount: 0
+    property rect handoffOffset: Qt.rect(0, 0, 0, 0)
 
     glassItem: source ? blurArea : null
     glassRadius: Math.min(plate.radius * root.amount, blurArea.width / 2, blurArea.height / 2)
@@ -34,25 +40,60 @@ GlassLayer {
         iconCopy.width = icon.width
         iconCopy.height = icon.height
         iconCopy.scale = iconScale
-        plate.x = rect.x - inset
-        plate.y = rect.y - inset
-        plate.width = rect.width + inset * 2
-        plate.height = rect.height + inset * 2
+        plate.x = rect.x - inset + root.handoffOffset.x * root.glide
+        plate.y = rect.y - inset + root.handoffOffset.y * root.glide
+        plate.width = rect.width + inset * 2 + root.handoffOffset.width * root.glide
+        plate.height = rect.height + inset * 2 + root.handoffOffset.height * root.glide
         plate.radius = (icon.iconRadius + root.source.plateInset) * iconScale
     }
 
     onSourceChanged: {
+        const previous = Qt.rect(plate.x, plate.y, plate.width, plate.height)
+        const previousAmount = root.plateAmount
         root.presentedFrames = 0
+        glideAnimation.stop()
+        root.glide = 0
+        root.handoffOffset = Qt.rect(0, 0, 0, 0)
         root.syncGeometry()
+        if (!root.source || previousAmount <= 0.01)
+            return
+        root.handoffAmount = previousAmount
+        root.handoffOffset = Qt.rect(previous.x - plate.x, previous.y - plate.y,
+                                     previous.width - plate.width, previous.height - plate.height)
+        root.glide = 1
+        root.syncGeometry()
+        glideAnimation.duration = root.source.dockPanel
+            ? root.source.dockPanel.animationDuration(140) : 120
+        glideAnimation.restart()
+    }
+    onGlideChanged: root.syncGeometry()
+    // The amount the plate last had, read when the source has already changed.
+    property real plateAmount: 0
+    onAmountChanged: {
+        if (root.source)
+            root.plateAmount = root.amount
     }
 
-    // Tracks the icon through magnification and the bounce on the window's own
-    // frames while held, and stays idle otherwise.
+    NumberAnimation {
+        id: glideAnimation
+        target: root
+        property: "glide"
+        to: 0
+        easing.type: Easing.OutCubic
+    }
+
+    // The icon only moves when the Dock's window renders, so following that window
+    // leaves this surface idle under a resting pointer.
+    Connections {
+        target: root.source ? root.Window.window : null
+        function onAfterAnimating() { root.syncGeometry() }
+    }
     FrameAnimation {
-        running: root.source !== null
+        running: root.source !== null && (root.presentedFrames < 2 || root.amount < 0.999)
         onTriggered: {
             root.syncGeometry()
-            if (iconCopy.ready && root.presentedFrames < 2)
+            // An icon with no image draws its fallback at once, in both places.
+            if ((iconCopy.ready || !root.source.iconVisual.ready) && root.presentedFrames < 2)
                 root.presentedFrames += 1
         }
     }
@@ -84,17 +125,8 @@ GlassLayer {
         iconPath: root.source ? root.source.iconPath : ""
         iconUrl: root.source ? root.source.iconUrl : ""
         appName: root.source ? root.source.displayName : ""
-        retainWhileLoading: true
         maximumPresentationScale: Math.max(1, DockController.magnificationScale)
         iconRadius: 10
         fallbackRadius: 10
-
-        layer.enabled: root.source !== null && root.source.pressAmount > 0.001
-        layer.textureSize: Qt.size(Math.ceil(width * Math.max(1, scale) * Screen.devicePixelRatio),
-                                   Math.ceil(height * Math.max(1, scale) * Screen.devicePixelRatio))
-        layer.smooth: true
-        layer.effect: MultiEffect {
-            brightness: root.source ? -root.source.pressStrength * root.source.pressAmount : 0
-        }
     }
 }

@@ -13,7 +13,7 @@ Item {
     }
     readonly property real dockRadius: shellMaterial.tokens.value("dockRadius", DockController.cornerRadius)
     readonly property bool lightMaterial: shellMaterial.isLight
-    // The frosted press gets its own blur surface when the shell material blurs.
+    // The frosted plate gets its own blur surface when the shell material blurs.
     readonly property bool frostedGlassAvailable: frostedGlassLoader.status === Loader.Ready
     readonly property bool frostedIconPresented: frostedGlassAvailable
         && !!frostedGlassLoader.item && frostedGlassLoader.item.iconPresented

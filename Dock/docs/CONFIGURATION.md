@@ -139,10 +139,11 @@ future Typhon output/geometry publication can replace it.
 the pointer, Windows taskbar style; `none` disables it.
 `hoverIndicatorStrength` is the plate's opacity in percent, clamped to `4..40`.
 `pressEffect` is what a held icon does: `darken` darkens its pixels (macOS),
-`shrink` shrinks it (Windows), `frosted` dips and darkens it over a plate with a
-real blur of its own, drawn in a separate surface above the Dock so the Dock itself
-is blurred through it, and `none` does nothing. Only the Frosted shell style has
-that surface; the other styles draw the same plate without blur.
+`shrink` shrinks it (Windows), `frosted` dips it, and `none` does nothing.
+`frosted` also shows a plate under the hovered icon, with a real blur of its own,
+drawn in a separate surface above the Dock so the Dock itself is blurred through it.
+The plate replaces `hoverIndicator` and glides between icons. Only the Frosted shell
+style has that surface; the other styles draw the same plate without blur.
 `pressEffectStrength` is clamped to `10..60`: the percentage of darkening, with a
 shrink of one third of that value.
 

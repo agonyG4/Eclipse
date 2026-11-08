@@ -191,11 +191,10 @@ Item {
     }
 
     // Press feedback, chosen by pressEffect: darken (macOS), shrink (Windows),
-    // frosted (dip and darken over a glass plate) or none.
+    // frosted (dip over the glass plate that hovering shows) or none.
     readonly property bool iconHeld: tapHandler.pressed && !dragHandler.active
     readonly property real pressStrength: DockController.pressEffectStrength / 100
     readonly property bool pressDarkens: DockController.pressEffect === "darken"
-        || DockController.pressEffect === "frosted"
     readonly property bool pressShrinks: DockController.pressEffect === "shrink"
         || DockController.pressEffect === "frosted"
     property real pressScale: root.iconHeld && root.pressShrinks ? 1 - root.pressStrength / 3 : 1.0
@@ -209,10 +208,12 @@ Item {
 
     // Drives the frosted plate and its blur area. Compositor blur is
     // all-or-nothing per region, so the area grows and shrinks instead of fading.
-    property real frostedAmount: root.iconHeld && DockController.pressEffect === "frosted" ? 1 : 0
+    readonly property bool frostedWanted: DockController.pressEffect === "frosted"
+        && (root.pointerTarget || root.iconHeld) && !dragHandler.active
+    property real frostedAmount: root.frostedWanted ? 1 : 0
     Behavior on frostedAmount {
         NumberAnimation {
-            duration: root.dockPanel ? root.dockPanel.animationDuration(root.iconHeld ? 90 : 180) : 120
+            duration: root.dockPanel ? root.dockPanel.animationDuration(root.frostedWanted ? 90 : 180) : 120
             easing.type: Easing.OutCubic
         }
     }
@@ -222,6 +223,11 @@ Item {
         if (root.dockPanel)
             root.dockPanel.setFrostedPress(root, root.frostedGlassActive)
     }
+    // Returning to an icon whose plate is still fading takes the glass back.
+    onFrostedWantedChanged: {
+        if (root.frostedWanted && root.frostedGlassActive)
+            root.dockPanel.setFrostedPress(root, true)
+    }
     Component.onDestruction: {
         if (root.dockPanel)
             root.dockPanel.setFrostedPress(root, false)
@@ -230,14 +236,13 @@ Item {
     readonly property real plateInset: Math.round(root.iconSize * 0.08)
 
     // The plate behind the icon: Windows-style hover indicator, dimming while
-    // held, and the frosted press effect's glass.
+    // held, and the frosted effect's plate when no glass surface exists.
+    readonly property bool glassOwnsPlate: DockController.pressEffect === "frosted"
+        && !!root.dockPanel && root.dockPanel.frostedGlassAvailable
     readonly property real hoverPlateTarget: DockController.hoverIndicator === "plate"
-        && root.pointerTarget && !dragHandler.active
+        && root.pointerTarget && !dragHandler.active && !root.glassOwnsPlate
         ? DockController.hoverIndicatorStrength / 100 * (root.iconHeld ? 0.6 : 1) : 0
-    // With a glass surface the frosted plate is drawn there instead.
-    readonly property real frostedPlateTarget: root.iconHeld
-        && DockController.pressEffect === "frosted"
-        && !(root.dockPanel && root.dockPanel.frostedGlassAvailable) ? 0.16 : 0
+    readonly property real frostedPlateTarget: root.frostedWanted && !root.glassOwnsPlate ? 0.16 : 0
     property real plateAlpha: Math.max(root.hoverPlateTarget, root.frostedPlateTarget)
     Behavior on plateAlpha {
         NumberAnimation {
@@ -272,7 +277,7 @@ Item {
         maximumPresentationScale: Math.max(1, DockController.magnificationScale)
         iconRadius: 10
         fallbackRadius: 10
-        // The glass layer draws its own copy while the press is on screen.
+        // The glass layer draws its own copy while the plate is on screen.
         opacity: root.dockPanel && root.dockPanel.frostedPressDelegate === root
                  && root.dockPanel.frostedIconPresented ? 0 : 1
 

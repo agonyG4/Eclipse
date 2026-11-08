@@ -2190,12 +2190,12 @@ void DockHoverQmlTest::iconFeedbackFollowsHoverAndPressOptions()
     QTRY_VERIFY_WITH_TIMEOUT(qAbs(plate() - 0.12) < 0.001, 1000);
 
     // Press: each effect drives only its own channels; the hover plate dims.
-    struct Case { const char *effect; bool darkens; qreal scale; qreal plateAlpha; };
+    struct Case { const char *effect; bool darkens; qreal scale; qreal plateAlpha; qreal hoverAlpha; };
     const Case cases[] = {
-        {"darken", true, 1.0, 0.072},
-        {"shrink", false, 0.9, 0.072},
-        {"frosted", true, 0.9, 0.16},
-        {"none", false, 1.0, 0.072},
+        {"darken", true, 1.0, 0.072, 0.12},
+        {"shrink", false, 0.9, 0.072, 0.12},
+        {"frosted", false, 0.9, 0.16, 0.16},
+        {"none", false, 1.0, 0.072, 0.12},
     };
     for (const Case &testCase : cases) {
         config.pressEffect = QString::fromLatin1(testCase.effect);
@@ -2209,7 +2209,7 @@ void DockHoverQmlTest::iconFeedbackFollowsHoverAndPressOptions()
         QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, center);
         QTRY_VERIFY2_WITH_TIMEOUT(propertyReal(first, "pressAmount") < 0.001
                                       && qAbs(propertyReal(first, "pressScale") - 1.0) < 0.001
-                                      && qAbs(plate() - 0.12) < 0.001,
+                                      && qAbs(plate() - testCase.hoverAlpha) < 0.001,
                                   testCase.effect, 1000);
     }
     delete panel;
@@ -2274,11 +2274,18 @@ void DockHoverQmlTest::frostedPressUsesItsOwnGlassSurface()
     const QPoint center = itemCenter(window, target);
     QTest::mouseMove(&window, center);
     QTRY_VERIFY_WITH_TIMEOUT(propertyReal(target, "magnificationScale") > 1.2, 1500);
+    // Hovering alone shows the glass, and nothing darkens the icon.
+    QTRY_VERIFY_WITH_TIMEOUT(propertyReal(target, "frostedAmount") > 0.999, 1000);
+    QCOMPARE(panel->property("frostedPressDelegate").value<QQuickItem *>(), target);
     QTest::qWait(150);
 
     QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, center);
-    QTRY_VERIFY_WITH_TIMEOUT(propertyReal(target, "frostedAmount") > 0.999, 1000);
+    QTest::qWait(150);
+    QCOMPARE(propertyReal(target, "pressAmount"), 0.0);
+    QVERIFY(propertyReal(target, "frostedAmount") > 0.999);
     QCOMPARE(panel->property("frostedPressDelegate").value<QQuickItem *>(), target);
+    // The icon is drawn only above the glass, or the blur would smear it.
+    QTRY_COMPARE_WITH_TIMEOUT(icon->opacity(), 0.0, 1000);
 
     // The plate and the icon copy track the magnified icon in panel coordinates.
     const QRectF iconRect = icon->mapRectToItem(panel, QRectF(0, 0, icon->width(), icon->height()));
@@ -2303,6 +2310,19 @@ void DockHoverQmlTest::frostedPressUsesItsOwnGlassSurface()
     QVERIFY(propertyReal(target, "plateAlpha") < 0.16 - 0.01);
 
     QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, center);
+    QTest::qWait(250);
+    QCOMPARE(panel->property("frostedPressDelegate").value<QQuickItem *>(), target);
+
+    // The plate hands over to the next icon without collapsing first.
+    QQuickItem *neighbour = delegate(panel, QStringLiteral("three.desktop"));
+    QVERIFY(neighbour);
+    QTest::mouseMove(&window, itemCenter(window, neighbour));
+    QTRY_VERIFY_WITH_TIMEOUT(panel->property("frostedPressDelegate").value<QQuickItem *>() == neighbour,
+                             1000);
+    QVERIFY(propertyReal(glass, "amount") > 0.5);
+    QTRY_VERIFY_WITH_TIMEOUT(propertyReal(neighbour, "frostedAmount") > 0.999, 1000);
+
+    QTest::mouseMove(&window, QPoint(2, 2));
     QTRY_VERIFY_WITH_TIMEOUT(panel->property("frostedPressDelegate").value<QQuickItem *>() == nullptr,
                              1000);
     QTRY_VERIFY_WITH_TIMEOUT(descriptors->resolvedRegion().isEmpty(), 1000);

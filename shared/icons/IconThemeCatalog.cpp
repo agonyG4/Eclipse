@@ -3,6 +3,7 @@
 #include "IconDirectoryPolicy.h"
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QIcon>
 #include <QImageReader>
@@ -279,6 +280,34 @@ IconThemeCatalog::metadataFor(const QString &themeName) const
         }
         selectedIndex = true;
 
+        QFile indexFile(indexPath);
+        if (!indexFile.open(QIODevice::ReadOnly))
+            break;
+        const auto bytes = indexFile.readAll();
+        if (indexFile.error() != QFileDevice::NoError)
+            break;
+        const auto emitEntry = [](void *context, AstreaIconText name, const AstreaIconDirectory *directory) {
+            auto &index = *static_cast<ThemeMetadata *>(context);
+            auto value = QString::fromUtf16(reinterpret_cast<const char16_t *>(name.data),
+                                            qsizetype(name.size));
+            if (directory) {
+                index.directories.append({std::move(value), directory->size, directory->scale,
+                                          directory->minSize, directory->maxSize, directory->threshold,
+                                          DirectoryType(directory->type)});
+            } else {
+                index.inherits.append(std::move(value));
+            }
+        };
+        const auto parsed = astrea_icon_parse_index(bytes.constData(), std::size_t(bytes.size()),
+                                                   emitEntry, &metadata);
+        if (parsed == AstreaIconIndexParsed) {
+            validIndex = true;
+            continue;
+        }
+        if (parsed != AstreaIconIndexNativeEncoding)
+            break;
+
+        // Preserve QSettings-specific quoting, escapes and typed INI values.
         QSettings settings(indexPath, QSettings::IniFormat);
         if (settings.status() == QSettings::AccessError) {
             break;

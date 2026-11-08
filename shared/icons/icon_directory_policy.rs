@@ -2,6 +2,8 @@
 use core::{ffi::c_void, slice};
 use std::collections::HashSet;
 
+mod icon_theme_index;
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct Text {

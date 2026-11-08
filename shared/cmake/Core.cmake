@@ -6,7 +6,7 @@ add_custom_command(
     COMMAND "${ASTREA_ICON_RUSTC}" --edition=2024 --crate-type=staticlib
             -C panic=abort -C relocation-model=pic -O
             -o "${astrea_icon_policy_archive}" "${astrea_icon_policy_source}"
-    DEPENDS "${astrea_icon_policy_source}"
+    DEPENDS "${astrea_icon_policy_source}" "${CMAKE_CURRENT_SOURCE_DIR}/icons/icon_theme_index.rs"
     COMMENT "Compiling Rust icon directory policy"
     VERBATIM
 )

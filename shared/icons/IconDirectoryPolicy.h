@@ -57,3 +57,13 @@ extern "C" std::uint8_t astrea_icon_directory_type(
     std::int32_t minSize, std::int32_t maxSize, std::int32_t threshold);
 extern "C" bool astrea_icon_valid_theme(AstreaIconText name);
 extern "C" bool astrea_icon_safe_relative_path(AstreaIconText path, bool absolute);
+
+enum AstreaIconIndexResult : std::uint8_t {
+    AstreaIconIndexInvalid,
+    AstreaIconIndexParsed,
+    AstreaIconIndexNativeEncoding,
+};
+// A null directory denotes an inherited theme name. All views are call-scoped.
+using AstreaIconIndexEntry = void (*)(void *, AstreaIconText, const AstreaIconDirectory *);
+extern "C" std::uint8_t astrea_icon_parse_index(const char *data, std::size_t size,
+                                               AstreaIconIndexEntry entry, void *context);

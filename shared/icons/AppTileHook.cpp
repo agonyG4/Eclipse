@@ -56,6 +56,14 @@ bool available()
 QImage loadArtwork(const QString &path, int masterExtent)
 {
     if (looksLikeSvg(path)) {
+        if (const auto rasterize = renderer().rasterizeSvg) {
+            QFile file(path);
+            if (file.open(QIODevice::ReadOnly)) {
+                const QImage image = rasterize(file.readAll(), masterExtent);
+                if (!image.isNull())
+                    return image;
+            }
+        }
         QImageReader reader(path, "svg");
         QSize size = reader.size();
         if (!size.isValid() || size.isEmpty())

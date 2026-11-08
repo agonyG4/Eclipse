@@ -18,15 +18,16 @@ mod look;
 mod neutral;
 mod raster;
 mod style;
+mod svg;
 
 use look::{C, GLYPH_BOX, GLYPH_SHADOW_DARK, GLYPH_SHADOW_LIGHT, MARGIN, TILE, Variant, glyph_shadow, layers};
 use raster::{Img, Plane, alpha_composite, blur_rgb, composited, resized};
 
-/// Bumped whenever the look or the classification changes, so disk caches
-/// made by an older build are not reused.
-pub const ALGORITHM_VERSION: u32 = 3;
+/// Bumped whenever the look, the classification or the artwork decoding
+/// changes, so disk caches made by an older build are not reused.
+pub const ALGORITHM_VERSION: u32 = 4;
 /// Bumped whenever a style's look changes.
-pub const STYLE_VERSION: u32 = 2;
+pub const STYLE_VERSION: u32 = 3;
 pub const MASTER_EXTENT: usize = C;
 
 struct ShapeStats {
@@ -417,6 +418,28 @@ pub unsafe extern "C" fn astrea_app_tiles_style(
     let img = style::restyle(&src, style, dark != 0, rgb);
     unsafe { std::ptr::copy_nonoverlapping(img.p.as_ptr(), out, C * C * 4) };
     1
+}
+
+/// Rasterises SVG or SVGZ artwork (`len` bytes at `data`) to fit a
+/// `extent` x `extent` square, centred, into `out` (extent * extent * 4 bytes,
+/// straight RGBA8). Returns 1 on success, 0 when the SVG does not parse.
+///
+/// # Safety
+/// `data` must point to `len` readable bytes and `out` to extent * extent * 4
+/// writable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn astrea_app_tiles_rasterize_svg(data: *const u8, len: usize, extent: u32, out: *mut u8) -> i32 {
+    if data.is_null() || out.is_null() || extent == 0 || extent > 4096 {
+        return 0;
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    match svg::rasterize(bytes, extent as usize) {
+        Some(px) => {
+            unsafe { std::ptr::copy_nonoverlapping(px.as_ptr(), out, px.len()) };
+            1
+        }
+        None => 0,
+    }
 }
 
 #[unsafe(no_mangle)]

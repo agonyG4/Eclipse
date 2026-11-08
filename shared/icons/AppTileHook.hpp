@@ -36,6 +36,10 @@ struct Renderer final {
     // picks the style's dark-mode form, `tint` is used by Tinted. Null on
     // failure. Must be safe to call from worker threads.
     QImage (*style)(const QImage &icon, Style style, bool dark, QRgb tint) = nullptr;
+    // Rasterises SVG artwork to fit an extent² canvas (straight RGBA8888);
+    // null when it does not parse. Qt's SVG Tiny reader drops clip paths and
+    // more, so artwork goes through this when it is set.
+    QImage (*rasterizeSvg)(const QByteArray &svg, int extent) = nullptr;
     int masterExtent = 512;
     int version = 0;
     int styleVersion = 0;
@@ -46,7 +50,8 @@ Renderer renderer();
 bool available();
 
 // Decodes source art for tiling at master resolution. SVGs are rasterised to
-// fit the master; raster art keeps its own size. Thread-safe (no QIcon).
+// fit the master (by the renderer's rasterizeSvg when installed); raster art
+// keeps its own size. Thread-safe (no QIcon).
 QImage loadArtwork(const QString &path, int masterExtent);
 
 // `artwork` centred on a transparent extent² canvas, scaled to fit it.

@@ -43,6 +43,19 @@ QImage styleWithRust(const QImage &icon, Style style, bool dark, QRgb tint)
     return ok == 1 ? out : QImage();
 }
 
+QImage rasterizeSvgWithRust(const QByteArray &svg, int extent)
+{
+    if (svg.isEmpty() || extent <= 0)
+        return {};
+    QImage out(extent, extent, QImage::Format_RGBA8888);
+    if (out.bytesPerLine() != extent * 4)
+        return {};
+    const int ok = astrea_app_tiles_rasterize_svg(
+        reinterpret_cast<const uint8_t *>(svg.constData()), size_t(svg.size()),
+        uint32_t(extent), out.bits());
+    return ok == 1 ? out : QImage();
+}
+
 } // namespace
 
 void installRustRenderer()
@@ -52,6 +65,7 @@ void installRustRenderer()
     renderer.masterExtent = int(astrea_app_tiles_master_extent());
     renderer.version = int(astrea_app_tiles_version());
     renderer.style = styleWithRust;
+    renderer.rasterizeSvg = rasterizeSvgWithRust;
     renderer.styleVersion = int(astrea_app_tiles_style_version());
     setRenderer(renderer);
 }

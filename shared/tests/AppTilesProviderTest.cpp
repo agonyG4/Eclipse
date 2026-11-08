@@ -75,9 +75,15 @@ private slots:
         QVERIFY(QDir().mkpath(root + QStringLiteral("/Astrea-test/apps/48")));
         QVERIFY(own.save(root + QStringLiteral("/Astrea-test/apps/48/own-app.png")));
         QVERIFY(writeFile(root + QStringLiteral("/hicolor/index.theme"),
-                          "[Icon Theme]\nName=Hicolor\nComment=fixture\nDirectories=256x256/apps\n\n"
-                          "[256x256/apps]\nSize=256\nType=Fixed\nContext=Applications\n"));
+                          "[Icon Theme]\nName=Hicolor\nComment=fixture\nDirectories=256x256/apps,scalable/apps\n\n"
+                          "[256x256/apps]\nSize=256\nType=Fixed\nContext=Applications\n\n"
+                          "[scalable/apps]\nSize=128\nMinSize=8\nMaxSize=512\nType=Scalable\nContext=Applications\n"));
         QVERIFY(writeRingPng(root + QStringLiteral("/hicolor/256x256/apps/foreign-app.png")));
+        // SVG art clipped to its left half: Qt's SVG reader would draw it whole.
+        QVERIFY(writeFile(root + QStringLiteral("/hicolor/scalable/apps/clipped-app.svg"),
+                          "<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'>"
+                          "<defs><clipPath id='c'><rect width='50' height='100'/></clipPath></defs>"
+                          "<rect width='100' height='100' fill='#e02020' clip-path='url(#c)'/></svg>"));
 
         m_root = root;
     }
@@ -127,6 +133,20 @@ private slots:
         const QImage own = request(provider, QStringLiteral("own-app"), "dark", 48).toImage();
         QCOMPARE(own.pixelColor(24, 24), QColor(0, 200, 0));
         QCOMPARE(own.pixelColor(0, 0), QColor(0, 200, 0));
+    }
+
+    void svgArtKeepsItsClipPath()
+    {
+        AstreaIconProvider provider;
+        useTestTheme(provider);
+        QSignalSpy refreshed(&provider, &AstreaIconProvider::cacheInvalidated);
+        request(provider, QStringLiteral("clipped-app"), "dark", 64);
+        QTRY_VERIFY_WITH_TIMEOUT(refreshed.count() > 0, 10000);
+        const QImage tile = request(provider, QStringLiteral("clipped-app"), "dark", 64).toImage();
+        // The art is a red half-width bar centred on the tile; the tile's dark
+        // ramp shows beside it, where the clipped-off half would be.
+        QVERIFY2(tile.pixelColor(32, 32).red() > 180, qPrintable(tile.pixelColor(32, 32).name()));
+        QVERIFY2(tile.pixelColor(10, 32).red() < 90, qPrintable(tile.pixelColor(10, 32).name()));
     }
 
     void stylesRestyleThemeArtAndTiles()

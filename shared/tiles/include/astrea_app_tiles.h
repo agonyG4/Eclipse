@@ -3,6 +3,7 @@
 
 /* C ABI of shared/tiles (Rust): macOS Tahoe tiles for app icons. */
 
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -21,6 +22,13 @@ uint32_t astrea_app_tiles_version(void);
 int32_t astrea_app_tiles_render(const uint8_t *rgba, uint32_t width, uint32_t height,
                                 uint32_t stride, int32_t keep_dark,
                                 uint8_t *light_out, uint8_t *dark_out);
+
+/* Rasterises SVG or SVGZ artwork (`len` bytes) to fit an extent x extent
+ * square, centred, into `out` (extent * extent * 4 bytes, straight RGBA8).
+ * Returns 1 on success. Unlike Qt's SVG Tiny reader it honours clip paths,
+ * masks and filters. */
+int32_t astrea_app_tiles_rasterize_svg(const uint8_t *data, size_t len, uint32_t extent,
+                                       uint8_t *out);
 
 /* Bumped whenever a style would look different; key caches with it. */
 uint32_t astrea_app_tiles_style_version(void);

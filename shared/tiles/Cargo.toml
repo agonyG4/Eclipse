@@ -10,6 +10,9 @@ name = "astrea_app_tiles"
 crate-type = ["staticlib", "lib"]
 
 [dependencies]
+# App artwork SVGs: Qt's SVG Tiny reader drops clip-path and more, so tiles
+# rasterise SVG art here. No text or fonts: icons draw their glyphs as paths.
+resvg = { version = "0.49", default-features = false, features = ["raster-images"] }
 
 [profile.release]
 opt-level = 3

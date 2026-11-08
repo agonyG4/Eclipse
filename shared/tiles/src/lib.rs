@@ -1,19 +1,15 @@
 //! macOS Tahoe app tiles for icons an Astrea icon theme has no artwork for.
 //!
-//! A port of the tile pass ("step 5") of MacOS-Like's setup.sh
-//! (<https://github.com/Scrimas/MacOS-Like>, GPL-3.0-or-later). The constants,
-//! thresholds and order of the tests are kept as they are there, so a tile made
-//! here matches the one MacOS-Like ships; see that script for the reasoning
-//! behind each one. Everything is decided on a 512 px master: callers scale it
-//! down to the exact size they present, so no size is ever upscaled.
+//! Everything is decided on a 512 px master: callers scale it down to the exact
+//! size they present, so no size is ever upscaled. The classification and the
+//! brand-tile analysis started from MacOS-Like's tile pass (GPL-3.0-or-later).
 //!
 //! Three source-art classes:
 //!   1. full-bleed square art -> becomes the squircle itself; on a coloured
 //!      tile of its own, that tile becomes a Tahoe brand tile
 //!   2. solid disc/blob badge -> its own background is bled out to the squircle;
 //!      a round badge with a one-colour rim instead sits on the theme's tile at
-//!      80% as macOS sets Spotify's (Astrea's departure from MacOS-Like, which
-//!      blows the disc up until the logo presses against the tile edge)
+//!      80%, as macOS sets Spotify's
 //!   3. shaped / transparent  -> centred on the theme's tile
 
 mod brand;
@@ -175,7 +171,7 @@ fn bleed_backdrop(src: &Img) -> Img {
 
 /// Spread of the colour just inside a round badge's rim, above which the rim
 /// is a picture (a textured or many-coloured disc) that only reads blown up to
-/// cover the tile, as MacOS-Like does it.
+/// cover the tile.
 const RIM_SPREAD: f64 = 14.0;
 
 /// A round badge at DISC size, clipped to a clean circle (no soft shadow or

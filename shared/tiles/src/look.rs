@@ -1,5 +1,4 @@
-//! The tile's look (MacOS-Like's "# >>> look" block) and the shared squircle
-//! layers built from it once.
+//! The tile's look and the shared squircle layers built from it once.
 
 use std::sync::OnceLock;
 

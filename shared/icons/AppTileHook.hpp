@@ -1,9 +1,9 @@
 #pragma once
 
-// Runtime macOS Tahoe app tiles (see shared/tiles, a Rust port of
-// MacOS-Like's tile pass). The core library only knows this hook: apps that
-// link astrea-shared-app-tiles install the renderer at startup, and without one
-// the icon provider presents artwork as it is.
+// Runtime macOS Tahoe app tiles (see shared/tiles, Rust). The core library
+// only knows this hook: apps that link astrea-shared-app-tiles install the
+// renderer at startup, and without one the icon provider presents artwork as
+// it is.
 
 #include <QColor>
 #include <QImage>

@@ -474,6 +474,7 @@ qt_add_qml_module(astrea-shared-wayland-effects
         platform/wayland/effects/AstreaEffectChildWindow.hpp
     QML_FILES
         qml/effects/BackdropEffectSurface.qml
+        qml/effects/GlassLayer.qml
 )
 
 astrea_shared_enable_sanitizers(astrea-shared-wayland-effects)

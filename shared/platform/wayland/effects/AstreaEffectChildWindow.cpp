@@ -6,6 +6,7 @@
 #include <QMetaObject>
 #include <QPlatformSurfaceEvent>
 #include <QSurfaceFormat>
+#include <qpa/qplatformwindow.h>
 
 AstreaEffectChildWindow::AstreaEffectChildWindow(QWindow *parent)
     : QQuickWindow(parent)
@@ -84,6 +85,11 @@ bool AstreaEffectChildWindow::event(QEvent *event)
     if (surfaceEvent
         && surfaceEvent->surfaceEventType() == QPlatformSurfaceEvent::SurfaceCreated)
         scheduleEffectUpdate();
+    // Reparenting a mapped child makes Qt replace its wl_subsurface without
+    // sending the position again, and a new subsurface starts at (0, 0). The
+    // QWindow geometry did not change, so only the platform window can resend it.
+    if (event && event->type() == QEvent::ParentWindowChange && parent() && handle())
+        handle()->setGeometry(geometry());
     return handled;
 }
 

@@ -1,7 +1,193 @@
 //! Icon directory selection for the shared SDK.
-#![cfg_attr(not(test), no_std)]
-
 use core::{ffi::c_void, slice};
+use std::collections::HashSet;
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct Text {
+    data: *const u16,
+    size: usize,
+}
+
+impl Text {
+    fn view(units: &[u16]) -> Self {
+        Self {
+            data: units.as_ptr(),
+            size: units.len(),
+        }
+    }
+
+    unsafe fn units(&self) -> &[u16] {
+        if self.data.is_null() || self.size == 0 || self.size > isize::MAX as usize / 2 {
+            &[]
+        } else {
+            unsafe { slice::from_raw_parts(self.data, self.size) }
+        }
+    }
+}
+
+fn valid_theme(units: &[u16]) -> bool {
+    let ascii = |unit: u16| u8::try_from(unit).unwrap_or(0);
+    (1..=128).contains(&units.len())
+        && ascii(units[0]).is_ascii_alphanumeric()
+        && units
+            .iter()
+            .copied()
+            .map(ascii)
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._+-".contains(&byte))
+        && !units.windows(2).any(|part| part == [46, 46])
+}
+
+/// # Safety
+/// Name must refer to readable UTF-16 for this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn astrea_icon_valid_theme(name: Text) -> bool {
+    let name = unsafe { name.units() };
+    // The previous anchored Qt expression accepted one final LF via '$'.
+    valid_theme(name.strip_suffix(&[u16::from(b'\n')]).unwrap_or(name))
+}
+
+/// # Safety
+/// Path must refer to readable UTF-16 for this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn astrea_icon_safe_relative_path(path: Text, absolute: bool) -> bool {
+    let path = unsafe { path.units() };
+    !absolute
+        && !path.is_empty()
+        && !path
+            .split(|unit| *unit == u16::from(b'/') || *unit == u16::from(b'\\'))
+            .any(|component| component == [46, 46])
+}
+
+fn walk(
+    roots: impl IntoIterator<Item = (Vec<u16>, bool)>,
+    defer_children: bool,
+    mut visit: impl FnMut(&[u16], &mut Vec<Vec<u16>>),
+) {
+    let mut pending: Vec<_> = roots.into_iter().collect();
+    pending.reverse();
+    let mut seen = HashSet::new();
+    while let Some((name, defer)) = pending.pop() {
+        if !valid_theme(&name)
+            || (defer && name.iter().copied().eq("hicolor".encode_utf16()))
+            || !seen.insert(name.clone())
+        {
+            continue;
+        }
+        let mut children = Vec::new();
+        visit(&name, &mut children);
+        pending.extend(
+            children
+                .into_iter()
+                .rev()
+                .map(|child| (child, defer_children)),
+        );
+    }
+}
+
+type Visit =
+    unsafe extern "C" fn(*mut c_void, Text, unsafe extern "C" fn(*mut c_void, Text), *mut c_void);
+
+unsafe extern "C" fn child(context: *mut c_void, name: Text) {
+    let children = unsafe { &mut *context.cast::<Vec<Vec<u16>>>() };
+    children.push(unsafe { name.units() }.to_vec());
+}
+
+fn call_visit(visit: Visit, context: *mut c_void, name: &[u16], children: &mut Vec<Vec<u16>>) {
+    // The host calls the child collector only during this synchronous visit.
+    unsafe {
+        visit(
+            context,
+            Text::view(name),
+            child,
+            (children as *mut Vec<Vec<u16>>).cast(),
+        )
+    }
+}
+
+/// # Safety
+/// Root descriptors and the visitor must be valid throughout the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn astrea_icon_walk_themes(
+    roots: *const Text,
+    count: usize,
+    defer_children: bool,
+    visit: Option<Visit>,
+    context: *mut c_void,
+) {
+    let Some(visit) = visit else {
+        return;
+    };
+    if roots.is_null() || count == 0 || count > isize::MAX as usize / size_of::<Text>() {
+        return;
+    }
+    let roots = unsafe { slice::from_raw_parts(roots, count) };
+    walk(
+        roots
+            .iter()
+            .map(|root| (unsafe { root.units() }.to_vec(), false)),
+        defer_children,
+        |name, children| call_visit(visit, context, name, children),
+    );
+}
+
+/// # Safety
+/// Both strings must be readable; the visitor must be valid throughout the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn astrea_icon_theme_family(
+    theme: Text,
+    fallback: Text,
+    visit: Option<Visit>,
+    context: *mut c_void,
+) {
+    let Some(visit) = visit else {
+        return;
+    };
+    walk(
+        [
+            (unsafe { theme.units() }.to_vec(), false),
+            (unsafe { fallback.units() }.to_vec(), true),
+            ("hicolor".encode_utf16().collect(), false),
+        ],
+        true,
+        |name, children| call_visit(visit, context, name, children),
+    );
+}
+
+/// # Safety
+/// The type descriptor must refer to readable UTF-16 for the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn astrea_icon_directory_type(
+    kind: Text,
+    valid_size: bool,
+    size: i32,
+    scale: i32,
+    min_size: i32,
+    max_size: i32,
+    threshold: i32,
+) -> u8 {
+    if !valid_size
+        || size <= 0
+        || scale <= 0
+        || min_size <= 0
+        || max_size < min_size
+        || threshold < 0
+    {
+        return u8::MAX;
+    }
+    let kind = unsafe { kind.units() };
+    // Qt supplies the case-folded value to preserve native INI comparisons.
+    let equals = |text: &str| kind.iter().copied().eq(text.encode_utf16());
+    if equals("fixed") {
+        0
+    } else if equals("scalable") {
+        1
+    } else if kind.is_empty() || equals("threshold") {
+        2
+    } else {
+        u8::MAX
+    }
+}
 
 fn choose_variant(name: &[u8], light: bool, mut lookup: impl FnMut(u8) -> bool) -> bool {
     let explicit = name.ends_with(b"-dark") || name.ends_with(b"-light");
@@ -161,6 +347,34 @@ pub unsafe extern "C" fn astrea_icon_choose_directory(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn theme_walk_is_depth_first_and_defers_hicolor_across_cycles() {
+        let key = |name: &str| name.encode_utf16().collect::<Vec<_>>();
+        let mut visited = Vec::new();
+        walk(
+            [
+                (key("Theme"), false),
+                (key("Fallback"), true),
+                (key("hicolor"), false),
+            ],
+            true,
+            |name, children| {
+                let name = String::from_utf16(name).unwrap();
+                match name.as_str() {
+                    "Theme" => children.extend([key("hicolor"), key("Parent"), key("../bad")]),
+                    "Parent" => children.extend([key("Theme"), key("Grandparent")]),
+                    "Fallback" => children.push(key("Parent")),
+                    _ => {}
+                }
+                visited.push(name);
+            },
+        );
+        assert_eq!(
+            visited,
+            ["Theme", "Parent", "Grandparent", "Fallback", "hicolor"]
+        );
+    }
 
     #[test]
     fn theme_overrides_precede_platform_and_hicolor_uses_compatibility() {

@@ -6,7 +6,6 @@
 #include <QFileInfo>
 #include <QIcon>
 #include <QImageReader>
-#include <QRegularExpression>
 #include <QSettings>
 
 #include <algorithm>
@@ -15,9 +14,14 @@ namespace AstreaSDK {
 
 namespace {
 
-constexpr auto kHicolorTheme = "hicolor";
 constexpr auto kIconThemeGroup = "Icon Theme";
 constexpr qsizetype kMaxPresenceEntries = 4096;
+
+AstreaIconText iconText(const QString &value)
+{
+    return {value.utf16(), std::size_t(value.size())};
+}
+
 
 const QStringList &iconExtensions()
 {
@@ -66,15 +70,24 @@ QStringList IconThemeCatalog::themeFamily(const QString &themeName) const
 {
     refreshSearchSnapshot();
 
+    const auto root = themeName.trimmed();
+    const auto fallback = m_fallbackThemeName.trimmed();
     QStringList family;
-    QSet<QString> visited;
-    appendTheme(themeName, visited, family, false);
-
-    const QString fallbackTheme = m_fallbackThemeName.trimmed();
-    if (!fallbackTheme.isEmpty()) {
-        appendTheme(fallbackTheme, visited, family, true);
-    }
-    appendTheme(QString::fromLatin1(kHicolorTheme), visited, family, false);
+    struct Context { const IconThemeCatalog &catalog; QStringList &family; };
+    Context context{*this, family};
+    const auto visit = [](void *opaque, AstreaIconText name, AstreaIconThemeChild child, void *children) {
+        auto &state = *static_cast<Context *>(opaque);
+        const auto theme = QString::fromUtf16(reinterpret_cast<const char16_t *>(name.data),
+                                              qsizetype(name.size));
+        if (const auto *metadata = state.catalog.metadataFor(theme)) {
+            state.family.append(theme);
+            for (const auto &inherited : metadata->inherits) {
+                const auto normalized = inherited.trimmed();
+                child(children, iconText(normalized));
+            }
+        }
+    };
+    astrea_icon_theme_family(iconText(root), iconText(fallback), visit, &context);
     return family;
 }
 
@@ -139,18 +152,31 @@ QStringList IconThemeCatalog::watchPaths(const QStringList &themeNames) const
 {
     refreshSearchSnapshot();
 
-    QStringList paths;
-    QSet<QString> visited;
-    for (const QString &themeName : themeNames) {
-        const QString normalizedTheme = themeName.trimmed();
-        if (!isValidThemeIdentifier(normalizedTheme)) {
-            continue;
+    QStringList roots;
+    for (const auto &name : themeNames) {
+        const auto theme = name.trimmed();
+        if (isValidThemeIdentifier(theme)) {
+            roots.append(themeFamily(theme));
+            roots.append(theme);
         }
-        for (const QString &familyTheme : themeFamily(normalizedTheme)) {
-            appendWatchPathsForTheme(familyTheme, visited, paths);
-        }
-        appendWatchPathsForTheme(normalizedTheme, visited, paths);
     }
+    QList<AstreaIconText> inputs;
+    inputs.reserve(roots.size());
+    for (const auto &root : roots)
+        inputs.append(iconText(root));
+    QStringList paths;
+    struct Context { const IconThemeCatalog &catalog; QStringList &paths; };
+    Context context{*this, paths};
+    const auto visit = [](void *opaque, AstreaIconText name, AstreaIconThemeChild child, void *children) {
+        auto &state = *static_cast<Context *>(opaque);
+        const auto theme = QString::fromUtf16(reinterpret_cast<const char16_t *>(name.data),
+                                              qsizetype(name.size));
+        for (const auto &inherited : state.catalog.addWatchPathsForTheme(theme, state.paths)) {
+            const auto normalized = inherited.trimmed();
+            child(children, iconText(normalized));
+        }
+    };
+    astrea_icon_walk_themes(inputs.constData(), std::size_t(inputs.size()), false, visit, &context);
     return paths;
 }
 
@@ -165,22 +191,13 @@ void IconThemeCatalog::invalidate() const
 
 bool IconThemeCatalog::isValidThemeIdentifier(const QString &themeName)
 {
-    static const QRegularExpression expression(
-        QStringLiteral("^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$"));
-    return expression.match(themeName).hasMatch()
-        && !themeName.contains(QStringLiteral(".."));
+    return astrea_icon_valid_theme(iconText(themeName));
 }
 
 bool IconThemeCatalog::isSafeRelativePath(const QString &path)
 {
     const QString normalized = path.trimmed();
-    if (normalized.isEmpty() || QDir::isAbsolutePath(normalized)) {
-        return false;
-    }
-    const QStringList components = normalized.split(QRegularExpression(QStringLiteral("[/\\\\]")));
-    return std::none_of(components.cbegin(), components.cend(), [](const QString &component) {
-        return component == QStringLiteral("..");
-    });
+    return astrea_icon_safe_relative_path(iconText(normalized), QDir::isAbsolutePath(normalized));
 }
 
 bool IconThemeCatalog::isFilesystemPath(const QString &path)
@@ -316,24 +333,15 @@ IconThemeCatalog::metadataFor(const QString &themeName) const
             const int threshold = settings.value(QStringLiteral("Threshold"), 2).toInt();
             settings.endGroup();
 
-            DirectoryType type = DirectoryType::Threshold;
-            if (typeValue.compare(QStringLiteral("Fixed"), Qt::CaseInsensitive) == 0) {
-                type = DirectoryType::Fixed;
-            } else if (typeValue.compare(QStringLiteral("Scalable"), Qt::CaseInsensitive) == 0) {
-                type = DirectoryType::Scalable;
-            } else if (!typeValue.isEmpty()
-                       && typeValue.compare(QStringLiteral("Threshold"), Qt::CaseInsensitive) != 0) {
+            const auto foldedType = typeValue.toCaseFolded();
+            const auto type = astrea_icon_directory_type(iconText(foldedType), sizeIsValid,
+                                                         size, scale, minSize, maxSize, threshold);
+            if (type == UINT8_MAX) {
                 validDirectories = false;
                 break;
             }
-
-            if (!sizeIsValid || size <= 0 || scale <= 0 || minSize <= 0 || maxSize < minSize
-                || threshold < 0) {
-                validDirectories = false;
-                break;
-            }
-
-            parsedDirectories.append({directory, size, scale, minSize, maxSize, threshold, type});
+            parsedDirectories.append(
+                {directory, size, scale, minSize, maxSize, threshold, DirectoryType(type)});
         }
         if (validDirectories) {
             metadata.inherits = inherits;
@@ -429,41 +437,9 @@ bool IconThemeCatalog::hasIcon(
     return present;
 }
 
-void IconThemeCatalog::appendTheme(
-    const QString &themeName,
-    QSet<QString> &visited,
-    QStringList &family,
-    bool deferHicolor) const
+QStringList IconThemeCatalog::addWatchPathsForTheme(
+    const QString &normalizedTheme, QStringList &paths) const
 {
-    const QString normalizedTheme = themeName.trimmed();
-    if (!isValidThemeIdentifier(normalizedTheme)
-        || (deferHicolor && normalizedTheme == QString::fromLatin1(kHicolorTheme))
-        || visited.contains(normalizedTheme)) {
-        return;
-    }
-    visited.insert(normalizedTheme);
-
-    const ThemeMetadata *metadata = metadataFor(normalizedTheme);
-    if (!metadata) {
-        return;
-    }
-    family.append(normalizedTheme);
-    for (const QString &inheritedTheme : metadata->inherits) {
-        appendTheme(inheritedTheme, visited, family, true);
-    }
-}
-
-void IconThemeCatalog::appendWatchPathsForTheme(
-    const QString &themeName,
-    QSet<QString> &visited,
-    QStringList &paths) const
-{
-    const QString normalizedTheme = themeName.trimmed();
-    if (!isValidThemeIdentifier(normalizedTheme) || visited.contains(normalizedTheme)) {
-        return;
-    }
-    visited.insert(normalizedTheme);
-
     for (const QString &basePath : m_searchPaths) {
         if (!isFilesystemPath(basePath)) {
             continue;
@@ -480,7 +456,7 @@ void IconThemeCatalog::appendWatchPathsForTheme(
 
     const ThemeMetadata *metadata = metadataFor(normalizedTheme);
     if (!metadata) {
-        return;
+        return {};
     }
     for (const QString &root : metadata->roots) {
         if (!isFilesystemPath(root)) {
@@ -493,9 +469,7 @@ void IconThemeCatalog::appendWatchPathsForTheme(
             }
         }
     }
-    for (const QString &inheritedTheme : metadata->inherits) {
-        appendWatchPathsForTheme(inheritedTheme, visited, paths);
-    }
+    return metadata->inherits;
 }
 
 } // namespace AstreaSDK

@@ -1,19 +1,21 @@
 find_program(ASTREA_ICON_RUSTC rustc REQUIRED)
 set(astrea_icon_policy_source "${CMAKE_CURRENT_SOURCE_DIR}/icons/icon_directory_policy.rs")
-set(astrea_icon_policy_object "${CMAKE_CURRENT_BINARY_DIR}/astrea_icon_directory_policy.o")
+set(astrea_icon_policy_archive "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}astrea_icon_policy${CMAKE_STATIC_LIBRARY_SUFFIX}")
 add_custom_command(
-    OUTPUT "${astrea_icon_policy_object}"
-    COMMAND "${ASTREA_ICON_RUSTC}" --edition=2024 --crate-type=lib --emit=obj
+    OUTPUT "${astrea_icon_policy_archive}"
+    COMMAND "${ASTREA_ICON_RUSTC}" --edition=2024 --crate-type=staticlib
             -C panic=abort -C relocation-model=pic -O
-            -o "${astrea_icon_policy_object}" "${astrea_icon_policy_source}"
+            -o "${astrea_icon_policy_archive}" "${astrea_icon_policy_source}"
     DEPENDS "${astrea_icon_policy_source}"
     COMMENT "Compiling Rust icon directory policy"
     VERBATIM
 )
-set_source_files_properties("${astrea_icon_policy_object}" PROPERTIES GENERATED TRUE EXTERNAL_OBJECT TRUE)
+add_custom_target(astrea-icon-policy-build DEPENDS "${astrea_icon_policy_archive}")
+add_library(astrea-icon-policy STATIC IMPORTED GLOBAL)
+set_target_properties(astrea-icon-policy PROPERTIES IMPORTED_LOCATION "${astrea_icon_policy_archive}")
+add_dependencies(astrea-icon-policy astrea-icon-policy-build)
 
 add_library(astrea-shared-core STATIC
-    "${astrea_icon_policy_object}"
     icons/IconDirectoryPolicy.h
     icons/IconThemeCatalog.cpp
     icons/IconThemeService.cpp
@@ -64,7 +66,12 @@ target_link_libraries(astrea-shared-core PUBLIC
     Qt6::Gui
     Qt6::Qml
     Qt6::Quick
+    PRIVATE astrea-icon-policy ${CMAKE_DL_LIBS}
 )
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_options(astrea-shared-core INTERFACE
+        "LINKER:--exclude-libs,${CMAKE_STATIC_LIBRARY_PREFIX}astrea_icon_policy${CMAKE_STATIC_LIBRARY_SUFFIX}")
+endif()
 
 function(astrea_shared_enable_sanitizers target)
     if(NOT MSVC)

@@ -71,15 +71,7 @@ private:
         const QSize &logicalSize,
         qreal devicePixelRatio) const;
     bool hasIcon(const QString &themeName, const QString &candidate) const;
-    void appendTheme(
-        const QString &themeName,
-        QSet<QString> &visited,
-        QStringList &family,
-        bool deferHicolor) const;
-    void appendWatchPathsForTheme(
-        const QString &themeName,
-        QSet<QString> &visited,
-        QStringList &paths) const;
+    QStringList addWatchPathsForTheme(const QString &themeName, QStringList &paths) const;
 
     mutable QStringList m_searchPaths;
     mutable QString m_fallbackThemeName;

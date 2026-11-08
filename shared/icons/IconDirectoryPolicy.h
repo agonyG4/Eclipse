@@ -38,3 +38,22 @@ extern "C" bool astrea_icon_choose_variant(const char *name, std::size_t length,
                                            AstreaIconThemeLookup lookup, void *context);
 extern "C" std::uint8_t astrea_icon_choose_theme(bool platformIsHicolor,
                                                  AstreaIconThemeLookup lookup, void *context);
+
+struct AstreaIconText {
+    const std::uint16_t *data;
+    std::size_t size;
+};
+using AstreaIconThemeChild = void (*)(void *, AstreaIconText);
+using AstreaIconThemeVisit = void (*)(void *, AstreaIconText, AstreaIconThemeChild, void *);
+
+// Visits each valid theme once. The visitor supplies inherited names synchronously.
+extern "C" void astrea_icon_walk_themes(
+    const AstreaIconText *roots, std::size_t count, bool deferInheritedHicolor,
+    AstreaIconThemeVisit visit, void *context);
+extern "C" void astrea_icon_theme_family(
+    AstreaIconText theme, AstreaIconText fallback, AstreaIconThemeVisit visit, void *context);
+extern "C" std::uint8_t astrea_icon_directory_type(
+    AstreaIconText type, bool validSize, std::int32_t size, std::int32_t scale,
+    std::int32_t minSize, std::int32_t maxSize, std::int32_t threshold);
+extern "C" bool astrea_icon_valid_theme(AstreaIconText name);
+extern "C" bool astrea_icon_safe_relative_path(AstreaIconText path, bool absolute);

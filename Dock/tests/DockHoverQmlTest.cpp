@@ -4322,6 +4322,27 @@ void DockHoverQmlTest::floatingAutoHideUsesPhysicalEdgeRevealGeometry()
             QCOMPARE(panel->width() - (chrome->x() + chrome->width()), 12.0);
         }
 
+        // The pointer pressed against the edge near the end of the Dock, well
+        // away from the centre, reveals it and keeps it revealed: the gap
+        // between the floating chrome and the edge belongs to the Dock.
+        QVERIFY(!controller.revealed());
+        const QPointF edgePoint = position == QStringLiteral("bottom")
+            ? QPointF(chrome->x() + 8, panel->height() - 1)
+            : position == QStringLiteral("left")
+                ? QPointF(1, chrome->y() + 8)
+                : QPointF(panel->width() - 1, chrome->y() + 8);
+        QVERIFY(QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
+                                          Q_ARG(QVariant, edgePoint.x()),
+                                          Q_ARG(QVariant, edgePoint.y())));
+        QCoreApplication::processEvents();
+        QVERIFY(controller.revealed());
+        QTest::qWait(260);
+        QVERIFY(QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
+                                          Q_ARG(QVariant, edgePoint.x()),
+                                          Q_ARG(QVariant, edgePoint.y())));
+        QTest::qWait(260);
+        QVERIFY(controller.revealed());
+
         controller.setPointerInside(true);
         QCoreApplication::processEvents();
         QVERIFY(controller.revealed());

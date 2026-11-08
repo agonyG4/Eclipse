@@ -189,14 +189,41 @@ Item {
         return vertical ? height : width
     }
 
+    // Auto-hide slides the Dock out past the screen edge and back, like
+    // macOS, instead of popping it in and out. revealProgress is 1 at rest.
+    property real revealProgress: DockController.revealed ? 1 : 0
+    Behavior on revealProgress {
+        NumberAnimation {
+            id: revealAnimation
+            duration: root.animationDuration(DockController.revealed ? 260 : 200)
+            easing.type: DockController.revealed ? Easing.OutCubic : Easing.InCubic
+        }
+    }
+    onRevealProgressChanged: {
+        if (revealProgress === 0 || revealProgress === 1)
+            root.scheduleInputRegionUpdate()
+    }
+    // Far enough to carry the chrome and its shadow fully past the edge.
+    readonly property real revealTravel: (vertical ? dockChrome.width : dockChrome.height)
+        + surfaceCrossInset + 16
+    readonly property real revealOffset: (1 - revealProgress) * revealTravel
+    // The chrome's resting position; input and hit testing always use it.
+    readonly property real chromeRestX: vertical
+        ? (DockController.position === "left" ? surfaceCrossInset
+                                              : width - dockChrome.width - surfaceCrossInset)
+        : (width - dockChrome.width) / 2
+    readonly property real chromeRestY: vertical
+        ? (height - dockChrome.height) / 2
+        : height - dockChrome.height - surfaceCrossInset
+
     Rectangle {
         id: dockChrome
         objectName: "dockChrome"
-        x: root.vertical ? (DockController.position === "left" ? root.surfaceCrossInset
-                                                                  : parent.width - width - root.surfaceCrossInset)
-                         : (parent.width - width) / 2
-        y: root.vertical ? (parent.height - height) / 2
-                         : parent.height - height - root.surfaceCrossInset
+        x: root.vertical
+           ? root.chromeRestX + (DockController.position === "left" ? -root.revealOffset
+                                                                     : root.revealOffset)
+           : root.chromeRestX
+        y: root.vertical ? root.chromeRestY : root.chromeRestY + root.revealOffset
         width: root.vertical
             ? root.restingWidth
             : root.restingWidth + root.magnificationExtraPrimary
@@ -207,7 +234,7 @@ Item {
         color: shellMaterial.background
         border.color: shellMaterial.border
         border.width: 1
-        visible: DockController.revealed
+        visible: root.revealProgress > 0
 
         Behavior on width {
             NumberAnimation { duration: root.animationDuration(90); easing.type: Easing.OutCubic }
@@ -217,8 +244,9 @@ Item {
         }
         onWidthChanged: root.scheduleInputRegionUpdate()
         onHeightChanged: root.scheduleInputRegionUpdate()
-        onXChanged: root.scheduleInputRegionUpdate()
-        onYChanged: root.scheduleInputRegionUpdate()
+        // A slide moves x/y every frame; the region settles once it ends.
+        onXChanged: if (!revealAnimation.running) root.scheduleInputRegionUpdate()
+        onYChanged: if (!revealAnimation.running) root.scheduleInputRegionUpdate()
 
         Grid {
             id: appRow
@@ -516,12 +544,14 @@ Item {
     }
 
     // A mapped, bounded edge target keeps Always/Intelligent auto-hide
-    // revealable without making transparent surface headroom clickable.
+    // revealable without making transparent surface headroom clickable. It
+    // spans the Dock's own length, so pushing the pointer against the edge
+    // anywhere under the Dock reveals it, not only near the centre.
     Rectangle {
         id: edgeRevealTarget
         objectName: "edgeRevealTarget"
-        width: root.vertical ? 4 : Math.min(root.width, 96)
-        height: root.vertical ? Math.min(root.height, 96) : 4
+        width: root.vertical ? 4 : Math.min(root.width, Math.max(96, root.restingWidth))
+        height: root.vertical ? Math.min(root.height, Math.max(96, root.restingHeight)) : 4
         x: root.vertical
            ? (DockController.position === "left" ? 0 : root.width - width)
            : (root.width - width) / 2
@@ -779,8 +809,17 @@ Item {
         if (!DockController.revealed)
             return false
 
-        if (point.x >= dockChrome.x && point.x < dockChrome.x + dockChrome.width
-            && point.y >= dockChrome.y && point.y < dockChrome.y + dockChrome.height)
+        // While auto-hide floats the Dock off the edge, the gap down to the
+        // edge belongs to it: the pointer that revealed it is still there.
+        if (DockController.physicalEdgeReveal) {
+            const bridge = revealBridgeRect()
+            if (point.x >= bridge.x && point.x < bridge.x + bridge.width
+                && point.y >= bridge.y && point.y < bridge.y + bridge.height)
+                return true
+        }
+
+        if (point.x >= root.chromeRestX && point.x < root.chromeRestX + dockChrome.width
+            && point.y >= root.chromeRestY && point.y < root.chromeRestY + dockChrome.height)
             return true
 
         for (var i = 0; i < appRepeater.count; ++i) {
@@ -797,6 +836,19 @@ Item {
                 return true
         }
         return false
+    }
+
+    // The strip between the floating chrome and the physical screen edge,
+    // across the chrome's length, in panel coordinates.
+    function revealBridgeRect() {
+        if (DockController.position === "left")
+            return Qt.rect(0, root.chromeRestY, root.chromeRestX, dockChrome.height)
+        if (DockController.position === "right") {
+            const right = root.chromeRestX + dockChrome.width
+            return Qt.rect(right, root.chromeRestY, root.width - right, dockChrome.height)
+        }
+        const bottom = root.chromeRestY + dockChrome.height
+        return Qt.rect(root.chromeRestX, bottom, dockChrome.width, root.height - bottom)
     }
 
     function scheduleInputRegionUpdate() {
@@ -842,10 +894,13 @@ Item {
                 inputInteractionRects.push(windowRect(tileItem.tile.mapToItem(root, 0, 0,
                     tileItem.tile.width, tileItem.tile.height)))
         }
-        const chromeRect = windowRect(Qt.rect(dockChrome.x, dockChrome.y,
+        if (DockController.physicalEdgeReveal)
+            inputInteractionRects.push(windowRect(revealBridgeRect()))
+        const chromeRect = windowRect(Qt.rect(root.chromeRestX, root.chromeRestY,
                                               dockChrome.width, dockChrome.height))
         inputRegionBridge.update(chromeRect, inputInteractionRects,
-                                 appRepeater.count + minimizedRepeater.count)
+                                 appRepeater.count + minimizedRepeater.count
+                                 + (DockController.physicalEdgeReveal ? 1 : 0))
     }
 
     function scheduleTooltip() {

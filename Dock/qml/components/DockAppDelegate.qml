@@ -127,6 +127,70 @@ Item {
     width: slotWidth
     height: slotHeight
 
+    // Config changes (icon size, slot size) glide instead of snapping.
+    readonly property int configDuration: root.dockPanel ? root.dockPanel.animationDuration(220) : 220
+    Behavior on iconSize {
+        NumberAnimation { duration: root.configDuration; easing.type: Easing.OutCubic }
+    }
+    Behavior on slotWidth {
+        NumberAnimation { duration: root.configDuration; easing.type: Easing.OutCubic }
+    }
+    Behavior on slotHeight {
+        NumberAnimation { duration: root.configDuration; easing.type: Easing.OutCubic }
+    }
+
+    // Launch bounce, macOS style: the icon hops off the Dock edge until the
+    // app shows a window (or a few hops pass), finishing the hop in flight.
+    property real bounceOffset: 0
+    property int bounceHops: 0
+    readonly property int maximumBounceHops: 6
+    readonly property real bounceHeight: Math.round(root.iconSize * 0.42)
+    function startLaunchBounce() {
+        if (!root.dockPanel || root.dockPanel.animationDuration(300) <= 0)
+            return
+        root.bounceHops = 0
+        if (!launchBounce.running)
+            launchBounce.start()
+    }
+    function shouldKeepBouncing() {
+        return root.bounceHops < root.maximumBounceHops
+            && (root.launching || (root.runtimeKnown && !root.running))
+    }
+    onLaunchingChanged: if (root.launching) root.startLaunchBounce()
+    SequentialAnimation {
+        id: launchBounce
+        NumberAnimation {
+            target: root; property: "bounceOffset"
+            to: root.bounceHeight
+            duration: root.dockPanel ? root.dockPanel.animationDuration(300) : 300
+            easing.type: Easing.OutQuad
+        }
+        NumberAnimation {
+            target: root; property: "bounceOffset"
+            to: 0
+            duration: root.dockPanel ? root.dockPanel.animationDuration(300) : 300
+            easing.type: Easing.InQuad
+        }
+        // A short squash where the icon lands sells the weight.
+        PauseAnimation { duration: root.dockPanel ? root.dockPanel.animationDuration(90) : 90 }
+        onFinished: {
+            root.bounceHops += 1
+            if (root.shouldKeepBouncing())
+                launchBounce.start()
+            else
+                root.bounceOffset = 0
+        }
+    }
+
+    // Press feedback: the icon dips slightly while held.
+    property real pressScale: tapHandler.pressed && !dragHandler.active ? 0.9 : 1.0
+    Behavior on pressScale {
+        NumberAnimation {
+            duration: root.dockPanel ? root.dockPanel.animationDuration(tapHandler.pressed ? 90 : 200) : 120
+            easing.type: Easing.OutCubic
+        }
+    }
+
     SystemPalette { id: systemPalette }
 
     Shared.AstreaAppIcon {
@@ -135,7 +199,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         width: root.iconSize
         height: root.iconSize
-        scale: root.magnificationScale * root.dragScale
+        scale: root.magnificationScale * root.dragScale * root.pressScale
         transformOrigin: !root.dockPanel || !root.dockPanel.vertical ? Item.Bottom
                          : DockController.position === "left" ? Item.Left : Item.Right
         iconName: root.iconName
@@ -146,6 +210,13 @@ Item {
         maximumPresentationScale: Math.max(1, DockController.magnificationScale)
         iconRadius: 10
         fallbackRadius: 10
+
+        // The bounce lifts away from the Dock's screen edge.
+        transform: Translate {
+            x: !root.dockPanel || !root.dockPanel.vertical ? 0
+               : DockController.position === "left" ? root.bounceOffset : -root.bounceOffset
+            y: !root.dockPanel || !root.dockPanel.vertical ? -root.bounceOffset : 0
+        }
     }
 
     transform: Translate {
@@ -306,8 +377,17 @@ Item {
         transformOrigin: !root.dockPanel || !root.dockPanel.vertical ? Item.Bottom
                          : DockController.position === "left" ? Item.Left : Item.Right
         radius: appIcon.iconRadius
-        color: "#18FFFFFF"
-        visible: tapHandler.pressed || dragHandler.active
+        color: "#40000000"
+        opacity: tapHandler.pressed || dragHandler.active ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity {
+            NumberAnimation { duration: root.dockPanel ? root.dockPanel.animationDuration(140) : 140; easing.type: Easing.OutCubic }
+        }
+        transform: Translate {
+            x: !root.dockPanel || !root.dockPanel.vertical ? 0
+               : DockController.position === "left" ? root.bounceOffset : -root.bounceOffset
+            y: !root.dockPanel || !root.dockPanel.vertical ? -root.bounceOffset : 0
+        }
     }
 
     /*
@@ -341,7 +421,18 @@ Item {
                   ? (root.active ? 18 : 8) : DockController.indicatorSize)
         radius: DockController.indicatorStyle === "dot" ? width / 2 : Math.min(width, height) / 2
         color: systemPalette.highlight
-        visible: root.runtimeKnown && root.running && DockController.indicatorStyle !== "none"
+        // Fades and grows in when an app starts, stretches when it becomes
+        // active, and shrinks away when it quits, instead of toggling.
+        readonly property bool shown: root.runtimeKnown && root.running
+            && DockController.indicatorStyle !== "none"
+        visible: opacity > 0
+        opacity: shown ? (root.active || DockController.indicatorStyle !== "dot" ? 1 : 0.85) : 0
+        scale: shown ? 1 : 0.2
+        readonly property int indicatorDuration: root.dockPanel ? root.dockPanel.animationDuration(220) : 220
+        Behavior on opacity { NumberAnimation { duration: runningIndicator.indicatorDuration; easing.type: Easing.OutCubic } }
+        Behavior on scale { NumberAnimation { duration: runningIndicator.indicatorDuration; easing.type: Easing.OutBack } }
+        Behavior on width { NumberAnimation { duration: runningIndicator.indicatorDuration; easing.type: Easing.OutCubic } }
+        Behavior on height { NumberAnimation { duration: runningIndicator.indicatorDuration; easing.type: Easing.OutCubic } }
     }
 
     Rectangle {

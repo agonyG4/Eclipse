@@ -47,8 +47,11 @@ Item {
         DockController.iconSize * (reorderScale - 1) + reorderOffsetY - iconRestingTop)
     readonly property real maxMagnificationHeadroom: Math.max(0,
         DockController.iconSize * (Math.max(1, DockController.magnificationScale) - 1))
+    // Launch bounce height matches DockAppDelegate.bounceHeight.
+    readonly property real bounceHeadroom: Math.max(0,
+        Math.round(DockController.iconSize * 0.42) - iconRestingTop)
     readonly property real surfaceHeadroom: Math.max(maxMagnificationHeadroom,
-        liftHeadroom, dragHeadroom)
+        liftHeadroom, dragHeadroom, bounceHeadroom)
     readonly property int maximumMagnifiedDelegateCount: Math.min(appRepeater.count + minimizedCount,
         2 * Math.ceil(Math.max(1, DockController.magnificationRadius)) + 1)
     readonly property real maximumMagnificationExtraWidth:
@@ -236,11 +239,17 @@ Item {
         border.width: 1
         visible: root.revealProgress > 0
 
+        // Magnification tracks the pointer tightly; config and app-count
+        // changes glide at the same pace as the icons resizing inside.
+        readonly property int resizeDuration: root.animationDuration(root.pointerInside ? 90 : 220)
         Behavior on width {
-            NumberAnimation { duration: root.animationDuration(90); easing.type: Easing.OutCubic }
+            NumberAnimation { duration: dockChrome.resizeDuration; easing.type: Easing.OutCubic }
         }
         Behavior on height {
-            NumberAnimation { duration: root.animationDuration(90); easing.type: Easing.OutCubic }
+            NumberAnimation { duration: dockChrome.resizeDuration; easing.type: Easing.OutCubic }
+        }
+        Behavior on radius {
+            NumberAnimation { duration: root.animationDuration(220); easing.type: Easing.OutCubic }
         }
         onWidthChanged: root.scheduleInputRegionUpdate()
         onHeightChanged: root.scheduleInputRegionUpdate()
@@ -254,6 +263,19 @@ Item {
             rows: root.vertical ? Math.max(1, appRepeater.count) : 1
             rowSpacing: root.vertical ? DockController.itemSpacing : 0
             columnSpacing: root.vertical ? 0 : DockController.itemSpacing
+            Behavior on rowSpacing {
+                NumberAnimation { duration: root.animationDuration(220); easing.type: Easing.OutCubic }
+            }
+            Behavior on columnSpacing {
+                NumberAnimation { duration: root.animationDuration(220); easing.type: Easing.OutCubic }
+            }
+            // Icons joining the Dock pop in. No move transition: hover and
+            // reorder geometry read resting slot positions right after a move.
+            add: Transition {
+                enabled: root.animationDuration(220) > 0
+                NumberAnimation { property: "opacity"; from: 0; to: 1; duration: root.animationDuration(220); easing.type: Easing.OutCubic }
+                NumberAnimation { property: "scale"; from: 0.4; to: 1; duration: root.animationDuration(320); easing.type: Easing.OutBack }
+            }
             x: root.vertical ? (dockChrome.width - implicitWidth) / 2
                              : (dockChrome.width - implicitWidth - root.previewPrimaryExtent) / 2
             y: root.vertical ? (dockChrome.height - implicitHeight

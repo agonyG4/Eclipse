@@ -13,12 +13,16 @@ Item {
     }
     readonly property real dockRadius: shellMaterial.tokens.value("dockRadius", DockController.cornerRadius)
     readonly property bool lightMaterial: shellMaterial.isLight
-    property Item frostedPlateBlurItem: null
-    function setFrostedPlateBlur(item, active) {
+    // The frosted press gets its own blur surface when the shell material blurs.
+    readonly property bool frostedGlassAvailable: frostedGlassLoader.status === Loader.Ready
+    readonly property bool frostedIconPresented: frostedGlassAvailable
+        && !!frostedGlassLoader.item && frostedGlassLoader.item.iconPresented
+    property Item frostedPressDelegate: null
+    function setFrostedPress(delegateItem, active) {
         if (active)
-            root.frostedPlateBlurItem = item
-        else if (root.frostedPlateBlurItem === item)
-            root.frostedPlateBlurItem = null
+            root.frostedPressDelegate = delegateItem
+        else if (root.frostedPressDelegate === delegateItem)
+            root.frostedPressDelegate = null
     }
 
     readonly property bool vertical: DockController.vertical
@@ -571,10 +575,18 @@ Item {
             enabled: dockChrome.visible
             radius: dockChrome.radius
         }
-        BackdropRegion {
-            item: root.frostedPlateBlurItem
-            enabled: root.frostedPlateBlurItem !== null
-            radius: root.frostedPlateBlurItem ? root.frostedPlateBlurItem.blurRadius : 0
+    }
+
+    Loader {
+        id: frostedGlassLoader
+        objectName: "dockFrostedGlassLoader"
+        anchors.fill: parent
+        active: shellMaterial.isFrosted && DockController.pressEffect === "frosted"
+        sourceComponent: Component {
+            DockFrostedGlass {
+                source: root.frostedPressDelegate
+                lightMaterial: root.lightMaterial
+            }
         }
     }
 

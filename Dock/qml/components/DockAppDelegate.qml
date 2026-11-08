@@ -207,9 +207,8 @@ Item {
         }
     }
 
-    // The frosted plate blurs what is behind it, which shows wherever a magnified
-    // icon rises past the Dock chrome. Compositor blur is all-or-nothing per
-    // region, so the blurred area grows and shrinks instead of fading.
+    // Drives the frosted plate and its blur area. Compositor blur is
+    // all-or-nothing per region, so the area grows and shrinks instead of fading.
     property real frostedAmount: root.iconHeld && DockController.pressEffect === "frosted" ? 1 : 0
     Behavior on frostedAmount {
         NumberAnimation {
@@ -217,23 +216,28 @@ Item {
             easing.type: Easing.OutCubic
         }
     }
-    readonly property bool frostedBlurActive: root.frostedAmount > 0.01
-    onFrostedBlurActiveChanged: {
+    readonly property bool frostedGlassActive: root.frostedAmount > 0.01
+        && !!root.dockPanel && root.dockPanel.frostedGlassAvailable
+    onFrostedGlassActiveChanged: {
         if (root.dockPanel)
-            root.dockPanel.setFrostedPlateBlur(frostedBlurArea, root.frostedBlurActive)
+            root.dockPanel.setFrostedPress(root, root.frostedGlassActive)
     }
     Component.onDestruction: {
         if (root.dockPanel)
-            root.dockPanel.setFrostedPlateBlur(frostedBlurArea, false)
+            root.dockPanel.setFrostedPress(root, false)
     }
+    readonly property alias iconVisual: appIcon
+    readonly property real plateInset: Math.round(root.iconSize * 0.08)
 
     // The plate behind the icon: Windows-style hover indicator, dimming while
     // held, and the frosted press effect's glass.
     readonly property real hoverPlateTarget: DockController.hoverIndicator === "plate"
         && root.pointerTarget && !dragHandler.active
         ? DockController.hoverIndicatorStrength / 100 * (root.iconHeld ? 0.6 : 1) : 0
+    // With a glass surface the frosted plate is drawn there instead.
     readonly property real frostedPlateTarget: root.iconHeld
-        && DockController.pressEffect === "frosted" ? 0.16 : 0
+        && DockController.pressEffect === "frosted"
+        && !(root.dockPanel && root.dockPanel.frostedGlassAvailable) ? 0.16 : 0
     property real plateAlpha: Math.max(root.hoverPlateTarget, root.frostedPlateTarget)
     Behavior on plateAlpha {
         NumberAnimation {
@@ -268,6 +272,9 @@ Item {
         maximumPresentationScale: Math.max(1, DockController.magnificationScale)
         iconRadius: 10
         fallbackRadius: 10
+        // The glass layer draws its own copy while the press is on screen.
+        opacity: root.dockPanel && root.dockPanel.frostedPressDelegate === root
+                 && root.dockPanel.frostedIconPresented ? 0 : 1
 
         // Only layered while pressed, rendered at the on-screen size so a
         // magnified icon stays sharp.
@@ -438,7 +445,7 @@ Item {
     Rectangle {
         objectName: "iconPlate"
         z: -1
-        readonly property real inset: Math.round(root.iconSize * 0.08)
+        readonly property real inset: root.plateInset
         x: appIcon.x - inset
         y: appIcon.y - inset
         width: appIcon.width + inset * 2
@@ -453,16 +460,6 @@ Item {
         border.width: 1
         border.color: Qt.rgba(shade, shade, shade, root.plateAlpha * 0.8)
         visible: root.plateAlpha > 0.001
-
-        Item {
-            id: frostedBlurArea
-            objectName: "frostedBlurArea"
-            anchors.centerIn: parent
-            width: parent.width * root.frostedAmount
-            height: parent.height * root.frostedAmount
-            readonly property real blurRadius: Math.min(parent.radius * root.frostedAmount,
-                                                        width / 2, height / 2)
-        }
         transform: Translate {
             x: !root.dockPanel || !root.dockPanel.vertical ? 0
                : DockController.position === "left" ? root.bounceOffset : -root.bounceOffset

@@ -625,7 +625,7 @@ private slots:
     void reorderLiftsOnlyTheDraggedDelegate();
     void iconFeedbackFollowsHoverAndPressOptions();
     void launchBounceEndsOnceTheAppHasShownAWindow();
-    void frostedPressBlursThePlateAboveTheChrome();
+    void frostedPressUsesItsOwnGlassSurface();
     void runtimeOnlyQmlUsesTaskKeyForIdentityAndContextTarget();
     void magnifiedVisualRegionAcceptsContextMenu();
     void mainSurfaceUsesExplicitOutputGeometryWithoutWindowScreen();
@@ -2215,7 +2215,7 @@ void DockHoverQmlTest::iconFeedbackFollowsHoverAndPressOptions()
     delete panel;
 }
 
-void DockHoverQmlTest::frostedPressBlursThePlateAboveTheChrome()
+void DockHoverQmlTest::frostedPressUsesItsOwnGlassSurface()
 {
     QTemporaryDir temporary;
     QVERIFY(temporary.isValid());
@@ -2226,7 +2226,6 @@ void DockHoverQmlTest::frostedPressBlursThePlateAboveTheChrome()
     const QStringList pins{QStringLiteral("one.desktop"), QStringLiteral("two.desktop"),
                            QStringLiteral("three.desktop")};
     DockConfig config = configFor(QStringLiteral("magnification"), pins);
-    config.pressEffect = QStringLiteral("frosted");
     controller.applyConfig(config);
 
     QQmlEngine engine;
@@ -2244,39 +2243,75 @@ void DockHoverQmlTest::frostedPressBlursThePlateAboveTheChrome()
     window.show();
     QTest::qWait(60);
 
-    auto *descriptors = panel->findChildren<AstreaBackdropEffectRegions *>().constFirst();
+    // No glass surface exists unless the frosted effect is selected.
+    QVERIFY(!panel->property("frostedGlassAvailable").toBool());
+    config.pressEffect = QStringLiteral("frosted");
+    controller.applyConfig(config);
+    QTRY_VERIFY_WITH_TIMEOUT(panel->property("frostedGlassAvailable").toBool(), 1000);
+
+    auto *loader = childWithObjectName(panel, QStringLiteral("dockFrostedGlassLoader"));
+    QVERIFY(loader);
+    auto *glass = loader->property("item").value<QQuickItem *>();
+    QVERIFY(glass);
+    auto *descriptors = glass->property("backdropRegions").value<AstreaBackdropEffectRegions *>();
+    QVERIFY(descriptors);
+    auto *surface = glass->property("surfaceWindow").value<QQuickWindow *>();
+    QVERIFY(surface);
+    QVERIFY(surface->flags().testFlag(Qt::WindowTransparentForInput));
+    QTRY_VERIFY_WITH_TIMEOUT(surface->isVisible(), 1000);
+    // Idle glass stays mapped and asks for no blur.
+    QVERIFY(descriptors->resolvedRegion().isEmpty());
+
     auto *chrome = childWithObjectName(panel, QStringLiteral("dockChrome"));
     QQuickItem *target = delegate(panel, QStringLiteral("two.desktop"));
     QVERIFY(chrome && target);
-    auto *blurArea = childWithObjectName(target, QStringLiteral("frostedBlurArea"));
-    QVERIFY(blurArea);
+    auto *plate = childWithObjectName(surface->contentItem(), QStringLiteral("dockFrostedPlate"));
+    auto *iconCopy = childWithObjectName(surface->contentItem(), QStringLiteral("dockFrostedIcon"));
+    QVERIFY(plate && iconCopy);
+    auto *icon = target->property("iconVisual").value<QQuickItem *>();
+    QVERIFY(icon);
 
     const QPoint center = itemCenter(window, target);
     QTest::mouseMove(&window, center);
     QTRY_VERIFY_WITH_TIMEOUT(propertyReal(target, "magnificationScale") > 1.2, 1500);
     QTest::qWait(150);
 
-    const auto chromeTop = [&] {
-        return chrome->mapToItem(window.contentItem(), QPointF(0, 0)).y();
-    };
-    const auto pointAbove = [&] {
-        const QRectF plate = blurArea->mapRectToItem(
-            window.contentItem(), QRectF(0, 0, blurArea->width(), blurArea->height()));
-        return QPoint(qRound(plate.center().x()), qRound(plate.top()) + 4);
-    };
-    QCOMPARE(propertyReal(target, "frostedAmount"), 0.0);
-
     QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, center);
     QTRY_VERIFY_WITH_TIMEOUT(propertyReal(target, "frostedAmount") > 0.999, 1000);
-    QVERIFY(pointAbove().y() < chromeTop());
-    QTRY_VERIFY_WITH_TIMEOUT(backdropContains(descriptors->resolvedRegion(), pointAbove()), 1000);
+    QCOMPARE(panel->property("frostedPressDelegate").value<QQuickItem *>(), target);
 
-    // Releasing shrinks the blur away with the plate instead of leaving it behind.
-    const QPoint held = pointAbove();
-    QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, center);
-    QTRY_VERIFY_WITH_TIMEOUT(panel->property("frostedPlateBlurItem").value<QObject *>() == nullptr,
+    // The plate and the icon copy track the magnified icon in panel coordinates.
+    const QRectF iconRect = icon->mapRectToItem(panel, QRectF(0, 0, icon->width(), icon->height()));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        qAbs(plate->x() + plate->width() / 2 - iconRect.center().x()) < 1.0
+            && qAbs(iconCopy->x() - iconRect.x()) < 1.0
+            && qAbs(iconCopy->y() - iconRect.y()) < 1.0
+            && qAbs(iconCopy->width() * iconCopy->scale() - iconRect.width()) < 1.0
+            && plate->width() > iconRect.width(),
+        1000);
+
+    // The blur belongs to the glass surface, so it also covers the plate over the chrome.
+    QTRY_VERIFY_WITH_TIMEOUT(backdropContains(descriptors->resolvedRegion(),
+                                              QPointF(plate->x() + plate->width() / 2,
+                                                      plate->y() + plate->height() / 2).toPoint()),
                              1000);
-    QTRY_VERIFY_WITH_TIMEOUT(!backdropContains(descriptors->resolvedRegion(), held), 1000);
+    const qreal chromeTop = chrome->mapToItem(panel, QPointF(0, 0)).y();
+    QVERIFY(plate->y() < chromeTop);
+    QVERIFY(backdropContains(descriptors->resolvedRegion(),
+                             QPointF(plate->x() + plate->width() / 2, plate->y() + 2).toPoint()));
+    // The parent draws no frosted fill of its own beneath the glass.
+    QVERIFY(propertyReal(target, "plateAlpha") < 0.16 - 0.01);
+
+    QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, center);
+    QTRY_VERIFY_WITH_TIMEOUT(panel->property("frostedPressDelegate").value<QQuickItem *>() == nullptr,
+                             1000);
+    QTRY_VERIFY_WITH_TIMEOUT(descriptors->resolvedRegion().isEmpty(), 1000);
+    QCOMPARE(icon->opacity(), 1.0);
+
+    // Leaving the frosted effect removes the surface.
+    config.pressEffect = QStringLiteral("darken");
+    controller.applyConfig(config);
+    QTRY_VERIFY_WITH_TIMEOUT(!panel->property("frostedGlassAvailable").toBool(), 1000);
     delete panel;
 }
 

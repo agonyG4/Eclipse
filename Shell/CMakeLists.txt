@@ -125,6 +125,7 @@ set(_shell_qml_files
     "${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/components/DockWindowPreviewSurface.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/components/DockMinimizedWindowTile.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/components/DockTooltipBubble.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/components/DockFrostedGlass.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/../AltTab/qml/Main.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/../AltTab/qml/components/AltTabPanel.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/../AltTab/qml/components/AltTabWindowDelegate.qml"
@@ -161,6 +162,8 @@ set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/components/
     PROPERTIES QT_RESOURCE_ALIAS "Dock/qml/components/DockMinimizedWindowTile.qml")
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/components/DockTooltipBubble.qml"
     PROPERTIES QT_RESOURCE_ALIAS "Dock/qml/components/DockTooltipBubble.qml")
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../Dock/qml/components/DockFrostedGlass.qml"
+    PROPERTIES QT_RESOURCE_ALIAS "Dock/qml/components/DockFrostedGlass.qml")
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../AltTab/qml/Main.qml"
     PROPERTIES QT_RESOURCE_ALIAS "AltTab/qml/Main.qml")
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../AltTab/qml/components/AltTabPanel.qml"

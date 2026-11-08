@@ -155,45 +155,14 @@ Item {
             width: Math.min(900, Math.max(0, parent.width - 78))
             spacing: 0
 
-            RowLayout {
-                Layout.fillWidth: true
-                Layout.bottomMargin: Components.Theme.spacingXLarge
-                spacing: Components.Theme.spacingLarge
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: 0
-                    spacing: Components.Theme.spacingMicro
-                    Text {
-                        objectName: "applicationsCatalogTitle"
-                        Layout.fillWidth: true
-                        text: "Apps"
-                        textFormat: Text.PlainText
-                        elide: Text.ElideRight
-                        color: Components.Theme.textPrimary
-                        font.family: Components.Theme.typography.role("display").family
-                        font.pixelSize: Components.Theme.typography.role("display").pixelSize
-                        lineHeight: Components.Theme.typography.role("display").lineHeight
-                        lineHeightMode: Text.ProportionalHeight
-                        font.letterSpacing: Components.Theme.typography.role("display").letterSpacing
-                        font.weight: Components.Theme.typography.role("display").weight
-                    }
-                    Text {
-                        Layout.fillWidth: true
-                        text: "Browse and manage apps on this device."
-                        textFormat: Text.PlainText
-                        elide: Text.ElideRight
-                        color: Components.Theme.textSecondary
-                        font.family: Components.Theme.typography.role("body").family
-                        font.pixelSize: Components.Theme.typography.role("body").pixelSize
-                        lineHeight: Components.Theme.typography.role("body").lineHeight
-                        lineHeightMode: Text.ProportionalHeight
-                        font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
-                    }
-                }
+            Form.PageHeader {
+                titleObjectName: "applicationsCatalogTitle"
+                title: "Apps"
+                subtitle: "Browse and manage apps on this device."
+
                 Rectangle {
-                    Layout.alignment: Qt.AlignVCenter
-                    Layout.preferredHeight: 29
-                    Layout.preferredWidth: appsCount.implicitWidth + 20
+                    implicitHeight: 29
+                    implicitWidth: appsCount.implicitWidth + 20
                     radius: height / 2
                     color: root.quietSurface
                     border { width: 1; color: root.quietBorder }
@@ -202,8 +171,9 @@ Item {
                         objectName: "applicationsCountLabel"
                         anchors.centerIn: parent
                         text: root.filteredApps.length === root.apps.length
-                            ? root.apps.length + " apps"
-                            : root.filteredApps.length + " of " + root.apps.length
+                            ? I18n.tr("settings.apps.count_all", "%1 apps").replace("%1", root.apps.length)
+                            : I18n.tr("settings.apps.count_filtered", "%1 of %2")
+                                .replace("%1", root.filteredApps.length).replace("%2", root.apps.length)
                         color: Components.Theme.textSecondary
                         font.family: Components.Theme.typography.role("caption").family
                         font.pixelSize: Components.Theme.typography.role("caption").pixelSize
@@ -215,33 +185,18 @@ Item {
                 }
             }
 
-            // Restore the original AstreaOS overview/search card.
-            Form.FormCard {
-                objectName: "applicationsOverviewCard"
-                Layout.bottomMargin: 24
-                radius: root.groupRadius
-                Item {
-                    Layout.fillWidth: true
-                    implicitHeight: overviewContent.implicitHeight + 24
-                    ColumnLayout {
-                        id: overviewContent
-                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
-                        spacing: 17
-                        Controls.SearchField {
-                            objectName: "applicationsSearchField"
-                            Layout.fillWidth: true
-                            controlHeight: 46
-                            surfaceColor: root.quietSurface
-                            borderColor: root.quietBorder
-                            placeholderText: "Search applications"
-                            iconText: "⌕"
-                            text: root.searchText
-                            onTextEdited: value => {
-                                root.searchText = value
-                                appsList.positionViewAtBeginning()
-                            }
-                        }
-                    }
+            Controls.SearchField {
+                objectName: "applicationsSearchField"
+                id: applicationsSearch
+                Layout.fillWidth: true
+                Layout.bottomMargin: Components.Theme.spacingLarge
+                controlHeight: 46
+                placeholderText: "Search applications"
+                iconText: "⌕"
+                text: root.searchText
+                onTextEdited: value => {
+                    root.searchText = value
+                    appsList.positionViewAtBeginning()
                 }
             }
 
@@ -258,8 +213,12 @@ Item {
                 Layout.fillWidth: true
                 Layout.bottomMargin: 18
                 // The native virtualized ListView is the catalog's only scrollable area.
-                Layout.preferredHeight: Math.max(104, Math.min(root.filteredApps.length * 78 + 12,
-                    Math.max(104, catalogPage.height - overviewContent.implicitHeight - 170)))
+                // Whole rows only, so the viewport never cuts a row in half.
+                readonly property real available: Math.max(104,
+                    catalogPage.height - installedCard.y - 52)
+                readonly property int fittingRows: Math.max(1, Math.floor((available - 12) / 78))
+                Layout.preferredHeight: Math.max(104,
+                    Math.min(root.filteredApps.length, fittingRows) * 78 + 12)
                 radius: root.groupRadius
                 color: Components.Theme.cardBg
                 border.width: 1
@@ -269,7 +228,9 @@ Item {
                 ListView {
                     id: appsList
                     objectName: "installedApplicationsList"
-                    anchors { fill: parent; topMargin: 6; bottomMargin: 6 }
+                    anchors.fill: parent
+                    topMargin: 6
+                    bottomMargin: 6
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
                     model: root.filteredApps

@@ -27,10 +27,11 @@ Item {
         ? displayName.trim()
         : I18n.tr("apps.settings.pages.system.audio.label.output_fallback", "Audio output")
     readonly property string deviceDetail: {
-        if (inputDevice) return "\uf130" // microphone
         if (isVirtual)
-            return I18n.tr("apps.settings.pages.system.audio.label.virtual_output",
-                           "Virtual audio output")
+            return inputDevice
+                ? I18n.tr("settings.audio.virtual_input", "Virtual audio input")
+                : I18n.tr("apps.settings.pages.system.audio.label.virtual_output",
+                          "Virtual audio output")
         const nickname = nick.trim()
         if (nickname.length > 0 && nickname !== deviceTitle)
             return nickname
@@ -81,8 +82,8 @@ Item {
 
     RowLayout {
         anchors.fill: parent
-        anchors.leftMargin: Components.Theme.spacingMedium
-        anchors.rightMargin: Components.Theme.spacingMedium
+        anchors.leftMargin: Components.Theme.spacingXLarge
+        anchors.rightMargin: Components.Theme.spacingXLarge
         spacing: Components.Theme.spacingMedium
 
         QQC2.Button {
@@ -192,7 +193,7 @@ Item {
     Rectangle {
         anchors.bottom: parent.bottom
         anchors.left: parent.left
-        anchors.leftMargin: Components.Theme.spacingMedium + 34
+        anchors.leftMargin: Components.Theme.spacingXLarge + 34
                             + Components.Theme.spacingMedium
         anchors.right: parent.right
         height: 1

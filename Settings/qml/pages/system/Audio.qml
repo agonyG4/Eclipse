@@ -56,32 +56,11 @@ FocusScope {
         contentMargins: 32
         maxWidth: 900
 
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.bottomMargin: Components.Theme.spacingXLarge
-            spacing: Components.Theme.spacingLarge
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: Components.Theme.spacingMicro
-
-                Typography.DisplayLabel {
-                    objectName: "audioPageTitle"
-                    text: I18n.tr("settings.audio.title", "Audio")
-                    typographyRole: "display"
-                    font.weight: Components.Theme.typography.role("display").weight
-                }
-
-                Typography.TextLabel {
-                    text: I18n.tr("settings.audio.subtitle",
-                                  "Choose an output device and adjust your sound.")
-                    textColor: Components.Theme.textSecondary
-                    typographyRole: "body"
-                    wrapMode: Text.WordWrap
-                    Layout.fillWidth: true
-                }
-            }
-
+        Form.PageHeader {
+            titleObjectName: "audioPageTitle"
+            title: I18n.tr("settings.audio.title", "Audio")
+            subtitle: I18n.tr("settings.audio.subtitle",
+                              "Choose an output device and adjust your sound.")
         }
 
         Typography.TextLabel {

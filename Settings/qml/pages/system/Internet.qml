@@ -422,28 +422,12 @@ FocusScope {
         contentMargins: 32
         maxWidth: 900
 
-        // The overview follows the same typography and card hierarchy as Audio.
-        ColumnLayout {
+        Form.PageHeader {
             visible: !root.detailsOpen
-            Layout.fillWidth: true
-            Layout.bottomMargin: Components.Theme.spacingXLarge
-            spacing: Components.Theme.spacingMicro
-
-            Typography.DisplayLabel {
-                objectName: "internetHeading"
-                text: I18n.tr("settings.internet.title", "Internet")
-                typographyRole: "display"
-                font.weight: Components.Theme.typography.role("display").weight
-            }
-
-            Typography.TextLabel {
-                Layout.fillWidth: true
-                text: I18n.tr("settings.internet.subtitle",
+            titleObjectName: "internetHeading"
+            title: I18n.tr("settings.internet.title", "Internet")
+            subtitle: I18n.tr("settings.internet.subtitle",
                               "Manage your connection and network preferences.")
-                textColor: Components.Theme.textSecondary
-                typographyRole: "body"
-                wrapMode: Text.WordWrap
-            }
         }
 
         Controls.Button {

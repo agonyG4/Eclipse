@@ -9,6 +9,7 @@ Item {
     id: header
     property string title: ""
     property string subtitle: ""
+    property string titleObjectName: ""
     default property alias trailing: trailingSlot.data
     // Optional leading element (e.g. an icon tile) shown left of the title block.
     property alias leading: leadingSlot.data
@@ -38,6 +39,7 @@ Item {
             spacing: Components.Theme.spacingMicro
 
             Typography.DisplayLabel {
+                objectName: header.titleObjectName
                 Layout.fillWidth: true
                 text: header.title
                 font.pixelSize: Components.Theme.typography.role("display").pixelSize

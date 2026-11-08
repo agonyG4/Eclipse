@@ -20,7 +20,14 @@ Item {
     property var previewEntries: []
     property var draggedItem: null
     property real dragPointerX: 0
+    property real dragGrabOffset: 0
     property bool dragMoved: false
+    // Neighbours glide to their new slots while dragging and the dropped item
+    // settles into place; ordinary relayouts (clock ticks, tray churn) snap.
+    property int slideDuration: 220
+    property bool settling: false
+    readonly property real liftScale: 1.12
+    readonly property real liftOpacity: 0.85
 
     implicitWidth: orderedEntries.reduce((sum, entry) => sum + entry.item.width, 0)
         + Math.max(0, orderedEntries.length - 1) * itemSpacing
@@ -87,6 +94,10 @@ Item {
             return
         if (draggedItem === entry)
             endDrag(item, entry.key, false)
+        if (entry.slide)
+            entry.slide.destroy()
+        if (entry.lift)
+            entry.lift.destroy()
         entries = entries.filter(candidate => candidate !== entry)
         rebuild()
     }
@@ -112,6 +123,46 @@ Item {
         positionEntries()
     }
 
+    function moveItem(entry, x) {
+        const animate = (dragActive || settling) && slideDuration > 0
+        if (!entry.slide && animate)
+            entry.slide = slideComponent.createObject(layout, { target: entry.item })
+        if (!animate) {
+            if (entry.slide)
+                entry.slide.stop()
+            entry.item.x = x
+            return
+        }
+        if (entry.slide.running && entry.slide.to === x)
+            return
+        if (!entry.slide.running && entry.item.x === x)
+            return
+        entry.slide.stop()
+        entry.slide.to = x
+        entry.slide.start()
+    }
+
+    function setLifted(entry, lifted) {
+        if (!entry || !entry.item)
+            return
+        if (!entry.lift)
+            entry.lift = liftComponent.createObject(layout, { target: entry.item })
+        entry.lift.stop()
+        entry.lift.scaleTo = lifted ? liftScale : 1
+        entry.lift.opacityTo = lifted ? liftOpacity : 1
+        entry.lift.start()
+    }
+
+    function followPointer() {
+        if (!draggedItem || !draggedItem.item || !dragMoved)
+            return
+        const item = draggedItem.item
+        if (draggedItem.slide)
+            draggedItem.slide.stop()
+        const maxX = Math.max(0, implicitWidth - item.width)
+        item.x = Math.max(0, Math.min(maxX, dragPointerX - dragGrabOffset))
+    }
+
     function positionEntries() {
         const items = dragActive ? previewEntries : orderedEntries
         let x = 0
@@ -119,16 +170,19 @@ Item {
             const entry = items[i]
             if (!entry.item)
                 continue
-            entry.item.x = x
+            entry.slotX = x
             entry.item.y = Math.round((height - entry.item.height) / 2)
             entry.item.z = entry === draggedItem ? 2 : 0
+            if (entry !== draggedItem || !dragMoved)
+                moveItem(entry, x)
             x += entry.item.width + itemSpacing
         }
         implicitWidth = Math.max(0, x - (items.length ? itemSpacing : 0))
         implicitHeight = items.reduce((h, entry) => Math.max(h, entry.item ? entry.item.height : 0), 0)
+        followPointer()
     }
 
-    function beginDrag(item, key) {
+    function beginDrag(item, key, sceneX) {
         const entry = entries.find(candidate => candidate.item === item
             && (!key || candidate.key === key))
         if (!entry || draggedItem)
@@ -136,7 +190,10 @@ Item {
         draggedItem = entry
         dragMoved = false
         previewEntries = orderedEntries.slice(0)
-        dragPointerX = item.x + item.width / 2
+        dragPointerX = sceneX === undefined ? item.x + item.width / 2
+                                            : mapFromItem(null, sceneX, 0).x
+        dragGrabOffset = Math.max(0, Math.min(item.width, dragPointerX - item.x))
+        setLifted(entry, true)
         positionEntries()
         if (popupController && popupController.surfaceRequired)
             popupController.close()
@@ -146,21 +203,25 @@ Item {
     function updateDrag(item, key, sceneX) {
         if (!draggedItem || draggedItem.item !== item || (key && draggedItem.key !== key))
             return false
-        dragPointerX = mapFromItem(null, sceneX, 0).x
+        // The lifted item is scaled, so mapped pointer positions carry float
+        // noise; round it so a pointer resting on a neighbour's centre is a
+        // stable tie instead of flipping between slots.
+        dragPointerX = Math.round(mapFromItem(null, sceneX, 0).x * 100) / 100
         const others = previewEntries.filter(entry => entry !== draggedItem)
         let targetIndex = 0
         for (const entry of others) {
-            const center = entry.item.x + entry.item.width / 2
+            // Compare against resting slots, not mid-glide positions.
+            const slot = entry.slotX === undefined ? entry.item.x : entry.slotX
+            const center = slot + entry.item.width / 2
             if (dragPointerX > center)
                 ++targetIndex
         }
         targetIndex = Math.max(0, Math.min(others.length, targetIndex))
         const next = others.slice(0)
         next.splice(targetIndex, 0, draggedItem)
-        if (next.some((entry, index) => previewEntries[index] !== entry)) {
+        if (next.some((entry, index) => previewEntries[index] !== entry))
             previewEntries = next
-            dragMoved = true
-        }
+        dragMoved = true
         positionEntries()
         return true
     }
@@ -188,10 +249,54 @@ Item {
                 committed = true
             }
         }
+        const dropped = draggedItem
+        settling = true
+        settleTimer.restart()
         draggedItem = null
         dragMoved = false
+        setLifted(dropped, false)
         rebuild()
         return committed
+    }
+
+    Timer {
+        id: settleTimer
+        interval: layout.slideDuration + 40
+        onTriggered: layout.settling = false
+    }
+
+    Component {
+        id: slideComponent
+        NumberAnimation {
+            property: "x"
+            duration: layout.slideDuration
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    Component {
+        id: liftComponent
+        ParallelAnimation {
+            id: lift
+            property Item target: null
+            property real scaleTo: 1
+            property real opacityTo: 1
+            NumberAnimation {
+                target: lift.target
+                property: "scale"
+                to: lift.scaleTo
+                duration: 160
+                easing.type: Easing.OutBack
+                easing.overshoot: 2
+            }
+            NumberAnimation {
+                target: lift.target
+                property: "opacity"
+                to: lift.opacityTo
+                duration: 140
+                easing.type: Easing.OutCubic
+            }
+        }
     }
 
     onOrderStoreChanged: rebuild()

@@ -186,6 +186,8 @@ private slots:
     void smallPointerJitterDoesNotCancelTheHold();
     void trayItemCanMoveToBothEnds();
     void draggingAwayAndBackDoesNotChangeOrSaveTheOrder();
+    void draggedItemLiftsAndFollowsThePointer();
+    void superDragStartsWithoutHolding();
     void productionControllerExposesTheSharedStoreToQml();
     void trayWithoutIdentifierRoleStillInstantiatesAndActivates();
 };
@@ -421,6 +423,49 @@ void TopbarReorderQmlTest::draggingAwayAndBackDoesNotChangeOrSaveTheOrder()
     QCOMPARE(fixture.store.order(), original);
     QCOMPARE(fixture.tray.activations, 0);
     QVERIFY(!QFileInfo::exists(fixture.configPath));
+}
+
+void TopbarReorderQmlTest::draggedItemLiftsAndFollowsThePointer()
+{
+    ReorderFixture fixture;
+    QVERIFY2(fixture.window, qPrintable(fixture.error));
+    auto *tray = fixture.item(QStringLiteral("trayItem"));
+    auto *volume = fixture.item(QStringLiteral("volumeIndicator"));
+    auto *layout = fixture.item(QStringLiteral("statusItemLayout"));
+    QVERIFY(tray && layout);
+    const QPoint origin = fixture.center(tray);
+    fixture.hold(tray);
+    QVERIFY(layout->property("dragActive").toBool());
+    QTRY_VERIFY(tray->scale() > 1.05);
+    QVERIFY(tray->opacity() < 1.0);
+
+    const QPoint target = origin + QPoint(40, 0);
+    QTest::mouseMove(fixture.window.get(), origin + QPoint(20, 0), 10);
+    QTest::mouseMove(fixture.window.get(), target, 10);
+    QCoreApplication::processEvents();
+    // The lifted item rides under the pointer instead of jumping slot to slot.
+    QVERIFY(qAbs(fixture.center(tray).x() - target.x()) <= 2);
+    if (volume)
+        QVERIFY(tray->z() > volume->z());
+
+    fixture.drop(target);
+    QVERIFY(!layout->property("dragActive").toBool());
+    QTRY_VERIFY(qAbs(tray->scale() - 1.0) < 0.001);
+    QTRY_VERIFY(qAbs(tray->opacity() - 1.0) < 0.001);
+}
+
+void TopbarReorderQmlTest::superDragStartsWithoutHolding()
+{
+    ReorderFixture fixture;
+    QVERIFY2(fixture.window, qPrintable(fixture.error));
+    auto *tray = fixture.item(QStringLiteral("trayItem"));
+    auto *layout = fixture.item(QStringLiteral("statusItemLayout"));
+    QVERIFY(tray && layout);
+    layout->setProperty("holdInterval", 5000);
+    QTest::mousePress(fixture.window.get(), Qt::LeftButton, Qt::MetaModifier, fixture.center(tray));
+    QVERIFY(layout->property("dragActive").toBool());
+    fixture.drop(fixture.center(tray));
+    QCOMPARE(fixture.tray.activations, 0);
 }
 
 void TopbarReorderQmlTest::productionControllerExposesTheSharedStoreToQml()

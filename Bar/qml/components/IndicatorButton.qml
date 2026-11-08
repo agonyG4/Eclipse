@@ -81,7 +81,8 @@ Item {
                 if (mouseArea.pressed && control.reorderable && control.statusLayout) {
                     mouseArea.holdConsumed = true
                     const item = control.reorderItem || control
-                    mouseArea.dragging = control.statusLayout.beginDrag(item, control.orderKey)
+                    mouseArea.dragging = control.statusLayout.beginDrag(item, control.orderKey,
+                                                                        mouseArea.pressSceneX)
                     if (mouseArea.dragging)
                         control.reorderStarted()
                 }
@@ -96,7 +97,13 @@ Item {
                 const point = control.mapToItem(null, mouse.x, mouse.y)
                 pressSceneX = point.x
                 pressSceneY = point.y
-                holdTimer.start()
+                // Super-drag reorders at once, like Command-drag on macOS.
+                if (mouse.modifiers & Qt.MetaModifier) {
+                    holdTimer.stop()
+                    holdTimer.triggered()
+                } else {
+                    holdTimer.start()
+                }
             }
         }
 

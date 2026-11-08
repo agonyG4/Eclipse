@@ -2,7 +2,7 @@ import QtQuick
 import Astrea.Shared as Shared
 
 QtObject {
-    readonly property QtObject material: Shared.ShellMaterialTheme { typographySurface: "topbar" }
+    readonly property Shared.ShellMaterialTheme material: Shared.ShellMaterialTheme { typographySurface: "topbar" }
 
     readonly property var state: material.state
     readonly property var packStyle: state && state.styleTokens ? state.styleTokens : ({})

@@ -126,6 +126,7 @@ qt_add_qml_module(astrea-shared-core
         qml/MonoText.qml
         qml/ThemeComponentLoader.qml
         qml/ShellMaterialTheme.qml
+        qml/ShellCard.qml
 )
 
 # Keep the generated static QML plugin reachable through the single public SDK

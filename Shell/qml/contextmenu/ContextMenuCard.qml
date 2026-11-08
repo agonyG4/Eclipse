@@ -1,6 +1,7 @@
 import QtQuick
+import Astrea.Shared as Shared
 
-Rectangle {
+Shared.ShellCard {
     id: root
     objectName: "contextMenuCard"
 
@@ -11,10 +12,8 @@ Rectangle {
     property int contentSpacing: theme.contextMenuRowSpacing
     implicitWidth: content.implicitWidth + cardPadding * 2
     implicitHeight: content.implicitHeight + cardPadding * 2
-    radius: theme.contextMenuRadius
-    color: theme.background
-    border.color: theme.border
-    border.width: 1
+    material: theme.material
+    cardRadius: theme.contextMenuRadius
 
     Item {
         id: content

@@ -1,6 +1,7 @@
 import QtQuick
+import Astrea.Shared as Shared
 
-Rectangle {
+Shared.ShellCard {
     id: root
 
     ShellBarTheme { id: theme }
@@ -14,10 +15,10 @@ Rectangle {
     implicitHeight: content.implicitHeight + cardPadding * 2
     width: implicitWidth
     height: implicitHeight
-    radius: theme.shellRadiusLarge
+    material: theme.material
+    cardRadius: theme.shellRadiusLarge
     color: backgroundColor
     border.color: borderColor
-    border.width: 1
 
     Column {
         id: content

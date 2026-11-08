@@ -63,41 +63,13 @@ Item {
             subtitle: "Power profile, CPU scheduler and tuning."
         }
 
-        Rectangle {
+        Components.BackendNotice {
             objectName: "performanceBackendStatus"
-            visible: root.controller.busy || root.errorMessage !== ""
-            Layout.fillWidth: true
-            Layout.bottomMargin: 24
-            implicitHeight: statusText.implicitHeight + 18
-            radius: Components.Theme.controlRadius
-            color: Components.Theme.isLight ? Qt.rgba(0, 0, 0, 0.025) : Qt.rgba(1, 1, 1, 0.035)
-            border.width: 1
-            border.color: Components.Theme.cardBorder
-            Text {
-                id: statusText
-                anchors.left: parent.left
-                anchors.right: retryRefresh.left
-                anchors.leftMargin: 10
-                anchors.verticalCenter: parent.verticalCenter
-                text: root.controller.busy ? "Reading or applying performance settings…" : root.errorMessage
-                color: root.errorMessage !== "" ? Components.Theme.errorColor : Components.Theme.textSecondary
-                font.family: Components.Theme.typography.role("caption").family
-                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
-                lineHeight: Components.Theme.typography.role("caption").lineHeight
-                lineHeightMode: Text.ProportionalHeight
-                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
-                wrapMode: Text.Wrap
-            }
-            Controls.ButtonCapsule {
-                id: retryRefresh
-                objectName: "performanceRetryRefreshButton"
-                anchors.right: parent.right
-                anchors.rightMargin: 8
-                anchors.verticalCenter: parent.verticalCenter
-                visible: !root.controller.busy && root.errorMessage !== ""
-                label: "Retry"
-                onClicked: root.controller.refresh()
-            }
+            retryObjectName: "performanceRetryRefreshButton"
+            busy: root.controller.busy
+            error: root.errorMessage
+            busyText: "Reading or applying performance settings…"
+            onRetry: root.controller.refresh()
         }
 
         Form.SectionHeader { text: "POWER PROFILE"; Layout.bottomMargin: 12 }
@@ -166,14 +138,15 @@ Item {
                     label: modelData.label
                     sublabel: modelData.best_for + " · " + modelData.description
                     isLast: index === root.visibleSchedulers().length - 1
-                    Text {
-                        text: modelData.id === root.selectedScheduler ? "Selected" : (root.supported.indexOf(modelData.id) >= 0 ? "Choose" : "Unavailable")
-                        color: modelData.id === root.selectedScheduler ? Components.Theme.accent : Components.Theme.textTertiary
-                        font.family: Components.Theme.typography.role("caption").family
-                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
-                        lineHeight: Components.Theme.typography.role("caption").lineHeight
-                        lineHeightMode: Text.ProportionalHeight
-                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
+                    Controls.ButtonCapsule {
+                        readonly property bool isSelected: modelData.id === root.selectedScheduler
+                        readonly property bool isSupported: root.supported.indexOf(modelData.id) >= 0
+                        objectName: "schedulerChoice-" + modelData.id
+                        label: isSelected ? "Selected" : (isSupported ? "Choose" : "Unavailable")
+                        iconText: isSelected ? "\uf00c" : ""
+                        primary: isSelected
+                        enabled: (isSelected || isSupported) && !root.controller.busy
+                        onClicked: if (!isSelected) root.setPreference("scx_scheduler", modelData.id)
                     }
                     onClicked: root.setPreference("scx_scheduler", modelData.id)
                 }
@@ -208,14 +181,14 @@ Item {
                     label: modelData.label
                     sublabel: modelData.description
                     isLast: index === root.modes.length - 1
-                    Text {
-                        text: modelData.id === root.selectedMode ? "Selected" : "Choose"
-                        color: modelData.id === root.selectedMode ? Components.Theme.accent : Components.Theme.textTertiary
-                        font.family: Components.Theme.typography.role("caption").family
-                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
-                        lineHeight: Components.Theme.typography.role("caption").lineHeight
-                        lineHeightMode: Text.ProportionalHeight
-                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
+                    Controls.ButtonCapsule {
+                        readonly property bool isSelected: modelData.id === root.selectedMode
+                        objectName: "schedulerModeChoice-" + modelData.id
+                        label: isSelected ? "Selected" : "Choose"
+                        iconText: isSelected ? "\uf00c" : ""
+                        primary: isSelected
+                        enabled: !root.controller.busy
+                        onClicked: if (!isSelected) root.setPreference("scx_mode", modelData.id)
                     }
                     onClicked: root.setPreference("scx_mode", modelData.id)
                 }

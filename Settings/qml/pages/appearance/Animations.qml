@@ -78,15 +78,16 @@ Item {
         const digits = Number.isInteger(speed) ? 0 : Number.isInteger(Math.round(speed * 1000) / 100) ? 1 : 2
         return Number(speed).toLocaleString(Qt.locale(), "f", digits) + "×"
     }
-    function slotSummary(slot) {
+    // The dropdown already names the effect, so the sublabel explains the slot
+    // and only adds the speed when it differs from normal.
+    function slotSummary(slot, description) {
         const status = root.plannedText(slot) || root.unavailableText(slot)
         if (status)
             return status
         const speed = slot.speed || 1.0
-        const effect = root.effectLabel(slot.effective)
         if ((slot.effective || "none") === "none" || Math.abs(speed - 1.0) < 0.001)
-            return effect
-        return effect + " · " + root.speedText(speed)
+            return description
+        return description + " · " + root.speedText(speed)
     }
 
     component SpeedControl: ColumnLayout {
@@ -160,6 +161,7 @@ Item {
         id: slotRow
         required property string slotId
         required property string title
+        property string description: ""
         property bool last: false
         property int minimumChoices: 1
         property bool wallpaperOption: false
@@ -173,7 +175,7 @@ Item {
 
         Form.SettingRow {
             label: slotRow.title
-            sublabel: root.slotSummary(slotRow.slotData)
+            sublabel: root.slotSummary(slotRow.slotData, slotRow.description)
             isLast: slotRow.last && !slotRow.expanded
             clickable: slotRow.animated
             onClicked: slotRow.toggle()
@@ -187,26 +189,42 @@ Item {
                     label: selectedIndex >= 0 && selectedIndex < options.length ? options[selectedIndex] : root.effectLabel(slotRow.slotData.effective)
                     onSelected: index => root.controller.setSlotEffect(slotRow.slotId, slotRow.slotData.availableEffects[index])
                 }
-                Item {
-                    width: 24
-                    height: parent.height
-                    opacity: slotRow.animated ? 1 : 0
+                Rectangle {
+                    id: speedToggle
+                    objectName: "animationSpeedToggle_" + slotRow.slotId
+                    width: 32
+                    height: 32
+                    anchors.verticalCenter: parent.verticalCenter
+                    radius: Components.Theme.controlRadius
+                    color: speedToggleMouse.containsMouse && slotRow.animated
+                        ? Components.Theme.controlHoverFill : Components.Theme.cardBg
+                    border.width: 1
+                    border.color: Components.Theme.cardBorder
+                    opacity: slotRow.animated ? 1 : Components.Theme.opacityDisabled
+                    Accessible.role: Accessible.Button
+                    Accessible.name: I18n.tr("apps.settings.pages.animations.action.speed_settings", "Speed settings")
+
                     Text {
                         anchors.centerIn: parent
-                        text: "\u203A"
-                        color: Components.Theme.textTertiary
-                        font.pixelSize: Components.Theme.typography.role("label").pixelSize
-                        lineHeight: Components.Theme.typography.role("label").lineHeight
-                        lineHeightMode: Text.ProportionalHeight
-                        font.letterSpacing: Components.Theme.typography.role("label").letterSpacing
-                        rotation: slotRow.expanded ? 90 : 0
+                        text: "\uf078"
+                        color: Components.Theme.textSecondary
+                        font.family: Components.Theme.iconFontFamily
+                        font.pixelSize: 11
+                        rotation: slotRow.expanded ? 180 : 0
                         Behavior on rotation { NumberAnimation { duration: Components.Theme.animationQuick; easing.type: Easing.OutCubic } }
                     }
                     MouseArea {
+                        id: speedToggleMouse
                         anchors.fill: parent
+                        hoverEnabled: true
                         enabled: slotRow.animated
                         cursorShape: Qt.PointingHandCursor
                         onClicked: slotRow.toggle()
+                    }
+                    Controls.HoverTooltip {
+                        targetItem: speedToggle
+                        requested: speedToggleMouse.containsMouse && slotRow.animated
+                        label: speedToggle.Accessible.name
                     }
                 }
             }
@@ -400,7 +418,12 @@ Item {
                 sublabel: I18n.tr("apps.settings.pages.animations.sublabel.reset", "Restore the preset's effects and speeds")
                 clickable: root.controller.available && !root.controller.busy
                 onClicked: root.controller.resetOverrides()
-                Text { text: I18n.tr("apps.settings.pages.animations.action.reset", "Reset"); color: Components.Theme.accent; font.pixelSize: Components.Theme.typography.role("caption").pixelSize }
+                Controls.ButtonCapsule {
+                    objectName: "animationsResetButton"
+                    label: I18n.tr("apps.settings.pages.animations.action.reset", "Reset")
+                    enabled: root.controller.available && !root.controller.busy && root.controller.hasOverrides
+                    onClicked: root.controller.resetOverrides()
+                }
             }
         }
 
@@ -420,16 +443,17 @@ Item {
             }
             Repeater {
                 model: [
-                    { id: "window.open", title: I18n.tr("apps.settings.pages.animations.slot.open", "Open") },
-                    { id: "window.close", title: I18n.tr("apps.settings.pages.animations.slot.close", "Close") },
-                    { id: "window.minimize", title: I18n.tr("apps.settings.pages.animations.slot.minimize", "Minimize") },
-                    { id: "window.restore", title: I18n.tr("apps.settings.pages.animations.slot.restore", "Restore") }
+                    { id: "window.open", description: I18n.tr("apps.settings.pages.animations.slot.open_description", "Effect when a window appears"), title: I18n.tr("apps.settings.pages.animations.slot.open", "Open") },
+                    { id: "window.close", description: I18n.tr("apps.settings.pages.animations.slot.close_description", "Effect when a window closes"), title: I18n.tr("apps.settings.pages.animations.slot.close", "Close") },
+                    { id: "window.minimize", description: I18n.tr("apps.settings.pages.animations.slot.minimize_description", "Effect when a window is sent to the Dock"), title: I18n.tr("apps.settings.pages.animations.slot.minimize", "Minimize") },
+                    { id: "window.restore", description: I18n.tr("apps.settings.pages.animations.slot.restore_description", "Effect when a minimized window returns"), title: I18n.tr("apps.settings.pages.animations.slot.restore", "Restore") }
                 ]
                 delegate: SlotRow {
                     required property var modelData
                     required property int index
                     slotId: modelData.id
                     title: modelData.title
+                    description: modelData.description || ""
                     last: index === 3
                     minimumChoices: 0
                 }
@@ -441,17 +465,18 @@ Item {
             Layout.bottomMargin: 24
             Repeater {
                 model: [
-                    { id: "window.move", title: I18n.tr("apps.settings.pages.animations.slot.movement", "Movement") },
-                    { id: "window.resize", title: I18n.tr("apps.settings.pages.animations.slot.resize", "Resize") },
-                    { id: "layout.reflow", title: I18n.tr("apps.settings.pages.animations.slot.reflow", "Tiled layout") },
-                    { id: "window.maximize", title: I18n.tr("apps.settings.pages.animations.slot.maximize", "Maximize") },
-                    { id: "window.fullscreen", title: I18n.tr("apps.settings.pages.animations.slot.fullscreen", "Fullscreen") }
+                    { id: "window.move", description: I18n.tr("apps.settings.pages.animations.slot.movement_description", "How windows follow when you drag them"), title: I18n.tr("apps.settings.pages.animations.slot.movement", "Movement") },
+                    { id: "window.resize", description: I18n.tr("apps.settings.pages.animations.slot.resize_description", "How windows change size"), title: I18n.tr("apps.settings.pages.animations.slot.resize", "Resize") },
+                    { id: "layout.reflow", description: I18n.tr("apps.settings.pages.animations.slot.reflow_description", "How tiled windows rearrange themselves"), title: I18n.tr("apps.settings.pages.animations.slot.reflow", "Tiled layout") },
+                    { id: "window.maximize", description: I18n.tr("apps.settings.pages.animations.slot.maximize_description", "Effect when a window fills the screen"), title: I18n.tr("apps.settings.pages.animations.slot.maximize", "Maximize") },
+                    { id: "window.fullscreen", description: I18n.tr("apps.settings.pages.animations.slot.fullscreen_description", "Effect when a window enters or leaves fullscreen"), title: I18n.tr("apps.settings.pages.animations.slot.fullscreen", "Fullscreen") }
                 ]
                 delegate: SlotRow {
                     required property var modelData
                     required property int index
                     slotId: modelData.id
                     title: modelData.title
+                    description: modelData.description || ""
                     last: index === 4
                     minimumChoices: 0
                 }
@@ -462,20 +487,22 @@ Item {
         Form.FormCard {
             SlotRow {
                 slotId: "workspace.switch"
+                description: I18n.tr("apps.settings.pages.animations.slot.switch_workspace_description", "Effect when you move between workspaces")
                 title: I18n.tr("apps.settings.pages.animations.slot.switch_workspace", "Switch workspace")
                 minimumChoices: 1
                 wallpaperOption: true
             }
             Repeater {
                 model: [
-                    { id: "workspace.special", title: I18n.tr("apps.settings.pages.animations.slot.special_workspace", "Special workspace") },
-                    { id: "workspace.window-move", title: I18n.tr("apps.settings.pages.animations.slot.move_workspace", "Move window between workspaces") }
+                    { id: "workspace.special", description: I18n.tr("apps.settings.pages.animations.slot.special_workspace_description", "Effect when the special workspace slides in or out"), title: I18n.tr("apps.settings.pages.animations.slot.special_workspace", "Special workspace") },
+                    { id: "workspace.window-move", description: I18n.tr("apps.settings.pages.animations.slot.move_workspace_description", "Effect when a window moves to another workspace"), title: I18n.tr("apps.settings.pages.animations.slot.move_workspace", "Move window between workspaces") }
                 ]
                 delegate: SlotRow {
                     required property var modelData
                     required property int index
                     slotId: modelData.id
                     title: modelData.title
+                    description: modelData.description || ""
                     last: index === 1
                     minimumChoices: 1
                 }

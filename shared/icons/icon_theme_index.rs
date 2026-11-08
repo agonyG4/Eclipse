@@ -1,6 +1,6 @@
 //! Freedesktop icon index reader. Qt-specific INI encodings use the compatibility reader.
 use super::{Directory, Text};
-use std::{collections::HashMap, ffi::c_void, ptr, slice};
+use std::{collections::HashMap, ffi::c_void, iter::Peekable, ptr, slice, str::Chars};
 
 enum Error {
     Invalid,
@@ -14,14 +14,93 @@ fn list(value: &str) -> impl Iterator<Item = &str> {
         .filter(|part| !part.is_empty())
 }
 
+fn logical_lines(mut input: &str) -> impl Iterator<Item = &str> {
+    std::iter::from_fn(move || {
+        if input.is_empty() {
+            return None;
+        }
+        let (mut escaped, mut quoted) = (false, false);
+        let mut comment = input.trim_start_matches([' ', '\t']).starts_with('#');
+        let mut chars = input.char_indices().peekable();
+        while let Some((index, c)) = chars.next() {
+            if matches!(c, '\r' | '\n') {
+                let mut end = index + 1;
+                if c == '\r' && chars.next_if(|(_, next)| *next == '\n').is_some() {
+                    end += 1;
+                }
+                if escaped && !comment {
+                    escaped = false;
+                    continue;
+                }
+                let line = &input[..index];
+                input = &input[end..];
+                return Some(line);
+            }
+            if comment {
+                continue;
+            }
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            match c {
+                '\\' => escaped = true,
+                '"' => quoted = !quoted,
+                ';' if !quoted => comment = true,
+                _ => {}
+            }
+        }
+        Some(std::mem::take(&mut input))
+    })
+}
+
+fn numeric_escape(chars: &mut Peekable<Chars<'_>>, radix: u32, first: Option<u32>) -> Option<u16> {
+    let mut result = first.map(|digit| digit as u16);
+    while let Some(digit) = chars.peek().and_then(|c| c.to_digit(radix)) {
+        chars.next();
+        let value = result.unwrap_or(0);
+        result = Some(value.wrapping_mul(radix as u16).wrapping_add(digit as u16));
+    }
+    result
+}
+
+fn escape(chars: &mut Peekable<Chars<'_>>) -> Result<Option<u16>, Error> {
+    let Some(c) = chars.next() else {
+        return Err(Error::NativeEncoding);
+    };
+    let decoded = match c {
+        'a' => 7,
+        'b' => 8,
+        'f' => 12,
+        'n' => 10,
+        'r' => 13,
+        't' => 9,
+        'v' => 11,
+        '"' | '\'' | '?' | '\\' => c as u16,
+        'x' => return Ok(numeric_escape(chars, 16, None)),
+        '0'..='7' => return Ok(numeric_escape(chars, 8, c.to_digit(8))),
+        '\r' | '\n' => {
+            if c == '\r' {
+                chars.next_if_eq(&'\n');
+            }
+            return Ok(None);
+        }
+        // Unknown ASCII escapes drop the escaped character in QSettings.
+        c if c.is_ascii() => return Ok(None),
+        _ => return Err(Error::NativeEncoding),
+    };
+    Ok(Some(decoded))
+}
+
 fn values(input: &str) -> Result<Vec<String>, Error> {
     let mut items = Vec::new();
-    let mut item = String::new();
+    let mut item = Vec::new();
     let mut quoted = false;
     let mut closed = false;
-    let mut chars = input.chars();
-    let push = |items: &mut Vec<String>, item: &mut String| {
-        let value = item.trim();
+    let mut chars = input.chars().peekable();
+    let push = |items: &mut Vec<String>, item: &mut Vec<u16>| {
+        let decoded = String::from_utf16(item).map_err(|_| Error::NativeEncoding)?;
+        let value = decoded.trim();
         if let Some(literal) = value.strip_prefix("@@") {
             items.push(format!("@{literal}"));
         } else if value.starts_with('@') {
@@ -43,28 +122,20 @@ fn values(input: &str) -> Result<Vec<String>, Error> {
                 quoted = false;
                 closed = true;
             }
-            '"' if !closed && item.trim().is_empty() => {
+            '"' if !closed
+                && item.iter().all(|unit| {
+                    char::from_u32(u32::from(*unit)).is_some_and(char::is_whitespace)
+                }) =>
+            {
                 item.clear();
                 quoted = true;
             }
             '"' => return Err(Error::NativeEncoding),
             c if closed && c.is_whitespace() => {}
             _ if closed => return Err(Error::NativeEncoding),
-            '\\' => item.push(match chars.next() {
-                Some('a') => '\u{7}',
-                Some('b') => '\u{8}',
-                Some('f') => '\u{c}',
-                Some('n') => '\n',
-                Some('r') => '\r',
-                Some('t') => '\t',
-                Some('v') => '\u{b}',
-                Some(c @ ('"' | '\'' | '?' | '\\')) => c,
-                // Numeric escapes, continuations and unusual escapes keep
-                // using the compatibility reader.
-                _ => return Err(Error::NativeEncoding),
-            }),
+            '\\' => item.extend(escape(&mut chars)?),
             '\0' => return Err(Error::NativeEncoding),
-            _ => item.push(c),
+            _ => item.extend_from_slice(c.encode_utf16(&mut [0; 2])),
         }
     }
     if quoted {
@@ -77,7 +148,7 @@ fn values(input: &str) -> Result<Vec<String>, Error> {
 fn parse(input: &str) -> Result<(Vec<String>, Vec<(String, Directory)>), Error> {
     let mut groups = HashMap::<&str, HashMap<&str, Vec<String>>>::new();
     let mut group = "";
-    for line in input.trim_start_matches('\u{feff}').lines().map(str::trim) {
+    for line in logical_lines(input.trim_start_matches('\u{feff}')).map(str::trim) {
         if line.is_empty() || line.starts_with(['#', ';']) {
             continue;
         }
@@ -227,6 +298,29 @@ pub unsafe extern "C" fn astrea_icon_parse_index(
 mod tests {
     use super::*;
 
+    #[test]
+    fn numeric_escapes_decode_utf16_and_consume_the_full_digit_run() {
+        assert_eq!(
+            values(r"\xD83D\xDE00,\1012z,\x12345z,\xZ,\08")
+                .ok()
+                .unwrap(),
+            ["😀", "Ȋz", "⍅z", "Z", "\u{0}8"]
+        );
+    }
+
+    #[test]
+    fn continuation_joins_crlf_but_leaves_comment_and_even_backslash_lines_separate() {
+        let source = "[Icon Theme]\r\nName=Example\r\nComment=My\\\r\n icons\r\n\
+                      # ignore\\\r\nDirectories=16/\\\r\napps\r\n\
+                      [16/apps]\r\nSize=16 ; note\\\r\nScale=2\r\n";
+        let (_, directories) = parse(source).ok().expect("continued INI values");
+        assert_eq!(directories[0].0, "16/apps");
+        assert_eq!(directories[0].1.scale, 2);
+        assert_eq!(
+            logical_lines("key=a\\\\\nnext=b\n").collect::<Vec<_>>(),
+            ["key=a\\\\", "next=b"]
+        );
+    }
     #[test]
     fn quoted_values_and_inline_comments_are_parsed_in_rust() {
         let parsed = parse(

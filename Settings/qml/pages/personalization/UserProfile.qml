@@ -151,25 +151,11 @@ Item {
                 sublabel: "Name shown on the lock screen and in menus."
                 RowLayout {
                     spacing: 6
-                    TextField {
+                    Controls.FormTextField {
                         objectName: "displayNameField"
                         Accessible.name: "Display Name"
                         Layout.preferredWidth: 180
-                        implicitHeight: 32
-                        leftPadding: 10
-                        rightPadding: 10
                         text: root.pendingDisplayName
-                        color: Components.Theme.textPrimary
-                        selectionColor: Components.Theme.accent
-                        selectedTextColor: Components.Theme.accentForeground
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: Components.Theme.fontSizeNormal
-                        background: Rectangle {
-                            radius: Components.Theme.controlRadius
-                            color: Components.Theme.windowBackground
-                            border.width: 1
-                            border.color: parent.activeFocus ? Components.Theme.accent : Components.Theme.cardBorder
-                        }
                         onTextEdited: root.pendingDisplayName = text
                     }
                     Controls.ButtonCapsule {
@@ -178,7 +164,8 @@ Item {
                         // Only a real change is worth saving.
                         enabled: !!root.snapshot.accountsAvailable && root.pendingDisplayName.trim().length > 0
                             && root.pendingDisplayName.trim() !== root.displayName
-                        primary: true
+                        // A disabled primary capsule would keep its accent outline.
+                        primary: enabled
                         onClicked: root.controller.setDisplayName(root.pendingDisplayName)
                     }
                 }

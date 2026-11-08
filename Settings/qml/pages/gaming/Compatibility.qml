@@ -56,41 +56,13 @@ Item {
             subtitle: "How Windows programs open outside Steam."
         }
 
-        Rectangle {
+        Components.BackendNotice {
             objectName: "compatibilityBackendStatus"
-            visible: root.controller.busy || root.controller.lastError !== ""
-            Layout.fillWidth: true
-            Layout.bottomMargin: 24
-            implicitHeight: statusText.implicitHeight + 18
-            radius: Components.Theme.controlRadius
-            color: Components.Theme.isLight ? Qt.rgba(0, 0, 0, 0.025) : Qt.rgba(1, 1, 1, 0.035)
-            border.width: 1
-            border.color: Components.Theme.cardBorder
-            Text {
-                id: statusText
-                anchors.left: parent.left
-                anchors.right: retryRefresh.left
-                anchors.leftMargin: 10
-                anchors.verticalCenter: parent.verticalCenter
-                text: root.controller.busy ? "Saving compatibility settings…" : root.controller.lastError
-                color: root.controller.lastError !== "" ? Components.Theme.errorColor : Components.Theme.textSecondary
-                font.family: Components.Theme.typography.role("caption").family
-                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
-                lineHeight: Components.Theme.typography.role("caption").lineHeight
-                lineHeightMode: Text.ProportionalHeight
-                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
-                wrapMode: Text.Wrap
-            }
-            Controls.ButtonCapsule {
-                id: retryRefresh
-                objectName: "compatibilityRetryRefreshButton"
-                anchors.right: parent.right
-                anchors.rightMargin: 8
-                anchors.verticalCenter: parent.verticalCenter
-                visible: !root.controller.busy && root.controller.lastError !== ""
-                label: "Retry"
-                onClicked: root.controller.refresh()
-            }
+            retryObjectName: "compatibilityRetryRefreshButton"
+            busy: root.controller.busy
+            error: root.controller.lastError
+            busyText: "Saving compatibility settings…"
+            onRetry: root.controller.refresh()
         }
 
         Form.SectionHeader { text: "RUNNER"; Layout.bottomMargin: 12 }
@@ -181,21 +153,13 @@ Item {
                 label: "Custom environment"
                 sublabel: root.customOptionsEnabled ? "Space-separated KEY=VALUE pairs for this runner." : "Turn off Use Proton profile to edit these options."
                 enabled: root.customOptionsEnabled
-                TextField {
+                Controls.FormTextField {
                     objectName: "compatibilityEnvironmentField"
                     Accessible.name: "Custom environment"
                     enabled: root.customOptionsEnabled
                     implicitWidth: 158
-                    implicitHeight: 32
                     placeholderText: "KEY=VALUE"
-                    placeholderTextColor: Components.Theme.textTertiary
                     text: root.compatibility.extra_env || ""
-                    color: Components.Theme.textPrimary
-                    selectionColor: Components.Theme.accent
-                    selectedTextColor: Components.Theme.accentForeground
-                    font.family: Components.Theme.monoFontFamily
-                    font.pixelSize: Components.Theme.fontSizeMicro
-                    background: Rectangle { radius: Components.Theme.controlRadius; color: Components.Theme.windowBackground; border.width: 1; border.color: Components.Theme.cardBorder }
                     onEditingFinished: root.setOption("extra_env", text)
                 }
             }
@@ -203,21 +167,13 @@ Item {
                 label: "Custom prefix"
                 sublabel: root.customOptionsEnabled ? "Arguments inserted before Wine or Proton launches the game." : "Turn off Use Proton profile to edit these options."
                 enabled: root.customOptionsEnabled
-                TextField {
+                Controls.FormTextField {
                     objectName: "compatibilityPrefixField"
                     Accessible.name: "Custom prefix"
                     enabled: root.customOptionsEnabled
                     implicitWidth: 158
-                    implicitHeight: 32
                     placeholderText: "Optional command"
-                    placeholderTextColor: Components.Theme.textTertiary
                     text: root.compatibility.extra_prefix || ""
-                    color: Components.Theme.textPrimary
-                    selectionColor: Components.Theme.accent
-                    selectedTextColor: Components.Theme.accentForeground
-                    font.family: Components.Theme.monoFontFamily
-                    font.pixelSize: Components.Theme.fontSizeMicro
-                    background: Rectangle { radius: Components.Theme.controlRadius; color: Components.Theme.windowBackground; border.width: 1; border.color: Components.Theme.cardBorder }
                     onEditingFinished: root.setOption("extra_prefix", text)
                 }
                 isLast: true

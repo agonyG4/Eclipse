@@ -63,41 +63,13 @@ Item {
             subtitle: "How Steam games launch through Proton."
         }
 
-        Rectangle {
+        Components.BackendNotice {
             objectName: "protonBackendStatus"
-            visible: root.controller.busy || root.controller.lastError !== ""
-            Layout.fillWidth: true
-            Layout.bottomMargin: 24
-            implicitHeight: statusText.implicitHeight + 18
-            radius: Components.Theme.controlRadius
-            color: Components.Theme.isLight ? Qt.rgba(0, 0, 0, 0.025) : Qt.rgba(1, 1, 1, 0.035)
-            border.width: 1
-            border.color: Components.Theme.cardBorder
-            Text {
-                id: statusText
-                anchors.left: parent.left
-                anchors.right: retryRefresh.left
-                anchors.leftMargin: 10
-                anchors.verticalCenter: parent.verticalCenter
-                text: root.controller.busy ? "Saving Proton settings…" : root.controller.lastError
-                color: root.controller.lastError !== "" ? Components.Theme.errorColor : Components.Theme.textSecondary
-                font.family: Components.Theme.typography.role("caption").family
-                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
-                lineHeight: Components.Theme.typography.role("caption").lineHeight
-                lineHeightMode: Text.ProportionalHeight
-                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
-                wrapMode: Text.Wrap
-            }
-            Controls.ButtonCapsule {
-                id: retryRefresh
-                objectName: "protonRetryRefreshButton"
-                anchors.right: parent.right
-                anchors.rightMargin: 8
-                anchors.verticalCenter: parent.verticalCenter
-                visible: !root.controller.busy && root.controller.lastError !== ""
-                label: "Retry"
-                onClicked: root.controller.refresh()
-            }
+            retryObjectName: "protonRetryRefreshButton"
+            busy: root.controller.busy
+            error: root.controller.lastError
+            busyText: "Saving Proton settings…"
+            onRetry: root.controller.refresh()
         }
 
         Form.SectionHeader { text: "SETUP"; Layout.bottomMargin: 12 }
@@ -116,21 +88,14 @@ Item {
                 Layout.topMargin: 10
                 Layout.bottomMargin: 14
                 spacing: 6
-                TextField {
+                Controls.FormTextField {
+                    monospace: true
                     objectName: "steamLaunchOptionField"
                     Accessible.name: "Steam launch option"
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
-                    implicitHeight: 34
                     readOnly: true
                     text: root.status.launch_command || ""
-                    color: Components.Theme.textPrimary
-                    selectionColor: Components.Theme.accent
-                    selectedTextColor: Components.Theme.accentForeground
-                    placeholderTextColor: Components.Theme.textTertiary
-                    font.family: Components.Theme.monoFontFamily
-                    font.pixelSize: Components.Theme.fontSizeTiny
-                    background: Rectangle { radius: Components.Theme.controlRadius; color: Components.Theme.windowBackground; border.width: 1; border.color: Components.Theme.cardBorder }
                 }
                 Controls.ButtonCapsule {
                     objectName: "saveLaunchOptionButton"
@@ -214,57 +179,39 @@ Item {
             Form.SettingRow {
                 label: "Width"
                 sublabel: "Nested Gamescope output width."
-                TextField {
+                Controls.FormTextField {
                     objectName: "gamescopeWidthField"
                     Accessible.name: "Width"
                     enabled: root.manualGamescope
                     implicitWidth: 96
-                    implicitHeight: 32
                     text: String(root.proton.gamescope_width || "")
-                    color: Components.Theme.textPrimary
-                    selectionColor: Components.Theme.accent
-                    selectedTextColor: Components.Theme.accentForeground
-                    font.pixelSize: Components.Theme.fontSizeSmall
                     horizontalAlignment: TextInput.AlignRight
-                    background: Rectangle { radius: Components.Theme.controlRadius; color: Components.Theme.windowBackground; border.width: 1; border.color: Components.Theme.cardBorder }
                     onEditingFinished: root.setInteger("gamescope_width", text)
                 }
             }
             Form.SettingRow {
                 label: "Height"
                 sublabel: "Nested Gamescope output height."
-                TextField {
+                Controls.FormTextField {
                     objectName: "gamescopeHeightField"
                     Accessible.name: "Height"
                     enabled: root.manualGamescope
                     implicitWidth: 96
-                    implicitHeight: 32
                     text: String(root.proton.gamescope_height || "")
-                    color: Components.Theme.textPrimary
-                    selectionColor: Components.Theme.accent
-                    selectedTextColor: Components.Theme.accentForeground
-                    font.pixelSize: Components.Theme.fontSizeSmall
                     horizontalAlignment: TextInput.AlignRight
-                    background: Rectangle { radius: Components.Theme.controlRadius; color: Components.Theme.windowBackground; border.width: 1; border.color: Components.Theme.cardBorder }
                     onEditingFinished: root.setInteger("gamescope_height", text)
                 }
             }
             Form.SettingRow {
                 label: "Refresh rate"
                 sublabel: "Manual nested Gamescope refresh limit."
-                TextField {
+                Controls.FormTextField {
                     objectName: "gamescopeRefreshField"
                     Accessible.name: "Refresh rate"
                     enabled: root.manualGamescope
                     implicitWidth: 96
-                    implicitHeight: 32
                     text: String(root.proton.gamescope_refresh || "")
-                    color: Components.Theme.textPrimary
-                    selectionColor: Components.Theme.accent
-                    selectedTextColor: Components.Theme.accentForeground
-                    font.pixelSize: Components.Theme.fontSizeSmall
                     horizontalAlignment: TextInput.AlignRight
-                    background: Rectangle { radius: Components.Theme.controlRadius; color: Components.Theme.windowBackground; border.width: 1; border.color: Components.Theme.cardBorder }
                     onEditingFinished: root.setInteger("gamescope_refresh", text)
                 }
             }
@@ -276,19 +223,13 @@ Item {
             Form.SettingRow {
                 label: "Extra arguments"
                 sublabel: "Additional Gamescope flags after generated resolution values."
-                TextField {
+                Controls.FormTextField {
                     objectName: "gamescopeExtraArgumentsField"
                     Accessible.name: "Extra arguments"
                     enabled: root.manualGamescope
                     implicitWidth: 130
-                    implicitHeight: 32
                     placeholderText: "Optional flags"
                     text: root.proton.gamescope_extra_args || ""
-                    color: Components.Theme.textPrimary
-                    selectionColor: Components.Theme.accent
-                    selectedTextColor: Components.Theme.accentForeground
-                    font.pixelSize: Components.Theme.fontSizeTiny
-                    background: Rectangle { radius: Components.Theme.controlRadius; color: Components.Theme.windowBackground; border.width: 1; border.color: Components.Theme.cardBorder }
                     onEditingFinished: root.setOption("gamescope_extra_args", text)
                 }
                 isLast: true
@@ -327,37 +268,23 @@ Item {
             Form.SettingRow {
                 label: "Custom environment"
                 sublabel: "Space-separated KEY=VALUE pairs for one-off fixes."
-                TextField {
+                Controls.FormTextField {
                     objectName: "protonCustomEnvironmentField"
                     Accessible.name: "Custom environment"
                     implicitWidth: 158
-                    implicitHeight: 32
                     text: root.proton.custom_env || ""
-                    color: Components.Theme.textPrimary
-                    selectionColor: Components.Theme.accent
-                    selectedTextColor: Components.Theme.accentForeground
-                    font.family: Components.Theme.monoFontFamily
-                    font.pixelSize: Components.Theme.fontSizeMicro
-                    background: Rectangle { radius: Components.Theme.controlRadius; color: Components.Theme.windowBackground; border.width: 1; border.color: Components.Theme.cardBorder }
                     onEditingFinished: root.setOption("custom_env", text)
                 }
             }
             Form.SettingRow {
                 label: "Custom prefix"
                 sublabel: "Optional command inserted before the game command."
-                TextField {
+                Controls.FormTextField {
                     objectName: "protonCustomPrefixField"
                     Accessible.name: "Custom prefix"
                     implicitWidth: 158
-                    implicitHeight: 32
                     placeholderText: "Optional command"
                     text: root.proton.custom_prefix || ""
-                    color: Components.Theme.textPrimary
-                    selectionColor: Components.Theme.accent
-                    selectedTextColor: Components.Theme.accentForeground
-                    font.family: Components.Theme.monoFontFamily
-                    font.pixelSize: Components.Theme.fontSizeMicro
-                    background: Rectangle { radius: Components.Theme.controlRadius; color: Components.Theme.windowBackground; border.width: 1; border.color: Components.Theme.cardBorder }
                     onEditingFinished: root.setOption("custom_prefix", text)
                 }
                 isLast: true

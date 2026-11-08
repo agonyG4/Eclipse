@@ -68,7 +68,7 @@ Item {
                 sublabel: "Filter the country and region choices below."
                 Controls.SearchField {
                     objectName: "countrySearchField"
-                    width: 186
+                    width: 190
                     controlHeight: 36
                     placeholderText: "Country or region"
                     text: root.countrySearch
@@ -81,7 +81,7 @@ Item {
                 sublabel: root.filteredCountries.length > 0 ? "Sets local conventions for dates and numbers." : "No matching countries. Clear the search to see all choices."
                 Controls.SelectButton {
                     objectName: "countrySelect"
-                    width: 164
+                    width: 190
                     enabled: root.filteredCountries.length > 0
                     options: root.filteredCountries.map(item => item.name)
                     selectedIndex: root.filteredCountries.map(item => item.id).indexOf(root.region.country_code || "BR")
@@ -97,7 +97,7 @@ Item {
                 sublabel: "Controls 24-hour or AM/PM time in apps and the clock."
                 Controls.SelectButton {
                     objectName: "timeFormatSelect"
-                    width: 164
+                    width: 190
                     options: root.timeFormats
                     selectedIndex: root.selectedTimeFormat
                     label: root.timeFormats[root.selectedTimeFormat]

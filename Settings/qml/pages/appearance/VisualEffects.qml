@@ -200,21 +200,32 @@ Item {
         }
 
         Form.SectionHeader {
-            text: I18n.tr("apps.settings.pages.visual_effects.material", "MATERIAL")
+            text: I18n.tr("apps.settings.pages.visual_effects.preview", "PREVIEW")
             Layout.bottomMargin: 12
         }
 
-        MaterialPreview {
-            objectName: "visualEffectsMaterialPreview"
-            Layout.fillWidth: true
-            Layout.preferredHeight: 240
-            Layout.bottomMargin: 16
-            controller: root.controller
-            wallpaperSource: root.wallpaperController
-                ? root.wallpaperController.effectivePreviewUrl : ""
-            wallpaperFit: root.wallpaperController
-                ? root.wallpaperController.effectiveFit : "cover"
-            themeVariant: Components.Theme.isLight ? "light" : "dark"
+        Form.FormCard {
+            objectName: "materialPreviewCard"
+            Layout.bottomMargin: 24
+            margins: Components.Theme.spacingMedium
+
+            MaterialPreview {
+                objectName: "visualEffectsMaterialPreview"
+                Layout.fillWidth: true
+                Layout.preferredHeight: 224
+                cornerRadius: Components.Theme.controlRadius
+                controller: root.controller
+                wallpaperSource: root.wallpaperController
+                    ? root.wallpaperController.effectivePreviewUrl : ""
+                wallpaperFit: root.wallpaperController
+                    ? root.wallpaperController.effectiveFit : "cover"
+                themeVariant: Components.Theme.isLight ? "light" : "dark"
+            }
+        }
+
+        Form.SectionHeader {
+            text: I18n.tr("apps.settings.pages.visual_effects.material", "MATERIAL")
+            Layout.bottomMargin: 12
         }
 
         Form.FormCard {

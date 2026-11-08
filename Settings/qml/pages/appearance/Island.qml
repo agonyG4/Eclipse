@@ -24,90 +24,82 @@ Item {
         maxWidth: 900
 
         Form.PageHeader {
-            objectName: "islandPreviewNotice"
             title: I18n.tr("settings.nav.island", "Island")
-            subtitle: I18n.tr("apps.settings.pages.island.subtitle", "Preview only: changes here are not saved yet.")
+            subtitle: I18n.tr("apps.settings.pages.island.header_subtitle", "Customize the desktop island.")
         }
 
-        Rectangle {
+        Components.BackendNotice {
+            objectName: "islandPreviewNotice"
+            message: I18n.tr("apps.settings.pages.island.subtitle", "Preview only: changes here are not saved yet.")
+        }
+
+        Form.SectionHeader {
+            text: I18n.tr("apps.settings.pages.island.preview", "PREVIEW")
+            Layout.bottomMargin: 12
+        }
+
+        Form.FormCard {
             objectName: "islandLivePreview"
-            Layout.fillWidth: true
-            Layout.preferredHeight: 178
             Layout.bottomMargin: 24
-            radius: Components.Theme.cardRadius
-            color: Components.Theme.cardBg
-            border.width: 1
-            border.color: Components.Theme.cardBorder
 
-            Text {
-                anchors.left: parent.left
-                anchors.top: parent.top
-                anchors.leftMargin: 18
-                anchors.topMargin: 14
-                text: "PREVIEW"
-                color: Components.Theme.textSecondary
-                font.family: Components.Theme.typography.role("caption").family
-                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
-                lineHeight: Components.Theme.typography.role("caption").lineHeight
-                lineHeightMode: Text.ProportionalHeight
-                font.weight: Components.Theme.typography.role("caption").weight
-                font.letterSpacing: Components.Theme.trackingHeader
-            }
+            Item {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 128
 
-            Rectangle {
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.verticalCenterOffset: 14
-                width: Math.min(parent.width - 40, 250)
-                height: root.islandEnabled ? 78 : 50
-                radius: root.islandRadius
-                color: Components.Theme.islandBackground
-                border.width: 1
-                border.color: Components.Theme.shellBorder
-                opacity: root.islandEnabled ? 1 : 0.5
-                Behavior on height { NumberAnimation { duration: Components.Theme.animationNormal; easing.type: Easing.OutCubic } }
+                Rectangle {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.min(parent.width - 40, 250)
+                    height: root.islandEnabled ? 78 : 50
+                    radius: root.islandRadius
+                    color: Components.Theme.islandBackground
+                    border.width: 1
+                    border.color: Components.Theme.shellBorder
+                    opacity: root.islandEnabled ? 1 : 0.5
+                    Behavior on height { NumberAnimation { duration: Components.Theme.animationNormal; easing.type: Easing.OutCubic } }
 
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 18
-                    anchors.rightMargin: 18
-                    spacing: 12
-                    Text {
-                        text: root.musicEnabled ? "♫" : "◌"
-                        color: root.musicEnabled ? Components.Theme.shellIconAccent : Qt.rgba(1, 1, 1, 0.35)
-                        font.family: Components.Theme.fontFamily
-                        font.pixelSize: 21
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 3
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 18
+                        anchors.rightMargin: 18
+                        spacing: 12
                         Text {
-                            text: root.musicEnabled ? "Now playing" : "Island is ready"
-                            color: "#f5f5f7"
-                            font.family: Components.Theme.typography.role("caption").family
-                            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
-                            lineHeight: Components.Theme.typography.role("caption").lineHeight
-                            lineHeightMode: Text.ProportionalHeight
-                            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
-                            font.weight: Components.Theme.typography.role("caption").weight
+                            text: root.musicEnabled ? "♫" : "◌"
+                            color: root.musicEnabled ? Components.Theme.shellIconAccent : Qt.rgba(1, 1, 1, 0.35)
+                            font.family: Components.Theme.fontFamily
+                            font.pixelSize: 21
                         }
-                        Text {
-                            text: root.musicEnabled ? "Aster · Midnight Drive" : "Preview mode"
-                            color: Qt.rgba(1, 1, 1, 0.60)
-                            font.family: Components.Theme.typography.role("caption").family
-                            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
-                            lineHeight: Components.Theme.typography.role("caption").lineHeight
-                            lineHeightMode: Text.ProportionalHeight
-                            font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
-                            elide: Text.ElideRight
+                        ColumnLayout {
                             Layout.fillWidth: true
+                            spacing: 3
+                            Text {
+                                text: root.musicEnabled ? "Now playing" : "Island is ready"
+                                color: "#f5f5f7"
+                                font.family: Components.Theme.typography.role("caption").family
+                                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                lineHeightMode: Text.ProportionalHeight
+                                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
+                                font.weight: Components.Theme.typography.role("caption").weight
+                            }
+                            Text {
+                                text: root.musicEnabled ? "Aster · Midnight Drive" : "Preview mode"
+                                color: Qt.rgba(1, 1, 1, 0.60)
+                                font.family: Components.Theme.typography.role("caption").family
+                                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                lineHeightMode: Text.ProportionalHeight
+                                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
                         }
-                    }
-                    Text {
-                        visible: root.gamemodeNotifications
-                        text: "●"
-                        color: Components.Theme.accent
-                        font.pixelSize: 9
+                        Text {
+                            visible: root.gamemodeNotifications
+                            text: "●"
+                            color: Components.Theme.accent
+                            font.pixelSize: 9
+                        }
                     }
                 }
             }
@@ -150,7 +142,7 @@ Item {
                 sublabel: "Choose the overall shape of the Island."
                 Controls.SelectButton {
                     objectName: "islandStyleSelect"
-                    width: 132
+                    width: 180
                     options: root.styles
                     selectedIndex: root.style
                     label: root.styles[root.style]

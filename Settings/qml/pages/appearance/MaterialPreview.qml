@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Window
+import QtQuick.Effects
 import Astrea.Effects
 import "../../components" as Components
 
@@ -13,6 +14,10 @@ Item {
     property string themeVariant: "dark"
     property bool liveEffectEnabled: true
     property bool hasLoadedWallpaper: false
+    // Rounds the wallpaper to the surrounding card. The software scene graph
+    // cannot run the mask shader, so it keeps square corners there.
+    property real cornerRadius: 0
+    readonly property bool roundedClip: cornerRadius > 0 && GraphicsInfo.api !== GraphicsInfo.Software
 
     readonly property real materialPosition: controller ? controller.materialPosition : 0.5
     readonly property real effectiveBlur: controller ? controller.effectiveBlur : 0.0
@@ -38,9 +43,21 @@ Item {
         id: materialPreviewFallback
         objectName: "materialPreviewFallback"
         anchors.fill: parent
-        radius: 9
+        radius: root.cornerRadius > 0 ? root.cornerRadius : 9
         color: Components.Theme.isLight ? "#e3eaf3" : "#202735"
         visible: !root.wallpaperReady
+    }
+
+    Item {
+        id: wallpaperMask
+        anchors.fill: parent
+        visible: false
+        layer.enabled: root.roundedClip
+
+        Rectangle {
+            anchors.fill: parent
+            radius: root.cornerRadius
+        }
     }
 
     Image {
@@ -58,6 +75,11 @@ Item {
         sourceSize.height: Math.max(1, Math.ceil(root.height * Screen.devicePixelRatio))
         visible: root.wallpaperReady
             && (status === Image.Ready || status === Image.Loading)
+        layer.enabled: root.roundedClip
+        layer.effect: MultiEffect {
+            maskEnabled: true
+            maskSource: wallpaperMask
+        }
 
         onStatusChanged: {
             if (status === Image.Ready)

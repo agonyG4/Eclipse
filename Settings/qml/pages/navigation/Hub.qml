@@ -52,73 +52,33 @@ Item {
         contentMargins: 32
         maxWidth: 900
 
-        Form.FormCard {
-            Layout.fillWidth: true
-            Layout.bottomMargin: Components.Theme.spacingLarge
-            margins: 0
+        Form.PageHeader {
+            title: root.translatedLabel(root.destination)
+            subtitle: root.translatedSubtitle(root.destination)
 
-            Item {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 228
+            leading: Rectangle {
+                implicitWidth: 56
+                implicitHeight: 56
+                radius: Components.Theme.radiusLarge
+                color: Qt.rgba(1, 1, 1, Components.Theme.isLight ? 0.28 : 0.08)
+                border.width: 1
+                border.color: Components.Theme.cardBorder
 
-                ColumnLayout {
+                Controls.ThemedIcon {
+                    anchors.fill: parent
+                    anchors.margins: 14
+                    iconSource: root.heroIconSource
+                    tint: Components.Theme.textPrimary
+                    visible: root.heroIconSource !== ""
+                }
+
+                Text {
                     anchors.centerIn: parent
-                    width: Math.min(parent.width, 520)
-                    spacing: Components.Theme.spacingSmall
-
-                    Rectangle {
-                        Layout.alignment: Qt.AlignHCenter
-                        width: 72
-                        height: 72
-                        radius: Components.Theme.radiusLarge
-                        color: Qt.rgba(1, 1, 1, Components.Theme.isLight ? 0.28 : 0.08)
-                        border.width: 1
-                        border.color: Components.Theme.cardBorder
-
-                        Controls.ThemedIcon {
-                            anchors.fill: parent
-                            anchors.margins: 16
-                            iconSource: root.heroIconSource
-                            tint: Components.Theme.textPrimary
-                            visible: root.heroIconSource !== ""
-                        }
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: root.destination && root.destination.sym ? root.destination.sym : ""
-                            visible: root.heroIconSource === ""
-                            color: Components.Theme.accent
-                            font.family: tablerIcons.name
-                            font.pixelSize: 43
-                        }
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: root.translatedLabel(root.destination)
-                        horizontalAlignment: Text.AlignHCenter
-                        color: Components.Theme.textPrimary
-                        font.family: Components.Theme.typography.role("display").family
-                        font.pixelSize: Components.Theme.typography.role("display").pixelSize
-                        lineHeight: Components.Theme.typography.role("display").lineHeight
-                        lineHeightMode: Text.ProportionalHeight
-                        font.letterSpacing: Components.Theme.typography.role("display").letterSpacing
-                        font.weight: Components.Theme.typography.role("display").weight
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: root.translatedSubtitle(root.destination)
-                        horizontalAlignment: Text.AlignHCenter
-                        wrapMode: Text.WordWrap
-                        color: Components.Theme.textSecondary
-                        font.family: Components.Theme.typography.role("body").family
-                        font.pixelSize: Components.Theme.typography.role("body").pixelSize
-                        lineHeight: Components.Theme.typography.role("body").lineHeight
-                        lineHeightMode: Text.ProportionalHeight
-                        font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
-                        opacity: Components.Theme.opacitySecondary
-                    }
+                    text: root.destination && root.destination.sym ? root.destination.sym : ""
+                    visible: root.heroIconSource === ""
+                    color: Components.Theme.accent
+                    font.family: tablerIcons.name
+                    font.pixelSize: 32
                 }
             }
         }

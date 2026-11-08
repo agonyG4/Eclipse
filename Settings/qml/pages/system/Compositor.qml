@@ -45,7 +45,12 @@ Item {
 
         Form.PageHeader {
             title: I18n.tr("settings.nav.compositor", "Compositor")
-            subtitle: I18n.tr("apps.settings.pages.system.compositor.sublabel.configuration_preview", "Configuration preview. These controls are not connected to the compositor yet.")
+            subtitle: I18n.tr("apps.settings.pages.system.compositor.subtitle", "Effects, synchronization and rendering options.")
+        }
+
+        Components.BackendNotice {
+            objectName: "compositorPreviewNotice"
+            message: I18n.tr("apps.settings.pages.system.compositor.sublabel.configuration_preview", "Configuration preview. These controls are not connected to the compositor yet.")
         }
 
         Form.SectionHeader {

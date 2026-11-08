@@ -63,56 +63,36 @@ Item {
             subtitle: I18n.tr("apps.settings.pages.appearance.dock.subtitle", "Size, position and behavior of the Dock.")
         }
 
-        Item {
+        Form.SectionHeader {
+            text: I18n.tr("apps.settings.pages.appearance.dock.text.preview", "PREVIEW")
+            Layout.bottomMargin: 12
+        }
+
+        Form.FormCard {
             objectName: "dockPreview"
-            Layout.fillWidth: true
-            Layout.preferredHeight: 132
             Layout.bottomMargin: 24
-
-            Rectangle {
-                anchors.fill: parent
-                radius: Components.Theme.cardRadius
-                color: Components.Theme.cardBg
-                border.width: 1
-                border.color: Components.Theme.cardBorder
-            }
-
-            Text {
-                anchors.left: parent.left
-                anchors.top: parent.top
-                anchors.leftMargin: 20
-                anchors.topMargin: 16
-                text: I18n.tr("apps.settings.pages.appearance.dock.text.preview", "PREVIEW")
-                color: Components.Theme.textSecondary
-                font.family: Components.Theme.typography.role("caption").family
-                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
-                lineHeight: Components.Theme.typography.role("caption").lineHeight
-                lineHeightMode: Text.ProportionalHeight
-                font.weight: Components.Theme.typography.role("caption").weight
-                font.letterSpacing: Components.Theme.trackingHeader
-            }
+            clip: true
 
             Item {
                 id: previewStage
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                anchors.topMargin: 38
-                anchors.bottomMargin: 14
+                Layout.fillWidth: true
+                Layout.preferredHeight: 128
 
                 Rectangle {
                     id: previewDock
                     readonly property bool vertical: root.controller.position !== "bottom"
                     readonly property real iconExtent: Math.min(34, root.controller.iconSize * 0.58)
-                    readonly property real panelExtent: root.controller.panelPadding + iconExtent
-                    width: vertical ? panelExtent : Math.min(parent.width - 40, panelExtent * 5 + root.controller.itemSpacing * 4)
-                    height: vertical ? Math.min(parent.height, panelExtent * 5 + root.controller.itemSpacing * 4) : panelExtent
+                    readonly property real contentExtent: iconExtent * 5 + root.controller.itemSpacing * 4
+                        + root.controller.panelPadding * 2
+                    readonly property real crossExtent: iconExtent + root.controller.panelPadding * 2
+                    readonly property real inset: Components.Theme.spacingXLarge
+                    width: vertical ? crossExtent : Math.min(parent.width - inset * 2, contentExtent)
+                    height: vertical ? Math.min(parent.height - inset, contentExtent) : crossExtent
                     x: vertical && root.controller.position === "right"
-                       ? parent.width - width - 20
-                       : vertical ? 20 : (parent.width - width) / 2
-                    y: vertical ? (parent.height - height) / 2 : parent.height - height
-                    radius: root.controller.cornerRadius
+                       ? parent.width - width - inset
+                       : vertical ? inset : (parent.width - width) / 2
+                    y: vertical ? (parent.height - height) / 2 : parent.height - height - inset
+                    radius: Math.min(root.controller.cornerRadius, Math.min(width, height) / 2)
                     color: Components.Theme.windowBackground
                     border.width: 1
                     border.color: Components.Theme.cardBorder
@@ -390,7 +370,7 @@ Item {
                     modelValue: root.controller.magnificationRadius
                     detentEnabled: true
                     detentValue: root.controller.defaultMagnificationRadius
-                    valueText: root.compactNumber(displayedValue, 2)
+                    valueText: root.scaleUnit(displayedValue)
                     onValueEdited: editedValue => root.controller.setMagnificationRadius(editedValue)
                     onPressedChanged: if (!pressed) root.controller.flush()
                 }
@@ -505,22 +485,24 @@ Item {
             wrapMode: Text.WordWrap
         }
 
-        Item {
+        Form.FormCard {
             objectName: "dockRestoreFooter"
-            Layout.fillWidth: true
-            Layout.preferredHeight: 34
-            Layout.bottomMargin: 28
+            Layout.bottomMargin: 32
 
-            Controls.Button {
-                objectName: "restoreDefaultsButton"
-                anchors.right: parent.right
-                label: I18n.tr(
-                    "apps.settings.pages.appearance.dock.action.restore_defaults",
-                    "Restore Defaults")
-                iconText: "↶"
-                flat: true
-                enabled: !root.controller.isDefault
-                onClicked: root.controller.restoreDefaults()
+            Form.SettingRow {
+                label: I18n.tr("apps.settings.pages.appearance.dock.label.restore_defaults", "Restore defaults")
+                sublabel: I18n.tr("apps.settings.pages.appearance.dock.sublabel.restore_defaults", "Reset every Dock setting except your pinned apps")
+                isLast: true
+
+                Controls.ButtonCapsule {
+                    objectName: "restoreDefaultsButton"
+                    label: I18n.tr("apps.settings.pages.appearance.dock.action.restore", "Restore")
+                    accessibleName: I18n.tr(
+                        "apps.settings.pages.appearance.dock.action.restore_defaults",
+                        "Restore Defaults")
+                    enabled: !root.controller.isDefault
+                    onClicked: root.controller.restoreDefaults()
+                }
             }
         }
     }

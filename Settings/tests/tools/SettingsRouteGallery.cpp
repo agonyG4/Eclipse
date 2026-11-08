@@ -27,7 +27,8 @@ const QStringList kRoutes = {
     QStringLiteral("visual-effects"), QStringLiteral("icons"),
     QStringLiteral("wallpaper"),     QStringLiteral("dock"),
     QStringLiteral("animations"),    QStringLiteral("screenshots"),
-    QStringLiteral("island"),        QStringLiteral("more-settings"),
+    QStringLiteral("island"),        QStringLiteral("typography"),
+    QStringLiteral("more-settings"),
     QStringLiteral("compatibility"), QStringLiteral("language"),
     QStringLiteral("apps"),          QStringLiteral("user-profile"),
 };

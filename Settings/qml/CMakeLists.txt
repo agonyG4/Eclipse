@@ -107,6 +107,11 @@ set(ASTREA_SETTINGS_ASSET_RELATIVE_FILES
     icons/navigation/lucide/keyboard.svg
     icons/navigation/lucide/mouse.svg
     icons/navigation/lucide/gamepad.svg
+    icons/navigation/lucide/typography.svg
+    icons/navigation/lucide/apps.svg
+    icons/navigation/lucide/language.svg
+    icons/navigation/lucide/user-profile.svg
+    icons/navigation/lucide/island.svg
     icons/navigation/lucide/smartphone.svg
     icons/navigation/lucide/tablet.svg
     icons/navigation/lucide/speaker.svg
@@ -141,7 +146,7 @@ set(ASTREA_SETTINGS_ASSET_RELATIVE_FILES
 
 # Generated bundled Lucide SVG weight resources.
 set(ASTREA_LUCIDE_WEIGHT_NAMES ultralight thin light regular medium semibold bold heavy black)
-set(ASTREA_LUCIDE_NAV_ICON_KEYS system software-update internet bluetooth audio display components services compositor performance customization appearance visual-effects icons wallpaper dock animations screenshots more-settings microphone headphones virtual-device keyboard mouse gamepad smartphone tablet speaker printer camera devices usb hard-drive)
+set(ASTREA_LUCIDE_NAV_ICON_KEYS system software-update internet bluetooth audio display components services compositor performance customization appearance visual-effects icons wallpaper dock animations screenshots more-settings microphone headphones virtual-device keyboard mouse gamepad smartphone tablet speaker printer camera devices usb hard-drive typography apps language user-profile island)
 foreach(weight IN LISTS ASTREA_LUCIDE_WEIGHT_NAMES)
     foreach(icon IN LISTS ASTREA_LUCIDE_NAV_ICON_KEYS)
         list(APPEND ASTREA_SETTINGS_ASSET_RELATIVE_FILES "icons/navigation/lucide/weights/${weight}/${icon}.svg")

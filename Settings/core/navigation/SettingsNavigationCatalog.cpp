@@ -15,12 +15,21 @@ SettingsNavigationEntry makeEntry(const QString &id,
                                   const QString &parentId = {},
                                   const QString &subtitleKey = {})
 {
+    // Entries without explicit translation keys derive them from the stable id
+    // so every sidebar and hub row can be translated (missing catalog keys
+    // fall back to the English label).
+    QString derived = id;
+    derived.replace(QLatin1Char('-'), QLatin1Char('_'));
+    const QString effectiveLabelKey = labelKey.isEmpty() && !id.isEmpty()
+        ? QStringLiteral("settings.nav.") + derived : labelKey;
+    const QString effectiveSubtitleKey = subtitleKey.isEmpty() && !id.isEmpty()
+        ? QStringLiteral("settings.nav.") + derived + QStringLiteral(".subtitle") : subtitleKey;
     SettingsNavigationEntry entry{
         id,
         label,
-        labelKey,
+        effectiveLabelKey,
         subtitle,
-        subtitleKey,
+        effectiveSubtitleKey,
         sym,
         {},
         iconKey,
@@ -83,7 +92,7 @@ SettingsNavigationCatalog::SettingsNavigationCatalog()
                     QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Performance.qml")),
                     SettingsNavigationEntry::Kind::Page, true, false, QStringLiteral("performance")),
           makeEntry(QStringLiteral("proton"), QStringLiteral("Proton"), {},
-                    QStringLiteral("Game compatibility and launch options"), QStringLiteral("\ueb75"), QStringLiteral("compositor"),
+                    QStringLiteral("Game compatibility and launch options"), QStringLiteral("\ueb63"), QStringLiteral("gamepad"),
                     QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/gaming/Proton.qml")),
                     SettingsNavigationEntry::Kind::Page, true, false, QStringLiteral("performance")),
           makeEntry(QStringLiteral("customization"), QStringLiteral("Customization"),
@@ -100,7 +109,7 @@ SettingsNavigationCatalog::SettingsNavigationCatalog()
                     QStringLiteral("settings.nav.appearance.subtitle")),
           makeEntry(QStringLiteral("typography"), QStringLiteral("Typography"),
                     QStringLiteral("settings.nav.typography"), QStringLiteral("Fonts, sizes and previews"),
-                    QStringLiteral("\ueb01"), QStringLiteral("appearance"),
+                    QStringLiteral("\uebc5"), QStringLiteral("typography"),
                     QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Typography.qml")),
                     SettingsNavigationEntry::Kind::Page, true, false, QStringLiteral("customization")),
           makeEntry(QStringLiteral("visual-effects"), QStringLiteral("Visual Effects"),
@@ -134,7 +143,7 @@ SettingsNavigationCatalog::SettingsNavigationCatalog()
                     QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Screenshots.qml")),
                     SettingsNavigationEntry::Kind::Page, true, false, QStringLiteral("customization")),
           makeEntry(QStringLiteral("island"), QStringLiteral("Island"), {},
-                    QStringLiteral("Customize the desktop island"), QStringLiteral("\ueb01"), QStringLiteral("customization"),
+                    QStringLiteral("Customize the desktop island"), QStringLiteral("\uec44"), QStringLiteral("island"),
                     QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/appearance/Island.qml")),
                     SettingsNavigationEntry::Kind::Page, true, false, QStringLiteral("customization")),
           makeEntry(QStringLiteral("more-settings"), QStringLiteral("More Settings"), {},
@@ -142,19 +151,19 @@ SettingsNavigationCatalog::SettingsNavigationCatalog()
                     QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/navigation/Hub.qml")),
                     SettingsNavigationEntry::Kind::Hub),
           makeEntry(QStringLiteral("compatibility"), QStringLiteral("Compatibility"), {},
-                    QStringLiteral("Windows game compatibility settings"), QStringLiteral("\ueb75"), QStringLiteral("compositor"),
+                    QStringLiteral("Windows game compatibility settings"), QStringLiteral("\ueb63"), QStringLiteral("gamepad"),
                     QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/gaming/Compatibility.qml")),
                     SettingsNavigationEntry::Kind::Page, true, false, QStringLiteral("more-settings")),
           makeEntry(QStringLiteral("language"), QStringLiteral("Language"), {},
-                    QStringLiteral("Language, region and time format"), QStringLiteral("\uea89"), QStringLiteral("system"),
+                    QStringLiteral("Language, region and time format"), QStringLiteral("\uebbe"), QStringLiteral("language"),
                     QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/system/Language.qml")),
                     SettingsNavigationEntry::Kind::Page, true, false, QStringLiteral("more-settings")),
           makeEntry(QStringLiteral("apps"), QStringLiteral("Apps"), {},
-                    QStringLiteral("Installed applications"), QStringLiteral("\ueb4c"), QStringLiteral("appearance"),
+                    QStringLiteral("Installed applications"), QStringLiteral("\uebb6"), QStringLiteral("apps"),
                     QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/apps/Applications.qml")),
                     SettingsNavigationEntry::Kind::Page, true, false, QStringLiteral("more-settings")),
           makeEntry(QStringLiteral("user-profile"), QStringLiteral("User Profile"), {},
-                    QStringLiteral("Account and profile preferences"), QStringLiteral("\uea03"), QStringLiteral("system"),
+                    QStringLiteral("Account and profile preferences"), QStringLiteral("\ueb4d"), QStringLiteral("user-profile"),
                     QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/personalization/UserProfile.qml")),
                     SettingsNavigationEntry::Kind::Page, true, false, QStringLiteral("more-settings")),
       }

@@ -168,7 +168,7 @@ void SettingsControllerTest::navigatesToCustomizationHub()
     QCOMPARE(controller.selectedPageSource(),
              QUrl(QStringLiteral("qrc:/qt/qml/Astrea/Settings/qml/pages/navigation/Hub.qml")));
     QCOMPARE(controller.currentDestination().value(QStringLiteral("kind")).toString(), QStringLiteral("hub"));
-    QCOMPARE(controller.currentDestinationChildren().size(), 8);
+    QCOMPARE(controller.currentDestinationChildren().size(), 9);
     QVERIFY(controller.navigateTo(QStringLiteral("animations")));
     QCOMPARE(controller.currentDestinationId(), QStringLiteral("animations"));
     QCOMPARE(controller.selectedSidebarId(), QStringLiteral("customization"));

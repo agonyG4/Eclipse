@@ -4,6 +4,7 @@ import QtQuick.Controls
 import "../../components" as Components
 import "../../components/controls" as Controls
 import "../../components/form" as Form
+import "../../components/feedback" as Feedback
 
 Item {
     id: root
@@ -199,26 +200,7 @@ Item {
             }
         }
 
-        Rectangle {
-            visible: card.selected
-            anchors.top: parent.top
-            anchors.right: parent.right
-            anchors.topMargin: 8
-            anchors.rightMargin: 8
-            width: 18
-            height: 18
-            radius: 9
-            color: Components.Theme.accent
-
-            Text {
-                anchors.centerIn: parent
-                text: "\uf00c"
-                color: Components.Theme.accentForeground
-                font.family: Components.Theme.iconFontFamily
-                font.pixelSize: 10
-                font.weight: Components.Theme.fontWeightBold
-            }
-        }
+        Feedback.SelectionBadge { selected: card.selected }
 
         MouseArea {
             id: cardMouse
@@ -494,6 +476,8 @@ Item {
                             }
                         }
                     }
+
+                    Feedback.SelectionBadge { selected: navigationThemeOption.active }
 
                     MouseArea {
                         anchors.fill: parent

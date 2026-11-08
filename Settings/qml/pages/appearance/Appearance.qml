@@ -4,6 +4,7 @@ import Astrea.Shared as Shared
 import "../../components" as Components
 import "../../components/form" as Form
 import "../../components/controls" as Controls
+import "../../components/feedback" as Feedback
 
 Item {
     id: root
@@ -170,26 +171,7 @@ Item {
                 }
             }
 
-            Rectangle {
-                visible: choiceCard.selected
-                anchors.top: parent.top
-                anchors.right: parent.right
-                anchors.topMargin: 8
-                anchors.rightMargin: 8
-                width: 18
-                height: 18
-                radius: 9
-                color: Components.Theme.accent
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "\uf00c"
-                    color: Components.Theme.accentForeground
-                    font.family: Components.Theme.iconFontFamily
-                    font.pixelSize: 10
-                    font.weight: Components.Theme.fontWeightBold
-                }
-            }
+            Feedback.SelectionBadge { selected: choiceCard.selected }
 
             MouseArea {
                 id: cardMouse
@@ -512,17 +494,32 @@ Item {
                 Layout.margins: 10
                 spacing: 16
 
-                MaterialPreview {
-                    objectName: "materialPreview-system-theme-astrea"
+                Item {
                     Layout.preferredWidth: 180
                     Layout.preferredHeight: 96
-                    wallpaperSource: root.wallpaperController
-                        ? root.wallpaperController.effectivePreviewUrl : ""
-                    wallpaperFit: root.wallpaperController
-                        ? root.wallpaperController.effectiveFit : "cover"
-                    controller: SettingsController.visualEffects
-                    liveEffectEnabled: false
-                    themeVariant: Components.Theme.isLight ? "light" : "dark"
+
+                    MaterialPreview {
+                        objectName: "materialPreview-system-theme-astrea"
+                        anchors.fill: parent
+                        wallpaperSource: root.wallpaperController
+                            ? root.wallpaperController.effectivePreviewUrl : ""
+                        wallpaperFit: root.wallpaperController
+                            ? root.wallpaperController.effectiveFit : "cover"
+                        controller: SettingsController.visualEffects
+                        liveEffectEnabled: false
+                        themeVariant: Components.Theme.isLight ? "light" : "dark"
+                    }
+
+                    // Selected tile: accent border plus the shared corner badge.
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Components.Theme.controlRadius
+                        color: "transparent"
+                        border.width: 2
+                        border.color: Components.Theme.accent
+                    }
+
+                    Feedback.SelectionBadge { selected: true }
                 }
 
                 ColumnLayout {
@@ -546,14 +543,6 @@ Item {
                         font.pixelSize: Components.Theme.fontSizeSmall
                         wrapMode: Text.WordWrap
                     }
-                }
-
-                Text {
-                    text: "\uf00c"
-                    color: Components.Theme.accent
-                    font.family: Components.Theme.iconFontFamily
-                    font.pixelSize: 14
-                    font.weight: Components.Theme.fontWeightBold
                 }
             }
 

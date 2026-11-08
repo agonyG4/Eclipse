@@ -6,6 +6,7 @@ import QtQuick.Effects
 import "../../components" as Components
 import "../../components/controls" as Controls
 import "../../components/form" as Form
+import "../../components/feedback" as Feedback
 import "../../components/menu" as WallpaperMenu
 
 Item {
@@ -841,6 +842,7 @@ Item {
                                     }
                                 }
 
+                                Feedback.SelectionBadge { selected: isCurrent }
                             }
 
                             Text {

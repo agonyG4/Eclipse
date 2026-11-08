@@ -27,24 +27,24 @@ QtObject {
     readonly property bool isDefault: material.isDefault
     readonly property bool isFrosted: material.isFrosted
 
-    readonly property color shellBackground: material.tokens.value("shellBackground", material.background)
-    readonly property color shellSurface: material.tokens.value("shellSurface", material.surface)
+    readonly property color shellBackground: material.background
+    readonly property color shellSurface: material.surface
     readonly property color shellSurfaceElevated: material.surfaceElevated
-    readonly property color shellBorder: material.tokens.value("shellBorder", material.border)
+    readonly property color shellBorder: material.border
     readonly property color shellBorderHover: material.borderHover
     readonly property color shellHover: material.hover
     readonly property color shellPressed: material.pressed
     readonly property color shellActive: material.active
-    readonly property color shellTextMain: material.tokens.value("shellTextMain", isLight ? Qt.rgba(0.05, 0.06, 0.07, 0.94) : "#f5f5f7")
-    readonly property color shellTextSecondary: material.tokens.value("shellTextSecondary", isLight ? Qt.rgba(0.13, 0.15, 0.18, 0.68) : Qt.rgba(1, 1, 1, 0.60))
-    readonly property color shellTextLight: material.tokens.value("shellTextLight", isLight ? Qt.rgba(0.08, 0.09, 0.11, 0.86) : "#e0e0e5")
-    readonly property color shellTextDim: material.tokens.value("shellTextDim", isLight ? Qt.rgba(0.13, 0.15, 0.18, 0.54) : Qt.rgba(1, 1, 1, 0.65))
+    readonly property color shellTextMain: material.textMain
+    readonly property color shellTextSecondary: material.textSecondary
+    readonly property color shellTextLight: material.textLight
+    readonly property color shellTextDim: material.textDim
     readonly property color shellTextActive: material.textActive
-    readonly property color shellIconMain: material.tokens.value("shellIconMain", isLight ? Qt.rgba(0.10, 0.11, 0.13, 0.68) : Qt.rgba(1, 1, 1, 0.65))
-    readonly property color shellIconActive: material.tokens.value("shellIconActive", isLight ? Qt.rgba(0.03, 0.04, 0.05, 0.96) : "#ffffff")
-    readonly property color shellIconMuted: material.tokens.value("shellIconMuted", isLight ? Qt.rgba(0.13, 0.15, 0.18, 0.32) : Qt.rgba(1, 1, 1, 0.25))
-    readonly property color shellIconWarning: material.tokens.value("shellIconWarning", "#ff375f")
-    readonly property color shellIconAccent: material.tokens.value("shellIconAccent", state && state.accentHex ? state.accentHex : "#60aaff")
+    readonly property color shellIconMain: material.iconMain
+    readonly property color shellIconActive: material.iconActive
+    readonly property color shellIconMuted: material.iconMuted
+    readonly property color shellIconWarning: material.iconWarning
+    readonly property color shellIconAccent: material.iconAccent
     readonly property color shellSeparator: material.separator
 
     // Borealis semantic aliases.  ThemeController remains the shared state
@@ -79,9 +79,8 @@ QtObject {
     readonly property real shellPillRadius: material.tokens.value("shellPillRadius", 999)
     readonly property int workspaceDotSize: 10
     readonly property int workspaceActiveWidth: 32
-    readonly property color workspaceActive: material.tokens.value("workspaceActive", isLight ? Qt.rgba(0.05, 0.06, 0.07, 0.88) : "#ffffff")
-    readonly property color workspaceInactive: material.tokens.value("workspaceInactive", isLight
-        ? Qt.rgba(0.05, 0.06, 0.07, 0.22) : Qt.rgba(1, 1, 1, 0.22))
+    readonly property color workspaceActive: material.workspaceActive
+    readonly property color workspaceInactive: material.workspaceInactive
     readonly property int pillHeight: 36
     readonly property var typography: material.typography
     readonly property string fontFamily: typography.role("label").family

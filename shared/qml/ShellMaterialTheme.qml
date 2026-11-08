@@ -12,8 +12,9 @@ QtObject {
     readonly property bool isDefault: !!state && state.shellStyle === 1
     readonly property bool isFrosted: !!state && state.shellStyle === 2
 
-    // Keep these values identical to the existing ShellBarTheme Borealis
-    // policy. This object is the shared owner for Shell material only.
+    // Single owner of the shell color palette. Bar and context-menu theme
+    // objects delegate here; keep these fallbacks identical to the Borealis
+    // policy they were derived from.
     readonly property color background: tokens.value("shellBackground", isLight
         ? (isDefault ? Qt.rgba(0.985, 0.987, 0.994, 0.92)
             : isFrosted ? Qt.rgba(0.96, 0.985, 1, 0.30)
@@ -62,6 +63,27 @@ QtObject {
     readonly property color separator: tokens.value("shellSeparator", isLight
         ? (isDefault ? Qt.rgba(0, 0, 0, 0.055) : Qt.rgba(0, 0, 0, 0.065))
         : Qt.rgba(1, 1, 1, 0.08))
+    readonly property color textMain: tokens.value("shellTextMain", isLight
+        ? Qt.rgba(0.05, 0.06, 0.07, 0.94) : "#f5f5f7")
+    readonly property color textSecondary: tokens.value("shellTextSecondary", isLight
+        ? Qt.rgba(0.13, 0.15, 0.18, 0.68) : Qt.rgba(1, 1, 1, 0.60))
+    readonly property color textLight: tokens.value("shellTextLight", isLight
+        ? Qt.rgba(0.08, 0.09, 0.11, 0.86) : "#e0e0e5")
+    readonly property color textDim: tokens.value("shellTextDim", isLight
+        ? Qt.rgba(0.13, 0.15, 0.18, 0.54) : Qt.rgba(1, 1, 1, 0.65))
+    readonly property color iconMain: tokens.value("shellIconMain", isLight
+        ? Qt.rgba(0.10, 0.11, 0.13, 0.68) : Qt.rgba(1, 1, 1, 0.65))
+    readonly property color iconActive: tokens.value("shellIconActive", isLight
+        ? Qt.rgba(0.03, 0.04, 0.05, 0.96) : "#ffffff")
+    readonly property color iconMuted: tokens.value("shellIconMuted", isLight
+        ? Qt.rgba(0.13, 0.15, 0.18, 0.32) : Qt.rgba(1, 1, 1, 0.25))
+    readonly property color iconWarning: tokens.value("shellIconWarning", "#ff375f")
+    readonly property color iconAccent: tokens.value("shellIconAccent",
+        state && state.accentHex ? state.accentHex : "#60aaff")
+    readonly property color workspaceActive: tokens.value("workspaceActive", isLight
+        ? Qt.rgba(0.05, 0.06, 0.07, 0.88) : "#ffffff")
+    readonly property color workspaceInactive: tokens.value("workspaceInactive", isLight
+        ? Qt.rgba(0.05, 0.06, 0.07, 0.22) : Qt.rgba(1, 1, 1, 0.22))
 
     readonly property real radiusLarge: tokens.value("shellRadiusLarge", 14)
     readonly property real radiusMedium: tokens.value("shellRadiusMedium", 8)

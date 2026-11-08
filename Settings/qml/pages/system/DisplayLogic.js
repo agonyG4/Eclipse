@@ -35,7 +35,8 @@ function subtitleFor(output) {
     const make = nonEmpty(output.make) ? String(output.make).trim() : ""
     if (make !== "" && make !== titleFor(output))
         pieces.push(make)
-    if (nonEmpty(output.name))
+    // The connector is skipped when it already is the title.
+    if (nonEmpty(output.name) && String(output.name) !== titleFor(output))
         pieces.push(String(output.name))
     return pieces.join(" · ")
 }

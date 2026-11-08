@@ -48,6 +48,9 @@ FocusScope {
     readonly property bool noOutputs:
         Boolean(!root.backendUnavailable && !root.refreshFailed && !root.loading
             && root.outputs.length === 0)
+    // Night Shift rows only make sense once the backend can adjust color.
+    readonly property bool colorControlAvailable:
+        Boolean(root.controller && root.controller.colorControlAvailable === true)
     readonly property bool showDisplayContent:
         Boolean(!root.backendUnavailable && !root.refreshFailed
             && root.selectedOutput !== null)
@@ -652,6 +655,8 @@ FocusScope {
                 Text {
                     id: connectorLabel
                     objectName: "displayConnector"
+                    // A lone display is already named by the title below.
+                    visible: root.outputs.length > 1
                     anchors.horizontalCenter: screenFrame.horizontalCenter
                     anchors.bottom: parent.bottom
                     width: Math.max(screenFrame.width + 24, 72)
@@ -980,7 +985,7 @@ FocusScope {
                     objectName: "displayResolutionList"
                     Layout.fillWidth: true
                     Layout.bottomMargin: 24
-                    margins: 4
+                    margins: 0
                     spacing: 0
 
                     Repeater {
@@ -988,30 +993,21 @@ FocusScope {
 
                         delegate: Rectangle {
                             required property var modelData
+                            required property int index
                             readonly property bool selected: Boolean(modelData.current)
                             readonly property bool interactive:
                                 Boolean(root.selectedOutput)
                                     && root.selectedOutput.modeSelectionSupported === true
                                     && modelData.rates.length > 0
                             readonly property string key: DisplayLogic.resolutionKey(modelData)
+                            readonly property bool lastRow: index === root.visibleResolutionGroups.length - 1
+                                && !resolutionToggleRow.visible
 
                             objectName: "displayResolutionRow_" + key
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 36
-                            implicitHeight: 36
-                            radius: Components.Theme.controlRadius
-                            color: selected
-                                ? Qt.rgba(Components.Theme.accent.r,
-                                          Components.Theme.accent.g,
-                                          Components.Theme.accent.b, 0.12)
-                                : (interactive && resolutionActivation.containsMouse
-                                    ? Qt.rgba(Components.Theme.accent.r,
-                                              Components.Theme.accent.g,
-                                              Components.Theme.accent.b, 0.06)
-                                    : "transparent")
-                            border.width: interactive && activeFocus ? 1 : 0
-                            border.color: interactive && activeFocus
-                                ? Components.Theme.accent : "transparent"
+                            Layout.preferredHeight: 52
+                            implicitHeight: 52
+                            color: "transparent"
                             activeFocusOnTab: interactive
                             Accessible.role: Accessible.Button
                             Accessible.name: DisplayLogic.formatResolution(modelData)
@@ -1025,18 +1021,49 @@ FocusScope {
                                 }
                             }
 
-                            Behavior on color {
-                                ColorAnimation { duration: Components.Theme.animationQuick }
+                            // Same inset highlight as SettingRow.
+                            Rectangle {
+                                anchors {
+                                    fill: parent
+                                    leftMargin: Components.Theme.spacingMicro
+                                    rightMargin: Components.Theme.spacingMicro
+                                    topMargin: Components.Theme.spacingTiny
+                                    bottomMargin: Components.Theme.spacingTiny
+                                }
+                                radius: Components.Theme.controlRadius
+                                color: selected
+                                    ? Qt.rgba(Components.Theme.accent.r,
+                                              Components.Theme.accent.g,
+                                              Components.Theme.accent.b, 0.12)
+                                    : (interactive && resolutionActivation.containsMouse
+                                        ? Components.Theme.rowHoverFill : "transparent")
+                                border.width: interactive && parent.activeFocus ? 1 : 0
+                                border.color: interactive && parent.activeFocus
+                                    ? Components.Theme.accent : "transparent"
+
+                                Behavior on color {
+                                    ColorAnimation { duration: Components.Theme.animationQuick }
+                                }
+                                Behavior on border.color {
+                                    ColorAnimation { duration: Components.Theme.animationQuick }
+                                }
                             }
-                            Behavior on border.color {
-                                ColorAnimation { duration: Components.Theme.animationQuick }
+
+                            Rectangle {
+                                visible: !lastRow && !selected
+                                anchors {
+                                    bottom: parent.bottom; left: parent.left; right: parent.right
+                                    leftMargin: Components.Theme.spacingXLarge
+                                }
+                                height: 1
+                                color: Components.Theme.cardBorder
                             }
 
                             RowLayout {
                                 anchors.fill: parent
-                                anchors.leftMargin: 12
-                                anchors.rightMargin: 12
-                                spacing: Components.Theme.spacingSmall
+                                anchors.leftMargin: Components.Theme.spacingXLarge
+                                anchors.rightMargin: Components.Theme.spacingXLarge
+                                spacing: Components.Theme.spacingMedium
 
                                 Text {
                                     objectName: "displayResolutionLabel_" + key
@@ -1045,14 +1072,12 @@ FocusScope {
                                     color: selected
                                         ? Components.Theme.accent
                                         : Components.Theme.textPrimary
-                                    font.family: Components.Theme.typography.role("body").family
-                                    font.pixelSize: Components.Theme.typography.role("body").pixelSize
-                                    lineHeight: Components.Theme.typography.role("body").lineHeight
+                                    font.family: Components.Theme.typography.role("label").family
+                                    font.pixelSize: Components.Theme.typography.role("label").pixelSize
+                                    lineHeight: Components.Theme.typography.role("label").lineHeight
                                     lineHeightMode: Text.ProportionalHeight
-                                    font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
-                                    font.weight: selected
-                                        ? Components.Theme.fontWeightMedium
-                                        : Components.Theme.fontWeightNormal
+                                    font.letterSpacing: Components.Theme.typography.role("label").letterSpacing
+                                    font.weight: Components.Theme.typography.role("label").weight
                                 }
 
                                 Rectangle {
@@ -1117,28 +1142,60 @@ FocusScope {
                         }
                     }
 
-                    Text {
-                        objectName: "displayResolutionListToggleLabel"
+                    Item {
+                        id: resolutionToggleRow
                         visible: root.allResolutionGroups.length
                             > root.defaultResolutionGroups.length
-                        Layout.topMargin: 6
-                        Layout.leftMargin: 12
-                        Layout.bottomMargin: 4
-                        text: root.showAllResolutions
-                            ? "⌃  Show less" : "⌄  Show all resolutions"
-                        textFormat: Text.PlainText
-                        color: Components.Theme.textSecondary
-                        font.family: Components.Theme.typography.role("caption").family
-                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
-                        lineHeight: Components.Theme.typography.role("caption").lineHeight
-                        lineHeightMode: Text.ProportionalHeight
-                        font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
-                        font.weight: Components.Theme.typography.role("caption").weight
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 48
+                        implicitHeight: 48
+
+                        Rectangle {
+                            anchors {
+                                fill: parent
+                                leftMargin: Components.Theme.spacingMicro
+                                rightMargin: Components.Theme.spacingMicro
+                                topMargin: Components.Theme.spacingTiny
+                                bottomMargin: Components.Theme.spacingTiny
+                            }
+                            radius: Components.Theme.controlRadius
+                            color: resolutionToggleMouse.containsMouse
+                                ? Components.Theme.rowHoverFill : "transparent"
+                            Behavior on color {
+                                ColorAnimation { duration: Components.Theme.animationQuick }
+                            }
+                        }
+
+                        Rectangle {
+                            anchors {
+                                top: parent.top; left: parent.left; right: parent.right
+                                leftMargin: Components.Theme.spacingXLarge
+                            }
+                            height: 1
+                            color: Components.Theme.cardBorder
+                        }
+
+                        Text {
+                            objectName: "displayResolutionListToggleLabel"
+                            anchors.left: parent.left
+                            anchors.leftMargin: Components.Theme.spacingXLarge
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: root.showAllResolutions
+                                ? "⌃  Show less" : "⌄  Show all resolutions"
+                            textFormat: Text.PlainText
+                            color: Components.Theme.accent
+                            font.family: Components.Theme.typography.role("label").family
+                            font.pixelSize: Components.Theme.typography.role("label").pixelSize
+                            lineHeight: Components.Theme.typography.role("label").lineHeight
+                            lineHeightMode: Text.ProportionalHeight
+                            font.letterSpacing: Components.Theme.typography.role("label").letterSpacing
+                            font.weight: Components.Theme.typography.role("label").weight
+                        }
 
                         MouseArea {
+                            id: resolutionToggleMouse
                             objectName: "displayResolutionListToggle"
                             anchors.fill: parent
-                            anchors.margins: -4
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: root.showAllResolutions = !root.showAllResolutions
@@ -1163,6 +1220,13 @@ FocusScope {
                         font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
                         wrapMode: Text.WordWrap
                     }
+                }
+
+                Form.SectionHeader {
+                    objectName: "displaySettingsHeader"
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: 12
+                    text: "DISPLAY SETTINGS"
                 }
 
                 Form.FormCard {
@@ -1274,8 +1338,15 @@ FocusScope {
                     text: "COLOR & NIGHT SHIFT"
                 }
 
+                Components.BackendNotice {
+                    objectName: "displayColorUnavailableNotice"
+                    visible: !root.colorControlAvailable
+                    message: "Night Shift and color adjustment are unavailable because the current display backend has no color control."
+                }
+
                 Form.FormCard {
                     objectName: "displayColorNightShiftCard"
+                    visible: root.colorControlAvailable
                     Layout.bottomMargin: 24
                     radius: 12
                     margins: 0
@@ -1371,67 +1442,102 @@ FocusScope {
                     }
                 }
 
-                RowLayout {
+                Form.FormCard {
                     objectName: "displayApplyArea"
                     Layout.fillWidth: true
-                    Layout.topMargin: 8
-                    Layout.bottomMargin: 8
-                    spacing: Components.Theme.spacingMedium
+                    Layout.bottomMargin: 32
 
-                    Text {
-                        objectName: "displayTransactionStatus"
-                        visible: root.transactionActive
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: root.transactionStatusText
-                        textFormat: Text.PlainText
-                        color: root.transactionState === "rollback_failed"
-                            ? Components.Theme.errorColor : Components.Theme.textPrimary
-                        font.family: Components.Theme.typography.role("body").family
-                        font.pixelSize: Components.Theme.typography.role("body").pixelSize
-                        lineHeight: Components.Theme.typography.role("body").lineHeight
-                        lineHeightMode: Text.ProportionalHeight
-                        font.letterSpacing: Components.Theme.typography.role("body").letterSpacing
-                        wrapMode: Text.WordWrap
-                    }
+                        Layout.margins: Components.Theme.spacingXLarge
+                        Layout.topMargin: Components.Theme.spacingLarge
+                        Layout.bottomMargin: Components.Theme.spacingLarge
+                        spacing: Components.Theme.spacingMedium
 
-                    Item {
-                        visible: !root.transactionActive
-                        Layout.fillWidth: true
-                    }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            spacing: Components.Theme.spacingMicro
 
-                    Controls.Button {
-                        objectName: "displayRevertButton"
-                        visible: root.confirmationPending
-                        text: "Revert"
-                        enabled: Boolean(root.controller && !root.controller.busy)
-                        onClicked: {
-                            if (root.controller)
-                                root.controller.revert()
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Apply changes"
+                                textFormat: Text.PlainText
+                                color: Components.Theme.textPrimary
+                                font.family: Components.Theme.typography.role("label").family
+                                font.pixelSize: Components.Theme.typography.role("label").pixelSize
+                                lineHeight: Components.Theme.typography.role("label").lineHeight
+                                lineHeightMode: Text.ProportionalHeight
+                                font.letterSpacing: Components.Theme.typography.role("label").letterSpacing
+                                font.weight: Components.Theme.typography.role("label").weight
+                                elide: Text.ElideRight
+                            }
+
+                            Text {
+                                objectName: "displayTransactionStatus"
+                                visible: root.transactionActive
+                                Layout.fillWidth: true
+                                text: root.transactionStatusText
+                                textFormat: Text.PlainText
+                                color: root.transactionState === "rollback_failed"
+                                    ? Components.Theme.errorColor : Components.Theme.textSecondary
+                                font.family: Components.Theme.typography.role("caption").family
+                                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                lineHeightMode: Text.ProportionalHeight
+                                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
+                                wrapMode: Text.WordWrap
+                            }
+
+                            Text {
+                                visible: !root.transactionActive
+                                Layout.fillWidth: true
+                                text: "Resolution, refresh rate and scale changes apply to the selected display."
+                                textFormat: Text.PlainText
+                                color: Components.Theme.textSecondary
+                                font.family: Components.Theme.typography.role("caption").family
+                                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                                lineHeightMode: Text.ProportionalHeight
+                                font.letterSpacing: Components.Theme.typography.role("caption").letterSpacing
+                                wrapMode: Text.WordWrap
+                            }
                         }
-                    }
 
-                    Controls.Button {
-                        objectName: "displayKeepButton"
-                        visible: root.confirmationPending
-                        text: "Keep changes"
-                        primary: true
-                        enabled: Boolean(root.controller && !root.controller.busy)
-                        onClicked: {
-                            if (root.controller)
-                                root.controller.confirm()
+                        Controls.Button {
+                            objectName: "displayRevertButton"
+                            visible: root.confirmationPending
+                            text: "Revert"
+                            enabled: Boolean(root.controller && !root.controller.busy)
+                            onClicked: {
+                                if (root.controller)
+                                    root.controller.revert()
+                            }
                         }
-                    }
 
-                    Controls.Button {
-                        objectName: "displayApplyButton"
-                        visible: !root.confirmationPending
-                        text: "Apply"
-                        primary: true
-                        enabled: Boolean(root.selectedOutput
-                            && root.selectedOutput.canApplyDraft === true)
-                        onClicked: {
-                            if (root.selectedOutput && root.controller)
-                                root.controller.applyDraft(root.selectedOutput.id)
+                        Controls.Button {
+                            objectName: "displayKeepButton"
+                            visible: root.confirmationPending
+                            text: "Keep changes"
+                            primary: true
+                            enabled: Boolean(root.controller && !root.controller.busy)
+                            onClicked: {
+                                if (root.controller)
+                                    root.controller.confirm()
+                            }
+                        }
+
+                        Controls.Button {
+                            objectName: "displayApplyButton"
+                            visible: !root.confirmationPending
+                            text: "Apply"
+                            primary: true
+                            enabled: Boolean(root.selectedOutput
+                                && root.selectedOutput.canApplyDraft === true)
+                            onClicked: {
+                                if (root.selectedOutput && root.controller)
+                                    root.controller.applyDraft(root.selectedOutput.id)
+                            }
                         }
                     }
                 }

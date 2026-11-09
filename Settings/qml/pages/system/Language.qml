@@ -105,50 +105,13 @@ Item {
         onTriggered: root.now = new Date()
     }
 
-    // Saving a preference takes milliseconds: only a wait the user can notice, such
-    // as the password prompt, may dim the page or announce itself.
-    property bool slowOperation: false
-    Timer {
-        interval: 400
-        running: root.controller.busy
-        onTriggered: root.slowOperation = true
-    }
-    Connections {
-        target: root.controller
-        function onBusyChanged() {
-            if (!root.controller.busy)
-                root.slowOperation = false
-        }
-    }
-
     Component.onCompleted: root.controller.refresh()
-
-    component SectionTitle: Text {
-        Layout.fillWidth: true
-        Layout.bottomMargin: Components.Theme.spacingSmall
-        Layout.leftMargin: Components.Theme.spacingXLarge
-        color: Components.Theme.textSecondary
-        font.family: Components.Theme.typography.role("label").family
-        font.pixelSize: Components.Theme.typography.role("label").pixelSize
-        font.weight: Components.Theme.fontWeightDemiBold
-    }
-    component Footnote: Text {
-        Layout.fillWidth: true
-        Layout.leftMargin: Components.Theme.spacingXLarge
-        Layout.rightMargin: Components.Theme.spacingXLarge
-        wrapMode: Text.Wrap
-        color: Components.Theme.textSecondary
-        font.family: Components.Theme.typography.role("caption").family
-        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
-        lineHeight: Components.Theme.typography.role("caption").lineHeight
-        lineHeightMode: Text.ProportionalHeight
-    }
 
     Form.ScrollPage {
         anchors.fill: parent
-        enabled: !root.slowOperation
+        enabled: !root.controller.busy
         contentMargins: 32
-        maxWidth: 760
+        maxWidth: 900
 
         Form.PageHeader {
             title: I18n.tr("settings.pages.language.title", "Language & Region")
@@ -157,7 +120,7 @@ Item {
 
         Components.BackendNotice {
             objectName: "languageBackendStatus"
-            busy: root.slowOperation
+            busy: root.controller.busy
             error: root.controller.lastError || root.zoneChangeError()
             showAction: !busy && root.controller.lastError.length > 0
             onRetry: root.controller.refresh()
@@ -165,10 +128,11 @@ Item {
 
         Form.FormCard {
             objectName: "locationSummaryCard"
+            Layout.bottomMargin: Components.Theme.spacingMedium
+            margins: Components.Theme.spacingXLarge
 
             RowLayout {
                 Layout.fillWidth: true
-                Layout.margins: Components.Theme.spacingXLarge
                 spacing: Components.Theme.spacingLarge
 
                 ColumnLayout {
@@ -180,160 +144,100 @@ Item {
                         objectName: "locationSummaryClock"
                         typographyRole: "display"
                         Layout.fillWidth: true
-                        font.weight: Components.Theme.fontWeightLight
-                        font.features: { "tnum": 1 }
                         text: Qt.formatTime(root.now, root.effectiveFormat === "12h" ? "h:mm AP" : "HH:mm")
                     }
                     Text {
                         Layout.fillWidth: true
                         text: root.now.toLocaleDateString(Qt.locale(root.config.language || "en_US"), Locale.LongFormat)
                         elide: Text.ElideRight
-                        color: Components.Theme.textSecondary
+                        color: Components.Theme.textPrimary
                         font.family: Components.Theme.typography.role("label").family
                         font.pixelSize: Components.Theme.typography.role("label").pixelSize
                     }
-                    RowLayout {
+                    Text {
+                        objectName: "locationSummaryDetail"
                         Layout.fillWidth: true
-                        Layout.topMargin: Components.Theme.spacingTiny
-                        spacing: Components.Theme.spacingSmall
-                        Text {
-                            objectName: "locationSummaryFlag"
-                            visible: text !== ""
-                            text: root.currentCountry ? root.currentCountry.flag : ""
-                            font.pixelSize: Components.Theme.typography.role("label").pixelSize + 1
+                        text: {
+                            const parts = []
+                            if (root.currentCountry)
+                                parts.push(root.currentCountry.name)
+                            if (root.currentZone)
+                                parts.push(root.currentZone.name, root.currentZone.trailing)
+                            return parts.join(" · ")
                         }
-                        Text {
-                            objectName: "locationSummaryDetail"
-                            Layout.fillWidth: true
-                            text: {
-                                const parts = []
-                                if (root.currentCountry)
-                                    parts.push(root.currentCountry.name)
-                                if (root.currentZone)
-                                    parts.push(root.currentZone.name, root.currentZone.trailing)
-                                return parts.join(" · ")
-                            }
-                            elide: Text.ElideRight
-                            color: Components.Theme.textSecondary
-                            font.family: Components.Theme.typography.role("caption").family
-                            font.pixelSize: Components.Theme.typography.role("caption").pixelSize
-                        }
+                        elide: Text.ElideRight
+                        color: Components.Theme.textSecondary
+                        font.family: Components.Theme.typography.role("caption").family
+                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
                     }
                 }
 
                 Controls.ButtonCapsule {
                     objectName: "detectLocationButton"
                     Layout.alignment: Qt.AlignVCenter
-                    controlHeight: 30
+                    primary: true
                     enabled: !root.detecting
-                    iconText: "\uf124"
-                    iconSize: 12
                     label: I18n.tr("settings.language.detect_location", "Detect location")
                     onClicked: root.controller.detectLocation()
                 }
             }
 
-            // The answer unfolds inside the card it belongs to.
-            Item {
-                objectName: "detectionNotice"
-                readonly property string message: root.detecting ? "" : root.detectionMessage()
-                visible: root.detectionStatus !== "idle" || Layout.preferredHeight > 0
+            Text {
                 Layout.fillWidth: true
-                Layout.preferredHeight: root.detectionStatus !== "idle" ? detectionRow.implicitHeight + Components.Theme.spacingLarge * 2 : 0
-                clip: true
-                Behavior on Layout.preferredHeight {
-                    NumberAnimation { duration: Components.Theme.animationNormal; easing.type: Components.Theme.easingStandard }
-                }
-
-                Rectangle {
-                    anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: Components.Theme.spacingXLarge }
-                    height: 1
-                    color: Components.Theme.cardBorder
-                }
-
-                RowLayout {
-                    id: detectionRow
-                    anchors {
-                        left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter
-                        leftMargin: Components.Theme.spacingXLarge; rightMargin: Components.Theme.spacingXLarge
-                    }
-                    spacing: Components.Theme.spacingMedium
-
-                    BusyIndicator {
-                        visible: root.detecting
-                        running: root.detecting
-                        Layout.preferredWidth: 18
-                        Layout.preferredHeight: 18
-                    }
-                    Text {
-                        Layout.fillWidth: true
-                        Layout.minimumWidth: 0
-                        text: root.detecting
-                            ? (root.detection.source === "ip"
-                                ? I18n.tr("settings.language.detecting_ip", "Asking ipapi.co for an estimate from your IP address…")
-                                : I18n.tr("settings.language.detecting_system", "Asking the system location service…"))
-                            : parent.parent.message
-                        textFormat: Text.PlainText
-                        wrapMode: Text.Wrap
-                        color: Components.Theme.textSecondary
-                        font.family: Components.Theme.typography.role("caption").family
-                        font.pixelSize: Components.Theme.typography.role("caption").pixelSize
-                        lineHeight: Components.Theme.typography.role("caption").lineHeight
-                        lineHeightMode: Text.ProportionalHeight
-                    }
-                    Controls.ButtonCapsule {
-                        objectName: "detectionDismiss"
-                        Layout.alignment: Qt.AlignVCenter
-                        visible: !root.detecting
-                        controlHeight: 28
-                        horizontalPadding: Components.Theme.spacingMedium
-                        label: I18n.tr("settings.language.dismiss", "Dismiss")
-                        onClicked: root.controller.dismissDetection()
-                    }
-                    Controls.ButtonCapsule {
-                        objectName: "detectionAction"
-                        Layout.alignment: Qt.AlignVCenter
-                        visible: root.detecting || root.detectionFound || root.ipFallbackOffered
-                        controlHeight: 28
-                        horizontalPadding: Components.Theme.spacingMedium
-                        primary: root.detectionFound
-                        label: root.detecting ? I18n.tr("settings.language.cancel", "Cancel")
-                            : root.detectionFound ? I18n.tr("settings.language.apply", "Apply")
-                            : I18n.tr("settings.language.use_ip_address", "Use IP address")
-                        onClicked: {
-                            if (root.detecting)
-                                root.controller.cancelDetection()
-                            else if (root.detectionFound)
-                                root.controller.applyDetection()
-                            else
-                                root.controller.detectLocationByIp()
-                        }
-                    }
-                }
+                Layout.topMargin: Components.Theme.spacingMedium
+                text: I18n.tr("settings.language.detect_privacy", "Only runs when you ask. GeoClue may consult a network location service; the coordinates aren't saved and nothing changes until you apply the result.")
+                wrapMode: Text.Wrap
+                color: Components.Theme.textTertiary
+                font.family: Components.Theme.typography.role("caption").family
+                font.pixelSize: Components.Theme.typography.role("caption").pixelSize
+                lineHeight: Components.Theme.typography.role("caption").lineHeight
+                lineHeightMode: Text.ProportionalHeight
             }
         }
 
-        Footnote {
-            Layout.topMargin: Components.Theme.spacingSmall
-            Layout.bottomMargin: 28
-            text: I18n.tr("settings.language.detect_privacy", "Only runs when you ask. GeoClue may consult a network location service; the coordinates aren't saved and nothing changes until you apply the result.")
+        Components.BackendNotice {
+            objectName: "detectionNotice"
+            retryObjectName: "detectionAction"
+            Layout.bottomMargin: visible ? Components.Theme.spacingMedium : 0
+            busy: root.detecting
+            busyText: root.detection.source === "ip"
+                ? I18n.tr("settings.language.detecting_ip", "Asking ipapi.co for an estimate from your IP address…")
+                : I18n.tr("settings.language.detecting_system", "Asking the system location service…")
+            message: root.detecting ? "" : root.detectionMessage()
+            showAction: root.detecting || root.detectionFound || root.ipFallbackOffered
+            actionPrimary: root.detectionFound
+            actionLabel: root.detecting ? I18n.tr("settings.language.cancel", "Cancel")
+                : root.detectionFound ? I18n.tr("settings.language.apply", "Apply")
+                : I18n.tr("settings.language.use_ip_address", "Use IP address")
+            secondaryActionLabel: !root.detecting && root.detectionStatus !== "idle" ? I18n.tr("settings.language.dismiss", "Dismiss") : ""
+            onRetry: {
+                if (root.detecting)
+                    root.controller.cancelDetection()
+                else if (root.detectionFound)
+                    root.controller.applyDetection()
+                else
+                    root.controller.detectLocationByIp()
+            }
+            onSecondaryAction: root.controller.dismissDetection()
         }
 
-        SectionTitle {
-            text: I18n.tr("settings.language.section_location", "Location")
+        Form.SectionHeader {
+            Layout.topMargin: Components.Theme.spacingMedium
+            Layout.bottomMargin: Components.Theme.spacingMedium
+            text: I18n.tr("settings.language.section_location", "LOCATION")
         }
 
         Form.FormCard {
             objectName: "locationCard"
-            Layout.bottomMargin: 28
+            Layout.bottomMargin: 24
             Form.SettingRow {
                 objectName: "countrySelectRow"
                 label: I18n.tr("settings.language.country_or_region", "Country or region")
                 sublabel: I18n.tr("settings.language.sets_local_conventions_for_dates_and_numbers", "Sets local conventions for dates and numbers.")
                 Controls.SearchableSelect {
                     objectName: "countrySelect"
+                    width: 240
                     label: root.currentCountry ? root.currentCountry.name : I18n.tr("settings.language.select_location", "Select location")
-                    leadingText: root.currentCountry ? root.currentCountry.flag : ""
                     accessibleName: I18n.tr("settings.language.country_or_region", "Country or region")
                     currentId: root.countryCode
                     options: root.filteredCountries
@@ -351,12 +255,13 @@ Item {
                 sublabel: I18n.tr("settings.language.time_zone_description", "Sets the system clock. Changing it may ask for your password.")
                 Controls.SearchableSelect {
                     objectName: "timeZoneSelect"
+                    width: 240
                     label: root.currentZone ? root.currentZone.name + " · " + root.currentZone.trailing
                         : (root.zoneId || I18n.tr("settings.language.select_time_zone", "Select time zone"))
                     accessibleName: I18n.tr("settings.language.time_zone", "Time zone")
                     currentId: root.zoneId
                     options: root.filteredZones
-                    popupWidth: 440
+                    popupWidth: 460
                     searchText: root.zoneSearch
                     searchPlaceholder: I18n.tr("settings.language.search_zone_placeholder", "Search by city, country or UTC offset")
                     emptyText: I18n.tr("settings.language.no_matching_zone", "No time zone matches your search.")
@@ -386,50 +291,48 @@ Item {
             }
         }
 
-        SectionTitle {
-            text: I18n.tr("settings.language.section_language_formats", "Language & Formats")
+        Form.SectionHeader {
+            Layout.bottomMargin: Components.Theme.spacingMedium
+            text: I18n.tr("settings.language.section_language_formats", "LANGUAGE & FORMATS")
         }
 
         Form.FormCard {
             objectName: "languageRegionCard"
+            Layout.bottomMargin: 24
             Form.SettingRow {
                 objectName: "languageSelectRow"
                 label: I18n.tr("settings.language.language", "Language")
                 sublabel: I18n.tr("settings.language.sets_the_preferred_locale_reopen_apps_to_app", "Sets the preferred locale. Reopen apps to apply translations; unavailable translations use English.")
-                Controls.SearchableSelect {
+                Controls.SelectButton {
                     objectName: "languageSelect"
-                    searchable: false
+                    width: 240
+                    options: root.languages
+                    selectedIndex: root.selectedLanguage
                     label: root.languages[root.selectedLanguage] || I18n.tr("settings.language.loading", "Loading…")
-                    accessibleName: I18n.tr("settings.language.language", "Language")
-                    currentId: root.config.language || ""
-                    options: root.languageEntries
-                    onSelected: id => root.controller.setOption("language", id)
+                    onSelected: index => root.controller.setOption("language", root.languageEntries[index].id)
                 }
             }
             Form.SettingRow {
                 objectName: "timeFormatRow"
                 label: I18n.tr("settings.language.time_format", "Time format")
                 sublabel: I18n.tr("settings.language.controls_24_hour_or_am_pm_time_in_apps_and_t", "Controls 24-hour or AM/PM time in apps and the clock.")
-                Controls.SearchableSelect {
+                Controls.SelectButton {
                     objectName: "timeFormatSelect"
-                    searchable: false
+                    width: 240
+                    options: root.timeFormats
+                    selectedIndex: root.selectedTimeFormat
                     label: root.timeFormats[root.selectedTimeFormat] || ""
-                    accessibleName: I18n.tr("settings.language.time_format", "Time format")
-                    currentId: root.region.time_format || "system"
-                    options: root.timeFormatIds.map((id, index) => ({ id: id, name: root.timeFormats[index] }))
-                    onSelected: id => root.controller.setOption("time_format", id)
+                    onSelected: index => root.controller.setOption("time_format", root.timeFormatIds[index])
+                }
+            }
+            Form.SettingRow {
+                objectName: "formatPreviewRow"
+                label: I18n.tr("settings.language.format_preview", "Format preview")
+                sublabel: {
+                    const preview = root.snapshot.formatPreview
+                    return preview ? preview.date + " · " + preview.number : ""
                 }
                 isLast: true
-            }
-        }
-
-        Footnote {
-            objectName: "formatPreviewRow"
-            Layout.topMargin: Components.Theme.spacingSmall
-            horizontalAlignment: Text.AlignLeft
-            text: {
-                const preview = root.snapshot.formatPreview
-                return preview ? I18n.tr("settings.language.format_preview", "Format preview") + ": " + preview.date + " · " + preview.number : ""
             }
         }
     }

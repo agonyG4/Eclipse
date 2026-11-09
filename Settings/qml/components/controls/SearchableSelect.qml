@@ -2,29 +2,24 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Effects
 import QtQuick.Layouts
-import QtQuick.Shapes
 import ".." as Components
 import "." as Local
 
-// A macOS pop-up button: plain text and double chevrons, opening a menu whose row
-// under the pointer takes the accent and whose chosen row carries a leading check.
-// With `searchable`, the owner reacts to `searchEdited` and supplies matching rows
-// through `options`. Rows are { id, name, subtitle?, flag?, trailing?, heading? }.
+// SelectButton for long lists: the same button and rows, with a search field in the
+// popup. The owner reacts to `searchEdited` and supplies matching rows through
+// `options`. Rows are { id, name, subtitle?, trailing?, heading? }.
 Item {
     id: sel
 
     property string label: ""
-    property string leadingText: ""
     property var options: []
     property string currentId: ""
     property string accessibleName: label
-    property bool searchable: true
     property string searchPlaceholder: ""
     property string emptyText: ""
     property string searchText: ""
-    property int popupWidth: searchable ? 360 : 240
-    property int popupHeight: 400
-    property int maximumLabelWidth: 300
+    property int popupWidth: 380
+    property int popupHeight: 420
     readonly property bool popupOpen: dropdown.visible
 
     signal selected(string id)
@@ -32,16 +27,14 @@ Item {
     signal closed()
 
     readonly property bool isLight: Components.Theme.themeMode === 1
-    readonly property color popupBorder: isLight ? Qt.rgba(0, 0, 0, 0.10) : Qt.rgba(1, 1, 1, 0.12)
-    readonly property color popupShadow: isLight ? Qt.rgba(0, 0, 0, 0.20) : Qt.rgba(0, 0, 0, 0.60)
+    readonly property color popupHoverBg: isLight ? Qt.rgba(0, 0, 0, 0.055) : Qt.rgba(1, 1, 1, 0.08)
+    readonly property color popupBorder: isLight ? Qt.rgba(0, 0, 0, 0.12) : Qt.rgba(1, 1, 1, 0.10)
+    readonly property color popupShadow: isLight ? Qt.rgba(0, 0, 0, 0.22) : Qt.rgba(0, 0, 0, 0.73)
     readonly property var labelStyle: Components.Theme.typography.role("label")
     readonly property var captionStyle: Components.Theme.typography.role("caption")
-    readonly property int menuPadding: 6
-    readonly property int singleRow: 30
-    readonly property int doubleRow: 44
 
-    implicitWidth: buttonRow.implicitWidth + Components.Theme.spacingMedium * 2
-    implicitHeight: 30
+    implicitWidth: 240
+    implicitHeight: Math.max(36, Math.ceil(labelStyle.pixelSize * labelStyle.lineHeight) + 16)
 
     function open() { dropdown.open() }
     function close() { dropdown.close() }
@@ -51,9 +44,6 @@ Item {
                 return i
         }
         return -1
-    }
-    function listHeight() {
-        return sel.options.reduce((sum, row) => sum + (row.subtitle ? sel.doubleRow : sel.singleRow), 0)
     }
 
     activeFocusOnTab: enabled
@@ -72,57 +62,41 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        radius: Components.Theme.cornerRadiusSmall
-        color: sel.enabled && (buttonArea.containsMouse || dropdown.visible)
-            ? Components.Theme.controlHoverFill : "transparent"
-        border.width: sel.activeFocus ? 2 : 0
-        border.color: Qt.rgba(Components.Theme.accent.r, Components.Theme.accent.g, Components.Theme.accent.b, 0.6)
-        Behavior on color { ColorAnimation { duration: Components.Theme.animationQuick } }
+        radius: Components.Theme.controlRadius
+        color: sel.enabled && buttonArea.containsMouse ? Components.Theme.controlHoverFill : Components.Theme.cardBg
+        border.width: 1
+        border.color: sel.enabled && (dropdown.visible || buttonArea.pressed || sel.activeFocus)
+            ? Components.Theme.accent : Components.Theme.cardBorder
+
+        Behavior on color { ColorAnimation { duration: Components.Theme.animationNormal } }
+        Behavior on border.color { ColorAnimation { duration: Components.Theme.animationNormal } }
+
+        PressTint {
+            anchors.fill: parent
+            radius: parent.radius
+            pressed: sel.enabled && buttonArea.pressed
+        }
 
         RowLayout {
-            id: buttonRow
-            anchors {
-                verticalCenter: parent.verticalCenter
-                left: parent.left; right: parent.right
-                leftMargin: Components.Theme.spacingMedium; rightMargin: Components.Theme.spacingMedium
-            }
-            spacing: Components.Theme.spacingSmall
+            anchors { fill: parent; leftMargin: Components.Theme.spacingMedium; rightMargin: Components.Theme.spacingMedium }
+            spacing: Components.Theme.spacing
 
             Text {
-                visible: sel.leadingText !== ""
-                text: sel.leadingText
-                font.pixelSize: sel.labelStyle.pixelSize + 1
-            }
-            Text {
                 Layout.fillWidth: true
-                Layout.maximumWidth: sel.maximumLabelWidth
                 text: sel.label
-                color: sel.enabled ? Components.Theme.textPrimary : Components.Theme.textTertiary
-                horizontalAlignment: Text.AlignRight
+                color: sel.enabled ? Components.Theme.textPrimary : Components.Theme.textSecondary
                 font.family: sel.labelStyle.family
                 font.pixelSize: sel.labelStyle.pixelSize
-                font.letterSpacing: sel.labelStyle.letterSpacing
+                font.weight: Components.Theme.fontWeightMedium
                 elide: Text.ElideRight
             }
-            // The up-and-down chevrons of an NSPopUpButton.
-            Shape {
+            Text {
                 visible: sel.enabled
-                Layout.preferredWidth: 8
-                Layout.preferredHeight: 13
-                preferredRendererType: Shape.CurveRenderer
-                ShapePath {
-                    strokeColor: Components.Theme.textSecondary
-                    strokeWidth: 1.4
-                    fillColor: "transparent"
-                    capStyle: ShapePath.RoundCap
-                    joinStyle: ShapePath.RoundJoin
-                    startX: 0.7; startY: 4.4
-                    PathLine { x: 4; y: 1 }
-                    PathLine { x: 7.3; y: 4.4 }
-                    PathMove { x: 0.7; y: 8.6 }
-                    PathLine { x: 4; y: 12 }
-                    PathLine { x: 7.3; y: 8.6 }
-                }
+                text: "⌄"
+                color: dropdown.visible ? Components.Theme.accent : Components.Theme.textSecondary
+                font.pixelSize: 13
+                rotation: dropdown.visible ? 180 : 0
+                Behavior on rotation { NumberAnimation { duration: Components.Theme.animationNormal; easing.type: Components.Theme.easingMove } }
             }
         }
 
@@ -132,6 +106,7 @@ Item {
             anchors.fill: parent
             enabled: sel.enabled
             hoverEnabled: sel.enabled
+            cursorShape: sel.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
             onClicked: dropdown.visible ? dropdown.close() : dropdown.open()
         }
     }
@@ -140,12 +115,11 @@ Item {
         id: dropdown
         objectName: "searchableSelectPopup"
         x: sel.width - width
-        y: sel.height + 4
+        y: sel.height + 6
         width: Math.max(sel.width, sel.popupWidth)
-        height: sel.searchable ? sel.popupHeight
-                               : Math.min(sel.popupHeight, sel.listHeight() + sel.menuPadding * 2)
+        height: sel.popupHeight
         margins: Components.Theme.spacingMedium
-        padding: sel.menuPadding
+        padding: Components.Theme.spacingSmall
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
@@ -160,8 +134,8 @@ Item {
                 layer.effect: MultiEffect {
                     shadowEnabled: true
                     shadowColor: sel.popupShadow
-                    shadowBlur: 1.2
-                    shadowVerticalOffset: 8
+                    shadowBlur: 1.5
+                    shadowVerticalOffset: 6
                 }
             }
             Rectangle {
@@ -174,22 +148,23 @@ Item {
         }
 
         enter: Transition {
-            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Components.Theme.animationQuick; easing.type: Components.Theme.easingStandard }
+            ParallelAnimation {
+                NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Components.Theme.animationNormal; easing.type: Components.Theme.easingStandard }
+                NumberAnimation { property: "scale"; from: 0.97; to: 1; duration: Components.Theme.animationNormal; easing.type: Components.Theme.easingEnter }
+            }
         }
         exit: Transition {
-            NumberAnimation { property: "opacity"; from: 1; to: 0; duration: Components.Theme.animationNormal; easing.type: Components.Theme.easingExit }
+            ParallelAnimation {
+                NumberAnimation { property: "opacity"; from: 1; to: 0; duration: Components.Theme.animationFast; easing.type: Components.Theme.easingExit }
+                NumberAnimation { property: "scale"; from: 1; to: 0.95; duration: Components.Theme.animationFast; easing.type: Components.Theme.easingExit }
+            }
         }
 
         onAboutToShow: {
             list.currentIndex = Math.max(0, sel.indexOfCurrent())
             list.positionViewAtIndex(list.currentIndex, ListView.Center)
         }
-        onOpened: {
-            if (sel.searchable)
-                search.focusField(true)
-            else
-                list.forceActiveFocus()
-        }
+        onOpened: search.focusField(true)
         onClosed: {
             sel.closed()
             sel.forceActiveFocus()
@@ -199,20 +174,17 @@ Item {
             focus: true
             Keys.onUpPressed: list.moveHighlight(-1)
             Keys.onDownPressed: list.moveHighlight(1)
-            Keys.onReturnPressed: list.chooseCurrent()
-            Keys.onEnterPressed: list.chooseCurrent()
 
             ColumnLayout {
                 anchors.fill: parent
-                spacing: 0
+                spacing: Components.Theme.spacingSmall
 
                 // Qualified: Qt Quick Controls has its own SearchField.
                 Local.SearchField {
                     id: search
                     objectName: "searchableSelectField"
-                    visible: sel.searchable
                     Layout.fillWidth: true
-                    controlHeight: 30
+                    controlHeight: 36
                     clearOnEscape: false
                     placeholderText: sel.searchPlaceholder
                     onTextEdited: value => {
@@ -224,28 +196,18 @@ Item {
                     onAccepted: list.chooseCurrent()
                 }
 
-                Rectangle {
-                    visible: sel.searchable
-                    Layout.fillWidth: true
-                    Layout.topMargin: sel.menuPadding
-                    Layout.leftMargin: -sel.menuPadding
-                    Layout.rightMargin: -sel.menuPadding
-                    Layout.preferredHeight: 1
-                    color: sel.popupBorder
-                }
-
                 ListView {
                     id: list
                     objectName: "searchableSelectList"
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    Layout.topMargin: sel.searchable ? sel.menuPadding : 0
                     clip: true
                     model: sel.options
+                    spacing: Components.Theme.spacingMicro
                     boundsBehavior: Flickable.StopAtBounds
                     highlightMoveDuration: 0
                     keyNavigationEnabled: false
-                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                    ScrollBar.vertical: ScrollBar {}
 
                     function moveHighlight(delta) {
                         if (count === 0)
@@ -268,20 +230,16 @@ Item {
                         required property int index
                         readonly property bool active: modelData.id === sel.currentId
                         readonly property bool highlighted: ListView.isCurrentItem
-                        readonly property color primaryText: highlighted ? Components.Theme.accentForeground : Components.Theme.textPrimary
-                        readonly property color secondaryText: highlighted
-                            ? Qt.rgba(Components.Theme.accentForeground.r, Components.Theme.accentForeground.g, Components.Theme.accentForeground.b, 0.8)
-                            : Components.Theme.textSecondary
                         width: ListView.view.width
 
                         Text {
                             visible: !!row.modelData.heading
                             width: parent.width
-                            leftPadding: Components.Theme.spacingSmall
+                            leftPadding: Components.Theme.spacingMedium
                             topPadding: row.index === 0 ? Components.Theme.spacingTiny : Components.Theme.spacingMedium
                             bottomPadding: Components.Theme.spacingTiny
                             text: row.modelData.heading || ""
-                            color: Components.Theme.textSecondary
+                            color: Components.Theme.textTertiary
                             font.family: sel.captionStyle.family
                             font.pixelSize: sel.captionStyle.pixelSize
                             font.weight: Components.Theme.fontWeightDemiBold
@@ -289,26 +247,17 @@ Item {
 
                         Rectangle {
                             width: parent.width
-                            height: row.modelData.subtitle ? sel.doubleRow : sel.singleRow
+                            height: row.modelData.subtitle ? 50 : 36
                             radius: Components.Theme.cornerRadiusSmall
-                            color: row.highlighted ? Components.Theme.accent : "transparent"
+                            color: rowArea.pressed
+                                ? Qt.rgba(Components.Theme.accent.r, Components.Theme.accent.g, Components.Theme.accent.b, 0.25)
+                                : (row.active ? Qt.rgba(Components.Theme.accent.r, Components.Theme.accent.g, Components.Theme.accent.b, 0.15)
+                                              : (rowArea.containsMouse || row.highlighted ? sel.popupHoverBg : "transparent"))
 
                             RowLayout {
-                                anchors { fill: parent; leftMargin: Components.Theme.spacingSmall; rightMargin: Components.Theme.spacingMedium }
-                                spacing: Components.Theme.spacingSmall
+                                anchors { fill: parent; leftMargin: Components.Theme.spacingMedium; rightMargin: Components.Theme.spacingMedium }
+                                spacing: Components.Theme.spacing
 
-                                Text {
-                                    Layout.preferredWidth: 14
-                                    text: row.active ? "✓" : ""
-                                    color: row.primaryText
-                                    font.pixelSize: sel.labelStyle.pixelSize - 1
-                                    font.weight: Components.Theme.fontWeightDemiBold
-                                }
-                                Text {
-                                    visible: !!row.modelData.flag
-                                    text: row.modelData.flag || ""
-                                    font.pixelSize: sel.labelStyle.pixelSize + 2
-                                }
                                 ColumnLayout {
                                     Layout.fillWidth: true
                                     Layout.minimumWidth: 0
@@ -316,17 +265,19 @@ Item {
                                     Text {
                                         Layout.fillWidth: true
                                         text: row.modelData.name
-                                        color: row.primaryText
+                                        color: row.active ? Components.Theme.accent : Components.Theme.textPrimary
                                         font.family: sel.labelStyle.family
                                         font.pixelSize: sel.labelStyle.pixelSize
-                                        font.letterSpacing: sel.labelStyle.letterSpacing
+                                        font.weight: row.active ? Components.Theme.fontWeightDemiBold : Components.Theme.fontWeightMedium
                                         elide: Text.ElideRight
                                     }
                                     Text {
                                         Layout.fillWidth: true
                                         visible: !!row.modelData.subtitle
                                         text: row.modelData.subtitle || ""
-                                        color: row.secondaryText
+                                        // Native names may be right-to-left; keep the column aligned.
+                                        horizontalAlignment: Text.AlignLeft
+                                        color: Components.Theme.textSecondary
                                         font.family: sel.captionStyle.family
                                         font.pixelSize: sel.captionStyle.pixelSize
                                         elide: Text.ElideRight
@@ -335,16 +286,25 @@ Item {
                                 Text {
                                     visible: !!row.modelData.trailing
                                     text: row.modelData.trailing || ""
-                                    color: row.secondaryText
+                                    color: Components.Theme.textTertiary
                                     font.family: sel.captionStyle.family
                                     font.pixelSize: sel.captionStyle.pixelSize
                                     font.features: { "tnum": 1 }
                                 }
+                                Text {
+                                    visible: row.active
+                                    text: "✓"
+                                    color: Components.Theme.accent
+                                    font.pixelSize: sel.labelStyle.pixelSize
+                                    font.weight: Components.Theme.fontWeightBold
+                                }
                             }
 
                             MouseArea {
+                                id: rowArea
                                 anchors.fill: parent
                                 hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
                                 onEntered: list.currentIndex = row.index
                                 onClicked: list.choose(row.modelData.id)
                             }

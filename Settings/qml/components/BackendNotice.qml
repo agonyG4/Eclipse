@@ -14,7 +14,10 @@ Rectangle {
     property string actionLabel: I18n.tr("settings.notice.retry", "Retry")
     property string retryObjectName: ""
     property bool showAction: !busy && error.length > 0
+    property bool actionPrimary: false
+    property string secondaryActionLabel: ""
     signal retry()
+    signal secondaryAction()
 
     readonly property bool isError: !busy && error.length > 0
     readonly property string iconGlyph: busy ? "" : (isError ? "" : "")
@@ -66,11 +69,20 @@ Rectangle {
         }
 
         Controls.ButtonCapsule {
+            objectName: root.retryObjectName.length > 0 ? root.retryObjectName + "Secondary" : ""
+            Layout.alignment: Qt.AlignVCenter
+            visible: root.secondaryActionLabel.length > 0
+            label: root.secondaryActionLabel
+            onClicked: root.secondaryAction()
+        }
+
+        Controls.ButtonCapsule {
             id: retryButton
             objectName: root.retryObjectName
             Layout.alignment: Qt.AlignVCenter
             visible: root.showAction
             label: root.actionLabel
+            primary: root.actionPrimary
             onClicked: root.retry()
         }
     }

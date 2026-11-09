@@ -25,15 +25,6 @@ QByteArray icuLocale(const QString &language)
 {
     return language.isEmpty() ? QByteArrayLiteral("en_US") : language.toLatin1();
 }
-QString flag(const QString &code)
-{
-    QString result;
-    for (const auto letter : code) {
-        const char32_t indicator = 0x1F1E6 + char32_t(letter.unicode() - u'A');
-        result += QString::fromUcs4(&indicator, 1);
-    }
-    return result;
-}
 QString displayCountry(const QByteArray &code, const QByteArray &locale)
 {
     UErrorCode status = U_ZERO_ERROR;
@@ -163,7 +154,8 @@ QVariantList countries(const QString &language)
         rows.push_back({name,
                         {{"id", code},
                          {"name", name},
-                         {"flag", flag(code)},
+                         {"subtitle", native != name ? native : QString()},
+                         {"trailing", code},
                          {"searchKey", fold(fields.join(u'\t'))}}});
     }
     std::sort(rows.begin(), rows.end(), [&](const Row &left, const Row &right) {
@@ -243,7 +235,6 @@ QVariantList timeZones(const QString &language, const QString &systemZone, const
                         {{"id", zone.id},
                          {"name", city},
                          {"subtitle", subtitle},
-                         {"flag", zone.country.isEmpty() ? QString() : flag(zone.country)},
                          {"trailing", offsetLabel(offset)},
                          {"country", zone.country},
                          {"searchKey", fold(fields.join(u'\t'))}}});

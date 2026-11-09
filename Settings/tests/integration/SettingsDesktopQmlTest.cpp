@@ -17,6 +17,8 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QTemporaryDir>
+#include <QElapsedTimer>
+#include <QThread>
 #include <QtTest>
 #include <memory>
 
@@ -169,7 +171,9 @@ class SettingsDesktopQmlTest : public QObject
             return fix;
         };
         services.currentTimeZone = [zone] { return *zone; };
-        services.setTimeZone = [zone](const QString &id) {
+        auto zoneDelayMs = std::make_shared<std::atomic_int>(0);
+        services.setTimeZone = [zone, zoneDelayMs](const QString &id) {
+            QThread::msleep(zoneDelayMs->load());
             *zone = id;
             return SettingsRegionServices::ZoneChange::Applied;
         };
@@ -200,7 +204,32 @@ class SettingsDesktopQmlTest : public QObject
         QCOMPARE(page.item->property("countryCode").toString(), QString("BR"));
         QTest::qWait(300);
         QVERIFY(page.capture("region-found"));
+        auto *detectionReveal = qobject_cast<QQuickItem *>(page.find("detectionReveal"));
+        auto *statusReveal = qobject_cast<QQuickItem *>(page.find("languageStatusReveal"));
+        QVERIFY(detectionReveal);
+        QVERIFY(statusReveal);
+        const auto openHeight = detectionReveal->height();
+        QVERIFY(openHeight > 0);
         clickItem(page.window, page.find("detectionAction"));
+        // Applying folds the answer away with its text intact, and a quick save never
+        // flashes the status strip at the top of the page.
+        QVERIFY(detectionReveal->isVisible());
+        QVERIFY(detectionReveal->height() > 0);
+        QVERIFY(notice->property("message").toString().contains("Portugal"));
+        qreal lowestSeen = openHeight;
+        bool sawPartial = false;
+        QElapsedTimer folding;
+        folding.start();
+        while (detectionReveal->isVisible() && folding.elapsed() < 3000) {
+            QCOMPARE(statusReveal->isVisible(), false);
+            const auto height = detectionReveal->height();
+            QVERIFY(height <= lowestSeen + 0.5);
+            lowestSeen = height;
+            sawPartial = sawPartial || (height > 1 && height < openHeight - 1);
+            QTest::qWait(8);
+        }
+        QVERIFY(!detectionReveal->isVisible());
+        QVERIFY2(sawPartial, "the notice must animate, not snap closed");
         QTRY_COMPARE_WITH_TIMEOUT(page.item->property("countryCode").toString(), QString("PT"), 5000);
         QTRY_COMPARE_WITH_TIMEOUT(page.item->property("zoneId").toString(), QString("Europe/Lisbon"), 5000);
         QTRY_VERIFY_WITH_TIMEOUT(!notice->property("visible").toBool(), 2000);
@@ -271,10 +300,14 @@ class SettingsDesktopQmlTest : public QObject
                 zoneSelect->property("sectionIndex").toList().isEmpty());
         QVERIFY(zoneSelect->property("sectionIndex").toList().isEmpty());
         QVERIFY(page.capture("region-zone-picker"));
+        zoneDelayMs->store(700); // A password prompt: long enough to deserve the strip.
         typeText(page.window, "auckland");
         QTRY_COMPARE_WITH_TIMEOUT(page.item->property("zoneSearch").toString(), QString("auckland"), 2000);
         QTest::keyClick(&page.window, Qt::Key_Return);
+        QVERIFY(!statusReveal->isVisible());
+        QTRY_VERIFY_WITH_TIMEOUT(statusReveal->isVisible(), 2000);
         QTRY_COMPARE_WITH_TIMEOUT(*zone, QString("Pacific/Auckland"), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(!statusReveal->isVisible(), 3000);
         QTRY_COMPARE_WITH_TIMEOUT(page.item->property("zoneId").toString(), QString("Pacific/Auckland"), 5000);
         QVERIFY2(page.warnings.isEmpty(), qPrintable(page.warnings.join(u'\n')));
     }

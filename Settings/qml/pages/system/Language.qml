@@ -48,7 +48,14 @@ Item {
         return zones
     }
 
-    readonly property var detection: controller.detection
+    // The last real answer, so a closing notice keeps its text while it folds away.
+    property var detection: ({ status: "idle" })
+    readonly property string liveDetectionStatus: controller.detection.status || "idle"
+    onLiveDetectionStatusChanged: rememberDetection()
+    function rememberDetection() {
+        if (liveDetectionStatus !== "idle")
+            detection = controller.detection
+    }
     readonly property string detectionStatus: detection.status || "idle"
     readonly property bool detecting: detectionStatus === "locating"
     readonly property bool detectionFound: detectionStatus === "found"
@@ -105,11 +112,64 @@ Item {
         onTriggered: root.now = new Date()
     }
 
-    Component.onCompleted: root.controller.refresh()
+    // Saving takes a moment: only a wait the user can notice, such as the password
+    // prompt, may announce itself or disable the page.
+    property bool slowOperation: false
+    readonly property bool controllerBusy: controller.busy
+    onControllerBusyChanged: if (!controllerBusy) slowOperation = false
+    Timer {
+        interval: 400
+        running: root.controllerBusy
+        onTriggered: root.slowOperation = true
+    }
+    readonly property string statusError: controller.lastError || zoneChangeError()
+    readonly property bool statusShown: slowOperation || statusError.length > 0
+    // As with the detection, the strip keeps its content while it folds away.
+    property bool statusNoticeBusy: false
+    property string statusNoticeError: ""
+    onStatusShownChanged: rememberStatus()
+    onStatusErrorChanged: rememberStatus()
+    function rememberStatus() {
+        if (!statusShown)
+            return
+        statusNoticeBusy = slowOperation
+        statusNoticeError = slowOperation ? "" : statusError
+    }
+
+    Component.onCompleted: {
+        rememberDetection()
+        root.controller.refresh()
+    }
+
+    // Opens and closes a notice by moving what is below it, instead of snapping.
+    component NoticeReveal: Item {
+        id: reveal
+        property bool shown: false
+        property real contentHeight: 0
+        property real gap: 0
+        default property alias content: holder.data
+        property real revealHeight: shown ? contentHeight + gap : 0
+        Behavior on revealHeight {
+            NumberAnimation { duration: Components.Theme.animationSlow; easing.type: Components.Theme.easingStandard }
+        }
+        Layout.fillWidth: true
+        Layout.preferredHeight: revealHeight
+        visible: shown || revealHeight > 0.5
+        enabled: shown
+        opacity: shown ? 1 : 0
+        clip: true
+        Behavior on opacity {
+            NumberAnimation { duration: Components.Theme.animationNormal; easing.type: Components.Theme.easingStandard }
+        }
+        Item {
+            id: holder
+            anchors { left: parent.left; right: parent.right; top: parent.top }
+        }
+    }
 
     Form.ScrollPage {
         anchors.fill: parent
-        enabled: !root.controller.busy
+        enabled: !root.slowOperation
         contentMargins: 32
         maxWidth: 900
 
@@ -118,12 +178,20 @@ Item {
             subtitle: I18n.tr("settings.pages.language.subtitle", "Language, regional formats and time.")
         }
 
-        Components.BackendNotice {
-            objectName: "languageBackendStatus"
-            busy: root.controller.busy
-            error: root.controller.lastError || root.zoneChangeError()
-            showAction: !busy && root.controller.lastError.length > 0
-            onRetry: root.controller.refresh()
+        NoticeReveal {
+            objectName: "languageStatusReveal"
+            shown: root.statusShown
+            contentHeight: statusNotice.implicitHeight
+            gap: 24
+            Components.BackendNotice {
+                id: statusNotice
+                objectName: "languageBackendStatus"
+                anchors { left: parent.left; right: parent.right }
+                busy: root.statusNoticeBusy
+                error: root.statusNoticeError
+                showAction: !busy && root.controller.lastError.length > 0
+                onRetry: root.controller.refresh()
+            }
         }
 
         Form.FormCard {
@@ -176,7 +244,7 @@ Item {
                     objectName: "detectLocationButton"
                     Layout.alignment: Qt.AlignVCenter
                     primary: true
-                    enabled: !root.detecting
+                    enabled: root.liveDetectionStatus !== "locating"
                     label: I18n.tr("settings.language.detect_location", "Detect location")
                     onClicked: root.controller.detectLocation()
                 }
@@ -195,30 +263,37 @@ Item {
             }
         }
 
-        Components.BackendNotice {
-            objectName: "detectionNotice"
-            retryObjectName: "detectionAction"
-            Layout.bottomMargin: visible ? Components.Theme.spacingMedium : 0
-            busy: root.detecting
-            busyText: root.detection.source === "ip"
-                ? I18n.tr("settings.language.detecting_ip", "Asking ipapi.co for an estimate from your IP address…")
-                : I18n.tr("settings.language.detecting_system", "Asking the system location service…")
-            message: root.detecting ? "" : root.detectionMessage()
-            showAction: root.detecting || root.detectionFound || root.ipFallbackOffered
-            actionPrimary: root.detectionFound
-            actionLabel: root.detecting ? I18n.tr("settings.language.cancel", "Cancel")
-                : root.detectionFound ? I18n.tr("settings.language.apply", "Apply")
-                : I18n.tr("settings.language.use_ip_address", "Use IP address")
-            secondaryActionLabel: !root.detecting && root.detectionStatus !== "idle" ? I18n.tr("settings.language.dismiss", "Dismiss") : ""
-            onRetry: {
-                if (root.detecting)
-                    root.controller.cancelDetection()
-                else if (root.detectionFound)
-                    root.controller.applyDetection()
-                else
-                    root.controller.detectLocationByIp()
+        NoticeReveal {
+            objectName: "detectionReveal"
+            shown: root.liveDetectionStatus !== "idle"
+            contentHeight: detectionNotice.implicitHeight
+            gap: Components.Theme.spacingMedium
+            Components.BackendNotice {
+                objectName: "detectionNotice"
+                retryObjectName: "detectionAction"
+                id: detectionNotice
+                anchors { left: parent.left; right: parent.right }
+                busy: root.detecting
+                busyText: root.detection.source === "ip"
+                    ? I18n.tr("settings.language.detecting_ip", "Asking ipapi.co for an estimate from your IP address…")
+                    : I18n.tr("settings.language.detecting_system", "Asking the system location service…")
+                message: root.detecting ? "" : root.detectionMessage()
+                showAction: root.detecting || root.detectionFound || root.ipFallbackOffered
+                actionPrimary: root.detectionFound
+                actionLabel: root.detecting ? I18n.tr("settings.language.cancel", "Cancel")
+                    : root.detectionFound ? I18n.tr("settings.language.apply", "Apply")
+                    : I18n.tr("settings.language.use_ip_address", "Use IP address")
+                secondaryActionLabel: !root.detecting && root.detectionStatus !== "idle" ? I18n.tr("settings.language.dismiss", "Dismiss") : ""
+                onRetry: {
+                    if (root.detecting)
+                        root.controller.cancelDetection()
+                    else if (root.detectionFound)
+                        root.controller.applyDetection()
+                    else
+                        root.controller.detectLocationByIp()
+                }
+                onSecondaryAction: root.controller.dismissDetection()
             }
-            onSecondaryAction: root.controller.dismissDetection()
         }
 
         Form.SectionHeader {

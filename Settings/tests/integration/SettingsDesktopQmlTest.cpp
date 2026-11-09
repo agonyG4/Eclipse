@@ -226,11 +226,30 @@ class SettingsDesktopQmlTest : public QObject
         QVERIFY(list->property("scrollGutter").toReal() > 0);
         QVERIFY(rowWidth <= scrollBar->mapToItem(list, QPointF(0, 0)).x());
         QVERIFY(page.capture("region-country-picker"));
+
+        // The A-Z index sits beside the list and jumps to the pressed letter's group.
+        auto *letters = findVisual(page.window.contentItem(), "searchableSelectIndex");
+        QVERIFY(letters);
+        QVERIFY(letters->isVisible());
+        QVERIFY(letters->mapToScene(QPointF(0, 0)).x() >=
+                scrollBar->mapToScene(QPointF(scrollBar->width(), 0)).x());
+        const auto rows = countrySelect->property("sectionIndex").toList();
+        QVERIFY(rows.size() > 20);
+        const auto height = letters->height();
+        const auto block = letters->property("blockHeight").toReal();
+        const auto jumpTarget = rows.size() / 2;
+        const auto letterY = (height - block) / 2 + block * (jumpTarget + 0.5) / rows.size();
+        QTest::mouseClick(&page.window, Qt::LeftButton, Qt::NoModifier,
+                          letters->mapToScene(QPointF(letters->width() / 2, letterY)).toPoint());
+        QTRY_COMPARE_WITH_TIMEOUT(list->property("currentIndex").toInt(),
+                                  rows[jumpTarget].toMap()["index"].toInt(), 2000);
+        QVERIFY(page.capture("region-country-index"));
         typeText(page.window, "japan");
         QTRY_COMPARE_WITH_TIMEOUT(page.item->property("countrySearch").toString(), QString("japan"), 2000);
         const auto matches = page.item->property("filteredCountries").toList();
         QVERIFY(!matches.isEmpty());
         QCOMPARE(matches.first().toMap()["id"].toString(), QString("JP"));
+        QTRY_VERIFY_WITH_TIMEOUT(!letters->isVisible(), 2000); // Ranked results have no groups.
         QVERIFY(page.capture("region-country-search"));
         QTest::keyClick(&page.window, Qt::Key_Return);
         QTRY_COMPARE_WITH_TIMEOUT(page.item->property("countryCode").toString(), QString("JP"), 5000);
@@ -248,6 +267,9 @@ class SettingsDesktopQmlTest : public QObject
         clickItem(page.window, zoneSelect);
         QTRY_VERIFY_WITH_TIMEOUT(zoneSelect->property("popupOpen").toBool(), 2000);
         QTest::qWait(300);
+        QVERIFY(!findVisual(page.window.contentItem(), "searchableSelectIndex")->isVisible() ||
+                zoneSelect->property("sectionIndex").toList().isEmpty());
+        QVERIFY(zoneSelect->property("sectionIndex").toList().isEmpty());
         QVERIFY(page.capture("region-zone-picker"));
         typeText(page.window, "auckland");
         QTRY_COMPARE_WITH_TIMEOUT(page.item->property("zoneSearch").toString(), QString("auckland"), 2000);

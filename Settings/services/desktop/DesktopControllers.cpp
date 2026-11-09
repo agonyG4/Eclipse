@@ -218,7 +218,10 @@ void SettingsRegionController::setTimeZone(const QString &id)
 }
 QVariantList SettingsRegionController::filterCountries(const QString &query) const
 {
-    return RegionCatalog::filter(state()["countries"].toList(), query);
+    const auto countries = state()["countries"].toList();
+    // Search results are ranked, so only the full list is grouped by letter.
+    return query.trimmed().isEmpty() ? RegionCatalog::withLetterHeadings(countries)
+                                     : RegionCatalog::filter(countries, query);
 }
 QVariantList SettingsRegionController::filterTimeZones(const QString &query) const
 {

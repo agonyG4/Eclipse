@@ -207,7 +207,14 @@ Item {
                     boundsBehavior: Flickable.StopAtBounds
                     highlightMoveDuration: 0
                     keyNavigationEnabled: false
-                    ScrollBar.vertical: ScrollBar {}
+                    ScrollBar.vertical: ScrollBar {
+                        id: listScrollBar
+                        objectName: "searchableSelectScrollbar"
+                        policy: ScrollBar.AsNeeded
+                    }
+                    // Rows stop short of the bar so it never sits on a highlighted row.
+                    readonly property real scrollGutter: contentHeight > height
+                        ? listScrollBar.implicitWidth + Components.Theme.spacingMicro : 0
 
                     function moveHighlight(delta) {
                         if (count === 0)
@@ -230,7 +237,7 @@ Item {
                         required property int index
                         readonly property bool active: modelData.id === sel.currentId
                         readonly property bool highlighted: ListView.isCurrentItem
-                        width: ListView.view.width
+                        width: list.width - list.scrollGutter
 
                         Text {
                             visible: !!row.modelData.heading

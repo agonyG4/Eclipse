@@ -274,6 +274,19 @@ class SettingsDesktopBackendTest : public QObject
         QVERIFY(RegionCatalog::nearestZone(99, 0, table).zone.isEmpty());
         QVERIFY(RegionCatalog::nearestZone(0, 0, dir.filePath("missing")).zone.isEmpty());
     }
+    void letterHeadingsFoldAccents()
+    {
+        const auto named = [](const QString &name) { return QVariantMap{{"name", name}}; };
+        const auto rows = RegionCatalog::withLetterHeadings(
+            {named("Afeganistão"), named(QString::fromUtf8("África do Sul")), named("Brasil"),
+             named(QString::fromUtf8("Égito")), named("Espanha")});
+        const auto heading = [&](int index) { return rows[index].toMap()["heading"].toString(); };
+        QCOMPARE(heading(0), QString("A"));
+        QCOMPARE(heading(1), QString());
+        QCOMPARE(heading(2), QString("B"));
+        QCOMPARE(heading(3), QString("E"));
+        QCOMPARE(heading(4), QString());
+    }
     void systemCatalogOffersManyTimeZones()
     {
         if (!QFile::exists(RegionCatalog::zoneTablePath()))
@@ -480,6 +493,21 @@ class SettingsDesktopBackendTest : public QObject
         QVERIFY(!controller.lastError().isEmpty());
         controller.refresh();
         QTRY_VERIFY_WITH_TIMEOUT(!controller.busy(), 5000);
+
+        // The full country list is grouped by letter; ranked results are not.
+        const auto letters = controller.filterCountries({});
+        QStringList headings;
+        for (const auto &item : letters) {
+            const auto heading = item.toMap()["heading"].toString();
+            if (!heading.isEmpty())
+                headings.append(heading);
+        }
+        QCOMPARE(headings.first(), QString("A"));
+        QCOMPARE(headings.removeDuplicates(), 0); // Each letter opens exactly one group.
+        QVERIFY(headings.size() > 20);
+        QVERIFY(!letters.first().toMap()["heading"].toString().isEmpty());
+        QVERIFY(letters.at(1).toMap()["heading"].toString().isEmpty());
+        QVERIFY(controller.filterCountries("brazil").first().toMap()["heading"].toString().isEmpty());
 
         // The selected country's zones lead an empty search, and only then.
         const auto ordered = controller.filterTimeZones({});

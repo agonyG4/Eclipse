@@ -135,6 +135,16 @@ class SettingsDesktopQmlTest : public QObject
         const auto center = item->mapToScene(QPointF(item->width() / 2, item->height() / 2)).toPoint();
         QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, center);
     }
+    // Popups live in the window's overlay, outside the page's object tree.
+    static QQuickItem *findVisual(QQuickItem *item, const QString &name)
+    {
+        if (item->objectName() == name)
+            return item;
+        for (auto *child : item->childItems())
+            if (auto *found = findVisual(child, name))
+                return found;
+        return nullptr;
+    }
     static void typeText(QQuickWindow &window, const char *text)
     {
         for (; *text; ++text)
@@ -199,10 +209,22 @@ class SettingsDesktopQmlTest : public QObject
         auto *countrySelect = page.find("countrySelect");
         QVERIFY(countrySelect);
         QTRY_VERIFY_WITH_TIMEOUT(!controller.busy(), 5000);
-        QVERIFY(page.item->property("filteredCountries").toList().size() >= 240);
+        const auto allCountries = page.item->property("filteredCountries").toList();
+        QVERIFY(allCountries.size() >= 240);
+        QCOMPARE(allCountries.first().toMap()["heading"].toString(), QString("A"));
         clickItem(page.window, countrySelect);
         QTRY_VERIFY_WITH_TIMEOUT(countrySelect->property("popupOpen").toBool(), 2000);
         QTest::qWait(300);
+        // The scrollbar of a long list keeps clear of the rows.
+        auto *scrollBar = findVisual(page.window.contentItem(), "searchableSelectScrollbar");
+        QVERIFY(scrollBar);
+        QVERIFY(scrollBar->setProperty("active", true));
+        QTest::qWait(250);
+        auto *list = findVisual(page.window.contentItem(), "searchableSelectList");
+        QVERIFY(list);
+        const auto rowWidth = list->property("width").toReal() - list->property("scrollGutter").toReal();
+        QVERIFY(list->property("scrollGutter").toReal() > 0);
+        QVERIFY(rowWidth <= scrollBar->mapToItem(list, QPointF(0, 0)).x());
         QVERIFY(page.capture("region-country-picker"));
         typeText(page.window, "japan");
         QTRY_COMPARE_WITH_TIMEOUT(page.item->property("countrySearch").toString(), QString("japan"), 2000);

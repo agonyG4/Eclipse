@@ -22,4 +22,6 @@ ZoneMatch nearestZone(double latitude, double longitude, const QString &tablePat
 QString fold(const QString &text);
 // Entries of `items` matching `query`, best first. Each item has a `searchKey`.
 QVariantList filter(const QVariantList &items, const QString &query);
+// Marks each item that starts a new initial, folded so "Á" files under "A".
+QVariantList withLetterHeadings(const QVariantList &items);
 } // namespace RegionCatalog

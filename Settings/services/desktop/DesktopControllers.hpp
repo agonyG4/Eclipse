@@ -37,6 +37,7 @@ class SettingsRegionController final : public SettingsAsyncController
     Q_INVOKABLE void cancelDetection();
     Q_INVOKABLE void applyDetection();
     Q_INVOKABLE void dismissDetection();
+    // Without a query the list is alphabetical, with a `heading` on each new letter.
     Q_INVOKABLE QVariantList filterCountries(const QString &query) const;
     // Without a query the selected country's zones come first, marked `inCountry`.
     Q_INVOKABLE QVariantList filterTimeZones(const QString &query) const;

@@ -265,6 +265,22 @@ ZoneMatch nearestZone(double latitude, double longitude, const QString &tablePat
         &match);
     return match;
 }
+QVariantList withLetterHeadings(const QVariantList &items)
+{
+    QVariantList result;
+    result.reserve(items.size());
+    QString previous;
+    for (const auto &item : items) {
+        auto entry = item.toMap();
+        const auto letter = fold(entry.value(QStringLiteral("name")).toString()).left(1).toUpper();
+        if (letter != previous) {
+            entry[QStringLiteral("heading")] = letter;
+            previous = letter;
+        }
+        result.append(entry);
+    }
+    return result;
+}
 QVariantList filter(const QVariantList &items, const QString &query)
 {
     if (query.trimmed().isEmpty())

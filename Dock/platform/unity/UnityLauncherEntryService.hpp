@@ -23,6 +23,11 @@ public:
     void stop();
     bool isStarted() const { return m_started; }
 
+signals:
+    // One sender's own entry, for consumers that tie a counter to its process.
+    void senderUnreadChanged(const QString &sender, const QString &desktopFileName, int count,
+                             bool visible);
+
 private slots:
     void onUpdate(const QString &applicationUri, const QVariantMap &properties,
                   const QDBusMessage &message);

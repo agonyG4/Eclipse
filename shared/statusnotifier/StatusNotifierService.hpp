@@ -6,6 +6,7 @@
 #include <QJsonObject>
 #include <QObject>
 #include <QHash>
+#include <QSet>
 #include <memory>
 
 namespace Astrea::StatusNotifier {
@@ -68,6 +69,12 @@ public:
     Q_INVOKABLE void prepareMenuForPresentation(const QString &itemKey, int nodeId = 0);
     Q_INVOKABLE void aboutToShowMenu(const QString &itemKey, int nodeId);
 
+    // The protocol has no counter, so apps publish theirs elsewhere (the Unity
+    // launcher entry). `sender` is that publisher's unique bus name; an item
+    // shows the count of any sender running in its process.
+    void applyUnreadCount(const QString &sender, const QString &entry, int count, bool visible);
+
+    void setBusProcessForTest(const QString &uniqueName, uint processId);
     void upsertTestItem(const ItemSnapshot &snapshot);
     void removeTestItem(const QString &key);
 
@@ -107,12 +114,19 @@ private:
     void applySnapshotProjection(const ItemSnapshot &snapshot);
     MenuIdentityChange reconcileMenu(const ItemSnapshot &snapshot);
     void bumpPresentationRevision();
+    void resolveBusProcess(const QString &uniqueName);
+    void releaseBusProcess(const QString &uniqueName);
+    bool busNameInUse(const QString &uniqueName) const;
+    void refreshUnreadCounts();
 
     std::unique_ptr<StatusNotifierWatcherBridge> m_watcher;
     std::unique_ptr<StatusNotifierIconStore> m_iconStore;
     std::unique_ptr<StatusNotifierItemModel> m_model;
     QHash<QString, StatusNotifierItemProxy *> m_proxies;
     QHash<QString, DBusMenuClient *> m_menus;
+    QHash<QString, QHash<QString, int>> m_unreadBySender;
+    QHash<QString, uint> m_busProcesses;
+    QSet<QString> m_pendingBusProcesses;
     QString m_lastHealthWarning;
     quint64 m_nextGeneration = 1;
     quint64 m_presentationRevision = 0;

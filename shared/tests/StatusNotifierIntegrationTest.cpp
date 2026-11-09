@@ -24,6 +24,7 @@ class StatusNotifierIntegrationTest final : public QObject {
 private slots:
     void realSessionBusRegistrationActionsAndMenuLifecycle();
     void watcherAliasesRemainObservedAcrossAuthoritySwitches();
+    void unreadCountCrossesConnectionsOfOneProcess();
 
 private:
     static bool waitForItemCount(StatusNotifierService &service, int expected, int timeoutMs);
@@ -485,6 +486,39 @@ void StatusNotifierIntegrationTest::watcherAliasesRemainObservedAcrossAuthorityS
     QVERIFY(control.call(QStringLiteral("Exit")).type() != QDBusMessage::ErrorMessage);
     QVERIFY2(fixture.waitForFinished(3000), qPrintable(diagnostics(fixture)));
     service.stop();
+}
+
+// Electron publishes its counter and its tray item on different connections.
+void StatusNotifierIntegrationTest::unreadCountCrossesConnectionsOfOneProcess()
+{
+    const QString address = qEnvironmentVariable("DBUS_SESSION_BUS_ADDRESS");
+    QDBusConnection itemConnection = QDBusConnection::connectToBus(
+        address, QStringLiteral("unread-test-item"));
+    QDBusConnection counterConnection = QDBusConnection::connectToBus(
+        address, QStringLiteral("unread-test-counter"));
+    QVERIFY(itemConnection.isConnected() && counterConnection.isConnected());
+    QVERIFY(itemConnection.baseService() != counterConnection.baseService());
+
+    StatusNotifierService service;
+    ItemSnapshot snapshot;
+    snapshot.address = {QStringLiteral("org.example.UnreadItem"),
+                        QStringLiteral("/StatusNotifierItem"), itemConnection.baseService()};
+    snapshot.id = QStringLiteral("electron_status_icon_1");
+    service.upsertTestItem(snapshot);
+
+    auto *model = service.typedItemModel();
+    const auto shown = [model] {
+        return model->data(model->index(0), StatusNotifierItemModel::UnreadCountRole).toInt();
+    };
+    service.applyUnreadCount(counterConnection.baseService(), QStringLiteral("app.desktop"), 82,
+                             true);
+    QTRY_COMPARE(shown(), 82);
+    service.applyUnreadCount(counterConnection.baseService(), QStringLiteral("app.desktop"), 0,
+                             false);
+    QTRY_COMPARE(shown(), 0);
+
+    QDBusConnection::disconnectFromBus(QStringLiteral("unread-test-item"));
+    QDBusConnection::disconnectFromBus(QStringLiteral("unread-test-counter"));
 }
 
 QTEST_GUILESS_MAIN(StatusNotifierIntegrationTest)

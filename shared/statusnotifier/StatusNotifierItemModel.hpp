@@ -23,6 +23,7 @@ public:
         HasMenuRole,
         OnlyMenuRole,
         ReadyRole,
+        UnreadCountRole,
     };
     Q_ENUM(Role)
 
@@ -33,6 +34,7 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     void upsert(const ItemSnapshot &snapshot, const QString &iconSource);
+    void setUnreadCount(const QString &key, int count);
     bool removeKey(const QString &key);
     void clear();
     ItemSnapshot item(const QString &key) const;
@@ -46,6 +48,7 @@ private:
     struct Row {
         ItemSnapshot snapshot;
         QString iconSource;
+        int unreadCount = 0;
     };
 
     QVector<Row> m_rows;

@@ -81,9 +81,12 @@ void UnityLauncherEntryService::stop()
     m_ownsService = false;
     m_started = false;
     QSet<QString> desktopSet;
-    for (auto sender = m_senderStates.cbegin(); sender != m_senderStates.cend(); ++sender)
-        for (auto app = sender->cbegin(); app != sender->cend(); ++app)
+    for (auto sender = m_senderStates.cbegin(); sender != m_senderStates.cend(); ++sender) {
+        for (auto app = sender->cbegin(); app != sender->cend(); ++app) {
             desktopSet.insert(app.key());
+            emit senderUnreadChanged(sender.key(), app.key(), 0, false);
+        }
+    }
     m_senderStates.clear();
     for (const QString &desktopFileName : std::as_const(desktopSet))
         m_model->applyUnreadCount(desktopFileName, 0, false);
@@ -124,6 +127,8 @@ void UnityLauncherEntryService::onUpdate(const QString &applicationUri,
         state.visibilityOrder = ++m_updateOrder;
     }
     refreshDesktop(desktopFileName);
+    emit senderUnreadChanged(sender, desktopFileName, state.hasCount ? state.count : 0,
+                             state.hasVisibility && state.visible);
 }
 
 void UnityLauncherEntryService::onNameOwnerChanged(const QString &name,
@@ -196,8 +201,10 @@ void UnityLauncherEntryService::clearSender(const QString &sender)
         return;
     const QStringList desktops = found->keys();
     m_senderStates.erase(found);
-    for (const QString &desktopFileName : desktops)
+    for (const QString &desktopFileName : desktops) {
         refreshDesktop(desktopFileName);
+        emit senderUnreadChanged(sender, desktopFileName, 0, false);
+    }
 }
 
 void UnityLauncherEntryService::refreshDesktop(const QString &desktopFileName)

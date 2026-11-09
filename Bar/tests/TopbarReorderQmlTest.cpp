@@ -15,7 +15,9 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QTemporaryDir>
+#include <QImage>
 #include <QTest>
+#include <QUrl>
 
 #include <memory>
 
@@ -190,6 +192,7 @@ private slots:
     void superDragStartsWithoutHolding();
     void productionControllerExposesTheSharedStoreToQml();
     void trayWithoutIdentifierRoleStillInstantiatesAndActivates();
+    void trayItemShowsItsUnreadCount();
 };
 
 void TopbarReorderQmlTest::trayAndThemedIndicatorsUseOneImageComponent()
@@ -489,6 +492,46 @@ void TopbarReorderQmlTest::trayWithoutIdentifierRoleStillInstantiatesAndActivate
     QVERIFY(tray->property("orderKey").toString().startsWith(QStringLiteral("tray-fallback:")));
     QTest::mouseClick(fixture.window.get(), Qt::LeftButton, Qt::NoModifier, fixture.center(tray));
     QCOMPARE(fixture.tray.activations, 1);
+}
+
+void TopbarReorderQmlTest::trayItemShowsItsUnreadCount()
+{
+    ReorderFixture fixture;
+    QVERIFY2(fixture.window, qPrintable(fixture.error));
+    auto *item = fixture.item(QStringLiteral("trayItem"));
+    auto *badge = fixture.item(QStringLiteral("trayUnreadBadge"));
+    auto *label = fixture.item(QStringLiteral("trayUnreadLabel"));
+    QVERIFY(item && badge && label);
+    const int cellWidth = item->width();
+    // The badge hangs off the icon, so the item needs artwork.
+    QImage artwork(16, 16, QImage::Format_ARGB32);
+    artwork.fill(Qt::white);
+    const QString artworkPath = fixture.directory.filePath(QStringLiteral("tray.png"));
+    QVERIFY(artwork.save(artworkPath));
+    fixture.tray.model.upsert(fixture.tray.snapshot, QUrl::fromLocalFile(artworkPath).toString());
+    QTRY_VERIFY(badge->parentItem()->isVisible());
+    QVERIFY(!badge->isVisible());
+
+    const QString key = fixture.tray.model.keys().constFirst();
+    fixture.tray.model.setUnreadCount(key, 82);
+    QTRY_VERIFY(badge->isVisible());
+    QCOMPARE(label->property("text").toString(), QStringLiteral("82"));
+
+    fixture.tray.model.setUnreadCount(key, 500);
+    QTRY_COMPARE(label->property("text").toString(), QStringLiteral("99+"));
+    // The widest label stays inside its cell and does not resize it.
+    const auto badgeBounds = [&] {
+        return badge->mapRectToItem(item, QRectF(0, 0, badge->width(), badge->height()));
+    };
+    QVERIFY(QTest::qWaitForWindowExposed(fixture.window.get()));
+    QTRY_VERIFY2(badgeBounds().left() >= 0 && badgeBounds().right() <= cellWidth,
+                 qPrintable(QStringLiteral("badge %1..%2 in a %3 px cell")
+                                .arg(badgeBounds().left()).arg(badgeBounds().right())
+                                .arg(cellWidth)));
+    QCOMPARE(int(item->width()), cellWidth);
+
+    fixture.tray.model.setUnreadCount(key, 0);
+    QTRY_VERIFY(!badge->isVisible());
 }
 
 int main(int argc, char **argv)

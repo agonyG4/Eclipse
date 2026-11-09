@@ -4,6 +4,7 @@
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 #include <QDBusMessage>
+#include <QSignalSpy>
 #include <QTest>
 
 class UnityLauncherEntryTest final : public QObject {
@@ -55,6 +56,7 @@ void UnityLauncherEntryTest::updateSignalProjectsPartialStateAndSenderCleanup()
     QVERIFY(competingOwner.registerService(QStringLiteral("com.canonical.Unity")));
 
     UnityLauncherEntryService service(&model, session);
+    QSignalSpy senderUpdates(&service, &UnityLauncherEntryService::senderUnreadChanged);
     QVERIFY(service.start());
 
     QDBusConnection firstSender = QDBusConnection::connectToBus(
@@ -69,6 +71,10 @@ void UnityLauncherEntryTest::updateSignalProjectsPartialStateAndSenderCleanup()
                 {QStringLiteral("count-visible"), true}});
     QTRY_COMPARE(countFor(model, QStringLiteral("org.example.Mail.desktop")), 5);
     QVERIFY(visibleFor(model, QStringLiteral("org.example.Mail.desktop")));
+    QCOMPARE(senderUpdates.size(), 1);
+    QCOMPARE(senderUpdates.at(0),
+             (QVariantList{firstSender.baseService(), QStringLiteral("org.example.Mail.desktop"),
+                           5, true}));
 
     sendUpdate(firstSender, QStringLiteral("org.example.Mail.desktop"),
                {{QStringLiteral("count"), 8}});

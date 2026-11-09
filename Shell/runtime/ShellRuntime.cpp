@@ -251,6 +251,8 @@ bool ShellRuntime::initialize(const QString &backendName, QString *errorOut)
     m_bluetoothService = std::make_unique<Astrea::System::BluetoothService>();
     m_statusNotifier = std::make_unique<Astrea::StatusNotifier::StatusNotifierService>();
     m_statusNotifier->initialize();
+    connect(m_unityLauncherEntry.get(), &UnityLauncherEntryService::senderUnreadChanged,
+            m_statusNotifier.get(), &Astrea::StatusNotifier::StatusNotifierService::applyUnreadCount);
     m_contextMenuController = std::make_unique<Astrea::Shell::ContextMenuController>();
     m_desktopContextMenuProvider = std::make_unique<Astrea::Shell::DesktopContextMenuProvider>(
         m_launcher.get(), m_catalog.get());

@@ -46,6 +46,7 @@ private slots:
     void cumulativeDepthLimitRejectsSubtree();
     void acceptedSubtreeReplacementUpdatesLiveTree();
     void displayTitleUsesProductionFallbackOrder();
+    void unreadCountFollowsTheItemProcess();
     void presentationRevisionTracksVisibleStateChanges();
     void serviceProjectsSnapshotsAtomically();
     void metadataSnapshotsDoNotChurnIconProjection();
@@ -627,6 +628,49 @@ void StatusNotifierTest::acceptedSubtreeReplacementUpdatesLiveTree()
     QCOMPARE(model.replaceSubtreeResult(1, candidate), DBusMenuMutationResult::Applied);
     QCOMPARE(model.nodeById(1).children.constFirst().id, 10);
     QVERIFY(model.childModel(1) != nullptr);
+}
+
+void StatusNotifierTest::unreadCountFollowsTheItemProcess()
+{
+    StatusNotifierService service;
+    const QString owner = QStringLiteral(":1.310");
+    const QString sibling = QStringLiteral(":1.311");
+    const QString stranger = QStringLiteral(":1.312");
+    service.setBusProcessForTest(owner, 4000);
+    service.setBusProcessForTest(sibling, 4000);
+    service.setBusProcessForTest(stranger, 4001);
+
+    ItemSnapshot snapshot;
+    snapshot.address = {QStringLiteral("org.example.Unread"),
+                        QStringLiteral("/StatusNotifierItem"), owner};
+    snapshot.id = QStringLiteral("unread");
+    const QString key = snapshot.address.key();
+    const auto shown = [&] {
+        auto *model = service.typedItemModel();
+        const QModelIndex row = model->index(model->keys().indexOf(key));
+        return model->data(row, StatusNotifierItemModel::UnreadCountRole).toInt();
+    };
+
+    // A count published before the item registers still reaches it.
+    service.applyUnreadCount(owner, QStringLiteral("app.desktop"), 3, true);
+    service.upsertTestItem(snapshot);
+    QCOMPARE(shown(), 3);
+
+    service.applyUnreadCount(owner, QStringLiteral("app.desktop"), 0, false);
+    QCOMPARE(shown(), 0);
+
+    // Another connection of the same process counts; another process does not.
+    service.applyUnreadCount(stranger, QStringLiteral("other.desktop"), 9, true);
+    QCOMPARE(shown(), 0);
+    service.applyUnreadCount(sibling, QStringLiteral("app.desktop"), 7, true);
+    QCOMPARE(shown(), 7);
+
+    // A snapshot refresh keeps the count; a hidden counter clears it.
+    snapshot.title = QStringLiteral("Refreshed");
+    service.upsertTestItem(snapshot);
+    QCOMPARE(shown(), 7);
+    service.applyUnreadCount(sibling, QStringLiteral("app.desktop"), 7, false);
+    QCOMPARE(shown(), 0);
 }
 
 void StatusNotifierTest::displayTitleUsesProductionFallbackOrder()

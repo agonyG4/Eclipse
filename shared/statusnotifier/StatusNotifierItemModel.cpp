@@ -31,6 +31,7 @@ QVariant StatusNotifierItemModel::data(const QModelIndex &index, int role) const
     case HasMenuRole: return !row.snapshot.menuPath.isEmpty();
     case OnlyMenuRole: return row.snapshot.itemIsMenu;
     case ReadyRole: return row.snapshot.ready;
+    case UnreadCountRole: return row.unreadCount;
     default: return {};
     }
 }
@@ -41,7 +42,8 @@ QHash<int, QByteArray> StatusNotifierItemModel::roleNames() const
         {KeyRole, "key"}, {IdRole, "id"}, {TitleRole, "title"}, {CategoryRole, "category"},
         {StatusRole, "status"}, {IconSourceRole, "iconSource"},
         {TooltipTitleRole, "tooltipTitle"}, {TooltipDescriptionRole, "tooltipDescription"},
-        {HasMenuRole, "hasMenu"}, {OnlyMenuRole, "onlyMenu"}, {ReadyRole, "ready"}
+        {HasMenuRole, "hasMenu"}, {OnlyMenuRole, "onlyMenu"}, {ReadyRole, "ready"},
+        {UnreadCountRole, "unreadCount"}
     };
 }
 
@@ -60,8 +62,21 @@ void StatusNotifierItemModel::upsert(const ItemSnapshot &snapshot, const QString
     }
     const int insertion = m_rows.size();
     beginInsertRows({}, insertion, insertion);
-    m_rows.append({snapshot, iconSource});
+    m_rows.append(Row{snapshot, iconSource});
     endInsertRows();
+}
+
+void StatusNotifierItemModel::setUnreadCount(const QString &key, int count)
+{
+    for (int row = 0; row < m_rows.size(); ++row) {
+        if (m_rows.at(row).snapshot.address.key() != key)
+            continue;
+        if (m_rows.at(row).unreadCount != count) {
+            m_rows[row].unreadCount = count;
+            emit dataChanged(index(row), index(row), {UnreadCountRole});
+        }
+        return;
+    }
 }
 
 bool StatusNotifierItemModel::removeKey(const QString &key)

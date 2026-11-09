@@ -795,6 +795,8 @@ void DockHoverQmlTest::unreadBadgeFollowsIconWithoutChangingInteractionGeometry(
     QVERIFY(item && icon && badge && label);
     QVERIFY(badge->isVisible());
     QCOMPARE(label->property("text").toString(), QStringLiteral("99+"));
+    // It scales with the icon: native glyphs would be a stretched bitmap.
+    QCOMPARE(label->property("renderType").toInt(), 0); // Text.QtRendering
 
     const QPointF badgeBefore = badge->mapToItem(panel, QPointF(0, 0));
     QVERIFY(QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
@@ -2292,6 +2294,14 @@ void DockHoverQmlTest::frostedPressUsesItsOwnGlassSurface()
     QCOMPARE(panel->property("frostedPressDelegate").value<QQuickItem *>(), target);
     // The icon is drawn only above the glass, or the blur would smear it.
     QTRY_COMPARE_WITH_TIMEOUT(icon->opacity(), 0.0, 1000);
+    // Its unread badge fades with it, so the copy has to carry one.
+    auto *badgeCopy = childWithObjectName(surface->contentItem(),
+                                          QStringLiteral("dockFrostedUnreadBadge"));
+    QVERIFY(badgeCopy);
+    QVERIFY(!badgeCopy->isVisible());
+    controller.appModel()->applyUnreadCount(QStringLiteral("two.desktop"), 7, true);
+    QTRY_VERIFY_WITH_TIMEOUT(badgeCopy->isVisible(), 1000);
+    controller.appModel()->applyUnreadCount(QStringLiteral("two.desktop"), 0, false);
 
     // The plate and the icon copy track the magnified icon in panel coordinates.
     const QRectF iconRect = icon->mapRectToItem(panel, QRectF(0, 0, icon->width(), icon->height()));

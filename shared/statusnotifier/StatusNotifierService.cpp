@@ -6,7 +6,13 @@
 #include "statusnotifier/StatusNotifierItemProxy.hpp"
 #include "statusnotifier/StatusNotifierWatcherBridge.hpp"
 
+#include <QDBusConnection>
+#include <QDBusMessage>
+#include <QDBusPendingCallWatcher>
+#include <QDBusPendingReply>
 #include <QJsonValue>
+
+#include <algorithm>
 
 namespace Astrea::StatusNotifier {
 namespace {
@@ -304,6 +310,89 @@ void StatusNotifierService::aboutToShowMenu(const QString &itemKey, int nodeId)
     prepareMenuForPresentation(itemKey, nodeId);
 }
 
+void StatusNotifierService::applyUnreadCount(const QString &sender, const QString &entry,
+                                             int count, bool visible)
+{
+    if (visible && count > 0) {
+        m_unreadBySender[sender].insert(entry, count);
+        resolveBusProcess(sender);
+    } else if (const auto found = m_unreadBySender.find(sender); found != m_unreadBySender.end()) {
+        found->remove(entry);
+        if (found->isEmpty()) {
+            m_unreadBySender.erase(found);
+            releaseBusProcess(sender);
+        }
+    }
+    refreshUnreadCounts();
+}
+
+void StatusNotifierService::resolveBusProcess(const QString &uniqueName)
+{
+    if (!uniqueName.startsWith(QLatin1Char(':')) || m_busProcesses.contains(uniqueName)
+        || m_pendingBusProcesses.contains(uniqueName))
+        return;
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected())
+        return;
+    QDBusMessage request = QDBusMessage::createMethodCall(
+        QStringLiteral("org.freedesktop.DBus"), QStringLiteral("/org/freedesktop/DBus"),
+        QStringLiteral("org.freedesktop.DBus"), QStringLiteral("GetConnectionUnixProcessID"));
+    request << uniqueName;
+    m_pendingBusProcesses.insert(uniqueName);
+    auto *watcher = new QDBusPendingCallWatcher(bus.asyncCall(request), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, uniqueName](QDBusPendingCallWatcher *finished) {
+        const QDBusPendingReply<uint> reply = *finished;
+        finished->deleteLater();
+        m_pendingBusProcesses.remove(uniqueName);
+        if (reply.isValid() && busNameInUse(uniqueName)) {
+            m_busProcesses.insert(uniqueName, reply.value());
+            refreshUnreadCounts();
+        }
+    });
+}
+
+void StatusNotifierService::releaseBusProcess(const QString &uniqueName)
+{
+    if (!busNameInUse(uniqueName))
+        m_busProcesses.remove(uniqueName);
+}
+
+bool StatusNotifierService::busNameInUse(const QString &uniqueName) const
+{
+    if (m_unreadBySender.contains(uniqueName))
+        return true;
+    const QStringList keys = m_model->keys();
+    return std::any_of(keys.cbegin(), keys.cend(), [&](const QString &key) {
+        return m_model->item(key).address.uniqueOwner == uniqueName;
+    });
+}
+
+void StatusNotifierService::refreshUnreadCounts()
+{
+    const QStringList keys = m_model->keys();
+    for (const QString &key : keys) {
+        const QString owner = m_model->item(key).address.uniqueOwner;
+        const uint ownerProcess = m_busProcesses.value(owner);
+        int count = 0;
+        for (auto sender = m_unreadBySender.cbegin(); sender != m_unreadBySender.cend(); ++sender) {
+            if (sender.key() != owner
+                && (ownerProcess == 0 || m_busProcesses.value(sender.key()) != ownerProcess))
+                continue;
+            int senderCount = 0;
+            for (const int entryCount : *sender)
+                senderCount += entryCount;
+            count = std::max(count, senderCount);
+        }
+        m_model->setUnreadCount(key, count);
+    }
+}
+
+void StatusNotifierService::setBusProcessForTest(const QString &uniqueName, uint processId)
+{
+    m_busProcesses.insert(uniqueName, processId);
+}
+
 void StatusNotifierService::upsertTestItem(const ItemSnapshot &snapshot)
 {
     if (!snapshot.address.isValid())
@@ -368,6 +457,7 @@ void StatusNotifierService::removeItem(const QString &key)
     if (!hadState)
         return;
     bool modelRemoved = false;
+    const QString owner = m_model->item(key).address.uniqueOwner;
     {
         const ProjectionMutationGuard guard(this);
         if (auto *proxy = m_proxies.take(key)) {
@@ -381,6 +471,7 @@ void StatusNotifierService::removeItem(const QString &key)
         m_iconStore->clearItem(key);
         modelRemoved = m_model->removeKey(key);
     }
+    releaseBusProcess(owner);
     bumpPresentationRevision();
     if (modelRemoved)
         emit stateChanged();
@@ -405,6 +496,8 @@ void StatusNotifierService::applySnapshotProjection(const ItemSnapshot &snapshot
         menuChange = reconcileMenu(snapshot);
         m_model->upsert(snapshot, source);
     }
+    resolveBusProcess(snapshot.address.uniqueOwner);
+    refreshUnreadCounts();
 
     // A presentation revision is the commit marker for a coherent StatusNotifier projection.
     bumpPresentationRevision();

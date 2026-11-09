@@ -129,5 +129,12 @@ GlassLayer {
         maximumPresentationScale: Math.max(1, DockController.magnificationScale)
         iconRadius: 10
         fallbackRadius: 10
+
+        // The delegate's badge hides with its icon, so the copy carries one too.
+        DockUnreadBadge {
+            objectName: "dockFrostedUnreadBadge"
+            count: root.source ? root.source.unreadCount : 0
+            visible: !!root.source && root.source.unreadCountVisible
+        }
     }
 }

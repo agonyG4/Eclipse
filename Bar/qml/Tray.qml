@@ -93,6 +93,9 @@ Item {
                 required property bool hasMenu
                 required property bool onlyMenu
                 required property bool ready
+                // Optional: only the real model carries this role.
+                readonly property int unreadCount: model.unreadCount !== undefined
+                    ? model.unreadCount : 0
                 readonly property bool hasUsableMenu: {
                     if (!root.trayService)
                         return false
@@ -106,6 +109,30 @@ Item {
                     objectName: "trayItemIcon"
                     source: itemDelegate.iconSource
                     visible: status !== Image.Error && status !== Image.Null
+
+                    Rectangle {
+                        objectName: "trayUnreadBadge"
+                        visible: itemDelegate.unreadCount > 0
+                        // Hangs off the icon's corner, inside the 28 px cell.
+                        x: parent.width + 5 - width
+                        y: -4
+                        width: Math.max(height, trayUnreadLabel.implicitWidth + 6)
+                        height: 12
+                        radius: height / 2
+                        color: "#d83b48"
+
+                        Text {
+                            id: trayUnreadLabel
+                            objectName: "trayUnreadLabel"
+                            anchors.centerIn: parent
+                            text: itemDelegate.unreadCount > 99 ? "99+"
+                                                                : String(itemDelegate.unreadCount)
+                            color: "white"
+                            font.family: theme.typography.role("caption").family
+                            font.pixelSize: 9
+                            font.weight: Font.DemiBold
+                        }
+                    }
                 }
 
                 function updateTooltip() {

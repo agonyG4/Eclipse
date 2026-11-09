@@ -13,6 +13,8 @@ class RegionalPreferences final : public QObject
     QLocale locale() const;
     QString timeFormat() const { return m_timeFormat; }
     QString path() const { return m_path; }
+    // The country's customary clock, from CLDR: "12h" or "24h".
+    static QString defaultTimeFormat(const QString &country);
     void reload();
   signals:
     void changed();

@@ -29,7 +29,7 @@ set_tests_properties(settings-font-policy-test PROPERTIES
 add_settings_unit_test(settings-firewall-status-test unit/SettingsFirewallStatusTest.cpp)
 add_settings_unit_test(settings-firewall-manager-test unit/SettingsFirewallManagerTest.cpp)
 add_settings_unit_test(settings-desktop-backend-test unit/SettingsDesktopBackendTest.cpp)
-target_link_libraries(settings-desktop-backend-test PRIVATE astrea-bar-core)
+target_link_libraries(settings-desktop-backend-test PRIVATE astrea-bar-core Qt6::Concurrent Qt6::DBus)
 add_settings_unit_test(settings-controller-test unit/SettingsControllerTest.cpp)
 add_settings_unit_test(settings-spatial-audio-controller-test unit/SettingsSpatialAudioControllerTest.cpp)
 add_settings_unit_test(settings-animation-controller-test unit/SettingsAnimationControllerTest.cpp)

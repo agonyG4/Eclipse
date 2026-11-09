@@ -10,11 +10,18 @@ set_source_files_properties(${ASTREA_SETTINGS_BACKEND_CXXQT_HEADERS}
     PROPERTIES GENERATED TRUE
 )
 
+find_package(ICU REQUIRED COMPONENTS uc i18n)
+
 add_library(astrea-settings-core STATIC
     ../services/desktop/NativeSettingsSupport.cpp
     ../services/desktop/NativeSettingsSupport.hpp
     ../services/desktop/RegionSettings.cpp
     ../services/desktop/RegionSettings.hpp
+    ../services/desktop/RegionCatalog.cpp
+    ../services/desktop/RegionCatalog.hpp
+    ../services/desktop/RegionCatalogFfi.h
+    ../services/desktop/RegionLocation.cpp
+    ../services/desktop/RegionLocation.hpp
     ../services/desktop/ApplicationsBackend.cpp
     ../services/desktop/ApplicationsBackend.hpp
     ../services/desktop/ProfileBackend.cpp
@@ -71,6 +78,8 @@ target_link_libraries(astrea-settings-core PRIVATE
     Qt6::Network
     Qt6::Concurrent
     Qt6::DBus
+    ICU::uc
+    ICU::i18n
 )
 
 settings_enable_warnings(astrea-settings-core)

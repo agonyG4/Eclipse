@@ -20,6 +20,7 @@ set(ASTREA_SETTINGS_QML_RELATIVE_FILES
     components/controls/ToggleSwitch.qml
     components/controls/SelectButton.qml
     components/controls/SearchField.qml
+    components/controls/SearchableSelect.qml
     components/controls/FormTextField.qml
     components/controls/Slider.qml
     components/feedback/DnsPresetChip.qml

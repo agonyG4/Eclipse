@@ -1,14 +1,13 @@
 #include "RegionSettings.hpp"
 #include "NativeSettingsSupport.hpp"
+#include "RegionCatalog.hpp"
+#include "settings/RegionalPreferences.hpp"
+#include <QDate>
+#include <QLocale>
 #include <QMetaType>
 #include <QSet>
 namespace
 {
-const QStringList codes = {"US", "GB", "BR", "CA", "FR", "DE", "JP",
-                           "PT", "ES", "IT", "AR", "CL", "UY"};
-const QStringList names = {"United States", "United Kingdom", "Brazil",   "Canada", "France",
-                           "Germany",       "Japan",          "Portugal", "Spain",  "Italy",
-                           "Argentina",     "Chile",          "Uruguay"};
 const QStringList locales = {"en_US", "en_GB", "pt_BR", "es_ES", "fr_FR"};
 void validate(const QString &key, const QVariant &value)
 {
@@ -21,7 +20,7 @@ void validate(const QString &key, const QVariant &value)
         const auto text = value.toString();
         if (key == "language" && locales.contains(text))
             return;
-        if (key == "country_code" && codes.contains(text))
+        if (key == "country_code" && RegionCatalog::isCountryCode(text))
             return;
         if (key == "time_format" && QStringList{"system", "24h", "12h"}.contains(text))
             return;
@@ -72,22 +71,24 @@ QString effectiveTimeFormat(const QVariantMap &region)
     const auto format = region.value("time_format", "system").toString();
     if (format != "system")
         return format;
-    return QStringList{"US", "CA"}.contains(region.value("country_code").toString()) ? "12h"
-                                                                                     : "24h";
+    return RegionalPreferences::defaultTimeFormat(region.value("country_code").toString());
 }
 QVariantMap snapshot(const QString &path)
 {
     auto config = read(path);
-    QVariantList countries, languages;
-    for (qsizetype i = 0; i < codes.size(); ++i)
-        countries.append(QVariantMap{{"id", codes[i]}, {"name", names[i]}});
+    QVariantList languages;
     const QStringList labels = {"English (United States)", "English (United Kingdom)",
                                 "Português (Brasil)", "Español", "Français"};
     for (qsizetype i = 0; i < locales.size(); ++i)
         languages.append(QVariantMap{{"id", locales[i]}, {"name", labels[i]}});
+    const auto language = config["language"].toString();
+    const auto country = config["region"].toMap()["country_code"].toString();
+    const QLocale locale(QLocale(language).language(), QLocale::codeToTerritory(country));
     return {{"config", config},
-            {"countries", countries},
+            {"countries", RegionCatalog::countries(language)},
             {"languages", languages},
-            {"effectiveTimeFormat", effectiveTimeFormat(config["region"].toMap())}};
+            {"effectiveTimeFormat", effectiveTimeFormat(config["region"].toMap())},
+            {"formatPreview", QVariantMap{{"date", locale.toString(QDate::currentDate(), QLocale::LongFormat)},
+                                          {"number", locale.toString(1234567.89, 'f', 2)}}}};
 }
 } // namespace RegionSettings

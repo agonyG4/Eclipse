@@ -12,7 +12,20 @@ XDG config directory. Patches use a file lock and atomic replacement, preserve
 unknown fields and reject invalid documents without rewriting them. Refresh is
 read-only. GeoClue changes use system authentication through `pkexec systemctl`;
 unavailable controls are disabled. This preference controls permission to use
-system geolocation, rather than guessing a country from the network.
+system geolocation.
+
+`RegionCatalog` lists every ISO country through ICU and every time zone through
+tzdata's `zone.tab`; the parsing, nearest-zone and search-ranking logic lives in
+`backend/src/region`. The time zone is system state, read from Qt and written
+through `org.freedesktop.timedate1`, not stored in the settings document.
+
+`RegionLocation` only runs when the user asks. "Detect" requests one city-accuracy
+fix through the location portal, which fronts GeoClue; GeoClue itself may consult a
+network location service. The coordinates are reduced on the worker to the nearest
+`zone.tab` entry, never saved, and the result changes nothing until the user applies
+it. When the service is missing or fails the page offers a separate lookup, sending
+one request to ipapi.co, which reveals the public IP. It is labelled as such, is
+never automatic, and keeps only the country and the zone from the reply.
 
 `RegionalPreferences` watches the document and supplies regional formatting to
 the Bar clock. Settings loads the selected translation catalogue at startup,

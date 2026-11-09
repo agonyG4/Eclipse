@@ -21,6 +21,14 @@ RegionalPreferences::RegionalPreferences(QString path, QObject *parent)
     m_fallback.start();
     reload();
 }
+QString RegionalPreferences::defaultTimeFormat(const QString &country)
+{
+    const auto territory = QLocale::codeToTerritory(country);
+    if (territory == QLocale::AnyTerritory)
+        return QStringLiteral("24h");
+    const auto format = QLocale(QLocale::AnyLanguage, territory).timeFormat(QLocale::ShortFormat);
+    return format.contains(u'a', Qt::CaseInsensitive) ? QStringLiteral("12h") : QStringLiteral("24h");
+}
 QLocale RegionalPreferences::locale() const
 {
     const QLocale language(m_language);
@@ -55,7 +63,7 @@ void RegionalPreferences::reload()
         QLocale::codeToTerritory(country) == QLocale::AnyTerritory)
         return;
     if (format == "system")
-        format = QStringList{"US", "CA"}.contains(country) ? "12h" : "24h";
+        format = defaultTimeFormat(country);
     if (format != "12h" && format != "24h")
         return;
     if (m_language == language && m_country == country && m_timeFormat == format)

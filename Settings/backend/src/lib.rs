@@ -9,6 +9,7 @@ pub mod display;
 pub mod gaming;
 pub mod icons;
 pub mod performance;
+pub mod region;
 pub mod theme_config;
 pub mod typhon;
 pub mod visual_effects;

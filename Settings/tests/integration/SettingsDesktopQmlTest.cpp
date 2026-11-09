@@ -1,4 +1,7 @@
 #include "core/SettingsController.hpp"
+#include "services/desktop/DesktopControllers.hpp"
+#include <atomic>
+#include <memory>
 #include "icons/AstreaIconProvider.hpp"
 #include "services/i18n/SettingsTranslationController.hpp"
 #include "theme/ThemeController.hpp"
@@ -60,7 +63,7 @@ class DesktopEnvironment
 class Page
 {
   public:
-    Page(SettingsController &settings, const QString &path, int width = 960) : theme(themeDir.filePath("theme.json"))
+    Page(QObject &settings, const QString &path, int width = 960) : theme(themeDir.filePath("theme.json"))
     {
         QObject::connect(&engine, &QQmlEngine::warnings, &engine,
                          [this](const QList<QQmlError> &items) {
@@ -109,10 +112,128 @@ class Page
     std::unique_ptr<QQmlComponent> component;
     std::unique_ptr<QObject> item;
 };
+// Stands in for SettingsController so the page runs against fake system services.
+class RegionHost final : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(SettingsRegionController *region READ region CONSTANT)
+  public:
+    explicit RegionHost(SettingsRegionController *controller) : m_controller(controller) {}
+    SettingsRegionController *region() const { return m_controller; }
+
+  private:
+    SettingsRegionController *m_controller;
+};
 class SettingsDesktopQmlTest : public QObject
 {
     Q_OBJECT
+    static void clickItem(QQuickWindow &window, QObject *object)
+    {
+        auto *item = qobject_cast<QQuickItem *>(object);
+        QVERIFY(item);
+        QVERIFY(item->isVisible());
+        const auto center = item->mapToScene(QPointF(item->width() / 2, item->height() / 2)).toPoint();
+        QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, center);
+    }
+    static void typeText(QQuickWindow &window, const char *text)
+    {
+        for (; *text; ++text)
+            QTest::keyClick(&window, *text);
+    }
   private slots:
+    void regionPageDetectsPicksAndAppliesOnlyOnRequest()
+    {
+        QTemporaryDir dir;
+        const auto path = dir.filePath("settings.json");
+        auto zone = std::make_shared<QString>("America/Sao_Paulo");
+        auto ipCalls = std::make_shared<std::atomic_int>(0);
+        SettingsRegionServices services;
+        services.locate = [](const std::atomic_bool &) {
+            return RegionLocation::Fix(RegionLocation::Status::Unavailable);
+        };
+        services.lookupByIp = [ipCalls](const std::atomic_bool &) {
+            ++*ipCalls;
+            RegionLocation::Fix fix(RegionLocation::Status::Found);
+            fix.country = "PT";
+            fix.zone = "Europe/Lisbon";
+            return fix;
+        };
+        services.currentTimeZone = [zone] { return *zone; };
+        services.setTimeZone = [zone](const QString &id) {
+            *zone = id;
+            return SettingsRegionServices::ZoneChange::Applied;
+        };
+        SettingsRegionController controller(path, services);
+        RegionHost host(&controller);
+        Page page(host, "system/Language.qml", 1000);
+        QVERIFY2(page.item, qPrintable(page.component->errorString()));
+        QVERIFY(QTest::qWaitForWindowExposed(&page.window));
+        QTRY_VERIFY_WITH_TIMEOUT(!controller.busy() && !controller.state().isEmpty(), 5000);
+        QVERIFY(page.capture("region-idle"));
+
+        // The automatic flow reports the missing service and leaves the choice to the user.
+        auto *notice = page.find("detectionNotice");
+        QVERIFY(notice);
+        QVERIFY(!notice->property("visible").toBool());
+        clickItem(page.window, page.find("detectLocationButton"));
+        QTRY_COMPARE_WITH_TIMEOUT(controller.detection()["status"].toString(), QString("unavailable"), 5000);
+        QVERIFY(notice->property("message").toString().contains("ipapi.co"));
+        QCOMPARE(ipCalls->load(), 0);
+        QTest::qWait(300); // Let the panel unfold before clicking inside it.
+        QVERIFY(page.capture("region-unavailable"));
+
+        // Only the explicit action sends the request, and the result is only a proposal.
+        clickItem(page.window, page.find("detectionAction"));
+        QTRY_COMPARE_WITH_TIMEOUT(controller.detection()["status"].toString(), QString("found"), 5000);
+        QCOMPARE(ipCalls->load(), 1);
+        QTRY_VERIFY_WITH_TIMEOUT(notice->property("message").toString().contains("Portugal"), 2000);
+        QCOMPARE(page.item->property("countryCode").toString(), QString("BR"));
+        QTest::qWait(300);
+        QVERIFY(page.capture("region-found"));
+        clickItem(page.window, page.find("detectionAction"));
+        QTRY_COMPARE_WITH_TIMEOUT(page.item->property("countryCode").toString(), QString("PT"), 5000);
+        QTRY_COMPARE_WITH_TIMEOUT(page.item->property("zoneId").toString(), QString("Europe/Lisbon"), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(!notice->property("visible").toBool(), 2000);
+
+        // The country picker opens, searches as the user types, and saves the row.
+        auto *countrySelect = page.find("countrySelect");
+        QVERIFY(countrySelect);
+        QTRY_VERIFY_WITH_TIMEOUT(!controller.busy(), 5000);
+        QVERIFY(page.item->property("filteredCountries").toList().size() >= 240);
+        clickItem(page.window, countrySelect);
+        QTRY_VERIFY_WITH_TIMEOUT(countrySelect->property("popupOpen").toBool(), 2000);
+        QTest::qWait(300);
+        QVERIFY(page.capture("region-country-picker"));
+        typeText(page.window, "japan");
+        QTRY_COMPARE_WITH_TIMEOUT(page.item->property("countrySearch").toString(), QString("japan"), 2000);
+        const auto matches = page.item->property("filteredCountries").toList();
+        QVERIFY(!matches.isEmpty());
+        QCOMPARE(matches.first().toMap()["id"].toString(), QString("JP"));
+        QVERIFY(page.capture("region-country-search"));
+        QTest::keyClick(&page.window, Qt::Key_Return);
+        QTRY_COMPARE_WITH_TIMEOUT(page.item->property("countryCode").toString(), QString("JP"), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(!countrySelect->property("popupOpen").toBool(), 2000);
+        QCOMPARE(page.item->property("countrySearch").toString(), QString());
+
+        // The time-zone picker leads with the country's zones under a heading.
+        auto *zoneSelect = page.find("timeZoneSelect");
+        QVERIFY(zoneSelect);
+        QTRY_VERIFY_WITH_TIMEOUT(!controller.busy(), 5000);
+        const auto ordered = page.item->property("filteredZones").toList();
+        QVERIFY(!ordered.isEmpty());
+        QCOMPARE(ordered.first().toMap()["country"].toString(), QString("JP"));
+        QVERIFY(!ordered.first().toMap()["heading"].toString().isEmpty());
+        clickItem(page.window, zoneSelect);
+        QTRY_VERIFY_WITH_TIMEOUT(zoneSelect->property("popupOpen").toBool(), 2000);
+        QTest::qWait(300);
+        QVERIFY(page.capture("region-zone-picker"));
+        typeText(page.window, "auckland");
+        QTRY_COMPARE_WITH_TIMEOUT(page.item->property("zoneSearch").toString(), QString("auckland"), 2000);
+        QTest::keyClick(&page.window, Qt::Key_Return);
+        QTRY_COMPARE_WITH_TIMEOUT(*zone, QString("Pacific/Auckland"), 5000);
+        QTRY_COMPARE_WITH_TIMEOUT(page.item->property("zoneId").toString(), QString("Pacific/Auckland"), 5000);
+        QVERIFY2(page.warnings.isEmpty(), qPrintable(page.warnings.join(u'\n')));
+    }
     void languagePersistsAndReloads()
     {
         DesktopEnvironment env;

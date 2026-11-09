@@ -52,6 +52,9 @@ Item {
 
     property int iconSize: 48
     signal activated(string taskKey)
+    signal newWindowRequested(string desktopFileName)
+    // A launch from the first tap already opens a window; the second adds none.
+    property bool firstTapFoundRunning: false
     signal dragStarted(string desktopFileName)
     signal dragMoved(string desktopFileName, real translationX, real sceneX, real sceneY)
     signal dragFinished(string desktopFileName)
@@ -368,8 +371,14 @@ Item {
             onTapped: function(eventPoint) {
                 const wasDrag = root.dragWasActive
                 root.dragWasActive = false
-                if (!wasDrag && root.isPointerTargetAt(eventPoint))
+                if (wasDrag || !root.isPointerTargetAt(eventPoint))
+                    return
+                if (tapCount === 1) {
+                    root.firstTapFoundRunning = root.running
                     root.activated(root.taskKey)
+                } else if (tapCount === 2 && root.firstTapFoundRunning) {
+                    root.newWindowRequested(root.desktopFileName)
+                }
             }
         }
 

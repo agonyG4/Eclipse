@@ -7,6 +7,8 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSaveFile>
+#include <QSignalSpy>
+#include <QStandardItemModel>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QUrl>
@@ -36,7 +38,8 @@ public:
     QString fontFamily() const { return QStringLiteral("Inter"); }
     int selectedIndex() const { return m_selectedIndex; }
     void setSelectedIndex(int index) { m_selectedIndex = index; emit selectedIndexChanged(); }
-    QObject *resultsModel() const { return nullptr; }
+    QObject *resultsModel() const { return results; }
+    QObject *results = nullptr;
     bool weatherEnabled() const { return false; }
     bool weatherReady() const { return false; }
     QString weatherTemp() const { return {}; }
@@ -47,6 +50,14 @@ public:
     Q_INVOKABLE void moveSelection(int) {}
     Q_INVOKABLE void activateCurrent() {}
     Q_INVOKABLE void launch(int) {}
+    Q_INVOKABLE void beginAppDrag(int row) { dragRows.append(row); }
+    Q_INVOKABLE void moveAppDrag(qreal x, qreal y) { lastDragPoint = QPointF(x, y); }
+    Q_INVOKABLE void finishAppDrag() { ++dragFinishes; }
+    Q_INVOKABLE void cancelAppDrag() { ++dragCancels; }
+    QList<int> dragRows;
+    QPointF lastDragPoint;
+    int dragFinishes = 0;
+    int dragCancels = 0;
 signals:
     void focusRequested();
     void launchFailed(const QString &);
@@ -106,6 +117,7 @@ class SpotlightQmlPanelTest final : public QObject {
     Q_OBJECT
 private slots:
     void mainWindowKeepsPanelPlacementFocusBackdropAndOutsideHitTesting();
+    void resultRowDragsTheAppAndStillLaunchesOnClick();
 };
 
 void SpotlightQmlPanelTest::mainWindowKeepsPanelPlacementFocusBackdropAndOutsideHitTesting()
@@ -194,6 +206,80 @@ void SpotlightQmlPanelTest::mainWindowKeepsPanelPlacementFocusBackdropAndOutside
     QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, inside);
     QCoreApplication::processEvents();
     QCOMPARE(controller.closeCount, 1);
+}
+
+void SpotlightQmlPanelTest::resultRowDragsTheAppAndStillLaunchesOnClick()
+{
+    QStandardItemModel results;
+    enum { Name = Qt::UserRole + 1, Icon, Entry, WmClass };
+    results.setItemRoleNames({{Name, "name"}, {Icon, "iconName"}, {Entry, "entryId"},
+                              {WmClass, "startupWmClass"}});
+    auto *row = new QStandardItem;
+    row->setData(QStringLiteral("One"), Name);
+    row->setData(QStringLiteral("one"), Icon);
+    row->setData(QStringLiteral("one"), Entry);
+    row->setData(QStringLiteral("one"), WmClass);
+    results.appendRow(row);
+
+    FakeSpotlightController controller;
+    controller.results = &results;
+    FakeThemeController themeController;
+    FakeI18n i18n;
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(ASTREA_QML_IMPORT_PATH));
+    engine.rootContext()->setContextProperty(QStringLiteral("SpotlightController"), &controller);
+    engine.rootContext()->setContextProperty(QStringLiteral("ThemeController"), &themeController);
+    engine.rootContext()->setContextProperty(QStringLiteral("AstreaI18n"), &i18n);
+
+    const QUrl listUrl = QUrl::fromLocalFile(QStringLiteral(ASTREA_SPOTLIGHT_MAIN_QML))
+        .resolved(QUrl(QStringLiteral("components/SpotlightResultsList.qml")));
+    QQmlComponent component(&engine, listUrl);
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    QQuickWindow window;
+    window.resize(800, 500);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties(
+        {{QStringLiteral("queryText"), QStringLiteral("one")}}));
+    QVERIFY2(object, qPrintable(component.errorString()));
+    auto *list = qobject_cast<QQuickItem *>(object.get());
+    QVERIFY(list);
+    list->setParentItem(window.contentItem());
+    list->setWidth(600);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QTRY_COMPARE(list->property("count").toInt(), 1);
+
+    QQuickItem *ghost = nullptr;
+    for (QQuickItem *child : window.contentItem()->childItems()) {
+        if (child->objectName() == QStringLiteral("spotlightAppDragGhost"))
+            ghost = child;
+    }
+    QVERIFY(ghost);
+    QCOMPARE(ghost->parentItem(), window.contentItem());
+    QVERIFY(!ghost->isVisible());
+
+    QTRY_VERIFY(list->implicitHeight() > 20);
+    const QPoint start(100, qRound(list->implicitHeight()) - 20);
+    list->setHeight(list->implicitHeight());
+    QSignalSpy launched(list, SIGNAL(launchRequested(int)));
+    QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, start);
+    QTRY_COMPARE(launched.size(), 1);
+    QVERIFY(controller.dragRows.isEmpty());
+
+    QTest::mouseMove(&window, start);
+    QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, start);
+    for (int step = 1; step <= 6; ++step)
+        QTest::mouseMove(&window, start + QPoint(step * 20, step * 30));
+    QTRY_COMPARE(controller.dragRows, QList<int>{0});
+    QTRY_VERIFY(ghost->isVisible());
+    const QPoint end = start + QPoint(120, 180);
+    QTRY_COMPARE(controller.lastDragPoint, QPointF(end));
+    QCOMPARE(ghost->x() + ghost->width() / 2, qreal(end.x()));
+    QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, end);
+    QTRY_COMPARE(controller.dragFinishes, 1);
+    QTRY_VERIFY(!ghost->isVisible());
+    // The drag is not also a click.
+    QCOMPARE(launched.size(), 1);
+    QCOMPARE(controller.dragCancels, 0);
 }
 
 QTEST_MAIN(SpotlightQmlPanelTest)

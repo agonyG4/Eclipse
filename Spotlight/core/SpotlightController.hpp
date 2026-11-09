@@ -69,6 +69,12 @@ public:
     Q_INVOKABLE void moveSelection(int delta);
     Q_INVOKABLE void activateCurrent();
     Q_INVOKABLE void launch(int row);
+    // A result dragged out of the panel, in surface (output) coordinates. The
+    // shell offers it to the Dock; on its own the drag ends with no effect.
+    Q_INVOKABLE void beginAppDrag(int row);
+    Q_INVOKABLE void moveAppDrag(qreal x, qreal y);
+    Q_INVOKABLE void finishAppDrag();
+    Q_INVOKABLE void cancelAppDrag();
     Q_INVOKABLE void reloadIndex();
     Q_INVOKABLE void refreshWeather();
     Q_INVOKABLE void ensureConfig();
@@ -90,12 +96,17 @@ signals:
     void weatherChanged();
     void focusRequested();
     void launchFailed(const QString &error);
+    void appDragStarted(const QString &desktopFileName);
+    void appDragMoved(qreal x, qreal y);
+    void appDragFinished();
+    void appDragCanceled();
 
 private slots:
     void runSearch();
     void onLaunchFailed(const QString &desktopId, const QString &error);
 
 private:
+    bool m_appDragActive = false;
     void applyWeather(int temperature, const QString &city, const QString &condition);
     void applyWeatherError(const QString &error);
     void clearSearchState();

@@ -345,6 +345,18 @@ void ShellRuntime::setDockContextMenuTranslator(
 
 void ShellRuntime::connectServices()
 {
+    connect(m_spotlightController.get(), &SpotlightController::appDragStarted,
+            m_dockController.get(), &DockController::beginExternalDrag);
+    connect(m_spotlightController.get(), &SpotlightController::appDragMoved,
+            m_dockController.get(), &DockController::moveExternalDrag);
+    connect(m_spotlightController.get(), &SpotlightController::appDragCanceled,
+            m_dockController.get(), &DockController::cancelExternalDrag);
+    connect(m_spotlightController.get(), &SpotlightController::appDragFinished, this, [this] {
+        // Queued: closing clears the results, and the drag's delegate with them.
+        if (m_dockController->finishExternalDrag())
+            QMetaObject::invokeMethod(m_spotlightController.get(), &SpotlightController::close,
+                                      Qt::QueuedConnection);
+    });
     connect(m_dockController.get(), &DockController::modelChanged, this, [this] {
         if (!m_contextMenuController || !m_contextMenuController->hasActivePresentation())
             return;

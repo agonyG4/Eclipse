@@ -18,6 +18,9 @@ Item {
     readonly property bool frostedIconPresented: frostedGlassAvailable
         && !!frostedGlassLoader.item && frostedGlassLoader.item.iconPresented
     property Item frostedPressDelegate: null
+    // An app dragged in from Spotlight, whose surface holds the pointer: the
+    // slot it would land in opens up, or -1 away from the Dock.
+    property int externalDropIndex: -1
     function setFrostedPress(delegateItem, active) {
         if (active)
             root.frostedPressDelegate = delegateItem
@@ -69,7 +72,8 @@ Item {
     readonly property real maximumMagnificationExtraWidth:
         maximumMagnifiedDelegateCount * DockController.iconSize
         * (Math.max(1, DockController.magnificationScale) - 1)
-    readonly property real maximumMagnificationExtraPrimary: maximumMagnificationExtraWidth
+    readonly property real maximumMagnificationExtraPrimary: Math.max(maximumMagnificationExtraWidth,
+                                                                      slotPitch)
     readonly property int surfaceWidth: vertical
         ? Math.max(restingWidth + surfaceCrossInset,
                    Math.ceil(restingWidth + surfaceHeadroom + surfaceCrossInset))
@@ -327,6 +331,9 @@ Item {
                     pinned: model.pinned
                     pointerTarget: dockPanel.pointerTargetTaskKey === taskKey
                     onActivated: function(key) { DockController.activateOrLaunchTask(key) }
+                    onNewWindowRequested: function(desktopFileName) {
+                        DockController.launchNewWindow(desktopFileName)
+                    }
                     onDragStarted: function(key) { root.beginReorder(key) }
                     onDragMoved: function(key, translationX, sceneX, sceneY) {
                         root.updateReorder(key, translationX, sceneX, sceneY)
@@ -647,6 +654,16 @@ Item {
             root.scheduleMinimizeAnchorPublication()
             root.refreshVisibleTooltip()
             Qt.callLater(root.reconcileWindowPreviewCache)
+        }
+        function onExternalDragMoved(x, y) { root.updateExternalDrop(x, y) }
+        function onExternalDragChanged() {
+            root.externalDropIndex = -1
+            // The pointer is on Spotlight, so this keeps an auto-hidden Dock up.
+            if (DockController.externalDragActive)
+                DockController.setPointerInside(true)
+            else
+                root.setPointerInside(root.pointerInside)
+            root.updateHoverEffect()
         }
         function onVisibleChanged() { root.scheduleTooltip() }
         function onRevealedChanged() {
@@ -1138,9 +1155,11 @@ Item {
 
     function updateHoverEffect() {
         const count = appRepeater.count + minimizedRepeater.count
+        const externalDrag = DockController.externalDragActive
         const magnificationActive = pointerInside && configuredHoverEffect === "magnification"
-            && !isReordering()
+            && !isReordering() && !externalDrag
         const liftActive = pointerInside && configuredHoverEffect === "lift" && !isReordering()
+            && !externalDrag
         const slotPitch = Math.max(1, root.slotPitch)
         const radius = Math.max(1, DockController.magnificationRadius) * slotPitch
         const maximumScale = Math.max(1, DockController.magnificationScale)
@@ -1190,7 +1209,8 @@ Item {
             maximumExtra = Math.max(maximumExtra, extra)
         }
 
-        magnificationExtraPrimary = magnificationActive ? totalExtra : 0
+        magnificationExtraPrimary = externalDropIndex >= 0 ? slotPitch
+            : magnificationActive ? totalExtra : 0
         const targetIndex = magnificationActive ? closestIndex : hoveredIndex
         const targetItem = targetIndex >= 0 ? hoverItemAt(targetIndex) : null
         pointerTargetTaskKey = hoverItemKey(targetItem)
@@ -1200,6 +1220,40 @@ Item {
                                  computedScales, computedExtras, computedPrefixes)
         scheduleInputRegionUpdate()
         refreshVisibleTooltip()
+    }
+
+    // The chrome grows by one slot around its center: each side moves half of it.
+    function dropGapOffset(index) {
+        if (externalDropIndex < 0)
+            return 0
+        return (index >= externalDropIndex ? 0.5 : -0.5) * root.slotPitch
+    }
+
+    // Output coordinates, since the pointer belongs to another surface.
+    function updateExternalDrop(outputX, outputY) {
+        var dropIndex = -1
+        if (DockController.externalDragAcceptable && dockSurfaceGeometry) {
+            const origin = dockSurfaceGeometry.outputLocalDelegateRect(
+                outputWidth, outputHeight, Math.round(width), Math.round(height),
+                DockController.position, DockController.layerShellEdgeMargin,
+                windowRect(Qt.rect(0, 0, 1, 1)))
+            const x = outputX - origin.x
+            const y = outputY - origin.y
+            const chrome = dockChrome.mapToItem(root, 0, 0, dockChrome.width, dockChrome.height)
+            const reach = root.slotPitch
+            if (x >= chrome.x - reach && x < chrome.x + chrome.width + reach
+                && y >= chrome.y - reach && y < chrome.y + chrome.height + reach) {
+                const first = appRepeater.count > 0 ? appRepeater.itemAt(0) : null
+                const start = first ? delegateRestingCenterInPanel(first) : (vertical ? y : x)
+                dropIndex = Math.max(0, Math.min(DockController.pinCount,
+                    Math.ceil(((vertical ? y : x) - start) / Math.max(1, root.slotPitch))))
+            }
+        }
+        if (dropIndex === externalDropIndex)
+            return
+        externalDropIndex = dropIndex
+        DockController.setExternalDropIndex(dropIndex)
+        updateHoverEffect()
     }
 
     // Where a resting slot's item sits while sourceIndex is lifted toward targetIndex.
@@ -1229,7 +1283,7 @@ Item {
                 continue
 
             const extra = computedExtras[i] || 0
-            var offset = (computedPrefixes[i] || 0) + extra / 2 - totalExtra / 2
+            var offset = (computedPrefixes[i] || 0) + extra / 2 - totalExtra / 2 + dropGapOffset(i)
             if (dragging) {
                 if (i === draggedSourceIndex) {
                     const currentCenterRelative = delegateRestingCenterInPanel(item)
@@ -1255,7 +1309,7 @@ Item {
 
         const appExtra = count > 0 ? (computedPrefixes[count - 1] || 0)
             + (computedExtras[count - 1] || 0) : 0
-        minimizedDivider.visualOffset = appExtra - totalExtra / 2
+        minimizedDivider.visualOffset = appExtra - totalExtra / 2 + dropGapOffset(count)
         const minimizedDragging = minimizedDragWindowId.length > 0
         for (var m = 0; m < minimizedRepeater.count; ++m) {
             const tile = minimizedRepeater.itemAt(m)
@@ -1264,6 +1318,7 @@ Item {
             const index = count + m
             const tileExtra = computedExtras[index] || 0
             var tileOffset = (computedPrefixes[index] || 0) + tileExtra / 2 - totalExtra / 2
+                + dropGapOffset(index)
             const lifted = minimizedDragging && m === minimizedDragSourceIndex
             if (minimizedDragging) {
                 if (lifted) {

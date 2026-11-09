@@ -106,6 +106,13 @@ void ShellRuntimeTest::createsOneSharedOwnershipGraph()
     QString error;
     QVERIFY2(runtime.initialize(QStringLiteral("auto"), &error), qPrintable(error));
 
+    // A result dragged out of Spotlight reaches the Dock, and only while it lasts.
+    emit runtime.spotlightController()->appDragStarted(QStringLiteral("org.example.App.desktop"));
+    QVERIFY(runtime.dockController()->externalDragActive());
+    emit runtime.spotlightController()->appDragCanceled();
+    QVERIFY(!runtime.dockController()->externalDragActive());
+
+
     QVERIFY(runtime.catalog());
     QVERIFY(runtime.identityResolver());
     QVERIFY(runtime.launcher());

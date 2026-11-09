@@ -28,6 +28,8 @@ class DockController final : public QObject {
     Q_PROPERTY(bool enabled READ enabled NOTIFY enabledChanged)
     Q_PROPERTY(bool visible READ visible NOTIFY visibleChanged)
     Q_PROPERTY(int pinCount READ pinCount NOTIFY modelChanged)
+    Q_PROPERTY(bool externalDragActive READ externalDragActive NOTIFY externalDragChanged)
+    Q_PROPERTY(bool externalDragAcceptable READ externalDragAcceptable NOTIFY externalDragChanged)
     Q_PROPERTY(int resolvedPinCount READ resolvedPinCount NOTIFY modelChanged)
     Q_PROPERTY(int launchingCount READ launchingCount NOTIFY modelChanged)
     Q_PROPERTY(QVariantList minimizedWindowEntries READ minimizedWindowEntries NOTIFY modelChanged)
@@ -81,6 +83,18 @@ public:
     bool enabled() const { return m_enabled; }
     bool visible() const;
     int pinCount() const { return m_config.pins.size(); }
+    bool externalDragActive() const { return !m_externalDragFile.isEmpty(); }
+    bool externalDragAcceptable() const
+    {
+        return externalDragActive() && !m_config.pins.contains(m_externalDragFile);
+    }
+    // An app dragged in from another surface. The panel reports the slot under
+    // the pointer; finishing pins the app there and says whether it landed.
+    void beginExternalDrag(const QString &desktopFileName);
+    void moveExternalDrag(qreal outputX, qreal outputY);
+    bool finishExternalDrag();
+    void cancelExternalDrag();
+    Q_INVOKABLE void setExternalDropIndex(int index);
     int resolvedPinCount() const;
     int launchingCount() const;
     QVariantList minimizedWindowEntries() const;
@@ -166,6 +180,8 @@ public:
     Q_INVOKABLE void hide();
 
 signals:
+    void externalDragChanged();
+    void externalDragMoved(qreal x, qreal y);
     void enabledChanged();
     void visibleChanged();
     void modelChanged();
@@ -236,6 +252,8 @@ private:
     DockConfig m_config;
     ApplicationLauncher *m_launcher = nullptr;
     DockPinStore *m_pinStore = nullptr;
+    QString m_externalDragFile;
+    int m_externalDropIndex = -1;
     DesktopEntryCatalog *m_catalog = nullptr;
     AppIdentityResolver *m_identityResolver = nullptr;
     std::shared_ptr<const DesktopEntrySnapshot> m_catalogSnapshot;

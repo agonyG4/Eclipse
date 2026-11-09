@@ -625,6 +625,46 @@ bool DockController::closeWindow(const QString &taskKey, const QString &windowId
                                     Astrea::Dock::DockRuntimeAction::Close);
 }
 
+void DockController::beginExternalDrag(const QString &desktopFileName)
+{
+    m_externalDragFile = desktopFileName;
+    m_externalDropIndex = -1;
+    emit externalDragChanged();
+}
+
+void DockController::moveExternalDrag(qreal outputX, qreal outputY)
+{
+    if (externalDragActive())
+        emit externalDragMoved(outputX, outputY);
+}
+
+void DockController::setExternalDropIndex(int index)
+{
+    m_externalDropIndex = externalDragAcceptable() ? index : -1;
+}
+
+bool DockController::finishExternalDrag()
+{
+    if (!externalDragActive())
+        return false;
+    const QString desktopFileName = m_externalDragFile;
+    const int dropIndex = m_externalDropIndex;
+    cancelExternalDrag();
+    if (dropIndex < 0 || !setPinned(desktopFileName, true))
+        return false;
+    movePinned(desktopFileName, dropIndex);
+    return true;
+}
+
+void DockController::cancelExternalDrag()
+{
+    if (!externalDragActive())
+        return;
+    m_externalDragFile.clear();
+    m_externalDropIndex = -1;
+    emit externalDragChanged();
+}
+
 bool DockController::setPinned(const QString &desktopFileName, bool pinned)
 {
     if (!DockConfigCodec::validDesktopFileName(desktopFileName)) {

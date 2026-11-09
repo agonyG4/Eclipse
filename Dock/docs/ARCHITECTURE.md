@@ -75,6 +75,11 @@ order, while preserving existing Qt paths and deduplicating exact roots. A
 narrow Astrea-owned mutex serializes those Qt global theme lookups and updates;
 positive and negative cache locks are never held during icon rendering.
 
+An app dragged out of Spotlight stays on Spotlight's output-sized surface, since
+leaving it would take focus away and close Spotlight. `ShellRuntime` forwards the
+drag to `DockController` in output coordinates; `DockPanel` turns them into the
+slot that opens under the pointer, and the controller pins the app there on drop.
+
 `DockPanel` keeps one resting positioner and one magnification algorithm. Its
 primary axis is X for Bottom and Y for Left/Right; its cross axis is Y for
 Bottom and X for the vertical positions. `none` leaves resting geometry

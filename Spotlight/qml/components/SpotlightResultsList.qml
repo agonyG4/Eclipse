@@ -102,6 +102,47 @@ ColumnLayout {
                 onEntered: SpotlightController.selectedIndex = resultDelegate.index
                 onClicked: root.launchRequested(resultDelegate.index)
             }
+
+            // The drag stays on this surface, which covers the output: leaving
+            // it would take focus away and close Spotlight.
+            DragHandler {
+                id: appDragHandler
+                objectName: "spotlightAppDragHandler"
+                target: null
+                dragThreshold: 8
+                grabPermissions: PointerHandler.CanTakeOverFromAnything
+                onGrabChanged: function(transition) {
+                    if (transition === PointerDevice.GrabExclusive) {
+                        SpotlightController.beginAppDrag(resultDelegate.index)
+                    } else if (transition === PointerDevice.UngrabExclusive) {
+                        SpotlightController.finishAppDrag()
+                    } else if (transition === PointerDevice.CancelGrabExclusive) {
+                        SpotlightController.cancelAppDrag()
+                    }
+                }
+                onCentroidChanged: {
+                    if (active)
+                        SpotlightController.moveAppDrag(centroid.scenePosition.x,
+                                                        centroid.scenePosition.y)
+                }
+            }
+
+            AstreaAppIcon {
+                objectName: "spotlightAppDragGhost"
+                parent: resultDelegate.Window.contentItem
+                visible: appDragHandler.active
+                z: 1000
+                width: 56
+                height: 56
+                x: appDragHandler.centroid.scenePosition.x - width / 2
+                y: appDragHandler.centroid.scenePosition.y - height / 2
+                astreaIconName: resultDelegate.iconName
+                appName: resultDelegate.name
+                className: resultDelegate.startupWmClass
+                title: resultDelegate.name
+                iconRadius: 12
+                maximumPresentationLogicalSize: 56
+            }
         }
     }
 }

@@ -29,6 +29,7 @@
 #include <QRect>
 #include <QTemporaryDir>
 #include <QSignalSpy>
+#include <QStyleHints>
 #include <QTest>
 #include <QtMath>
 
@@ -39,6 +40,16 @@ Q_IMPORT_QML_PLUGIN(Astrea_EffectsPlugin)
 #include <limits>
 
 namespace {
+
+class RecordingPinStore final : public DockPinStore {
+public:
+    bool writePins(const QStringList &written, QString *) override
+    {
+        pins = written;
+        return true;
+    }
+    QStringList pins;
+};
 
 class FakeContextMenuController final : public QObject {
     Q_OBJECT
@@ -606,6 +617,9 @@ private slots:
     void windowPreviewSurfaceClampsToOutputOnEveryDockEdge();
     void minimizeAnchorPredictsGlobalThumbnailOnEveryDockEdge();
     void previewActivationTargetsWindowAndDismissesSurface();
+    void closingDownToOneWindowDismissesThePreview();
+    void doubleTapOpensANewWindowOnlyForARunningApp();
+    void draggingAnAppFromOutsidePinsItWhereItLands();
     void disablingWindowPreviewsDismissesPopupAndRestoresTooltip();
     void previewPointerTransferKeepsAutoHideDockRevealed();
     void backdropRegionTracksMagnifiedChromeInsideStableSurface();
@@ -799,9 +813,10 @@ void DockHoverQmlTest::unreadBadgeFollowsIconWithoutChangingInteractionGeometry(
     QCOMPARE(label->property("renderType").toInt(), 0); // Text.QtRendering
 
     const QPointF badgeBefore = badge->mapToItem(panel, QPointF(0, 0));
+    const QPointF itemCenterInPanel = item->mapToItem(panel, item->width() / 2, item->height() / 2);
     QVERIFY(QMetaObject::invokeMethod(panel, "updatePointerAtPoint",
-                                      Q_ARG(QVariant, QVariant(item->x() + item->width() / 2)),
-                                      Q_ARG(QVariant, QVariant(item->y() + item->height() / 2))));
+                                      Q_ARG(QVariant, QVariant(itemCenterInPanel.x())),
+                                      Q_ARG(QVariant, QVariant(itemCenterInPanel.y()))));
     QTRY_VERIFY_WITH_TIMEOUT(icon->scale() > 1.1, 1500);
     const QPointF badgeAfterMagnification = badge->mapToItem(panel, QPointF(0, 0));
     QVERIFY(badgeAfterMagnification != badgeBefore);
@@ -1257,6 +1272,231 @@ void DockHoverQmlTest::previewActivationTargetsWindowAndDismissesSurface()
              static_cast<int>(Astrea::Dock::DockRuntimeAction::Activate));
     preview->close();
     delete preview;
+}
+
+void DockHoverQmlTest::closingDownToOneWindowDismissesThePreview()
+{
+    auto catalog = std::make_shared<DesktopEntrySnapshot>();
+    DesktopEntryRecord record;
+    record.desktopFileName = QStringLiteral("one.desktop");
+    record.id = QStringLiteral("one");
+    record.name = QStringLiteral("One");
+    record.icon = QStringLiteral("one");
+    record.exec = QStringLiteral("one");
+    catalog->entries.append(record);
+    catalog->byDesktopFileName.insert(record.desktopFileName, 0);
+    catalog->byDesktopId.insert(record.id, 0);
+
+    FakeWindowPreviewRuntimeBackend runtimeBackend;
+    Astrea::Dock::DockRuntimeWindow first;
+    first.id = QStringLiteral("window-one");
+    first.appId = QStringLiteral("one");
+    first.title = QStringLiteral("One window");
+    Astrea::Dock::DockRuntimeWindow second = first;
+    second.id = QStringLiteral("window-two");
+    Astrea::Dock::DockRuntimeWindow third = first;
+    third.id = QStringLiteral("window-three");
+    Astrea::Dock::DockRuntimeSnapshot snapshot;
+    snapshot.authoritative = true;
+    snapshot.generation = 4;
+    snapshot.windows = {first, second, third};
+    snapshot.total = 3;
+    runtimeBackend.currentSnapshot = snapshot;
+
+    DockController controller;
+    controller.setCatalogSnapshot(catalog);
+    controller.applyConfig(configFor(QStringLiteral("none"), {QStringLiteral("one.desktop")}));
+    controller.attachRuntimeBackend(&runtimeBackend);
+
+    FakeDockWindowPreviewService previewService;
+    DockSurfaceGeometry surfaceGeometry;
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+
+    QQmlComponent previewComponent(&engine, QUrl::fromLocalFile(kDockWindowPreviewSurfacePath));
+    QVERIFY2(previewComponent.status() == QQmlComponent::Ready,
+             qPrintable(previewComponent.errorString()));
+    auto *preview = qobject_cast<QQuickWindow *>(previewComponent.create());
+    QVERIFY2(preview, qPrintable(previewComponent.errorString()));
+    QQmlComponent panelComponent(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(panelComponent.status() == QQmlComponent::Ready,
+             qPrintable(panelComponent.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(panelComponent.create());
+    QVERIFY2(panel, qPrintable(panelComponent.errorString()));
+    QQuickWindow window;
+    window.resize(1200, 820);
+    panel->setParentItem(window.contentItem());
+    panel->setProperty("dockSurfaceGeometry",
+                       QVariant::fromValue(static_cast<QObject *>(&surfaceGeometry)));
+    panel->setProperty("dockWindowPreviewSurface", QVariant::fromValue(static_cast<QObject *>(preview)));
+    panel->setProperty("dockWindowPreviewService",
+                       QVariant::fromValue(static_cast<QObject *>(&previewService)));
+    preview->setProperty("dockPanel", QVariant::fromValue(static_cast<QObject *>(panel)));
+    preview->setProperty("previewService", QVariant::fromValue(static_cast<QObject *>(&previewService)));
+    panel->setProperty("previewTaskKey", controller.appModel()->taskKeyAt(0));
+    const QVariantList entries = controller.windowPreviewEntries(controller.appModel()->taskKeyAt(0));
+    QCOMPARE(entries.size(), 3);
+    QVERIFY(QMetaObject::invokeMethod(preview, "showPreview",
+        Q_ARG(QVariant, controller.appModel()->taskKeyAt(0)), Q_ARG(QVariant, QVariant(entries)),
+        Q_ARG(QVariant, QVariant(QRect(400, 550, 48, 48))), Q_ARG(QVariant, QStringLiteral("bottom")),
+        Q_ARG(QVariant, 1200), Q_ARG(QVariant, 820), Q_ARG(QVariant, 0), Q_ARG(QVariant, 0)));
+    QVERIFY(preview->property("previewVisible").toBool());
+
+    // Three to two: the selector stays, without the closed window.
+    snapshot.generation = 5;
+    snapshot.windows = {first, second};
+    snapshot.total = 2;
+    runtimeBackend.publishSnapshot(snapshot);
+    QTRY_COMPARE_WITH_TIMEOUT(preview->property("entries").toList().size(), 2, 1000);
+    QVERIFY(preview->property("previewVisible").toBool());
+
+    // Two to one: nothing is left to choose from.
+    snapshot.generation = 6;
+    snapshot.windows = {first};
+    snapshot.total = 1;
+    runtimeBackend.publishSnapshot(snapshot);
+    QTRY_VERIFY_WITH_TIMEOUT(!preview->property("previewVisible").toBool(), 1000);
+    QVERIFY(!preview->isVisible());
+
+    delete panel;
+    preview->close();
+    delete preview;
+}
+
+void DockHoverQmlTest::doubleTapOpensANewWindowOnlyForARunningApp()
+{
+    auto catalog = std::make_shared<DesktopEntrySnapshot>();
+    DesktopEntryRecord record;
+    record.desktopFileName = QStringLiteral("one.desktop");
+    record.id = QStringLiteral("one");
+    record.name = QStringLiteral("One");
+    record.icon = QStringLiteral("one");
+    record.exec = QStringLiteral("one");
+    catalog->entries.append(record);
+    catalog->byDesktopFileName.insert(record.desktopFileName, 0);
+    catalog->byDesktopId.insert(record.id, 0);
+
+    DockController controller;
+    controller.setCatalogSnapshot(catalog);
+    controller.applyConfig(configFor(QStringLiteral("none"), {QStringLiteral("one.desktop")}));
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    QQuickWindow window;
+    window.resize(600, 180);
+    panel->setParentItem(window.contentItem());
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QQuickItem *item = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((item = delegate(panel, QStringLiteral("one.desktop"))) != nullptr,
+                             1000);
+    QSignalSpy activated(item, SIGNAL(activated(QString)));
+    QSignalSpy newWindow(item, SIGNAL(newWindowRequested(QString)));
+    const QPoint center = itemCenter(window, item);
+    const auto doubleTap = [&] {
+        QTest::mouseDClick(&window, Qt::LeftButton, Qt::NoModifier, center);
+    };
+
+    // Not running: the first tap launches and the second must not launch again.
+    QVERIFY(!item->property("running").toBool());
+    doubleTap();
+    QTRY_COMPARE_WITH_TIMEOUT(activated.size(), 1, 1000);
+    QCOMPARE(newWindow.size(), 0);
+    QTest::qWait(QGuiApplication::styleHints()->mouseDoubleClickInterval() + 50);
+
+    item->setProperty("running", true);
+    doubleTap();
+    QTRY_COMPARE_WITH_TIMEOUT(newWindow.size(), 1, 1000);
+    QCOMPARE(newWindow.at(0).at(0).toString(), QStringLiteral("one.desktop"));
+    QCOMPARE(activated.size(), 2);
+
+    delete panel;
+}
+
+void DockHoverQmlTest::draggingAnAppFromOutsidePinsItWhereItLands()
+{
+    RecordingPinStore pinStore;
+    DockController controller(nullptr, nullptr, &pinStore);
+    const QStringList pins{QStringLiteral("one.desktop"), QStringLiteral("two.desktop")};
+    controller.applyConfig(configFor(QStringLiteral("none"), pins));
+
+    DockSurfaceGeometry surfaceGeometry;
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(DOCK_BUILD_DIR));
+    engine.addImageProvider(QStringLiteral("astrea-icon"), new AstreaIconProvider);
+    engine.rootContext()->setContextProperty(QStringLiteral("DockController"), &controller);
+    QQmlComponent component(&engine, QUrl::fromLocalFile(kDockPanelPath));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    auto *panel = qobject_cast<QQuickItem *>(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    QQuickWindow window;
+    window.resize(1200, 820);
+    panel->setParentItem(window.contentItem());
+    panel->setProperty("dockSurfaceGeometry",
+                       QVariant::fromValue(static_cast<QObject *>(&surfaceGeometry)));
+    panel->setProperty("outputWidth", 1200);
+    panel->setProperty("outputHeight", 820);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QQuickItem *firstItem = nullptr;
+    QQuickItem *secondItem = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((firstItem = delegate(panel, pins.at(0))) != nullptr
+                                 && (secondItem = delegate(panel, pins.at(1))) != nullptr, 1000);
+    // Output coordinates of a point in the panel, as Spotlight would report it.
+    const auto outputPoint = [&](const QPointF &panelPoint) {
+        const QPointF inWindow = panel->mapToItem(nullptr, QPointF(0, 0));
+        return surfaceGeometry.outputLocalDelegateRect(
+                   1200, 820, qRound(panel->width()), qRound(panel->height()),
+                   controller.position(), controller.layerShellEdgeMargin(),
+                   QRectF(inWindow, QSizeF(1, 1))).topLeft()
+            + panelPoint;
+    };
+    const QPointF firstCenter = firstItem->mapToItem(panel, firstItem->width() / 2,
+                                                     firstItem->height() / 2);
+    const QPointF secondCenter = secondItem->mapToItem(panel, secondItem->width() / 2,
+                                                       secondItem->height() / 2);
+    const QPointF between = (firstCenter + secondCenter) / 2;
+    const QString dragged = QStringLiteral("three.desktop");
+
+    // Away from the Dock: no slot opens and the drop does nothing.
+    controller.beginExternalDrag(dragged);
+    const QPointF far = outputPoint(between - QPointF(0, 400));
+    controller.moveExternalDrag(far.x(), far.y());
+    QCOMPARE(panel->property("externalDropIndex").toInt(), -1);
+    QVERIFY(!controller.finishExternalDrag());
+    QCOMPARE(controller.pinCount(), 2);
+
+    // Between the two icons: a slot opens and the app lands in it.
+    controller.beginExternalDrag(dragged);
+    QVERIFY(controller.externalDragAcceptable());
+    const QPointF over = outputPoint(between);
+    controller.moveExternalDrag(over.x(), over.y());
+    QCOMPARE(panel->property("externalDropIndex").toInt(), 1);
+    QCOMPARE(panel->property("magnificationExtraPrimary").toInt(),
+             panel->property("slotPitch").toInt());
+    QVERIFY(controller.finishExternalDrag());
+    QCOMPARE(panel->property("externalDropIndex").toInt(), -1);
+    QCOMPARE(pinStore.pins, QStringList({pins.at(0), dragged, pins.at(1)}));
+
+    // An app already in the Dock is not offered a second slot.
+    controller.beginExternalDrag(dragged);
+    QVERIFY(!controller.externalDragAcceptable());
+    controller.moveExternalDrag(over.x(), over.y());
+    QCOMPARE(panel->property("externalDropIndex").toInt(), -1);
+    QVERIFY(!controller.finishExternalDrag());
+    QCOMPARE(controller.pinCount(), 3);
+
+    delete panel;
 }
 
 void DockHoverQmlTest::previewPointerTransferKeepsAutoHideDockRevealed()

@@ -143,6 +143,7 @@ void SpotlightController::show() {
 
 void SpotlightController::close() {
     if (!m_open && !m_surfaceVisible) return;
+    cancelAppDrag();
     m_searchDebounce.stop();
 
     m_weather.cancel();
@@ -237,6 +238,35 @@ void SpotlightController::launch(int row) {
     close();
     m_launcher.launch({item.id, item.desktopFileName, item.exec, item.name,
                        item.icon, item.desktopFilePath});
+}
+
+void SpotlightController::beginAppDrag(int row) {
+    if (m_appDragActive || row < 0 || row >= m_results.resultCount())
+        return;
+    const QString desktopFileName = m_results.resultAt(row).desktopFileName;
+    if (desktopFileName.isEmpty())
+        return;
+    m_appDragActive = true;
+    emit appDragStarted(desktopFileName);
+}
+
+void SpotlightController::moveAppDrag(qreal x, qreal y) {
+    if (m_appDragActive)
+        emit appDragMoved(x, y);
+}
+
+void SpotlightController::finishAppDrag() {
+    if (!m_appDragActive)
+        return;
+    m_appDragActive = false;
+    emit appDragFinished();
+}
+
+void SpotlightController::cancelAppDrag() {
+    if (!m_appDragActive)
+        return;
+    m_appDragActive = false;
+    emit appDragCanceled();
 }
 
 void SpotlightController::reloadIndex() {

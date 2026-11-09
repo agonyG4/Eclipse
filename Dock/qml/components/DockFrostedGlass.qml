@@ -125,6 +125,7 @@ GlassLayer {
         iconPath: root.source ? root.source.iconPath : ""
         iconUrl: root.source ? root.source.iconUrl : ""
         appName: root.source ? root.source.displayName : ""
+        iconSize: DockController.iconSize
         maximumPresentationScale: Math.max(1, DockController.magnificationScale)
         iconRadius: 10
         fallbackRadius: 10

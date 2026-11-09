@@ -709,6 +709,9 @@ void DockHoverQmlTest::iconSourceQualityRemainsStableDuringHover()
                  .toString());
     QVERIFY(!initialSource.contains(QStringLiteral("magnification")));
     QCOMPARE(initialSourcePixels, logicalSourceSize * 2);
+    // Art is decoded for the size the icon reaches at full magnification.
+    QCOMPARE(logicalSourceSize, qCeil(controller.property("iconSize").toInt()
+                                      * controller.property("magnificationScale").toDouble()));
 
     const auto verifyStableSource = [&] {
         QCOMPARE(icon->property("resolvedSource").toString(), initialSource);
@@ -2270,6 +2273,9 @@ void DockHoverQmlTest::frostedPressUsesItsOwnGlassSurface()
     QVERIFY(plate && iconCopy);
     auto *icon = target->property("iconVisual").value<QQuickItem *>();
     QVERIFY(icon);
+    // The copy shown under the pointer is decoded as sharply as the icon.
+    QCOMPARE(iconCopy->property("effectiveSourcePixelSize").toInt(),
+             icon->property("effectiveSourcePixelSize").toInt());
 
     const QPoint center = itemCenter(window, target);
     QTest::mouseMove(&window, center);

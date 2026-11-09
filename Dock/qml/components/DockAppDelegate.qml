@@ -274,6 +274,8 @@ Item {
         iconUrl: root.iconUrl
         appName: root.displayName
         retainWhileLoading: true
+        // The configured size, not root.iconSize: its glide must not reload art.
+        iconSize: DockController.iconSize
         maximumPresentationScale: Math.max(1, DockController.magnificationScale)
         iconRadius: 10
         fallbackRadius: 10

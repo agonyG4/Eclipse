@@ -62,8 +62,8 @@ Application icons follow the shared resolution-aware pipeline. Desktop-entry
 identity is passed to `AstreaIconProvider`, which uses the active Qt/Freedesktop
 theme engine and returns a physical-pixel source selected from the logical
 presentation extent and effective device-pixel ratio. `AstreaAppIcon` owns that
-source-quality policy; the Dock supplies the configured maximum presentation
-scale while `DockAppDelegate` applies the animated magnification as a visual
+source-quality policy; the Dock supplies the configured icon size and maximum
+presentation scale while `DockAppDelegate` applies the animated magnification as a visual
 transform. Hover frames therefore change presentation scale and translation
 without changing the icon URL, source size, or provider cache key.
 

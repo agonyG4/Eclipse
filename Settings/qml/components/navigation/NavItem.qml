@@ -16,10 +16,6 @@ Item {
     // navigation supplies the resolved source instead.
     property string iconKey: ""
     required property bool   selected
-    // The sidebar draws one shared selection pill that slides between rows;
-    // standalone items keep drawing their own.
-    property bool drawsSelection: true
-    readonly property bool showsSelection: selected && drawsSelection
     signal clicked()
 
     FontLoader { id: tablerIcons; source: "qrc:/Astrea/Settings/assets/fonts/tabler-icons-300.ttf" }
@@ -34,11 +30,11 @@ Item {
         id: bgRect
         anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
         radius: 8
-        color: root.showsSelection
+        color: root.selected
             ? Components.Theme.selectedFill
-            : hma.containsMouse && !root.selected ? Components.Theme.rowHoverFill : "transparent"
-        border.width: root.showsSelection || (hma.containsMouse && !root.selected) ? 1 : 0
-        border.color: root.showsSelection ? Components.Theme.selectedBorder : Components.Theme.hairline
+            : hma.containsMouse ? Components.Theme.rowHoverFill : "transparent"
+        border.width: root.selected || hma.containsMouse ? 1 : 0
+        border.color: root.selected ? Components.Theme.selectedBorder : Components.Theme.hairline
 
         Behavior on color { ColorAnimation { duration: Components.Theme.animationFast; easing.type: Components.Theme.easingStandard } }
         Behavior on border.color { ColorAnimation { duration: Components.Theme.animationFast; easing.type: Components.Theme.easingStandard } }
@@ -47,10 +43,10 @@ Item {
         Rectangle {
             anchors { left: parent.left; verticalCenter: parent.verticalCenter }
             width: 3
-            height: root.showsSelection ? parent.height * 0.5 : 0
+            height: root.selected ? parent.height * 0.5 : 0
             radius: 1.5
             color: root.accent
-            opacity: root.showsSelection ? 1.0 : 0.0
+            opacity: root.selected ? 1.0 : 0.0
             Behavior on height { NumberAnimation { duration: Components.Theme.animationSlow; easing.type: Components.Theme.easingEnter } }
             Behavior on opacity { NumberAnimation { duration: Components.Theme.animationNormal } }
         }
